@@ -1,0 +1,28 @@
+# Environment files
+.env
+.env.*
+!.env.example
+backend/.env
+backend/.env.*
+
+# Claude local state
+.claude/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+backend/.venv/
+.venv/
+
+# Node / Vite
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
