@@ -8,6 +8,7 @@ declare global {
 
 interface GeoGebraViewProps {
   commands: string[];
+  embedded?: boolean;
 }
 
 function loadGeoGebraScript(): Promise<void> {
@@ -27,10 +28,11 @@ function loadGeoGebraScript(): Promise<void> {
   });
 }
 
-export function GeoGebraView({ commands }: GeoGebraViewProps) {
+export function GeoGebraView({ commands, embedded = false }: GeoGebraViewProps) {
   const rawId = useId();
   const appletId = `ggb-${rawId.replace(/[^a-zA-Z0-9]/g, '')}`;
   const apiRef = useRef<unknown>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -38,10 +40,13 @@ export function GeoGebraView({ commands }: GeoGebraViewProps) {
     loadGeoGebraScript().then(() => {
       if (cancelled || !window.GGBApplet) return;
 
+      const containerWidth = Math.max(containerRef.current?.clientWidth ?? 720, 320);
+      const containerHeight = Math.max(containerRef.current?.clientHeight ?? 600, 420);
+
       const parameters = {
         appName: 'classic',
-        width: 720,
-        height: 520,
+        width: containerWidth,
+        height: containerHeight,
         showToolBar: false,
         showAlgebraInput: false,
         showMenuBar: false,
@@ -61,10 +66,14 @@ export function GeoGebraView({ commands }: GeoGebraViewProps) {
     };
   }, [appletId, commands]);
 
+  const content = <div ref={containerRef} id={appletId} className="geogebra-view" />;
+
+  if (embedded) return content;
+
   return (
     <div className="viewer-card">
       <div className="viewer-header">GeoGebra Renderer</div>
-      <div id={appletId} className="geogebra-view" />
+      {content}
     </div>
   );
 }

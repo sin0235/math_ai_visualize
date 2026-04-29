@@ -1,14 +1,15 @@
 import type { RenderResponse } from '../types/scene';
 import { GeoGebraView } from './GeoGebraView';
-import { ThreeGeometryView } from './ThreeGeometryView';
+import { ThreeGeometryView, type ThreeSceneInteraction } from './ThreeGeometryView';
 
 interface RendererPanelProps {
   result: RenderResponse | null;
+  threeInteraction?: ThreeSceneInteraction;
 }
 
-export function RendererPanel({ result }: RendererPanelProps) {
+export function RendererPanel({ result, threeInteraction }: RendererPanelProps) {
   if (!result) {
-    return <div className="empty-state">Nhập đề bài để bắt đầu dựng hình.</div>;
+    return <EmptyState />;
   }
 
   if (result.payload.renderer.startsWith('geogebra')) {
@@ -16,8 +17,42 @@ export function RendererPanel({ result }: RendererPanelProps) {
   }
 
   if (result.payload.three_scene) {
-    return <ThreeGeometryView scene={result.payload.three_scene} />;
+    return <ThreeGeometryView scene={result.payload.three_scene} interaction={threeInteraction} />;
   }
 
-  return <div className="empty-state">Không có dữ liệu renderer phù hợp.</div>;
+  return (
+    <div className="empty-state">
+      <div className="empty-state-content">
+        <GeometryIllustration />
+        <h2>Không có dữ liệu renderer phù hợp</h2>
+        <p>Hãy thử chọn công cụ vẽ khác trong phần tùy chọn nâng cao.</p>
+      </div>
+    </div>
+  );
+}
+
+function EmptyState() {
+  return (
+    <div className="empty-state">
+      <div className="empty-state-content">
+        <GeometryIllustration />
+        <h2>Chưa có hình dựng</h2>
+        <p>Nhập đề bài hoặc chọn một đề mẫu bên trái để bắt đầu.</p>
+      </div>
+    </div>
+  );
+}
+
+function GeometryIllustration() {
+  return (
+    <svg className="empty-state-graphic" viewBox="0 0 220 160" aria-hidden="true">
+      <rect x="24" y="22" width="172" height="116" rx="18" fill="none" stroke="currentColor" strokeWidth="2" />
+      <path d="M58 112L102 48L156 112Z" fill="none" stroke="currentColor" strokeWidth="3" strokeLinejoin="round" />
+      <path d="M102 48L102 112" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="6 6" />
+      <circle cx="58" cy="112" r="5" fill="currentColor" />
+      <circle cx="102" cy="48" r="5" fill="currentColor" />
+      <circle cx="156" cy="112" r="5" fill="currentColor" />
+      <path d="M42 128H178" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
 }

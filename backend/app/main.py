@@ -1,8 +1,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.routes_ai_models import router as ai_models_router
 from app.api.routes_health import router as health_router
+from app.api.routes_ocr import router as ocr_router
 from app.api.routes_render import router as render_router
+from app.api.routes_settings import router as settings_router
 from app.core.config import get_settings
 
 settings = get_settings()
@@ -17,5 +20,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(ai_models_router)
 app.include_router(health_router)
+app.include_router(ocr_router)
 app.include_router(render_router)
+app.include_router(settings_router)

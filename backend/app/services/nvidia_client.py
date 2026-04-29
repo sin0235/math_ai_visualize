@@ -19,7 +19,7 @@ class NvidiaClient:
         self.reasoning_effort = reasoning_effort
         self.thinking = thinking
 
-    async def extract_scene_json(self, problem_text: str, grade: int | None = None) -> dict:
+    async def extract_scene_json(self, problem_text: str, grade: int | None = None, reasoning_layer: str = "off") -> dict:
         if not self.settings.nvidia_api_key:
             raise RuntimeError("NVIDIA_API_KEY chưa được cấu hình.")
 
@@ -33,7 +33,7 @@ class NvidiaClient:
             "model": self.model,
             "messages": [
                 {"role": "system", "content": SCENE_EXTRACTION_SYSTEM_PROMPT},
-                {"role": "user", "content": build_scene_extraction_prompt(problem_text, grade)},
+                {"role": "user", "content": build_scene_extraction_prompt(problem_text, grade, reasoning_layer)},
             ],
             "temperature": 0.1,
             "top_p": 0.95,
@@ -47,10 +47,14 @@ class NvidiaClient:
         }
         url = f"{self.settings.nvidia_base_url.rstrip('/')}/chat/completions"
 
-        async with httpx.AsyncClient(timeout=60) as client:
-            response = await client.post(url, headers=headers, json=payload)
-            if response.status_code >= 400:
-                raise RuntimeError(_format_nvidia_error(response))
+        try:
+            async with httpx.AsyncClient(timeout=60) as client:
+                response = await client.post(url, headers=headers, json=payload)
+                if response.status_code >= 400:
+                    raise RuntimeError(_format_nvidia_error(response))
+        except httpx.HTTPError as error:
+            message = str(error) or error.__class__.__name__
+            raise RuntimeError(f"NVIDIA request lỗi: {message}") from error
 
         message = _extract_message(response)
         content = message.get("content")
@@ -73,9 +77,13 @@ def _extract_message(response: httpx.Response) -> dict:
 def _strip_json_fences(content: str) -> str:
     text = content.strip()
     if text.startswith("```json"):
-        return text.removeprefix("```json").removesuffix("```").strip()
-    if text.startswith("```"):
-        return text.removeprefix("```").removesuffix("```").strip()
+        text = text.removeprefix("```json").removesuffix("```").strip()
+    elif text.startswith("```"):
+        text = text.removeprefix("```").removesuffix("```").strip()
+    start = text.find("{")
+    end = text.rfind("}")
+    if start >= 0 and end > start:
+        return text[start:end + 1]
     return text
 
 

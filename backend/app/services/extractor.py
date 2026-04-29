@@ -3,11 +3,37 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from app.core.config import Settings, get_settings
-from app.schemas.scene import MathScene, SceneView
+from app.core.config import Settings, get_settings, merge_runtime_settings
+from app.schemas.scene import AdvancedRenderSettings, MathScene, RuntimeSettings, SceneView
 from app.services.nvidia_client import NvidiaClient
+from app.services.ollama_client import OllamaClient
 from app.services.openrouter_client import OpenRouterClient
+from app.services.router9_client import Router9Client
 from app.services.solid_presets import equilateral_triangle, rectangular_box, square_pyramid, triangular_prism, triangular_pyramid
+
+_HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+_COLOR_NAMES = {
+    "red": "#e63946",
+    "blue": "#1d3557",
+    "green": "#2a9d8f",
+    "orange": "#f97316",
+    "purple": "#7c3aed",
+    "gray": "#8b95a7",
+    "grey": "#8b95a7",
+    "yellow": "#ffd166",
+}
+_DEFAULT_COLORS = {
+    "segment": "#1d3557",
+    "face": "#5da9ff",
+    "sphere": "#5da9ff",
+    "plane": "#4f8cff",
+    "line_3d": "#1d3557",
+    "vector_3d": "#7c3aed",
+    "angle": "#b45309",
+    "length": "#7c3aed",
+    "equal_marks": "#e63946",
+    "right_angle": "#e63946",
+}
 
 _POINT_2D_RE = re.compile(r"([A-Z])\s*\(\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\)")
 _POINT_3D_RE = re.compile(r"([A-Z])\s*\(\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\)")
@@ -19,21 +45,99 @@ async def extract_scene(
     problem_text: str,
     grade: int | None = None,
     preferred_ai_provider: str | None = None,
+    preferred_ai_model: str | None = None,
+    advanced_settings: AdvancedRenderSettings | None = None,
+    runtime_settings: RuntimeSettings | None = None,
 ) -> tuple[MathScene, list[str]]:
-    settings = get_settings()
+    settings = merge_runtime_settings(get_settings(), runtime_settings)
+    render_settings = advanced_settings or AdvancedRenderSettings()
     warnings: list[str] = []
 
     for provider in _provider_order(settings, preferred_ai_provider):
         try:
-            scene_json = await _extract_with_provider(provider, settings, problem_text, grade)
-            return MathScene.model_validate(scene_json), warnings
+            scene_json = await _extract_with_provider(provider, settings, problem_text, grade, render_settings.reasoning_layer, preferred_ai_model)
+            return MathScene.model_validate(normalize_scene_json(scene_json)), warnings
         except (RuntimeError, ValidationError, ValueError, KeyError) as error:
             warnings.append(f"AI provider {provider} không dùng được: {error}")
+            if settings.router9_only:
+                raise RuntimeError("9router-only đang bật nên không fallback sang provider khác.") from error
         except Exception as error:
-            warnings.append(f"AI provider {provider} lỗi: {error}")
+            message = str(error) or error.__class__.__name__
+            warnings.append(f"AI provider {provider} lỗi: {message}")
+            if settings.router9_only:
+                raise RuntimeError("9router-only đang bật nên không fallback sang provider khác.") from error
 
     warnings.append("Đang dùng mock extractor vì AI provider chưa sẵn sàng.")
     return extract_scene_mock(problem_text, grade), warnings
+
+
+def normalize_scene_json(scene_json: dict) -> dict:
+    data = dict(scene_json)
+    data["objects"] = [_normalize_object(dict(obj)) for obj in data.get("objects", []) if isinstance(obj, dict)]
+    data["annotations"] = [_normalize_annotation(dict(ann)) for ann in data.get("annotations", []) if isinstance(ann, dict)]
+    return data
+
+
+def _normalize_object(obj: dict[str, Any]) -> dict[str, Any]:
+    obj_type = obj.get("type")
+    if obj_type == "segment":
+        obj.setdefault("hidden", False)
+        obj["color"] = _normalize_color(obj.get("color"), _DEFAULT_COLORS["segment"])
+        if obj.get("style") not in {"solid", "dashed", "dotted", None}:
+            obj["style"] = "solid"
+    elif obj_type in {"face", "sphere", "plane", "line_3d", "vector_3d"}:
+        obj["color"] = _normalize_color(obj.get("color"), _DEFAULT_COLORS[obj_type])
+    return obj
+
+
+def _normalize_annotation(ann: dict[str, Any]) -> dict[str, Any]:
+    ann_type = ann.get("type")
+    metadata = ann.get("metadata") if isinstance(ann.get("metadata"), dict) else {}
+    ann["metadata"] = metadata
+    if ann_type in _DEFAULT_COLORS:
+        ann["color"] = _normalize_color(ann.get("color"), _DEFAULT_COLORS[ann_type])
+    if ann_type == "angle":
+        target = ann.get("target")
+        if isinstance(target, str) and len(target) == 3 and not metadata.get("arms"):
+            ann["target"] = target[1]
+            metadata["arms"] = [target[0], target[2]]
+        elif "arms" in metadata:
+            metadata["arms"] = _normalize_arms(metadata["arms"])
+    if ann_type in {"length", "equal_marks"} and isinstance(ann.get("target"), str):
+        ann["target"] = _normalize_segment_target(ann["target"])
+    return ann
+
+
+def _normalize_arms(value: Any) -> Any:
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str):
+        parts = [part.strip() for part in re.split(r"[,;\-\s]+", value) if part.strip()]
+        if len(parts) >= 2:
+            return parts[:2]
+    return value
+
+
+def _normalize_segment_target(target: str) -> str:
+    compact = re.sub(r"\s+", "", target)
+    if "-" in compact:
+        parts = [part for part in compact.split("-") if part]
+        if len(parts) >= 2:
+            return f"{parts[0]}-{parts[1]}"
+    if len(compact) == 2:
+        return f"{compact[0]}-{compact[1]}"
+    return target
+
+
+def _normalize_color(value: Any, fallback: str) -> str:
+    if isinstance(value, str):
+        text = value.strip()
+        if _HEX_COLOR_RE.match(text):
+            return text.lower()
+        named = _COLOR_NAMES.get(text.lower())
+        if named:
+            return named
+    return fallback
 
 
 def extract_scene_mock(problem_text: str, grade: int | None = None) -> MathScene:
@@ -174,13 +278,25 @@ def _circle_scene(text: str, grade: int | None, points: list[dict[str, Any]]) ->
 
 def _provider_order(settings: Settings, preferred_ai_provider: str | None = None) -> list[str]:
     provider = preferred_ai_provider or settings.ai_provider
+    nvidia_providers = ["nvidia"]
+    nemotron_providers = ["openrouter", "opencode_nemotron"]
+    gpt_oss_providers = ["ollama_gpt_oss", "openrouter_gpt_oss"]
+    router9_providers = ["router9"]
+    if settings.router9_only:
+        if provider not in {"auto", "router9"}:
+            raise RuntimeError("9router-only đang bật nên chỉ được dùng model 9router.")
+        return router9_providers
     if provider == "mock":
         return []
-    if provider in {"nvidia", "nvidia_v4_flash", "nvidia_kimi_k2"}:
-        return _dedupe([provider, "openrouter", "openrouter_gpt_oss"])
-    if provider in {"openrouter", "openrouter_gpt_oss"}:
-        return _dedupe([provider, "nvidia", "nvidia_v4_flash", "nvidia_kimi_k2"])
-    return _dedupe(["nvidia", "nvidia_v4_flash", "nvidia_kimi_k2", "openrouter", "openrouter_gpt_oss"])
+    if provider in router9_providers:
+        return _dedupe([*router9_providers, *nemotron_providers, *gpt_oss_providers, *nvidia_providers])
+    if provider in nvidia_providers:
+        return _dedupe([provider, *nemotron_providers, *gpt_oss_providers])
+    if provider in nemotron_providers:
+        return _dedupe([provider, *nemotron_providers, *gpt_oss_providers, *nvidia_providers])
+    if provider in gpt_oss_providers:
+        return _dedupe([provider, *gpt_oss_providers, *nemotron_providers, *nvidia_providers])
+    return _dedupe([*nvidia_providers, *nemotron_providers, *gpt_oss_providers])
 
 
 def _dedupe(providers: list[str]) -> list[str]:
@@ -194,15 +310,27 @@ def _dedupe(providers: list[str]) -> list[str]:
     return ordered
 
 
-async def _extract_with_provider(provider: str, settings: Settings, problem_text: str, grade: int | None) -> dict:
+def _router9_model(settings: Settings, preferred_ai_model: str | None) -> str:
+    model = preferred_ai_model or settings.router9_text_model
+    if not model:
+        raise RuntimeError("Chưa chọn model 9router.")
+    if settings.router9_allowed_models and model not in settings.router9_allowed_models:
+        raise RuntimeError(f"Model 9router không nằm trong danh sách được phép: {model}")
+    return model
+
+
+async def _extract_with_provider(provider: str, settings: Settings, problem_text: str, grade: int | None, reasoning_layer: str, preferred_ai_model: str | None = None) -> dict:
     if provider == "nvidia":
-        return await NvidiaClient(settings).extract_scene_json(problem_text, grade)
-    if provider == "nvidia_v4_flash":
-        return await NvidiaClient(settings, model="deepseek-ai/deepseek-v4-flash", reasoning_effort="high").extract_scene_json(problem_text, grade)
-    if provider == "nvidia_kimi_k2":
-        return await NvidiaClient(settings, model="moonshotai/kimi-k2-thinking", thinking=False).extract_scene_json(problem_text, grade)
+        return await NvidiaClient(settings, model=preferred_ai_model).extract_scene_json(problem_text, grade, reasoning_layer)
+    if provider == "router9":
+        model = _router9_model(settings, preferred_ai_model)
+        return await Router9Client(settings, model=model).extract_scene_json(problem_text, grade, reasoning_layer)
     if provider == "openrouter":
-        return await OpenRouterClient(settings).extract_scene_json(problem_text, grade)
+        return await OpenRouterClient(settings, model=preferred_ai_model).extract_scene_json(problem_text, grade, reasoning_layer)
+    if provider == "opencode_nemotron":
+        return await OpenRouterClient(settings, model=settings.opencode_nemotron_model, reasoning_enabled=False).extract_scene_json(problem_text, grade, reasoning_layer)
+    if provider == "ollama_gpt_oss":
+        return await OllamaClient(settings, model=preferred_ai_model).extract_scene_json(problem_text, grade, reasoning_layer)
     if provider == "openrouter_gpt_oss":
-        return await OpenRouterClient(settings, model="openai/gpt-oss-120b:free", reasoning_enabled=True).extract_scene_json(problem_text, grade)
+        return await OpenRouterClient(settings, model="openai/gpt-oss-120b:free", reasoning_enabled=True).extract_scene_json(problem_text, grade, reasoning_layer)
     raise RuntimeError(f"Provider không hỗ trợ: {provider}")
