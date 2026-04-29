@@ -18,8 +18,14 @@ export class ApiError extends Error {
   }
 }
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') ?? '';
+
+function apiUrl(path: string) {
+  return `${API_BASE_URL}${path}`;
+}
+
 export async function getSettingsDefaults(): Promise<SettingsDefaults> {
-  const response = await fetch('/api/settings/defaults');
+  const response = await fetch(apiUrl('/api/settings/defaults'));
 
   if (!response.ok) {
     throw await parseApiError(response, `Không thể đọc cấu hình backend. HTTP ${response.status}`);
@@ -36,7 +42,7 @@ export async function renderProblem(
   preferredRenderer?: Renderer,
   runtimeSettings?: RuntimeSettings,
 ): Promise<RenderResponse> {
-  const response = await fetch('/api/render', {
+  const response = await fetch(apiUrl('/api/render'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -57,7 +63,7 @@ export async function renderProblem(
 }
 
 export async function ocrImage(imageDataUrl: string, runtimeSettings: RuntimeSettings): Promise<OcrResponse> {
-  const response = await fetch('/api/ocr', {
+  const response = await fetch(apiUrl('/api/ocr'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -76,7 +82,7 @@ export async function ocrImage(imageDataUrl: string, runtimeSettings: RuntimeSet
 }
 
 export async function scanProviderModels(provider: ProviderKey, runtimeSettings: RuntimeSettings): Promise<ScannedModelInfo[]> {
-  const response = await fetch('/api/ai/models/scan', {
+  const response = await fetch(apiUrl('/api/ai/models/scan'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ provider, runtime_settings: compactRuntimeSettings(runtimeSettings) }),
@@ -91,7 +97,7 @@ export async function scanProviderModels(provider: ProviderKey, runtimeSettings:
 }
 
 export async function scanRouter9Models(runtimeSettings: RuntimeSettings): Promise<ScannedModelInfo[]> {
-  const response = await fetch('/api/ai/router9/models/scan', {
+  const response = await fetch(apiUrl('/api/ai/router9/models/scan'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ runtime_settings: compactRuntimeSettings(runtimeSettings) }),
@@ -106,7 +112,7 @@ export async function scanRouter9Models(runtimeSettings: RuntimeSettings): Promi
 }
 
 export async function renderEditedScene(scene: MathScene, advancedSettings: AdvancedRenderSettings): Promise<RenderResponse> {
-  const response = await fetch('/api/render/scene', {
+  const response = await fetch(apiUrl('/api/render/scene'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
