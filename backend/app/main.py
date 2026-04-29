@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -7,10 +9,18 @@ from app.api.routes_ocr import router as ocr_router
 from app.api.routes_render import router as render_router
 from app.api.routes_settings import router as settings_router
 from app.core.config import get_settings
+from app.services.router9_bootstrap import bootstrap_router9_models
 
 settings = get_settings()
 
-app = FastAPI(title=settings.app_name)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await bootstrap_router9_models(settings)
+    yield
+
+
+app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     router9_api_key: str | None = None
     router9_base_url: str = "http://localhost:20128/v1"
     router9_text_model: str | None = None
+    router9_ocr_model: str = "codex-5.5"
     router9_only: bool = False
     router9_allowed_models: list[str] = []
     ai_provider: str = "auto"

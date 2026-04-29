@@ -4,6 +4,7 @@ import httpx
 
 from app.core.config import Settings
 from app.services.ai_prompt import SCENE_EXTRACTION_SYSTEM_PROMPT, build_scene_extraction_prompt
+from app.services.openrouter_client import OCR_SYSTEM_PROMPT
 
 
 class NvidiaClient:
@@ -65,6 +66,50 @@ class NvidiaClient:
         except json.JSONDecodeError as error:
             raise RuntimeError(f"NVIDIA trả về JSON không hợp lệ: {error.msg}") from error
 
+    async def ocr_image(self, image_data_url: str, model: str | None = None) -> str:
+        if not self.settings.nvidia_api_key:
+            raise RuntimeError("NVIDIA_API_KEY chưa được cấu hình.")
+
+        selected_model = model or self.model
+        payload = {
+            "model": selected_model,
+            "messages": [
+                {"role": "system", "content": OCR_SYSTEM_PROMPT},
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "Trích xuất nguyên văn đề toán trong ảnh."},
+                        {"type": "image_url", "image_url": {"url": image_data_url}},
+                    ],
+                },
+            ],
+            "temperature": 0.2 if selected_model == "google/gemma-3n-e2b-it" else 0.15,
+            "top_p": 0.7 if selected_model == "google/gemma-3n-e2b-it" else 1.0,
+            "max_tokens": 512 if selected_model == "google/gemma-3n-e2b-it" else 2048,
+            "frequency_penalty": 0,
+            "presence_penalty": 0,
+        }
+        headers = {
+            "Authorization": f"Bearer {self.settings.nvidia_api_key}",
+            "Content-Type": "application/json",
+        }
+        url = f"{self.settings.nvidia_base_url.rstrip('/')}/chat/completions"
+
+        try:
+            async with httpx.AsyncClient(timeout=120) as client:
+                response = await client.post(url, headers=headers, json=payload)
+                if response.status_code >= 400:
+                    raise RuntimeError(_format_nvidia_error(response))
+        except httpx.HTTPError as error:
+            message = str(error) or error.__class__.__name__
+            raise RuntimeError(f"NVIDIA OCR request lỗi: {message}") from error
+
+        message = _extract_message(response)
+        content = message.get("content")
+        if not isinstance(content, str) or not content.strip():
+            raise RuntimeError("NVIDIA không trả về nội dung OCR trong choices[0].message.content.")
+        return _strip_text_fences(content)
+
 
 def _extract_message(response: httpx.Response) -> dict:
     try:
@@ -84,6 +129,15 @@ def _strip_json_fences(content: str) -> str:
     end = text.rfind("}")
     if start >= 0 and end > start:
         return text[start:end + 1]
+    return text
+
+
+def _strip_text_fences(content: str) -> str:
+    text = content.strip()
+    if text.startswith("```json"):
+        return text.removeprefix("```json").removesuffix("```").strip()
+    if text.startswith("```"):
+        return text.removeprefix("```").removesuffix("```").strip()
     return text
 
 

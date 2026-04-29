@@ -19,4 +19,4 @@ async def ocr_image(request: OcrRequest) -> OcrResponse:
         )
     except (RuntimeError, ValueError) as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
-    return OcrResponse(text=result.text, provider=result.provider, model=result.model)
+    return OcrResponse(text=result.text, provider=result.provider, model=result.model, warnings=result.warnings)

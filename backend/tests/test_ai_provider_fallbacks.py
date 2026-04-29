@@ -5,8 +5,9 @@ from fastapi.testclient import TestClient
 
 from app.core.config import Settings, merge_runtime_settings
 from app.main import app
-from app.schemas.scene import RenderRequest, RuntimeSettings
-from app.services.extractor import _provider_order
+from app.schemas.scene import AiModelInfo, RenderRequest, RuntimeSettings
+from app.services.extractor import extract_scene, _provider_order
+from app.services.router9_bootstrap import bootstrap_router9_models, select_codex_model_ids
 from app.services.router9_client import Router9Client
 
 
@@ -155,6 +156,38 @@ def test_runtime_settings_router9_only_can_override_false():
     assert merged.router9_only is False
 
 
+def test_select_codex_model_ids_keeps_5_1_and_newer():
+    models = [
+        AiModelInfo(id="cc/codex-5", label="cc/codex-5"),
+        AiModelInfo(id="cc/codex-5.1", label="cc/codex-5.1"),
+        AiModelInfo(id="cc/codex-5.5", label="cc/codex-5.5"),
+        AiModelInfo(id="openai/gpt-5.2", label="openai/gpt-5.2"),
+        AiModelInfo(id="codex-mini-6", label="codex-mini-6"),
+    ]
+
+    selected = select_codex_model_ids(models)
+
+    assert selected == ["codex-mini-6", "cc/codex-5.5", "cc/codex-5.1"]
+
+
+def test_bootstrap_router9_models_adds_codex_defaults(monkeypatch):
+    async def fake_list_models(self):
+        return [
+            AiModelInfo(id="cc/codex-5.1", label="cc/codex-5.1"),
+            AiModelInfo(id="cc/codex-5.5", label="cc/codex-5.5"),
+            AiModelInfo(id="cc/codex-5", label="cc/codex-5"),
+        ]
+
+    settings = Settings(router9_api_key="secret", router9_allowed_models=["existing/model"])
+    monkeypatch.setattr("app.services.router9_client.Router9Client.list_models", fake_list_models)
+
+    asyncio.run(bootstrap_router9_models(settings))
+
+    assert settings.router9_allowed_models == ["existing/model", "cc/codex-5.5", "cc/codex-5.1"]
+    assert settings.router9_text_model == "cc/codex-5.5"
+    assert settings.router9_ocr_model == "cc/codex-5.5"
+
+
 def test_router9_list_models_uses_openai_compatible_models_endpoint(monkeypatch):
     calls = []
 
@@ -224,6 +257,54 @@ def test_router9_chat_payload_avoids_response_format(monkeypatch):
     assert payloads[0][2]["stream"] is False
     assert "response_format" not in payloads[0][2]
     assert scene["renderer"] == "geogebra_2d"
+
+
+def test_render_fallback_success_returns_prior_failures_as_warnings(monkeypatch):
+    async def fake_extract(provider, settings, problem_text, grade, reasoning_layer, preferred_ai_model=None):
+        if provider == "nvidia":
+            raise RuntimeError("quota exceeded")
+        return {"problem_text": problem_text, "renderer": "geogebra_2d", "objects": [], "view": {"dimension": "2d"}}
+
+    monkeypatch.setattr("app.services.extractor._extract_with_provider", fake_extract)
+
+    scene, warnings = asyncio.run(extract_scene("x", runtime_settings=RuntimeSettings.model_validate({"default_provider": "nvidia"})))
+
+    assert scene.renderer == "geogebra_2d"
+    assert any("AI fallback: nvidia/" in warning and "quota exceeded" in warning for warning in warnings)
+
+
+def test_render_all_ai_failures_warn_with_attempt_chain_before_mock(monkeypatch):
+    async def fail_extract(provider, settings, problem_text, grade, reasoning_layer, preferred_ai_model=None):
+        raise RuntimeError(f"{provider} unavailable")
+
+    monkeypatch.setattr("app.services.extractor._extract_with_provider", fail_extract)
+
+    scene, warnings = asyncio.run(extract_scene("x", runtime_settings=RuntimeSettings.model_validate({"default_provider": "openrouter"})))
+
+    assert scene.topic == "unknown"
+    assert any("AI fallback: openrouter/" in warning for warning in warnings)
+    assert warnings[-1] == "Tất cả AI provider đều lỗi; đang dùng mock extractor."
+
+
+def test_render_router9_only_failure_includes_attempted_model(monkeypatch):
+    async def fail_extract(provider, settings, problem_text, grade, reasoning_layer, preferred_ai_model=None):
+        raise RuntimeError("gateway down")
+
+    monkeypatch.setattr("app.services.extractor._extract_with_provider", fail_extract)
+
+    try:
+        asyncio.run(extract_scene(
+            "x",
+            preferred_ai_model="cc/codex-5.5",
+            runtime_settings=RuntimeSettings.model_validate({"router9": {"only_mode": True, "api_key": "secret"}}),
+        ))
+    except RuntimeError as error:
+        message = str(error)
+        assert "9router-only" in message
+        assert "router9/cc/codex-5.5" in message
+        assert "gateway down" in message
+    else:
+        raise AssertionError("Expected router9-only render failure")
 
 
 def test_render_route_returns_detail_for_ai_runtime_errors(monkeypatch):

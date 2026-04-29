@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 
-import { getSettingsDefaults, ocrImage, renderEditedScene, renderProblem } from './api/client';
+import { ApiError, getSettingsDefaults, ocrImage, renderEditedScene, renderProblem } from './api/client';
 import { defaultAdvancedSettings, ProblemInput, staticModelOptions, type ModelOption } from './components/ProblemInput';
 import { GeneralSettingsPanel } from './components/GeneralSettingsPanel';
 import { RendererPanel } from './components/RendererPanel';
 import { Router9SettingsPanel } from './components/Router9SettingsPanel';
 import { SceneJsonPanel } from './components/SceneJsonPanel';
-import { SceneEditorPanel } from './components/SceneEditorPanel';
+import { SceneEditorPanel, type PointPlacementPlane } from './components/SceneEditorPanel';
 import { SettingsPanel } from './components/SettingsPanel';
 import type { AdvancedRenderSettings, MathScene, RenderResponse, Renderer } from './types/scene';
 import { defaultRuntimeSettings, SETTINGS_STORAGE_VERSION, type RuntimeSettings, type SettingsDefaults } from './types/settings';
@@ -17,8 +17,15 @@ const SETTINGS_STORAGE_KEY = 'hinh-runtime-settings';
 
 type AppView = 'render' | 'settings';
 type SettingsTab = 'general' | 'providers' | 'router9';
-type EditTool = 'move' | 'connect' | 'project_to_segment';
+type EditTool = 'move' | 'connect' | 'project_to_segment' | 'add_point';
 type Vec3 = { x: number; y: number; z: number };
+type Notification = {
+  id: number;
+  kind: 'error' | 'warning' | 'info';
+  title: string;
+  message: string;
+  details: string[];
+};
 
 export default function App() {
   const [activeView, setActiveView] = useState<AppView>('render');
@@ -33,8 +40,12 @@ export default function App() {
   const [lastAdvancedSettings, setLastAdvancedSettings] = useState<AdvancedRenderSettings>(defaultAdvancedSettings);
   const [editTool, setEditTool] = useState<EditTool>('move');
   const [pointToSegmentSource, setPointToSegmentSource] = useState<string | null>(null);
+  const [pointPlacementPlane, setPointPlacementPlane] = useState<PointPlacementPlane>('xy');
+  const [pointPlacementDepth, setPointPlacementDepth] = useState('0');
   const [runtimeSettings, setRuntimeSettings] = useState<RuntimeSettings>(defaultRuntimeSettings);
   const [settingsDefaults, setSettingsDefaults] = useState<SettingsDefaults | null>(null);
+  const [notification, setNotification] = useState<Notification | null>(null);
+  const [sceneEditorOpen, setSceneEditorOpen] = useState(false);
 
   useEffect(() => {
     try {
@@ -65,13 +76,18 @@ export default function App() {
         onSegmentClick: handlePointToSegmentClick,
         onPointDragEnd: handlePointDragEnd,
         onConnectPoints: handleConnectPoints,
+        pointPlacementPlane,
+        pointPlacementDepth: Number(pointPlacementDepth),
+        onCanvasClick: handleCanvasClickToAddPoint,
       }
     : undefined;
 
   async function handleOcrClipboardImage() {
     setOcrError(null);
     if (!navigator.clipboard?.read) {
-      setOcrError('Trình duyệt chưa hỗ trợ đọc ảnh từ clipboard.');
+      const message = 'Trình duyệt chưa hỗ trợ đọc ảnh từ clipboard.';
+      setOcrError(message);
+      showNotification('OCR thất bại', message);
       return;
     }
     try {
@@ -83,21 +99,35 @@ export default function App() {
         await handleOcrImage(new File([blob], 'clipboard-image.png', { type: imageType }));
         return;
       }
-      setOcrError('Clipboard hiện không có ảnh để OCR.');
+      const message = 'Clipboard hiện không có ảnh để OCR.';
+      setOcrError(message);
+      showNotification('OCR thất bại', message);
     } catch (caught) {
-      setOcrError(caught instanceof Error ? caught.message : 'Không đọc được ảnh từ clipboard.');
+      const apiError = toApiError(caught, 'Không đọc được ảnh từ clipboard.');
+      setOcrError(apiError.message);
+      showNotification('OCR thất bại', apiError.message, apiError.details);
     }
   }
 
   async function handleOcrImage(file: File) {
     setOcrError(null);
+    if (runtimeSettings.router9.only_mode && !runtimeSettings.router9.model.trim() && runtimeSettings.router9.allowed_model_ids.length === 0) {
+      const message = '9router-only đang bật. Hãy quét/chọn model 9router trước khi OCR.';
+      setOcrError(message);
+      showNotification('OCR thất bại', message);
+      return;
+    }
     if (!file.type.startsWith('image/')) {
-      setOcrError('File OCR phải là ảnh.');
+      const message = 'File OCR phải là ảnh.';
+      setOcrError(message);
+      showNotification('OCR thất bại', message);
       return;
     }
     const maxBytes = Math.max(1, runtimeSettings.ocr.max_image_mb) * 1024 * 1024;
     if (file.size > maxBytes) {
-      setOcrError(`Ảnh OCR vượt quá giới hạn ${runtimeSettings.ocr.max_image_mb}MB.`);
+      const message = `Ảnh OCR vượt quá giới hạn ${runtimeSettings.ocr.max_image_mb}MB.`;
+      setOcrError(message);
+      showNotification('OCR thất bại', message);
       return;
     }
 
@@ -107,7 +137,9 @@ export default function App() {
       const response = await ocrImage(imageDataUrl, runtimeSettings);
       setProblemText(response.text.trim());
     } catch (caught) {
-      setOcrError(caught instanceof Error ? caught.message : 'Không thể OCR ảnh đề bài.');
+      const apiError = toApiError(caught, 'Không thể OCR ảnh đề bài.');
+      setOcrError(apiError.message);
+      showNotification('OCR thất bại', apiError.message, apiError.details);
     } finally {
       setOcrLoading(false);
     }
@@ -128,7 +160,9 @@ export default function App() {
     try {
       setResult(await renderProblem(problemText, preferredAiProvider, preferredAiModel, advancedSettings, preferredRenderer, runtimeSettings));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Có lỗi không xác định.');
+      const apiError = toApiError(caught, 'Có lỗi không xác định.');
+      setError(apiError.message);
+      showNotification('Dựng hình thất bại', apiError.message, apiError.details);
     } finally {
       setLoading(false);
     }
@@ -144,7 +178,9 @@ export default function App() {
     try {
       setResult(await renderEditedScene(scene, lastAdvancedSettings));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Không dựng lại được scene.');
+      const apiError = toApiError(caught, 'Không dựng lại được scene.');
+      setError(apiError.message);
+      showNotification('Không thể lưu chỉnh sửa scene', apiError.message, apiError.details);
     } finally {
       setEditorSaving(false);
     }
@@ -167,14 +203,22 @@ export default function App() {
     await handleSceneEdit(editedScene);
   }
 
+  function showNotification(title: string, message: string, details: string[] = []) {
+    setNotification({ id: Date.now(), kind: 'error', title, message, details });
+  }
+
   async function handleConnectPoints(start: string, end: string) {
     if (!result?.scene) return;
     if (start === end) {
-      setError('Chọn hai điểm khác nhau để nối đoạn.');
+      const message = 'Chọn hai điểm khác nhau để nối đoạn.';
+      setError(message);
+      showNotification('Không thể nối đoạn', message);
       return;
     }
     if (hasSegment(result.scene, start, end)) {
-      setError(`Đoạn ${start}${end} đã tồn tại.`);
+      const message = `Đoạn ${start}${end} đã tồn tại.`;
+      setError(message);
+      showNotification('Không thể nối đoạn', message);
       return;
     }
     const editedScene: MathScene = {
@@ -189,11 +233,15 @@ export default function App() {
 
   async function handlePointToSegmentClick(segmentPoints: [string, string], clickedPoint: Vec3) {
     if (!result?.scene || !pointToSegmentSource || editTool !== 'project_to_segment') {
-      setError('Chọn công cụ tạo chân nối, chọn một điểm nguồn, rồi click vào đoạn đích.');
+      const message = 'Chọn công cụ tạo chân nối, chọn một điểm nguồn, rồi click vào đoạn đích.';
+      setError(message);
+      showNotification('Không thể tạo chân nối', message);
       return;
     }
     if (segmentPoints.includes(pointToSegmentSource)) {
-      setError('Điểm nguồn đang nằm trên đoạn đích. Hãy chọn đoạn khác nếu muốn nối thêm.');
+      const message = 'Điểm nguồn đang nằm trên đoạn đích. Hãy chọn đoạn khác nếu muốn nối thêm.';
+      setError(message);
+      showNotification('Không thể tạo chân nối', message);
       return;
     }
 
@@ -201,7 +249,9 @@ export default function App() {
     const start = findPoint(result.scene, segmentPoints[0]);
     const end = findPoint(result.scene, segmentPoints[1]);
     if (!source || !start || !end) {
-      setError('Không tìm thấy điểm nguồn hoặc đoạn đích trong scene.');
+      const message = 'Không tìm thấy điểm nguồn hoặc đoạn đích trong scene.';
+      setError(message);
+      showNotification('Không thể tạo chân nối', message);
       return;
     }
 
@@ -217,6 +267,24 @@ export default function App() {
     };
 
     setPointToSegmentSource(null);
+    await handleSceneEdit(editedScene);
+  }
+
+  async function handleCanvasClickToAddPoint(clickedPoint: Vec3) {
+    if (!result?.scene) return;
+    if (editorSaving) return;
+
+    setError(null);
+    const dim = result.scene.view.dimension;
+    const name = nextPointName(result.scene);
+    const point = dim === '3d'
+      ? { type: 'point_3d' as const, name, x: round(clickedPoint.x), y: round(clickedPoint.y), z: round(clickedPoint.z) }
+      : { type: 'point_2d' as const, name, x: round(clickedPoint.x), y: round(clickedPoint.y) };
+
+    const editedScene: MathScene = {
+      ...result.scene,
+      objects: [...result.scene.objects, point],
+    };
     await handleSceneEdit(editedScene);
   }
 
@@ -242,6 +310,8 @@ export default function App() {
         </nav>
       </header>
 
+      <NotificationBanner notification={notification} onDismiss={() => setNotification(null)} />
+
       <main className="app-shell">
         {activeView === 'render' && (
           <section className="workspace">
@@ -264,18 +334,39 @@ export default function App() {
             <div className="result-area">
               {error && <div className="error-box">{error}</div>}
               {result?.warnings.map((warning) => <div className="warning-box" key={warning}>{warning}</div>)}
-              <SceneEditorPanel
-                scene={result?.scene ?? null}
-                saving={editorSaving}
-                editTool={editTool}
-                selectedPoint={pointToSegmentSource}
-                onEditToolChange={(tool) => {
-                  setEditTool(tool);
-                  setPointToSegmentSource(null);
-                }}
-                onChange={handleSceneEdit}
-              />
-              <RendererPanel result={result} threeInteraction={threeInteraction} />
+              <div className="render-stage">
+                <RendererPanel result={result} threeInteraction={threeInteraction} />
+                {result?.scene && (
+                  <button type="button" className="render-editor-trigger" onClick={() => setSceneEditorOpen(true)}>
+                    Chỉnh hình
+                  </button>
+                )}
+                {sceneEditorOpen && result?.scene && (
+                  <div className="scene-editor-layer" role="presentation" onMouseDown={() => setSceneEditorOpen(false)}>
+                    <div className="scene-editor-popover" role="dialog" aria-modal="true" aria-label="Chỉnh hình" onMouseDown={(event) => event.stopPropagation()}>
+                      <div className="scene-editor-popover-header">
+                        <strong>Chỉnh hình</strong>
+                        <button type="button" className="scene-editor-close" onClick={() => setSceneEditorOpen(false)} aria-label="Đóng chỉnh hình">×</button>
+                      </div>
+                      <SceneEditorPanel
+                        scene={result.scene}
+                        saving={editorSaving}
+                        editTool={editTool}
+                        selectedPoint={pointToSegmentSource}
+                        pointPlacementPlane={pointPlacementPlane}
+                        pointPlacementDepth={pointPlacementDepth}
+                        onPointPlacementPlaneChange={setPointPlacementPlane}
+                        onPointPlacementDepthChange={setPointPlacementDepth}
+                        onEditToolChange={(tool) => {
+                          setEditTool(tool);
+                          setPointToSegmentSource(null);
+                        }}
+                        onChange={handleSceneEdit}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
               <SceneJsonPanel result={result} />
             </div>
           </section>
@@ -299,6 +390,35 @@ export default function App() {
       </main>
     </>
   );
+}
+
+function NotificationBanner({ notification, onDismiss }: { notification: Notification | null; onDismiss: () => void }) {
+  if (!notification) return null;
+  return (
+    <div className="notification-stack" role="alert" aria-live="assertive">
+      <section className={`notification-card ${notification.kind}`}>
+        <div className="notification-header">
+          <strong>{notification.title}</strong>
+          <button type="button" className="notification-close" onClick={onDismiss} aria-label="Đóng thông báo">×</button>
+        </div>
+        <p>{notification.message}</p>
+        {notification.details.length > 0 && (
+          <details className="notification-details">
+            <summary>Chi tiết fallback</summary>
+            <ul>
+              {notification.details.map((detail) => <li key={detail}>{detail}</li>)}
+            </ul>
+          </details>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function toApiError(caught: unknown, fallback: string): ApiError {
+  if (caught instanceof ApiError) return caught;
+  if (caught instanceof Error) return new ApiError(caught.message || fallback);
+  return new ApiError(fallback);
 }
 
 function loadStoredSettings(saved: string): RuntimeSettings {

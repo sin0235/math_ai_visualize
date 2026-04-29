@@ -1,29 +1,40 @@
 import { FormEvent, useMemo, useState } from 'react';
 
-import type { Line2D, Line3D, MathScene, Point2D, Point3D, SceneObject, Segment } from '../types/scene';
+import type { Annotation, Line2D, Line3D, MathScene, Point2D, Point3D, Relation, SceneObject, Segment, Vector2D, Vector3D } from '../types/scene';
 
-type EditTool = 'move' | 'connect' | 'project_to_segment';
+export type PointPlacementPlane = 'xy' | 'xz' | 'yz';
+type EditTool = 'move' | 'connect' | 'project_to_segment' | 'add_point';
 
 interface SceneEditorPanelProps {
   scene: MathScene | null;
   saving: boolean;
   editTool: EditTool;
   selectedPoint: string | null;
+  pointPlacementPlane: PointPlacementPlane;
+  pointPlacementDepth: string;
+  onPointPlacementPlaneChange: (plane: PointPlacementPlane) => void;
+  onPointPlacementDepthChange: (depth: string) => void;
   onEditToolChange: (tool: EditTool) => void;
   onChange: (scene: MathScene) => void;
 }
 
 type PointLike = Point2D | Point3D;
 type LineLike = Line2D | Line3D | Segment;
+type VectorLike = Vector2D | Vector3D;
 type Vec3 = { x: number; y: number; z: number };
 
 const lineColor = '#1d3557';
+const vectorColor = '#f97316';
 
 export function SceneEditorPanel({
   scene,
   saving,
   editTool,
   selectedPoint,
+  pointPlacementPlane,
+  pointPlacementDepth,
+  onPointPlacementPlaneChange,
+  onPointPlacementDepthChange,
   onEditToolChange,
   onChange,
 }: SceneEditorPanelProps) {
@@ -32,6 +43,7 @@ export function SceneEditorPanel({
   const [x, setX] = useState('0');
   const [y, setY] = useState('0');
   const [z, setZ] = useState('0');
+  const [deletePointName, setDeletePointName] = useState('');
   const [startPoint, setStartPoint] = useState('');
   const [endPoint, setEndPoint] = useState('');
   const [connectionKind, setConnectionKind] = useState<'segment' | 'line'>('segment');
@@ -39,18 +51,17 @@ export function SceneEditorPanel({
   const [lineParameter, setLineParameter] = useState('0.5');
   const [intersectionLineA, setIntersectionLineA] = useState('');
   const [intersectionLineB, setIntersectionLineB] = useState('');
+  const [vectorForOpposite, setVectorForOpposite] = useState('');
 
   const points = useMemo(() => (scene ? getPoints(scene) : []), [scene]);
   const lines = useMemo(() => (scene ? getLines(scene) : []), [scene]);
+  const vectors = useMemo(() => (scene ? getVectors(scene) : []), [scene]);
   const dimension = scene?.view.dimension ?? '2d';
 
   if (!scene) return null;
   const activeScene = scene;
 
   const nextPointName = pointName.trim() || nextName(points.map((point) => point.name), 'P');
-  const hasTwoPoints = points.length >= 2;
-  const hasLine = lines.length > 0;
-  const canIntersect = lines.length >= 2;
 
   function submit(nextScene: MathScene) {
     setError(null);
@@ -71,12 +82,26 @@ export function SceneEditorPanel({
     }
   }
 
+  function deletePoint(event: FormEvent) {
+    event.preventDefault();
+    try {
+      if (!deletePointName) throw new Error('Chọn điểm cần xóa.');
+      submit({
+        ...activeScene,
+        objects: activeScene.objects.filter((obj) => !objectReferencesPoint(obj, deletePointName)),
+        annotations: activeScene.annotations.filter((annotation) => !annotationReferencesPoint(annotation, deletePointName)),
+        relations: activeScene.relations.filter((relation) => !relationReferencesPoint(relation, deletePointName)),
+      });
+      setDeletePointName('');
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Không xóa được điểm.');
+    }
+  }
+
   function connectPoints(event: FormEvent) {
     event.preventDefault();
     try {
-      if (!startPoint || !endPoint || startPoint === endPoint) {
-        throw new Error('Chọn hai điểm khác nhau.');
-      }
+      if (!startPoint || !endPoint || startPoint === endPoint) throw new Error('Chọn hai điểm khác nhau.');
       if (connectionKind === 'line') {
         const line = dimension === '3d'
           ? { type: 'line_3d' as const, name: nextLineName(activeScene), through: [startPoint, endPoint] as [string, string], color: lineColor }
@@ -85,10 +110,7 @@ export function SceneEditorPanel({
       } else {
         submit({
           ...activeScene,
-          objects: [
-            ...activeScene.objects,
-            { type: 'segment' as const, points: [startPoint, endPoint], hidden: false, color: lineColor, line_width: 3, style: 'solid' },
-          ],
+          objects: [...activeScene.objects, { type: 'segment' as const, points: [startPoint, endPoint], hidden: false, color: lineColor, line_width: 3, style: 'solid' }],
         });
       }
     } catch (caught) {
@@ -115,12 +137,8 @@ export function SceneEditorPanel({
     try {
       const lineA = lines.find((item) => lineKey(item) === intersectionLineA);
       const lineB = lines.find((item) => lineKey(item) === intersectionLineB);
-      if (!lineA || !lineB || lineKey(lineA) === lineKey(lineB)) {
-        throw new Error('Chọn hai đường thẳng khác nhau.');
-      }
-      const point = dimension === '3d'
-        ? intersectLines3d(activeScene, lineA, lineB)
-        : intersectLines2d(activeScene, lineA, lineB);
+      if (!lineA || !lineB || lineKey(lineA) === lineKey(lineB)) throw new Error('Chọn hai đường thẳng khác nhau.');
+      const point = dimension === '3d' ? intersectLines3d(activeScene, lineA, lineB) : intersectLines2d(activeScene, lineA, lineB);
       const name = validateNewName(activeScene, nextPointName);
       submit({ ...activeScene, objects: [...activeScene.objects, makePoint(dimension, name, point)] });
       setPointName(nextName([...points.map((item) => item.name), name], 'P'));
@@ -129,80 +147,98 @@ export function SceneEditorPanel({
     }
   }
 
+  function addOppositeVector(event: FormEvent) {
+    event.preventDefault();
+    try {
+      const vector = vectors.find((item) => vectorKey(item) === vectorForOpposite);
+      if (!vector) throw new Error('Chọn một vector.');
+      const usedNames = activeScene.objects.map(objectName).filter(Boolean) as string[];
+      const baseName = vector.name && /^[A-Za-z][A-Za-z0-9_]*$/.test(`m${vector.name}`) ? `m${vector.name}` : 'v';
+      const name = nextName(usedNames, baseName);
+      const opposite = vector.type === 'vector_3d'
+        ? { ...vector, name, from_point: vector.to_point, to_point: vector.from_point, color: vector.color || vectorColor }
+        : { ...vector, name, from_point: vector.to_point, to_point: vector.from_point };
+      submit({ ...activeScene, objects: [...activeScene.objects, opposite] });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Không tạo được vector đối.');
+    }
+  }
+
   return (
     <section className="panel scene-editor">
-      <details className="scene-editor-details">
+      <details className="scene-editor-details" open>
         <summary className="scene-editor-summary">
           <span>Chỉnh hình</span>
           <span className="viewer-hint">Bấm để mở công cụ chỉnh</span>
         </summary>
-        <p className="field-hint">{dimension === '3d' ? '3D' : '2D'}: kéo điểm, kéo nối đoạn, thêm điểm và tạo giao điểm.</p>
+        <p className="field-hint">{dimension === '3d' ? '3D' : '2D'}: kéo điểm, nối đoạn, tạo chân nối, chấm điểm, xóa điểm và tạo vector đối.</p>
         <div className="scene-editor-content">
-      <div className="click-tool">
-        <span className="field-label">Công cụ trên hình</span>
-        <div className="tool-mode-grid">
-          <ToolModeButton active={editTool === 'move'} disabled={saving} onClick={() => onEditToolChange('move')} title="Kéo điểm" description="Kéo điểm để đổi vị trí." />
-          <ToolModeButton active={editTool === 'connect'} disabled={saving || activeScene.renderer !== 'threejs_3d'} onClick={() => onEditToolChange('connect')} title="Kéo nối đoạn" description="Kéo từ điểm này sang điểm khác để tạo đoạn." />
-          <ToolModeButton active={editTool === 'project_to_segment'} disabled={saving || activeScene.renderer !== 'threejs_3d'} onClick={() => onEditToolChange('project_to_segment')} title="Tạo chân nối" description="Click điểm nguồn rồi click đoạn đích." />
-        </div>
-        <span className="field-hint">
-          {activeScene.renderer === 'threejs_3d'
-            ? toolHint(editTool, selectedPoint)
-            : 'Công cụ kéo trực tiếp hiện hỗ trợ Three.js 3D.'}
-        </span>
-      </div>
-      {error && <div className="error-box">{error}</div>}
-      {saving && <div className="warning-box">Đang dựng lại hình...</div>}
+          <div className="click-tool">
+            <span className="field-label">Công cụ trên hình</span>
+            <div className="tool-mode-grid">
+              <ToolModeButton active={editTool === 'move'} disabled={saving} onClick={() => onEditToolChange('move')} title="Kéo điểm" description="Kéo điểm để đổi vị trí." />
+              <ToolModeButton active={editTool === 'connect'} disabled={saving || activeScene.renderer !== 'threejs_3d'} onClick={() => onEditToolChange('connect')} title="Kéo nối đoạn" description="Kéo từ điểm này sang điểm khác để tạo đoạn." />
+              <ToolModeButton active={editTool === 'project_to_segment'} disabled={saving || activeScene.renderer !== 'threejs_3d'} onClick={() => onEditToolChange('project_to_segment')} title="Tạo chân nối" description="Click điểm nguồn rồi click đoạn đích." />
+              <ToolModeButton active={editTool === 'add_point'} disabled={saving || activeScene.renderer !== 'threejs_3d'} onClick={() => onEditToolChange('add_point')} title="Chấm để thêm điểm" description="Chọn mặt phẳng rồi click lên hình." />
+            </div>
+            <span className="field-hint">{activeScene.renderer === 'threejs_3d' ? toolHint(editTool, selectedPoint) : 'Công cụ kéo trực tiếp hiện hỗ trợ Three.js 3D.'}</span>
+            {dimension === '3d' && editTool === 'add_point' && (
+              <div className="editor-grid placement-grid">
+                <label className="field-label">
+                  Mặt phẳng
+                  <select value={pointPlacementPlane} onChange={(event) => onPointPlacementPlaneChange(event.target.value as PointPlacementPlane)} disabled={saving}>
+                    <option value="xy">Oxy — cố định z</option>
+                    <option value="xz">Oxz — cố định y</option>
+                    <option value="yz">Oyz — cố định x</option>
+                  </select>
+                </label>
+                <label className="field-label">
+                  {fixedAxisLabel(pointPlacementPlane)} cố định
+                  <input value={pointPlacementDepth} onChange={(event) => onPointPlacementDepthChange(event.target.value)} disabled={saving} />
+                </label>
+              </div>
+            )}
+          </div>
 
-      <form className="editor-grid" onSubmit={addPoint}>
-        <label className="field-label">
-          Tên điểm
-          <input value={pointName} onChange={(event) => setPointName(event.target.value)} placeholder={nextPointName} />
-        </label>
-        <label className="field-label">
-          x
-          <input type="number" step="0.1" value={x} onChange={(event) => setX(event.target.value)} />
-        </label>
-        <label className="field-label">
-          y
-          <input type="number" step="0.1" value={y} onChange={(event) => setY(event.target.value)} />
-        </label>
-        {dimension === '3d' && (
-          <label className="field-label">
-            z
-            <input type="number" step="0.1" value={z} onChange={(event) => setZ(event.target.value)} />
-          </label>
-        )}
-        <button type="submit" className="secondary-button" disabled={saving}>Thêm điểm</button>
-      </form>
+          {error && <div className="error-box">{error}</div>}
+          {saving && <div className="warning-box">Đang dựng lại hình...</div>}
 
-      <form className="editor-grid" onSubmit={connectPoints}>
-        <PointSelect label="Từ điểm" value={startPoint} points={points} onChange={setStartPoint} />
-        <PointSelect label="Đến điểm" value={endPoint} points={points} onChange={setEndPoint} />
-        <label className="field-label">
-          Loại
-          <select value={connectionKind} onChange={(event) => setConnectionKind(event.target.value as 'segment' | 'line')}>
-            <option value="segment">Đoạn thẳng</option>
-            <option value="line">Đường thẳng</option>
-          </select>
-        </label>
-        <button type="submit" className="secondary-button" disabled={saving || !hasTwoPoints}>Nối điểm</button>
-      </form>
+          <form className="editor-grid" onSubmit={addPoint}>
+            <label className="field-label">Tên điểm<input value={pointName} onChange={(event) => setPointName(event.target.value)} placeholder={nextPointName} /></label>
+            <label className="field-label">x<input value={x} onChange={(event) => setX(event.target.value)} /></label>
+            <label className="field-label">y<input value={y} onChange={(event) => setY(event.target.value)} /></label>
+            {dimension === '3d' && <label className="field-label">z<input value={z} onChange={(event) => setZ(event.target.value)} /></label>}
+            <button type="submit" disabled={saving}>Thêm điểm</button>
+          </form>
 
-      <form className="editor-grid" onSubmit={addPointOnLine}>
-        <LineSelect label="Đường thẳng" value={lineForPoint} lines={lines} onChange={setLineForPoint} />
-        <label className="field-label">
-          Tham số t
-          <input type="number" step="0.1" value={lineParameter} onChange={(event) => setLineParameter(event.target.value)} />
-        </label>
-        <button type="submit" className="secondary-button" disabled={saving || !hasLine}>Thêm điểm trên đường</button>
-      </form>
+          <form className="editor-grid compact-editor-grid" onSubmit={deletePoint}>
+            <PointSelect label="Xóa điểm" value={deletePointName} points={points} onChange={setDeletePointName} />
+            <button type="submit" disabled={saving || points.length === 0}>Xóa điểm</button>
+          </form>
 
-      <form className="editor-grid" onSubmit={addLineIntersection}>
-        <LineSelect label="Đường 1" value={intersectionLineA} lines={lines} onChange={setIntersectionLineA} />
-        <LineSelect label="Đường 2" value={intersectionLineB} lines={lines} onChange={setIntersectionLineB} />
-        <button type="submit" className="secondary-button" disabled={saving || !canIntersect}>Tạo giao điểm</button>
-      </form>
+          <form className="editor-grid" onSubmit={connectPoints}>
+            <PointSelect label="Điểm đầu" value={startPoint} points={points} onChange={setStartPoint} />
+            <PointSelect label="Điểm cuối" value={endPoint} points={points} onChange={setEndPoint} />
+            <label className="field-label">Kiểu nối<select value={connectionKind} onChange={(event) => setConnectionKind(event.target.value as 'segment' | 'line')}><option value="segment">Đoạn</option><option value="line">Đường thẳng</option></select></label>
+            <button type="submit" disabled={saving || points.length < 2}>Nối</button>
+          </form>
+
+          <form className="editor-grid compact-editor-grid" onSubmit={addOppositeVector}>
+            <VectorSelect label="Vector đối" value={vectorForOpposite} vectors={vectors} onChange={setVectorForOpposite} />
+            <button type="submit" disabled={saving || vectors.length === 0}>Tạo vector đối</button>
+          </form>
+
+          <form className="editor-grid" onSubmit={addPointOnLine}>
+            <LineSelect label="Điểm trên đường" value={lineForPoint} lines={lines} onChange={setLineForPoint} />
+            <label className="field-label">t<input value={lineParameter} onChange={(event) => setLineParameter(event.target.value)} /></label>
+            <button type="submit" disabled={saving || lines.length === 0}>Thêm</button>
+          </form>
+
+          <form className="editor-grid" onSubmit={addLineIntersection}>
+            <LineSelect label="Đường 1" value={intersectionLineA} lines={lines} onChange={setIntersectionLineA} />
+            <LineSelect label="Đường 2" value={intersectionLineB} lines={lines} onChange={setIntersectionLineB} />
+            <button type="submit" disabled={saving || lines.length < 2}>Tạo giao điểm</button>
+          </form>
         </div>
       </details>
     </section>
@@ -210,44 +246,26 @@ export function SceneEditorPanel({
 }
 
 function ToolModeButton({ active, disabled, onClick, title, description }: { active: boolean; disabled: boolean; onClick: () => void; title: string; description: string }) {
-  return (
-    <button type="button" className={`tool-mode-button ${active ? 'active' : ''}`} disabled={disabled} onClick={onClick}>
-      <strong>{title}</strong>
-      <span>{description}</span>
-    </button>
-  );
+  return <button type="button" className={`tool-mode-button ${active ? 'active' : ''}`} disabled={disabled} onClick={onClick}><strong>{title}</strong><span>{description}</span></button>;
 }
 
 function toolHint(tool: EditTool, selectedPoint: string | null) {
   if (tool === 'connect') return 'Kéo từ một điểm sang điểm khác để nối đoạn thẳng.';
-  if (tool === 'project_to_segment') {
-    return selectedPoint ? `Đã chọn điểm ${selectedPoint}. Click vào đoạn đích trên hình.` : 'Click điểm nguồn trên hình, sau đó click đoạn đích.';
-  }
+  if (tool === 'project_to_segment') return selectedPoint ? `Đã chọn điểm ${selectedPoint}. Click vào đoạn đích trên hình.` : 'Click điểm nguồn trên hình, sau đó click đoạn đích.';
+  if (tool === 'add_point') return 'Chọn mặt phẳng đặt điểm và click lên vùng trống để thêm điểm mới.';
   return 'Kéo trực tiếp một điểm trên hình để cập nhật vị trí.';
 }
 
 function PointSelect({ label, value, points, onChange }: { label: string; value: string; points: PointLike[]; onChange: (value: string) => void }) {
-  return (
-    <label className="field-label">
-      {label}
-      <select value={value} onChange={(event) => onChange(event.target.value)}>
-        <option value="">Chọn điểm</option>
-        {points.map((point) => <option key={point.name} value={point.name}>{point.name}</option>)}
-      </select>
-    </label>
-  );
+  return <label className="field-label">{label}<select value={value} onChange={(event) => onChange(event.target.value)}><option value="">Chọn điểm</option>{points.map((point) => <option key={point.name} value={point.name}>{point.name}</option>)}</select></label>;
 }
 
 function LineSelect({ label, value, lines, onChange }: { label: string; value: string; lines: LineLike[]; onChange: (value: string) => void }) {
-  return (
-    <label className="field-label">
-      {label}
-      <select value={value} onChange={(event) => onChange(event.target.value)}>
-        <option value="">Chọn đường</option>
-        {lines.map((line) => <option key={lineKey(line)} value={lineKey(line)}>{lineLabel(line)}</option>)}
-      </select>
-    </label>
-  );
+  return <label className="field-label">{label}<select value={value} onChange={(event) => onChange(event.target.value)}><option value="">Chọn đường</option>{lines.map((line) => <option key={lineKey(line)} value={lineKey(line)}>{lineLabel(line)}</option>)}</select></label>;
+}
+
+function VectorSelect({ label, value, vectors, onChange }: { label: string; value: string; vectors: VectorLike[]; onChange: (value: string) => void }) {
+  return <label className="field-label">{label}<select value={value} onChange={(event) => onChange(event.target.value)}><option value="">Chọn vector</option>{vectors.map((vector) => <option key={vectorKey(vector)} value={vectorKey(vector)}>{vectorLabel(vector)}</option>)}</select></label>;
 }
 
 function getPoints(scene: MathScene): PointLike[] {
@@ -256,6 +274,10 @@ function getPoints(scene: MathScene): PointLike[] {
 
 function getLines(scene: MathScene): LineLike[] {
   return scene.objects.filter((obj): obj is LineLike => obj.type === 'line_2d' || obj.type === 'line_3d' || obj.type === 'segment');
+}
+
+function getVectors(scene: MathScene): VectorLike[] {
+  return scene.objects.filter((obj): obj is VectorLike => obj.type === 'vector_2d' || obj.type === 'vector_3d');
 }
 
 function lineKey(line: LineLike) {
@@ -273,6 +295,20 @@ function lineAnchors(line: LineLike): [string, string] {
   return line.type === 'segment' ? line.points : line.through;
 }
 
+function vectorKey(vector: VectorLike) {
+  return `${vector.type}:${vector.name ?? `${vector.from_point}${vector.to_point}`}:${vector.from_point}-${vector.to_point}`;
+}
+
+function vectorLabel(vector: VectorLike) {
+  return vector.name ? `${vector.name} (${vector.from_point} → ${vector.to_point})` : `${vector.from_point} → ${vector.to_point}`;
+}
+
+function fixedAxisLabel(plane: PointPlacementPlane) {
+  if (plane === 'xy') return 'z';
+  if (plane === 'xz') return 'y';
+  return 'x';
+}
+
 function parseNumber(value: string, label: string) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) throw new Error(`${label} không hợp lệ.`);
@@ -281,12 +317,8 @@ function parseNumber(value: string, label: string) {
 
 function validateNewName(scene: MathScene, name: string) {
   const clean = name.trim();
-  if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(clean)) {
-    throw new Error('Tên điểm phải bắt đầu bằng chữ và chỉ gồm chữ, số hoặc _.');
-  }
-  if (scene.objects.some((obj) => objectName(obj) === clean)) {
-    throw new Error(`Tên ${clean} đã tồn tại.`);
-  }
+  if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(clean)) throw new Error('Tên điểm phải bắt đầu bằng chữ và chỉ gồm chữ, số hoặc _.');
+  if (scene.objects.some((obj) => objectName(obj) === clean)) throw new Error(`Tên ${clean} đã tồn tại.`);
   return clean;
 }
 
@@ -312,17 +344,41 @@ function nextLineName(scene: MathScene) {
 }
 
 function makePoint(dimension: '2d' | '3d', name: string, point: Vec3): PointLike {
-  if (dimension === '3d') {
-    return { type: 'point_3d', name, x: round(point.x), y: round(point.y), z: round(point.z) };
-  }
+  if (dimension === '3d') return { type: 'point_3d', name, x: round(point.x), y: round(point.y), z: round(point.z) };
   return { type: 'point_2d', name, x: round(point.x), y: round(point.y) };
+}
+
+function objectReferencesPoint(obj: SceneObject, name: string) {
+  if ((obj.type === 'point_2d' || obj.type === 'point_3d') && obj.name === name) return true;
+  if (obj.type === 'segment') return obj.points.includes(name);
+  if (obj.type === 'line_2d' || obj.type === 'line_3d') return obj.through.includes(name);
+  if (obj.type === 'vector_2d' || obj.type === 'vector_3d') return obj.from_point === name || obj.to_point === name;
+  if (obj.type === 'circle_2d') return obj.center === name || obj.through === name;
+  if (obj.type === 'face' || obj.type === 'plane') return obj.points.includes(name);
+  if (obj.type === 'sphere') return obj.center === name;
+  return false;
+}
+
+function annotationReferencesPoint(annotation: Annotation, name: string) {
+  if (edgeOrPointReferences(annotation.target, name)) return true;
+  const arms = annotation.metadata?.arms;
+  return Array.isArray(arms) && arms.includes(name);
+}
+
+function relationReferencesPoint(relation: Relation, name: string) {
+  if (edgeOrPointReferences(relation.object_1, name) || edgeOrPointReferences(relation.object_2, name)) return true;
+  const objects = relation.metadata?.objects;
+  return JSON.stringify(objects ?? '').includes(`"${name}"`);
+}
+
+function edgeOrPointReferences(value: unknown, name: string) {
+  if (typeof value !== 'string') return false;
+  return value === name || value.split(/[-:,()]/).includes(name);
 }
 
 function pointMap(scene: MathScene) {
   const points = new Map<string, Vec3>();
-  getPoints(scene).forEach((point) => {
-    points.set(point.name, { x: point.x, y: point.y, z: point.type === 'point_3d' ? point.z : 0 });
-  });
+  getPoints(scene).forEach((point) => points.set(point.name, { x: point.x, y: point.y, z: point.type === 'point_3d' ? point.z : 0 }));
   return points;
 }
 
@@ -375,9 +431,7 @@ function intersectLines3d(scene: MathScene, lineA: LineLike, lineB: LineLike): V
   const u = (a * e - b * d) / denom;
   const pClosest = add(p, scale(r, t));
   const qClosest = add(q, scale(s, u));
-  if (length(sub(pClosest, qClosest)) > 1e-5) {
-    throw new Error('Hai đường thẳng chéo nhau, không có giao điểm.');
-  }
+  if (length(sub(pClosest, qClosest)) > 1e-5) throw new Error('Hai đường thẳng chéo nhau, không có giao điểm.');
   return scale(add(pClosest, qClosest), 0.5);
 }
 

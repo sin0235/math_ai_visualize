@@ -47,6 +47,7 @@ def normalize_scene(scene: MathScene, settings: AdvancedRenderSettings | None = 
         if new_segments:
             data["objects"] = [*data["objects"], *new_segments]
 
+    data = _normalize_segment_intersection_points(MathScene.model_validate(data), data)
     data = _normalize_special_property_annotations(MathScene.model_validate(data), data)
 
     if scene.view.show_coordinates:
@@ -62,6 +63,47 @@ def normalize_scene(scene: MathScene, settings: AdvancedRenderSettings | None = 
                 })
 
     return MathScene.model_validate(data)
+
+
+def _normalize_segment_intersection_points(scene: MathScene, data: dict[str, Any]) -> dict[str, Any]:
+    points = _point_map(scene)
+    segments = [obj for obj in scene.objects if isinstance(obj, Segment)]
+    if len(segments) < 2:
+        return data
+
+    existing_points = {_point_tuple(point): point.name for point in points.values()}
+    point_names = set(points)
+    objects = data.setdefault("objects", [])
+    relations = data.setdefault("relations", [])
+    added = 0
+
+    for first, second in combinations(segments, 2):
+        if set(first.points).intersection(second.points):
+            continue
+        intersection = _segment_segment_intersection(first, second, points)
+        if intersection is None:
+            continue
+        if any(_distance(intersection, existing) <= DISPLAY_EPS for existing in existing_points):
+            continue
+        name = _next_intersection_name(point_names, added)
+        point_names.add(name)
+        existing_points[intersection] = name
+        added += 1
+        objects.append({
+            "type": "point_3d",
+            "name": name,
+            "x": intersection[0],
+            "y": intersection[1],
+            "z": intersection[2],
+        })
+        relations.append({
+            "type": "intersection",
+            "object_1": name,
+            "object_2": f"{first.points[0]}-{first.points[1]}:{second.points[0]}-{second.points[1]}",
+            "metadata": {"objects": [list(first.points), list(second.points)]},
+        })
+
+    return data
 
 
 def _normalize_special_property_annotations(scene: MathScene, data: dict[str, Any]) -> dict[str, Any]:
@@ -289,6 +331,52 @@ def compute_three_geometry(scene: MathScene) -> dict[str, Any]:
 
 def _is_origin(point: Point3D) -> bool:
     return abs(point.x) < EPS and abs(point.y) < EPS and abs(point.z) < EPS
+
+
+def _segment_segment_intersection(segment_1: Segment, segment_2: Segment, points: dict[str, Point3D]) -> Vec3 | None:
+    start_1 = points.get(segment_1.points[0])
+    end_1 = points.get(segment_1.points[1])
+    start_2 = points.get(segment_2.points[0])
+    end_2 = points.get(segment_2.points[1])
+    if start_1 is None or end_1 is None or start_2 is None or end_2 is None:
+        return None
+
+    p = _point_tuple(start_1)
+    q = _point_tuple(start_2)
+    r = _sub(_point_tuple(end_1), p)
+    s = _sub(_point_tuple(end_2), q)
+    if _norm(r) <= EPS or _norm(s) <= EPS:
+        return None
+
+    p_minus_q = _sub(p, q)
+    a = _dot(r, r)
+    b = _dot(r, s)
+    c = _dot(s, s)
+    d = _dot(r, p_minus_q)
+    e = _dot(s, p_minus_q)
+    denom = a * c - b * b
+    if abs(denom) <= EPS:
+        return None
+
+    t = (b * e - c * d) / denom
+    u = (a * e - b * d) / denom
+    if t <= DISPLAY_EPS or t >= 1 - DISPLAY_EPS or u <= DISPLAY_EPS or u >= 1 - DISPLAY_EPS:
+        return None
+
+    closest_1 = _add(p, _scale(r, t))
+    closest_2 = _add(q, _scale(s, u))
+    if _distance(closest_1, closest_2) > DISPLAY_EPS:
+        return None
+    return _scale(_add(closest_1, closest_2), 0.5)
+
+
+def _next_intersection_name(existing_names: set[str], offset: int = 0) -> str:
+    index = 1 + offset
+    while True:
+        name = "I" if index == 1 else f"I{index}"
+        if name not in existing_names:
+            return name
+        index += 1
 
 
 def _line_line_intersection(line_1: Line3D, line_2: Line3D, points: dict[str, Point3D]) -> dict[str, Any]:

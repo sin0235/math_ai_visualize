@@ -13,12 +13,15 @@ interface ThreeGeometryViewProps {
 }
 
 export interface ThreeSceneInteraction {
-  mode: 'move' | 'connect' | 'project_to_segment';
+  mode: 'move' | 'connect' | 'project_to_segment' | 'add_point';
   selectedPoint: string | null;
+  pointPlacementPlane: 'xy' | 'xz' | 'yz';
+  pointPlacementDepth: number;
   onPointClick: (name: string) => void;
   onSegmentClick: (points: [string, string], point: Vec3) => void;
   onPointDragEnd: (name: string, point: Vec3) => void;
   onConnectPoints: (start: string, end: string) => void;
+  onCanvasClick: (point: Vec3) => void;
 }
 
 type Vec3 = { x: number; y: number; z: number };
@@ -27,15 +30,22 @@ type SceneFrame = ReturnType<typeof getSceneFrame>;
 export function ThreeGeometryView({ scene, interaction, embedded = false }: ThreeGeometryViewProps) {
   const [workingScene, setWorkingScene] = useState(scene);
   const [draggingPoint, setDraggingPoint] = useState<string | null>(null);
+  const [hoveredPoint, setHoveredPoint] = useState<string | null>(null);
   const [connectStart, setConnectStart] = useState<string | null>(null);
   const [connectHover, setConnectHover] = useState<string | null>(null);
   const [connectPreview, setConnectPreview] = useState<Vec3 | null>(null);
   const [showAxes, setShowAxes] = useState(scene.view.show_axes);
   const frame = getSceneFrame(scene);
+  const editingEnabled = Boolean(interaction);
+  const controlsEnabled = !draggingPoint && !connectStart;
+  const controlsMouseButtons = editingEnabled
+    ? { MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE }
+    : { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
 
   useEffect(() => {
     setWorkingScene(scene);
     setDraggingPoint(null);
+    setHoveredPoint(null);
     setConnectStart(null);
     setConnectHover(null);
     setConnectPreview(null);
@@ -77,19 +87,35 @@ export function ThreeGeometryView({ scene, interaction, embedded = false }: Thre
       <color attach="background" args={["#f8fbff"]} />
       <ambientLight intensity={0.7} />
       <directionalLight position={[6, 10, 6]} intensity={0.85} />
-      <OrbitControls makeDefault target={[0, 0, 0]} enabled={!draggingPoint} />
+      <OrbitControls makeDefault target={[0, 0, 0]} enabled={controlsEnabled} mouseButtons={controlsMouseButtons} />
       {workingScene.view.show_grid && <gridHelper args={[10, 10, '#d4ddec', '#e9eef7']} />}
       {showAxes && <OxyzAxes hideOriginLabel={hasPointAtOrigin(workingScene)} />}
       <group
         position={[-frame.center.x * frame.scale, -frame.center.y * frame.scale, -frame.center.z * frame.scale]}
         scale={frame.scale}
+        onPointerDown={(event) => {
+          if (interaction?.mode !== 'add_point') return;
+          event.stopPropagation();
+
+          const plane = addPointPlane(interaction.pointPlacementPlane, interaction.pointPlacementDepth, frame);
+          const hit = event.ray.intersectPlane(plane, new THREE.Vector3());
+          if (!hit) return;
+
+          interaction.onCanvasClick(worldToScene(hit, frame));
+        }}
         onPointerMove={(event) => {
           if (!connectStart || interaction?.mode !== 'connect') return;
           event.stopPropagation();
           setConnectPreview(worldToScene(event.point, frame));
         }}
-        onPointerUp={() => {
-          if (connectStart) finishConnect(connectHover);
+        onPointerUp={(event) => {
+          if (!connectStart) return;
+          event.stopPropagation();
+          finishConnect(connectHover);
+        }}
+        onPointerLeave={() => {
+          if (!connectStart) return;
+          setConnectPreview(null);
         }}
       >
         <Planes scene={workingScene} />
@@ -108,6 +134,7 @@ export function ThreeGeometryView({ scene, interaction, embedded = false }: Thre
           connectStart={connectStart}
           connectHover={connectHover}
           interaction={interaction}
+          onPointHover={setHoveredPoint}
           onConnectStart={beginConnect}
           onConnectHover={setConnectHover}
           onConnectEnd={finishConnect}
@@ -486,6 +513,7 @@ interface PointsProps extends ThreeGeometryViewProps {
   connectStart: string | null;
   connectHover: string | null;
   interaction?: ThreeSceneInteraction;
+  onPointHover: (name: string | null) => void;
   onConnectStart: (name: string) => void;
   onConnectHover: (name: string | null) => void;
   onConnectEnd: (name?: string | null) => void;
@@ -501,6 +529,7 @@ function Points({
   connectStart,
   connectHover,
   interaction,
+  onPointHover,
   onConnectStart,
   onConnectHover,
   onConnectEnd,
@@ -532,6 +561,7 @@ function Points({
             dimension={scene.view.dimension}
             mode={interaction?.mode ?? 'move'}
             onPointClick={interaction?.onPointClick}
+            onPointHover={onPointHover}
             onConnectStart={onConnectStart}
             onConnectHover={onConnectHover}
             onConnectEnd={onConnectEnd}
@@ -559,6 +589,7 @@ interface DraggablePointProps {
   dimension: '2d' | '3d';
   mode: ThreeSceneInteraction['mode'];
   onPointClick?: (name: string) => void;
+  onPointHover: (name: string | null) => void;
   onConnectStart: (name: string) => void;
   onConnectHover: (name: string | null) => void;
   onConnectEnd: (name?: string | null) => void;
@@ -567,7 +598,7 @@ interface DraggablePointProps {
   onPointChange: (name: string, point: Vec3) => void;
 }
 
-function DraggablePoint({ name, point, coordText, labelOffset, frame, isDragging, isSelected, isConnectSource, isConnectHover, showCoords, dimension, mode, onPointClick, onConnectStart, onConnectHover, onConnectEnd, onDragStart, onDragEnd, onPointChange }: DraggablePointProps) {
+function DraggablePoint({ name, point, coordText, labelOffset, frame, isDragging, isSelected, isConnectSource, isConnectHover, showCoords, dimension, mode, onPointClick, onPointHover, onConnectStart, onConnectHover, onConnectEnd, onDragStart, onDragEnd, onPointChange }: DraggablePointProps) {
   const { camera, gl } = useThree();
   const [hovered, setHovered] = useState(false);
   const dragPlaneRef = useRef<THREE.Plane | null>(null);
@@ -575,12 +606,15 @@ function DraggablePoint({ name, point, coordText, labelOffset, frame, isDragging
 
   function beginDrag(event: ThreeEvent<PointerEvent>) {
     event.stopPropagation();
+    if (mode === 'add_point') {
+      // Ở chế độ chấm để thêm điểm, click lên điểm hiện có không kéo/không tạo điểm mới ở đây.
+      return;
+    }
     if (mode === 'project_to_segment') {
       onPointClick?.(name);
       return;
     }
     if (mode === 'connect') {
-      gl.domElement.setPointerCapture(event.pointerId);
       gl.domElement.style.cursor = 'crosshair';
       onConnectStart(name);
       return;
@@ -611,9 +645,6 @@ function DraggablePoint({ name, point, coordText, labelOffset, frame, isDragging
   function endDrag(event: ThreeEvent<PointerEvent>) {
     if (mode === 'connect') {
       event.stopPropagation();
-      if (gl.domElement.hasPointerCapture(event.pointerId)) {
-        gl.domElement.releasePointerCapture(event.pointerId);
-      }
       gl.domElement.style.cursor = hovered ? 'crosshair' : '';
       onConnectEnd(isConnectHover ? name : null);
       return;
@@ -638,11 +669,13 @@ function DraggablePoint({ name, point, coordText, labelOffset, frame, isDragging
         onPointerOver={(event) => {
           event.stopPropagation();
           setHovered(true);
+          onPointHover(name);
           if (mode === 'connect') onConnectHover(name);
-          gl.domElement.style.cursor = mode === 'connect' ? 'crosshair' : 'grab';
+          gl.domElement.style.cursor = mode === 'connect' || mode === 'add_point' ? 'crosshair' : 'grab';
         }}
         onPointerOut={() => {
           setHovered(false);
+          onPointHover(null);
           if (mode === 'connect') onConnectHover(null);
           if (!isDragging) gl.domElement.style.cursor = '';
         }}
@@ -702,9 +735,10 @@ function pointColor({ isSelected, isDragging, isConnectSource, isConnectHover, h
 }
 
 function viewerHint(mode?: ThreeSceneInteraction['mode']) {
-  if (mode === 'connect') return 'Kéo từ điểm này sang điểm khác để nối đoạn';
-  if (mode === 'project_to_segment') return 'Click điểm rồi click đoạn để tạo chân nối';
-  return 'Kéo điểm để chỉnh hình';
+  if (mode === 'connect') return 'Chuột trái kéo nối đoạn, chuột phải xoay hình';
+  if (mode === 'project_to_segment') return 'Chuột trái chọn điểm/đoạn, chuột phải xoay hình';
+  if (mode === 'add_point') return 'Chuột trái click để thêm điểm, chuột phải xoay hình';
+  return 'Chuột trái kéo điểm, chuột phải xoay hình';
 }
 
 function Annotations({ scene }: ThreeGeometryViewProps) {
@@ -990,6 +1024,13 @@ function worldToScene(point: THREE.Vector3, frame: SceneFrame): Vec3 {
     y: point.y / frame.scale + frame.center.y,
     z: point.z / frame.scale + frame.center.z,
   };
+}
+
+function addPointPlane(planeName: ThreeSceneInteraction['pointPlacementPlane'], depth: number, frame: SceneFrame) {
+  const fixed = Number.isFinite(depth) ? depth : 0;
+  if (planeName === 'xy') return new THREE.Plane(new THREE.Vector3(0, 0, 1), -((fixed - frame.center.z) * frame.scale));
+  if (planeName === 'xz') return new THREE.Plane(new THREE.Vector3(0, 1, 0), -((fixed - frame.center.y) * frame.scale));
+  return new THREE.Plane(new THREE.Vector3(1, 0, 0), -((fixed - frame.center.x) * frame.scale));
 }
 
 function sub(a: Vec3, b: Vec3): Vec3 {

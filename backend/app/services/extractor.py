@@ -1,4 +1,5 @@
 import re
+from dataclasses import dataclass
 from typing import Any
 
 from pydantic import ValidationError
@@ -41,6 +42,16 @@ _FUNCTION_RE = re.compile(r"y\s*=\s*([^.,;\n]+)", re.IGNORECASE)
 _CIRCLE_RADIUS_RE = re.compile(r"(?:tâm|tam)\s+([A-Z]).*?(?:bán kính|ban kinh|r)\s*[=:]?\s*(\d+(?:\.\d+)?)", re.IGNORECASE)
 
 
+@dataclass(frozen=True)
+class RenderAttempt:
+    provider: str
+    model: str
+    message: str
+
+    def warning(self) -> str:
+        return f"{self.provider}/{self.model}: {_short_error(self.message)}"
+
+
 async def extract_scene(
     problem_text: str,
     grade: int | None = None,
@@ -52,22 +63,29 @@ async def extract_scene(
     settings = merge_runtime_settings(get_settings(), runtime_settings)
     render_settings = advanced_settings or AdvancedRenderSettings()
     warnings: list[str] = []
+    attempts: list[RenderAttempt] = []
 
     for provider in _provider_order(settings, preferred_ai_provider):
+        model = _provider_model(provider, settings, preferred_ai_model)
         try:
             scene_json = await _extract_with_provider(provider, settings, problem_text, grade, render_settings.reasoning_layer, preferred_ai_model)
+            warnings.extend(_render_attempt_warnings(attempts))
             return MathScene.model_validate(normalize_scene_json(scene_json)), warnings
         except (RuntimeError, ValidationError, ValueError, KeyError) as error:
-            warnings.append(f"AI provider {provider} không dùng được: {error}")
+            attempts.append(RenderAttempt(provider, model, str(error)))
             if settings.router9_only:
-                raise RuntimeError("9router-only đang bật nên không fallback sang provider khác.") from error
+                raise RuntimeError(_format_render_failure("9router-only đang bật nên không fallback sang provider khác.", attempts, True)) from error
         except Exception as error:
             message = str(error) or error.__class__.__name__
-            warnings.append(f"AI provider {provider} lỗi: {message}")
+            attempts.append(RenderAttempt(provider, model, message))
             if settings.router9_only:
-                raise RuntimeError("9router-only đang bật nên không fallback sang provider khác.") from error
+                raise RuntimeError(_format_render_failure("9router-only đang bật nên không fallback sang provider khác.", attempts, True)) from error
 
-    warnings.append("Đang dùng mock extractor vì AI provider chưa sẵn sàng.")
+    warnings.extend(_render_attempt_warnings(attempts))
+    if attempts:
+        warnings.append("Tất cả AI provider đều lỗi; đang dùng mock extractor.")
+    else:
+        warnings.append("Đang dùng mock extractor vì AI provider chưa sẵn sàng.")
     return extract_scene_mock(problem_text, grade), warnings
 
 
@@ -297,6 +315,39 @@ def _provider_order(settings: Settings, preferred_ai_provider: str | None = None
     if provider in gpt_oss_providers:
         return _dedupe([provider, *gpt_oss_providers, *nemotron_providers, *nvidia_providers])
     return _dedupe([*nvidia_providers, *nemotron_providers, *gpt_oss_providers])
+
+
+def _provider_model(provider: str, settings: Settings, preferred_ai_model: str | None = None) -> str:
+    if provider == "router9":
+        return preferred_ai_model or settings.router9_text_model or "<none>"
+    if provider == "openrouter":
+        return preferred_ai_model or settings.openrouter_text_model
+    if provider == "opencode_nemotron":
+        return settings.opencode_nemotron_model
+    if provider == "openrouter_gpt_oss":
+        return "openai/gpt-oss-120b:free"
+    if provider == "ollama_gpt_oss":
+        return preferred_ai_model or settings.ollama_text_model
+    if provider == "nvidia":
+        return preferred_ai_model or settings.nvidia_text_model
+    return "<unknown>"
+
+
+def _render_attempt_warnings(attempts: list[RenderAttempt]) -> list[str]:
+    return [f"AI fallback: {attempt.warning()}" for attempt in attempts]
+
+
+def _format_render_failure(message: str, attempts: list[RenderAttempt], router9_only: bool) -> str:
+    details = " | ".join(attempt.warning() for attempt in attempts) or "chưa có provider/model nào được thử"
+    suggestions = "Hãy kiểm tra API key/gateway, chọn model khác hoặc quét lại model 9router."
+    if router9_only:
+        suggestions += " Nếu muốn fallback sang provider khác, hãy tắt 9router-only."
+    return f"{message} Đã thử: {details}. {suggestions}"
+
+
+def _short_error(message: str) -> str:
+    clean = re.sub(r"\s+", " ", message).strip()
+    return clean[:300] + ("..." if len(clean) > 300 else "")
 
 
 def _dedupe(providers: list[str]) -> list[str]:

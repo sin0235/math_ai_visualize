@@ -71,6 +71,13 @@ Quy tắc suy luận hình đặc biệt:
 - Mặt cầu tâm O bán kính r: tạo point_3d O tại đúng tâm và object sphere center O radius r; opacity 0.12-0.2.
 - Đường tròn/mặt cầu đi qua A: nếu có tâm O và bán kính chưa cho, suy ra bán kính OA.
 
+Quy tắc vector:
+- Với bài yêu cầu mô phỏng tổng hai vector u + v, phải tạo các point phụ trợ để thể hiện quy tắc đầu-nối-đuôi hoặc hình bình hành, rồi tạo vector kết quả u+v bằng object vector_2d/vector_3d có tên/label rõ.
+- Với bài yêu cầu mô phỏng hiệu u - v, biểu diễn thành u + (-v): tạo vector đối của v nếu cần, đặt tên như mv hoặc minus_v, rồi tạo vector kết quả u-v rõ ràng.
+- Không chỉ vẽ segment cho vector; dùng object vector_2d hoặc vector_3d để có mũi tên. Có thể thêm segment nét đứt cho cạnh phụ/hình bình hành.
+- Mọi điểm đầu/cuối của vector kết quả hoặc vector tịnh tiến phải tồn tại trong objects trước khi được tham chiếu.
+- Dùng màu khác nhau cho u, v, vector đối và vector kết quả; ưu tiên #1d3557 cho vector gốc, #f97316 cho vector kết quả, #7c3aed cho vector đối/phụ.
+
 Quy tắc màu/style để hình dễ phân biệt:
 - Luôn dùng màu hex #rrggbb, không dùng tên màu như red/blue/green.
 - Palette khuyến nghị: cạnh chính #1d3557, cạnh khuất #8b95a7, đoạn/đối tượng cần nhấn mạnh #f97316, điểm/đánh dấu quan trọng #e63946, vector pháp tuyến #7c3aed, cung góc/nhãn góc #b45309.
@@ -94,8 +101,8 @@ Quy tắc annotations:
 
 Quy tắc renderer:
 - Với bài giao điểm đồ thị, hãy tạo các object function_graph/line_2d/circle_2d riêng; backend/GeoGebra sẽ tự tạo lệnh Intersect khi người dùng bật cài đặt giao điểm.
-- Đồ thị hàm số, Oxy, vector, đường tròn dùng renderer geogebra_2d.
-- Hình chóp, lăng trụ, tứ diện, hình hộp, Oxyz dùng renderer threejs_3d.
+- Đồ thị hàm số, Oxy, vector 2D, đường tròn dùng renderer geogebra_2d.
+- Hình chóp, lăng trụ, tứ diện, hình hộp, Oxyz và mô phỏng vector không gian dùng renderer threejs_3d.
 - Nếu đề hình không gian thiếu toạ độ, hãy chọn toạ độ minh hoạ đơn giản nhưng giữ quan hệ chính.
 - Với function expression, dùng x và toán tử ^, *, +, -, /; không đưa y= vào expression.
 """.strip()

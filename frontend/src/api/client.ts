@@ -8,12 +8,21 @@ export interface OcrResponse {
   warnings: string[];
 }
 
+export class ApiError extends Error {
+  details: string[];
+
+  constructor(message: string, details: string[] = []) {
+    super(message);
+    this.name = 'ApiError';
+    this.details = details;
+  }
+}
+
 export async function getSettingsDefaults(): Promise<SettingsDefaults> {
   const response = await fetch('/api/settings/defaults');
 
   if (!response.ok) {
-    const body = await response.text();
-    throw new Error(body.trim() || `Không thể đọc cấu hình backend. HTTP ${response.status}`);
+    throw await parseApiError(response, `Không thể đọc cấu hình backend. HTTP ${response.status}`);
   }
 
   return response.json();
@@ -41,19 +50,7 @@ export async function renderProblem(
   });
 
   if (!response.ok) {
-    const body = await response.text();
-    let message = body.trim();
-    try {
-      const parsed = JSON.parse(body) as { detail?: unknown };
-      if (typeof parsed.detail === 'string') {
-        message = parsed.detail;
-      } else if (Array.isArray(parsed.detail)) {
-        message = parsed.detail.map((item) => item?.msg ?? JSON.stringify(item)).join('\n');
-      }
-    } catch {
-      // Keep the raw response text.
-    }
-    throw new Error(message || `Không thể dựng hình từ đề bài. HTTP ${response.status}`);
+    throw await parseApiError(response, `Không thể dựng hình từ đề bài. HTTP ${response.status}`);
   }
 
   return response.json();
@@ -65,22 +62,14 @@ export async function ocrImage(imageDataUrl: string, runtimeSettings: RuntimeSet
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       image_data_url: imageDataUrl,
-      ocr_provider: runtimeSettings.ocr.provider,
+      ocr_provider: runtimeSettings.router9.only_mode ? 'router9' : runtimeSettings.ocr.provider,
       ocr_model: runtimeSettings.ocr.model.trim() || undefined,
       runtime_settings: compactRuntimeSettings(runtimeSettings),
     }),
   });
 
   if (!response.ok) {
-    const body = await response.text();
-    let message = body.trim();
-    try {
-      const parsed = JSON.parse(body) as { detail?: unknown };
-      if (typeof parsed.detail === 'string') message = parsed.detail;
-    } catch {
-      // Keep the raw response text.
-    }
-    throw new Error(message || `Không thể OCR ảnh đề bài. HTTP ${response.status}`);
+    throw await parseApiError(response, `Không thể OCR ảnh đề bài. HTTP ${response.status}`);
   }
 
   return response.json();
@@ -94,15 +83,7 @@ export async function scanProviderModels(provider: ProviderKey, runtimeSettings:
   });
 
   if (!response.ok) {
-    const body = await response.text();
-    let message = body.trim();
-    try {
-      const parsed = JSON.parse(body) as { detail?: unknown };
-      if (typeof parsed.detail === 'string') message = parsed.detail;
-    } catch {
-      // Keep the raw response text.
-    }
-    throw new Error(message || `Không thể quét model provider. HTTP ${response.status}`);
+    throw await parseApiError(response, `Không thể quét model provider. HTTP ${response.status}`);
   }
 
   const payload = await response.json() as { models: ScannedModelInfo[] };
@@ -117,15 +98,7 @@ export async function scanRouter9Models(runtimeSettings: RuntimeSettings): Promi
   });
 
   if (!response.ok) {
-    const body = await response.text();
-    let message = body.trim();
-    try {
-      const parsed = JSON.parse(body) as { detail?: unknown };
-      if (typeof parsed.detail === 'string') message = parsed.detail;
-    } catch {
-      // Keep the raw response text.
-    }
-    throw new Error(message || `Không thể quét model 9router. HTTP ${response.status}`);
+    throw await parseApiError(response, `Không thể quét model 9router. HTTP ${response.status}`);
   }
 
   const payload = await response.json() as { models: ScannedModelInfo[] };
@@ -143,22 +116,46 @@ export async function renderEditedScene(scene: MathScene, advancedSettings: Adva
   });
 
   if (!response.ok) {
-    const body = await response.text();
-    let message = body.trim();
-    try {
-      const parsed = JSON.parse(body) as { detail?: unknown };
-      if (typeof parsed.detail === 'string') {
-        message = parsed.detail;
-      } else if (Array.isArray(parsed.detail)) {
-        message = parsed.detail.map((item) => item?.msg ?? JSON.stringify(item)).join('\n');
-      }
-    } catch {
-      // Keep the raw response text.
-    }
-    throw new Error(message || `Không thể dựng lại scene. HTTP ${response.status}`);
+    throw await parseApiError(response, `Không thể dựng lại scene. HTTP ${response.status}`);
   }
 
   return response.json();
+}
+
+async function parseApiError(response: Response, fallbackMessage: string): Promise<ApiError> {
+  const body = await response.text();
+  if (!body.trim()) return new ApiError(fallbackMessage);
+
+  try {
+    const parsed = JSON.parse(body) as { detail?: unknown };
+    const parsedDetail = parseDetail(parsed.detail);
+    if (parsedDetail) return parsedDetail;
+  } catch {
+    // Keep raw text fallback.
+  }
+
+  return new ApiError(body.trim() || fallbackMessage);
+}
+
+function parseDetail(detail: unknown): ApiError | null {
+  if (typeof detail === 'string') return new ApiError(detail);
+  if (Array.isArray(detail)) {
+    return new ApiError(detail.map((item) => {
+      if (item && typeof item === 'object' && 'msg' in item) return String(item.msg);
+      return JSON.stringify(item);
+    }).join('\n'));
+  }
+  if (detail && typeof detail === 'object') {
+    const data = detail as { message?: unknown; attempts?: unknown; suggestions?: unknown };
+    const message = typeof data.message === 'string' ? data.message : JSON.stringify(detail);
+    const details = [data.attempts, data.suggestions].flatMap((value) => {
+      if (Array.isArray(value)) return value.map(String);
+      if (typeof value === 'string') return [value];
+      return [];
+    });
+    return new ApiError(message, details);
+  }
+  return null;
 }
 
 function compactRuntimeSettings(settings?: RuntimeSettings) {

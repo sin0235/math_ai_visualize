@@ -1,6 +1,6 @@
 import pytest
 
-from app.schemas.scene import Line3D, MathScene, Plane, Point3D, Relation, SceneView, Sphere
+from app.schemas.scene import Line3D, MathScene, Plane, Point3D, Relation, SceneView, Segment, Sphere
 from app.services.geometry_engine import compute_three_geometry, normalize_scene
 
 
@@ -73,6 +73,41 @@ def test_perpendicular_relation_adds_right_angle():
     assert len(right_angles) == 1
     assert right_angles[0].target == "A"
     assert set(right_angles[0].metadata["arms"]) == {"B", "C"}
+
+
+def test_normalize_scene_adds_segment_intersection_point():
+    scene = scene_with([
+        point("A", 0, 0, 0),
+        point("B", 2, 2, 0),
+        point("C", 0, 2, 0),
+        point("D", 2, 0, 0),
+        Segment(points=["A", "B"]),
+        Segment(points=["C", "D"]),
+    ])
+
+    normalized = normalize_scene(scene)
+
+    intersection = next(obj for obj in normalized.objects if isinstance(obj, Point3D) and obj.name == "I")
+    assert intersection.x == pytest.approx(1)
+    assert intersection.y == pytest.approx(1)
+    assert intersection.z == pytest.approx(0)
+    assert any(relation.type == "intersection" and relation.object_1 == "I" for relation in normalized.relations)
+
+
+
+def test_normalize_scene_does_not_add_endpoint_segment_intersection():
+    scene = scene_with([
+        point("A", 0, 0, 0),
+        point("B", 1, 0, 0),
+        point("C", 1, 1, 0),
+        Segment(points=["A", "B"]),
+        Segment(points=["B", "C"]),
+    ])
+
+    normalized = normalize_scene(scene)
+
+    assert len([obj for obj in normalized.objects if isinstance(obj, Point3D)]) == 3
+
 
 
 def test_line_line_intersect():
