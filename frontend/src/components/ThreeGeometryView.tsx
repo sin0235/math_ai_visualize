@@ -83,68 +83,70 @@ export function ThreeGeometryView({ scene, interaction, embedded = false }: Thre
   }
 
   const content = (
-    <Canvas camera={{ position: [5, 4, 6], fov: 48 }} className="three-view" style={{ display: 'block' }}>
-      <color attach="background" args={["#f8fbff"]} />
-      <ambientLight intensity={0.7} />
-      <directionalLight position={[6, 10, 6]} intensity={0.85} />
-      <OrbitControls makeDefault target={[0, 0, 0]} enabled={controlsEnabled} mouseButtons={controlsMouseButtons} />
-      {workingScene.view.show_grid && <gridHelper args={[10, 10, '#d4ddec', '#e9eef7']} />}
-      {showAxes && <OxyzAxes hideOriginLabel={hasPointAtOrigin(workingScene)} />}
-      <group
-        position={[-frame.center.x * frame.scale, -frame.center.y * frame.scale, -frame.center.z * frame.scale]}
-        scale={frame.scale}
-        onPointerDown={(event) => {
-          if (interaction?.mode !== 'add_point') return;
-          event.stopPropagation();
+    <div className="three-view">
+      <Canvas camera={{ position: [5, 4, 6], fov: 48 }} className="three-canvas" style={{ display: 'block' }}>
+        <color attach="background" args={["#f8fbff"]} />
+        <ambientLight intensity={0.7} />
+        <directionalLight position={[6, 10, 6]} intensity={0.85} />
+        <OrbitControls makeDefault target={[0, 0, 0]} enabled={controlsEnabled} mouseButtons={controlsMouseButtons} />
+        {workingScene.view.show_grid && <gridHelper args={[10, 10, '#d4ddec', '#e9eef7']} />}
+        {showAxes && <OxyzAxes hideOriginLabel={hasPointAtOrigin(workingScene)} />}
+        <group
+          position={[-frame.center.x * frame.scale, -frame.center.y * frame.scale, -frame.center.z * frame.scale]}
+          scale={frame.scale}
+          onPointerDown={(event) => {
+            if (interaction?.mode !== 'add_point') return;
+            event.stopPropagation();
 
-          const plane = addPointPlane(interaction.pointPlacementPlane, interaction.pointPlacementDepth, frame);
-          const hit = event.ray.intersectPlane(plane, new THREE.Vector3());
-          if (!hit) return;
+            const plane = addPointPlane(interaction.pointPlacementPlane, interaction.pointPlacementDepth, frame);
+            const hit = event.ray.intersectPlane(plane, new THREE.Vector3());
+            if (!hit) return;
 
-          interaction.onCanvasClick(worldToScene(hit, frame));
-        }}
-        onPointerMove={(event) => {
-          if (!connectStart || interaction?.mode !== 'connect') return;
-          event.stopPropagation();
-          setConnectPreview(worldToScene(event.point, frame));
-        }}
-        onPointerUp={(event) => {
-          if (!connectStart) return;
-          event.stopPropagation();
-          finishConnect(connectHover);
-        }}
-        onPointerLeave={() => {
-          if (!connectStart) return;
-          setConnectPreview(null);
-        }}
-      >
-        <Planes scene={workingScene} />
-        <Faces scene={workingScene} />
-        <Spheres scene={workingScene} />
-        <Lines3D scene={workingScene} />
-        <Segments scene={workingScene} frame={frame} interaction={interaction} />
-        <Vectors scene={workingScene} />
-        <ComputedIntersections scene={workingScene} />
-        <ComputedMeasurements scene={workingScene} />
-        <ConnectPreview scene={workingScene} start={connectStart} end={connectHover ? workingScene.points[connectHover] : connectPreview} />
-        <Points
-          scene={workingScene}
-          frame={frame}
-          draggingPoint={draggingPoint}
-          connectStart={connectStart}
-          connectHover={connectHover}
-          interaction={interaction}
-          onPointHover={setHoveredPoint}
-          onConnectStart={beginConnect}
-          onConnectHover={setConnectHover}
-          onConnectEnd={finishConnect}
-          onDragStart={setDraggingPoint}
-          onDragEnd={finishPointDrag}
-          onPointChange={updatePoint}
-        />
-        <Annotations scene={workingScene} />
-      </group>
-    </Canvas>
+            interaction.onCanvasClick(worldToScene(hit, frame));
+          }}
+          onPointerMove={(event) => {
+            if (!connectStart || interaction?.mode !== 'connect') return;
+            event.stopPropagation();
+            setConnectPreview(worldToScene(event.point, frame));
+          }}
+          onPointerUp={(event) => {
+            if (!connectStart) return;
+            event.stopPropagation();
+            finishConnect(connectHover);
+          }}
+          onPointerLeave={() => {
+            if (!connectStart) return;
+            setConnectPreview(null);
+          }}
+        >
+          <Planes scene={workingScene} />
+          <Faces scene={workingScene} />
+          <Spheres scene={workingScene} />
+          <Lines3D scene={workingScene} />
+          <Segments scene={workingScene} frame={frame} interaction={interaction} />
+          <Vectors scene={workingScene} />
+          <ComputedIntersections scene={workingScene} />
+          <ComputedMeasurements scene={workingScene} />
+          <ConnectPreview scene={workingScene} start={connectStart} end={connectHover ? workingScene.points[connectHover] : connectPreview} />
+          <Points
+            scene={workingScene}
+            frame={frame}
+            draggingPoint={draggingPoint}
+            connectStart={connectStart}
+            connectHover={connectHover}
+            interaction={interaction}
+            onPointHover={setHoveredPoint}
+            onConnectStart={beginConnect}
+            onConnectHover={setConnectHover}
+            onConnectEnd={finishConnect}
+            onDragStart={setDraggingPoint}
+            onDragEnd={finishPointDrag}
+            onPointChange={updatePoint}
+          />
+          <Annotations scene={workingScene} />
+        </group>
+      </Canvas>
+    </div>
   );
 
   if (embedded) return content;

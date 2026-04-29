@@ -1,11 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { ApiError, getSettingsDefaults, ocrImage, renderEditedScene, renderProblem } from './api/client';
 import { defaultAdvancedSettings, ProblemInput, staticModelOptions, type ModelOption } from './components/ProblemInput';
 import { GeneralSettingsPanel } from './components/GeneralSettingsPanel';
 import { RendererPanel } from './components/RendererPanel';
 import { Router9SettingsPanel } from './components/Router9SettingsPanel';
-import { SceneJsonPanel } from './components/SceneJsonPanel';
 import { SceneEditorPanel, type PointPlacementPlane } from './components/SceneEditorPanel';
 import { SettingsPanel } from './components/SettingsPanel';
 import type { AdvancedRenderSettings, MathScene, RenderResponse, Renderer } from './types/scene';
@@ -33,9 +32,7 @@ export default function App() {
   const [result, setResult] = useState<RenderResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [editorSaving, setEditorSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [ocrLoading, setOcrLoading] = useState(false);
-  const [ocrError, setOcrError] = useState<string | null>(null);
   const [problemText, setProblemText] = useState('Cho A(1,2), B(4,5). Vẽ đường thẳng AB.');
   const [lastAdvancedSettings, setLastAdvancedSettings] = useState<AdvancedRenderSettings>(defaultAdvancedSettings);
   const [editTool, setEditTool] = useState<EditTool>('move');
@@ -46,6 +43,8 @@ export default function App() {
   const [settingsDefaults, setSettingsDefaults] = useState<SettingsDefaults | null>(null);
   const [notification, setNotification] = useState<Notification | null>(null);
   const [sceneEditorOpen, setSceneEditorOpen] = useState(false);
+  const [editorButtonTop, setEditorButtonTop] = useState(220);
+  const editorButtonDragRef = useRef<{ pointerId: number; startY: number; startTop: number; moved: boolean } | null>(null);
 
   useEffect(() => {
     try {
@@ -59,13 +58,26 @@ export default function App() {
 
   useEffect(() => {
     getSettingsDefaults()
-      .then(setSettingsDefaults)
+      .then((defaults) => {
+        setSettingsDefaults(defaults);
+        setRuntimeSettings((current) => mergeBackendDefaults(current, defaults));
+      })
       .catch(() => setSettingsDefaults(null));
   }, []);
 
   useEffect(() => {
     window.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify({ version: SETTINGS_STORAGE_VERSION, settings: runtimeSettings }));
   }, [runtimeSettings]);
+
+  useEffect(() => {
+    if (!notification) return;
+    const timer = window.setTimeout(() => setNotification(null), 5000);
+    return () => window.clearTimeout(timer);
+  }, [notification]);
+
+  useEffect(() => {
+    setEditorButtonTop(clamp(window.innerHeight * 0.55, 84, window.innerHeight - 88));
+  }, []);
 
   const modelOptions = buildModelOptions(runtimeSettings);
   const threeInteraction = result?.scene.renderer === 'threejs_3d'
@@ -83,10 +95,8 @@ export default function App() {
     : undefined;
 
   async function handleOcrClipboardImage() {
-    setOcrError(null);
     if (!navigator.clipboard?.read) {
       const message = 'Trình duyệt chưa hỗ trợ đọc ảnh từ clipboard.';
-      setOcrError(message);
       showNotification('OCR thất bại', message);
       return;
     }
@@ -100,33 +110,27 @@ export default function App() {
         return;
       }
       const message = 'Clipboard hiện không có ảnh để OCR.';
-      setOcrError(message);
       showNotification('OCR thất bại', message);
     } catch (caught) {
       const apiError = toApiError(caught, 'Không đọc được ảnh từ clipboard.');
-      setOcrError(apiError.message);
-      showNotification('OCR thất bại', apiError.message, apiError.details);
+      showApiError('OCR thất bại', apiError, 'Hãy kiểm tra ảnh có rõ chữ không, model OCR đã chọn có hỗ trợ ảnh không, hoặc thử provider/model khác.');
     }
   }
 
   async function handleOcrImage(file: File) {
-    setOcrError(null);
     if (runtimeSettings.router9.only_mode && !runtimeSettings.router9.model.trim() && runtimeSettings.router9.allowed_model_ids.length === 0) {
       const message = '9router-only đang bật. Hãy quét/chọn model 9router trước khi OCR.';
-      setOcrError(message);
       showNotification('OCR thất bại', message);
       return;
     }
     if (!file.type.startsWith('image/')) {
       const message = 'File OCR phải là ảnh.';
-      setOcrError(message);
       showNotification('OCR thất bại', message);
       return;
     }
     const maxBytes = Math.max(1, runtimeSettings.ocr.max_image_mb) * 1024 * 1024;
     if (file.size > maxBytes) {
       const message = `Ảnh OCR vượt quá giới hạn ${runtimeSettings.ocr.max_image_mb}MB.`;
-      setOcrError(message);
       showNotification('OCR thất bại', message);
       return;
     }
@@ -138,8 +142,7 @@ export default function App() {
       setProblemText(response.text.trim());
     } catch (caught) {
       const apiError = toApiError(caught, 'Không thể OCR ảnh đề bài.');
-      setOcrError(apiError.message);
-      showNotification('OCR thất bại', apiError.message, apiError.details);
+      showApiError('OCR thất bại', apiError, 'Hãy kiểm tra ảnh có rõ chữ không, model OCR đã chọn có hỗ trợ ảnh không, hoặc thử provider/model khác.');
     } finally {
       setOcrLoading(false);
     }
@@ -153,16 +156,16 @@ export default function App() {
     preferredRenderer?: Renderer,
   ) {
     setLoading(true);
-    setError(null);
     setPointToSegmentSource(null);
     setEditTool('move');
     setLastAdvancedSettings(advancedSettings ?? defaultAdvancedSettings);
     try {
-      setResult(await renderProblem(problemText, preferredAiProvider, preferredAiModel, advancedSettings, preferredRenderer, runtimeSettings));
+      const response = await renderProblem(problemText, preferredAiProvider, preferredAiModel, advancedSettings, preferredRenderer, runtimeSettings);
+      setResult(response);
+      showWarnings(response.warnings);
     } catch (caught) {
-      const apiError = toApiError(caught, 'Có lỗi không xác định.');
-      setError(apiError.message);
-      showNotification('Dựng hình thất bại', apiError.message, apiError.details);
+      const apiError = toApiError(caught, 'Không thể dựng hình từ đề bài này.');
+      showApiError('Dựng hình thất bại', apiError, 'Hãy thử chọn model khác, kiểm tra API key/quota, hoặc viết đề bài rõ hơn.');
     } finally {
       setLoading(false);
     }
@@ -174,13 +177,13 @@ export default function App() {
 
   async function handleSceneEdit(scene: MathScene) {
     setEditorSaving(true);
-    setError(null);
     try {
-      setResult(await renderEditedScene(scene, lastAdvancedSettings));
+      const response = await renderEditedScene(scene, lastAdvancedSettings);
+      setResult(response);
+      showWarnings(response.warnings);
     } catch (caught) {
-      const apiError = toApiError(caught, 'Không dựng lại được scene.');
-      setError(apiError.message);
-      showNotification('Không thể lưu chỉnh sửa scene', apiError.message, apiError.details);
+      const apiError = toApiError(caught, 'Không thể lưu chỉnh sửa hình.');
+      showApiError('Không thể lưu chỉnh sửa', apiError, 'Hãy kiểm tra thao tác vừa chỉnh có làm thiếu điểm, thiếu đoạn hoặc dữ liệu hình không hợp lệ không.');
     } finally {
       setEditorSaving(false);
     }
@@ -203,21 +206,29 @@ export default function App() {
     await handleSceneEdit(editedScene);
   }
 
-  function showNotification(title: string, message: string, details: string[] = []) {
-    setNotification({ id: Date.now(), kind: 'error', title, message, details });
+  function showNotification(title: string, message: string, details: string[] = [], kind: Notification['kind'] = 'error') {
+    setNotification({ id: Date.now(), kind, title, message: friendlyMessage(message), details: friendlyDetails(details) });
+  }
+
+  function showApiError(title: string, error: ApiError, fallbackSuggestion: string) {
+    const details = error.details.length > 0 ? error.details : [fallbackSuggestion];
+    showNotification(title, error.message, details, 'error');
+  }
+
+  function showWarnings(warnings: string[]) {
+    if (warnings.length === 0) return;
+    showNotification('Đã dựng hình với lưu ý', 'Hình đã được tạo, nhưng hệ thống phải dùng phương án dự phòng.', warnings, 'warning');
   }
 
   async function handleConnectPoints(start: string, end: string) {
     if (!result?.scene) return;
     if (start === end) {
       const message = 'Chọn hai điểm khác nhau để nối đoạn.';
-      setError(message);
       showNotification('Không thể nối đoạn', message);
       return;
     }
     if (hasSegment(result.scene, start, end)) {
       const message = `Đoạn ${start}${end} đã tồn tại.`;
-      setError(message);
       showNotification('Không thể nối đoạn', message);
       return;
     }
@@ -234,13 +245,11 @@ export default function App() {
   async function handlePointToSegmentClick(segmentPoints: [string, string], clickedPoint: Vec3) {
     if (!result?.scene || !pointToSegmentSource || editTool !== 'project_to_segment') {
       const message = 'Chọn công cụ tạo chân nối, chọn một điểm nguồn, rồi click vào đoạn đích.';
-      setError(message);
       showNotification('Không thể tạo chân nối', message);
       return;
     }
     if (segmentPoints.includes(pointToSegmentSource)) {
       const message = 'Điểm nguồn đang nằm trên đoạn đích. Hãy chọn đoạn khác nếu muốn nối thêm.';
-      setError(message);
       showNotification('Không thể tạo chân nối', message);
       return;
     }
@@ -250,7 +259,6 @@ export default function App() {
     const end = findPoint(result.scene, segmentPoints[1]);
     if (!source || !start || !end) {
       const message = 'Không tìm thấy điểm nguồn hoặc đoạn đích trong scene.';
-      setError(message);
       showNotification('Không thể tạo chân nối', message);
       return;
     }
@@ -274,7 +282,6 @@ export default function App() {
     if (!result?.scene) return;
     if (editorSaving) return;
 
-    setError(null);
     const dim = result.scene.view.dimension;
     const name = nextPointName(result.scene);
     const point = dim === '3d'
@@ -286,6 +293,28 @@ export default function App() {
       objects: [...result.scene.objects, point],
     };
     await handleSceneEdit(editedScene);
+  }
+
+  function handleEditorButtonPointerDown(event: React.PointerEvent<HTMLButtonElement>) {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    editorButtonDragRef.current = { pointerId: event.pointerId, startY: event.clientY, startTop: editorButtonTop, moved: false };
+  }
+
+  function handleEditorButtonPointerMove(event: React.PointerEvent<HTMLButtonElement>) {
+    const drag = editorButtonDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const delta = event.clientY - drag.startY;
+    if (Math.abs(delta) > 3) drag.moved = true;
+    setEditorButtonTop(clamp(drag.startTop + delta, 84, window.innerHeight - 88));
+  }
+
+  function handleEditorButtonPointerUp(event: React.PointerEvent<HTMLButtonElement>) {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    window.setTimeout(() => {
+      editorButtonDragRef.current = null;
+    }, 0);
   }
 
   return (
@@ -318,7 +347,7 @@ export default function App() {
             <ProblemInput
               loading={loading}
               ocrLoading={ocrLoading}
-              ocrError={ocrError}
+              ocrError={null}
               problemText={problemText}
               modelOptions={modelOptions}
               router9Only={runtimeSettings.router9.only_mode}
@@ -332,12 +361,22 @@ export default function App() {
               onSubmit={handleSubmit}
             />
             <div className="result-area">
-              {error && <div className="error-box">{error}</div>}
-              {result?.warnings.map((warning) => <div className="warning-box" key={warning}>{warning}</div>)}
               <div className="render-stage">
                 <RendererPanel result={result} threeInteraction={threeInteraction} />
                 {result?.scene && (
-                  <button type="button" className="render-editor-trigger" onClick={() => setSceneEditorOpen(true)}>
+                  <button
+                    type="button"
+                    className="render-editor-trigger"
+                    style={{ top: editorButtonTop }}
+                    onPointerDown={handleEditorButtonPointerDown}
+                    onPointerMove={handleEditorButtonPointerMove}
+                    onPointerUp={handleEditorButtonPointerUp}
+                    onPointerCancel={handleEditorButtonPointerUp}
+                    onClick={() => {
+                      if (editorButtonDragRef.current?.moved) return;
+                      setSceneEditorOpen(true);
+                    }}
+                  >
                     Chỉnh hình
                   </button>
                 )}
@@ -367,7 +406,6 @@ export default function App() {
                   </div>
                 )}
               </div>
-              <SceneJsonPanel result={result} />
             </div>
           </section>
         )}
@@ -388,6 +426,11 @@ export default function App() {
           </section>
         )}
       </main>
+      <footer className="app-footer">
+        <span className="footer-line" />
+        <span className="footer-credit">Developed by <strong>Sin Tran</strong></span>
+        <span className="footer-line" />
+      </footer>
     </>
   );
 }
@@ -419,6 +462,70 @@ function toApiError(caught: unknown, fallback: string): ApiError {
   if (caught instanceof ApiError) return caught;
   if (caught instanceof Error) return new ApiError(caught.message || fallback);
   return new ApiError(fallback);
+}
+
+function friendlyMessage(message: string) {
+  const text = message.trim();
+  if (!text) return 'Có lỗi xảy ra. Hãy thử lại hoặc đổi cấu hình model.';
+  if (/quota|rate limit|429/i.test(text)) return 'Model hoặc tài khoản đang bị giới hạn lượt gọi. Hãy chờ một lúc hoặc chọn model/provider khác.';
+  if (/api key|unauthorized|401|403|forbidden/i.test(text)) return 'Provider chưa được cấu hình đúng hoặc API key không có quyền dùng model này.';
+  if (/model.*not found|not found|404/i.test(text)) return 'Model đã chọn không khả dụng. Hãy quét lại danh sách model hoặc chọn model khác.';
+  if (/timeout|timed out/i.test(text)) return 'Provider phản hồi quá lâu. Hãy thử lại hoặc đổi model nhẹ hơn.';
+  if (/validation|field required|Input should/i.test(text)) return 'Dữ liệu hình chưa hợp lệ. Hãy thử dựng lại hoặc chỉnh hình đơn giản hơn.';
+  return text.length > 220 ? `${text.slice(0, 217)}...` : text;
+}
+
+function friendlyDetails(details: string[]) {
+  if (details.length === 0) return [];
+  return details.map((detail) => friendlyDetail(detail)).filter(Boolean).slice(0, 6);
+}
+
+function friendlyDetail(detail: string) {
+  const text = detail.trim();
+  if (!text) return '';
+  if (/mock extractor/i.test(text)) return 'AI provider hiện không sẵn sàng nên hệ thống dùng hình mẫu dự phòng.';
+  if (/Đã thử:|provider|router9|openrouter|nvidia|ollama/i.test(text)) return text.replace(/RuntimeError:|Error:/g, '').slice(0, 240);
+  if (/api key|unauthorized|401|403|forbidden/i.test(text)) return 'Kiểm tra API key hoặc quyền truy cập model trong phần Settings.';
+  if (/quota|rate limit|429/i.test(text)) return 'Provider đang giới hạn lượt gọi; thử model/provider khác hoặc chờ quota hồi lại.';
+  if (/not found|404/i.test(text)) return 'Model không còn khả dụng; hãy quét lại danh sách model.';
+  return text.length > 240 ? `${text.slice(0, 237)}...` : text;
+}
+
+function mergeBackendDefaults(current: RuntimeSettings, defaults: SettingsDefaults): RuntimeSettings {
+  const router9Allowed = mergeUnique(current.router9.allowed_model_ids, [defaults.router9.model ?? '', ...defaults.router9.allowed_model_ids]);
+  const router9Model = current.router9.model || defaults.router9.model || router9Allowed[0] || '';
+  const router9Scanned = mergeScannedModels(
+    current.router9.scanned_models,
+    router9Allowed.map((id) => ({ id, label: id, provider: 'router9' }))
+  );
+
+  return {
+    ...current,
+    default_provider: current.default_provider === 'auto' && defaults.default_provider ? defaults.default_provider : current.default_provider,
+    router9: {
+      ...current.router9,
+      base_url: current.router9.base_url || defaults.router9.base_url || '',
+      model: router9Model,
+      only_mode: current.router9.only_mode || defaults.router9.only_mode,
+      allowed_model_ids: router9Allowed,
+      scanned_models: router9Scanned,
+    },
+    ocr: current.ocr.provider === 'router9' && !current.ocr.model && router9Model
+      ? { ...current.ocr, model: router9Model }
+      : current.ocr,
+  };
+}
+
+function mergeUnique(primary: string[], secondary: string[]) {
+  return [...new Set([...primary, ...secondary].filter(Boolean))];
+}
+
+function mergeScannedModels(primary: RuntimeSettings['router9']['scanned_models'], secondary: RuntimeSettings['router9']['scanned_models']) {
+  const byId = new Map(primary.map((model) => [model.id, model]));
+  secondary.forEach((model) => {
+    if (!byId.has(model.id)) byId.set(model.id, model);
+  });
+  return [...byId.values()];
 }
 
 function loadStoredSettings(saved: string): RuntimeSettings {
@@ -523,6 +630,10 @@ function round(value: number) {
   return Math.round(value * 1_000_000) / 1_000_000;
 }
 
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
+}
+
 function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -564,11 +675,7 @@ function buildModelOptions(settings: RuntimeSettings): ModelOption[] {
     return router9Options;
   }
 
-  const showMockProvider = import.meta.env.DEV || import.meta.env.VITE_SHOW_MOCK_PROVIDER === 'true';
-  const staticOptions = showMockProvider
-    ? [...staticModelOptions, { key: 'provider:mock', provider: 'mock', label: 'Mock extractor', description: 'Mock extractor — chế độ kiểm thử nội bộ, không gọi AI bên ngoài.' }]
-    : staticModelOptions;
-  return [...staticOptions, ...scannedProviderOptions, ...router9Options];
+  return [...staticModelOptions, ...scannedProviderOptions, ...router9Options];
 }
 
 function providerLabel(provider: 'openrouter' | 'nvidia' | 'ollama') {

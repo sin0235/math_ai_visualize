@@ -40,8 +40,6 @@ export const staticModelOptions: ModelOption[] = [
   { key: 'provider:openrouter_gpt_oss', provider: 'openrouter_gpt_oss', label: 'GPT OSS 120B', description: 'OpenRouter openai/gpt-oss-120b:free — tuyến dự phòng miễn phí, phụ thuộc giới hạn quota.' },
 ];
 
-const mockModelOption: ModelOption = { key: 'provider:mock', provider: 'mock', label: 'Mock extractor', description: 'Mock extractor — chế độ kiểm thử nội bộ, không gọi AI bên ngoài.' };
-
 const examples = [
   {
     tag: '2D',
@@ -218,8 +216,12 @@ export function ProblemInput({ loading, ocrLoading, ocrError, problemText, model
           </div>
         )}
       </div>
+      <button disabled={submitDisabled || !problemText.trim()} type="submit" className="submit-button submit-button-sticky">
+        {(loading || ocrLoading) && <Spinner />}
+        {ocrLoading ? 'Đang OCR ảnh...' : loading ? 'Đang dựng hình...' : 'Dựng hình'}
+      </button>
       <label className="field-label">
-        Cách xử lý đề bài
+        <span title="Chọn provider/model AI dùng để phân tích đề và dựng hình">Chọn AI Model</span>
         <select
           value={selectedModelKey}
           title={selectedModel?.description ?? ''}
@@ -311,10 +313,6 @@ export function ProblemInput({ loading, ocrLoading, ocrError, problemText, model
           Tìm giao điểm tự động
         </label>
       </details>
-      <button disabled={submitDisabled || !problemText.trim()} type="submit" className="submit-button">
-        {(loading || ocrLoading) && <Spinner />}
-        {ocrLoading ? 'Đang OCR ảnh...' : loading ? 'Đang dựng hình...' : 'Dựng hình'}
-      </button>
       <details className="examples">
         <summary className="examples-title">Đề mẫu</summary>
         {examples.map((example) => (

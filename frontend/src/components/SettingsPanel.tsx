@@ -71,7 +71,7 @@ export function SettingsPanel({ value, defaults, onChange, onReset }: SettingsPa
         </p>
       </div>
 
-      <div className="settings-grid">
+      <div className="settings-grid settings-grid-providers">
         {(['openrouter', 'nvidia', 'ollama'] as ProviderKey[]).map((provider) => {
           const providerDefaults = defaults?.[provider];
           return (
