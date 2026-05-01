@@ -266,6 +266,7 @@ export function ProblemInput({ loading, ocrLoading, ocrError, problemText, model
           <select value={preferredRenderer} onChange={(event) => setPreferredRenderer(event.target.value as 'auto' | Renderer)}>
             <option value="auto">Tự động (AI chọn 2D hoặc 3D)</option>
             <option value="geogebra_2d">GeoGebra 2D</option>
+            <option value="geogebra_3d">GeoGebra 3D</option>
             <option value="threejs_3d">Three.js 3D</option>
           </select>
         </label>

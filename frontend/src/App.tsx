@@ -6,6 +6,7 @@ import { GeneralSettingsPanel } from './components/GeneralSettingsPanel';
 import { RendererPanel } from './components/RendererPanel';
 import { Router9SettingsPanel } from './components/Router9SettingsPanel';
 import { SceneEditorPanel, type PointPlacementPlane } from './components/SceneEditorPanel';
+import { SceneJsonPanel } from './components/SceneJsonPanel';
 import { SettingsPanel } from './components/SettingsPanel';
 import type { AdvancedRenderSettings, MathScene, RenderResponse, Renderer } from './types/scene';
 import { defaultRuntimeSettings, SETTINGS_STORAGE_VERSION, type RuntimeSettings, type SettingsDefaults } from './types/settings';
@@ -13,6 +14,8 @@ import logoUrl from '../img.svg';
 import './styles.css';
 
 const SETTINGS_STORAGE_KEY = 'hinh-runtime-settings';
+const MOBILE_WARNING_STORAGE_KEY = 'hinh-mobile-warning-dismissed';
+const MOBILE_BREAKPOINT_QUERY = '(max-width: 900px)';
 
 type AppView = 'render' | 'settings';
 type SettingsTab = 'general' | 'providers' | 'router9';
@@ -42,9 +45,10 @@ export default function App() {
   const [runtimeSettings, setRuntimeSettings] = useState<RuntimeSettings>(defaultRuntimeSettings);
   const [settingsDefaults, setSettingsDefaults] = useState<SettingsDefaults | null>(null);
   const [notification, setNotification] = useState<Notification | null>(null);
-  const [mobileWarningDismissed, setMobileWarningDismissed] = useState(false);
+  const [mobileWarningDismissed, setMobileWarningDismissed] = useState(readMobileWarningDismissed);
   const [sceneEditorOpen, setSceneEditorOpen] = useState(false);
   const [editorButtonTop, setEditorButtonTop] = useState(220);
+  const resultAnchorRef = useRef<HTMLDivElement | null>(null);
   const editorButtonDragRef = useRef<{ pointerId: number; startY: number; startTop: number; moved: boolean } | null>(null);
 
   useEffect(() => {
@@ -163,6 +167,7 @@ export default function App() {
     try {
       const response = await renderProblem(problemText, preferredAiProvider, preferredAiModel, advancedSettings, preferredRenderer, runtimeSettings);
       setResult(response);
+      scrollToResultOnMobile();
       showWarnings(response.warnings);
     } catch (caught) {
       const apiError = toApiError(caught, 'Không thể dựng hình từ đề bài này.');
@@ -178,6 +183,24 @@ export default function App() {
 
   function forgetApiKeys() {
     setRuntimeSettings((current) => dropApiKeys(current));
+  }
+
+  function dismissMobileWarning() {
+    setMobileWarningDismissed(true);
+    try {
+      window.localStorage.setItem(MOBILE_WARNING_STORAGE_KEY, 'true');
+    } catch {
+      // Ignore blocked storage.
+    }
+  }
+
+  function scrollToResult() {
+    resultAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function scrollToResultOnMobile() {
+    if (!window.matchMedia(MOBILE_BREAKPOINT_QUERY).matches) return;
+    window.requestAnimationFrame(() => scrollToResult());
   }
 
   async function handleSceneEdit(scene: MathScene) {
@@ -345,6 +368,7 @@ export default function App() {
       </header>
 
       <NotificationBanner notification={notification} onDismiss={() => setNotification(null)} />
+      <MobileRendererWarning dismissed={mobileWarningDismissed} onDismiss={dismissMobileWarning} />
 
       <main className="app-shell">
         {activeView === 'render' && (
@@ -365,9 +389,10 @@ export default function App() {
               }}
               onSubmit={handleSubmit}
             />
-            <div className="result-area">
+            {result && <button type="button" className="mobile-scroll-notice" onClick={scrollToResult}>↓ Xem hình vừa dựng</button>}
+            <div className="result-area" ref={resultAnchorRef}>
               <div className="render-stage">
-                <RendererPanel result={result} threeInteraction={threeInteraction} />
+                <RendererPanel result={result} threeInteraction={threeInteraction} onGeoGebraPointChange={handlePointDragEnd} />
                 {result?.scene && (
                   <button
                     type="button"
@@ -411,6 +436,7 @@ export default function App() {
                   </div>
                 )}
               </div>
+              <SceneJsonPanel result={result} />
             </div>
           </section>
         )}
@@ -437,6 +463,20 @@ export default function App() {
         <span className="footer-line" />
       </footer>
     </>
+  );
+}
+
+function MobileRendererWarning({ dismissed, onDismiss }: { dismissed: boolean; onDismiss: () => void }) {
+  if (dismissed) return null;
+  return (
+    <div className="mobile-renderer-warning" role="dialog" aria-modal="true" aria-labelledby="mobile-renderer-warning-title">
+      <section className="mobile-renderer-warning-card">
+        <h2 id="mobile-renderer-warning-title">Lưu ý khi dùng điện thoại</h2>
+        <p>Math renderer chỉ hiển thị tốt trên các thiết bị desktop. Trên di động, màn hình render nằm bên dưới phần nhập đề.</p>
+        <p>Hãy lướt xuống sau khi dựng hình để xem kết quả.</p>
+        <button type="button" className="primary-button" onClick={onDismiss}>Bỏ qua và tiếp tục</button>
+      </section>
+    </div>
   );
 }
 
@@ -531,6 +571,14 @@ function mergeScannedModels(primary: RuntimeSettings['router9']['scanned_models'
     if (!byId.has(model.id)) byId.set(model.id, model);
   });
   return [...byId.values()];
+}
+
+function readMobileWarningDismissed() {
+  try {
+    return window.localStorage.getItem(MOBILE_WARNING_STORAGE_KEY) === 'true';
+  } catch {
+    return false;
+  }
 }
 
 function loadStoredSettings(saved: string): RuntimeSettings {

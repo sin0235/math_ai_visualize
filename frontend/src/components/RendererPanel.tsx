@@ -1,19 +1,22 @@
 import type { RenderResponse } from '../types/scene';
+
+type Vec3 = { x: number; y: number; z: number };
 import { GeoGebraView } from './GeoGebraView';
 import { ThreeGeometryView, type ThreeSceneInteraction } from './ThreeGeometryView';
 
 interface RendererPanelProps {
   result: RenderResponse | null;
   threeInteraction?: ThreeSceneInteraction;
+  onGeoGebraPointChange?: (name: string, point: Vec3) => void | Promise<void>;
 }
 
-export function RendererPanel({ result, threeInteraction }: RendererPanelProps) {
+export function RendererPanel({ result, threeInteraction, onGeoGebraPointChange }: RendererPanelProps) {
   if (!result) {
     return <EmptyState />;
   }
 
-  if (result.payload.renderer.startsWith('geogebra')) {
-    return <GeoGebraView commands={result.payload.geogebra_commands} />;
+  if (result.payload.renderer === 'geogebra_2d' || result.payload.renderer === 'geogebra_3d') {
+    return <GeoGebraView commands={result.payload.geogebra_commands} renderer={result.payload.renderer} scene={result.scene} view={result.scene.view} onPointChange={onGeoGebraPointChange} />;
   }
 
   if (result.payload.three_scene) {

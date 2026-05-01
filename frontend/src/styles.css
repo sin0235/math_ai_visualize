@@ -146,6 +146,11 @@ select {
   margin-top: 4px;
 }
 
+.mobile-renderer-warning,
+.mobile-scroll-notice {
+  display: none;
+}
+
 /* GLOBAL HEADER */
 .global-header {
   display: flex;
@@ -707,6 +712,44 @@ button:disabled {
   justify-content: center;
 }
 
+.geogebra-tools {
+  display: grid;
+  gap: 10px;
+  padding: 12px 16px 16px;
+  border-top: 1px solid #e5e5e5;
+}
+
+.geogebra-status,
+.geogebra-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  color: #666666;
+  font-size: 0.86rem;
+  font-weight: 500;
+}
+
+.geogebra-import {
+  display: grid;
+  gap: 10px;
+}
+
+.geogebra-import[open] {
+  padding-top: 4px;
+}
+
+.geogebra-import summary {
+  cursor: pointer;
+  color: #111111;
+  font-weight: 600;
+}
+
+.geogebra-import textarea {
+  min-height: 84px;
+  font-size: 0.82rem;
+}
+
 .empty-state,
 .error-box,
 .warning-box {
@@ -1176,6 +1219,60 @@ pre {
 @media (max-width: 900px) {
   .header-subtitle {
     display: none;
+  }
+
+  .mobile-renderer-warning {
+    position: fixed;
+    inset: 0;
+    z-index: 300;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    background: rgba(15, 23, 42, 0.62);
+    backdrop-filter: blur(8px);
+  }
+
+  .mobile-renderer-warning-card {
+    width: min(420px, 100%);
+    border: 1px solid #e5e7eb;
+    border-radius: 24px;
+    padding: 22px;
+    background: #ffffff;
+    color: #111827;
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.28);
+  }
+
+  .mobile-renderer-warning-card h2 {
+    margin: 0 0 10px;
+    font-size: 1.2rem;
+  }
+
+  .mobile-renderer-warning-card p {
+    margin: 0 0 10px;
+    color: #475569;
+    line-height: 1.5;
+  }
+
+  .mobile-renderer-warning-card .primary-button {
+    width: 100%;
+    max-width: 100%;
+    margin-top: 8px;
+    white-space: normal;
+  }
+
+  .mobile-scroll-notice {
+    display: block;
+    width: 100%;
+    border: 1px solid #bfdbfe;
+    border-radius: 16px;
+    padding: 12px 14px;
+    background: #eff6ff;
+    color: #64748b;
+    font-size: 0.92rem;
+    font-weight: 500;
+    text-align: center;
+    box-shadow: 0 10px 28px rgba(30, 64, 175, 0.12);
   }
 
   .app-shell {
