@@ -1,0 +1,8 @@
+{
+  "buildCommand": "cd frontend && npm install && npm run build",
+  "outputDirectory": "frontend/dist",
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "https://math-renderer-api.sin235.live/api/$1" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}
