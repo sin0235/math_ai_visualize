@@ -7,6 +7,9 @@ Requires-Dist: fastapi>=0.115.0
 Requires-Dist: uvicorn[standard]>=0.30.0
 Requires-Dist: pydantic>=2.8.0
 Requires-Dist: pydantic-settings>=2.4.0
+Requires-Dist: email-validator>=2.2.0
 Requires-Dist: httpx>=0.27.0
+Requires-Dist: aiosqlite>=0.20.0
+Requires-Dist: passlib[bcrypt]>=1.7.4
 Provides-Extra: dev
 Requires-Dist: pytest>=8.3.0; extra == "dev"
