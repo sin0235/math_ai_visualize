@@ -13,6 +13,35 @@ export interface HealthResponse {
   app: string;
 }
 
+export interface UserResponse {
+  id: string;
+  email: string;
+  created_at: string;
+}
+
+export interface AuthResponse {
+  user: UserResponse;
+}
+
+export interface RenderHistoryItem {
+  id: string;
+  problem_text: string;
+  provider?: string | null;
+  model?: string | null;
+  created_at: string;
+}
+
+export interface RenderHistoryDetail extends RenderHistoryItem {
+  scene: MathScene;
+  payload: RenderResponse['payload'];
+  warnings: string[];
+}
+
+export interface UserSettingsResponse {
+  settings?: RuntimeSettings | null;
+  updated_at?: string | null;
+}
+
 export class ApiError extends Error {
   details: string[];
 
@@ -37,6 +66,57 @@ export async function getSettingsDefaults(): Promise<SettingsDefaults> {
   return requestJson('/api/settings/defaults', undefined, 'Không thể đọc cấu hình backend.');
 }
 
+export async function getCurrentUser(): Promise<AuthResponse> {
+  return requestJson('/api/auth/me', { credentials: 'include' }, 'Không thể đọc phiên đăng nhập.');
+}
+
+export async function login(email: string, password: string): Promise<AuthResponse> {
+  return requestJson('/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ email, password }),
+  }, 'Không thể đăng nhập.');
+}
+
+export async function register(email: string, password: string): Promise<AuthResponse> {
+  return requestJson('/api/auth/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ email, password }),
+  }, 'Không thể tạo tài khoản.');
+}
+
+export async function logout(): Promise<void> {
+  await requestVoid('/api/auth/logout', { method: 'POST', credentials: 'include' }, 'Không thể đăng xuất.');
+}
+
+export async function getUserSettings(): Promise<UserSettingsResponse> {
+  return requestJson('/api/user/settings', { credentials: 'include' }, 'Không thể tải cấu hình cá nhân.');
+}
+
+export async function saveUserSettings(settings: RuntimeSettings): Promise<UserSettingsResponse> {
+  return requestJson('/api/user/settings', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ settings: compactStoredSettings(settings) }),
+  }, 'Không thể lưu cấu hình cá nhân.');
+}
+
+export async function getRenderHistory(): Promise<RenderHistoryItem[]> {
+  return requestJson('/api/history', { credentials: 'include' }, 'Không thể tải lịch sử dựng hình.');
+}
+
+export async function getRenderHistoryDetail(id: string): Promise<RenderHistoryDetail> {
+  return requestJson(`/api/history/${encodeURIComponent(id)}`, { credentials: 'include' }, 'Không thể tải chi tiết lịch sử.');
+}
+
+export async function deleteRenderHistory(id: string): Promise<void> {
+  await requestVoid(`/api/history/${encodeURIComponent(id)}`, { method: 'DELETE', credentials: 'include' }, 'Không thể xoá lịch sử.');
+}
+
 export async function renderProblem(
   problemText: string,
   preferredAiProvider?: string,
@@ -48,6 +128,7 @@ export async function renderProblem(
   return requestJson('/api/render', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
     body: JSON.stringify({
       problem_text: problemText,
       preferred_ai_provider: preferredAiProvider,
@@ -94,6 +175,7 @@ export async function renderEditedScene(scene: MathScene, advancedSettings: Adva
   return requestJson('/api/render/scene', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
     body: JSON.stringify({
       scene,
       advanced_settings: advancedSettings,
@@ -112,11 +194,22 @@ async function requestJson<T>(path: string, init: RequestInit | undefined, fallb
   }
 }
 
+async function requestVoid(path: string, init: RequestInit | undefined, fallbackMessage: string): Promise<void> {
+  try {
+    const response = await fetch(apiUrl(path), init);
+    if (!response.ok) throw await parseApiError(response, `${fallbackMessage} HTTP ${response.status}`);
+  } catch (caught) {
+    if (caught instanceof ApiError) throw caught;
+    throw networkApiError(caught, fallbackMessage);
+  }
+}
+
 function networkApiError(caught: unknown, fallbackMessage: string) {
   if (caught instanceof TypeError) {
     return new ApiError('Không kết nối được backend.', [
       `Frontend đang gọi API tại ${API_BASE_URL || 'cùng domain hiện tại'}.`,
       'Nếu deploy khác domain, hãy build frontend với VITE_API_BASE_URL trỏ tới backend.',
+      'Nếu dùng đăng nhập khác domain, backend phải bật CORS credentials và frontend gọi API qua HTTPS.',
       'Nếu backend đã nhận OPTIONS nhưng trả 400, hãy thêm domain frontend vào CORS_ORIGINS và restart backend.',
       'Kiểm tra backend còn chạy và HTTPS/domain API truy cập được từ trình duyệt.',
     ]);
@@ -225,6 +318,16 @@ function compactRouter9Settings(settings: RuntimeSettings) {
   }
 
   return compact;
+}
+
+function compactStoredSettings(settings: RuntimeSettings): RuntimeSettings {
+  return {
+    ...settings,
+    openrouter: { ...settings.openrouter, api_key: '' },
+    nvidia: { ...settings.nvidia, api_key: '' },
+    ollama: { ...settings.ollama, api_key: '' },
+    router9: { ...settings.router9, api_key: '' },
+  };
 }
 
 function cleanText(value: string) {

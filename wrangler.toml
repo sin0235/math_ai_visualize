@@ -1,0 +1,8 @@
+name = "hinh"
+compatibility_date = "2026-05-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "hinh"
+database_id = "a5632930-0dcf-4f1e-8717-86001cdb66d3"
+migrations_dir = "migrations"

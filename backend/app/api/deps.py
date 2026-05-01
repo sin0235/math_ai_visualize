@@ -1,0 +1,32 @@
+from fastapi import Cookie, Depends, HTTPException, status
+
+from app.db.models import UserRecord
+from app.db.session import DatabaseClient, get_database
+from app.repositories.auth import SESSION_COOKIE_NAME, SessionRepository, UserRepository
+
+
+async def get_current_user(
+    hinh_session: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+    db: DatabaseClient = Depends(get_database),
+) -> UserRecord:
+    if not hinh_session:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Bạn chưa đăng nhập.")
+    session = await SessionRepository(db).find_by_token(hinh_session)
+    if session is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Phiên đăng nhập đã hết hạn.")
+    user = await UserRepository(db).find_by_id(session.user_id)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Tài khoản không còn tồn tại.")
+    return user
+
+
+async def get_optional_current_user(
+    hinh_session: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+    db: DatabaseClient = Depends(get_database),
+) -> UserRecord | None:
+    if not hinh_session:
+        return None
+    session = await SessionRepository(db).find_by_token(hinh_session)
+    if session is None:
+        return None
+    return await UserRepository(db).find_by_id(session.user_id)

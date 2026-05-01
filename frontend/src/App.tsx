@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-import { ApiError, getHealth, getSettingsDefaults, ocrImage, renderEditedScene, renderProblem } from './api/client';
+import { ApiError, deleteRenderHistory, getCurrentUser, getHealth, getRenderHistory, getRenderHistoryDetail, getSettingsDefaults, getUserSettings, login, logout, ocrImage, register, renderEditedScene, renderProblem, saveUserSettings, type RenderHistoryItem, type UserResponse } from './api/client';
 import { defaultAdvancedSettings, ProblemInput, staticModelOptions, type ModelOption } from './components/ProblemInput';
 import { GeneralSettingsPanel } from './components/GeneralSettingsPanel';
 import { HomePage } from './components/HomePage';
@@ -55,6 +55,10 @@ export default function App() {
   const [mobileWarningDismissed, setMobileWarningDismissed] = useState(readMobileWarningDismissed);
   const [sceneEditorOpen, setSceneEditorOpen] = useState(false);
   const [editorButtonTop, setEditorButtonTop] = useState(220);
+  const [user, setUser] = useState<UserResponse | null>(null);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [historyItems, setHistoryItems] = useState<RenderHistoryItem[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const resultAnchorRef = useRef<HTMLDivElement | null>(null);
   const editorButtonDragRef = useRef<{ pointerId: number; startY: number; startTop: number; moved: boolean } | null>(null);
 
@@ -92,6 +96,30 @@ export default function App() {
   useEffect(() => {
     window.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify({ version: SETTINGS_STORAGE_VERSION, settings: sanitizeSettingsForStorage(runtimeSettings) }));
   }, [runtimeSettings]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getCurrentUser()
+      .then(async ({ user }) => {
+        if (cancelled) return;
+        setUser(user);
+        await loadRemoteWorkspace(user);
+      })
+      .catch(() => {
+        if (!cancelled) setUser(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    const timer = window.setTimeout(() => {
+      saveUserSettings(sanitizeSettingsForStorage(runtimeSettings)).catch(() => undefined);
+    }, 600);
+    return () => window.clearTimeout(timer);
+  }, [runtimeSettings, user]);
 
   useEffect(() => {
     if (!notification) return;
@@ -186,6 +214,7 @@ export default function App() {
     try {
       const response = await renderProblem(problemText, preferredAiProvider, preferredAiModel, advancedSettings, preferredRenderer, runtimeSettings);
       setResult(response);
+      if (user) void refreshHistory();
       scrollToResultOnMobile();
       showWarnings(response.warnings);
     } catch (caught) {
@@ -222,11 +251,90 @@ export default function App() {
     window.requestAnimationFrame(() => scrollToResult());
   }
 
+  async function handleLogin(email: string, password: string) {
+    setAuthLoading(true);
+    try {
+      const response = await login(email, password);
+      setUser(response.user);
+      await loadRemoteWorkspace(response.user);
+      setActiveView('render');
+    } finally {
+      setAuthLoading(false);
+    }
+  }
+
+  async function handleRegister(email: string, password: string) {
+    setAuthLoading(true);
+    try {
+      const response = await register(email, password);
+      setUser(response.user);
+      await saveUserSettings(sanitizeSettingsForStorage(runtimeSettings));
+      await refreshHistory();
+      setActiveView('render');
+    } finally {
+      setAuthLoading(false);
+    }
+  }
+
+  async function handleLogout() {
+    setAuthLoading(true);
+    try {
+      await logout();
+      setUser(null);
+      setHistoryItems([]);
+    } finally {
+      setAuthLoading(false);
+    }
+  }
+
+  async function loadRemoteWorkspace(_: UserResponse) {
+    const [remoteSettings] = await Promise.all([
+      getUserSettings().catch(() => null),
+      refreshHistory(),
+    ]);
+    if (remoteSettings?.settings) {
+      setRuntimeSettings(loadRemoteSettings(remoteSettings.settings));
+    }
+  }
+
+  async function refreshHistory() {
+    setHistoryLoading(true);
+    try {
+      setHistoryItems(await getRenderHistory());
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  async function openHistoryItem(id: string) {
+    try {
+      const detail = await getRenderHistoryDetail(id);
+      setProblemText(detail.problem_text);
+      setResult({ scene: detail.scene, payload: detail.payload, warnings: detail.warnings });
+      setActiveView('render');
+      scrollToResultOnMobile();
+    } catch (caught) {
+      const apiError = toApiError(caught, 'Không thể mở lịch sử dựng hình.');
+      showApiError('Không thể mở lịch sử', apiError, 'Hãy đăng nhập lại hoặc thử tải lại trang.');
+    }
+  }
+
+  async function removeHistoryItem(id: string) {
+    try {
+      await deleteRenderHistory(id);
+      setHistoryItems((current) => current.filter((item) => item.id !== id));
+    } catch (caught) {
+      const apiError = toApiError(caught, 'Không thể xoá lịch sử dựng hình.');
+      showApiError('Không thể xoá lịch sử', apiError, 'Hãy thử lại sau.');
+    }
+  }
+
   async function handleSceneEdit(scene: MathScene) {
     setEditorSaving(true);
     try {
       const response = await renderEditedScene(scene, lastAdvancedSettings);
       setResult(response);
+      if (user) void refreshHistory();
       showWarnings(response.warnings);
     } catch (caught) {
       const apiError = toApiError(caught, 'Không thể lưu chỉnh sửa hình.');
@@ -385,7 +493,7 @@ export default function App() {
           </button>
           <button type="button" className={`nav-item ${activeView === 'login' ? 'active' : ''}`} onClick={() => setActiveView('login')}>
             <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path><path d="M10 17l5-5-5-5"></path><path d="M15 12H3"></path></svg>
-            Đăng nhập
+            {user ? user.email : 'Đăng nhập'}
           </button>
           <button type="button" className={`nav-item ${activeView === 'settings' ? 'active' : ''}`} onClick={() => setActiveView('settings')}>
             <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0A1.65 1.65 0 0 0 10.91 3H11a2 2 0 1 1 4 0h.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0A1.65 1.65 0 0 0 21 10.91V11a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
@@ -425,6 +533,7 @@ export default function App() {
               }}
               onSubmit={handleSubmit}
             />
+            {user && <HistoryPanel items={historyItems} loading={historyLoading} onOpen={openHistoryItem} onDelete={removeHistoryItem} />}
             {result && <button type="button" className="mobile-scroll-notice" onClick={scrollToResult}>↓ Xem hình vừa dựng</button>}
             <div className="result-area" ref={resultAnchorRef}>
               <div className="render-stage">
@@ -477,7 +586,16 @@ export default function App() {
           </section>
         )}
         {activeView === 'login' && (
-          <LoginPage logoUrl={logoUrl} onBackHome={() => setActiveView('home')} onContinueAsGuest={() => setActiveView('render')} />
+          <LoginPage
+            logoUrl={logoUrl}
+            user={user}
+            authLoading={authLoading}
+            onBackHome={() => setActiveView('home')}
+            onContinueAsGuest={() => setActiveView('render')}
+            onLogin={handleLogin}
+            onRegister={handleRegister}
+            onLogout={handleLogout}
+          />
         )}
         {activeView === 'settings' && (
           <section className="settings-page">
@@ -503,6 +621,38 @@ export default function App() {
       </footer>
     </>
   );
+}
+
+function HistoryPanel({ items, loading, onOpen, onDelete }: { items: RenderHistoryItem[]; loading: boolean; onOpen: (id: string) => void; onDelete: (id: string) => void }) {
+  return (
+    <section className="history-panel">
+      <div className="history-panel-header">
+        <strong>Lịch sử dựng hình</strong>
+        <span>{loading ? 'Đang tải...' : `${items.length} mục`}</span>
+      </div>
+      {items.length === 0 ? (
+        <p>Render mới sau khi đăng nhập sẽ được lưu vào database.</p>
+      ) : (
+        <div className="history-list">
+          {items.map((item) => (
+            <article className="history-item" key={item.id}>
+              <button type="button" onClick={() => onOpen(item.id)}>
+                <strong>{item.problem_text}</strong>
+                <span>{formatHistoryDate(item.created_at)}{item.model ? ` · ${item.model}` : ''}</span>
+              </button>
+              <button type="button" className="history-delete" onClick={() => onDelete(item.id)} aria-label="Xoá lịch sử">×</button>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function formatHistoryDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' });
 }
 
 function MobileRendererWarning({ dismissed, onDismiss }: { dismissed: boolean; onDismiss: () => void }) {
@@ -622,8 +772,22 @@ function readMobileWarningDismissed() {
 
 function loadStoredSettings(saved: string): RuntimeSettings {
   const parsed = JSON.parse(saved) as { version?: number; settings?: Partial<RuntimeSettings> } & Partial<RuntimeSettings>;
-  const rawSettings = parsed.settings ?? parsed;
-  const next: RuntimeSettings = {
+  const next = mergeRuntimeSettingsShape(parsed.settings ?? parsed);
+
+  if (parsed.version !== SETTINGS_STORAGE_VERSION) {
+    dropLegacyDefaults(next);
+  }
+  dropLegacyOcrDefaults(next);
+
+  return dropApiKeys(next);
+}
+
+function loadRemoteSettings(settings: Partial<RuntimeSettings>): RuntimeSettings {
+  return dropApiKeys(mergeRuntimeSettingsShape(settings));
+}
+
+function mergeRuntimeSettingsShape(rawSettings: Partial<RuntimeSettings>): RuntimeSettings {
+  return {
     ...defaultRuntimeSettings,
     ...rawSettings,
     openrouter: { ...defaultRuntimeSettings.openrouter, ...rawSettings.openrouter },
@@ -632,13 +796,6 @@ function loadStoredSettings(saved: string): RuntimeSettings {
     router9: { ...defaultRuntimeSettings.router9, ...rawSettings.router9 },
     ocr: { ...defaultRuntimeSettings.ocr, ...rawSettings.ocr },
   };
-
-  if (parsed.version !== SETTINGS_STORAGE_VERSION) {
-    dropLegacyDefaults(next);
-  }
-  dropLegacyOcrDefaults(next);
-
-  return dropApiKeys(next);
 }
 
 function sanitizeSettingsForStorage(settings: RuntimeSettings): RuntimeSettings {

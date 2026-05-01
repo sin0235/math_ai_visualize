@@ -1,17 +1,38 @@
 import { useState } from 'react';
 
+import type { UserResponse } from '../api/client';
+
 interface LoginPageProps {
   logoUrl: string;
+  user: UserResponse | null;
+  authLoading: boolean;
   onBackHome: () => void;
   onContinueAsGuest: () => void;
+  onLogin: (email: string, password: string) => Promise<void>;
+  onRegister: (email: string, password: string) => Promise<void>;
+  onLogout: () => Promise<void>;
 }
 
-export function LoginPage({ logoUrl, onBackHome, onContinueAsGuest }: LoginPageProps) {
+export function LoginPage({ logoUrl, user, authLoading, onBackHome, onContinueAsGuest, onLogin, onRegister, onLogout }: LoginPageProps) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [mode, setMode] = useState<'login' | 'register'>('login');
   const [message, setMessage] = useState('');
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setMessage('Tính năng tài khoản sẽ được kết nối sau. Bạn vẫn có thể tiếp tục dựng hình ngay.');
+    setMessage('');
+    try {
+      if (mode === 'login') {
+        await onLogin(email, password);
+        setMessage('Đăng nhập thành công. Lịch sử dựng hình và cấu hình cá nhân đã được bật.');
+      } else {
+        await onRegister(email, password);
+        setMessage('Tạo tài khoản thành công. Bạn có thể lưu lịch sử dựng hình từ bây giờ.');
+      }
+    } catch (caught) {
+      setMessage(caught instanceof Error ? caught.message : 'Không thể xử lý đăng nhập.');
+    }
   }
 
   return (
@@ -29,25 +50,37 @@ export function LoginPage({ logoUrl, onBackHome, onContinueAsGuest }: LoginPageP
         </div>
 
         <form className="login-form" onSubmit={handleSubmit}>
-          <span className="home-eyebrow">Đăng nhập</span>
-          <h2>Quay lại workspace của bạn</h2>
-          <p className="field-hint">Đăng nhập sẽ dùng cho lịch sử dựng hình và bộ cấu hình cá nhân. Hiện tại bạn có thể tiếp tục không cần tài khoản.</p>
-          <label className="field-label">
-            Email
-            <input type="email" placeholder="you@example.com" autoComplete="email" />
-          </label>
-          <label className="field-label">
-            Mật khẩu
-            <input type="password" placeholder="••••••••" autoComplete="current-password" />
-          </label>
-          <label className="checkbox-label">
-            <input type="checkbox" />
-            Ghi nhớ phiên đăng nhập
-          </label>
-          <div className="auth-actions">
-            <button type="submit">Đăng nhập</button>
-            <button type="button" className="secondary-button" onClick={onContinueAsGuest}>Tiếp tục không cần đăng nhập</button>
-          </div>
+          <span className="home-eyebrow">{user ? 'Tài khoản' : mode === 'login' ? 'Đăng nhập' : 'Tạo tài khoản'}</span>
+          <h2>{user ? 'Workspace của bạn đã được đồng bộ' : 'Quay lại workspace của bạn'}</h2>
+          {user ? (
+            <>
+              <p className="field-hint">Bạn đang đăng nhập bằng <strong>{user.email}</strong>. Render mới sẽ được lưu vào Cloudflare D1 nếu backend đang dùng D1.</p>
+              <div className="auth-actions">
+                <button type="button" onClick={onContinueAsGuest}>Vào workspace</button>
+                <button type="button" className="secondary-button" onClick={onLogout} disabled={authLoading}>Đăng xuất</button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="field-hint">Đăng nhập để lưu lịch sử dựng hình và bộ cấu hình cá nhân. API key provider không được lưu lên server.</p>
+              <label className="field-label">
+                Email
+                <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" autoComplete="email" required />
+              </label>
+              <label className="field-label">
+                Mật khẩu
+                <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="••••••••" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} minLength={8} required />
+              </label>
+              <div className="auth-mode-toggle" role="group" aria-label="Chọn chế độ tài khoản">
+                <button type="button" className={mode === 'login' ? 'active' : ''} onClick={() => setMode('login')}>Đăng nhập</button>
+                <button type="button" className={mode === 'register' ? 'active' : ''} onClick={() => setMode('register')}>Tạo tài khoản</button>
+              </div>
+              <div className="auth-actions">
+                <button type="submit" disabled={authLoading}>{authLoading ? 'Đang xử lý...' : mode === 'login' ? 'Đăng nhập' : 'Tạo tài khoản'}</button>
+                <button type="button" className="secondary-button" onClick={onContinueAsGuest}>Tiếp tục không cần đăng nhập</button>
+              </div>
+            </>
+          )}
           <button type="button" className="link-button" onClick={onBackHome}>Quay về trang chủ</button>
           {message && <p className="login-message">{message}</p>}
         </form>

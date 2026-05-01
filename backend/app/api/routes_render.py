@@ -1,6 +1,10 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import ValidationError
 
+from app.api.deps import get_optional_current_user
+from app.db.models import UserRecord
+from app.db.session import DatabaseClient, get_database
+from app.repositories.history import RenderHistoryRepository
 from app.schemas.scene import RenderRequest, RenderResponse, SceneRenderRequest
 from app.services.extractor import extract_scene
 from app.services.geometry_engine import normalize_scene
@@ -10,7 +14,11 @@ router = APIRouter(prefix="/api", tags=["render"])
 
 
 @router.post("/render", response_model=RenderResponse)
-async def render_problem(request: RenderRequest) -> RenderResponse:
+async def render_problem(
+    request: RenderRequest,
+    user: UserRecord | None = Depends(get_optional_current_user),
+    db: DatabaseClient = Depends(get_database),
+) -> RenderResponse:
     try:
         scene, warnings = await extract_scene(
             request.problem_text,
@@ -36,15 +44,25 @@ async def render_problem(request: RenderRequest) -> RenderResponse:
     payload = build_render_payload(scene, request.advanced_settings)
     if scene.topic == "unknown":
         warnings.append("Chưa nhận diện được dạng toán, hãy thử đề cụ thể hơn.")
-    return RenderResponse(scene=scene, payload=payload, warnings=warnings)
+    response = RenderResponse(scene=scene, payload=payload, warnings=warnings)
+    if user is not None:
+        await RenderHistoryRepository(db).create(user.id, request.problem_text, request.preferred_ai_provider, request.preferred_ai_model, response)
+    return response
 
 
 @router.post("/render/scene", response_model=RenderResponse)
-async def render_scene(request: SceneRenderRequest) -> RenderResponse:
+async def render_scene(
+    request: SceneRenderRequest,
+    user: UserRecord | None = Depends(get_optional_current_user),
+    db: DatabaseClient = Depends(get_database),
+) -> RenderResponse:
     scene = normalize_scene(request.scene, request.advanced_settings)
     payload = build_render_payload(scene, request.advanced_settings)
     warnings = []
     computed = (payload.three_scene or {}).get("computed") if payload.three_scene else None
     if isinstance(computed, dict):
         warnings = [warning for warning in computed.get("warnings", []) if isinstance(warning, str)]
-    return RenderResponse(scene=scene, payload=payload, warnings=warnings)
+    response = RenderResponse(scene=scene, payload=payload, warnings=warnings)
+    if user is not None:
+        await RenderHistoryRepository(db).create(user.id, scene.problem_text, None, None, response)
+    return response

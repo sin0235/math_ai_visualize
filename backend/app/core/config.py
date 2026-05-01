@@ -36,6 +36,12 @@ class Settings(BaseSettings):
     router9_only: bool = False
     router9_allowed_models: list[str] = []
     ai_provider: str = "auto"
+    database_backend: str = "sqlite"
+    sqlite_path: str = "backend/.data/hinh.db"
+    d1_account_id: str | None = None
+    d1_database_id: str | None = None
+    d1_api_token: str | None = None
+    session_cookie_secure: bool = False
 
     model_config = SettingsConfigDict(env_file=(".env", "backend/.env"), env_file_encoding="utf-8")
 
