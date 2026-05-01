@@ -57,10 +57,18 @@ export class ApiError extends Error {
   }
 }
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') ?? '';
+const API_BASE_URL = normalizeApiBaseUrl(import.meta.env.VITE_API_BASE_URL);
 
 function apiUrl(path: string) {
   return `${API_BASE_URL}${path}`;
+}
+
+function normalizeApiBaseUrl(value: string | undefined) {
+  const baseUrl = value?.trim().replace(/\/$/, '') ?? '';
+  if (!baseUrl) return '';
+  if (baseUrl.startsWith('http://') || baseUrl.startsWith('https://')) return baseUrl;
+  if (baseUrl.startsWith('/')) return baseUrl;
+  return `https://${baseUrl}`;
 }
 
 export async function getHealth(): Promise<HealthResponse> {
