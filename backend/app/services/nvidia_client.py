@@ -1,4 +1,5 @@
 import json
+import time
 
 import httpx
 
@@ -49,9 +50,14 @@ class NvidiaClient:
         url = f"{self.settings.nvidia_base_url.rstrip('/')}/chat/completions"
 
         try:
+            started_at = time.perf_counter()
+            print(f"[AI API][NVIDIA][scene] POST {url} model={payload['model']} problem_chars={len(problem_text)} thinking={self.thinking}")
             async with httpx.AsyncClient(timeout=60) as client:
                 response = await client.post(url, headers=headers, json=payload)
+                elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+                print(f"[AI API][NVIDIA][scene] HTTP {response.status_code} elapsed_ms={elapsed_ms} response_chars={len(response.text)}")
                 if response.status_code >= 400:
+                    print(f"[AI API][NVIDIA][scene][error] {_format_nvidia_error(response)}")
                     raise RuntimeError(_format_nvidia_error(response))
         except httpx.HTTPError as error:
             message = str(error) or error.__class__.__name__
@@ -62,7 +68,9 @@ class NvidiaClient:
         if not isinstance(content, str) or not content.strip():
             raise RuntimeError("NVIDIA không trả về nội dung JSON trong choices[0].message.content.")
         try:
-            return json.loads(_strip_json_fences(content))
+            scene_json = json.loads(_strip_json_fences(content))
+            print(f"[AI API][NVIDIA][scene][parsed] {json.dumps(scene_json, ensure_ascii=False)[:2000]}")
+            return scene_json
         except json.JSONDecodeError as error:
             raise RuntimeError(f"NVIDIA trả về JSON không hợp lệ: {error.msg}") from error
 
@@ -96,9 +104,14 @@ class NvidiaClient:
         url = f"{self.settings.nvidia_base_url.rstrip('/')}/chat/completions"
 
         try:
+            started_at = time.perf_counter()
+            print(f"[AI API][NVIDIA][ocr] POST {url} model={payload['model']} image_chars={len(image_data_url)}")
             async with httpx.AsyncClient(timeout=120) as client:
                 response = await client.post(url, headers=headers, json=payload)
+                elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+                print(f"[AI API][NVIDIA][ocr] HTTP {response.status_code} elapsed_ms={elapsed_ms} response_chars={len(response.text)}")
                 if response.status_code >= 400:
+                    print(f"[AI API][NVIDIA][ocr][error] {_format_nvidia_error(response)}")
                     raise RuntimeError(_format_nvidia_error(response))
         except httpx.HTTPError as error:
             message = str(error) or error.__class__.__name__
@@ -108,7 +121,9 @@ class NvidiaClient:
         content = message.get("content")
         if not isinstance(content, str) or not content.strip():
             raise RuntimeError("NVIDIA không trả về nội dung OCR trong choices[0].message.content.")
-        return _strip_text_fences(content)
+        text = _strip_text_fences(content)
+        print(f"[AI API][NVIDIA][ocr][result] {text[:1000]}")
+        return text
 
 
 def _extract_message(response: httpx.Response) -> dict:

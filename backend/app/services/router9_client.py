@@ -1,4 +1,5 @@
 import json
+import time
 from typing import Any
 
 import httpx
@@ -74,7 +75,9 @@ class Router9Client:
         if not isinstance(content, str) or not content.strip():
             raise RuntimeError("9router không trả về nội dung JSON trong choices[0].message.content.")
         try:
-            return json.loads(_strip_json_fences(content))
+            scene_json = json.loads(_strip_json_fences(content))
+            print(f"[AI API][9router][scene][parsed] {json.dumps(scene_json, ensure_ascii=False)[:2000]}")
+            return scene_json
         except json.JSONDecodeError as error:
             raise RuntimeError(f"9router trả về JSON không hợp lệ: {error.msg}") from error
 
@@ -108,15 +111,24 @@ class Router9Client:
             raise RuntimeError("9router response không đúng định dạng choices[0].message.content") from error
         if not isinstance(content, str) or not content.strip():
             raise RuntimeError("9router không trả về nội dung OCR trong choices[0].message.content.")
-        return _strip_text_fences(content)
+        text = _strip_text_fences(content)
+        print(f"[AI API][9router][ocr][result] {text[:1000]}")
+        return text
 
     async def _post_chat(self, payload: dict) -> httpx.Response:
         headers = _build_headers(self.settings)
         url = f"{self.settings.router9_base_url.rstrip('/')}/chat/completions"
         try:
+            started_at = time.perf_counter()
+            kind = "ocr" if any(isinstance(message.get("content"), list) for message in payload.get("messages", []) if isinstance(message, dict)) else "scene"
+            input_chars = sum(len(message.get("content", "")) for message in payload.get("messages", []) if isinstance(message, dict) and isinstance(message.get("content"), str))
+            print(f"[AI API][9router][{kind}] POST {url} model={payload.get('model')} input_chars={input_chars}")
             async with httpx.AsyncClient(timeout=120) as client:
                 response = await client.post(url, headers=headers, json=payload)
+                elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+                print(f"[AI API][9router][{kind}] HTTP {response.status_code} elapsed_ms={elapsed_ms} response_chars={len(response.text)}")
                 if response.status_code >= 400:
+                    print(f"[AI API][9router][{kind}][error] {_format_router9_error(response)}")
                     raise RuntimeError(_format_router9_error(response))
                 return response
         except httpx.HTTPError as error:
