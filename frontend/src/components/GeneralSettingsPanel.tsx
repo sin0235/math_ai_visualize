@@ -140,7 +140,7 @@ export function GeneralSettingsPanel({ value, defaults, onChange, onReset }: Gen
 
       <section className="panel settings-section">
         <div className="panel-title">Storage</div>
-        <p className="field-hint">Settings are saved in localStorage only; API keys are not written to backend .env files.</p>
+        <p className="field-hint">Non-secret settings are saved locally and sync to your account after login. API key overrides stay temporary and are never saved to the database or backend .env files.</p>
         <button type="button" className="secondary-button settings-reset" onClick={onReset}>Reset to defaults</button>
       </section>
     </section>

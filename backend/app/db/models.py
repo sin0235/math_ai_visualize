@@ -34,6 +34,11 @@ class RenderJobRecord:
     payload_json: str
     warnings_json: str
     created_at: str
+    render_request_json: str | None = None
+    advanced_settings_json: str | None = None
+    runtime_settings_json: str | None = None
+    source_type: str = "problem"
+    renderer: str | None = None
 
 
 @dataclass(frozen=True)

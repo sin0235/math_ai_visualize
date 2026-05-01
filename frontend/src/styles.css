@@ -274,8 +274,21 @@ select {
   overscroll-behavior: contain;
 }
 
-.history-panel {
+.history-drawer-wrap {
   grid-column: 1 / -1;
+  display: grid;
+  justify-items: end;
+  gap: 10px;
+}
+
+.history-toggle {
+  width: fit-content;
+}
+
+.history-panel {
+  width: min(100%, 780px);
+  max-height: 320px;
+  overflow: auto;
   border: 1px solid #dbeafe;
   border-radius: 18px;
   padding: 14px;
@@ -298,7 +311,7 @@ select {
 
 .history-list {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: 1fr;
   gap: 10px;
   margin-top: 10px;
 }

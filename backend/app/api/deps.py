@@ -1,5 +1,8 @@
-from fastapi import Cookie, Depends, HTTPException, status
+from urllib.parse import urlparse
 
+from fastapi import Cookie, Depends, HTTPException, Request, status
+
+from app.core.config import Settings, get_settings
 from app.db.models import UserRecord
 from app.db.session import DatabaseClient, get_database
 from app.repositories.auth import SESSION_COOKIE_NAME, SessionRepository, UserRepository
@@ -30,3 +33,28 @@ async def get_optional_current_user(
     if session is None:
         return None
     return await UserRepository(db).find_by_id(session.user_id)
+
+
+async def require_trusted_origin(
+    request: Request,
+    hinh_session: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+    settings: Settings = Depends(get_settings),
+) -> None:
+    if not hinh_session or request.method not in {"POST", "PUT", "PATCH", "DELETE"}:
+        return
+    origin = request.headers.get("origin")
+    referer = request.headers.get("referer")
+    source = origin or referer
+    if not source:
+        return
+    if origin_allowed(source, settings.cors_origins):
+        return
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Nguồn yêu cầu không được phép dùng phiên đăng nhập này.")
+
+
+def origin_allowed(source: str, allowed_origins: list[str]) -> bool:
+    parsed_source = urlparse(source)
+    if not parsed_source.scheme or not parsed_source.netloc:
+        return False
+    source_origin = f"{parsed_source.scheme}://{parsed_source.netloc}"
+    return "*" in allowed_origins or source_origin in allowed_origins

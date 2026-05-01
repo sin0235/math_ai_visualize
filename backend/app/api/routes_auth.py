@@ -2,7 +2,7 @@ from sqlite3 import IntegrityError
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_trusted_origin
 from app.core.config import Settings, get_settings
 from app.db.models import UserRecord
 from app.db.session import DatabaseClient, get_database
@@ -38,11 +38,16 @@ async def login(request: AuthRequest, response: Response, db: DatabaseClient = D
     return AuthResponse(user=user_response(user))
 
 
-@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
-async def logout(response: Response, hinh_session: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME), db: DatabaseClient = Depends(get_database)) -> Response:
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_trusted_origin)])
+async def logout(
+    response: Response,
+    hinh_session: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+    db: DatabaseClient = Depends(get_database),
+    settings: Settings = Depends(get_settings),
+) -> Response:
     if hinh_session:
         await SessionRepository(db).delete_by_token(hinh_session)
-    response.delete_cookie(SESSION_COOKIE_NAME, path="/")
+    response.delete_cookie(SESSION_COOKIE_NAME, **cookie_options(settings, include_httponly=False))
     return response
 
 
@@ -56,11 +61,21 @@ def set_session_cookie(response: Response, token: str, settings: Settings) -> No
         SESSION_COOKIE_NAME,
         token,
         max_age=60 * 60 * 24 * 30,
-        httponly=True,
-        secure=settings.session_cookie_secure,
-        samesite="lax",
-        path="/",
+        **cookie_options(settings, include_httponly=True),
     )
+
+
+def cookie_options(settings: Settings, include_httponly: bool) -> dict:
+    options = {
+        "secure": settings.session_cookie_secure,
+        "samesite": settings.session_cookie_samesite,
+        "path": "/",
+    }
+    if include_httponly:
+        options["httponly"] = True
+    if settings.session_cookie_domain:
+        options["domain"] = settings.session_cookie_domain
+    return options
 
 
 def user_response(user: UserRecord) -> UserResponse:

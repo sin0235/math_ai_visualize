@@ -29,12 +29,17 @@ export interface RenderHistoryItem {
   provider?: string | null;
   model?: string | null;
   created_at: string;
+  source_type: string;
+  renderer?: string | null;
 }
 
 export interface RenderHistoryDetail extends RenderHistoryItem {
   scene: MathScene;
   payload: RenderResponse['payload'];
   warnings: string[];
+  render_request?: Record<string, unknown> | null;
+  advanced_settings?: Record<string, unknown> | null;
+  runtime_settings?: Record<string, unknown> | null;
 }
 
 export interface UserSettingsResponse {

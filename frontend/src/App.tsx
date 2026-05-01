@@ -59,6 +59,8 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(false);
   const [historyItems, setHistoryItems] = useState<RenderHistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [remoteSettingsHydrated, setRemoteSettingsHydrated] = useState(false);
   const resultAnchorRef = useRef<HTMLDivElement | null>(null);
   const editorButtonDragRef = useRef<{ pointerId: number; startY: number; startTop: number; moved: boolean } | null>(null);
 
@@ -106,7 +108,10 @@ export default function App() {
         await loadRemoteWorkspace(user);
       })
       .catch(() => {
-        if (!cancelled) setUser(null);
+        if (!cancelled) {
+          setUser(null);
+          setRemoteSettingsHydrated(true);
+        }
       });
     return () => {
       cancelled = true;
@@ -114,12 +119,12 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !remoteSettingsHydrated) return;
     const timer = window.setTimeout(() => {
       saveUserSettings(sanitizeSettingsForStorage(runtimeSettings)).catch(() => undefined);
     }, 600);
     return () => window.clearTimeout(timer);
-  }, [runtimeSettings, user]);
+  }, [runtimeSettings, user, remoteSettingsHydrated]);
 
   useEffect(() => {
     if (!notification) return;
@@ -254,6 +259,7 @@ export default function App() {
   async function handleLogin(email: string, password: string) {
     setAuthLoading(true);
     try {
+      setRemoteSettingsHydrated(false);
       const response = await login(email, password);
       setUser(response.user);
       await loadRemoteWorkspace(response.user);
@@ -266,10 +272,12 @@ export default function App() {
   async function handleRegister(email: string, password: string) {
     setAuthLoading(true);
     try {
+      setRemoteSettingsHydrated(false);
       const response = await register(email, password);
       setUser(response.user);
       await saveUserSettings(sanitizeSettingsForStorage(runtimeSettings));
       await refreshHistory();
+      setRemoteSettingsHydrated(true);
       setActiveView('render');
     } finally {
       setAuthLoading(false);
@@ -282,18 +290,27 @@ export default function App() {
       await logout();
       setUser(null);
       setHistoryItems([]);
+      setHistoryOpen(false);
+      setRemoteSettingsHydrated(true);
     } finally {
       setAuthLoading(false);
     }
   }
 
   async function loadRemoteWorkspace(_: UserResponse) {
-    const [remoteSettings] = await Promise.all([
-      getUserSettings().catch(() => null),
-      refreshHistory(),
-    ]);
-    if (remoteSettings?.settings) {
-      setRuntimeSettings(loadRemoteSettings(remoteSettings.settings));
+    try {
+      const [remoteSettings] = await Promise.all([
+        getUserSettings().catch(() => null),
+        refreshHistory(),
+      ]);
+      const savedSettings = remoteSettings?.settings;
+      if (savedSettings) {
+        setRuntimeSettings((current) => loadRemoteSettings(savedSettings, current));
+      } else {
+        await saveUserSettings(sanitizeSettingsForStorage(runtimeSettings));
+      }
+    } finally {
+      setRemoteSettingsHydrated(true);
     }
   }
 
@@ -533,7 +550,14 @@ export default function App() {
               }}
               onSubmit={handleSubmit}
             />
-            {user && <HistoryPanel items={historyItems} loading={historyLoading} onOpen={openHistoryItem} onDelete={removeHistoryItem} />}
+            {user && (
+              <div className="history-drawer-wrap">
+                <button type="button" className="secondary-button history-toggle" onClick={() => setHistoryOpen((open) => !open)}>
+                  {historyOpen ? 'Ẩn lịch sử' : `Lịch sử (${historyItems.length})`}
+                </button>
+                {historyOpen && <HistoryPanel items={historyItems} loading={historyLoading} onOpen={openHistoryItem} onDelete={removeHistoryItem} />}
+              </div>
+            )}
             {result && <button type="button" className="mobile-scroll-notice" onClick={scrollToResult}>↓ Xem hình vừa dựng</button>}
             <div className="result-area" ref={resultAnchorRef}>
               <div className="render-stage">
@@ -638,7 +662,7 @@ function HistoryPanel({ items, loading, onOpen, onDelete }: { items: RenderHisto
             <article className="history-item" key={item.id}>
               <button type="button" onClick={() => onOpen(item.id)}>
                 <strong>{item.problem_text}</strong>
-                <span>{formatHistoryDate(item.created_at)}{item.model ? ` · ${item.model}` : ''}</span>
+                <span>{formatHistoryDate(item.created_at)} · {historySourceLabel(item.source_type)}{item.renderer ? ` · ${item.renderer}` : ''}{item.model ? ` · ${item.model}` : ''}</span>
               </button>
               <button type="button" className="history-delete" onClick={() => onDelete(item.id)} aria-label="Xoá lịch sử">×</button>
             </article>
@@ -653,6 +677,12 @@ function formatHistoryDate(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' });
+}
+
+function historySourceLabel(sourceType: string) {
+  if (sourceType === 'scene_edit') return 'chỉnh hình';
+  if (sourceType === 'ocr') return 'OCR';
+  return 'đề bài';
 }
 
 function MobileRendererWarning({ dismissed, onDismiss }: { dismissed: boolean; onDismiss: () => void }) {
@@ -782,19 +812,19 @@ function loadStoredSettings(saved: string): RuntimeSettings {
   return dropApiKeys(next);
 }
 
-function loadRemoteSettings(settings: Partial<RuntimeSettings>): RuntimeSettings {
-  return dropApiKeys(mergeRuntimeSettingsShape(settings));
+function loadRemoteSettings(settings: Partial<RuntimeSettings>, current: RuntimeSettings): RuntimeSettings {
+  return dropApiKeys(mergeRuntimeSettingsShape(settings, current));
 }
 
-function mergeRuntimeSettingsShape(rawSettings: Partial<RuntimeSettings>): RuntimeSettings {
+function mergeRuntimeSettingsShape(rawSettings: Partial<RuntimeSettings>, base: RuntimeSettings = defaultRuntimeSettings): RuntimeSettings {
   return {
-    ...defaultRuntimeSettings,
+    ...base,
     ...rawSettings,
-    openrouter: { ...defaultRuntimeSettings.openrouter, ...rawSettings.openrouter },
-    nvidia: { ...defaultRuntimeSettings.nvidia, ...rawSettings.nvidia },
-    ollama: { ...defaultRuntimeSettings.ollama, ...rawSettings.ollama },
-    router9: { ...defaultRuntimeSettings.router9, ...rawSettings.router9 },
-    ocr: { ...defaultRuntimeSettings.ocr, ...rawSettings.ocr },
+    openrouter: { ...base.openrouter, ...rawSettings.openrouter },
+    nvidia: { ...base.nvidia, ...rawSettings.nvidia },
+    ollama: { ...base.ollama, ...rawSettings.ollama },
+    router9: { ...base.router9, ...rawSettings.router9 },
+    ocr: { ...base.ocr, ...rawSettings.ocr },
   };
 }
 

@@ -16,6 +16,8 @@ class DatabaseClient(Protocol):
 
 
 class SQLiteClient:
+    backend = "sqlite"
+
     def __init__(self, path: str) -> None:
         self.path = path
         Path(path).parent.mkdir(parents=True, exist_ok=True)
@@ -42,6 +44,8 @@ class SQLiteClient:
 
 
 class D1Client:
+    backend = "d1"
+
     def __init__(self, account_id: str, database_id: str, api_token: str) -> None:
         self.url = f"https://api.cloudflare.com/client/v4/accounts/{account_id}/d1/database/{database_id}/query"
         self.headers = {"Authorization": f"Bearer {api_token}", "Content-Type": "application/json"}

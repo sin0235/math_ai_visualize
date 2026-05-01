@@ -1,8 +1,11 @@
-from typing import Any
+from typing import Literal
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
-from app.schemas.scene import MathScene, RenderPayload
+from app.schemas.scene import MAX_BASE_URL_CHARS, MAX_MODEL_ID_CHARS, MathScene, RenderPayload
+
+MAX_STORED_MODELS = 100
+MAX_SETTINGS_JSON_CHARS = 80_000
 
 
 class AuthRequest(BaseModel):
@@ -20,24 +23,88 @@ class AuthResponse(BaseModel):
     user: UserResponse
 
 
+class StoredModelInfo(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(max_length=MAX_MODEL_ID_CHARS)
+    label: str = Field(max_length=MAX_MODEL_ID_CHARS)
+    provider: str = Field(max_length=64)
+    owned_by: str | None = Field(default=None, max_length=256)
+    created: int | None = None
+    context_length: int | None = None
+
+
+class StoredProviderSettings(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    api_key: Literal[""] = ""
+    base_url: str = Field(default="", max_length=MAX_BASE_URL_CHARS)
+    model: str = Field(default="", max_length=MAX_MODEL_ID_CHARS)
+    scanned_models: list[StoredModelInfo] = Field(default_factory=list, max_length=MAX_STORED_MODELS)
+    last_scanned_at: str = Field(default="", max_length=64)
+
+    @field_validator("api_key", mode="before")
+    @classmethod
+    def strip_api_key(cls, _: object) -> str:
+        return ""
+
+
+class StoredRouter9Settings(StoredProviderSettings):
+    only_mode: bool = False
+    allowed_model_ids: list[str] = Field(default_factory=list, max_length=MAX_STORED_MODELS)
+
+    @field_validator("allowed_model_ids")
+    @classmethod
+    def validate_allowed_models(cls, values: list[str]) -> list[str]:
+        return [value[:MAX_MODEL_ID_CHARS] for value in values]
+
+
+class StoredOcrSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    provider: Literal["openrouter", "router9"] = "openrouter"
+    model: str = Field(default="", max_length=MAX_MODEL_ID_CHARS)
+    max_image_mb: int = Field(default=8, ge=1, le=32)
+
+
+class StoredRuntimeSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    version: int = 1
+    default_provider: str = Field(default="auto", max_length=64)
+    openrouter: StoredProviderSettings = Field(default_factory=StoredProviderSettings)
+    nvidia: StoredProviderSettings = Field(default_factory=StoredProviderSettings)
+    ollama: StoredProviderSettings = Field(default_factory=StoredProviderSettings)
+    router9: StoredRouter9Settings = Field(default_factory=StoredRouter9Settings)
+    ocr: StoredOcrSettings = Field(default_factory=StoredOcrSettings)
+    openrouter_http_referer: str = Field(default="", max_length=MAX_BASE_URL_CHARS)
+    openrouter_x_title: str = Field(default="", max_length=256)
+    openrouter_reasoning_enabled: bool = False
+
+
 class RenderHistoryItem(BaseModel):
     id: str
     problem_text: str
     provider: str | None = None
     model: str | None = None
     created_at: str
+    source_type: str = "problem"
+    renderer: str | None = None
 
 
 class RenderHistoryDetail(RenderHistoryItem):
     scene: MathScene
     payload: RenderPayload
     warnings: list[str]
+    render_request: dict | None = None
+    advanced_settings: dict | None = None
+    runtime_settings: dict | None = None
 
 
 class UserSettingsResponse(BaseModel):
-    settings: dict[str, Any] | None = None
+    settings: StoredRuntimeSettings | None = None
     updated_at: str | None = None
 
 
 class UserSettingsRequest(BaseModel):
-    settings: dict[str, Any]
+    settings: StoredRuntimeSettings

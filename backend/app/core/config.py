@@ -1,6 +1,7 @@
 from functools import lru_cache
-from typing import Any
+from typing import Any, Literal
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.schemas.scene import RuntimeSettings
@@ -41,9 +42,19 @@ class Settings(BaseSettings):
     d1_account_id: str | None = None
     d1_database_id: str | None = None
     d1_api_token: str | None = None
+    auto_apply_sqlite_migrations: bool = True
+    auto_apply_d1_migrations: bool = False
     session_cookie_secure: bool = False
+    session_cookie_samesite: Literal["lax", "strict", "none"] = "lax"
+    session_cookie_domain: str | None = None
 
     model_config = SettingsConfigDict(env_file=(".env", "backend/.env"), env_file_encoding="utf-8")
+
+    @model_validator(mode="after")
+    def validate_cookie_settings(self) -> "Settings":
+        if self.session_cookie_samesite == "none" and not self.session_cookie_secure:
+            raise ValueError("SESSION_COOKIE_SAMESITE=none requires SESSION_COOKIE_SECURE=true")
+        return self
 
 
 @lru_cache

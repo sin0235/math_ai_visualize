@@ -17,12 +17,21 @@ class RenderHistoryRepository:
         provider: str | None,
         model: str | None,
         response: RenderResponse,
+        *,
+        render_request_json: str | None = None,
+        advanced_settings_json: str | None = None,
+        runtime_settings_json: str | None = None,
+        source_type: str = "problem",
+        renderer: str | None = None,
     ) -> RenderJobRecord:
         job_id = str(uuid4())
         await self.db.execute(
             """
-            INSERT INTO render_jobs (id, user_id, problem_text, provider, model, scene_json, payload_json, warnings_json)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO render_jobs (
+              id, user_id, problem_text, provider, model, scene_json, payload_json, warnings_json,
+              render_request_json, advanced_settings_json, runtime_settings_json, source_type, renderer
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 job_id,
@@ -33,6 +42,11 @@ class RenderHistoryRepository:
                 response.scene.model_dump_json(),
                 response.payload.model_dump_json(),
                 json.dumps(response.warnings, ensure_ascii=False),
+                render_request_json,
+                advanced_settings_json,
+                runtime_settings_json,
+                source_type,
+                renderer,
             ],
         )
         row = await self.db.fetch_one("SELECT * FROM render_jobs WHERE id = ?", [job_id])
@@ -66,4 +80,9 @@ def render_job_from_row(row: DbRow) -> RenderJobRecord:
         payload_json=str(row["payload_json"]),
         warnings_json=str(row["warnings_json"]),
         created_at=str(row["created_at"]),
+        render_request_json=str(row["render_request_json"]) if row.get("render_request_json") is not None else None,
+        advanced_settings_json=str(row["advanced_settings_json"]) if row.get("advanced_settings_json") is not None else None,
+        runtime_settings_json=str(row["runtime_settings_json"]) if row.get("runtime_settings_json") is not None else None,
+        source_type=str(row.get("source_type") or "problem"),
+        renderer=str(row["renderer"]) if row.get("renderer") is not None else None,
     )
