@@ -74,7 +74,7 @@ def test_segment_style_reaches_geogebra_commands():
 
     commands = build_geogebra_commands(scene)
     assert "edge = Segment(A, B)" in commands
-    assert "SetColor(edge, 249, 115, 22)" in commands
+    assert 'SetColor(edge, "#f97316")' in commands
     assert "SetLineThickness(edge, 4)" in commands
     assert "SetLineStyle(edge, 1)" in commands
     assert "SetVisibleInView(edge, 1, false)" in commands
@@ -134,4 +134,4 @@ def test_geogebra_commands_support_basic_3d_objects_and_coordinate_labels():
     assert "s = Sphere(A, 2.0)" in commands
     assert "abc = Polygon(A, B, C)" in commands
     assert "SetFilling(p, 0.16)" in commands
-    assert "SetColor(u, 124, 58, 237)" in commands
+    assert 'SetColor(u, "#7c3aed")' in commands

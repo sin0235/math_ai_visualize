@@ -8,6 +8,11 @@ export interface OcrResponse {
   warnings: string[];
 }
 
+export interface HealthResponse {
+  status: string;
+  app: string;
+}
+
 export class ApiError extends Error {
   details: string[];
 
@@ -24,14 +29,12 @@ function apiUrl(path: string) {
   return `${API_BASE_URL}${path}`;
 }
 
+export async function getHealth(): Promise<HealthResponse> {
+  return requestJson('/api/health', undefined, 'Không thể kiểm tra trạng thái backend.');
+}
+
 export async function getSettingsDefaults(): Promise<SettingsDefaults> {
-  const response = await fetch(apiUrl('/api/settings/defaults'));
-
-  if (!response.ok) {
-    throw await parseApiError(response, `Không thể đọc cấu hình backend. HTTP ${response.status}`);
-  }
-
-  return response.json();
+  return requestJson('/api/settings/defaults', undefined, 'Không thể đọc cấu hình backend.');
 }
 
 export async function renderProblem(
@@ -42,7 +45,7 @@ export async function renderProblem(
   preferredRenderer?: Renderer,
   runtimeSettings?: RuntimeSettings,
 ): Promise<RenderResponse> {
-  const response = await fetch(apiUrl('/api/render'), {
+  return requestJson('/api/render', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -53,17 +56,11 @@ export async function renderProblem(
       advanced_settings: advancedSettings,
       runtime_settings: compactRuntimeSettings(runtimeSettings),
     }),
-  });
-
-  if (!response.ok) {
-    throw await parseApiError(response, `Không thể dựng hình từ đề bài. HTTP ${response.status}`);
-  }
-
-  return response.json();
+  }, 'Không thể dựng hình từ đề bài.');
 }
 
 export async function ocrImage(imageDataUrl: string, runtimeSettings: RuntimeSettings): Promise<OcrResponse> {
-  const response = await fetch(apiUrl('/api/ocr'), {
+  return requestJson('/api/ocr', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -72,60 +69,60 @@ export async function ocrImage(imageDataUrl: string, runtimeSettings: RuntimeSet
       ocr_model: runtimeSettings.ocr.model.trim() || undefined,
       runtime_settings: compactRuntimeSettings(runtimeSettings),
     }),
-  });
-
-  if (!response.ok) {
-    throw await parseApiError(response, `Không thể OCR ảnh đề bài. HTTP ${response.status}`);
-  }
-
-  return response.json();
+  }, 'Không thể OCR ảnh đề bài.');
 }
 
 export async function scanProviderModels(provider: ProviderKey, runtimeSettings: RuntimeSettings): Promise<ScannedModelInfo[]> {
-  const response = await fetch(apiUrl('/api/ai/models/scan'), {
+  const payload = await requestJson<{ models: ScannedModelInfo[] }>('/api/ai/models/scan', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ provider, runtime_settings: compactRuntimeSettings(runtimeSettings) }),
-  });
-
-  if (!response.ok) {
-    throw await parseApiError(response, `Không thể quét model provider. HTTP ${response.status}`);
-  }
-
-  const payload = await response.json() as { models: ScannedModelInfo[] };
+  }, 'Không thể quét model provider.');
   return payload.models;
 }
 
 export async function scanRouter9Models(runtimeSettings: RuntimeSettings): Promise<ScannedModelInfo[]> {
-  const response = await fetch(apiUrl('/api/ai/router9/models/scan'), {
+  const payload = await requestJson<{ models: ScannedModelInfo[] }>('/api/ai/router9/models/scan', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ runtime_settings: compactRuntimeSettings(runtimeSettings) }),
-  });
-
-  if (!response.ok) {
-    throw await parseApiError(response, `Không thể quét model 9router. HTTP ${response.status}`);
-  }
-
-  const payload = await response.json() as { models: ScannedModelInfo[] };
+  }, 'Không thể quét model 9router.');
   return payload.models;
 }
 
 export async function renderEditedScene(scene: MathScene, advancedSettings: AdvancedRenderSettings): Promise<RenderResponse> {
-  const response = await fetch(apiUrl('/api/render/scene'), {
+  return requestJson('/api/render/scene', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       scene,
       advanced_settings: advancedSettings,
     }),
-  });
+  }, 'Không thể dựng lại scene.');
+}
 
-  if (!response.ok) {
-    throw await parseApiError(response, `Không thể dựng lại scene. HTTP ${response.status}`);
+async function requestJson<T>(path: string, init: RequestInit | undefined, fallbackMessage: string): Promise<T> {
+  try {
+    const response = await fetch(apiUrl(path), init);
+    if (!response.ok) throw await parseApiError(response, `${fallbackMessage} HTTP ${response.status}`);
+    return response.json() as Promise<T>;
+  } catch (caught) {
+    if (caught instanceof ApiError) throw caught;
+    throw networkApiError(caught, fallbackMessage);
   }
+}
 
-  return response.json();
+function networkApiError(caught: unknown, fallbackMessage: string) {
+  if (caught instanceof TypeError) {
+    return new ApiError('Không kết nối được backend.', [
+      `Frontend đang gọi API tại ${API_BASE_URL || 'cùng domain hiện tại'}.`,
+      'Nếu deploy khác domain, hãy build frontend với VITE_API_BASE_URL trỏ tới backend.',
+      'Nếu backend đã nhận OPTIONS nhưng trả 400, hãy thêm domain frontend vào CORS_ORIGINS và restart backend.',
+      'Kiểm tra backend còn chạy và HTTPS/domain API truy cập được từ trình duyệt.',
+    ]);
+  }
+  if (caught instanceof Error) return new ApiError(caught.message || fallbackMessage);
+  return new ApiError(fallbackMessage);
 }
 
 async function parseApiError(response: Response, fallbackMessage: string): Promise<ApiError> {

@@ -309,7 +309,7 @@ function applyCommands(api: GeoGebraApi, commands: string[], view: SceneView, sc
   commands.forEach((command) => {
     try {
       const result = api.evalCommand(command);
-      if (result === false) failures.push(`${command}: GeoGebra không chấp nhận lệnh`);
+      if (result === false && !isSideEffectCommand(command)) failures.push(`${command}: GeoGebra không chấp nhận lệnh`);
     } catch (caught) {
       const detail = caught instanceof Error ? caught.message : 'Không rõ lỗi';
       failures.push(`${command}: ${detail}`);
@@ -326,6 +326,12 @@ function applyCommands(api: GeoGebraApi, commands: string[], view: SceneView, sc
   }
 
   return failures;
+}
+
+function isSideEffectCommand(command: string) {
+  // GeoGebra's JS API can return false for scripting commands that mutate
+  // existing objects because those commands do not create a new object.
+  return /^\s*(Set(Color|Caption|Filling|LineStyle|LineThickness|VisibleInView)|ShowLabel)\s*\(/i.test(command);
 }
 
 function fit2dView(api: GeoGebraApi, scene: MathScene) {

@@ -185,8 +185,7 @@ def _style_commands(name: str, color: str | None = None, line_width: float | Non
     commands: list[str] = []
     parsed_color = _parse_hex_color(color)
     if parsed_color:
-        red, green, blue = parsed_color
-        commands.append(f"SetColor({name}, {red}, {green}, {blue})")
+        commands.append(f'SetColor({name}, "{parsed_color}")')
     if line_width is not None:
         commands.append(f"SetLineThickness({name}, {_line_thickness(line_width)})")
     if opacity is not None:
@@ -194,14 +193,13 @@ def _style_commands(name: str, color: str | None = None, line_width: float | Non
     return commands
 
 
-def _parse_hex_color(color: str | None) -> tuple[int, int, int] | None:
+def _parse_hex_color(color: str | None) -> str | None:
     if not color:
         return None
     match = _HEX_COLOR_RE.fullmatch(color.strip())
     if not match:
         return None
-    value = match.group(1)
-    return int(value[0:2], 16), int(value[2:4], 16), int(value[4:6], 16)
+    return f"#{match.group(1).lower()}"
 
 
 def _line_thickness(value: float) -> int:
