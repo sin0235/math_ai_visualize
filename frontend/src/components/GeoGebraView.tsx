@@ -101,8 +101,6 @@ export function GeoGebraView({ commands, renderer, scene, view, onPointChange, e
   const [selectedObject, setSelectedObject] = useState<string | null>(null);
   const [updateCount, setUpdateCount] = useState(0);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
-  const [importState, setImportState] = useState('');
-  const [stateMessage, setStateMessage] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -178,7 +176,6 @@ export function GeoGebraView({ commands, renderer, scene, view, onPointChange, e
     }, 0);
     setCommandErrors(failures);
     setStatus(failures.length > 0 ? 'error' : 'ready');
-    setStateMessage(null);
   }, [apiReady, commandSignature, commands, renderer, scene, view.show_axes, view.show_grid]);
 
   function schedulePointSync(name: string) {
@@ -210,43 +207,6 @@ export function GeoGebraView({ commands, renderer, scene, view, onPointChange, e
     }
   }
 
-  function exportState() {
-    const api = apiRef.current;
-    if (!api?.getBase64) {
-      setStateMessage('GeoGebra runtime hiện không hỗ trợ export state.');
-      return;
-    }
-    api.getBase64((base64) => {
-      navigator.clipboard?.writeText(base64).then(
-        () => setStateMessage('Đã sao chép state GeoGebra vào clipboard.'),
-        () => {
-          setImportState(base64);
-          setStateMessage('Không ghi được clipboard; state đã được đưa vào ô nhập bên dưới.');
-        },
-      );
-    });
-  }
-
-  function importGeoGebraState() {
-    const api = apiRef.current;
-    const value = importState.trim();
-    if (!value) {
-      setStateMessage('Hãy dán state GeoGebra base64 trước khi nhập.');
-      return;
-    }
-    if (!api?.setBase64) {
-      setStateMessage('GeoGebra runtime hiện không hỗ trợ import state.');
-      return;
-    }
-    try {
-      api.setBase64(value);
-      setStatus('ready');
-      setStateMessage('Đã nhập state GeoGebra. Render đề mới sẽ ghi đè state này.');
-    } catch (caught) {
-      setStateMessage(caught instanceof Error ? caught.message : 'Không nhập được state GeoGebra.');
-    }
-  }
-
   const content = (
     <>
       {status === 'loading' && <div className="info-box">Đang tải GeoGebra...</div>}
@@ -271,15 +231,6 @@ export function GeoGebraView({ commands, renderer, scene, view, onPointChange, e
           {updateCount > 0 && <span>Đã cập nhật trong GeoGebra: {updateCount}</span>}
           {syncMessage && <span>{syncMessage}</span>}
         </div>
-        <div className="geogebra-actions">
-          <button type="button" className="secondary-button" onClick={exportState} disabled={!apiReady}>Sao chép state GeoGebra</button>
-        </div>
-        <details className="geogebra-import">
-          <summary>Nhập state GeoGebra</summary>
-          <textarea value={importState} onChange={(event) => setImportState(event.target.value)} placeholder="Dán base64 GeoGebra state..." rows={3} />
-          <button type="button" className="secondary-button" onClick={importGeoGebraState} disabled={!apiReady}>Nhập state</button>
-        </details>
-        {stateMessage && <p className="field-hint">{stateMessage}</p>}
       </div>
     </>
   );
