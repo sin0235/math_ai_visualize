@@ -8,7 +8,12 @@ from app.schemas.scene import RuntimeSettings
 
 class Settings(BaseSettings):
     app_name: str = "Hinh Math Renderer"
-    cors_origins: list[str] = ["*"]
+    cors_origins: list[str] = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:4173",
+        "http://127.0.0.1:4173",
+    ]
     openrouter_api_key: str | None = None
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     openrouter_text_model: str = "openrouter/nvidia/nemotron-3-super-120b-a12b:free"

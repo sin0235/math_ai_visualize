@@ -5,8 +5,9 @@ from fastapi.testclient import TestClient
 
 from app.core.config import Settings, merge_runtime_settings
 from app.main import app
-from app.schemas.scene import AiModelInfo, RenderRequest, RuntimeSettings
+from app.schemas.scene import AiModelInfo, OcrRequest, RenderRequest, RuntimeSettings
 from app.services.extractor import extract_scene, _provider_order
+from app.services.provider_logging import format_provider_error, redact_sensitive
 from app.services.router9_bootstrap import bootstrap_router9_models, select_codex_model_ids
 from app.services.router9_client import Router9Client
 
@@ -23,6 +24,46 @@ def test_render_request_accepts_new_ai_providers():
     request = RenderRequest.model_validate(base)
     assert request.preferred_ai_provider == "router9"
     assert request.preferred_ai_model == "provider/model"
+
+
+def test_request_schemas_reject_large_user_inputs():
+    too_long_problem = "x" * 20_001
+    too_long_image_url = "x" * 12_000_001
+
+    for schema, payload in [
+        (RenderRequest, {"problem_text": too_long_problem}),
+        (OcrRequest, {"image_data_url": too_long_image_url}),
+        (RuntimeSettings, {"openrouter": {"api_key": "x" * 4_097}}),
+        (RuntimeSettings, {"openrouter": {"base_url": "x" * 2_049}}),
+        (RuntimeSettings, {"openrouter": {"model": "x" * 513}}),
+    ]:
+        try:
+            schema.model_validate(payload)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"Expected {schema.__name__} to reject oversized payload")
+
+
+def test_provider_error_redaction_removes_secrets_and_image_data():
+    response = httpx.Response(
+        400,
+        json={
+            "error": {
+                "message": "Authorization Bearer secret-token api_key=secret-key data:image/png;base64,aGVsbG8=",
+                "api_key": "secret-key",
+            }
+        },
+    )
+
+    message = format_provider_error("Test", response)
+    redacted = redact_sensitive("token=abc data:image/png;base64,aGVsbG8=")
+
+    assert "secret-token" not in message
+    assert "secret-key" not in message
+    assert "aGVsbG8=" not in message
+    assert "abc" not in redacted
+    assert "data:image/[REDACTED]" in message
 
 
 def test_provider_order_auto_includes_special_fallbacks():

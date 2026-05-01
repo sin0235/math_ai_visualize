@@ -80,9 +80,23 @@ Trong Oxyz cho A(1,2,3), B(4,5,6).
 
 Kết quả: Three.js render các điểm 3D và đoạn nối theo thứ tự nhập.
 
-## Chưa làm trong giai đoạn này
+### OCR ảnh đề bài
+
+OCR hiện có ở mức beta qua endpoint `/api/ocr`.
+
+- Ảnh đầu vào là data URL base64 PNG/JPEG/WebP/GIF.
+- Backend giới hạn ảnh decode tối đa 8MB và schema giới hạn body data URL khoảng 12MB.
+- Provider OCR chính: OpenRouter và 9router.
+- Khi cấu hình fallback phù hợp, backend có thể thử model OpenRouter fallback và NVIDIA OCR fallback.
+- Nếu bật 9router-only, OCR chỉ dùng 9router và không fallback sang provider khác.
+
+### Hình học 3D mở rộng
+
+Scene schema hiện hỗ trợ thêm `line_3d`, `plane`, `sphere`, `vector_3d`, segment ẩn/dashed/dotted, annotation độ dài/góc/vuông góc/equal marks, và computed payload cho giao tuyến/đo đạc. Mức độ đúng phụ thuộc khả năng AI sinh scene phù hợp từ đề bài.
+
+## Chưa làm hoặc chưa đầy đủ
 
 - Database/lịch sử dựng hình.
-- OCR ảnh đề bài qua vision model.
-- Conic đầy đủ, lượng giác nâng cao, mặt phẳng/mặt cầu Oxyz đầy đủ.
+- Conic đầy đủ, lượng giác nâng cao, mặt phẳng/mặt cầu Oxyz ở mọi dạng đề.
 - Giải thích từng bước và highlight theo lời giải.
+- OCR/layout phức tạp nhiều cột hoặc ảnh chất lượng thấp chưa đảm bảo ổn định.

@@ -70,7 +70,7 @@ export interface SettingsDefaults {
   router9: Router9SettingsDefaults;
 }
 
-export const SETTINGS_STORAGE_VERSION = 2;
+export const SETTINGS_STORAGE_VERSION = 3;
 
 export const defaultRuntimeSettings: RuntimeSettings = {
   default_provider: 'auto',

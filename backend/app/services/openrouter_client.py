@@ -5,6 +5,7 @@ import httpx
 
 from app.core.config import Settings
 from app.services.ai_prompt import SCENE_EXTRACTION_SYSTEM_PROMPT, build_scene_extraction_prompt
+from app.services.provider_logging import format_provider_error, log_ocr_summary, log_provider_request, log_provider_response, log_scene_summary
 
 
 OCR_SYSTEM_PROMPT = """
@@ -40,13 +41,12 @@ class OpenRouterClient:
 
         url = f"{self.settings.openrouter_base_url.rstrip('/')}/chat/completions"
         started_at = time.perf_counter()
-        print(f"[AI API][OpenRouter][scene] POST {url} model={payload['model']} problem_chars={len(problem_text)} reasoning={self.reasoning_enabled}")
+        log_provider_request("openrouter", "scene", url, payload["model"], problem_chars=len(problem_text), reasoning=self.reasoning_enabled)
         async with httpx.AsyncClient(timeout=60) as client:
             response = await client.post(url, headers=headers, json=payload)
             elapsed_ms = int((time.perf_counter() - started_at) * 1000)
-            print(f"[AI API][OpenRouter][scene] HTTP {response.status_code} elapsed_ms={elapsed_ms} response_chars={len(response.text)}")
+            log_provider_response("openrouter", "scene", response.status_code, elapsed_ms, len(response.text))
             if response.status_code >= 400:
-                print(f"[AI API][OpenRouter][scene][error] {_format_openrouter_error(response)}")
                 raise RuntimeError(_format_openrouter_error(response))
 
         message = _extract_message(response)
@@ -55,7 +55,7 @@ class OpenRouterClient:
             raise RuntimeError("OpenRouter không trả về nội dung JSON trong choices[0].message.content.")
         try:
             scene_json = json.loads(_strip_json_fences(content))
-            print(f"[AI API][OpenRouter][scene][parsed] {json.dumps(scene_json, ensure_ascii=False)[:2000]}")
+            log_scene_summary("openrouter", scene_json)
             return scene_json
         except json.JSONDecodeError as error:
             raise RuntimeError(f"OpenRouter trả về JSON không hợp lệ: {error.msg}") from error
@@ -89,13 +89,12 @@ class OpenRouterClient:
             try:
                 url = f"{self.settings.openrouter_base_url.rstrip('/')}/chat/completions"
                 started_at = time.perf_counter()
-                print(f"[AI API][OpenRouter][ocr] POST {url} model={payload['model']} image_chars={len(image_data_url)}")
+                log_provider_request("openrouter", "ocr", url, payload["model"], image_chars=len(image_data_url))
                 async with httpx.AsyncClient(timeout=120) as client:
                     response = await client.post(url, headers=_build_headers(self.settings), json=payload)
                     elapsed_ms = int((time.perf_counter() - started_at) * 1000)
-                    print(f"[AI API][OpenRouter][ocr] HTTP {response.status_code} elapsed_ms={elapsed_ms} response_chars={len(response.text)}")
+                    log_provider_response("openrouter", "ocr", response.status_code, elapsed_ms, len(response.text))
                     if response.status_code >= 400:
-                        print(f"[AI API][OpenRouter][ocr][error] {_format_openrouter_error(response)}")
                         raise RuntimeError(_format_openrouter_error(response))
 
                 message = _extract_message(response)
@@ -103,7 +102,7 @@ class OpenRouterClient:
                 if not isinstance(content, str) or not content.strip():
                     raise RuntimeError("OpenRouter không trả về nội dung OCR trong choices[0].message.content.")
                 text = _strip_text_fences(content)
-                print(f"[AI API][OpenRouter][ocr][result] {text[:1000]}")
+                log_ocr_summary("openrouter", text)
                 return text
             except RuntimeError as error:
                 errors.append(f"{selected_model}: {error}")
@@ -154,8 +153,4 @@ def _strip_text_fences(content: str) -> str:
 
 
 def _format_openrouter_error(response: httpx.Response) -> str:
-    try:
-        body = response.json()
-    except ValueError:
-        body = response.text[:500]
-    return f"OpenRouter HTTP {response.status_code}: {body}"
+    return format_provider_error("OpenRouter", response)

@@ -3,6 +3,14 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 
+MAX_PROBLEM_TEXT_CHARS = 20_000
+MAX_IMAGE_DATA_URL_CHARS = 12_000_000
+MAX_API_KEY_CHARS = 4_096
+MAX_BASE_URL_CHARS = 2_048
+MAX_MODEL_ID_CHARS = 512
+MAX_REFERER_CHARS = 2_048
+MAX_TITLE_CHARS = 256
+
 Renderer = Literal["geogebra_2d", "geogebra_3d", "threejs_3d"]
 AiProvider = Literal["auto", "router9", "openrouter", "openrouter_gpt_oss", "opencode_nemotron", "nvidia", "ollama_gpt_oss", "mock"]
 CoordinateAssignment = Literal["ai", "auto_origin", "prefer_o_origin"]
@@ -146,7 +154,7 @@ SceneObject = Point2D | Point3D | Segment | Line2D | Vector2D | Vector3D | Line3
 
 
 class MathScene(BaseModel):
-    problem_text: str
+    problem_text: str = Field(max_length=MAX_PROBLEM_TEXT_CHARS)
     grade: int | None = Field(default=None, ge=10, le=12)
     topic: Topic = "unknown"
     renderer: Renderer
@@ -167,9 +175,9 @@ class AdvancedRenderSettings(BaseModel):
 
 
 class ProviderRuntimeSettings(BaseModel):
-    api_key: str | None = None
-    base_url: str | None = None
-    model: str | None = None
+    api_key: str | None = Field(default=None, max_length=MAX_API_KEY_CHARS)
+    base_url: str | None = Field(default=None, max_length=MAX_BASE_URL_CHARS)
+    model: str | None = Field(default=None, max_length=MAX_MODEL_ID_CHARS)
 
 
 class Router9RuntimeSettings(ProviderRuntimeSettings):
@@ -183,8 +191,8 @@ class RuntimeSettings(BaseModel):
     nvidia: ProviderRuntimeSettings | None = None
     ollama: ProviderRuntimeSettings | None = None
     router9: Router9RuntimeSettings | None = None
-    openrouter_http_referer: str | None = None
-    openrouter_x_title: str | None = None
+    openrouter_http_referer: str | None = Field(default=None, max_length=MAX_REFERER_CHARS)
+    openrouter_x_title: str | None = Field(default=None, max_length=MAX_TITLE_CHARS)
     openrouter_reasoning_enabled: bool | None = None
 
 
@@ -217,9 +225,9 @@ OcrProvider = Literal["openrouter", "router9"]
 
 
 class OcrRequest(BaseModel):
-    image_data_url: str = Field(min_length=1)
+    image_data_url: str = Field(min_length=1, max_length=MAX_IMAGE_DATA_URL_CHARS)
     ocr_provider: OcrProvider | None = None
-    ocr_model: str | None = None
+    ocr_model: str | None = Field(default=None, max_length=MAX_MODEL_ID_CHARS)
     runtime_settings: RuntimeSettings | None = None
 
 
@@ -258,10 +266,10 @@ class SettingsDefaultsResponse(BaseModel):
 
 
 class RenderRequest(BaseModel):
-    problem_text: str = Field(min_length=1)
+    problem_text: str = Field(min_length=1, max_length=MAX_PROBLEM_TEXT_CHARS)
     grade: int | None = Field(default=None, ge=10, le=12)
     preferred_ai_provider: AiProvider | None = None
-    preferred_ai_model: str | None = None
+    preferred_ai_model: str | None = Field(default=None, max_length=MAX_MODEL_ID_CHARS)
     preferred_renderer: Renderer | None = None
     advanced_settings: AdvancedRenderSettings = Field(default_factory=AdvancedRenderSettings)
     runtime_settings: RuntimeSettings | None = None

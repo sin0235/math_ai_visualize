@@ -1174,6 +1174,10 @@ pre {
 }
 
 @media (max-width: 900px) {
+  .header-subtitle {
+    display: none;
+  }
+
   .app-shell {
     padding: 16px 18px 8px;
   }

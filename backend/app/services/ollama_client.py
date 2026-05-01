@@ -5,6 +5,7 @@ import httpx
 
 from app.core.config import Settings
 from app.services.ai_prompt import SCENE_EXTRACTION_SYSTEM_PROMPT, build_scene_extraction_prompt
+from app.services.provider_logging import log_provider_request, log_provider_response, log_scene_summary
 
 
 class OllamaClient:
@@ -37,11 +38,11 @@ class OllamaClient:
         url = f"{base_url}/api/chat"
         try:
             started_at = time.perf_counter()
-            print(f"[AI API][Ollama][scene] POST {url} model={payload['model']} problem_chars={len(problem_text)}")
+            log_provider_request("ollama", "scene", url, payload["model"], problem_chars=len(problem_text))
             async with httpx.AsyncClient(timeout=120) as client:
                 response = await client.post(url, headers=headers, json=payload)
                 elapsed_ms = int((time.perf_counter() - started_at) * 1000)
-                print(f"[AI API][Ollama][scene] HTTP {response.status_code} elapsed_ms={elapsed_ms} response_chars={len(response.text)}")
+                log_provider_response("ollama", "scene", response.status_code, elapsed_ms, len(response.text))
                 response.raise_for_status()
         except httpx.HTTPError as error:
             message = str(error) or error.__class__.__name__
@@ -54,7 +55,7 @@ class OllamaClient:
         if not isinstance(content, str):
             raise RuntimeError("Ollama response message.content không phải chuỗi")
         scene_json = json.loads(_strip_json_fences(content))
-        print(f"[AI API][Ollama][scene][parsed] {json.dumps(scene_json, ensure_ascii=False)[:2000]}")
+        log_scene_summary("ollama", scene_json)
         return scene_json
 
     async def _extract_scene_json_openai_compatible(self, base_url: str, problem_text: str, grade: int | None, reasoning_layer: str) -> dict:
@@ -78,11 +79,11 @@ class OllamaClient:
         url = f"{base_url}/chat/completions"
         try:
             started_at = time.perf_counter()
-            print(f"[AI API][Ollama cloud][scene] POST {url} model={payload['model']} problem_chars={len(problem_text)}")
+            log_provider_request("ollama_cloud", "scene", url, payload["model"], problem_chars=len(problem_text))
             async with httpx.AsyncClient(timeout=120) as client:
                 response = await client.post(url, headers=headers, json=payload)
                 elapsed_ms = int((time.perf_counter() - started_at) * 1000)
-                print(f"[AI API][Ollama cloud][scene] HTTP {response.status_code} elapsed_ms={elapsed_ms} response_chars={len(response.text)}")
+                log_provider_response("ollama_cloud", "scene", response.status_code, elapsed_ms, len(response.text))
                 response.raise_for_status()
         except httpx.HTTPError as error:
             message = str(error) or error.__class__.__name__
@@ -95,7 +96,7 @@ class OllamaClient:
         if not isinstance(content, str):
             raise RuntimeError("Ollama cloud response message.content không phải chuỗi")
         scene_json = json.loads(_strip_json_fences(content))
-        print(f"[AI API][Ollama cloud][scene][parsed] {json.dumps(scene_json, ensure_ascii=False)[:2000]}")
+        log_scene_summary("ollama_cloud", scene_json)
         return scene_json
 
 

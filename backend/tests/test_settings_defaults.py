@@ -4,6 +4,15 @@ from app.core.config import Settings
 from app.main import app
 
 
+def test_cors_defaults_target_local_dev_origins():
+    settings = Settings(_env_file=None)
+
+    assert "*" not in settings.cors_origins
+    assert "http://localhost:5173" in settings.cors_origins
+    assert "http://127.0.0.1:5173" in settings.cors_origins
+
+
+
 def test_settings_defaults_route_hides_api_keys(monkeypatch):
     settings = Settings(
         _env_file=None,

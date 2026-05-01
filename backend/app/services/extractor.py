@@ -10,6 +10,7 @@ from app.services.nvidia_client import NvidiaClient
 from app.services.ollama_client import OllamaClient
 from app.services.openrouter_client import OpenRouterClient
 from app.services.router9_client import Router9Client
+from app.services.provider_logging import redact_sensitive
 from app.services.solid_presets import equilateral_triangle, rectangular_box, square_pyramid, triangular_prism, triangular_pyramid
 
 _HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
@@ -346,7 +347,7 @@ def _format_render_failure(message: str, attempts: list[RenderAttempt], router9_
 
 
 def _short_error(message: str) -> str:
-    clean = re.sub(r"\s+", " ", message).strip()
+    clean = re.sub(r"\s+", " ", redact_sensitive(message)).strip()
     return clean[:300] + ("..." if len(clean) > 300 else "")
 
 

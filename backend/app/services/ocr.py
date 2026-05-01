@@ -7,6 +7,7 @@ from app.schemas.scene import OcrProvider
 from app.services.nvidia_client import NvidiaClient
 from app.services.openrouter_client import OpenRouterClient
 from app.services.router9_client import Router9Client
+from app.services.provider_logging import redact_sensitive
 
 _IMAGE_DATA_URL_RE = re.compile(r"^data:image/(png|jpeg|jpg|webp|gif);base64,([A-Za-z0-9+/=\s]+)$", re.IGNORECASE)
 _MAX_IMAGE_BYTES = 8 * 1024 * 1024
@@ -135,5 +136,5 @@ def _format_ocr_failure(message: str, attempts: list[OcrAttempt], router9_only: 
 
 
 def _short_error(message: str) -> str:
-    clean = re.sub(r"\s+", " ", message).strip()
+    clean = re.sub(r"\s+", " ", redact_sensitive(message)).strip()
     return clean[:300] + ("..." if len(clean) > 300 else "")

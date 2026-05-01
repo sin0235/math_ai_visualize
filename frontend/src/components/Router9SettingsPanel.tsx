@@ -7,9 +7,10 @@ interface Router9SettingsPanelProps {
   value: RuntimeSettings;
   defaults: SettingsDefaults | null;
   onChange: (next: RuntimeSettings) => void;
+  onForgetApiKeys: () => void;
 }
 
-export function Router9SettingsPanel({ value, defaults, onChange }: Router9SettingsPanelProps) {
+export function Router9SettingsPanel({ value, defaults, onChange, onForgetApiKeys }: Router9SettingsPanelProps) {
   const [scanError, setScanError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const [query, setQuery] = useState('');
@@ -100,7 +101,8 @@ export function Router9SettingsPanel({ value, defaults, onChange }: Router9Setti
           <button type="button" className="secondary-button" onClick={scanModels} disabled={scanning}>
             {scanning ? 'Đang quét...' : 'Quét model khả dụng'}
           </button>
-          <p className="field-hint">Để trống field override để backend dùng `.env`/default. Placeholder không được gửi lên backend.</p>
+          <button type="button" className="secondary-button" onClick={onForgetApiKeys}>Quên tất cả API key override</button>
+          <p className="field-hint">API key override chỉ giữ trong state của tab hiện tại và sẽ mất khi refresh. Để trống field override để backend dùng `.env`/default.</p>
           {scanError && <div className="error-box">{scanError}</div>}
           {router9.last_scanned_at && <p className="field-hint">Lần quét gần nhất: {new Date(router9.last_scanned_at).toLocaleString()}</p>}
         </section>

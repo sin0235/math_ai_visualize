@@ -42,6 +42,7 @@ export default function App() {
   const [runtimeSettings, setRuntimeSettings] = useState<RuntimeSettings>(defaultRuntimeSettings);
   const [settingsDefaults, setSettingsDefaults] = useState<SettingsDefaults | null>(null);
   const [notification, setNotification] = useState<Notification | null>(null);
+  const [mobileWarningDismissed, setMobileWarningDismissed] = useState(false);
   const [sceneEditorOpen, setSceneEditorOpen] = useState(false);
   const [editorButtonTop, setEditorButtonTop] = useState(220);
   const editorButtonDragRef = useRef<{ pointerId: number; startY: number; startTop: number; moved: boolean } | null>(null);
@@ -66,7 +67,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    window.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify({ version: SETTINGS_STORAGE_VERSION, settings: runtimeSettings }));
+    window.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify({ version: SETTINGS_STORAGE_VERSION, settings: sanitizeSettingsForStorage(runtimeSettings) }));
   }, [runtimeSettings]);
 
   useEffect(() => {
@@ -173,6 +174,10 @@ export default function App() {
 
   function resetSettings() {
     setRuntimeSettings(defaultRuntimeSettings);
+  }
+
+  function forgetApiKeys() {
+    setRuntimeSettings((current) => dropApiKeys(current));
   }
 
   async function handleSceneEdit(scene: MathScene) {
@@ -419,9 +424,9 @@ export default function App() {
             {activeSettingsTab === 'general' ? (
               <GeneralSettingsPanel value={runtimeSettings} defaults={settingsDefaults} onChange={setRuntimeSettings} onReset={resetSettings} />
             ) : activeSettingsTab === 'providers' ? (
-              <SettingsPanel value={runtimeSettings} defaults={settingsDefaults} onChange={setRuntimeSettings} onReset={resetSettings} />
+              <SettingsPanel value={runtimeSettings} defaults={settingsDefaults} onChange={setRuntimeSettings} onReset={resetSettings} onForgetApiKeys={forgetApiKeys} />
             ) : (
-              <Router9SettingsPanel value={runtimeSettings} defaults={settingsDefaults} onChange={setRuntimeSettings} />
+              <Router9SettingsPanel value={runtimeSettings} defaults={settingsDefaults} onChange={setRuntimeSettings} onForgetApiKeys={forgetApiKeys} />
             )}
           </section>
         )}
@@ -546,7 +551,21 @@ function loadStoredSettings(saved: string): RuntimeSettings {
   }
   dropLegacyOcrDefaults(next);
 
-  return next;
+  return dropApiKeys(next);
+}
+
+function sanitizeSettingsForStorage(settings: RuntimeSettings): RuntimeSettings {
+  return dropApiKeys(settings);
+}
+
+function dropApiKeys(settings: RuntimeSettings): RuntimeSettings {
+  return {
+    ...settings,
+    openrouter: { ...settings.openrouter, api_key: '' },
+    nvidia: { ...settings.nvidia, api_key: '' },
+    ollama: { ...settings.ollama, api_key: '' },
+    router9: { ...settings.router9, api_key: '' },
+  };
 }
 
 function dropLegacyDefaults(settings: RuntimeSettings) {

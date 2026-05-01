@@ -35,12 +35,13 @@ export function ThreeGeometryView({ scene, interaction, embedded = false }: Thre
   const [connectHover, setConnectHover] = useState<string | null>(null);
   const [connectPreview, setConnectPreview] = useState<Vec3 | null>(null);
   const [showAxes, setShowAxes] = useState(scene.view.show_axes);
+  const [dragViewEnabled, setDragViewEnabled] = useState(false);
   const frame = getSceneFrame(scene);
   const editingEnabled = Boolean(interaction);
   const controlsEnabled = !draggingPoint && !connectStart;
   const controlsMouseButtons = editingEnabled
-    ? { MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE }
-    : { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
+    ? { MIDDLE: THREE.MOUSE.DOLLY, RIGHT: dragViewEnabled ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE }
+    : { LEFT: dragViewEnabled ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: dragViewEnabled ? THREE.MOUSE.ROTATE : THREE.MOUSE.PAN };
 
   useEffect(() => {
     setWorkingScene(scene);
@@ -156,7 +157,10 @@ export function ThreeGeometryView({ scene, interaction, embedded = false }: Thre
       <div className="viewer-header viewer-header-row">
         <span>Three.js Renderer</span>
         <div className="viewer-controls">
-          <span className="viewer-hint">{viewerHint(interaction?.mode)}</span>
+          <span className="viewer-hint">{viewerHint(interaction?.mode, dragViewEnabled)}</span>
+          <button type="button" className="viewer-toggle" onClick={() => setDragViewEnabled((current) => !current)}>
+            {dragViewEnabled ? 'Tắt kéo góc nhìn' : 'Bật kéo góc nhìn'}
+          </button>
           <button type="button" className="viewer-toggle" onClick={() => setShowAxes((current) => !current)}>
             {showAxes ? 'Tắt hệ trục' : 'Bật hệ trục'}
           </button>
@@ -736,11 +740,12 @@ function pointColor({ isSelected, isDragging, isConnectSource, isConnectHover, h
   return '#e63946';
 }
 
-function viewerHint(mode?: ThreeSceneInteraction['mode']) {
-  if (mode === 'connect') return 'Chuột trái kéo nối đoạn, chuột phải xoay hình';
-  if (mode === 'project_to_segment') return 'Chuột trái chọn điểm/đoạn, chuột phải xoay hình';
-  if (mode === 'add_point') return 'Chuột trái click để thêm điểm, chuột phải xoay hình';
-  return 'Chuột trái kéo điểm, chuột phải xoay hình';
+function viewerHint(mode?: ThreeSceneInteraction['mode'], dragViewEnabled = false) {
+  const viewAction = dragViewEnabled ? 'kéo góc nhìn' : 'xoay hình';
+  if (mode === 'connect') return `Chuột trái kéo nối đoạn, chuột phải ${viewAction}`;
+  if (mode === 'project_to_segment') return `Chuột trái chọn điểm/đoạn, chuột phải ${viewAction}`;
+  if (mode === 'add_point') return `Chuột trái click để thêm điểm, chuột phải ${viewAction}`;
+  return `Chuột trái kéo điểm, chuột phải ${viewAction}`;
 }
 
 function Annotations({ scene }: ThreeGeometryViewProps) {

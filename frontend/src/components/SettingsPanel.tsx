@@ -8,6 +8,7 @@ interface SettingsPanelProps {
   defaults: SettingsDefaults | null;
   onChange: (next: RuntimeSettings) => void;
   onReset: () => void;
+  onForgetApiKeys: () => void;
 }
 
 const providerLabels: Record<ProviderKey, string> = {
@@ -22,7 +23,7 @@ const providerHints: Record<ProviderKey, string> = {
   ollama: 'Phù hợp cho Ollama cloud, local, server nội bộ hoặc endpoint OpenAI-compatible.',
 };
 
-export function SettingsPanel({ value, defaults, onChange, onReset }: SettingsPanelProps) {
+export function SettingsPanel({ value, defaults, onChange, onReset, onForgetApiKeys }: SettingsPanelProps) {
   const [scanningProvider, setScanningProvider] = useState<ProviderKey | null>(null);
   const [scanErrors, setScanErrors] = useState<Partial<Record<ProviderKey, string>>>({});
 
@@ -67,7 +68,7 @@ export function SettingsPanel({ value, defaults, onChange, onReset }: SettingsPa
         <div className="panel-title">Setting</div>
         <p className="field-hint">
           Cấu hình từ cơ bản đến nâng cao cho provider AI. 9router có trang riêng để quét và quản lý model khả dụng.
-          Các giá trị này được lưu ngay trên trình duyệt và gửi theo từng lần dựng hình.
+          Base URL, model và danh sách quét được lưu trong trình duyệt; API key override chỉ giữ trong phiên hiện tại.
         </p>
       </div>
 
@@ -122,7 +123,7 @@ export function SettingsPanel({ value, defaults, onChange, onReset }: SettingsPa
               <button type="button" className="secondary-button" onClick={() => scanModels(provider)} disabled={scanningProvider === provider}>
                 {scanningProvider === provider ? 'Đang quét...' : 'Quét model provider'}
               </button>
-              <p className="field-hint">Để trống field override để backend dùng `.env`/default. Placeholder không được gửi lên backend.</p>
+              <p className="field-hint">API key override chỉ giữ trong state của tab hiện tại và sẽ mất khi refresh. Để trống field override để backend dùng `.env`/default.</p>
               {scanErrors[provider] && <div className="error-box">{scanErrors[provider]}</div>}
               {value[provider].last_scanned_at && <p className="field-hint">Lần quét gần nhất: {new Date(value[provider].last_scanned_at).toLocaleString()}</p>}
             </section>
@@ -135,8 +136,10 @@ export function SettingsPanel({ value, defaults, onChange, onReset }: SettingsPa
         <ul className="settings-notes">
           <li>`OpenRouter` hỗ trợ nhập `base URL` để đổi endpoint mặc định.</li>
           <li>`NVIDIA`, `Ollama` và trang riêng `9router` có thể trỏ sang proxy hoặc gateway tương thích OpenAI.</li>
-          <li>Dữ liệu đang được lưu trong `localStorage` của trình duyệt, không ghi vào file `.env`.</li>
+          <li>Base URL, model và danh sách quét được lưu trong `localStorage`; API key override không được lưu sau khi refresh.</li>
+          <li>Muốn cấu hình API key lâu dài, hãy đặt key trong backend `.env`.</li>
         </ul>
+        <button type="button" className="secondary-button settings-reset" onClick={onForgetApiKeys}>Quên tất cả API key override</button>
         <button type="button" className="secondary-button settings-reset" onClick={onReset}>Khôi phục mặc định</button>
       </section>
     </section>
