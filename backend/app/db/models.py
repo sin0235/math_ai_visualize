@@ -12,6 +12,11 @@ class UserRecord:
     password_hash: str
     created_at: str
     updated_at: str
+    role: str = "user"
+    status: str = "active"
+    display_name: str | None = None
+    last_login_at: str | None = None
+    plan: str = "free"
 
 
 @dataclass(frozen=True)
@@ -46,3 +51,22 @@ class UserSettingsRecord:
     user_id: str
     settings_json: str
     updated_at: str
+
+
+@dataclass(frozen=True)
+class SystemSettingsRecord:
+    key: str
+    value_json: str
+    updated_by: str | None
+    updated_at: str
+
+
+@dataclass(frozen=True)
+class AuditLogRecord:
+    id: str
+    actor_user_id: str | None
+    action: str
+    target_type: str
+    target_id: str | None
+    metadata_json: str
+    created_at: str

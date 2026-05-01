@@ -20,6 +20,8 @@ async def get_current_user(
     user = await UserRepository(db).find_by_id(session.user_id)
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Tài khoản không còn tồn tại.")
+    if user.status != "active":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Tài khoản này đã bị vô hiệu hoá.")
     return user
 
 
@@ -32,7 +34,22 @@ async def get_optional_current_user(
     session = await SessionRepository(db).find_by_token(hinh_session)
     if session is None:
         return None
-    return await UserRepository(db).find_by_id(session.user_id)
+    user = await UserRepository(db).find_by_id(session.user_id)
+    if user is None or user.status != "active":
+        return None
+    return user
+
+
+async def require_active_user(user: UserRecord = Depends(get_current_user)) -> UserRecord:
+    if user.status != "active":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Tài khoản này đã bị vô hiệu hoá.")
+    return user
+
+
+async def require_admin_user(user: UserRecord = Depends(require_active_user)) -> UserRecord:
+    if user.role != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Bạn không có quyền truy cập trang quản trị.")
+    return user
 
 
 async def require_trusted_origin(

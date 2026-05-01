@@ -17,6 +17,11 @@ class UserResponse(BaseModel):
     id: str
     email: str
     created_at: str
+    role: Literal["user", "admin"] = "user"
+    status: Literal["active", "disabled"] = "active"
+    display_name: str | None = None
+    last_login_at: str | None = None
+    plan: str = "free"
 
 
 class AuthResponse(BaseModel):
@@ -108,3 +113,47 @@ class UserSettingsResponse(BaseModel):
 
 class UserSettingsRequest(BaseModel):
     settings: StoredRuntimeSettings
+
+
+class AdminSummaryResponse(BaseModel):
+    users: int
+    active_users: int
+    admins: int
+    render_jobs: int
+
+
+class AdminUserUpdateRequest(BaseModel):
+    role: Literal["user", "admin"] | None = None
+    status: Literal["active", "disabled"] | None = None
+    display_name: str | None = Field(default=None, max_length=256)
+    plan: str | None = Field(default=None, max_length=64)
+
+
+class SystemSettingResponse(BaseModel):
+    key: str
+    value: dict
+    updated_by: str | None = None
+    updated_at: str
+
+
+class SystemSettingRequest(BaseModel):
+    key: str = Field(min_length=1, max_length=128)
+    value: dict = Field(default_factory=dict)
+
+
+class AuditLogResponse(BaseModel):
+    id: str
+    actor_user_id: str | None = None
+    action: str
+    target_type: str
+    target_id: str | None = None
+    metadata: dict
+    created_at: str
+
+
+class AdminRenderHistoryItem(RenderHistoryItem):
+    user_id: str | None = None
+
+
+class AdminRenderHistoryDetail(RenderHistoryDetail):
+    user_id: str | None = None

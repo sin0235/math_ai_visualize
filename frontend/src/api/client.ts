@@ -17,6 +17,11 @@ export interface UserResponse {
   id: string;
   email: string;
   created_at: string;
+  role: 'user' | 'admin';
+  status: 'active' | 'disabled';
+  display_name?: string | null;
+  last_login_at?: string | null;
+  plan: string;
 }
 
 export interface AuthResponse {
@@ -45,6 +50,34 @@ export interface RenderHistoryDetail extends RenderHistoryItem {
 export interface UserSettingsResponse {
   settings?: RuntimeSettings | null;
   updated_at?: string | null;
+}
+
+export interface AdminSummaryResponse {
+  users: number;
+  active_users: number;
+  admins: number;
+  render_jobs: number;
+}
+
+export interface AdminRenderHistoryItem extends RenderHistoryItem {
+  user_id?: string | null;
+}
+
+export interface AuditLogResponse {
+  id: string;
+  actor_user_id?: string | null;
+  action: string;
+  target_type: string;
+  target_id?: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface SystemSettingResponse {
+  key: string;
+  value: Record<string, unknown>;
+  updated_by?: string | null;
+  updated_at: string;
 }
 
 export class ApiError extends Error {
@@ -128,6 +161,49 @@ export async function getRenderHistoryDetail(id: string): Promise<RenderHistoryD
 
 export async function deleteRenderHistory(id: string): Promise<void> {
   await requestVoid(`/api/history/${encodeURIComponent(id)}`, { method: 'DELETE', credentials: 'include' }, 'Không thể xoá lịch sử.');
+}
+
+export async function getAdminSummary(): Promise<AdminSummaryResponse> {
+  return requestJson('/api/admin/summary', { credentials: 'include' }, 'Không thể tải dashboard quản trị.');
+}
+
+export async function getAdminUsers(query = ''): Promise<UserResponse[]> {
+  const suffix = query.trim() ? `?q=${encodeURIComponent(query.trim())}` : '';
+  return requestJson(`/api/admin/users${suffix}`, { credentials: 'include' }, 'Không thể tải danh sách người dùng.');
+}
+
+export async function updateAdminUser(id: string, patch: Partial<Pick<UserResponse, 'role' | 'status' | 'display_name' | 'plan'>>): Promise<UserResponse> {
+  return requestJson(`/api/admin/users/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(patch),
+  }, 'Không thể cập nhật người dùng.');
+}
+
+export async function getAdminRenderJobs(): Promise<AdminRenderHistoryItem[]> {
+  return requestJson('/api/admin/render-jobs', { credentials: 'include' }, 'Không thể tải lịch sử render hệ thống.');
+}
+
+export async function deleteAdminRenderJob(id: string): Promise<void> {
+  await requestVoid(`/api/admin/render-jobs/${encodeURIComponent(id)}`, { method: 'DELETE', credentials: 'include' }, 'Không thể xoá render job.');
+}
+
+export async function getAdminSystemSettings(): Promise<SystemSettingResponse[]> {
+  return requestJson('/api/admin/system-settings', { credentials: 'include' }, 'Không thể tải cấu hình hệ thống.');
+}
+
+export async function saveAdminSystemSetting(key: string, value: Record<string, unknown>): Promise<SystemSettingResponse> {
+  return requestJson('/api/admin/system-settings', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ key, value }),
+  }, 'Không thể lưu cấu hình hệ thống.');
+}
+
+export async function getAdminAuditLogs(): Promise<AuditLogResponse[]> {
+  return requestJson('/api/admin/audit-logs', { credentials: 'include' }, 'Không thể tải audit logs.');
 }
 
 export async function renderProblem(

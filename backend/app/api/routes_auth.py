@@ -33,6 +33,10 @@ async def login(request: AuthRequest, response: Response, db: DatabaseClient = D
     user = await users.find_by_email(request.email)
     if user is None or not users.verify_password(request.password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Email hoặc mật khẩu không đúng.")
+    if user.status != "active":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Tài khoản này đã bị vô hiệu hoá.")
+    await users.mark_login(user.id)
+    user = await users.find_by_id(user.id) or user
     _, token = await SessionRepository(db).create(user.id)
     set_session_cookie(response, token, settings)
     return AuthResponse(user=user_response(user))
@@ -79,4 +83,13 @@ def cookie_options(settings: Settings, include_httponly: bool) -> dict:
 
 
 def user_response(user: UserRecord) -> UserResponse:
-    return UserResponse(id=user.id, email=user.email, created_at=user.created_at)
+    return UserResponse(
+        id=user.id,
+        email=user.email,
+        created_at=user.created_at,
+        role=user.role,
+        status=user.status,
+        display_name=user.display_name,
+        last_login_at=user.last_login_at,
+        plan=user.plan,
+    )

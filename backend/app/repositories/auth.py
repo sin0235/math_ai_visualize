@@ -37,6 +37,9 @@ class UserRepository:
         row = await self.db.fetch_one("SELECT * FROM users WHERE id = ?", [user_id])
         return user_from_row(row) if row else None
 
+    async def mark_login(self, user_id: str) -> None:
+        await self.db.execute("UPDATE users SET last_login_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [user_id])
+
     def verify_password(self, password: str, password_hash: str) -> bool:
         return pwd_context.verify(password, password_hash)
 
@@ -88,6 +91,11 @@ def user_from_row(row: DbRow) -> UserRecord:
         password_hash=str(row["password_hash"]),
         created_at=str(row["created_at"]),
         updated_at=str(row["updated_at"]),
+        role=str(row.get("role") or "user"),
+        status=str(row.get("status") or "active"),
+        display_name=str(row["display_name"]) if row.get("display_name") is not None else None,
+        last_login_at=str(row["last_login_at"]) if row.get("last_login_at") is not None else None,
+        plan=str(row.get("plan") or "free"),
     )
 
 

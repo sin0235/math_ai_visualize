@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-import { ApiError, deleteRenderHistory, getCurrentUser, getHealth, getRenderHistory, getRenderHistoryDetail, getSettingsDefaults, getUserSettings, login, logout, ocrImage, register, renderEditedScene, renderProblem, saveUserSettings, type RenderHistoryItem, type UserResponse } from './api/client';
+import { ApiError, deleteAdminRenderJob, deleteRenderHistory, getAdminAuditLogs, getAdminRenderJobs, getAdminSummary, getAdminSystemSettings, getAdminUsers, getCurrentUser, getHealth, getRenderHistory, getRenderHistoryDetail, getSettingsDefaults, getUserSettings, login, logout, ocrImage, register, renderEditedScene, renderProblem, saveUserSettings, updateAdminUser, type AdminRenderHistoryItem, type AdminSummaryResponse, type AuditLogResponse, type RenderHistoryItem, type SystemSettingResponse, type UserResponse } from './api/client';
 import { defaultAdvancedSettings, ProblemInput, staticModelOptions, type ModelOption } from './components/ProblemInput';
 import { GeneralSettingsPanel } from './components/GeneralSettingsPanel';
 import { HomePage } from './components/HomePage';
@@ -19,7 +19,7 @@ const SETTINGS_STORAGE_KEY = 'hinh-runtime-settings';
 const MOBILE_WARNING_STORAGE_KEY = 'hinh-mobile-warning-dismissed';
 const MOBILE_BREAKPOINT_QUERY = '(max-width: 900px)';
 
-type AppView = 'home' | 'render' | 'login' | 'settings';
+type AppView = 'home' | 'render' | 'history' | 'login' | 'settings' | 'admin';
 type SettingsTab = 'general' | 'providers' | 'router9';
 type EditTool = 'move' | 'connect' | 'project_to_segment' | 'add_point';
 type Vec3 = { x: number; y: number; z: number };
@@ -61,6 +61,12 @@ export default function App() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [remoteSettingsHydrated, setRemoteSettingsHydrated] = useState(false);
+  const [adminSummary, setAdminSummary] = useState<AdminSummaryResponse | null>(null);
+  const [adminUsers, setAdminUsers] = useState<UserResponse[]>([]);
+  const [adminRenderJobs, setAdminRenderJobs] = useState<AdminRenderHistoryItem[]>([]);
+  const [adminSettings, setAdminSettings] = useState<SystemSettingResponse[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLogResponse[]>([]);
+  const [adminLoading, setAdminLoading] = useState(false);
   const resultAnchorRef = useRef<HTMLDivElement | null>(null);
   const editorButtonDragRef = useRef<{ pointerId: number; startY: number; startTop: number; moved: boolean } | null>(null);
 
@@ -323,6 +329,57 @@ export default function App() {
     }
   }
 
+  async function loadAdminWorkspace() {
+    if (user?.role !== 'admin') {
+      showNotification('Không có quyền quản trị', 'Tài khoản hiện tại không có quyền truy cập trang quản trị.');
+      setActiveView('render');
+      return;
+    }
+    setAdminLoading(true);
+    try {
+      const [summary, users, jobs, settings, logs] = await Promise.all([
+        getAdminSummary(),
+        getAdminUsers(),
+        getAdminRenderJobs(),
+        getAdminSystemSettings(),
+        getAdminAuditLogs(),
+      ]);
+      setAdminSummary(summary);
+      setAdminUsers(users);
+      setAdminRenderJobs(jobs);
+      setAdminSettings(settings);
+      setAuditLogs(logs);
+    } catch (caught) {
+      const apiError = toApiError(caught, 'Không thể tải trang quản trị.');
+      showApiError('Không thể tải admin', apiError, 'Hãy kiểm tra tài khoản có quyền admin và phiên đăng nhập còn hiệu lực.');
+    } finally {
+      setAdminLoading(false);
+    }
+  }
+
+  async function toggleUserStatus(target: UserResponse) {
+    try {
+      const nextStatus = target.status === 'active' ? 'disabled' : 'active';
+      const updated = await updateAdminUser(target.id, { status: nextStatus });
+      setAdminUsers((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+      void loadAdminWorkspace();
+    } catch (caught) {
+      const apiError = toApiError(caught, 'Không thể cập nhật người dùng.');
+      showApiError('Không thể cập nhật user', apiError, 'Hãy thử lại hoặc kiểm tra quyền admin.');
+    }
+  }
+
+  async function removeAdminRenderJob(id: string) {
+    try {
+      await deleteAdminRenderJob(id);
+      setAdminRenderJobs((current) => current.filter((item) => item.id !== id));
+      void loadAdminWorkspace();
+    } catch (caught) {
+      const apiError = toApiError(caught, 'Không thể xoá render job.');
+      showApiError('Không thể xoá render job', apiError, 'Hãy thử lại hoặc kiểm tra quyền admin.');
+    }
+  }
+
   async function openHistoryItem(id: string) {
     try {
       const detail = await getRenderHistoryDetail(id);
@@ -492,7 +549,18 @@ export default function App() {
   return (
     <>
       <header className="global-header">
-        <div className="header-left">
+        <div
+          className="header-left"
+          role="button"
+          tabIndex={0}
+          onClick={() => setActiveView('home')}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              setActiveView('home');
+            }
+          }}
+        >
           <img src={logoUrl} alt="App Logo" className="header-logo" />
           <div className="header-titles">
             <h1 className="header-title">AI Math Renderer</h1>
@@ -500,14 +568,28 @@ export default function App() {
           </div>
         </div>
         <nav className="header-nav">
-          <button type="button" className={`nav-item ${activeView === 'home' ? 'active' : ''}`} onClick={() => setActiveView('home')}>
-            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M3 10.5L12 3l9 7.5"></path><path d="M5 10v10h14V10"></path><path d="M9 20v-6h6v6"></path></svg>
-            Trang chủ
-          </button>
           <button type="button" className={`nav-item ${activeView === 'render' ? 'active' : ''}`} onClick={() => setActiveView('render')}>
             <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><line x1="4" y1="6" x2="20" y2="6"></line><line x1="4" y1="12" x2="14" y2="12"></line><line x1="4" y1="18" x2="18" y2="18"></line></svg>
-            Dựng hình
+            Workspace
           </button>
+          {user && (
+            <button type="button" className={`nav-item ${activeView === 'history' ? 'active' : ''}`} onClick={() => {
+              setActiveView('history');
+              void refreshHistory();
+            }}>
+              <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"></path><path d="M3 3v6h6"></path><path d="M12 7v5l3 2"></path></svg>
+              Lịch sử
+            </button>
+          )}
+          {user?.role === 'admin' && (
+            <button type="button" className={`nav-item ${activeView === 'admin' ? 'active' : ''}`} onClick={() => {
+              setActiveView('admin');
+              void loadAdminWorkspace();
+            }}>
+              <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+              Admin
+            </button>
+          )}
           <button type="button" className={`nav-item ${activeView === 'login' ? 'active' : ''}`} onClick={() => setActiveView('login')}>
             <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path><path d="M10 17l5-5-5-5"></path><path d="M15 12H3"></path></svg>
             {user ? user.email : 'Đăng nhập'}
@@ -609,6 +691,32 @@ export default function App() {
             </div>
           </section>
         )}
+        {activeView === 'history' && (
+          <HistoryPage
+            user={user}
+            items={historyItems}
+            loading={historyLoading}
+            onOpen={openHistoryItem}
+            onDelete={removeHistoryItem}
+            onLogin={() => setActiveView('login')}
+            onWorkspace={() => setActiveView('render')}
+          />
+        )}
+        {activeView === 'admin' && (
+          <AdminConsole
+            user={user}
+            summary={adminSummary}
+            users={adminUsers}
+            renderJobs={adminRenderJobs}
+            settings={adminSettings}
+            auditLogs={auditLogs}
+            loading={adminLoading}
+            onRefresh={loadAdminWorkspace}
+            onToggleUserStatus={toggleUserStatus}
+            onDeleteRenderJob={removeAdminRenderJob}
+            onBackToApp={() => setActiveView('render')}
+          />
+        )}
         {activeView === 'login' && (
           <LoginPage
             logoUrl={logoUrl}
@@ -644,6 +752,133 @@ export default function App() {
         <span className="footer-line" />
       </footer>
     </>
+  );
+}
+
+function HistoryPage({ user, items, loading, onOpen, onDelete, onLogin, onWorkspace }: { user: UserResponse | null; items: RenderHistoryItem[]; loading: boolean; onOpen: (id: string) => void; onDelete: (id: string) => void; onLogin: () => void; onWorkspace: () => void }) {
+  if (!user) {
+    return (
+      <section className="product-page-card">
+        <span className="home-eyebrow">Lịch sử cá nhân</span>
+        <h2>Đăng nhập để lưu và mở lại các lần dựng hình.</h2>
+        <p>Lịch sử render chỉ được lưu cho tài khoản đã đăng nhập, giúp bạn tiếp tục chỉnh hình ở các phiên sau.</p>
+        <button type="button" onClick={onLogin}>Đăng nhập</button>
+      </section>
+    );
+  }
+
+  return (
+    <section className="product-page-card">
+      <div className="page-title-row">
+        <div>
+          <span className="home-eyebrow">Workspace history</span>
+          <h2>Lịch sử dựng hình của bạn</h2>
+          <p>Mở lại đề bài, scene và renderer đã lưu từ các lần render trước.</p>
+        </div>
+        <button type="button" onClick={onWorkspace}>Dựng hình mới</button>
+      </div>
+      <HistoryPanel items={items} loading={loading} onOpen={onOpen} onDelete={onDelete} />
+    </section>
+  );
+}
+
+function AdminConsole({ user, summary, users, renderJobs, settings, auditLogs, loading, onRefresh, onToggleUserStatus, onDeleteRenderJob, onBackToApp }: { user: UserResponse | null; summary: AdminSummaryResponse | null; users: UserResponse[]; renderJobs: AdminRenderHistoryItem[]; settings: SystemSettingResponse[]; auditLogs: AuditLogResponse[]; loading: boolean; onRefresh: () => void; onToggleUserStatus: (user: UserResponse) => void; onDeleteRenderJob: (id: string) => void; onBackToApp: () => void }) {
+  if (user?.role !== 'admin') {
+    return (
+      <section className="product-page-card">
+        <span className="home-eyebrow">Admin console</span>
+        <h2>Bạn không có quyền truy cập trang quản trị.</h2>
+        <p>Trang này chỉ dành cho tài khoản admin đang hoạt động.</p>
+        <button type="button" onClick={onBackToApp}>Quay lại workspace</button>
+      </section>
+    );
+  }
+
+  return (
+    <section className="admin-console">
+      <div className="page-title-row">
+        <div>
+          <span className="home-eyebrow">Admin console</span>
+          <h2>Quản trị AI Math Renderer</h2>
+          <p>Theo dõi người dùng, render jobs, cấu hình hệ thống và audit logs.</p>
+        </div>
+        <button type="button" className="secondary-button" onClick={onRefresh} disabled={loading}>{loading ? 'Đang tải...' : 'Làm mới'}</button>
+      </div>
+
+      <div className="admin-metric-grid">
+        <MetricCard label="Người dùng" value={summary?.users ?? 0} />
+        <MetricCard label="Đang hoạt động" value={summary?.active_users ?? 0} />
+        <MetricCard label="Admin" value={summary?.admins ?? 0} />
+        <MetricCard label="Render jobs" value={summary?.render_jobs ?? 0} />
+      </div>
+
+      <div className="admin-grid">
+        <section className="admin-panel">
+          <h3>Người dùng</h3>
+          <div className="admin-table">
+            {users.map((item) => (
+              <article className="admin-row" key={item.id}>
+                <div>
+                  <strong>{item.display_name || item.email}</strong>
+                  <span>{item.email} · {item.role} · {item.status} · {item.plan}</span>
+                </div>
+                <button type="button" className="secondary-button" onClick={() => onToggleUserStatus(item)}>{item.status === 'active' ? 'Vô hiệu hoá' : 'Kích hoạt'}</button>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section className="admin-panel">
+          <h3>Render jobs gần đây</h3>
+          <div className="admin-table">
+            {renderJobs.map((job) => (
+              <article className="admin-row" key={job.id}>
+                <div>
+                  <strong>{job.problem_text}</strong>
+                  <span>{formatHistoryDate(job.created_at)} · {job.user_id || 'guest'} · {job.renderer || 'auto'} · {job.model || 'default'}</span>
+                </div>
+                <button type="button" className="history-delete" onClick={() => onDeleteRenderJob(job.id)} aria-label="Xoá render job">×</button>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section className="admin-panel">
+          <h3>Cấu hình hệ thống</h3>
+          {settings.length === 0 ? <p>Chưa có cấu hình non-secret nào được lưu.</p> : settings.map((item) => (
+            <article className="admin-row" key={item.key}>
+              <div>
+                <strong>{item.key}</strong>
+                <span>Cập nhật {formatHistoryDate(item.updated_at)}</span>
+              </div>
+            </article>
+          ))}
+        </section>
+
+        <section className="admin-panel">
+          <h3>Audit logs</h3>
+          <div className="admin-table">
+            {auditLogs.map((log) => (
+              <article className="admin-row" key={log.id}>
+                <div>
+                  <strong>{log.action}</strong>
+                  <span>{formatHistoryDate(log.created_at)} · {log.actor_user_id || 'system'} · {log.target_type}{log.target_id ? `/${log.target_id}` : ''}</span>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      </div>
+    </section>
+  );
+}
+
+function MetricCard({ label, value }: { label: string; value: number }) {
+  return (
+    <article className="admin-metric-card">
+      <span>{label}</span>
+      <strong>{value.toLocaleString('vi-VN')}</strong>
+    </article>
   );
 }
 
