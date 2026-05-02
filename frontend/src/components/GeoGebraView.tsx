@@ -224,14 +224,13 @@ export function GeoGebraView({ commands, renderer, scene, view, onPointChange, e
         </div>
       )}
       <div ref={containerRef} id={appletId} className="geogebra-view" />
-      <div className="geogebra-tools">
-        <div className="geogebra-status">
-          {selectedObject ? <span>Đối tượng đã chọn: <strong>{selectedObject}</strong></span> : <span>Click vào đối tượng GeoGebra để xem tên.</span>}
-          {onPointChange && <span>Kéo điểm trong GeoGebra để cập nhật scene.</span>}
-          {updateCount > 0 && <span>Đã cập nhật trong GeoGebra: {updateCount}</span>}
-          {syncMessage && <span>{syncMessage}</span>}
+      {syncMessage && (
+        <div className="geogebra-tools">
+          <div className="geogebra-status">
+            <span>{syncMessage}</span>
+          </div>
         </div>
-      </div>
+      )}
     </>
   );
 

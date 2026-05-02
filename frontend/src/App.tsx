@@ -11,7 +11,6 @@ import { VerifyEmailPage } from './components/VerifyEmailPage';
 import { RendererPanel } from './components/RendererPanel';
 import { Router9SettingsPanel } from './components/Router9SettingsPanel';
 import { SceneEditorPanel, type PointPlacementPlane } from './components/SceneEditorPanel';
-import { SceneJsonPanel } from './components/SceneJsonPanel';
 import { SettingsPanel } from './components/SettingsPanel';
 import type { AdvancedRenderSettings, MathScene, RenderResponse, Renderer } from './types/scene';
 import { defaultRuntimeSettings, SETTINGS_STORAGE_VERSION, type RuntimeSettings, type SettingsDefaults } from './types/settings';
@@ -677,30 +676,32 @@ export default function App() {
         )}
         {activeView === 'render' && (
           <section className="workspace">
-            <ProblemInput
-              loading={loading}
-              ocrLoading={ocrLoading}
-              ocrError={null}
-              problemText={problemText}
-              modelOptions={modelOptions}
-              router9Only={runtimeSettings.router9.only_mode}
-              onProblemTextChange={setProblemText}
-              onOcrImage={handleOcrImage}
-              onOcrClipboardImage={handleOcrClipboardImage}
-              onOpenRouter9Settings={() => {
-                setActiveView('settings');
-                setActiveSettingsTab('router9');
-              }}
-              onSubmit={handleSubmit}
-            />
-            {user && (
-              <div className="history-drawer-wrap">
-                <button type="button" className="secondary-button history-toggle" onClick={() => setHistoryOpen((open) => !open)}>
-                  {historyOpen ? 'Ẩn lịch sử' : `Lịch sử (${historyItems.length})`}
-                </button>
-                {historyOpen && <HistoryPanel items={historyItems} loading={historyLoading} onOpen={openHistoryItem} onDelete={removeHistoryItem} />}
-              </div>
-            )}
+            <div className="workspace-sidebar">
+              <ProblemInput
+                loading={loading}
+                ocrLoading={ocrLoading}
+                ocrError={null}
+                problemText={problemText}
+                modelOptions={modelOptions}
+                router9Only={runtimeSettings.router9.only_mode}
+                onProblemTextChange={setProblemText}
+                onOcrImage={handleOcrImage}
+                onOcrClipboardImage={handleOcrClipboardImage}
+                onOpenRouter9Settings={() => {
+                  setActiveView('settings');
+                  setActiveSettingsTab('router9');
+                }}
+                onSubmit={handleSubmit}
+              />
+              {user && (
+                <div className="history-drawer-wrap">
+                  <button type="button" className="secondary-button history-toggle" onClick={() => setHistoryOpen((open) => !open)}>
+                    {historyOpen ? 'Ẩn lịch sử' : `Lịch sử (${historyItems.length})`}
+                  </button>
+                  {historyOpen && <HistoryPanel items={historyItems} loading={historyLoading} onOpen={openHistoryItem} onDelete={removeHistoryItem} />}
+                </div>
+              )}
+            </div>
             {result && <button type="button" className="mobile-scroll-notice" onClick={scrollToResult}>↓ Xem hình vừa dựng</button>}
             <div className="result-area" ref={resultAnchorRef}>
               <div className="render-stage">
@@ -748,7 +749,6 @@ export default function App() {
                   </div>
                 )}
               </div>
-              <SceneJsonPanel result={result} />
             </div>
           </section>
         )}

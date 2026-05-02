@@ -126,14 +126,38 @@ function LoginIllustration() {
   return (
     <svg className="login-illustration" viewBox="0 0 460 360" role="img" aria-label="Bảo mật workspace toán học">
       <defs>
-        <linearGradient id="loginShield" x1="0" x2="1" y1="0" y2="1">
-          <stop offset="0" stopColor="#eff6ff" />
-          <stop offset="1" stopColor="#ede9fe" />
+        <filter id="shieldShadow" x="-20%" y="-20%" width="140%" height="140%">
+          <feGaussianBlur in="SourceAlpha" stdDeviation="6" />
+          <feOffset dx="0" dy="8" result="offsetblur" />
+          <feComponentTransfer>
+            <feFuncA type="linear" slope="0.2" />
+          </feComponentTransfer>
+          <feMerge>
+            <feMergeNode />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+        <radialGradient id="loginShield" cx="30%" cy="24%" r="82%" fx="26%" fy="20%">
+          <stop offset="0%" stopColor="#ffffff" />
+          <stop offset="30%" stopColor="#e0f2fe" />
+          <stop offset="62%" stopColor="#60a5fa" />
+          <stop offset="100%" stopColor="#312e81" />
+        </radialGradient>
+        <linearGradient id="shieldDepth" x1="0" x2="1" y1="0" y2="1">
+          <stop offset="0%" stopColor="#ffffff" stopOpacity="0.42" />
+          <stop offset="46%" stopColor="#ffffff" stopOpacity="0.05" />
+          <stop offset="100%" stopColor="#111827" stopOpacity="0.34" />
         </linearGradient>
       </defs>
-      <rect x="28" y="28" width="404" height="286" rx="30" fill="#ffffff" stroke="#d4d4d4" />
-      <path d="M230 72L320 104V170C320 228 284 270 230 292C176 270 140 228 140 170V104L230 72Z" fill="url(#loginShield)" stroke="#111827" strokeWidth="4" />
-      <path d="M190 184L218 212L274 148" fill="none" stroke="#2563eb" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round" />
+      <rect x="28" y="28" width="404" height="286" rx="30" fill="#ffffff" stroke="#e5e7eb" />
+      <g filter="url(#shieldShadow)">
+        <path d="M230 72L320 104V170C320 228 284 270 230 292C176 270 140 228 140 170V104L230 72Z" fill="url(#loginShield)" stroke="#1e1b4b" strokeWidth="2" />
+        <path d="M230 72L320 104V170C320 228 284 270 230 292C176 270 140 228 140 170V104L230 72Z" fill="url(#shieldDepth)" />
+        <path d="M160 118C184 96 214 88 250 92C210 110 178 140 158 184Z" fill="#ffffff" fillOpacity="0.28" />
+        <path d="M230 72V292C230 292 140 250 140 170V104L230 72Z" fill="#000000" fillOpacity="0.06" />
+        <path d="M190 184L218 212L274 148" fill="none" stroke="#0f172a" strokeOpacity="0.24" strokeWidth="15" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M190 184L218 212L274 148" fill="none" stroke="#ffffff" strokeWidth="11" strokeLinecap="round" strokeLinejoin="round" />
+      </g>
       <path d="M86 254L150 204M374 250L312 204M94 116L146 142M366 116L314 142" stroke="#94a3b8" strokeWidth="3" strokeDasharray="7 8" strokeLinecap="round" />
       {[[86, 254, 'A'], [374, 250, 'B'], [94, 116, 'C'], [366, 116, 'D']].map(([cx, cy, label]) => (
         <g key={label as string}>
