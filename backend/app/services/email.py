@@ -111,77 +111,295 @@ def auth_email_html(
     footer: str,
     otp: str | None = None,
 ) -> str:
+    # SVG Logo inline
+    logo_svg = '''<svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="48" height="48" rx="12" fill="#171717"/>
+      <path d="M14 32V16h4v6.5h8V16h4v16h-4v-6.5h-8V32h-4z" fill="#ffffff"/>
+    </svg>'''
+
     otp_block = ""
     if otp:
         otp_digits = "".join(f'<span class="otp-digit">{escape(digit)}</span>' for digit in otp)
-        otp_block = f"""
-          <div class="code-card">
-            <div class="code-label">Mã OTP</div>
-            <div class="otp">{otp_digits}</div>
-            <p>Mã OTP dùng cùng liên kết xác minh và sẽ hết hạn sớm.</p>
+        otp_block = f'''
+          <div class="otp-section">
+            <div class="section-label">Mã xác minh</div>
+            <div class="otp-container">
+              <div class="otp-display">{otp_digits}</div>
+              <button class="copy-button" onclick="navigator.clipboard.writeText('{escape(otp)}')">Sao chép</button>
+            </div>
+            <p class="hint-text">Mã này có hiệu lực trong 24 giờ. Không chia sẻ với bất kỳ ai.</p>
           </div>
-        """
+        '''
 
-    return f"""
+    return f'''
 <!doctype html>
 <html lang="vi">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="supported-color-schemes" content="light dark" />
     <style>
-      body {{ margin:0; padding:0; background:#0a0a0a; color:#ffffff; font-family:Inter,Segoe UI,Roboto,Arial,sans-serif; }}
-      .wrap {{ padding:32px 16px; }}
-      .card {{ max-width:640px; margin:0 auto; background:#1a1a1a; border:1px solid #2a2a2a; border-radius:16px; overflow:hidden; box-shadow:0 24px 70px rgba(0,0,0,.5); }}
-      .hero {{ padding:34px 34px 24px; background:linear-gradient(135deg,#000000,#1a1a1a); border-bottom:1px solid #2a2a2a; }}
-      .logo {{ display:flex; align-items:center; gap:12px; margin-bottom:20px; }}
-      .logo-icon {{ width:40px; height:40px; background:#ffffff; border-radius:8px; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:20px; color:#000000; }}
-      .brand {{ font-size:13px; letter-spacing:.08em; text-transform:uppercase; color:#888888; }}
-      h1 {{ margin:22px 0 10px; font-size:30px; line-height:1.12; color:#ffffff; }}
-      .hero p {{ margin:0; color:#aaaaaa; font-size:16px; line-height:1.6; }}
-      .body {{ padding:30px 34px 34px; }}
-      .button {{ display:inline-block; margin:8px 0 24px; padding:14px 22px; border-radius:8px; background:#ffffff; color:#000000 !important; text-decoration:none; font-weight:700; transition:background .2s; }}
-      .button:hover {{ background:#e5e5e5; }}
-      .code-card {{ margin:0 0 22px; padding:20px; border-radius:12px; background:#0a0a0a; border:1px solid #2a2a2a; }}
-      .code-label {{ color:#888888; font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; }}
-      .otp {{ display:flex; gap:8px; margin:12px 0; }}
-      .otp-digit {{ display:inline-flex; align-items:center; justify-content:center; width:42px; height:50px; border-radius:8px; background:#1a1a1a; border:1px solid #3a3a3a; font-size:24px; font-weight:800; color:#ffffff; }}
-      .token {{ word-break:break-all; padding:14px; border-radius:8px; background:#0a0a0a; color:#cccccc; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:13px; border:1px solid #2a2a2a; }}
-      .muted {{ color:#888888; font-size:14px; line-height:1.6; }}
-      .muted a {{ color:#aaaaaa; text-decoration:underline; }}
-      .footer {{ padding-top:22px; border-top:1px solid #2a2a2a; }}
-      @media (max-width:520px) {{ .hero,.body {{ padding-left:22px; padding-right:22px; }} .otp-digit {{ width:34px; height:44px; }} }}
+      :root {{
+        color-scheme: light dark;
+        supported-color-schemes: light dark;
+      }}
+      body {{
+        margin: 0;
+        padding: 0;
+        background: #fafafa;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }}
+      .email-wrapper {{
+        max-width: 600px;
+        margin: 0 auto;
+        padding: 40px 20px;
+      }}
+      .email-card {{
+        background: #ffffff;
+        border: 1px solid #e5e5e5;
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+      }}
+      .email-header {{
+        padding: 32px 32px 24px;
+        background: linear-gradient(135deg, #171717 0%, #262626 100%);
+        text-align: center;
+      }}
+      .logo-container {{
+        margin: 0 auto 16px;
+        display: inline-block;
+      }}
+      .brand-name {{
+        margin: 12px 0 0;
+        color: #ffffff;
+        font-size: 24px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+      }}
+      .eyebrow {{
+        display: inline-block;
+        margin: 8px 0 0;
+        padding: 4px 12px;
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.15);
+        color: #e5e5e5;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }}
+      .email-body {{
+        padding: 32px;
+      }}
+      .email-title {{
+        margin: 0 0 12px;
+        color: #171717;
+        font-size: 28px;
+        font-weight: 700;
+        line-height: 1.2;
+        letter-spacing: -0.02em;
+      }}
+      .email-intro {{
+        margin: 0 0 28px;
+        color: #525252;
+        font-size: 16px;
+        line-height: 1.6;
+      }}
+      .cta-button {{
+        display: inline-block;
+        margin: 0 0 32px;
+        padding: 14px 28px;
+        border-radius: 10px;
+        background: #171717;
+        color: #ffffff !important;
+        text-decoration: none;
+        font-size: 16px;
+        font-weight: 600;
+        text-align: center;
+        transition: background 0.2s;
+      }}
+      .cta-button:hover {{
+        background: #262626;
+      }}
+      .otp-section {{
+        margin: 0 0 28px;
+        padding: 24px;
+        border: 1px solid #e5e5e5;
+        border-radius: 12px;
+        background: #fafafa;
+      }}
+      .section-label {{
+        margin: 0 0 12px;
+        color: #737373;
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }}
+      .otp-container {{
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin: 0 0 12px;
+      }}
+      .otp-display {{
+        display: flex;
+        gap: 8px;
+        flex: 1;
+      }}
+      .otp-digit {{
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 48px;
+        height: 56px;
+        border: 2px solid #d4d4d4;
+        border-radius: 10px;
+        background: #ffffff;
+        color: #171717;
+        font-size: 28px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        user-select: all;
+      }}
+      .copy-button {{
+        padding: 10px 16px;
+        border: 1px solid #d4d4d4;
+        border-radius: 8px;
+        background: #ffffff;
+        color: #171717;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        white-space: nowrap;
+      }}
+      .copy-button:hover {{
+        background: #f5f5f5;
+        border-color: #a3a3a3;
+      }}
+      .hint-text {{
+        margin: 0;
+        color: #737373;
+        font-size: 13px;
+        line-height: 1.5;
+      }}
+      .token-section {{
+        margin: 0 0 24px;
+        padding: 20px;
+        border: 1px solid #e5e5e5;
+        border-radius: 12px;
+        background: #fafafa;
+      }}
+      .token-value {{
+        margin: 8px 0 0;
+        padding: 12px;
+        border: 1px solid #d4d4d4;
+        border-radius: 8px;
+        background: #ffffff;
+        color: #525252;
+        font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace;
+        font-size: 13px;
+        word-break: break-all;
+        user-select: all;
+      }}
+      .alt-link {{
+        margin: 0 0 24px;
+        padding: 16px;
+        border-left: 3px solid #d4d4d4;
+        background: #fafafa;
+        color: #737373;
+        font-size: 13px;
+        line-height: 1.6;
+      }}
+      .alt-link a {{
+        color: #171717;
+        text-decoration: underline;
+        word-break: break-all;
+      }}
+      .email-footer {{
+        padding: 24px 32px;
+        border-top: 1px solid #e5e5e5;
+        background: #fafafa;
+      }}
+      .footer-text {{
+        margin: 0 0 8px;
+        color: #737373;
+        font-size: 13px;
+        line-height: 1.6;
+      }}
+      .footer-text:last-child {{
+        margin: 0;
+      }}
+      .footer-brand {{
+        color: #171717;
+        font-weight: 600;
+      }}
+      @media (max-width: 600px) {{
+        .email-wrapper {{ padding: 20px 12px; }}
+        .email-header {{ padding: 24px 20px 20px; }}
+        .email-body {{ padding: 24px 20px; }}
+        .email-title {{ font-size: 24px; }}
+        .otp-digit {{ width: 40px; height: 48px; font-size: 24px; }}
+        .otp-container {{ flex-direction: column; align-items: stretch; }}
+        .copy-button {{ width: 100%; }}
+      }}
+      @media (prefers-color-scheme: dark) {{
+        body {{ background: #0a0a0a; }}
+        .email-card {{ background: #171717; border-color: #262626; }}
+        .email-body {{ background: #171717; }}
+        .email-title {{ color: #fafafa; }}
+        .email-intro {{ color: #a3a3a3; }}
+        .cta-button {{ background: #fafafa; color: #171717 !important; }}
+        .cta-button:hover {{ background: #e5e5e5; }}
+        .otp-section {{ background: #0a0a0a; border-color: #262626; }}
+        .section-label {{ color: #a3a3a3; }}
+        .otp-digit {{ background: #171717; border-color: #404040; color: #fafafa; }}
+        .copy-button {{ background: #262626; border-color: #404040; color: #fafafa; }}
+        .copy-button:hover {{ background: #404040; }}
+        .hint-text {{ color: #a3a3a3; }}
+        .token-section {{ background: #0a0a0a; border-color: #262626; }}
+        .token-value {{ background: #171717; border-color: #404040; color: #d4d4d4; }}
+        .alt-link {{ background: #0a0a0a; border-color: #404040; color: #a3a3a3; }}
+        .alt-link a {{ color: #fafafa; }}
+        .email-footer {{ background: #0a0a0a; border-color: #262626; }}
+        .footer-text {{ color: #a3a3a3; }}
+        .footer-brand {{ color: #fafafa; }}
+      }}
     </style>
   </head>
   <body>
-    <div class="wrap">
-      <main class="card">
-        <section class="hero">
-          <div class="logo">
-            <div class="logo-icon">H</div>
-            <div>
-              <div style="font-weight:700;font-size:18px;color:#ffffff;">Hinh</div>
-              <div class="brand">{escape(eyebrow)}</div>
-            </div>
-          </div>
-          <h1>{escape(title)}</h1>
-          <p>{escape(intro)}</p>
-        </section>
-        <section class="body">
-          <a class="button" href="{escape(action_url, quote=True)}">{escape(action_label)}</a>
+    <div class="email-wrapper">
+      <div class="email-card">
+        <div class="email-header">
+          <div class="logo-container">{logo_svg}</div>
+          <h1 class="brand-name">Hinh</h1>
+          <span class="eyebrow">{escape(eyebrow)}</span>
+        </div>
+        <div class="email-body">
+          <h2 class="email-title">{escape(title)}</h2>
+          <p class="email-intro">{escape(intro)}</p>
+          <a class="cta-button" href="{escape(action_url, quote=True)}">{escape(action_label)}</a>
           {otp_block}
-          <div class="code-card">
-            <div class="code-label">Token dự phòng</div>
-            <p class="muted">Nếu nút không mở được, hãy copy token này vào màn hình xác thực tương ứng.</p>
-            <div class="token">{escape(token)}</div>
+          <div class="token-section">
+            <div class="section-label">Token dự phòng</div>
+            <p class="hint-text">Nếu nút không hoạt động, copy token này và dán vào trang xác thực.</p>
+            <div class="token-value">{escape(token)}</div>
           </div>
-          <p class="muted">Hoặc copy liên kết này vào trình duyệt:<br><a href="{escape(action_url, quote=True)}">{escape(action_url)}</a></p>
-          <div class="footer">
-            <p class="muted">{escape(footer)}</p>
-            <p class="muted">Hinh Math Renderer · Email tự động, vui lòng không trả lời trực tiếp.</p>
+          <div class="alt-link">
+            <strong>Hoặc mở liên kết này:</strong><br>
+            <a href="{escape(action_url, quote=True)}">{escape(action_url)}</a>
           </div>
-        </section>
-      </main>
+        </div>
+        <div class="email-footer">
+          <p class="footer-text">{escape(footer)}</p>
+          <p class="footer-text"><span class="footer-brand">Hinh Math Renderer</span> · Email tự động, vui lòng không trả lời.</p>
+        </div>
+      </div>
     </div>
   </body>
 </html>
-""".strip()
+'''.strip()

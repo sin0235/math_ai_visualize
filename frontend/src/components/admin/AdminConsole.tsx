@@ -222,22 +222,22 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
       </aside>
 
       <main className="admin-main">
-        <header className="admin-topbar">
-          <div><span className="home-eyebrow">Admin Dashboard</span><h2>Quản lý dự án AI Math Renderer</h2><p>Dashboard riêng cho admin: vận hành, phân tích, người dùng, model, cài đặt và audit.</p></div>
-          <button type="button" className="secondary-button" onClick={onRefresh} disabled={loading}>{loading ? 'Đang tải...' : 'Làm mới dữ liệu'}</button>
-        </header>
-
         {activeSection === 'overview' && (
-          <div className="admin-section-stack">
+          <>
+            <header className="admin-topbar">
+              <div><span className="home-eyebrow">Admin Dashboard</span><h2>Quản lý dự án AI Math Renderer</h2><p>Dashboard riêng cho admin: vận hành, phân tích, người dùng, model, cài đặt và audit.</p></div>
+              <button type="button" className="secondary-button" onClick={onRefresh} disabled={loading}>{loading ? 'Đang tải...' : 'Làm mới'}</button>
+            </header>
+            <div className="admin-section-stack">
             <div className="admin-metric-grid">
-              <MetricCard label="Người dùng" value={summary?.users ?? 0} />
-              <MetricCard label="Đang hoạt động" value={summary?.active_users ?? 0} />
-              <MetricCard label="Admin" value={summary?.admins ?? 0} />
-              <MetricCard label="Render jobs" value={summary?.render_jobs ?? 0} />
-              <MetricCard label="Render hôm nay" value={summary?.render_jobs_today ?? 0} />
-              <MetricCard label="User mới hôm nay" value={summary?.users_today ?? 0} />
-              <MetricCard label="Job cảnh báo AI" value={summary?.ai_warning_jobs ?? 0} />
-              <MetricCard label="Tỉ lệ cảnh báo AI" value={summary?.ai_warning_rate ?? 0} suffix="%" />
+              <MetricCard label="Người dùng" value={summary?.users ?? 0} variant="primary" />
+              <MetricCard label="Đang hoạt động" value={summary?.active_users ?? 0} variant="success" />
+              <MetricCard label="Admin" value={summary?.admins ?? 0} variant="info" />
+              <MetricCard label="Render jobs" value={summary?.render_jobs ?? 0} variant="primary" />
+              <MetricCard label="Render hôm nay" value={summary?.render_jobs_today ?? 0} variant="success" />
+              <MetricCard label="User mới hôm nay" value={summary?.users_today ?? 0} variant="info" />
+              <MetricCard label="Job cảnh báo AI" value={summary?.ai_warning_jobs ?? 0} variant="warning" />
+              <MetricCard label="Tỉ lệ cảnh báo AI" value={summary?.ai_warning_rate ?? 0} suffix="%" variant="warning" />
             </div>
             
             <section className="admin-panel admin-panel-full">
@@ -268,12 +268,16 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
               <section className="admin-panel"><h3>Phân tích provider/model</h3><div className="admin-table">{providerStats.map((item) => <article className="admin-row" key={item.key}><div><strong>{item.key}</strong><span>{item.count} render jobs</span></div></article>)}{providerStats.length === 0 && <p className="field-hint">Chưa có dữ liệu render để phân tích.</p>}</div></section>
               <section className="admin-panel"><h3>Tình trạng cấu hình</h3><div className="admin-table"><article className="admin-row"><div><strong>ai_settings</strong><span>{settings.some((item) => item.key === 'ai_settings') ? 'Đã lưu trong database' : 'Chưa cấu hình trong database'}</span></div></article><article className="admin-row"><div><strong>Audit</strong><span>{auditLogs.length} sự kiện gần nhất</span></div></article></div></section>
             </div>
-          </div>
+          </>
         )}
 
         {activeSection === 'users' && (
-          <section className="admin-panel admin-panel-full">
-            <h3>Quản lý người dùng</h3>
+          <>
+            <header className="admin-page-header">
+              <h2>Quản lý người dùng</h2>
+              <button type="button" className="secondary-button" onClick={onRefresh} disabled={loading}>{loading ? 'Đang tải...' : 'Làm mới'}</button>
+            </header>
+            <section className="admin-panel admin-panel-full">
             <form className="admin-toolbar" onSubmit={submitUserSearch}>
               <input value={userQuery} onChange={(event) => setUserQuery(event.target.value)} placeholder="Tìm email, tên hiển thị hoặc ID" />
               <select value={userFilters.role ?? ''} onChange={(event) => setUserFilters((current) => ({ ...current, role: event.target.value }))}><option value="">Role</option><option value="user">user</option><option value="admin">admin</option></select>
@@ -287,11 +291,16 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
               {users.length === 0 && <p className="field-hint">Không tìm thấy người dùng phù hợp.</p>}
             </div>
           </section>
+          </>
         )}
 
         {activeSection === 'renders' && (
-          <section className="admin-panel admin-panel-full">
-            <h3>Quản lý render jobs</h3>
+          <>
+            <header className="admin-page-header">
+              <h2>Quản lý render jobs</h2>
+              <button type="button" className="secondary-button" onClick={onRefresh} disabled={loading}>{loading ? 'Đang tải...' : 'Làm mới'}</button>
+            </header>
+            <section className="admin-panel admin-panel-full">
             <form className="admin-toolbar admin-filter-grid" onSubmit={submitRenderJobFilters}>
               <input value={localRenderJobFilters.q ?? ''} onChange={(event) => setLocalRenderJobFilters((current) => ({ ...current, q: event.target.value }))} placeholder="Tìm đề bài hoặc ID" />
               <input value={localRenderJobFilters.provider ?? ''} onChange={(event) => setLocalRenderJobFilters((current) => ({ ...current, provider: event.target.value }))} placeholder="Provider" />
@@ -315,19 +324,29 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
             {jobDetailError && <p className="error-box">{jobDetailError}</p>}
             {selectedJobDetail && <AdminRenderJobDetailPanel detail={selectedJobDetail} onOpen={() => onOpenRenderJobDetail(selectedJobDetail)} onClose={() => setSelectedJobDetail(null)} />}
           </section>
+          </>
         )}
 
         {activeSection === 'models' && (
-          <section className="admin-panel admin-panel-full">
-            <h3>Model & AI management</h3>
+          <>
+            <header className="admin-page-header">
+              <h2>Model & AI management</h2>
+              <button type="button" className="secondary-button" onClick={onRefresh} disabled={loading}>{loading ? 'Đang tải...' : 'Làm mới'}</button>
+            </header>
+            <section className="admin-panel admin-panel-full">
             <p className="field-hint">Admin quản lý provider, model mặc định, allowlist, OCR và routing AI.</p>
             <AdminAiSettingsForm value={aiSettings} saving={savingAiSettings} onSave={saveAiSettingsPatch} />
           </section>
+          </>
         )}
 
         {activeSection === 'settings' && (
-          <section className="admin-panel admin-panel-full">
-            <h3>Cài đặt lưu trong cơ sở dữ liệu</h3>
+          <>
+            <header className="admin-page-header">
+              <h2>Cài đặt hệ thống</h2>
+              <button type="button" className="secondary-button" onClick={onRefresh} disabled={loading}>{loading ? 'Đang tải...' : 'Làm mới'}</button>
+            </header>
+            <section className="admin-panel admin-panel-full">
             <p className="field-hint">Các cấu hình non-secret được lưu trong bảng system_settings; API key vẫn nằm trong secret/env deploy.</p>
             <AdminPlanSettingsForm value={settings.find((item) => item.key === 'plan_settings')?.value ?? {}} onSave={async (value) => { await saveAdminSystemSetting('plan_settings', value); void onRefresh(); }} />
             <AdminFeatureFlagsForm value={settings.find((item) => item.key === 'feature_flags')?.value ?? {}} onSave={async (value) => { await saveAdminSystemSetting('feature_flags', value); void onRefresh(); }} />
@@ -338,11 +357,16 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
               {settings.length === 0 && <p className="field-hint">Chưa có cấu hình hệ thống.</p>}
             </div>
           </section>
+          </>
         )}
 
         {activeSection === 'audit' && (
-          <section className="admin-panel admin-panel-full">
-            <h3>Audit logs</h3>
+          <>
+            <header className="admin-page-header">
+              <h2>Audit logs</h2>
+              <button type="button" className="secondary-button" onClick={onRefresh} disabled={loading}>{loading ? 'Đang tải...' : 'Làm mới'}</button>
+            </header>
+            <section className="admin-panel admin-panel-full">
             <form className="admin-toolbar admin-filter-grid" onSubmit={submitAuditLogFilters}>
               <input value={localAuditLogFilters.action ?? ''} onChange={(event) => setLocalAuditLogFilters((current) => ({ ...current, action: event.target.value }))} placeholder="Action" />
               <input value={localAuditLogFilters.actor_user_id ?? ''} onChange={(event) => setLocalAuditLogFilters((current) => ({ ...current, actor_user_id: event.target.value }))} placeholder="Actor user ID" />
@@ -355,6 +379,7 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
               {auditLogs.length === 0 && <p className="field-hint">Chưa có audit log.</p>}
             </div>
           </section>
+          </>
         )}
       </main>
     </section>
@@ -364,6 +389,7 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
 // --- Sub-components moved here for simplicity in this turn ---
 
 function AdminUserRow({ item, currentUserId, onUpdate, onToggleStatus }: { item: UserResponse; currentUserId: string; onUpdate: (user: UserResponse, patch: any) => Promise<void>; onToggleStatus: (user: UserResponse) => Promise<void> }) {
+  const [editing, setEditing] = useState(false);
   const [displayName, setDisplayName] = useState(item.display_name ?? '');
   const [role, setRole] = useState<UserResponse['role']>(item.role);
   const [status, setStatus] = useState<UserResponse['status']>(item.status);
@@ -409,34 +435,45 @@ function AdminUserRow({ item, currentUserId, onUpdate, onToggleStatus }: { item:
     if (!isSelf && role !== item.role) patch.role = role;
     if (!isSelf && status !== item.status) patch.status = status;
     if (nextPlan !== item.plan) patch.plan = nextPlan;
-    if (Object.keys(patch).length === 0) return;
+    if (Object.keys(patch).length === 0) {
+      setEditing(false);
+      return;
+    }
 
     setSaving(true);
     try {
       await onUpdate(item, patch);
+      setEditing(false);
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <article className="admin-row admin-row-editable">
-      <div>
-        <strong>{item.display_name || item.email}</strong>
-        <span>{item.email} · {item.role} · {item.status} · {item.plan}</span>
-        {isSelf && <span>Đang đăng nhập: khoá sửa role/status để tránh tự mất quyền.</span>}
-      </div>
-      <div className="admin-inline-form">
-        <label className="field-label">Tên hiển thị<input value={displayName} onChange={(event) => setDisplayName(event.target.value)} /></label>
-        <label className="field-label">Role<select value={role} onChange={(event) => setRole(event.target.value as UserResponse['role'])} disabled={isSelf}><option value="user">user</option><option value="admin">admin</option></select></label>
-        <label className="field-label">Status<select value={status} onChange={(event) => setStatus(event.target.value as UserResponse['status'])} disabled={isSelf}><option value="active">active</option><option value="disabled">disabled</option></select></label>
-        <label className="field-label">Plan<input value={plan} onChange={(event) => setPlan(event.target.value)} /></label>
-      </div>
-      <div className="admin-row-actions">
-        <button type="button" className="secondary-button" onClick={() => void save()} disabled={saving}>{saving ? 'Đang lưu...' : 'Lưu'}</button>
-        <button type="button" className="secondary-button" onClick={() => void onToggleStatus(item)} disabled={isSelf || saving}>{item.status === 'active' ? 'Vô hiệu hoá' : 'Kích hoạt'}</button>
-        <button type="button" className="secondary-button" onClick={() => (sessionsOpen ? setSessionsOpen(false) : void loadSessions())} disabled={sessionsLoading}>{sessionsLoading ? 'Đang tải...' : 'Phiên đăng nhập'}</button>
-      </div>
+    <>
+      <article className="admin-row">
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <strong>{item.display_name || item.email}</strong>
+          <span>{item.email} · {item.role} · {item.status} · {item.plan}</span>
+        </div>
+        <div className="admin-row-actions">
+          <button type="button" className="secondary-button" onClick={() => setEditing(!editing)}>{editing ? 'Huỷ' : 'Sửa'}</button>
+          <button type="button" className="secondary-button" onClick={() => void onToggleStatus(item)} disabled={isSelf}>{item.status === 'active' ? 'Vô hiệu' : 'Kích hoạt'}</button>
+          <button type="button" className="secondary-button" onClick={() => (sessionsOpen ? setSessionsOpen(false) : void loadSessions())} disabled={sessionsLoading}>{sessionsLoading ? '...' : 'Sessions'}</button>
+        </div>
+      </article>
+      {editing && (
+        <div className="admin-edit-panel">
+          <div className="admin-field-grid">
+            <label className="field-label">Tên hiển thị<input value={displayName} onChange={(event) => setDisplayName(event.target.value)} /></label>
+            <label className="field-label">Role<select value={role} onChange={(event) => setRole(event.target.value as UserResponse['role'])} disabled={isSelf}><option value="user">user</option><option value="admin">admin</option></select></label>
+            <label className="field-label">Status<select value={status} onChange={(event) => setStatus(event.target.value as UserResponse['status'])} disabled={isSelf}><option value="active">active</option><option value="disabled">disabled</option></select></label>
+            <label className="field-label">Plan<input value={plan} onChange={(event) => setPlan(event.target.value)} /></label>
+          </div>
+          {isSelf && <p className="field-hint">Bạn không thể thay đổi role/status của chính mình.</p>}
+          <button type="button" className="secondary-button" onClick={() => void save()} disabled={saving}>{saving ? 'Đang lưu...' : 'Lưu thay đổi'}</button>
+        </div>
+      )}
       {sessionsOpen && (
         <div className="admin-session-panel">
           <div className="admin-detail-header"><h4>Phiên đăng nhập</h4><button type="button" className="secondary-button" onClick={() => void revokeAllSessions()}>Thu hồi tất cả</button></div>
@@ -449,7 +486,7 @@ function AdminUserRow({ item, currentUserId, onUpdate, onToggleStatus }: { item:
           {sessions.length === 0 && <p className="field-hint">Không có phiên còn hiệu lực.</p>}
         </div>
       )}
-    </article>
+    </>
   );
 }
 
@@ -489,9 +526,21 @@ function AdminSystemSettingRow({ item }: { item: SystemSettingResponse }) {
 }
 
 function AdminAuditLogRow({ log }: { log: AuditLogResponse }) {
+  const truncateId = (id: string | null) => {
+    if (!id) return '';
+    if (id.length <= 12) return id;
+    return `${id.slice(0, 8)}...${id.slice(-4)}`;
+  };
+
+  const actorDisplay = log.actor_user_id ? truncateId(log.actor_user_id) : 'system';
+  const targetDisplay = log.target_id ? `${log.target_type}/${truncateId(log.target_id)}` : log.target_type;
+
   return (
     <article className="admin-row admin-row-block">
-      <div><strong>{log.action}</strong><span>{formatHistoryDate(log.created_at)} · {log.actor_user_id || 'system'} · {log.target_type}{log.target_id ? `/${log.target_id}` : ''}</span></div>
+      <div>
+        <strong>{log.action}</strong>
+        <span>{formatHistoryDate(log.created_at)} · {actorDisplay} · {targetDisplay}</span>
+      </div>
       {hasObjectKeys(log.metadata) && <AdminDetails title="Metadata" value={log.metadata} />}
     </article>
   );

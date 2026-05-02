@@ -14,9 +14,10 @@ export function formatHistoryDate(value: string) {
   return date.toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' });
 }
 
-export function MetricCard({ label, value, suffix = '' }: { label: string; value: number; suffix?: string }) {
+export function MetricCard({ label, value, suffix = '', variant = 'default' }: { label: string; value: number; suffix?: string; variant?: 'default' | 'primary' | 'success' | 'warning' | 'info' }) {
+  const className = variant !== 'default' ? `admin-metric-card metric-${variant}` : 'admin-metric-card';
   return (
-    <article className="admin-metric-card">
+    <article className={className}>
       <span>{label}</span>
       <strong>{value.toLocaleString('vi-VN')}{suffix}</strong>
     </article>

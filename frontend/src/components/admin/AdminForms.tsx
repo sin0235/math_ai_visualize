@@ -113,20 +113,16 @@ function getAiTaskProfile(value: unknown) {
 // --- Form Components ---
 
 export function AdminAiSettingsForm({ value, saving, onSave }: { value: Record<string, unknown>; saving: boolean; onSave: (patch: Record<string, unknown>) => Promise<void> }) {
-  const [provider, setProvider] = useState<'openrouter' | 'nvidia' | 'ollama' | 'router9'>('router9');
+  const provider = 'router9'; // Chỉ dùng router9
   const providerValue = getAdminProviderSettings(value, provider);
   const ocrValue = getAdminOcrSettings(value);
-  const [defaultProvider, setDefaultProvider] = useState(getStringValue(value.default_provider, 'auto'));
   const [baseUrl, setBaseUrl] = useState(providerValue.base_url);
   const [model, setModel] = useState(providerValue.model);
-  const [allowed, setAllowed] = useState(providerValue.allowed_model_ids.join('\n'));
+  const [allowedModelIds, setAllowedModelIds] = useState<string[]>(providerValue.allowed_model_ids);
   const [router9OnlyMode, setRouter9OnlyMode] = useState(providerValue.only_mode);
   const [ocrProvider, setOcrProvider] = useState(ocrValue.provider);
   const [ocrModel, setOcrModel] = useState(ocrValue.model);
   const [ocrMaxImageMb, setOcrMaxImageMb] = useState(String(ocrValue.max_image_mb));
-  const [openrouterReferer, setOpenrouterReferer] = useState(getStringValue(value.openrouter_http_referer, ''));
-  const [openrouterTitle, setOpenrouterTitle] = useState(getStringValue(value.openrouter_x_title, ''));
-  const [openrouterReasoning, setOpenrouterReasoning] = useState(value.openrouter_reasoning_enabled === true);
   const [scanning, setScanning] = useState(false);
   const [checking, setChecking] = useState(false);
   const [checkResult, setCheckResult] = useState<{ status: string; message: string } | null>(null);
@@ -135,25 +131,17 @@ export function AdminAiSettingsForm({ value, saving, onSave }: { value: Record<s
     const next = getAdminProviderSettings(value, provider);
     setBaseUrl(next.base_url);
     setModel(next.model);
-    setAllowed(next.allowed_model_ids.join('\n'));
+    setAllowedModelIds(next.allowed_model_ids);
     setRouter9OnlyMode(next.only_mode);
     setCheckResult(null);
-  }, [provider, value]);
+  }, [value]);
 
   useEffect(() => {
     const nextOcr = getAdminOcrSettings(value);
-    setDefaultProvider(getStringValue(value.default_provider, 'auto'));
     setOcrProvider(nextOcr.provider);
     setOcrModel(nextOcr.model);
     setOcrMaxImageMb(String(nextOcr.max_image_mb));
-    setOpenrouterReferer(getStringValue(value.openrouter_http_referer, ''));
-    setOpenrouterTitle(getStringValue(value.openrouter_x_title, ''));
-    setOpenrouterReasoning(value.openrouter_reasoning_enabled === true);
   }, [value]);
-
-  async function saveGlobalRouting() {
-    await onSave({ default_provider: defaultProvider });
-  }
 
   async function saveProvider() {
     const current = getAdminProviderSettings(value, provider);
@@ -162,8 +150,8 @@ export function AdminAiSettingsForm({ value, saving, onSave }: { value: Record<s
         ...current,
         base_url: baseUrl.trim(),
         model: model.trim(),
-        allowed_model_ids: parseLines(allowed),
-        ...(provider === 'router9' ? { only_mode: router9OnlyMode } : {}),
+        allowed_model_ids: allowedModelIds,
+        only_mode: router9OnlyMode,
       },
     });
   }
@@ -182,7 +170,7 @@ export function AdminAiSettingsForm({ value, saving, onSave }: { value: Record<s
     setScanning(true);
     try {
       const runtime = adminSettingsToRuntime(value);
-      const models = provider === 'router9' ? await scanRouter9Models(runtime) : await scanProviderModels(provider, runtime);
+      const models = await scanRouter9Models(runtime);
       await onSave({
         [provider]: {
           ...getAdminProviderSettings(value, provider),
@@ -193,14 +181,6 @@ export function AdminAiSettingsForm({ value, saving, onSave }: { value: Record<s
     } finally {
       setScanning(false);
     }
-  }
-
-  async function saveOpenRouter() {
-    await onSave({
-      openrouter_http_referer: openrouterReferer.trim(),
-      openrouter_x_title: openrouterTitle.trim(),
-      openrouter_reasoning_enabled: openrouterReasoning,
-    });
   }
 
   async function checkProvider() {
@@ -216,25 +196,23 @@ export function AdminAiSettingsForm({ value, saving, onSave }: { value: Record<s
     }
   }
 
+  function toggleModelId(modelId: string) {
+    setAllowedModelIds((current) =>
+      current.includes(modelId)
+        ? current.filter((id) => id !== modelId)
+        : [...current, modelId]
+    );
+  }
+
   return (
     <div className="admin-ai-settings">
       <section className="admin-settings-section">
-        <h4>Routing mặc định</h4>
+        <h4>9router Configuration</h4>
         <div className="admin-field-grid">
-          <label className="field-label">Default provider<select value={defaultProvider} onChange={(event) => setDefaultProvider(event.target.value)}><option value="auto">auto</option><option value="openrouter">OpenRouter</option><option value="nvidia">NVIDIA</option><option value="ollama">Ollama</option><option value="router9">9router</option></select></label>
-        </div>
-        <button type="button" className="secondary-button" onClick={saveGlobalRouting} disabled={saving}>{saving ? 'Đang lưu...' : 'Lưu routing'}</button>
-      </section>
-
-      <section className="admin-settings-section">
-        <h4>Provider model</h4>
-        <div className="admin-field-grid">
-          <label className="field-label">Provider<select value={provider} onChange={(event) => setProvider(event.target.value as typeof provider)}><option value="openrouter">OpenRouter</option><option value="nvidia">NVIDIA</option><option value="ollama">Ollama</option><option value="router9">9router</option></select></label>
           <label className="field-label">Base URL<input value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} placeholder="https://..." /></label>
           <label className="field-label">Model mặc định<input value={model} onChange={(event) => setModel(event.target.value)} placeholder="vd: codex-5.5" /></label>
-          {provider === 'router9' && <label className="checkbox-label"><input type="checkbox" checked={router9OnlyMode} onChange={(event) => setRouter9OnlyMode(event.target.checked)} /> Chỉ dùng 9router</label>}
+          <label className="checkbox-label"><input type="checkbox" checked={router9OnlyMode} onChange={(event) => setRouter9OnlyMode(event.target.checked)} /> Chỉ dùng 9router</label>
         </div>
-        <label className="field-label">Allowlist model hiển thị cho user<textarea value={allowed} onChange={(event) => setAllowed(event.target.value)} rows={6} placeholder="Mỗi dòng một model id" /></label>
         <div className="admin-field-grid">
           <span><strong>Scanned models</strong>{providerValue.scanned_models.length} model</span>
           <span><strong>Last scan</strong>{providerValue.last_scanned_at || 'Chưa scan'}</span>
@@ -245,13 +223,39 @@ export function AdminAiSettingsForm({ value, saving, onSave }: { value: Record<s
             <p>{checkResult.message}</p>
           </div>
         )}
-        {providerValue.scanned_models.length > 0 && <AdminDetails title="Scanned model JSON" value={providerValue.scanned_models} />}
         <div className="admin-row-actions">
           <button type="button" className="secondary-button" onClick={checkProvider} disabled={saving || checking}>{checking ? 'Đang kiểm tra...' : 'Kiểm tra kết nối'}</button>
           <button type="button" className="secondary-button" onClick={scanModels} disabled={saving || scanning}>{scanning ? 'Đang scan...' : 'Scan models'}</button>
-          <button type="button" className="secondary-button" onClick={saveProvider} disabled={saving}>{saving ? 'Đang lưu...' : 'Lưu provider'}</button>
+          <button type="button" className="secondary-button" onClick={saveProvider} disabled={saving}>{saving ? 'Đang lưu...' : 'Lưu cấu hình'}</button>
         </div>
       </section>
+
+      {providerValue.scanned_models.length > 0 && (
+        <section className="admin-settings-section">
+          <h4>Allowlist models hiển thị cho user ({allowedModelIds.length} đã chọn)</h4>
+          <p className="field-hint">Chọn các model mà user có thể thấy và sử dụng trong dropdown.</p>
+          <div className="admin-model-checklist">
+            {providerValue.scanned_models.map((modelItem: any) => {
+              const modelId = typeof modelItem === 'string' ? modelItem : modelItem.id;
+              const modelName = typeof modelItem === 'object' && modelItem.name ? modelItem.name : modelId;
+              return (
+                <label key={modelId} className="checkbox-label admin-model-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={allowedModelIds.includes(modelId)}
+                    onChange={() => toggleModelId(modelId)}
+                  />
+                  <span className="model-label">
+                    <strong>{modelName}</strong>
+                    {modelId !== modelName && <small>{modelId}</small>}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+          <button type="button" className="secondary-button" onClick={saveProvider} disabled={saving}>{saving ? 'Đang lưu...' : 'Lưu allowlist'}</button>
+        </section>
+      )}
 
       <section className="admin-settings-section">
         <h4>OCR</h4>
@@ -261,16 +265,6 @@ export function AdminAiSettingsForm({ value, saving, onSave }: { value: Record<s
           <label className="field-label">Max image MB<input type="number" min="1" max="32" value={ocrMaxImageMb} onChange={(event) => setOcrMaxImageMb(event.target.value)} /></label>
         </div>
         <button type="button" className="secondary-button" onClick={saveOcr} disabled={saving}>{saving ? 'Đang lưu...' : 'Lưu OCR'}</button>
-      </section>
-
-      <section className="admin-settings-section">
-        <h4>OpenRouter metadata</h4>
-        <div className="admin-field-grid">
-          <label className="field-label">HTTP Referer<input value={openrouterReferer} onChange={(event) => setOpenrouterReferer(event.target.value)} /></label>
-          <label className="field-label">X-Title<input value={openrouterTitle} onChange={(event) => setOpenrouterTitle(event.target.value)} /></label>
-          <label className="checkbox-label"><input type="checkbox" checked={openrouterReasoning} onChange={(event) => setOpenrouterReasoning(event.target.checked)} /> Bật reasoning</label>
-        </div>
-        <button type="button" className="secondary-button" onClick={saveOpenRouter} disabled={saving}>{saving ? 'Đang lưu...' : 'Lưu OpenRouter'}</button>
       </section>
     </div>
   );

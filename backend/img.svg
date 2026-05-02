@@ -1,0 +1,110 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Background Grid Pattern -->
+    <pattern id="tech-grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="currentColor" stroke-opacity="0.04" stroke-width="1"/>
+    </pattern>
+    
+    <!-- Advanced Glow Filter cho lõi AI -->
+    <filter id="core-glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="12" result="blur1" />
+      <feGaussianBlur stdDeviation="24" result="blur2" />
+      <feMerge>
+        <feMergeNode in="blur2" />
+        <feMergeNode in="blur1" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+    
+    <!-- Cyberpunk / Neon Gradients mang dáng dấp đồ hoạ 3D -->
+    <linearGradient id="prism-top" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00F2FE" stop-opacity="0.9" />
+      <stop offset="100%" stop-color="#4FACFE" stop-opacity="0.6" />
+    </linearGradient>
+    <linearGradient id="prism-right" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FF0844" stop-opacity="0.9" />
+      <stop offset="100%" stop-color="#FFB199" stop-opacity="0.6" />
+    </linearGradient>
+    <linearGradient id="prism-left" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#B224EF" stop-opacity="0.9" />
+      <stop offset="100%" stop-color="#7579FF" stop-opacity="0.6" />
+    </linearGradient>
+  </defs>
+
+  <!-- Lưới kỹ thuật nền -->
+  <rect width="512" height="512" fill="url(#tech-grid)" />
+
+  <!-- Dịch tâm tọa độ về giữa SVG để vẽ hình học chính xác tuyệt đối -->
+  <g transform="translate(256, 256)">
+    
+    <!-- Các vạch Radar / La bàn không gian -->
+    <circle cx="0" cy="0" r="220" fill="none" stroke="currentColor" stroke-width="1" stroke-dasharray="4 8" opacity="0.25" />
+    <circle cx="0" cy="0" r="235" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="1 16" opacity="0.3" />
+    
+    <!-- 3 Trục toạ độ XYZ (Perspective) đâm xuyên không gian -->
+    <g stroke="currentColor" stroke-width="1.5" opacity="0.15">
+      <line x1="0" y1="-240" x2="0" y2="240" />
+      <line x1="0" y1="-240" x2="0" y2="240" transform="rotate(60)" />
+      <line x1="0" y1="-240" x2="0" y2="240" transform="rotate(-60)" />
+    </g>
+    
+    <!-- Quỹ đạo toán học (Hàm Elip đồ thị) bao quanh khối 3D -->
+    <ellipse cx="0" cy="0" rx="190" ry="60" fill="none" stroke="#00F2FE" stroke-width="1.5" stroke-dasharray="12 6" transform="rotate(-30)" opacity="0.8" filter="url(#core-glow)" />
+    <ellipse cx="0" cy="0" rx="190" ry="60" fill="none" stroke="#FF0844" stroke-width="1" transform="rotate(30)" opacity="0.5" />
+
+    <!-- Khung Wireframe ngoài cùng (Đại diện cho Text Prompt Input) -->
+    <polygon points="0,-160 138.56,-80 138.56,80 0,160 -138.56,80 -138.56,-80" fill="none" stroke="currentColor" stroke-dasharray="4 4" stroke-width="1.5" opacity="0.4" />
+    <polyline points="0,0 138.56,-80" fill="none" stroke="currentColor" stroke-dasharray="4 4" stroke-width="1" opacity="0.2" />
+    <polyline points="0,0 138.56,80" fill="none" stroke="currentColor" stroke-dasharray="4 4" stroke-width="1" opacity="0.2" />
+    <polyline points="0,0 0,160" fill="none" stroke="currentColor" stroke-dasharray="4 4" stroke-width="1" opacity="0.2" />
+    <polyline points="0,0 -138.56,80" fill="none" stroke="currentColor" stroke-dasharray="4 4" stroke-width="1" opacity="0.2" />
+    <polyline points="0,0 -138.56,-80" fill="none" stroke="currentColor" stroke-dasharray="4 4" stroke-width="1" opacity="0.2" />
+    <polyline points="0,0 0,-160" fill="none" stroke="currentColor" stroke-dasharray="4 4" stroke-width="1" opacity="0.2" />
+
+    <!-- Tia chiếu kết nối Input (Wireframe) với Output (Core) -->
+    <g stroke="currentColor" stroke-width="1" opacity="0.3" stroke-dasharray="4 4">
+      <line x1="0" y1="-160" x2="0" y2="-90" />
+      <line x1="138.56" y1="-80" x2="77.94" y2="-45" />
+      <line x1="138.56" y1="80" x2="77.94" y2="45" />
+      <line x1="0" y1="160" x2="0" y2="90" />
+      <line x1="-138.56" y1="80" x2="-77.94" y2="45" />
+      <line x1="-138.56" y1="-80" x2="-77.94" y2="-45" />
+    </g>
+
+    <!-- THE PRISMATIC AI CORE - Khối 3D Render ở trung tâm -->
+    <g filter="url(#core-glow)">
+      <!-- Mặt trên (Cyan / Blue) -->
+      <polygon points="0,-90 77.94,-45 0,0 -77.94,-45" fill="url(#prism-top)" stroke="#00F2FE" stroke-width="1.5" stroke-linejoin="round" />
+      <!-- Mặt phải (Magenta / Sunset) -->
+      <polygon points="0,0 77.94,-45 77.94,45 0,90" fill="url(#prism-right)" stroke="#FFB199" stroke-width="1.5" stroke-linejoin="round" />
+      <!-- Mặt trái (Neon Purple) -->
+      <polygon points="0,0 0,90 -77.94,45 -77.94,-45" fill="url(#prism-left)" stroke="#B224EF" stroke-width="1.5" stroke-linejoin="round" />
+    </g>
+
+    <!-- Ánh sáng hắt cạch (Highlight Edges) tôn vinh hình học -->
+    <polyline points="0,-90 0,0" fill="none" stroke="#FFFFFF" stroke-width="2.5" opacity="0.9" />
+    <polyline points="-77.94,-45 0,0 77.94,-45" fill="none" stroke="#FFFFFF" stroke-width="2.5" opacity="0.7" />
+
+    <!-- AI MIND SPARK - Luồng điện não nhân tạo phóng ra từ gốc O(0,0,0) -->
+    <path d="M 0,-40 C 6,-12 12,-6 40,0 C 12,6 6,12 0,40 C -6,12 -12,6 -40,0 C -12,-6 -6,-12 0,-40 Z" fill="#FFFFFF" filter="url(#core-glow)" />
+    <circle cx="0" cy="0" r="5" fill="#FFFFFF" />
+
+    <!-- HUD / Scene JSON Texts Overlays (Kiều màn hình kỹ thuật) -->
+    <g fill="currentColor" font-family="monospace" font-size="11" opacity="0.5" letter-spacing="1.5">
+      <text x="-210" y="-170">CMD_RENDER</text>
+      <text x="145" y="-105">V[x,y,z]</text>
+      <text x="145" y="125">SCENE_JSON</text>
+      <text x="-220" y="165">AI://GEOMETRY</text>
+    </g>
+
+    <!-- Các điểm Point Markers (Scene nodes) -->
+    <g fill="currentColor" stroke="none" opacity="0.75">
+      <circle cx="0" cy="-160" r="3.5" />
+      <circle cx="138.56" cy="-80" r="3.5" />
+      <circle cx="138.56" cy="80" r="3.5" />
+      <circle cx="0" cy="160" r="3.5" />
+      <circle cx="-138.56" cy="80" r="3.5" />
+      <circle cx="-138.56" cy="-80" r="3.5" />
+    </g>
+  </g>
+</svg>
