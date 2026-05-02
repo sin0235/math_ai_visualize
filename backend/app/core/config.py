@@ -14,6 +14,8 @@ class Settings(BaseSettings):
         "http://127.0.0.1:5173",
         "http://localhost:4173",
         "http://127.0.0.1:4173",
+        "https://math-renderer.sin-studio.tech",
+        "https://math-renderer.sin235.live",
     ]
     openrouter_api_key: str | None = None
     openrouter_base_url: str = "https://openrouter.ai/api/v1"

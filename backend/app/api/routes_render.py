@@ -34,6 +34,7 @@ async def render_problem(
             request.preferred_ai_model,
             request.advanced_settings,
             sanitize_public_runtime_settings(request.runtime_settings),
+            db=db,
         )
     except (RuntimeError, ValidationError, ValueError, KeyError) as error:
         raise HTTPException(status_code=400, detail=str(error)) from error

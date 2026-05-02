@@ -16,6 +16,7 @@ from app.schemas.auth import (
     AdminUserUpdateRequest,
     AuditLogResponse,
     SystemAiProfiles,
+    SystemAiPrompts,
     SystemAiSettings,
     SystemFeatureFlags,
     SystemPlanSettings,
@@ -159,6 +160,26 @@ async def admin_save_system_setting(
     return SystemSettingResponse(key=setting.key, value=parse_setting_value(setting.value_json), updated_by=setting.updated_by, updated_at=setting.updated_at)
 
 
+@router.post("/providers/{provider}/check")
+async def admin_check_provider(
+    provider: str,
+    _: UserRecord = Depends(require_admin_user),
+    db: DatabaseClient = Depends(get_database),
+) -> dict:
+    from app.services.extractor import _extract_with_provider
+    from app.core.config import get_settings
+
+    settings = get_settings()
+    # Use a very simple problem for checking connection
+    test_problem = "Vẽ điểm A(0,0)."
+    try:
+        # Note: this uses the system configured API keys and settings
+        await _extract_with_provider(provider, settings, test_problem, grade=None, reasoning_layer="off")
+        return {"status": "ok", "message": f"Kết nối tới {provider} thành công."}
+    except Exception as error:
+        return {"status": "error", "message": str(error)}
+
+
 @router.get("/audit-logs", response_model=list[AuditLogResponse])
 async def admin_audit_logs(
     action: str | None = Query(default=None, max_length=128),
@@ -193,6 +214,7 @@ def validate_system_setting(key: str, value: dict) -> dict:
         "plan_settings": SystemPlanSettings,
         "feature_flags": SystemFeatureFlags,
         "ai_profiles": SystemAiProfiles,
+        "ai_prompts": SystemAiPrompts,
     }
     schema = schemas.get(key)
     if schema is None:

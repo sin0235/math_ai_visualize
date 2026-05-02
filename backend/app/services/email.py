@@ -129,22 +129,26 @@ def auth_email_html(
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <style>
-      body {{ margin:0; padding:0; background:#eef4ff; color:#0f172a; font-family:Inter,Segoe UI,Roboto,Arial,sans-serif; }}
+      body {{ margin:0; padding:0; background:#0a0a0a; color:#ffffff; font-family:Inter,Segoe UI,Roboto,Arial,sans-serif; }}
       .wrap {{ padding:32px 16px; }}
-      .card {{ max-width:640px; margin:0 auto; background:#ffffff; border:1px solid #dbe7ff; border-radius:28px; overflow:hidden; box-shadow:0 24px 70px rgba(15,23,42,.14); }}
-      .hero {{ padding:34px 34px 24px; background:linear-gradient(135deg,#0f172a,#1d4ed8 52%,#38bdf8); color:#ffffff; }}
-      .brand {{ display:inline-flex; align-items:center; gap:10px; padding:7px 12px; border-radius:999px; background:rgba(255,255,255,.14); font-size:13px; letter-spacing:.08em; text-transform:uppercase; }}
-      h1 {{ margin:22px 0 10px; font-size:30px; line-height:1.12; }}
-      .hero p {{ margin:0; color:#dbeafe; font-size:16px; line-height:1.6; }}
+      .card {{ max-width:640px; margin:0 auto; background:#1a1a1a; border:1px solid #2a2a2a; border-radius:16px; overflow:hidden; box-shadow:0 24px 70px rgba(0,0,0,.5); }}
+      .hero {{ padding:34px 34px 24px; background:linear-gradient(135deg,#000000,#1a1a1a); border-bottom:1px solid #2a2a2a; }}
+      .logo {{ display:flex; align-items:center; gap:12px; margin-bottom:20px; }}
+      .logo-icon {{ width:40px; height:40px; background:#ffffff; border-radius:8px; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:20px; color:#000000; }}
+      .brand {{ font-size:13px; letter-spacing:.08em; text-transform:uppercase; color:#888888; }}
+      h1 {{ margin:22px 0 10px; font-size:30px; line-height:1.12; color:#ffffff; }}
+      .hero p {{ margin:0; color:#aaaaaa; font-size:16px; line-height:1.6; }}
       .body {{ padding:30px 34px 34px; }}
-      .button {{ display:inline-block; margin:8px 0 24px; padding:14px 22px; border-radius:14px; background:#2563eb; color:#ffffff !important; text-decoration:none; font-weight:700; box-shadow:0 12px 28px rgba(37,99,235,.28); }}
-      .code-card {{ margin:0 0 22px; padding:20px; border-radius:20px; background:#f8fbff; border:1px solid #dbe7ff; }}
-      .code-label {{ color:#475569; font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; }}
+      .button {{ display:inline-block; margin:8px 0 24px; padding:14px 22px; border-radius:8px; background:#ffffff; color:#000000 !important; text-decoration:none; font-weight:700; transition:background .2s; }}
+      .button:hover {{ background:#e5e5e5; }}
+      .code-card {{ margin:0 0 22px; padding:20px; border-radius:12px; background:#0a0a0a; border:1px solid #2a2a2a; }}
+      .code-label {{ color:#888888; font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; }}
       .otp {{ display:flex; gap:8px; margin:12px 0; }}
-      .otp-digit {{ display:inline-flex; align-items:center; justify-content:center; width:42px; height:50px; border-radius:14px; background:#ffffff; border:1px solid #c7d7fe; font-size:24px; font-weight:800; color:#1d4ed8; }}
-      .token {{ word-break:break-all; padding:14px; border-radius:14px; background:#f1f5f9; color:#334155; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:13px; }}
-      .muted {{ color:#64748b; font-size:14px; line-height:1.6; }}
-      .footer {{ padding-top:22px; border-top:1px solid #e2e8f0; }}
+      .otp-digit {{ display:inline-flex; align-items:center; justify-content:center; width:42px; height:50px; border-radius:8px; background:#1a1a1a; border:1px solid #3a3a3a; font-size:24px; font-weight:800; color:#ffffff; }}
+      .token {{ word-break:break-all; padding:14px; border-radius:8px; background:#0a0a0a; color:#cccccc; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:13px; border:1px solid #2a2a2a; }}
+      .muted {{ color:#888888; font-size:14px; line-height:1.6; }}
+      .muted a {{ color:#aaaaaa; text-decoration:underline; }}
+      .footer {{ padding-top:22px; border-top:1px solid #2a2a2a; }}
       @media (max-width:520px) {{ .hero,.body {{ padding-left:22px; padding-right:22px; }} .otp-digit {{ width:34px; height:44px; }} }}
     </style>
   </head>
@@ -152,7 +156,13 @@ def auth_email_html(
     <div class="wrap">
       <main class="card">
         <section class="hero">
-          <div class="brand">{escape(eyebrow)}</div>
+          <div class="logo">
+            <div class="logo-icon">H</div>
+            <div>
+              <div style="font-weight:700;font-size:18px;color:#ffffff;">Hinh</div>
+              <div class="brand">{escape(eyebrow)}</div>
+            </div>
+          </div>
           <h1>{escape(title)}</h1>
           <p>{escape(intro)}</p>
         </section>
@@ -167,7 +177,7 @@ def auth_email_html(
           <p class="muted">Hoặc copy liên kết này vào trình duyệt:<br><a href="{escape(action_url, quote=True)}">{escape(action_url)}</a></p>
           <div class="footer">
             <p class="muted">{escape(footer)}</p>
-            <p class="muted">AI Math Renderer · Email tự động, vui lòng không trả lời trực tiếp.</p>
+            <p class="muted">Hinh Math Renderer · Email tự động, vui lòng không trả lời trực tiếp.</p>
           </div>
         </section>
       </main>

@@ -328,13 +328,20 @@ export async function getAdminSystemSettings(): Promise<SystemSettingResponse[]>
   return requestJson('/api/admin/system-settings', { credentials: 'include' }, 'Không thể tải cấu hình hệ thống.');
 }
 
-export async function saveAdminSystemSetting(key: string, value: Record<string, unknown>): Promise<SystemSettingResponse> {
+export async function updateAdminSystemSetting(key: string, value: Record<string, unknown>): Promise<SystemSettingResponse> {
   return requestJson('/api/admin/system-settings', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
     body: JSON.stringify({ key, value }),
   }, 'Không thể lưu cấu hình hệ thống.');
+}
+
+export async function checkAdminProvider(provider: string): Promise<{ status: string; message: string }> {
+  return requestJson(`/api/admin/providers/${encodeURIComponent(provider)}/check`, {
+    method: 'POST',
+    credentials: 'include',
+  }, 'Không thể kiểm tra kết nối provider.');
 }
 
 export async function getAdminAuditLogs(filters: AdminAuditLogFilters = {}): Promise<AuditLogResponse[]> {

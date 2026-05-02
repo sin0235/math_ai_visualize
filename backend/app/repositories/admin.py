@@ -21,6 +21,18 @@ class AdminRepository:
         warning_jobs = await self.db.fetch_one("SELECT COUNT(*) AS count FROM render_jobs WHERE warnings_json IS NOT NULL AND warnings_json NOT IN ('[]', '')")
         render_count = int((renders or {}).get("count") or 0)
         warning_count = int((warning_jobs or {}).get("count") or 0)
+
+        daily_stats_rows = await self.db.fetch_all(
+            """
+            SELECT date(created_at) as day, COUNT(*) as count
+            FROM render_jobs
+            WHERE created_at >= date('now', '-14 days')
+            GROUP BY day
+            ORDER BY day ASC
+            """
+        )
+        daily_stats = [{"day": row["day"], "count": row["count"]} for row in daily_stats_rows]
+
         return {
             "users": int((users or {}).get("count") or 0),
             "active_users": int((active_users or {}).get("count") or 0),
@@ -30,6 +42,7 @@ class AdminRepository:
             "users_today": int((users_today or {}).get("count") or 0),
             "ai_warning_jobs": warning_count,
             "ai_warning_rate": round((warning_count / render_count) * 100, 1) if render_count else 0,
+            "daily_stats": daily_stats,
         }
 
     async def list_users(

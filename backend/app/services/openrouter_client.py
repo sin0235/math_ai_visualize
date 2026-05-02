@@ -23,15 +23,24 @@ class OpenRouterClient:
         self.model = model or settings.openrouter_text_model
         self.reasoning_enabled = settings.openrouter_reasoning_enabled if reasoning_enabled is None else reasoning_enabled
 
-    async def extract_scene_json(self, problem_text: str, grade: int | None = None, reasoning_layer: str = "off", reasoning_plan: dict | None = None) -> dict:
+    async def extract_scene_json(
+        self,
+        problem_text: str,
+        grade: int | None = None,
+        reasoning_layer: str = "off",
+        reasoning_plan: dict | None = None,
+        system_prompt: str | None = None,
+    ) -> dict:
         if not self.settings.openrouter_api_key:
             raise RuntimeError("OPENROUTER_API_KEY chưa được cấu hình.")
+
+        sys_prompt = system_prompt or SCENE_EXTRACTION_SYSTEM_PROMPT
 
         headers = _build_headers(self.settings)
         payload = {
             "model": _normalize_model_id(self.model),
             "messages": [
-                {"role": "system", "content": SCENE_EXTRACTION_SYSTEM_PROMPT},
+                {"role": "system", "content": sys_prompt},
                 {"role": "user", "content": build_scene_extraction_prompt(problem_text, grade, reasoning_layer, reasoning_plan=reasoning_plan)},
             ],
             "temperature": 0.1,
@@ -60,16 +69,18 @@ class OpenRouterClient:
         except json.JSONDecodeError as error:
             raise RuntimeError(f"OpenRouter trả về JSON không hợp lệ: {error.msg}") from error
 
-    async def reason_about_problem(self, problem_text: str, grade: int | None = None) -> dict:
+    async def reason_about_problem(self, problem_text: str, grade: int | None = None, system_prompt: str | None = None) -> dict:
         """Task 1: Analyze the problem and return a structured reasoning plan."""
         if not self.settings.openrouter_api_key:
             raise RuntimeError("OPENROUTER_API_KEY chưa được cấu hình.")
+
+        sys_prompt = system_prompt or REASONING_SYSTEM_PROMPT
 
         headers = _build_headers(self.settings)
         payload = {
             "model": _normalize_model_id(self.model),
             "messages": [
-                {"role": "system", "content": REASONING_SYSTEM_PROMPT},
+                {"role": "system", "content": sys_prompt},
                 {"role": "user", "content": build_reasoning_prompt(problem_text, grade)},
             ],
             "temperature": 0.15,

@@ -319,3 +319,30 @@ Trước khi tạo JSON, hãy luôn suy luận nội bộ một lớp kế hoạ
 - Chỉ sau đó mới tạo JSON scene.
 Chỉ trả về JSON scene cuối cùng; không xuất suy luận, kế hoạch, markdown hoặc giải thích.""".strip()
     return ""
+
+
+async def get_system_prompts(db: "DatabaseClient | None" = None) -> tuple[str, str]:
+    """Get the latest system prompts from DB, falling back to hardcoded constants."""
+    from app.schemas.auth import SystemAiPrompts
+    from app.services.system_settings import load_system_setting
+
+    scene_prompt = SCENE_EXTRACTION_SYSTEM_PROMPT
+    reasoning_prompt = REASONING_SYSTEM_PROMPT
+
+    if db:
+        try:
+            settings = await load_system_setting(db, "ai_prompts", SystemAiPrompts)
+            if settings.scene_extraction:
+                scene_prompt = settings.scene_extraction
+            if settings.reasoning:
+                reasoning_prompt = settings.reasoning
+        except Exception:
+            # Fallback to defaults on error
+            pass
+
+    return scene_prompt, reasoning_prompt
+
+
+# Keep old names for type checking or simple usage, but prefer get_system_prompts
+DEFAULT_SCENE_EXTRACTION_SYSTEM_PROMPT = SCENE_EXTRACTION_SYSTEM_PROMPT
+DEFAULT_REASONING_SYSTEM_PROMPT = REASONING_SYSTEM_PROMPT

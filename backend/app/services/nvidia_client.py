@@ -22,9 +22,18 @@ class NvidiaClient:
         self.reasoning_effort = reasoning_effort
         self.thinking = thinking
 
-    async def extract_scene_json(self, problem_text: str, grade: int | None = None, reasoning_layer: str = "off", reasoning_plan: dict | None = None) -> dict:
+    async def extract_scene_json(
+        self,
+        problem_text: str,
+        grade: int | None = None,
+        reasoning_layer: str = "off",
+        reasoning_plan: dict | None = None,
+        system_prompt: str | None = None,
+    ) -> dict:
         if not self.settings.nvidia_api_key:
             raise RuntimeError("NVIDIA_API_KEY chưa được cấu hình.")
+
+        sys_prompt = system_prompt or SCENE_EXTRACTION_SYSTEM_PROMPT
 
         chat_template_kwargs: dict[str, str | bool] = {}
         if self.thinking:
@@ -35,7 +44,7 @@ class NvidiaClient:
         payload = {
             "model": self.model,
             "messages": [
-                {"role": "system", "content": SCENE_EXTRACTION_SYSTEM_PROMPT},
+                {"role": "system", "content": sys_prompt},
                 {"role": "user", "content": build_scene_extraction_prompt(problem_text, grade, reasoning_layer, reasoning_plan=reasoning_plan)},
             ],
             "temperature": 0.1,
@@ -74,15 +83,17 @@ class NvidiaClient:
         except json.JSONDecodeError as error:
             raise RuntimeError(f"NVIDIA trả về JSON không hợp lệ: {error.msg}") from error
 
-    async def reason_about_problem(self, problem_text: str, grade: int | None = None) -> dict:
+    async def reason_about_problem(self, problem_text: str, grade: int | None = None, system_prompt: str | None = None) -> dict:
         """Task 1: Analyze the problem and return a structured reasoning plan."""
         if not self.settings.nvidia_api_key:
             raise RuntimeError("NVIDIA_API_KEY chưa được cấu hình.")
 
+        sys_prompt = system_prompt or REASONING_SYSTEM_PROMPT
+
         payload = {
             "model": self.model,
             "messages": [
-                {"role": "system", "content": REASONING_SYSTEM_PROMPT},
+                {"role": "system", "content": sys_prompt},
                 {"role": "user", "content": build_reasoning_prompt(problem_text, grade)},
             ],
             "temperature": 0.15,

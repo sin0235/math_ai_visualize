@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
@@ -298,6 +298,14 @@ class AiTaskProfile(BaseModel):
     fallbacks: list[str] = Field(default_factory=list, max_length=MAX_STORED_MODELS)
 
 
+class SystemAiPrompts(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    version: int = 1
+    scene_extraction: str = Field(default="", max_length=50_000)
+    reasoning: str = Field(default="", max_length=50_000)
+
+
 class SystemAiProfiles(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -311,10 +319,12 @@ class AdminSummaryResponse(BaseModel):
     active_users: int
     admins: int
     render_jobs: int
-    render_jobs_today: int = 0
-    users_today: int = 0
-    ai_warning_jobs: int = 0
-    ai_warning_rate: float = 0
+    render_jobs_today: int
+    users_today: int
+    ai_warning_jobs: int
+    ai_warning_rate: float
+    daily_stats: list[dict[str, Any]] = Field(default_factory=list)
+
 
 
 class AdminUserUpdateRequest(BaseModel):

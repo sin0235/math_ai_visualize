@@ -13,23 +13,40 @@ class OllamaClient:
         self.settings = settings
         self.model = model or settings.ollama_text_model
 
-    async def extract_scene_json(self, problem_text: str, grade: int | None = None, reasoning_layer: str = "off", reasoning_plan: dict | None = None) -> dict:
+    async def extract_scene_json(
+        self,
+        problem_text: str,
+        grade: int | None = None,
+        reasoning_layer: str = "off",
+        reasoning_plan: dict | None = None,
+        system_prompt: str | None = None,
+    ) -> dict:
         base_url = self.settings.ollama_base_url.rstrip("/")
         if _uses_openai_compatible_api(base_url):
-            return await self._extract_scene_json_openai_compatible(base_url, problem_text, grade, reasoning_layer, reasoning_plan)
-        return await self._extract_scene_json_local(base_url, problem_text, grade, reasoning_layer, reasoning_plan)
+            return await self._extract_scene_json_openai_compatible(base_url, problem_text, grade, reasoning_layer, reasoning_plan, system_prompt=system_prompt)
+        return await self._extract_scene_json_local(base_url, problem_text, grade, reasoning_layer, reasoning_plan, system_prompt=system_prompt)
 
-    async def _extract_scene_json_local(self, base_url: str, problem_text: str, grade: int | None, reasoning_layer: str, reasoning_plan: dict | None = None) -> dict:
+    async def _extract_scene_json_local(
+        self,
+        base_url: str,
+        problem_text: str,
+        grade: int | None,
+        reasoning_layer: str,
+        reasoning_plan: dict | None = None,
+        system_prompt: str | None = None,
+    ) -> dict:
         headers = {"Content-Type": "application/json"}
         if self.settings.ollama_api_key:
             headers["Authorization"] = f"Bearer {self.settings.ollama_api_key}"
+
+        sys_prompt = system_prompt or SCENE_EXTRACTION_SYSTEM_PROMPT
 
         payload = {
             "model": self.model,
             "stream": False,
             "format": "json",
             "messages": [
-                {"role": "system", "content": SCENE_EXTRACTION_SYSTEM_PROMPT},
+                {"role": "system", "content": sys_prompt},
                 {"role": "user", "content": build_scene_extraction_prompt(problem_text, grade, reasoning_layer, reasoning_plan=reasoning_plan)},
             ],
             "options": {"temperature": 0.1},
@@ -58,14 +75,24 @@ class OllamaClient:
         log_scene_summary("ollama", scene_json)
         return scene_json
 
-    async def _extract_scene_json_openai_compatible(self, base_url: str, problem_text: str, grade: int | None, reasoning_layer: str, reasoning_plan: dict | None = None) -> dict:
+    async def _extract_scene_json_openai_compatible(
+        self,
+        base_url: str,
+        problem_text: str,
+        grade: int | None,
+        reasoning_layer: str,
+        reasoning_plan: dict | None = None,
+        system_prompt: str | None = None,
+    ) -> dict:
         if not self.settings.ollama_api_key:
             raise RuntimeError("OLLAMA_API_KEY chưa được cấu hình cho Ollama cloud.")
+
+        sys_prompt = system_prompt or SCENE_EXTRACTION_SYSTEM_PROMPT
 
         payload = {
             "model": self.model,
             "messages": [
-                {"role": "system", "content": SCENE_EXTRACTION_SYSTEM_PROMPT},
+                {"role": "system", "content": sys_prompt},
                 {"role": "user", "content": build_scene_extraction_prompt(problem_text, grade, reasoning_layer, reasoning_plan=reasoning_plan)},
             ],
             "temperature": 0.1,
@@ -99,24 +126,26 @@ class OllamaClient:
         log_scene_summary("ollama_cloud", scene_json)
         return scene_json
 
-    async def reason_about_problem(self, problem_text: str, grade: int | None = None) -> dict:
+    async def reason_about_problem(self, problem_text: str, grade: int | None = None, system_prompt: str | None = None) -> dict:
         """Task 1: Analyze the problem and return a structured reasoning plan."""
         base_url = self.settings.ollama_base_url.rstrip("/")
         if _uses_openai_compatible_api(base_url):
-            return await self._reason_openai_compatible(base_url, problem_text, grade)
-        return await self._reason_local(base_url, problem_text, grade)
+            return await self._reason_openai_compatible(base_url, problem_text, grade, system_prompt=system_prompt)
+        return await self._reason_local(base_url, problem_text, grade, system_prompt=system_prompt)
 
-    async def _reason_local(self, base_url: str, problem_text: str, grade: int | None) -> dict:
+    async def _reason_local(self, base_url: str, problem_text: str, grade: int | None, system_prompt: str | None = None) -> dict:
         headers = {"Content-Type": "application/json"}
         if self.settings.ollama_api_key:
             headers["Authorization"] = f"Bearer {self.settings.ollama_api_key}"
+
+        sys_prompt = system_prompt or REASONING_SYSTEM_PROMPT
 
         payload = {
             "model": self.model,
             "stream": False,
             "format": "json",
             "messages": [
-                {"role": "system", "content": REASONING_SYSTEM_PROMPT},
+                {"role": "system", "content": sys_prompt},
                 {"role": "user", "content": build_reasoning_prompt(problem_text, grade)},
             ],
             "options": {"temperature": 0.15},
@@ -140,14 +169,16 @@ class OllamaClient:
             raise RuntimeError("Ollama reasoning response không đúng định dạng") from error
         return json.loads(_strip_json_fences(content))
 
-    async def _reason_openai_compatible(self, base_url: str, problem_text: str, grade: int | None) -> dict:
+    async def _reason_openai_compatible(self, base_url: str, problem_text: str, grade: int | None, system_prompt: str | None = None) -> dict:
         if not self.settings.ollama_api_key:
             raise RuntimeError("OLLAMA_API_KEY chưa được cấu hình cho Ollama cloud.")
+
+        sys_prompt = system_prompt or REASONING_SYSTEM_PROMPT
 
         payload = {
             "model": self.model,
             "messages": [
-                {"role": "system", "content": REASONING_SYSTEM_PROMPT},
+                {"role": "system", "content": sys_prompt},
                 {"role": "user", "content": build_reasoning_prompt(problem_text, grade)},
             ],
             "temperature": 0.15,
