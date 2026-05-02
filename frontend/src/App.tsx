@@ -70,7 +70,9 @@ export default function App() {
   const [adminSettings, setAdminSettings] = useState<SystemSettingResponse[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogResponse[]>([]);
   const [adminLoading, setAdminLoading] = useState(false);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const resultAnchorRef = useRef<HTMLDivElement | null>(null);
+  const accountMenuRef = useRef<HTMLDivElement | null>(null);
   const editorButtonDragRef = useRef<{ pointerId: number; startY: number; startTop: number; moved: boolean } | null>(null);
 
   useEffect(() => {
@@ -82,6 +84,22 @@ export default function App() {
       // Keep defaults when local storage is invalid.
     }
   }, []);
+
+  useEffect(() => {
+    if (!accountMenuOpen) return;
+    function handlePointerDown(event: PointerEvent) {
+      if (!accountMenuRef.current?.contains(event.target as Node)) setAccountMenuOpen(false);
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') setAccountMenuOpen(false);
+    }
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [accountMenuOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -632,15 +650,6 @@ export default function App() {
             <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><line x1="4" y1="6" x2="20" y2="6"></line><line x1="4" y1="12" x2="14" y2="12"></line><line x1="4" y1="18" x2="18" y2="18"></line></svg>
             Workspace
           </button>
-          {user && (
-            <button type="button" className={`nav-item ${activeView === 'history' ? 'active' : ''}`} onClick={() => {
-              setActiveView('history');
-              void refreshHistory();
-            }}>
-              <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"></path><path d="M3 3v6h6"></path><path d="M12 7v5l3 2"></path></svg>
-              Lịch sử
-            </button>
-          )}
           {user?.role === 'admin' && (
             <button type="button" className={`nav-item ${activeView === 'admin' ? 'active' : ''}`} onClick={() => {
               setActiveView('admin');
@@ -650,14 +659,58 @@ export default function App() {
               Admin
             </button>
           )}
-          <button type="button" className={`nav-item ${activeView === 'login' || activeView === 'account' ? 'active' : ''}`} onClick={() => setActiveView(user ? 'account' : 'login')}>
-            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path><path d="M10 17l5-5-5-5"></path><path d="M15 12H3"></path></svg>
-            {user ? user.display_name || user.email : 'Đăng nhập'}
-          </button>
-          <button type="button" className={`nav-item ${activeView === 'settings' ? 'active' : ''}`} onClick={() => setActiveView('settings')}>
-            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0A1.65 1.65 0 0 0 10.91 3H11a2 2 0 1 1 4 0h.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0A1.65 1.65 0 0 0 21 10.91V11a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-            Setting
-          </button>
+          {user ? (
+            <div className="account-menu" ref={accountMenuRef}>
+              <button type="button" className={`account-menu-trigger ${activeView === 'history' || activeView === 'settings' || activeView === 'account' ? 'active' : ''}`} aria-haspopup="menu" aria-expanded={accountMenuOpen} onClick={() => setAccountMenuOpen((open) => !open)}>
+                <span className="account-avatar" aria-hidden="true">{(user.display_name || user.email).slice(0, 1).toUpperCase()}</span>
+                <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+                <span className="sr-only">Mở menu tài khoản</span>
+              </button>
+              {accountMenuOpen && (
+                <div className="account-dropdown" role="menu">
+                  <div className="account-dropdown-email">{user.email}</div>
+                  <div className="account-dropdown-group">
+                    <button type="button" role="menuitem" onClick={() => {
+                      setAccountMenuOpen(false);
+                      setActiveView('history');
+                      void refreshHistory();
+                    }}>
+                      <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"></path><path d="M3 3v6h6"></path><path d="M12 7v5l3 2"></path></svg>
+                      Lịch sử
+                    </button>
+                    <button type="button" role="menuitem" onClick={() => {
+                      setAccountMenuOpen(false);
+                      setActiveView('settings');
+                    }}>
+                      <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0A1.65 1.65 0 0 0 10.91 3H11a2 2 0 1 1 4 0h.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0A1.65 1.65 0 0 0 21 10.91V11a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                      Cài đặt chung
+                    </button>
+                    <button type="button" role="menuitem" onClick={() => {
+                      setAccountMenuOpen(false);
+                      setActiveView('account');
+                    }}>
+                      <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                      Đổi mật khẩu
+                    </button>
+                  </div>
+                  <div className="account-dropdown-group danger">
+                    <button type="button" role="menuitem" onClick={() => {
+                      setAccountMenuOpen(false);
+                      void handleLogout();
+                    }}>
+                      <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><path d="M16 17l5-5-5-5"></path><path d="M21 12H9"></path></svg>
+                      Đăng xuất
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <button type="button" className={`nav-item ${activeView === 'login' ? 'active' : ''}`} onClick={() => setActiveView('login')}>
+              <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path><path d="M10 17l5-5-5-5"></path><path d="M15 12H3"></path></svg>
+              Đăng nhập
+            </button>
+          )}
         </nav>
       </header>
 
@@ -830,9 +883,36 @@ export default function App() {
         )}
       </main>
       <footer className="app-footer">
-        <span className="footer-line" />
-        <span className="footer-credit">Developed by <strong>Sin Tran</strong></span>
-        <span className="footer-line" />
+        <div className="footer-top">
+          <div className="footer-brand-block">
+            <div className="footer-brand">
+              <img src={logoUrl} alt="AI Math Renderer" />
+              <strong>AI Math Renderer</strong>
+            </div>
+            <p>Dựng hình toán học từ ngôn ngữ tự nhiên, ảnh đề bài và dữ liệu tọa độ.</p>
+          </div>
+          <nav className="footer-nav" aria-label="Footer navigation">
+            <div>
+              <strong>Sản phẩm</strong>
+              <button type="button" onClick={() => setActiveView('render')}>Workspace</button>
+              <button type="button" onClick={() => setActiveView('render')}>Hướng dẫn</button>
+              <button type="button" onClick={() => setNotification({ id: Date.now(), kind: 'info', title: 'Changelog', message: 'Changelog sẽ được bổ sung trong bản phát hành tiếp theo.', details: [] })}>Changelog</button>
+            </div>
+            <div>
+              <strong>Hỗ trợ</strong>
+              <button type="button" onClick={() => setActiveView(user ? 'account' : 'login')}>Feedback</button>
+              <button type="button" onClick={() => setNotification({ id: Date.now(), kind: 'info', title: 'Báo lỗi', message: 'Kênh GitHub issue sẽ được bổ sung khi repository public.', details: [] })}>Báo lỗi GitHub</button>
+              <button type="button" onClick={() => setNotification({ id: Date.now(), kind: 'info', title: 'Liên hệ', message: 'Email liên hệ sẽ được bổ sung trong cấu hình triển khai.', details: [] })}>Liên hệ</button>
+            </div>
+          </nav>
+        </div>
+        <div className="footer-bottom">
+          <span>© 2026 AI Math Renderer · v0.1.0</span>
+          <div>
+            <span>Developed by <strong>Sin Tran</strong></span>
+            <button type="button" onClick={() => setNotification({ id: Date.now(), kind: 'info', title: 'GitHub', message: 'GitHub repository sẽ được liên kết khi public.', details: [] })}>GitHub</button>
+          </div>
+        </div>
       </footer>
     </>
   );

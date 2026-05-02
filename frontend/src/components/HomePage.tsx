@@ -1,9 +1,7 @@
-import type { SettingsDefaults } from '../types/settings';
-
 export interface HomeBackendStatus {
   state: 'checking' | 'online' | 'offline';
   appName?: string;
-  settingsDefaults: SettingsDefaults | null;
+  settingsDefaults: unknown;
 }
 
 interface HomePageProps {
@@ -15,22 +13,30 @@ interface HomePageProps {
 }
 
 const features = [
-  { title: 'Nhập đề tự nhiên', text: 'Viết đề bài toán như cách học sinh đọc đề, hệ thống sẽ chuyển thành scene hình học có cấu trúc.', icon: '∑' },
-  { title: 'OCR ảnh đề bài', text: 'Tải ảnh, kéo thả hoặc dán ảnh từ clipboard để trích xuất nội dung đề nhanh hơn.', icon: 'OCR' },
-  { title: 'Render 2D/3D', text: 'Dùng GeoGebra cho Oxy, đồ thị hàm số và Three.js cho hình học không gian sinh động.', icon: '3D' },
-  { title: 'Chỉnh hình linh hoạt', text: 'Tinh chỉnh điểm, đoạn, góc nhìn, xem Scene JSON và tiếp tục dựng lại khi cần.', icon: '{}'},
+  { title: 'Nhập đề tự nhiên', text: 'Viết đề bài toán như cách học sinh đọc đề, hệ thống sẽ chuyển thành scene hình học có cấu trúc.' },
+  { title: 'OCR ảnh đề bài', text: 'Tải ảnh, kéo thả hoặc dán ảnh từ clipboard để trích xuất nội dung đề nhanh hơn.' },
+  { title: 'Render 2D/3D', text: 'Dùng GeoGebra cho Oxy, đồ thị hàm số và Three.js cho hình học không gian sinh động.' },
+  { title: 'Chỉnh hình linh hoạt', text: 'Tinh chỉnh điểm, đoạn, góc nhìn và tiếp tục dựng lại khi cần.' },
 ];
 
-const steps = ['Nhập đề', 'Chọn model', 'Dựng hình', 'Tinh chỉnh'];
+const steps = [
+  { title: 'Nhập đề', text: 'Gõ đề tiếng Việt hoặc dán ảnh bài toán từ clipboard.' },
+  { title: 'Chọn model', text: 'Dùng model mặc định hoặc cấu hình provider riêng.' },
+  { title: 'Dựng hình', text: 'AI sinh scene, renderer chuyển thành hình 2D/3D.' },
+  { title: 'Tinh chỉnh', text: 'Kéo điểm, sửa scene và lưu lịch sử khi đăng nhập.' },
+];
 
-export function HomePage({ logoUrl, backendStatus, onStartRender, onOpenSettings, onOpenLogin }: HomePageProps) {
-  const providerSummary = summarizeProviders(backendStatus.settingsDefaults);
+const useCases = [
+  'Vẽ nhanh hình Oxy/Oxyz từ đề kiểm tra.',
+  'Biến ảnh đề bài thành hình dựng lại được.',
+  'Kiểm tra lời giải hình học bằng mô hình trực quan.',
+];
 
+export function HomePage({ onStartRender, onOpenSettings, onOpenLogin }: HomePageProps) {
   return (
     <section className="home-page">
       <div className="home-hero">
         <div className="home-hero-copy">
-          <span className="home-eyebrow">AI Math Renderer</span>
           <h2>Dựng hình toán học đẹp, nhanh và dễ kiểm soát.</h2>
           <p>
             Biến đề bài tiếng Việt, ảnh chụp hoặc dữ liệu tọa độ thành hình vẽ GeoGebra và Three.js.
@@ -39,32 +45,29 @@ export function HomePage({ logoUrl, backendStatus, onStartRender, onOpenSettings
           <div className="home-actions">
             <button type="button" onClick={onStartRender}>Bắt đầu dựng hình</button>
             <button type="button" className="secondary-button" onClick={onOpenSettings}>Cấu hình model</button>
-            <button type="button" className="link-button" onClick={onOpenLogin}>Đăng nhập</button>
           </div>
-          <div className="home-status-grid" aria-label="Trạng thái hệ thống">
-            <StatusCard title="Backend" value={backendStatusLabel(backendStatus.state)} tone={backendStatus.state} detail={backendStatus.appName || 'API render và OCR'} />
-            <StatusCard title="Provider" value={providerSummary.value} tone={providerSummary.tone} detail={providerSummary.detail} />
-            <StatusCard title="Model mặc định" value={backendStatus.settingsDefaults?.default_provider || 'Đang kiểm tra'} tone={backendStatus.state} detail="Có thể đổi trong Setting" />
-          </div>
+          <button type="button" className="home-login-link" onClick={onOpenLogin}>Đã có tài khoản? Đăng nhập để đồng bộ lịch sử.</button>
         </div>
 
-        <div className="home-visual-card" aria-label="Minh họa dựng hình toán học">
-          <div className="hero-logo-card">
-            <img src={logoUrl} alt="AI Math Renderer" />
-            <span>Scene AI</span>
-          </div>
+        <button type="button" className="home-visual-card" aria-label="Bắt đầu demo dựng hình toán học" onClick={onStartRender}>
           <GeometryShowcase />
-          <div className="floating-card floating-card-ocr">OCR ảnh</div>
-          <div className="floating-card floating-card-geo">GeoGebra 2D</div>
-          <div className="floating-card floating-card-three">Three.js 3D</div>
-          <div className="floating-card floating-card-json">Scene JSON</div>
-        </div>
+        </button>
       </div>
 
+      <section className="use-case-section" aria-label="Ứng dụng thực tế">
+        <div>
+          <span>Ứng dụng thực tế</span>
+          <h3>Cho bài giảng, lời giải và kiểm tra mô hình hình học.</h3>
+        </div>
+        <ul>
+          {useCases.map((item) => <li key={item}>{item}</li>)}
+        </ul>
+      </section>
+
       <div className="feature-grid">
-        {features.map((feature) => (
+        {features.map((feature, index) => (
           <article className="feature-card" key={feature.title}>
-            <span className="feature-icon">{feature.icon}</span>
+            <span className="feature-index">0{index + 1}</span>
             <h3>{feature.title}</h3>
             <p>{feature.text}</p>
           </article>
@@ -73,45 +76,17 @@ export function HomePage({ logoUrl, backendStatus, onStartRender, onOpenSettings
 
       <div className="workflow-strip">
         {steps.map((step, index) => (
-          <div className="workflow-step" key={step}>
+          <div className="workflow-step" key={step.title}>
             <span>{index + 1}</span>
-            <strong>{step}</strong>
+            <div>
+              <strong>{step.title}</strong>
+              <p>{step.text}</p>
+            </div>
           </div>
         ))}
       </div>
     </section>
   );
-}
-
-function StatusCard({ title, value, detail, tone }: { title: string; value: string; detail: string; tone: HomeBackendStatus['state'] | 'warning' }) {
-  return (
-    <article className={`home-status-card ${tone}`}>
-      <span>{title}</span>
-      <strong>{value}</strong>
-      <small>{detail}</small>
-    </article>
-  );
-}
-
-function backendStatusLabel(state: HomeBackendStatus['state']) {
-  if (state === 'online') return 'Đang hoạt động';
-  if (state === 'offline') return 'Mất kết nối';
-  return 'Đang kiểm tra';
-}
-
-function summarizeProviders(defaults: SettingsDefaults | null): { value: string; detail: string; tone: HomeBackendStatus['state'] | 'warning' } {
-  if (!defaults) return { value: 'Đang kiểm tra', detail: 'Đọc cấu hình backend', tone: 'checking' };
-  const configured = [
-    defaults.openrouter.api_key_configured && 'OpenRouter',
-    defaults.nvidia.api_key_configured && 'NVIDIA',
-    defaults.router9.api_key_configured && '9router',
-  ].filter(Boolean);
-
-  if (configured.length > 0) {
-    return { value: `${configured.length} provider sẵn sàng`, detail: configured.join(', '), tone: 'online' };
-  }
-
-  return { value: 'Chưa có API key', detail: 'Có thể nhập key tạm thời trong Setting', tone: 'warning' };
 }
 
 function GeometryShowcase() {
@@ -126,6 +101,9 @@ function GeometryShowcase() {
           <stop offset="0" stopColor="#60a5fa" stopOpacity="0.55" />
           <stop offset="1" stopColor="#60a5fa" stopOpacity="0" />
         </radialGradient>
+        <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L0,6 L9,3 z" fill="#2563eb" />
+        </marker>
       </defs>
       <rect x="24" y="24" width="512" height="348" rx="28" fill="url(#homeGridGradient)" stroke="#d4d4d4" />
       {Array.from({ length: 9 }).map((_, index) => (
