@@ -9,27 +9,41 @@ interface LoginPageProps {
   onBackHome: () => void;
   onContinueAsGuest: () => void;
   onLogin: (email: string, password: string) => Promise<void>;
-  onRegister: (email: string, password: string) => Promise<void>;
+  onRegister: (email: string, password: string, displayName?: string) => Promise<void>;
+  onForgotPassword: (email: string) => Promise<string>;
   onLogout: () => Promise<void>;
+  onOpenAccount: () => void;
 }
 
-export function LoginPage({ logoUrl, user, authLoading, onBackHome, onContinueAsGuest, onLogin, onRegister, onLogout }: LoginPageProps) {
+type AuthMode = 'login' | 'register' | 'forgot';
+
+export function LoginPage({ logoUrl, user, authLoading, onBackHome, onContinueAsGuest, onLogin, onRegister, onForgotPassword, onLogout, onOpenAccount }: LoginPageProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [mode, setMode] = useState<AuthMode>('login');
   const [message, setMessage] = useState('');
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage('');
     try {
+      if (mode === 'forgot') {
+        setMessage(await onForgotPassword(email));
+        return;
+      }
       if (mode === 'login') {
         await onLogin(email, password);
         setMessage('Đăng nhập thành công. Lịch sử dựng hình và cấu hình cá nhân đã được bật.');
-      } else {
-        await onRegister(email, password);
-        setMessage('Tạo tài khoản thành công. Bạn có thể lưu lịch sử dựng hình từ bây giờ.');
+        return;
       }
+      if (password !== confirmPassword) {
+        setMessage('Mật khẩu xác nhận chưa khớp.');
+        return;
+      }
+      await onRegister(email, password, displayName);
+      setMessage('Tạo tài khoản thành công. Hãy kiểm tra email để xác minh tài khoản.');
     } catch (caught) {
       setMessage(caught instanceof Error ? caught.message : 'Không thể xử lý đăng nhập.');
     }
@@ -50,33 +64,52 @@ export function LoginPage({ logoUrl, user, authLoading, onBackHome, onContinueAs
         </div>
 
         <form className="login-form" onSubmit={handleSubmit}>
-          <span className="home-eyebrow">{user ? 'Tài khoản' : mode === 'login' ? 'Đăng nhập' : 'Tạo tài khoản'}</span>
-          <h2>{user ? 'Workspace của bạn đã được đồng bộ' : 'Quay lại workspace của bạn'}</h2>
+          <span className="home-eyebrow">{user ? 'Tài khoản' : mode === 'login' ? 'Đăng nhập' : mode === 'register' ? 'Tạo tài khoản' : 'Quên mật khẩu'}</span>
+          <h2>{user ? 'Workspace của bạn đã được đồng bộ' : mode === 'forgot' ? 'Khôi phục quyền truy cập' : 'Quay lại workspace của bạn'}</h2>
           {user ? (
             <>
-              <p className="field-hint">Bạn đang đăng nhập bằng <strong>{user.email}</strong>. Render mới sẽ được lưu vào Cloudflare D1 nếu backend đang dùng D1.</p>
+              <p className="field-hint">Bạn đang đăng nhập bằng <strong>{user.email}</strong>. {user.email_verified_at ? 'Email đã được xác minh.' : 'Email chưa được xác minh.'}</p>
               <div className="auth-actions">
-                <button type="button" onClick={onContinueAsGuest}>Vào workspace</button>
+                <button type="button" onClick={onOpenAccount}>Quản lý tài khoản</button>
+                <button type="button" className="secondary-button" onClick={onContinueAsGuest}>Vào workspace</button>
                 <button type="button" className="secondary-button" onClick={onLogout} disabled={authLoading}>Đăng xuất</button>
               </div>
             </>
           ) : (
             <>
-              <p className="field-hint">Đăng nhập để lưu lịch sử dựng hình và bộ cấu hình cá nhân. API key provider không được lưu lên server.</p>
+              <p className="field-hint">{mode === 'forgot' ? 'Nhập email tài khoản. Nếu email tồn tại, hệ thống sẽ gửi liên kết đặt lại mật khẩu.' : 'Đăng nhập để lưu lịch sử dựng hình và bộ cấu hình cá nhân. API key provider không được lưu lên server.'}</p>
+              {mode === 'register' && (
+                <label className="field-label">
+                  Tên hiển thị
+                  <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="Tên của bạn" maxLength={256} />
+                </label>
+              )}
               <label className="field-label">
                 Email
                 <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" autoComplete="email" required />
               </label>
-              <label className="field-label">
-                Mật khẩu
-                <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="••••••••" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} minLength={8} required />
-              </label>
+              {mode !== 'forgot' && (
+                <label className="field-label">
+                  Mật khẩu
+                  <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="••••••••••" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} minLength={mode === 'login' ? 1 : 10} required />
+                </label>
+              )}
+              {mode === 'register' && (
+                <>
+                  <label className="field-label">
+                    Nhập lại mật khẩu
+                    <input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="••••••••••" autoComplete="new-password" minLength={10} required />
+                  </label>
+                  <p className="field-hint">Mật khẩu nên dài ít nhất 10 ký tự và kết hợp chữ với số hoặc ký tự khác.</p>
+                </>
+              )}
               <div className="auth-mode-toggle" role="group" aria-label="Chọn chế độ tài khoản">
                 <button type="button" className={mode === 'login' ? 'active' : ''} onClick={() => setMode('login')}>Đăng nhập</button>
                 <button type="button" className={mode === 'register' ? 'active' : ''} onClick={() => setMode('register')}>Tạo tài khoản</button>
+                <button type="button" className={mode === 'forgot' ? 'active' : ''} onClick={() => setMode('forgot')}>Quên mật khẩu</button>
               </div>
               <div className="auth-actions">
-                <button type="submit" disabled={authLoading}>{authLoading ? 'Đang xử lý...' : mode === 'login' ? 'Đăng nhập' : 'Tạo tài khoản'}</button>
+                <button type="submit" disabled={authLoading}>{authLoading ? 'Đang xử lý...' : mode === 'login' ? 'Đăng nhập' : mode === 'register' ? 'Tạo tài khoản' : 'Gửi hướng dẫn'}</button>
                 <button type="button" className="secondary-button" onClick={onContinueAsGuest}>Tiếp tục không cần đăng nhập</button>
               </div>
             </>

@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 
-import { ApiError, deleteAdminRenderJob, deleteRenderHistory, getAdminAuditLogs, getAdminRenderJobs, getAdminSummary, getAdminSystemSettings, getAdminUsers, getCurrentUser, getHealth, getRenderHistory, getRenderHistoryDetail, getSettingsDefaults, getUserSettings, login, logout, ocrImage, register, renderEditedScene, renderProblem, saveUserSettings, updateAdminUser, type AdminRenderHistoryItem, type AdminSummaryResponse, type AuditLogResponse, type RenderHistoryItem, type SystemSettingResponse, type UserResponse } from './api/client';
+import { ApiError, changePassword, deleteAdminRenderJob, deleteRenderHistory, forgotPassword, getAdminAuditLogs, getAdminRenderJobs, getAdminSummary, getAdminSystemSettings, getAdminUsers, getCurrentUser, getHealth, getRenderHistory, getRenderHistoryDetail, getSessions, getSettingsDefaults, getUserSettings, login, logout, ocrImage, register, renderEditedScene, renderProblem, resendVerification, resetPassword, revokeOtherSessions, revokeSession, saveUserSettings, updateAdminUser, updateProfile, verifyEmail, type AdminRenderHistoryItem, type AdminSummaryResponse, type AuditLogResponse, type RenderHistoryItem, type SessionResponse, type SystemSettingResponse, type UserResponse } from './api/client';
 import { defaultAdvancedSettings, ProblemInput, staticModelOptions, type ModelOption } from './components/ProblemInput';
 import { GeneralSettingsPanel } from './components/GeneralSettingsPanel';
+import { AccountPage } from './components/AccountPage';
 import { HomePage } from './components/HomePage';
 import { LoginPage } from './components/LoginPage';
+import { ResetPasswordPage } from './components/ResetPasswordPage';
+import { VerifyEmailPage } from './components/VerifyEmailPage';
 import { RendererPanel } from './components/RendererPanel';
 import { Router9SettingsPanel } from './components/Router9SettingsPanel';
 import { SceneEditorPanel, type PointPlacementPlane } from './components/SceneEditorPanel';
@@ -19,7 +22,7 @@ const SETTINGS_STORAGE_KEY = 'hinh-runtime-settings';
 const MOBILE_WARNING_STORAGE_KEY = 'hinh-mobile-warning-dismissed';
 const MOBILE_BREAKPOINT_QUERY = '(max-width: 900px)';
 
-type AppView = 'home' | 'render' | 'history' | 'login' | 'settings' | 'admin';
+type AppView = 'home' | 'render' | 'history' | 'login' | 'settings' | 'admin' | 'account' | 'reset-password' | 'verify-email';
 type SettingsTab = 'general' | 'providers' | 'router9';
 type EditTool = 'move' | 'connect' | 'project_to_segment' | 'add_point';
 type Vec3 = { x: number; y: number; z: number };
@@ -57,6 +60,7 @@ export default function App() {
   const [editorButtonTop, setEditorButtonTop] = useState(220);
   const [user, setUser] = useState<UserResponse | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
+  const [authToken, setAuthToken] = useState('');
   const [historyItems, setHistoryItems] = useState<RenderHistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -104,6 +108,18 @@ export default function App() {
   useEffect(() => {
     window.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify({ version: SETTINGS_STORAGE_VERSION, settings: sanitizeSettingsForStorage(runtimeSettings) }));
   }, [runtimeSettings]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const action = params.get('auth');
+    const token = params.get('token');
+    if (action && token) {
+      setAuthToken(token);
+      if (action === 'reset-password') setActiveView('reset-password');
+      if (action === 'verify-email') setActiveView('verify-email');
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -275,16 +291,16 @@ export default function App() {
     }
   }
 
-  async function handleRegister(email: string, password: string) {
+  async function handleRegister(email: string, password: string, displayName?: string) {
     setAuthLoading(true);
     try {
       setRemoteSettingsHydrated(false);
-      const response = await register(email, password);
+      const response = await register(email, password, displayName);
       setUser(response.user);
       await saveUserSettings(sanitizeSettingsForStorage(runtimeSettings));
       await refreshHistory();
       setRemoteSettingsHydrated(true);
-      setActiveView('render');
+      setActiveView('account');
     } finally {
       setAuthLoading(false);
     }
@@ -298,9 +314,54 @@ export default function App() {
       setHistoryItems([]);
       setHistoryOpen(false);
       setRemoteSettingsHydrated(true);
+      setActiveView('login');
     } finally {
       setAuthLoading(false);
     }
+  }
+
+  async function handleForgotPassword(email: string) {
+    const response = await forgotPassword(email);
+    return response.message;
+  }
+
+  async function handleResetPassword(token: string, password: string) {
+    const response = await resetPassword(token, password);
+    return response.message;
+  }
+
+  async function handleVerifyEmail(token: string) {
+    const response = await verifyEmail(token);
+    setUser(response.user);
+  }
+
+  async function handleResendVerification() {
+    const response = await resendVerification();
+    return response.message;
+  }
+
+  async function handleUpdateProfile(displayName: string) {
+    const response = await updateProfile(displayName);
+    setUser(response.user);
+  }
+
+  async function handleChangePassword(currentPassword: string, newPassword: string) {
+    const response = await changePassword(currentPassword, newPassword);
+    return response.message;
+  }
+
+  async function handleLoadSessions(): Promise<SessionResponse[]> {
+    return getSessions();
+  }
+
+  async function handleRevokeSession(id: string) {
+    const response = await revokeSession(id);
+    return response.message;
+  }
+
+  async function handleRevokeOtherSessions() {
+    const response = await revokeOtherSessions();
+    return response.message;
   }
 
   async function loadRemoteWorkspace(_: UserResponse) {
@@ -590,9 +651,9 @@ export default function App() {
               Admin
             </button>
           )}
-          <button type="button" className={`nav-item ${activeView === 'login' ? 'active' : ''}`} onClick={() => setActiveView('login')}>
+          <button type="button" className={`nav-item ${activeView === 'login' || activeView === 'account' ? 'active' : ''}`} onClick={() => setActiveView(user ? 'account' : 'login')}>
             <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path><path d="M10 17l5-5-5-5"></path><path d="M15 12H3"></path></svg>
-            {user ? user.email : 'Đăng nhập'}
+            {user ? user.display_name || user.email : 'Đăng nhập'}
           </button>
           <button type="button" className={`nav-item ${activeView === 'settings' ? 'active' : ''}`} onClick={() => setActiveView('settings')}>
             <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0A1.65 1.65 0 0 0 10.91 3H11a2 2 0 1 1 4 0h.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0A1.65 1.65 0 0 0 21 10.91V11a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
@@ -726,8 +787,30 @@ export default function App() {
             onContinueAsGuest={() => setActiveView('render')}
             onLogin={handleLogin}
             onRegister={handleRegister}
+            onForgotPassword={handleForgotPassword}
             onLogout={handleLogout}
+            onOpenAccount={() => setActiveView('account')}
           />
+        )}
+        {activeView === 'account' && user && (
+          <AccountPage
+            user={user}
+            authLoading={authLoading}
+            onBackWorkspace={() => setActiveView('render')}
+            onLogout={handleLogout}
+            onResendVerification={handleResendVerification}
+            onUpdateProfile={handleUpdateProfile}
+            onChangePassword={handleChangePassword}
+            onLoadSessions={handleLoadSessions}
+            onRevokeSession={handleRevokeSession}
+            onRevokeOtherSessions={handleRevokeOtherSessions}
+          />
+        )}
+        {activeView === 'reset-password' && (
+          <ResetPasswordPage token={authToken} onResetPassword={handleResetPassword} onBackLogin={() => setActiveView('login')} />
+        )}
+        {activeView === 'verify-email' && (
+          <VerifyEmailPage token={authToken} onVerifyEmail={handleVerifyEmail} onBackWorkspace={() => setActiveView('render')} onBackLogin={() => setActiveView('login')} />
         )}
         {activeView === 'settings' && (
           <section className="settings-page">

@@ -17,6 +17,11 @@ class UserRecord:
     display_name: str | None = None
     last_login_at: str | None = None
     plan: str = "free"
+    email_verified_at: str | None = None
+    password_changed_at: str | None = None
+    failed_login_count: int = 0
+    locked_until: str | None = None
+    last_failed_login_at: str | None = None
 
 
 @dataclass(frozen=True)
@@ -26,6 +31,23 @@ class SessionRecord:
     token_hash: str
     expires_at: str
     created_at: str
+    last_seen_at: str | None = None
+    revoked_at: str | None = None
+    ip_address: str | None = None
+    user_agent: str | None = None
+
+
+@dataclass(frozen=True)
+class AuthTokenRecord:
+    id: str
+    user_id: str
+    purpose: str
+    token_hash: str
+    expires_at: str
+    consumed_at: str | None
+    created_at: str
+    created_ip: str | None = None
+    user_agent: str | None = None
 
 
 @dataclass(frozen=True)

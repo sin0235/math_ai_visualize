@@ -8,9 +8,78 @@ MAX_STORED_MODELS = 100
 MAX_SETTINGS_JSON_CHARS = 80_000
 
 
-class AuthRequest(BaseModel):
+WEAK_PASSWORDS = {"password", "password123", "12345678", "123456789", "qwerty123", "admin12345"}
+
+
+class PasswordPolicyMixin(BaseModel):
+    @field_validator("password", "new_password", check_fields=False)
+    @classmethod
+    def validate_password_strength(cls, value: str) -> str:
+        password = value.strip()
+        if len(password) < 10:
+            raise ValueError("Mật khẩu cần ít nhất 10 ký tự.")
+        if password.lower() in WEAK_PASSWORDS:
+            raise ValueError("Mật khẩu quá phổ biến, hãy chọn mật khẩu mạnh hơn.")
+        if password.isdigit() or password.isalpha():
+            raise ValueError("Mật khẩu cần kết hợp chữ và số hoặc ký tự khác.")
+        return value
+
+
+class AuthRequest(PasswordPolicyMixin):
     email: EmailStr
-    password: str = Field(min_length=8, max_length=256)
+    password: str = Field(min_length=10, max_length=256)
+
+    @field_validator("password")
+    @classmethod
+    def reject_email_local_part(cls, value: str, info) -> str:
+        email = str(info.data.get("email") or "")
+        local_part = email.split("@", 1)[0].lower()
+        if local_part and len(local_part) >= 4 and local_part in value.lower():
+            raise ValueError("Mật khẩu không nên chứa phần tên email.")
+        return value
+
+
+class RegisterRequest(AuthRequest):
+    display_name: str | None = Field(default=None, max_length=256)
+
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=1, max_length=256)
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(PasswordPolicyMixin):
+    token: str = Field(min_length=20, max_length=512)
+    password: str = Field(min_length=10, max_length=256)
+
+
+class VerifyEmailRequest(BaseModel):
+    token: str = Field(min_length=20, max_length=512)
+
+
+class ChangePasswordRequest(PasswordPolicyMixin):
+    current_password: str = Field(min_length=1, max_length=256)
+    new_password: str = Field(min_length=10, max_length=256)
+
+
+class UpdateProfileRequest(BaseModel):
+    display_name: str | None = Field(default=None, max_length=256)
+
+    @field_validator("display_name")
+    @classmethod
+    def clean_display_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        text = value.strip()
+        return text or None
+
+
+class MessageResponse(BaseModel):
+    message: str
 
 
 class UserResponse(BaseModel):
@@ -22,10 +91,22 @@ class UserResponse(BaseModel):
     display_name: str | None = None
     last_login_at: str | None = None
     plan: str = "free"
+    email_verified_at: str | None = None
+    password_changed_at: str | None = None
 
 
 class AuthResponse(BaseModel):
     user: UserResponse
+
+
+class SessionResponse(BaseModel):
+    id: str
+    created_at: str
+    expires_at: str
+    last_seen_at: str | None = None
+    ip_address: str | None = None
+    user_agent: str | None = None
+    current: bool = False
 
 
 class StoredModelInfo(BaseModel):

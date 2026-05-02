@@ -63,7 +63,9 @@ async def require_trusted_origin(
     referer = request.headers.get("referer")
     source = origin or referer
     if not source:
-        return
+        if settings.allow_missing_origin_for_cookie_mutations:
+            return
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Thiếu thông tin nguồn yêu cầu cho phiên đăng nhập.")
     if origin_allowed(source, settings.cors_origins):
         return
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Nguồn yêu cầu không được phép dùng phiên đăng nhập này.")

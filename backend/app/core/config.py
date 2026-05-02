@@ -47,6 +47,16 @@ class Settings(BaseSettings):
     session_cookie_secure: bool = False
     session_cookie_samesite: Literal["lax", "strict", "none"] = "lax"
     session_cookie_domain: str | None = None
+    public_app_url: str = "http://localhost:5173"
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_from_email: str = "no-reply@example.local"
+    smtp_use_tls: bool = True
+    auth_email_dev_mode: bool = True
+    require_email_verification: bool = False
+    allow_missing_origin_for_cookie_mutations: bool = True
 
     model_config = SettingsConfigDict(env_file=(".env", "backend/.env"), env_file_encoding="utf-8")
 

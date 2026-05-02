@@ -22,10 +22,26 @@ export interface UserResponse {
   display_name?: string | null;
   last_login_at?: string | null;
   plan: string;
+  email_verified_at?: string | null;
+  password_changed_at?: string | null;
 }
 
 export interface AuthResponse {
   user: UserResponse;
+}
+
+export interface MessageResponse {
+  message: string;
+}
+
+export interface SessionResponse {
+  id: string;
+  created_at: string;
+  expires_at: string;
+  last_seen_at?: string | null;
+  ip_address?: string | null;
+  user_agent?: string | null;
+  current: boolean;
 }
 
 export interface RenderHistoryItem {
@@ -125,13 +141,74 @@ export async function login(email: string, password: string): Promise<AuthRespon
   }, 'Không thể đăng nhập.');
 }
 
-export async function register(email: string, password: string): Promise<AuthResponse> {
+export async function register(email: string, password: string, displayName?: string): Promise<AuthResponse> {
   return requestJson('/api/auth/register', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email, password, display_name: displayName ? cleanText(displayName) : undefined }),
   }, 'Không thể tạo tài khoản.');
+}
+
+export async function forgotPassword(email: string): Promise<MessageResponse> {
+  return requestJson('/api/auth/forgot-password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ email }),
+  }, 'Không thể gửi yêu cầu đặt lại mật khẩu.');
+}
+
+export async function resetPassword(token: string, password: string): Promise<MessageResponse> {
+  return requestJson('/api/auth/reset-password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ token, password }),
+  }, 'Không thể đặt lại mật khẩu.');
+}
+
+export async function verifyEmail(token: string): Promise<AuthResponse> {
+  return requestJson('/api/auth/verify-email', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ token }),
+  }, 'Không thể xác minh email.');
+}
+
+export async function resendVerification(): Promise<MessageResponse> {
+  return requestJson('/api/auth/resend-verification', { method: 'POST', credentials: 'include' }, 'Không thể gửi lại email xác minh.');
+}
+
+export async function changePassword(currentPassword: string, newPassword: string): Promise<MessageResponse> {
+  return requestJson('/api/auth/change-password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+  }, 'Không thể đổi mật khẩu.');
+}
+
+export async function updateProfile(displayName: string): Promise<AuthResponse> {
+  return requestJson('/api/auth/profile', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ display_name: displayName }),
+  }, 'Không thể cập nhật hồ sơ.');
+}
+
+export async function getSessions(): Promise<SessionResponse[]> {
+  return requestJson('/api/auth/sessions', { credentials: 'include' }, 'Không thể tải phiên đăng nhập.');
+}
+
+export async function revokeSession(id: string): Promise<MessageResponse> {
+  return requestJson(`/api/auth/sessions/${encodeURIComponent(id)}`, { method: 'DELETE', credentials: 'include' }, 'Không thể thu hồi phiên đăng nhập.');
+}
+
+export async function revokeOtherSessions(): Promise<MessageResponse> {
+  return requestJson('/api/auth/sessions/revoke-others', { method: 'POST', credentials: 'include' }, 'Không thể thu hồi các phiên khác.');
 }
 
 export async function logout(): Promise<void> {
