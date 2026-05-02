@@ -12,6 +12,8 @@ import {
   checkAdminProvider,
 } from '../../api/client';
 import { AdminDetails } from './AdminComponents';
+import { buildModelOptionsFromDefaults, buildProviderOptions } from '../../utils/settingsOptions';
+import type { ProviderSettingsDefaults, SettingsDefaults } from '../../types/settings';
 
 // --- Utility Functions ---
 
@@ -83,6 +85,53 @@ function adminSettingsToRuntime(value: Record<string, unknown>): RuntimeSettings
     openrouter_http_referer: getStringValue(value.openrouter_http_referer, ''),
     openrouter_x_title: getStringValue(value.openrouter_x_title, ''),
     openrouter_reasoning_enabled: value.openrouter_reasoning_enabled === true,
+  };
+}
+
+function normalizeScannedModels(models: any[]) {
+  return models
+    .map((modelItem) => {
+      const id = typeof modelItem === 'string' ? modelItem : modelItem?.id;
+      if (!id) return null;
+      return {
+        id,
+        label: typeof modelItem === 'object' && modelItem.label ? modelItem.label : typeof modelItem === 'object' && modelItem.name ? modelItem.name : id,
+        provider: typeof modelItem === 'object' && modelItem.provider ? modelItem.provider : '',
+      };
+    })
+    .filter(Boolean) as ProviderSettingsDefaults['scanned_models'];
+}
+
+function adminProviderToDefaults(value: Record<string, unknown>, provider: string): ProviderSettingsDefaults {
+  const settings = getAdminProviderSettings(value, provider);
+  return {
+    api_key_configured: true,
+    base_url: settings.base_url,
+    model: settings.model,
+    scanned_models: normalizeScannedModels(settings.scanned_models),
+    allowed_model_ids: settings.allowed_model_ids,
+  };
+}
+
+function adminSettingsToDefaults(value: Record<string, unknown>): SettingsDefaults {
+  const openrouter = adminProviderToDefaults(value, 'openrouter');
+  return {
+    app_name: 'Math Renderer',
+    default_provider: getStringValue(value.default_provider, 'auto'),
+    openrouter: {
+      ...openrouter,
+      vision_model: getStringValue(value.openrouter_vision_model, ''),
+      http_referer: getStringValue(value.openrouter_http_referer, ''),
+      x_title: getStringValue(value.openrouter_x_title, ''),
+      reasoning_enabled: value.openrouter_reasoning_enabled === true,
+    },
+    nvidia: adminProviderToDefaults(value, 'nvidia'),
+    ollama: adminProviderToDefaults(value, 'ollama'),
+    router9: {
+      ...adminProviderToDefaults(value, 'router9'),
+      only_mode: getAdminProviderSettings(value, 'router9').only_mode,
+    },
+    ocr: getAdminOcrSettings(value) as SettingsDefaults['ocr'],
   };
 }
 
@@ -239,7 +288,7 @@ export function AdminAiSettingsForm({ value, saving, onSave }: { value: Record<s
       <section className="admin-settings-section">
         <h4>9router Configuration</h4>
         <div className="admin-field-grid">
-          <label className="field-label">Base URL<input value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} placeholder="https://..." /></label>
+          <label className="field-label">Base URL<input type="url" value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} placeholder="https://..." /></label>
           <label className="field-label">Model mặc định<select value={model} onChange={(event) => setModel(event.target.value)}><option value="">Chọn model</option>{modelOptions.map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.name}</option>)}</select></label>
           <label className="checkbox-label"><input type="checkbox" checked={router9OnlyMode} onChange={(event) => setRouter9OnlyMode(event.target.checked)} /> Chỉ dùng 9router</label>
         </div>
@@ -301,20 +350,33 @@ export function AdminAiSettingsForm({ value, saving, onSave }: { value: Record<s
 }
 
 export function AdminPlanSettingsForm({ value, onSave }: { value: Record<string, unknown>; onSave: (value: Record<string, unknown>) => Promise<void> }) {
-  const plansValue = value.plans && typeof value.plans === 'object' ? value.plans as Record<string, unknown> : {};
-  const free = getPlanQuota(plansValue.free);
-  const pro = getPlanQuota(plansValue.pro);
-  const [freeRender, setFreeRender] = useState(String(free.daily_render_limit ?? ''));
-  const [freeOcr, setFreeOcr] = useState(String(free.daily_ocr_limit ?? ''));
-  const [proRender, setProRender] = useState(String(pro.daily_render_limit ?? ''));
-  const [proOcr, setProOcr] = useState(String(pro.daily_ocr_limit ?? ''));
+  const plansValue = value.plans && typeof value.plans === 'object' ? value.plans as Record<string, unknown> : { free: {}, pro: {} };
+  const planIds = Object.keys(plansValue).length > 0 ? Object.keys(plansValue) : ['free', 'pro'];
+  const [quotas, setQuotas] = useState(() => Object.fromEntries(planIds.map((planId) => {
+    const quota = getPlanQuota(plansValue[planId]);
+    return [planId, { render: String(quota.daily_render_limit ?? ''), ocr: String(quota.daily_ocr_limit ?? '') }];
+  })) as Record<string, { render: string; ocr: string }>);
+
+  useEffect(() => {
+    setQuotas(Object.fromEntries(planIds.map((planId) => {
+      const quota = getPlanQuota(plansValue[planId]);
+      return [planId, { render: String(quota.daily_render_limit ?? ''), ocr: String(quota.daily_ocr_limit ?? '') }];
+    })) as Record<string, { render: string; ocr: string }>);
+  }, [value]);
+
+  function updateQuota(planId: string, field: 'render' | 'ocr', nextValue: string) {
+    setQuotas((current) => ({ ...current, [planId]: { ...current[planId], [field]: nextValue } }));
+  }
+
   return (
     <section className="admin-settings-section"><h4>Plan quota</h4><div className="admin-field-grid">
-      <label className="field-label">Free render/ngày<input type="number" value={freeRender} onChange={(event) => setFreeRender(event.target.value)} /></label>
-      <label className="field-label">Free OCR/ngày<input type="number" value={freeOcr} onChange={(event) => setFreeOcr(event.target.value)} /></label>
-      <label className="field-label">Pro render/ngày<input type="number" value={proRender} onChange={(event) => setProRender(event.target.value)} /></label>
-      <label className="field-label">Pro OCR/ngày<input type="number" value={proOcr} onChange={(event) => setProOcr(event.target.value)} /></label>
-    </div><button type="button" className="secondary-button" onClick={() => void onSave({ version: 1, plans: { free: { daily_render_limit: optionalNumber(freeRender), daily_ocr_limit: optionalNumber(freeOcr) }, pro: { daily_render_limit: optionalNumber(proRender), daily_ocr_limit: optionalNumber(proOcr) } } })}>Lưu quota</button></section>
+      {planIds.map((planId) => (
+        <React.Fragment key={planId}>
+          <label className="field-label">{planId} render/ngày<input type="number" min="0" value={quotas[planId]?.render ?? ''} onChange={(event) => updateQuota(planId, 'render', event.target.value)} /></label>
+          <label className="field-label">{planId} OCR/ngày<input type="number" min="0" value={quotas[planId]?.ocr ?? ''} onChange={(event) => updateQuota(planId, 'ocr', event.target.value)} /></label>
+        </React.Fragment>
+      ))}
+    </div><button type="button" className="secondary-button" onClick={() => void onSave({ version: 1, plans: Object.fromEntries(planIds.map((planId) => [planId, { daily_render_limit: optionalNumber(quotas[planId]?.render ?? ''), daily_ocr_limit: optionalNumber(quotas[planId]?.ocr ?? '') }])) })}>Lưu quota</button></section>
   );
 }
 
@@ -330,40 +392,37 @@ export function AdminFeatureFlagsForm({ value, onSave }: { value: Record<string,
       <label className="checkbox-label"><input type="checkbox" checked={render} onChange={(event) => setRender(event.target.checked)} /> Render enabled</label>
       <label className="checkbox-label"><input type="checkbox" checked={ocr} onChange={(event) => setOcr(event.target.checked)} /> OCR enabled</label>
       <label className="checkbox-label"><input type="checkbox" checked={googleOAuth} onChange={(event) => setGoogleOAuth(event.target.checked)} /> Google OAuth enabled</label>
-    </div><label className="field-label">Maintenance message<input value={message} onChange={(event) => setMessage(event.target.value)} /></label><button type="button" className="secondary-button" onClick={() => void onSave({ version: 1, maintenance_mode: maintenanceMode, maintenance_message: message, google_oauth_enabled: googleOAuth, ocr_enabled: ocr, render_enabled: render })}>Lưu flags</button></section>
+    </div><label className="field-label">Maintenance message<textarea rows={3} value={message} onChange={(event) => setMessage(event.target.value)} /></label><button type="button" className="secondary-button" onClick={() => void onSave({ version: 1, maintenance_mode: maintenanceMode, maintenance_message: message, google_oauth_enabled: googleOAuth, ocr_enabled: ocr, render_enabled: render })}>Lưu flags</button></section>
   );
 }
 
 export function AdminAiProfilesForm({ value, aiSettings, onSave }: { value: Record<string, unknown>; aiSettings: Record<string, unknown>; onSave: (value: Record<string, unknown>) => Promise<void> }) {
   const geometry = getAiTaskProfile(value.geometry_reasoning);
   const ocr = getAiTaskProfile(value.ocr);
-  const router9 = getAdminProviderSettings(aiSettings, 'router9');
   const [geometryProvider, setGeometryProvider] = useState(geometry.provider);
   const [geometryModel, setGeometryModel] = useState(geometry.model);
   const [geometryFallbacks, setGeometryFallbacks] = useState(geometry.fallbacks.join('\n'));
   const [ocrProvider, setOcrProvider] = useState(ocr.provider);
   const [ocrModel, setOcrModel] = useState(ocr.model);
   const [ocrFallbacks, setOcrFallbacks] = useState(ocr.fallbacks.join('\n'));
+  const settingsDefaults = adminSettingsToDefaults(aiSettings);
+  const providerOptions = buildProviderOptions(settingsDefaults, false);
 
-  const scannedModelOptions = router9.scanned_models
-    .map((modelItem: any) => ({
-      id: typeof modelItem === 'string' ? modelItem : modelItem.id,
-      name: typeof modelItem === 'object' && modelItem.name ? modelItem.name : typeof modelItem === 'string' ? modelItem : modelItem.id,
-    }))
-    .filter((item) => item.id);
+  function providerDefaults(selectedProvider: string): ProviderSettingsDefaults | undefined {
+    if (selectedProvider === 'openrouter' || selectedProvider === 'nvidia' || selectedProvider === 'ollama' || selectedProvider === 'router9') return settingsDefaults[selectedProvider];
+    return settingsDefaults.router9;
+  }
 
-  function modelOptions(selectedModel: string) {
-    return selectedModel && !scannedModelOptions.some((item) => item.id === selectedModel)
-      ? [{ id: selectedModel, name: selectedModel }, ...scannedModelOptions]
-      : scannedModelOptions;
+  function modelOptions(selectedProvider: string, selectedModel: string) {
+    return buildModelOptionsFromDefaults(providerDefaults(selectedProvider), selectedModel);
   }
 
   return (
     <section className="admin-settings-section"><h4>AI profiles</h4><div className="admin-field-grid">
-      <label className="field-label">Geometry provider<input value={geometryProvider} onChange={(event) => setGeometryProvider(event.target.value)} /></label>
-      <label className="field-label">Geometry model<select value={geometryModel} onChange={(event) => setGeometryModel(event.target.value)}><option value="">Chọn model</option>{modelOptions(geometryModel).map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.name}</option>)}</select></label>
-      <label className="field-label">OCR provider<input value={ocrProvider} onChange={(event) => setOcrProvider(event.target.value)} /></label>
-      <label className="field-label">OCR model<select value={ocrModel} onChange={(event) => setOcrModel(event.target.value)}><option value="">Chọn model</option>{modelOptions(ocrModel).map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.name}</option>)}</select></label>
+      <label className="field-label">Geometry provider<select value={geometryProvider} onChange={(event) => setGeometryProvider(event.target.value)}><option value="auto">auto</option>{providerOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
+      <label className="field-label">Geometry model<select value={geometryModel} onChange={(event) => setGeometryModel(event.target.value)}><option value="">Chọn model</option>{modelOptions(geometryProvider, geometryModel).map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.label}</option>)}</select></label>
+      <label className="field-label">OCR provider<select value={ocrProvider} onChange={(event) => setOcrProvider(event.target.value)}><option value="auto">auto</option>{providerOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
+      <label className="field-label">OCR model<select value={ocrModel} onChange={(event) => setOcrModel(event.target.value)}><option value="">Chọn model</option>{modelOptions(ocrProvider, ocrModel).map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.label}</option>)}</select></label>
     </div><label className="field-label">Geometry fallbacks<textarea rows={3} value={geometryFallbacks} onChange={(event) => setGeometryFallbacks(event.target.value)} /></label><label className="field-label">OCR fallbacks<textarea rows={3} value={ocrFallbacks} onChange={(event) => setOcrFallbacks(event.target.value)} /></label><button type="button" className="secondary-button" onClick={() => void onSave({ version: 1, geometry_reasoning: { provider: geometryProvider, model: geometryModel, fallbacks: parseLines(geometryFallbacks) }, ocr: { provider: ocrProvider, model: ocrModel, fallbacks: parseLines(ocrFallbacks) } })}>Lưu AI profiles</button></section>
   );
 }

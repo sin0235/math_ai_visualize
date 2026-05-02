@@ -40,6 +40,7 @@ import {
   AdminAiProfilesForm,
   AdminAiPromptsForm,
 } from './AdminForms';
+import { buildPlanOptions, distinctOptions, providerLabels, rendererOptions, renderSourceOptions } from '../../utils/settingsOptions';
 
 interface AdminConsoleProps {
   user: UserResponse;
@@ -194,6 +195,22 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
   };
 
   const providerStats = summarizeRenderJobs(renderJobs);
+  const planSettings = settings.find((item) => item.key === 'plan_settings')?.value as Record<string, unknown> | undefined;
+  const planOptions = buildPlanOptions(planSettings);
+  const renderProviderOptions = distinctOptions(renderJobs.map((job) => job.provider), [
+    { id: 'auto', label: providerLabels.auto },
+    { id: 'openrouter', label: providerLabels.openrouter },
+    { id: 'nvidia', label: providerLabels.nvidia },
+    { id: 'ollama', label: providerLabels.ollama },
+    { id: 'router9', label: providerLabels.router9 },
+    { id: 'mock', label: providerLabels.mock },
+  ]);
+  const aiModelIds = collectAdminModelIds(aiSettings);
+  const renderModelOptions = distinctOptions(renderJobs.map((job) => job.model), aiModelIds.map((id) => ({ id, label: id })));
+  const renderRendererOptions = distinctOptions(renderJobs.map((job) => job.renderer), rendererOptions);
+  const renderSourceFilterOptions = distinctOptions(renderJobs.map((job) => job.source_type), renderSourceOptions);
+  const auditActionOptions = distinctOptions(auditLogs.map((log) => log.action));
+  const auditTargetOptions = distinctOptions(auditLogs.map((log) => log.target_type));
 
   if (user.role !== 'admin') {
     return (
@@ -284,12 +301,12 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
               <input value={userQuery} onChange={(event) => setUserQuery(event.target.value)} placeholder="Tìm email, tên hiển thị hoặc ID" />
               <select value={userFilters.role ?? ''} onChange={(event) => setUserFilters((current) => ({ ...current, role: event.target.value }))}><option value="">Role</option><option value="user">user</option><option value="admin">admin</option></select>
               <select value={userFilters.status ?? ''} onChange={(event) => setUserFilters((current) => ({ ...current, status: event.target.value }))}><option value="">Status</option><option value="active">active</option><option value="disabled">disabled</option></select>
-              <input value={userFilters.plan ?? ''} onChange={(event) => setUserFilters((current) => ({ ...current, plan: event.target.value }))} placeholder="Plan" />
+              <select value={userFilters.plan ?? ''} onChange={(event) => setUserFilters((current) => ({ ...current, plan: event.target.value }))}><option value="">Plan</option>{planOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select>
               <button type="submit" className="secondary-button" disabled={searchingUsers}>{searchingUsers ? 'Đang tìm...' : 'Tìm user'}</button>
               <button type="button" className="secondary-button" onClick={() => { setUserQuery(''); setUserFilters({}); void onSearchUsers('', {}); }}>Xoá lọc</button>
             </form>
             <div className="admin-table">
-              {users.map((item) => <AdminUserRow key={item.id} item={item} currentUserId={user.id} onUpdate={onUpdateUser} onToggleStatus={onToggleUserStatus} />)}
+              {users.map((item) => <AdminUserRow key={item.id} item={item} currentUserId={user.id} planOptions={planOptions} onUpdate={onUpdateUser} onToggleStatus={onToggleUserStatus} />)}
               {users.length === 0 && <p className="field-hint">Không tìm thấy người dùng phù hợp.</p>}
             </div>
           </section>
@@ -305,14 +322,15 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
             <section className="admin-panel admin-panel-full">
             <form className="admin-toolbar admin-filter-grid" onSubmit={submitRenderJobFilters}>
               <input value={localRenderJobFilters.q ?? ''} onChange={(event) => setLocalRenderJobFilters((current) => ({ ...current, q: event.target.value }))} placeholder="Tìm đề bài hoặc ID" />
-              <input value={localRenderJobFilters.provider ?? ''} onChange={(event) => setLocalRenderJobFilters((current) => ({ ...current, provider: event.target.value }))} placeholder="Provider" />
-              <input value={localRenderJobFilters.model ?? ''} onChange={(event) => setLocalRenderJobFilters((current) => ({ ...current, model: event.target.value }))} placeholder="Model" />
-              <input value={localRenderJobFilters.renderer ?? ''} onChange={(event) => setLocalRenderJobFilters((current) => ({ ...current, renderer: event.target.value }))} placeholder="Renderer" />
-              <input value={localRenderJobFilters.source_type ?? ''} onChange={(event) => setLocalRenderJobFilters((current) => ({ ...current, source_type: event.target.value }))} placeholder="Source" />
-              <input value={localRenderJobFilters.user_id ?? ''} onChange={(event) => setLocalRenderJobFilters((current) => ({ ...current, user_id: event.target.value }))} placeholder="User ID" />
+              <select value={localRenderJobFilters.provider ?? ''} onChange={(event) => setLocalRenderJobFilters((current) => ({ ...current, provider: event.target.value }))}><option value="">Provider</option>{renderProviderOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select>
+              <select value={localRenderJobFilters.model ?? ''} onChange={(event) => setLocalRenderJobFilters((current) => ({ ...current, model: event.target.value }))}><option value="">Model</option>{renderModelOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select>
+              <select value={localRenderJobFilters.renderer ?? ''} onChange={(event) => setLocalRenderJobFilters((current) => ({ ...current, renderer: event.target.value }))}><option value="">Renderer</option>{renderRendererOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select>
+              <select value={localRenderJobFilters.source_type ?? ''} onChange={(event) => setLocalRenderJobFilters((current) => ({ ...current, source_type: event.target.value }))}><option value="">Source</option>{renderSourceFilterOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select>
+              <input list="admin-user-id-options" value={localRenderJobFilters.user_id ?? ''} onChange={(event) => setLocalRenderJobFilters((current) => ({ ...current, user_id: event.target.value }))} placeholder="User ID" />
               <button type="submit" className="secondary-button" disabled={filteringRenderJobs}>{filteringRenderJobs ? 'Đang lọc...' : 'Lọc jobs'}</button>
               <button type="button" className="secondary-button" onClick={() => { setLocalRenderJobFilters({}); void onSearchRenderJobs({}); }}>Xoá lọc</button>
             </form>
+            <datalist id="admin-user-id-options">{users.map((item) => <option key={item.id} value={item.id}>{item.email}</option>)}</datalist>
             <div className="admin-table">
               {renderJobs.map((job) => (
                 <article className="admin-row" key={job.id}>
@@ -370,12 +388,14 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
             </header>
             <section className="admin-panel admin-panel-full">
             <form className="admin-toolbar admin-filter-grid" onSubmit={submitAuditLogFilters}>
-              <input value={localAuditLogFilters.action ?? ''} onChange={(event) => setLocalAuditLogFilters((current) => ({ ...current, action: event.target.value }))} placeholder="Action" />
-              <input value={localAuditLogFilters.actor_user_id ?? ''} onChange={(event) => setLocalAuditLogFilters((current) => ({ ...current, actor_user_id: event.target.value }))} placeholder="Actor user ID" />
-              <input value={localAuditLogFilters.target_type ?? ''} onChange={(event) => setLocalAuditLogFilters((current) => ({ ...current, target_type: event.target.value }))} placeholder="Target type" />
+              <input list="admin-audit-action-options" value={localAuditLogFilters.action ?? ''} onChange={(event) => setLocalAuditLogFilters((current) => ({ ...current, action: event.target.value }))} placeholder="Action" />
+              <input list="admin-user-id-options" value={localAuditLogFilters.actor_user_id ?? ''} onChange={(event) => setLocalAuditLogFilters((current) => ({ ...current, actor_user_id: event.target.value }))} placeholder="Actor user ID" />
+              <input list="admin-audit-target-options" value={localAuditLogFilters.target_type ?? ''} onChange={(event) => setLocalAuditLogFilters((current) => ({ ...current, target_type: event.target.value }))} placeholder="Target type" />
               <button type="submit" className="secondary-button" disabled={filteringAuditLogs}>{filteringAuditLogs ? 'Đang lọc...' : 'Lọc audit'}</button>
               <button type="button" className="secondary-button" onClick={() => { setLocalAuditLogFilters({}); void onSearchAuditLogs({}); }}>Xoá lọc</button>
             </form>
+            <datalist id="admin-audit-action-options">{auditActionOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</datalist>
+            <datalist id="admin-audit-target-options">{auditTargetOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</datalist>
             <div className="admin-table">
               {auditLogs.map((log) => <AdminAuditLogRow key={log.id} log={log} />)}
               {auditLogs.length === 0 && <p className="field-hint">Chưa có audit log.</p>}
@@ -390,7 +410,7 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
 
 // --- Sub-components moved here for simplicity in this turn ---
 
-function AdminUserRow({ item, currentUserId, onUpdate, onToggleStatus }: { item: UserResponse; currentUserId: string; onUpdate: (user: UserResponse, patch: any) => Promise<void>; onToggleStatus: (user: UserResponse) => Promise<void> }) {
+function AdminUserRow({ item, currentUserId, planOptions, onUpdate, onToggleStatus }: { item: UserResponse; currentUserId: string; planOptions: Array<{ id: string; label: string }>; onUpdate: (user: UserResponse, patch: any) => Promise<void>; onToggleStatus: (user: UserResponse) => Promise<void> }) {
   const [editing, setEditing] = useState(false);
   const [displayName, setDisplayName] = useState(item.display_name ?? '');
   const [role, setRole] = useState<UserResponse['role']>(item.role);
@@ -470,7 +490,7 @@ function AdminUserRow({ item, currentUserId, onUpdate, onToggleStatus }: { item:
             <label className="field-label">Tên hiển thị<input value={displayName} onChange={(event) => setDisplayName(event.target.value)} /></label>
             <label className="field-label">Role<select value={role} onChange={(event) => setRole(event.target.value as UserResponse['role'])} disabled={isSelf}><option value="user">user</option><option value="admin">admin</option></select></label>
             <label className="field-label">Status<select value={status} onChange={(event) => setStatus(event.target.value as UserResponse['status'])} disabled={isSelf}><option value="active">active</option><option value="disabled">disabled</option></select></label>
-            <label className="field-label">Plan<input value={plan} onChange={(event) => setPlan(event.target.value)} /></label>
+            <label className="field-label">Plan<select value={plan} onChange={(event) => setPlan(event.target.value)}>{!planOptions.some((option) => option.id === plan) && <option value={plan}>{plan}</option>}{planOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
           </div>
           {isSelf && <p className="field-hint">Bạn không thể thay đổi role/status của chính mình.</p>}
           <button type="button" className="secondary-button" onClick={() => void save()} disabled={saving}>{saving ? 'Đang lưu...' : 'Lưu thay đổi'}</button>
@@ -546,6 +566,24 @@ function AdminAuditLogRow({ log }: { log: AuditLogResponse }) {
       {hasObjectKeys(log.metadata) && <AdminDetails title="Metadata" value={log.metadata} />}
     </article>
   );
+}
+
+function collectAdminModelIds(aiSettings: Record<string, unknown>) {
+  const ids = new Set<string>();
+  ['openrouter', 'nvidia', 'ollama', 'router9'].forEach((provider) => {
+    const item = aiSettings[provider];
+    if (!item || typeof item !== 'object') return;
+    const data = item as Record<string, unknown>;
+    if (typeof data.model === 'string' && data.model) ids.add(data.model);
+    if (Array.isArray(data.allowed_model_ids)) data.allowed_model_ids.map(String).filter(Boolean).forEach((id) => ids.add(id));
+    if (Array.isArray(data.scanned_models)) {
+      data.scanned_models.forEach((modelItem) => {
+        const id = typeof modelItem === 'string' ? modelItem : modelItem && typeof modelItem === 'object' ? (modelItem as Record<string, unknown>).id : '';
+        if (typeof id === 'string' && id) ids.add(id);
+      });
+    }
+  });
+  return [...ids];
 }
 
 function summarizeRenderJobs(renderJobs: AdminRenderHistoryItem[]) {

@@ -1,5 +1,5 @@
 import type { AdvancedRenderSettings, MathScene, RenderResponse, Renderer } from '../types/scene';
-import type { ProviderKey, RuntimeSettings, ScannedModelInfo, SettingsDefaults } from '../types/settings';
+import type { ProviderKey, RuntimeSettings, ScannedModelInfo, SettingsDefaults, UserBasicSettings } from '../types/settings';
 
 export interface OcrResponse {
   text: string;
@@ -64,7 +64,7 @@ export interface RenderHistoryDetail extends RenderHistoryItem {
 }
 
 export interface UserSettingsResponse {
-  settings?: RuntimeSettings | null;
+  settings?: UserBasicSettings | null;
   updated_at?: string | null;
 }
 
@@ -274,12 +274,12 @@ export async function getUserSettings(): Promise<UserSettingsResponse> {
   return requestJson('/api/user/settings', { credentials: 'include' }, 'Không thể tải cấu hình cá nhân.');
 }
 
-export async function saveUserSettings(settings: RuntimeSettings): Promise<UserSettingsResponse> {
+export async function saveUserSettings(settings: UserBasicSettings): Promise<UserSettingsResponse> {
   return requestJson('/api/user/settings', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ settings: compactStoredSettings(settings) }),
+    body: JSON.stringify({ settings }),
   }, 'Không thể lưu cấu hình cá nhân.');
 }
 
@@ -574,16 +574,6 @@ function compactRouter9Settings(settings: RuntimeSettings) {
   }
 
   return compact;
-}
-
-function compactStoredSettings(settings: RuntimeSettings): RuntimeSettings {
-  return {
-    ...settings,
-    openrouter: { ...settings.openrouter, api_key: '' },
-    nvidia: { ...settings.nvidia, api_key: '' },
-    ollama: { ...settings.ollama, api_key: '' },
-    router9: { ...settings.router9, api_key: '' },
-  };
 }
 
 function cleanText(value: string) {

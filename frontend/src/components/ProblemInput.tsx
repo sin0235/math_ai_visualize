@@ -26,20 +26,6 @@ export interface ModelOption {
   modelId?: string;
 }
 
-export const staticModelOptions: ModelOption[] = [
-  { key: 'provider:auto', provider: 'auto', label: 'Tự động chọn mô hình phù hợp', description: 'Tự động thử theo thứ tự backend cấu hình.' },
-  { key: 'nvidia:qwen/qwen3-coder-480b-a35b-instruct', provider: 'nvidia', modelId: 'qwen/qwen3-coder-480b-a35b-instruct', label: 'NVIDIA Qwen3 Coder 480B', description: 'NVIDIA qwen/qwen3-coder-480b-a35b-instruct.' },
-  { key: 'nvidia:moonshotai/kimi-k2-instruct', provider: 'nvidia', modelId: 'moonshotai/kimi-k2-instruct', label: 'NVIDIA Kimi K2 Instruct', description: 'NVIDIA moonshotai/kimi-k2-instruct.' },
-  { key: 'nvidia:moonshotai/kimi-k2-instruct-0905', provider: 'nvidia', modelId: 'moonshotai/kimi-k2-instruct-0905', label: 'NVIDIA Kimi K2 Instruct 0905', description: 'NVIDIA moonshotai/kimi-k2-instruct-0905.' },
-  { key: 'nvidia:minimaxai/minimax-m2.7', provider: 'nvidia', modelId: 'minimaxai/minimax-m2.7', label: 'NVIDIA MiniMax M2.7', description: 'NVIDIA minimaxai/minimax-m2.7.' },
-  { key: 'nvidia:mistralai/mistral-large-3-675b-instruct-2512', provider: 'nvidia', modelId: 'mistralai/mistral-large-3-675b-instruct-2512', label: 'NVIDIA Mistral Large 3 675B', description: 'NVIDIA mistralai/mistral-large-3-675b-instruct-2512.' },
-  { key: 'nvidia:moonshotai/kimi-k2-thinking', provider: 'nvidia', modelId: 'moonshotai/kimi-k2-thinking', label: 'NVIDIA Kimi K2 Thinking', description: 'NVIDIA moonshotai/kimi-k2-thinking.' },
-  { key: 'provider:openrouter', provider: 'openrouter', label: 'Nemotron 3 Super 120B', description: 'OpenRouter nvidia/nemotron-3-super-120b-a12b:free — tuyến dự phòng khi NVIDIA không sẵn sàng.' },
-  { key: 'provider:opencode_nemotron', provider: 'opencode_nemotron', label: 'OpenCode Nemotron 3 Super Free', description: 'OpenCode Free oc/nemotron-3-super-free — fallback Nemotron đặc thù.' },
-  { key: 'provider:ollama_gpt_oss', provider: 'ollama_gpt_oss', label: 'Ollama GPT OSS 120B', description: 'Ollama gpt-oss:120b — dùng Ollama cloud/OpenAI-compatible endpoint hoặc local nếu backend cấu hình local.' },
-  { key: 'provider:openrouter_gpt_oss', provider: 'openrouter_gpt_oss', label: 'GPT OSS 120B', description: 'OpenRouter openai/gpt-oss-120b:free — tuyến dự phòng miễn phí, phụ thuộc giới hạn quota.' },
-];
-
 const examples = [
   {
     tag: '2D',

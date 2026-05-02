@@ -54,6 +54,8 @@ export function VerifyEmailPage({ token, onVerifyEmail, onBackWorkspace, onBackL
             Mã OTP
             <input
               className="otp-input"
+              type="text"
+              pattern="\d{6}"
               value={otp}
               onChange={(event) => setOtp(event.target.value.replace(/\D/g, '').slice(0, 6))}
               placeholder="123456"

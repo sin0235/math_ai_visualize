@@ -43,6 +43,13 @@ export interface RuntimeSettings {
   openrouter_reasoning_enabled: boolean;
 }
 
+export interface UserBasicSettings {
+  version: number;
+  default_provider: string;
+  default_model: string;
+  ocr: OcrSettings;
+}
+
 export interface ProviderSettingsDefaults {
   api_key_configured: boolean;
   base_url: string;

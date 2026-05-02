@@ -194,7 +194,7 @@ export function SceneEditorPanel({
                 </label>
                 <label className="field-label">
                   {fixedAxisLabel(pointPlacementPlane)} cố định
-                  <input value={pointPlacementDepth} onChange={(event) => onPointPlacementDepthChange(event.target.value)} disabled={saving} />
+                  <input type="number" step="any" value={pointPlacementDepth} onChange={(event) => onPointPlacementDepthChange(event.target.value)} disabled={saving} />
                 </label>
               </div>
             )}
@@ -205,9 +205,9 @@ export function SceneEditorPanel({
 
           <form className="editor-grid" onSubmit={addPoint}>
             <label className="field-label">Tên điểm<input value={pointName} onChange={(event) => setPointName(event.target.value)} placeholder={nextPointName} /></label>
-            <label className="field-label">x<input value={x} onChange={(event) => setX(event.target.value)} /></label>
-            <label className="field-label">y<input value={y} onChange={(event) => setY(event.target.value)} /></label>
-            {dimension === '3d' && <label className="field-label">z<input value={z} onChange={(event) => setZ(event.target.value)} /></label>}
+            <label className="field-label">x<input type="number" step="any" value={x} onChange={(event) => setX(event.target.value)} /></label>
+            <label className="field-label">y<input type="number" step="any" value={y} onChange={(event) => setY(event.target.value)} /></label>
+            {dimension === '3d' && <label className="field-label">z<input type="number" step="any" value={z} onChange={(event) => setZ(event.target.value)} /></label>}
             <button type="submit" disabled={saving}>Thêm điểm</button>
           </form>
 
@@ -230,7 +230,7 @@ export function SceneEditorPanel({
 
           <form className="editor-grid" onSubmit={addPointOnLine}>
             <LineSelect label="Điểm trên đường" value={lineForPoint} lines={lines} onChange={setLineForPoint} />
-            <label className="field-label">t<input value={lineParameter} onChange={(event) => setLineParameter(event.target.value)} /></label>
+            <label className="field-label">t<input type="number" step="any" value={lineParameter} onChange={(event) => setLineParameter(event.target.value)} /></label>
             <button type="submit" disabled={saving || lines.length === 0}>Thêm</button>
           </form>
 

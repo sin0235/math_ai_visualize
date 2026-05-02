@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { AdminConsole } from './components/admin/AdminConsole';
 import { ApiError, changePassword, deleteRenderHistory, forgotPassword, getCurrentUser, getGoogleOAuthStartUrl, getHealth, getRenderHistory, getRenderHistoryDetail, getSessions, getSettingsDefaults, getUserSettings, login, logout, ocrImage, register, renderEditedScene, renderProblem, resendVerification, resetPassword, revokeOtherSessions, revokeSession, saveUserSettings, updateProfile, verifyEmail, type AdminRenderHistoryDetail, type RenderHistoryItem, type SessionResponse, type UserResponse } from './api/client';
-import { defaultAdvancedSettings, ProblemInput, staticModelOptions, type ModelOption } from './components/ProblemInput';
+import { defaultAdvancedSettings, ProblemInput, type ModelOption } from './components/ProblemInput';
 import { GeneralSettingsPanel } from './components/GeneralSettingsPanel';
 import { AccountPage } from './components/AccountPage';
 import { HomePage } from './components/HomePage';
@@ -12,7 +12,7 @@ import { RendererPanel } from './components/RendererPanel';
 import { SceneEditorPanel, type PointPlacementPlane } from './components/SceneEditorPanel';
 import { PrivacyPolicyPage, TermsPage } from './components/LegalPages';
 import type { AdvancedRenderSettings, MathScene, RenderResponse, Renderer } from './types/scene';
-import { defaultRuntimeSettings, SETTINGS_STORAGE_VERSION, type OcrProvider, type RuntimeSettings, type SettingsDefaults } from './types/settings';
+import { defaultRuntimeSettings, SETTINGS_STORAGE_VERSION, type OcrProvider, type RuntimeSettings, type SettingsDefaults, type UserBasicSettings } from './types/settings';
 import logoUrl from '../img.svg';
 import './styles.css';
 
@@ -247,7 +247,7 @@ export default function App() {
   useEffect(() => {
     if (!user || !remoteSettingsHydrated) return;
     const timer = window.setTimeout(() => {
-      saveUserSettings(sanitizeSettingsForStorage(runtimeSettings)).catch(() => undefined);
+      saveUserSettings(toUserBasicSettings(runtimeSettings)).catch(() => undefined);
     }, 600);
     return () => window.clearTimeout(timer);
   }, [runtimeSettings, user, remoteSettingsHydrated]);
@@ -406,7 +406,7 @@ export default function App() {
       const response = await register(email, password, displayName, acceptPrivacyPolicy, acceptTerms);
       setUser(response.user);
       if (response.user.email_verified_at) {
-        await saveUserSettings(sanitizeSettingsForStorage(runtimeSettings));
+        await saveUserSettings(toUserBasicSettings(runtimeSettings));
         await refreshHistory();
         setRemoteSettingsHydrated(true);
         navigateTo('account');
@@ -488,7 +488,7 @@ export default function App() {
       if (savedSettings) {
         setRuntimeSettings((current) => loadRemoteSettings(savedSettings, current));
       } else {
-        await saveUserSettings(sanitizeSettingsForStorage(runtimeSettings));
+        await saveUserSettings(toUserBasicSettings(runtimeSettings));
       }
     } finally {
       setRemoteSettingsHydrated(true);
@@ -1345,8 +1345,28 @@ function loadStoredSettings(saved: string): RuntimeSettings {
   return dropApiKeys(next);
 }
 
-function loadRemoteSettings(settings: Partial<RuntimeSettings>, current: RuntimeSettings): RuntimeSettings {
-  return dropApiKeys(mergeRuntimeSettingsShape(settings, current));
+function loadRemoteSettings(settings: UserBasicSettings, current: RuntimeSettings): RuntimeSettings {
+  const next = { ...current, default_provider: settings.default_provider, ocr: { ...current.ocr, ...settings.ocr } };
+  const provider = settings.default_provider;
+  if (provider === 'openrouter' || provider === 'nvidia' || provider === 'ollama' || provider === 'router9') {
+    return dropApiKeys({ ...next, [provider]: { ...next[provider], model: settings.default_model } });
+  }
+  return dropApiKeys(next);
+}
+
+function toUserBasicSettings(settings: RuntimeSettings): UserBasicSettings {
+  return {
+    version: 2,
+    default_provider: settings.default_provider,
+    default_model: currentProviderModel(settings),
+    ocr: settings.ocr,
+  };
+}
+
+function currentProviderModel(settings: RuntimeSettings) {
+  const provider = settings.default_provider;
+  if (provider === 'openrouter' || provider === 'nvidia' || provider === 'ollama' || provider === 'router9') return settings[provider].model;
+  return '';
 }
 
 function mergeRuntimeSettingsShape(rawSettings: Partial<RuntimeSettings>, base: RuntimeSettings = defaultRuntimeSettings): RuntimeSettings {
@@ -1512,7 +1532,7 @@ function buildModelOptions(settings: RuntimeSettings, defaults?: SettingsDefault
     return router9Options;
   }
 
-  return [...staticModelOptions, ...providerOptions, ...router9Options];
+  return [{ key: 'provider:auto', provider: 'auto', label: 'Tự động chọn mô hình phù hợp', description: 'Tự động dùng provider/model do admin cấu hình.' }, ...providerOptions, ...router9Options];
 }
 
 function providerLabel(provider: 'openrouter' | 'nvidia' | 'ollama') {
