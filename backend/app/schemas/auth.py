@@ -265,11 +265,56 @@ class UserSettingsRequest(BaseModel):
     settings: UserBasicSettings
 
 
+class PlanQuotaSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    daily_render_limit: int | None = Field(default=None, ge=0, le=100_000)
+    daily_ocr_limit: int | None = Field(default=None, ge=0, le=100_000)
+
+
+class SystemPlanSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    version: int = 1
+    plans: dict[str, PlanQuotaSettings] = Field(default_factory=lambda: {"free": PlanQuotaSettings(daily_render_limit=20, daily_ocr_limit=20), "pro": PlanQuotaSettings()})
+
+
+class SystemFeatureFlags(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    version: int = 1
+    maintenance_mode: bool = False
+    maintenance_message: str = Field(default="Hệ thống đang bảo trì. Vui lòng thử lại sau.", max_length=500)
+    google_oauth_enabled: bool = True
+    ocr_enabled: bool = True
+    render_enabled: bool = True
+
+
+class AiTaskProfile(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    provider: str = Field(default="auto", max_length=64)
+    model: str = Field(default="", max_length=MAX_MODEL_ID_CHARS)
+    fallbacks: list[str] = Field(default_factory=list, max_length=MAX_STORED_MODELS)
+
+
+class SystemAiProfiles(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    version: int = 1
+    geometry_reasoning: AiTaskProfile = Field(default_factory=AiTaskProfile)
+    ocr: AiTaskProfile = Field(default_factory=AiTaskProfile)
+
+
 class AdminSummaryResponse(BaseModel):
     users: int
     active_users: int
     admins: int
     render_jobs: int
+    render_jobs_today: int = 0
+    users_today: int = 0
+    ai_warning_jobs: int = 0
+    ai_warning_rate: float = 0
 
 
 class AdminUserUpdateRequest(BaseModel):
@@ -307,3 +352,12 @@ class AdminRenderHistoryItem(RenderHistoryItem):
 
 class AdminRenderHistoryDetail(RenderHistoryDetail):
     user_id: str | None = None
+
+
+class AdminSessionResponse(BaseModel):
+    id: str
+    created_at: str
+    expires_at: str
+    last_seen_at: str | None = None
+    ip_address: str | None = None
+    user_agent: str | None = None

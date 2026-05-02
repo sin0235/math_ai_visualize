@@ -867,6 +867,106 @@ select {
   font-size: 2rem;
 }
 
+.admin-dashboard {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  background: #eef4ff;
+}
+
+.admin-sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  padding: 24px;
+  background: #0f172a;
+  color: #e2e8f0;
+}
+
+.admin-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.admin-brand > span {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #2563eb, #38bdf8);
+  color: #ffffff;
+  font-weight: 800;
+}
+
+.admin-brand small,
+.admin-sidebar-footer small {
+  display: block;
+  color: #94a3b8;
+}
+
+.admin-sidebar-nav {
+  display: grid;
+  gap: 8px;
+}
+
+.admin-sidebar-nav button {
+  width: 100%;
+  border: 0;
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: transparent;
+  color: #cbd5e1;
+  text-align: left;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.admin-sidebar-nav button.active,
+.admin-sidebar-nav button:hover {
+  background: rgba(255,255,255,.1);
+  color: #ffffff;
+}
+
+.admin-sidebar-footer {
+  margin-top: auto;
+  display: grid;
+  gap: 10px;
+}
+
+.admin-main {
+  min-width: 0;
+  padding: 28px;
+}
+
+.admin-topbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: flex-start;
+  margin-bottom: 22px;
+}
+
+.admin-topbar h2 {
+  margin: 6px 0;
+  color: #0f172a;
+  font-size: clamp(2rem, 3vw, 3.2rem);
+}
+
+.admin-topbar p {
+  margin: 0;
+  color: #64748b;
+}
+
+.admin-section-stack {
+  display: grid;
+  gap: 18px;
+}
+
 .admin-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -878,7 +978,8 @@ select {
   padding: 18px;
 }
 
-.admin-panel-wide {
+.admin-panel-wide,
+.admin-panel-full {
   grid-column: 1 / -1;
 }
 
@@ -890,6 +991,123 @@ select {
 .admin-panel h3 {
   margin: 0 0 14px;
   color: #0f172a;
+}
+
+.admin-settings-section {
+  display: grid;
+  gap: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 14px;
+  background: #f8fafc;
+}
+
+.admin-settings-section h4,
+.admin-detail-header h4 {
+  margin: 0;
+  color: #0f172a;
+}
+
+.admin-toolbar {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.admin-toolbar input,
+.admin-toolbar select {
+  flex: 1;
+}
+
+.admin-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.admin-session-panel {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid #e2e8f0;
+  padding-top: 12px;
+}
+
+.admin-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.admin-inline-form,
+.admin-field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  min-width: min(560px, 100%);
+}
+
+.admin-row-editable,
+.admin-row-block {
+  align-items: stretch;
+}
+
+.admin-row-block {
+  display: grid;
+}
+
+.admin-detail-panel {
+  display: grid;
+  gap: 14px;
+  margin-top: 16px;
+  border: 1px solid #cbd5e1;
+  border-radius: 18px;
+  padding: 16px;
+  background: #ffffff;
+}
+
+.admin-detail-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.admin-detail-header p,
+.admin-problem-text {
+  margin: 4px 0 0;
+  color: #475569;
+}
+
+.admin-field-grid span {
+  display: grid;
+  gap: 3px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 10px;
+  background: #ffffff;
+  color: #475569;
+}
+
+.admin-details {
+  min-width: 0;
+}
+
+.admin-details summary {
+  cursor: pointer;
+  color: #1d4ed8;
+  font-weight: 700;
+}
+
+.admin-json-block {
+  max-height: 360px;
+  overflow: auto;
+  margin: 10px 0 0;
+  border-radius: 12px;
+  padding: 12px;
+  background: #0f172a;
+  color: #dbeafe;
+  font-size: 0.82rem;
+  white-space: pre-wrap;
 }
 
 .admin-table {
@@ -925,11 +1143,29 @@ select {
     align-items: stretch;
   }
 
+  .admin-dashboard {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-sidebar {
+    position: static;
+    height: auto;
+  }
+
+  .admin-topbar,
+  .admin-detail-header,
+  .admin-toolbar {
+    flex-direction: column;
+  }
+
   .admin-metric-grid,
-  .admin-grid {
+  .admin-grid,
+  .admin-inline-form,
+  .admin-field-grid {
     grid-template-columns: 1fr;
   }
 }
+
 
 .history-panel-header {
   display: flex;

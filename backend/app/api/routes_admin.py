@@ -1,6 +1,7 @@
 import json
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import ValidationError
 
 from app.api.deps import require_admin_user, require_trusted_origin
 from app.api.routes_history import parse_json_object
@@ -10,10 +11,14 @@ from app.repositories.admin import AdminRepository
 from app.schemas.auth import (
     AdminRenderHistoryDetail,
     AdminRenderHistoryItem,
+    AdminSessionResponse,
     AdminSummaryResponse,
     AdminUserUpdateRequest,
     AuditLogResponse,
+    SystemAiProfiles,
     SystemAiSettings,
+    SystemFeatureFlags,
+    SystemPlanSettings,
     SystemSettingRequest,
     SystemSettingResponse,
     UserResponse,
@@ -31,11 +36,36 @@ async def admin_summary(_: UserRecord = Depends(require_admin_user), db: Databas
 @router.get("/users", response_model=list[UserResponse])
 async def admin_users(
     q: str | None = Query(default=None, max_length=256),
+    role: str | None = Query(default=None, max_length=32),
+    status: str | None = Query(default=None, max_length=32),
+    plan: str | None = Query(default=None, max_length=64),
     _: UserRecord = Depends(require_admin_user),
     db: DatabaseClient = Depends(get_database),
 ) -> list[UserResponse]:
-    users = await AdminRepository(db).list_users(q)
+    users = await AdminRepository(db).list_users(q, role, status, plan)
     return [user_response(user) for user in users]
+
+
+@router.get("/users/{user_id}/sessions", response_model=list[AdminSessionResponse])
+async def admin_user_sessions(user_id: str, _: UserRecord = Depends(require_admin_user), db: DatabaseClient = Depends(get_database)) -> list[AdminSessionResponse]:
+    sessions = await AdminRepository(db).list_user_sessions(user_id)
+    return [AdminSessionResponse(id=item.id, created_at=item.created_at, expires_at=item.expires_at, last_seen_at=item.last_seen_at, ip_address=item.ip_address, user_agent=item.user_agent) for item in sessions]
+
+
+@router.delete("/users/{user_id}/sessions/{session_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_trusted_origin)])
+async def admin_revoke_user_session(user_id: str, session_id: str, admin: UserRecord = Depends(require_admin_user), db: DatabaseClient = Depends(get_database)) -> None:
+    repo = AdminRepository(db)
+    revoked = await repo.revoke_user_session(user_id, session_id)
+    if not revoked:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy phiên đăng nhập.")
+    await repo.audit(admin.id, "admin.session.revoke", "session", session_id, {"user_id": user_id})
+
+
+@router.post("/users/{user_id}/sessions/revoke-all", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_trusted_origin)])
+async def admin_revoke_user_sessions(user_id: str, admin: UserRecord = Depends(require_admin_user), db: DatabaseClient = Depends(get_database)) -> None:
+    repo = AdminRepository(db)
+    count = await repo.revoke_user_sessions(user_id)
+    await repo.audit(admin.id, "admin.sessions.revoke_all", "user", user_id, {"count": count})
 
 
 @router.patch("/users/{user_id}", response_model=UserResponse, dependencies=[Depends(require_trusted_origin)])
@@ -54,8 +84,17 @@ async def admin_update_user(
 
 
 @router.get("/render-jobs", response_model=list[AdminRenderHistoryItem])
-async def admin_render_jobs(_: UserRecord = Depends(require_admin_user), db: DatabaseClient = Depends(get_database)) -> list[AdminRenderHistoryItem]:
-    jobs = await AdminRepository(db).list_render_jobs()
+async def admin_render_jobs(
+    provider: str | None = Query(default=None, max_length=64),
+    model: str | None = Query(default=None, max_length=256),
+    renderer: str | None = Query(default=None, max_length=64),
+    source_type: str | None = Query(default=None, max_length=64),
+    user_id: str | None = Query(default=None, max_length=128),
+    q: str | None = Query(default=None, max_length=256),
+    _: UserRecord = Depends(require_admin_user),
+    db: DatabaseClient = Depends(get_database),
+) -> list[AdminRenderHistoryItem]:
+    jobs = await AdminRepository(db).list_render_jobs(provider, model, renderer, source_type, user_id, q)
     return [
         AdminRenderHistoryItem(
             id=job.id,
@@ -121,8 +160,14 @@ async def admin_save_system_setting(
 
 
 @router.get("/audit-logs", response_model=list[AuditLogResponse])
-async def admin_audit_logs(_: UserRecord = Depends(require_admin_user), db: DatabaseClient = Depends(get_database)) -> list[AuditLogResponse]:
-    logs = await AdminRepository(db).list_audit_logs()
+async def admin_audit_logs(
+    action: str | None = Query(default=None, max_length=128),
+    actor_user_id: str | None = Query(default=None, max_length=128),
+    target_type: str | None = Query(default=None, max_length=128),
+    _: UserRecord = Depends(require_admin_user),
+    db: DatabaseClient = Depends(get_database),
+) -> list[AuditLogResponse]:
+    logs = await AdminRepository(db).list_audit_logs(action, actor_user_id, target_type)
     return [
         AuditLogResponse(
             id=log.id,
@@ -143,12 +188,19 @@ def parse_setting_value(value: str) -> dict:
 
 
 def validate_system_setting(key: str, value: dict) -> dict:
-    if key == "ai_settings":
-        try:
-            return SystemAiSettings.model_validate(value).model_dump(mode="json")
-        except ValidationError as error:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=error.errors()) from error
-    return value
+    schemas = {
+        "ai_settings": SystemAiSettings,
+        "plan_settings": SystemPlanSettings,
+        "feature_flags": SystemFeatureFlags,
+        "ai_profiles": SystemAiProfiles,
+    }
+    schema = schemas.get(key)
+    if schema is None:
+        return value
+    try:
+        return schema.model_validate(value).model_dump(mode="json")
+    except ValidationError as error:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=error.errors()) from error
 
 
 def user_response(user: UserRecord) -> UserResponse:

@@ -1,13 +1,17 @@
 import json
+from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import ValidationError
 
 from app.api.deps import get_optional_current_user, require_trusted_origin
 from app.db.models import UserRecord
 from app.db.session import DatabaseClient, get_database
+from app.repositories.admin import AdminRepository
 from app.repositories.history import RenderHistoryRepository
+from app.schemas.auth import SystemFeatureFlags
 from app.schemas.scene import RenderRequest, RenderResponse, SceneRenderRequest
+from app.services.system_settings import load_feature_flags, load_plan_settings
 from app.services.extractor import extract_scene
 from app.services.geometry_engine import normalize_scene
 from app.services.renderer_router import build_render_payload
@@ -21,6 +25,7 @@ async def render_problem(
     user: UserRecord | None = Depends(get_optional_current_user),
     db: DatabaseClient = Depends(get_database),
 ) -> RenderResponse:
+    await enforce_render_access(db, user)
     try:
         scene, warnings = await extract_scene(
             request.problem_text,
@@ -69,6 +74,7 @@ async def render_scene(
     user: UserRecord | None = Depends(get_optional_current_user),
     db: DatabaseClient = Depends(get_database),
 ) -> RenderResponse:
+    await enforce_render_access(db, user)
     scene = normalize_scene(request.scene, request.advanced_settings)
     payload = build_render_payload(scene, request.advanced_settings)
     warnings = []
@@ -90,6 +96,28 @@ async def render_scene(
             renderer=scene.renderer,
         )
     return response
+
+
+async def enforce_render_access(db: DatabaseClient, user: UserRecord | None) -> None:
+    flags = await load_feature_flags(db)
+    enforce_enabled(flags)
+    if user is None:
+        return
+    plan_settings = await load_plan_settings(db)
+    quota = plan_settings.plans.get(user.plan) or plan_settings.plans.get("free")
+    if quota is None or quota.daily_render_limit is None:
+        return
+    since = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    used = await AdminRepository(db).count_user_render_jobs_since(user.id, since)
+    if used >= quota.daily_render_limit:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Bạn đã dùng hết hạn mức render hôm nay.")
+
+
+def enforce_enabled(flags: SystemFeatureFlags) -> None:
+    if flags.maintenance_mode:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=flags.maintenance_message)
+    if not flags.render_enabled:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Tính năng render đang tạm tắt.")
 
 
 def sanitize_request_dump(request: RenderRequest | SceneRenderRequest) -> dict:

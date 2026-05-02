@@ -40,6 +40,7 @@ from app.schemas.auth import (
 )
 from app.services.email import send_password_reset_email, send_verification_email
 from app.services.google_oauth import build_google_authorization_url, exchange_google_code, fetch_google_userinfo, google_oauth_configured
+from app.services.system_settings import load_feature_flags
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 GENERIC_LOGIN_ERROR = "Email hoặc mật khẩu không đúng."
@@ -84,6 +85,11 @@ async def register(
 @router.get("/google/start")
 async def google_start(raw_request: Request, db: DatabaseClient = Depends(get_database), settings: Settings = Depends(get_settings)) -> RedirectResponse:
     await enforce_rate_limit(db, f"auth:google:start:ip:{client_ip(raw_request)}", 20, 15 * 60)
+    flags = await load_feature_flags(db)
+    if flags.maintenance_mode:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=flags.maintenance_message)
+    if not flags.google_oauth_enabled:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Google OAuth đang tạm tắt.")
     if not google_oauth_configured(settings):
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Google OAuth chưa được cấu hình.")
     _, state = await OAuthStateRepository(db).create(OAUTH_PROVIDER_GOOGLE, 10, client_ip(raw_request), raw_request.headers.get("user-agent"))

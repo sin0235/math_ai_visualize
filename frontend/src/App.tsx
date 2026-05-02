@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-import { ApiError, changePassword, deleteAdminRenderJob, deleteRenderHistory, forgotPassword, getAdminAuditLogs, getAdminRenderJobs, getAdminSummary, getAdminSystemSettings, getAdminUsers, getCurrentUser, getGoogleOAuthStartUrl, getHealth, getRenderHistory, getRenderHistoryDetail, getSessions, getSettingsDefaults, getUserSettings, login, logout, ocrImage, register, renderEditedScene, renderProblem, resendVerification, resetPassword, revokeOtherSessions, revokeSession, saveAdminSystemSetting, saveUserSettings, updateAdminUser, updateProfile, verifyEmail, type AdminRenderHistoryItem, type AdminSummaryResponse, type AuditLogResponse, type RenderHistoryItem, type SessionResponse, type SystemSettingResponse, type UserResponse } from './api/client';
+import { ApiError, changePassword, deleteAdminRenderJob, deleteRenderHistory, forgotPassword, getAdminAuditLogs, getAdminRenderJobDetail, getAdminRenderJobs, getAdminSummary, getAdminSystemSettings, getAdminUserSessions, getAdminUsers, getCurrentUser, getGoogleOAuthStartUrl, getHealth, getRenderHistory, getRenderHistoryDetail, getSessions, getSettingsDefaults, getUserSettings, login, logout, ocrImage, register, renderEditedScene, renderProblem, resendVerification, resetPassword, revokeAdminUserSession, revokeAllAdminUserSessions, revokeOtherSessions, revokeSession, saveAdminSystemSetting, saveUserSettings, scanProviderModels, scanRouter9Models, updateAdminUser, updateProfile, verifyEmail, type AdminAuditLogFilters, type AdminRenderHistoryDetail, type AdminRenderHistoryItem, type AdminRenderJobFilters, type AdminSessionResponse, type AdminSummaryResponse, type AdminUserFilters, type AuditLogResponse, type RenderHistoryItem, type SessionResponse, type SystemSettingResponse, type UserResponse } from './api/client';
 import { defaultAdvancedSettings, ProblemInput, staticModelOptions, type ModelOption } from './components/ProblemInput';
 import { GeneralSettingsPanel } from './components/GeneralSettingsPanel';
 import { AccountPage } from './components/AccountPage';
@@ -12,7 +12,7 @@ import { RendererPanel } from './components/RendererPanel';
 import { SceneEditorPanel, type PointPlacementPlane } from './components/SceneEditorPanel';
 import { PrivacyPolicyPage, TermsPage } from './components/LegalPages';
 import type { AdvancedRenderSettings, MathScene, RenderResponse, Renderer } from './types/scene';
-import { defaultRuntimeSettings, SETTINGS_STORAGE_VERSION, type RuntimeSettings, type SettingsDefaults } from './types/settings';
+import { defaultRuntimeSettings, SETTINGS_STORAGE_VERSION, type OcrProvider, type RuntimeSettings, type SettingsDefaults } from './types/settings';
 import logoUrl from '../img.svg';
 import './styles.css';
 
@@ -104,6 +104,10 @@ export default function App() {
   const [adminRenderJobs, setAdminRenderJobs] = useState<AdminRenderHistoryItem[]>([]);
   const [adminSettings, setAdminSettings] = useState<SystemSettingResponse[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogResponse[]>([]);
+  const [adminUserQuery, setAdminUserQuery] = useState('');
+  const [adminUserFilters, setAdminUserFilters] = useState<AdminUserFilters>({});
+  const [adminRenderJobFilters, setAdminRenderJobFilters] = useState<AdminRenderJobFilters>({});
+  const [adminAuditLogFilters, setAdminAuditLogFilters] = useState<AdminAuditLogFilters>({});
   const [adminLoading, setAdminLoading] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const resultAnchorRef = useRef<HTMLDivElement | null>(null);
@@ -196,6 +200,10 @@ export default function App() {
         if (cancelled) return;
         setUser(user);
         await loadRemoteWorkspace(user);
+        if (user.role === 'admin') {
+          setActiveView('admin');
+          await loadAdminWorkspaceForUser(user);
+        }
       })
       .catch(() => {
         if (!cancelled) {
@@ -349,7 +357,12 @@ export default function App() {
       const response = await login(email, password);
       setUser(response.user);
       await loadRemoteWorkspace(response.user);
-      setActiveView('render');
+      if (response.user.role === 'admin') {
+        setActiveView('admin');
+        await loadAdminWorkspaceForUser(response.user);
+      } else {
+        setActiveView('render');
+      }
     } finally {
       setAuthLoading(false);
     }
@@ -465,7 +478,12 @@ export default function App() {
   }
 
   async function loadAdminWorkspace() {
-    if (user?.role !== 'admin') {
+    if (!user) return;
+    await loadAdminWorkspaceForUser(user);
+  }
+
+  async function loadAdminWorkspaceForUser(targetUser: UserResponse) {
+    if (targetUser.role !== 'admin') {
       showNotification('Không có quyền quản trị', 'Tài khoản hiện tại không có quyền truy cập trang quản trị.');
       setActiveView('render');
       return;
@@ -474,10 +492,10 @@ export default function App() {
     try {
       const [summary, users, jobs, settings, logs] = await Promise.all([
         getAdminSummary(),
-        getAdminUsers(),
-        getAdminRenderJobs(),
+        getAdminUsers({ ...adminUserFilters, q: adminUserQuery }),
+        getAdminRenderJobs(adminRenderJobFilters),
         getAdminSystemSettings(),
-        getAdminAuditLogs(),
+        getAdminAuditLogs(adminAuditLogFilters),
       ]);
       setAdminSummary(summary);
       setAdminUsers(users);
@@ -492,16 +510,50 @@ export default function App() {
     }
   }
 
-  async function toggleUserStatus(target: UserResponse) {
+  async function searchAdminUsers(query: string, filters: AdminUserFilters = adminUserFilters) {
     try {
-      const nextStatus = target.status === 'active' ? 'disabled' : 'active';
-      const updated = await updateAdminUser(target.id, { status: nextStatus });
+      setAdminUsers(await getAdminUsers({ ...filters, q: query }));
+    } catch (caught) {
+      const apiError = toApiError(caught, 'Không thể tìm người dùng.');
+      showApiError('Không thể tìm user', apiError, 'Hãy thử lại hoặc kiểm tra quyền admin.');
+    }
+  }
+
+  async function searchAdminRenderJobs(filters: AdminRenderJobFilters) {
+    setAdminRenderJobFilters(filters);
+    try {
+      setAdminRenderJobs(await getAdminRenderJobs(filters));
+    } catch (caught) {
+      const apiError = toApiError(caught, 'Không thể lọc render jobs.');
+      showApiError('Không thể lọc render jobs', apiError, 'Hãy thử lại hoặc kiểm tra quyền admin.');
+    }
+  }
+
+  async function searchAdminAuditLogs(filters: AdminAuditLogFilters) {
+    setAdminAuditLogFilters(filters);
+    try {
+      setAuditLogs(await getAdminAuditLogs(filters));
+    } catch (caught) {
+      const apiError = toApiError(caught, 'Không thể lọc audit logs.');
+      showApiError('Không thể lọc audit logs', apiError, 'Hãy thử lại hoặc kiểm tra quyền admin.');
+    }
+  }
+
+  async function updateAdminUserPatch(target: UserResponse, patch: Partial<Pick<UserResponse, 'role' | 'status' | 'display_name' | 'plan'>>) {
+    try {
+      const updated = await updateAdminUser(target.id, patch);
       setAdminUsers((current) => current.map((item) => (item.id === updated.id ? updated : item)));
       void loadAdminWorkspace();
     } catch (caught) {
       const apiError = toApiError(caught, 'Không thể cập nhật người dùng.');
       showApiError('Không thể cập nhật user', apiError, 'Hãy thử lại hoặc kiểm tra quyền admin.');
+      throw apiError;
     }
+  }
+
+  async function toggleUserStatus(target: UserResponse) {
+    const nextStatus = target.status === 'active' ? 'disabled' : 'active';
+    await updateAdminUserPatch(target, { status: nextStatus });
   }
 
   async function removeAdminRenderJob(id: string) {
@@ -513,6 +565,13 @@ export default function App() {
       const apiError = toApiError(caught, 'Không thể xoá render job.');
       showApiError('Không thể xoá render job', apiError, 'Hãy thử lại hoặc kiểm tra quyền admin.');
     }
+  }
+
+  function openAdminRenderJobDetail(detail: AdminRenderHistoryDetail) {
+    setProblemText(detail.problem_text);
+    setResult({ scene: detail.scene, payload: detail.payload, warnings: detail.warnings });
+    setActiveView('render');
+    scrollToResultOnMobile();
   }
 
   async function openHistoryItem(id: string) {
@@ -681,6 +740,38 @@ export default function App() {
     }, 0);
   }
 
+  if (activeView === 'admin') {
+    return (
+      <>
+        <NotificationBanner notification={notification} onDismiss={() => setNotification(null)} />
+        <AdminConsole
+          user={user}
+          summary={adminSummary}
+          users={adminUsers}
+          renderJobs={adminRenderJobs}
+          settings={adminSettings}
+          auditLogs={auditLogs}
+          userQuery={adminUserQuery}
+          loading={adminLoading}
+          onRefresh={loadAdminWorkspace}
+          onUserQueryChange={setAdminUserQuery}
+          userFilters={adminUserFilters}
+          renderJobFilters={adminRenderJobFilters}
+          auditLogFilters={adminAuditLogFilters}
+          onSearchUsers={searchAdminUsers}
+          onUserFiltersChange={setAdminUserFilters}
+          onSearchRenderJobs={searchAdminRenderJobs}
+          onSearchAuditLogs={searchAdminAuditLogs}
+          onUpdateUser={updateAdminUserPatch}
+          onToggleUserStatus={toggleUserStatus}
+          onDeleteRenderJob={removeAdminRenderJob}
+          onOpenRenderJobDetail={openAdminRenderJobDetail}
+          onBackToApp={() => setActiveView('home')}
+        />
+      </>
+    );
+  }
+
   return (
     <>
       <header className="global-header">
@@ -708,7 +799,7 @@ export default function App() {
             Workspace
           </button>
           {user?.role === 'admin' && (
-            <button type="button" className={`nav-item ${activeView === 'admin' ? 'active' : ''}`} onClick={() => {
+            <button type="button" className="nav-item" onClick={() => {
               setActiveView('admin');
               void loadAdminWorkspace();
             }}>
@@ -874,21 +965,6 @@ export default function App() {
         {activeView === 'about' && <AboutPage onStart={() => setActiveView('render')} onGuide={() => setActiveView('guide')} />}
         {activeView === 'privacy-policy' && <PrivacyPolicyPage />}
         {activeView === 'terms' && <TermsPage />}
-        {activeView === 'admin' && (
-          <AdminConsole
-            user={user}
-            summary={adminSummary}
-            users={adminUsers}
-            renderJobs={adminRenderJobs}
-            settings={adminSettings}
-            auditLogs={auditLogs}
-            loading={adminLoading}
-            onRefresh={loadAdminWorkspace}
-            onToggleUserStatus={toggleUserStatus}
-            onDeleteRenderJob={removeAdminRenderJob}
-            onBackToApp={() => setActiveView('render')}
-          />
-        )}
         {activeView === 'login' && (
           <LoginPage
             logoUrl={logoUrl}
@@ -1172,9 +1248,19 @@ function HistoryPage({ user, items, loading, onOpen, onDelete, onLogin, onWorksp
   );
 }
 
-function AdminConsole({ user, summary, users, renderJobs, settings, auditLogs, loading, onRefresh, onToggleUserStatus, onDeleteRenderJob, onBackToApp }: { user: UserResponse | null; summary: AdminSummaryResponse | null; users: UserResponse[]; renderJobs: AdminRenderHistoryItem[]; settings: SystemSettingResponse[]; auditLogs: AuditLogResponse[]; loading: boolean; onRefresh: () => void; onToggleUserStatus: (user: UserResponse) => void; onDeleteRenderJob: (id: string) => void; onBackToApp: () => void }) {
+function AdminConsole({ user, summary, users, renderJobs, settings, auditLogs, userQuery, userFilters, renderJobFilters, auditLogFilters, loading, onRefresh, onUserQueryChange, onUserFiltersChange, onSearchUsers, onSearchRenderJobs, onSearchAuditLogs, onUpdateUser, onToggleUserStatus, onDeleteRenderJob, onOpenRenderJobDetail, onBackToApp }: { user: UserResponse | null; summary: AdminSummaryResponse | null; users: UserResponse[]; renderJobs: AdminRenderHistoryItem[]; settings: SystemSettingResponse[]; auditLogs: AuditLogResponse[]; userQuery: string; userFilters: AdminUserFilters; renderJobFilters: AdminRenderJobFilters; auditLogFilters: AdminAuditLogFilters; loading: boolean; onRefresh: () => void; onUserQueryChange: (query: string) => void; onUserFiltersChange: (filters: AdminUserFilters) => void; onSearchUsers: (query: string, filters?: AdminUserFilters) => Promise<void>; onSearchRenderJobs: (filters: AdminRenderJobFilters) => Promise<void>; onSearchAuditLogs: (filters: AdminAuditLogFilters) => Promise<void>; onUpdateUser: (user: UserResponse, patch: Partial<Pick<UserResponse, 'role' | 'status' | 'display_name' | 'plan'>>) => Promise<void>; onToggleUserStatus: (user: UserResponse) => Promise<void>; onDeleteRenderJob: (id: string) => void; onOpenRenderJobDetail: (detail: AdminRenderHistoryDetail) => void; onBackToApp: () => void }) {
+  const [activeSection, setActiveSection] = useState<'overview' | 'users' | 'renders' | 'models' | 'settings' | 'audit'>('overview');
   const [savingAiSettings, setSavingAiSettings] = useState(false);
+  const [searchingUsers, setSearchingUsers] = useState(false);
+  const [filteringRenderJobs, setFilteringRenderJobs] = useState(false);
+  const [filteringAuditLogs, setFilteringAuditLogs] = useState(false);
+  const [localRenderJobFilters, setLocalRenderJobFilters] = useState<AdminRenderJobFilters>(renderJobFilters);
+  const [localAuditLogFilters, setLocalAuditLogFilters] = useState<AdminAuditLogFilters>(auditLogFilters);
+  const [selectedJobDetail, setSelectedJobDetail] = useState<AdminRenderHistoryDetail | null>(null);
+  const [jobDetailLoading, setJobDetailLoading] = useState(false);
+  const [jobDetailError, setJobDetailError] = useState('');
   const aiSettings = settings.find((item) => item.key === 'ai_settings')?.value ?? {};
+  const providerStats = summarizeRenderJobs(renderJobs);
 
   async function saveAiSettingsPatch(patch: Record<string, unknown>) {
     setSavingAiSettings(true);
@@ -1186,147 +1272,544 @@ function AdminConsole({ user, summary, users, renderJobs, settings, auditLogs, l
     }
   }
 
+  async function submitUserSearch(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSearchingUsers(true);
+    try {
+      await onSearchUsers(userQuery, userFilters);
+    } finally {
+      setSearchingUsers(false);
+    }
+  }
+
+  async function submitRenderJobFilters(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setFilteringRenderJobs(true);
+    try {
+      await onSearchRenderJobs(localRenderJobFilters);
+    } finally {
+      setFilteringRenderJobs(false);
+    }
+  }
+
+  async function submitAuditLogFilters(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setFilteringAuditLogs(true);
+    try {
+      await onSearchAuditLogs(localAuditLogFilters);
+    } finally {
+      setFilteringAuditLogs(false);
+    }
+  }
+
+  function updateUserFilter(key: keyof AdminUserFilters, value: string) {
+    const next = { ...userFilters, [key]: value };
+    onUserFiltersChange(next);
+    void onSearchUsers(userQuery, next);
+  }
+
+  async function inspectRenderJob(id: string) {
+    setJobDetailLoading(true);
+    setJobDetailError('');
+    try {
+      setSelectedJobDetail(await getAdminRenderJobDetail(id));
+    } catch (caught) {
+      const apiError = toApiError(caught, 'Không thể tải chi tiết render job.');
+      setJobDetailError(apiError.message);
+    } finally {
+      setJobDetailLoading(false);
+    }
+  }
+
   if (user?.role !== 'admin') {
     return (
-      <section className="product-page-card">
-        <span className="home-eyebrow">Admin console</span>
-        <h2>Bạn không có quyền truy cập trang quản trị.</h2>
-        <p>Trang này chỉ dành cho tài khoản admin đang hoạt động.</p>
-        <button type="button" onClick={onBackToApp}>Quay lại workspace</button>
+      <section className="admin-dashboard public-denied">
+        <div className="product-page-card">
+          <span className="home-eyebrow">Admin Dashboard</span>
+          <h2>Bạn không có quyền truy cập trang quản trị.</h2>
+          <p>Trang này chỉ dành cho tài khoản admin đang hoạt động.</p>
+          <button type="button" onClick={onBackToApp}>Quay lại trang chính</button>
+        </div>
       </section>
     );
   }
 
   return (
-    <section className="admin-console">
-      <div className="page-title-row">
-        <div>
-          <span className="home-eyebrow">Admin console</span>
-          <h2>Quản trị AI Math Renderer</h2>
-          <p>Theo dõi người dùng, render jobs, cấu hình hệ thống và audit logs.</p>
-        </div>
-        <button type="button" className="secondary-button" onClick={onRefresh} disabled={loading}>{loading ? 'Đang tải...' : 'Làm mới'}</button>
-      </div>
+    <section className="admin-dashboard">
+      <aside className="admin-sidebar">
+        <div className="admin-brand"><span>H</span><div><strong>Hinh Admin</strong><small>Project Control Center</small></div></div>
+        <nav className="admin-sidebar-nav">
+          <AdminNavButton active={activeSection === 'overview'} onClick={() => setActiveSection('overview')} label="Tổng quan" />
+          <AdminNavButton active={activeSection === 'users'} onClick={() => setActiveSection('users')} label="Người dùng" />
+          <AdminNavButton active={activeSection === 'renders'} onClick={() => setActiveSection('renders')} label="Render jobs" />
+          <AdminNavButton active={activeSection === 'models'} onClick={() => setActiveSection('models')} label="Model & AI" />
+          <AdminNavButton active={activeSection === 'settings'} onClick={() => setActiveSection('settings')} label="Cài đặt DB" />
+          <AdminNavButton active={activeSection === 'audit'} onClick={() => setActiveSection('audit')} label="Audit logs" />
+        </nav>
+        <div className="admin-sidebar-footer"><small>{user.email}</small><button type="button" className="secondary-button" onClick={onBackToApp}>Trang người dùng</button></div>
+      </aside>
 
-      <div className="admin-metric-grid">
-        <MetricCard label="Người dùng" value={summary?.users ?? 0} />
-        <MetricCard label="Đang hoạt động" value={summary?.active_users ?? 0} />
-        <MetricCard label="Admin" value={summary?.admins ?? 0} />
-        <MetricCard label="Render jobs" value={summary?.render_jobs ?? 0} />
-      </div>
+      <main className="admin-main">
+        <header className="admin-topbar">
+          <div><span className="home-eyebrow">Admin Dashboard</span><h2>Quản lý dự án AI Math Renderer</h2><p>Dashboard riêng cho admin: vận hành, phân tích, người dùng, model, cài đặt và audit.</p></div>
+          <button type="button" className="secondary-button" onClick={onRefresh} disabled={loading}>{loading ? 'Đang tải...' : 'Làm mới dữ liệu'}</button>
+        </header>
 
-      <div className="admin-grid">
-        <section className="admin-panel">
-          <h3>Người dùng</h3>
-          <div className="admin-table">
-            {users.map((item) => (
-              <article className="admin-row" key={item.id}>
-                <div>
-                  <strong>{item.display_name || item.email}</strong>
-                  <span>{item.email} · {item.role} · {item.status} · {item.plan}</span>
-                </div>
-                <button type="button" className="secondary-button" onClick={() => onToggleUserStatus(item)}>{item.status === 'active' ? 'Vô hiệu hoá' : 'Kích hoạt'}</button>
-              </article>
-            ))}
+        {activeSection === 'overview' && (
+          <div className="admin-section-stack">
+            <div className="admin-metric-grid">
+              <MetricCard label="Người dùng" value={summary?.users ?? 0} />
+              <MetricCard label="Đang hoạt động" value={summary?.active_users ?? 0} />
+              <MetricCard label="Admin" value={summary?.admins ?? 0} />
+              <MetricCard label="Render jobs" value={summary?.render_jobs ?? 0} />
+              <MetricCard label="Render hôm nay" value={summary?.render_jobs_today ?? 0} />
+              <MetricCard label="User mới hôm nay" value={summary?.users_today ?? 0} />
+              <MetricCard label="Job cảnh báo AI" value={summary?.ai_warning_jobs ?? 0} />
+              <MetricCard label="Tỉ lệ cảnh báo AI" value={summary?.ai_warning_rate ?? 0} suffix="%" />
+            </div>
+            <div className="admin-grid">
+              <section className="admin-panel"><h3>Phân tích provider/model</h3><div className="admin-table">{providerStats.map((item) => <article className="admin-row" key={item.key}><div><strong>{item.key}</strong><span>{item.count} render jobs</span></div></article>)}{providerStats.length === 0 && <p className="field-hint">Chưa có dữ liệu render để phân tích.</p>}</div></section>
+              <section className="admin-panel"><h3>Tình trạng cấu hình</h3><div className="admin-table"><article className="admin-row"><div><strong>ai_settings</strong><span>{settings.some((item) => item.key === 'ai_settings') ? 'Đã lưu trong database' : 'Chưa cấu hình trong database'}</span></div></article><article className="admin-row"><div><strong>Audit</strong><span>{auditLogs.length} sự kiện gần nhất</span></div></article></div></section>
+            </div>
           </div>
-        </section>
+        )}
 
-        <section className="admin-panel">
-          <h3>Render jobs gần đây</h3>
-          <div className="admin-table">
-            {renderJobs.map((job) => (
-              <article className="admin-row" key={job.id}>
-                <div>
-                  <strong>{job.problem_text}</strong>
-                  <span>{formatHistoryDate(job.created_at)} · {job.user_id || 'guest'} · {job.renderer || 'auto'} · {job.model || 'default'}</span>
-                </div>
-                <button type="button" className="history-delete" onClick={() => onDeleteRenderJob(job.id)} aria-label="Xoá render job">×</button>
-              </article>
-            ))}
-          </div>
-        </section>
+        {activeSection === 'users' && (
+          <section className="admin-panel admin-panel-full">
+            <h3>Quản lý người dùng</h3>
+            <form className="admin-toolbar" onSubmit={submitUserSearch}>
+              <input value={userQuery} onChange={(event) => onUserQueryChange(event.target.value)} placeholder="Tìm email, tên hiển thị hoặc ID" />
+              <select value={userFilters.role ?? ''} onChange={(event) => updateUserFilter('role', event.target.value)}><option value="">Role</option><option value="user">user</option><option value="admin">admin</option></select>
+              <select value={userFilters.status ?? ''} onChange={(event) => updateUserFilter('status', event.target.value)}><option value="">Status</option><option value="active">active</option><option value="disabled">disabled</option></select>
+              <input value={userFilters.plan ?? ''} onChange={(event) => updateUserFilter('plan', event.target.value)} placeholder="Plan" />
+              <button type="submit" className="secondary-button" disabled={searchingUsers}>{searchingUsers ? 'Đang tìm...' : 'Tìm user'}</button>
+              <button type="button" className="secondary-button" onClick={() => { onUserQueryChange(''); onUserFiltersChange({}); void onSearchUsers('', {}); }}>Xoá lọc</button>
+            </form>
+            <div className="admin-table">
+              {users.map((item) => <AdminUserRow key={item.id} item={item} currentUserId={user.id} onUpdate={onUpdateUser} onToggleStatus={onToggleUserStatus} />)}
+              {users.length === 0 && <p className="field-hint">Không tìm thấy người dùng phù hợp.</p>}
+            </div>
+          </section>
+        )}
 
-        <section className="admin-panel">
-          <h3>Cấu hình hệ thống</h3>
-          <p className="field-hint">Các cấu hình non-secret được lưu trong database. API key vẫn lấy từ môi trường deploy.</p>
-          {settings.length === 0 ? <p>Chưa có cấu hình non-secret nào được lưu.</p> : settings.map((item) => (
-            <article className="admin-row" key={item.key}>
-              <div>
-                <strong>{item.key}</strong>
-                <span>Cập nhật {formatHistoryDate(item.updated_at)}</span>
-              </div>
-            </article>
-          ))}
-        </section>
+        {activeSection === 'renders' && (
+          <section className="admin-panel admin-panel-full">
+            <h3>Quản lý render jobs</h3>
+            <form className="admin-toolbar admin-filter-grid" onSubmit={submitRenderJobFilters}>
+              <input value={localRenderJobFilters.q ?? ''} onChange={(event) => setLocalRenderJobFilters((current) => ({ ...current, q: event.target.value }))} placeholder="Tìm đề bài hoặc ID" />
+              <input value={localRenderJobFilters.provider ?? ''} onChange={(event) => setLocalRenderJobFilters((current) => ({ ...current, provider: event.target.value }))} placeholder="Provider" />
+              <input value={localRenderJobFilters.model ?? ''} onChange={(event) => setLocalRenderJobFilters((current) => ({ ...current, model: event.target.value }))} placeholder="Model" />
+              <input value={localRenderJobFilters.renderer ?? ''} onChange={(event) => setLocalRenderJobFilters((current) => ({ ...current, renderer: event.target.value }))} placeholder="Renderer" />
+              <input value={localRenderJobFilters.source_type ?? ''} onChange={(event) => setLocalRenderJobFilters((current) => ({ ...current, source_type: event.target.value }))} placeholder="Source" />
+              <input value={localRenderJobFilters.user_id ?? ''} onChange={(event) => setLocalRenderJobFilters((current) => ({ ...current, user_id: event.target.value }))} placeholder="User ID" />
+              <button type="submit" className="secondary-button" disabled={filteringRenderJobs}>{filteringRenderJobs ? 'Đang lọc...' : 'Lọc jobs'}</button>
+              <button type="button" className="secondary-button" onClick={() => { setLocalRenderJobFilters({}); void onSearchRenderJobs({}); }}>Xoá lọc</button>
+            </form>
+            <div className="admin-table">
+              {renderJobs.map((job) => (
+                <article className="admin-row" key={job.id}>
+                  <div><strong>{job.problem_text}</strong><span>{formatHistoryDate(job.created_at)} · {job.user_id || 'guest'} · {job.provider || 'auto'} · {job.model || 'default'} · {job.renderer || 'auto'}</span></div>
+                  <div className="admin-row-actions"><button type="button" className="secondary-button" onClick={() => void inspectRenderJob(job.id)}>Chi tiết</button><button type="button" className="history-delete" onClick={() => onDeleteRenderJob(job.id)} aria-label="Xoá render job">×</button></div>
+                </article>
+              ))}
+              {renderJobs.length === 0 && <p className="field-hint">Chưa có render job nào.</p>}
+            </div>
+            {jobDetailLoading && <p className="field-hint">Đang tải chi tiết render job...</p>}
+            {jobDetailError && <p className="error-box">{jobDetailError}</p>}
+            {selectedJobDetail && <AdminRenderJobDetailPanel detail={selectedJobDetail} onOpen={() => onOpenRenderJobDetail(selectedJobDetail)} onClose={() => setSelectedJobDetail(null)} />}
+          </section>
+        )}
 
-        <section className="admin-panel admin-panel-wide">
-          <h3>Quản lý model</h3>
-          <p className="field-hint">Admin quản lý allowlist và model mặc định tại đây; người dùng thường chỉ chọn trong danh sách đã bật.</p>
-          <AdminAiSettingsForm value={aiSettings} saving={savingAiSettings} onSave={saveAiSettingsPatch} />
-        </section>
+        {activeSection === 'models' && (
+          <section className="admin-panel admin-panel-full">
+            <h3>Model & AI management</h3>
+            <p className="field-hint">Admin quản lý provider, model mặc định, allowlist, OCR và routing AI.</p>
+            <AdminAiSettingsForm value={aiSettings} saving={savingAiSettings} onSave={saveAiSettingsPatch} />
+          </section>
+        )}
 
-        <section className="admin-panel">
-          <h3>Audit logs</h3>
-          <div className="admin-table">
-            {auditLogs.map((log) => (
-              <article className="admin-row" key={log.id}>
-                <div>
-                  <strong>{log.action}</strong>
-                  <span>{formatHistoryDate(log.created_at)} · {log.actor_user_id || 'system'} · {log.target_type}{log.target_id ? `/${log.target_id}` : ''}</span>
-                </div>
-              </article>
-            ))}
-          </div>
-        </section>
-      </div>
+        {activeSection === 'settings' && (
+          <section className="admin-panel admin-panel-full">
+            <h3>Cài đặt lưu trong cơ sở dữ liệu</h3>
+            <p className="field-hint">Các cấu hình non-secret được lưu trong bảng system_settings; API key vẫn nằm trong secret/env deploy.</p>
+            <AdminPlanSettingsForm value={settings.find((item) => item.key === 'plan_settings')?.value ?? {}} onSave={async (value) => { await saveAdminSystemSetting('plan_settings', value); onRefresh(); }} />
+            <AdminFeatureFlagsForm value={settings.find((item) => item.key === 'feature_flags')?.value ?? {}} onSave={async (value) => { await saveAdminSystemSetting('feature_flags', value); onRefresh(); }} />
+            <AdminAiProfilesForm value={settings.find((item) => item.key === 'ai_profiles')?.value ?? {}} onSave={async (value) => { await saveAdminSystemSetting('ai_profiles', value); onRefresh(); }} />
+            <div className="admin-table">
+              {settings.map((item) => <AdminSystemSettingRow key={item.key} item={item} />)}
+              {settings.length === 0 && <p className="field-hint">Chưa có cấu hình hệ thống.</p>}
+            </div>
+          </section>
+        )}
+
+        {activeSection === 'audit' && (
+          <section className="admin-panel admin-panel-full">
+            <h3>Audit logs</h3>
+            <form className="admin-toolbar admin-filter-grid" onSubmit={submitAuditLogFilters}>
+              <input value={localAuditLogFilters.action ?? ''} onChange={(event) => setLocalAuditLogFilters((current) => ({ ...current, action: event.target.value }))} placeholder="Action" />
+              <input value={localAuditLogFilters.actor_user_id ?? ''} onChange={(event) => setLocalAuditLogFilters((current) => ({ ...current, actor_user_id: event.target.value }))} placeholder="Actor user ID" />
+              <input value={localAuditLogFilters.target_type ?? ''} onChange={(event) => setLocalAuditLogFilters((current) => ({ ...current, target_type: event.target.value }))} placeholder="Target type" />
+              <button type="submit" className="secondary-button" disabled={filteringAuditLogs}>{filteringAuditLogs ? 'Đang lọc...' : 'Lọc audit'}</button>
+              <button type="button" className="secondary-button" onClick={() => { setLocalAuditLogFilters({}); void onSearchAuditLogs({}); }}>Xoá lọc</button>
+            </form>
+            <div className="admin-table">
+              {auditLogs.map((log) => <AdminAuditLogRow key={log.id} log={log} />)}
+              {auditLogs.length === 0 && <p className="field-hint">Chưa có audit log.</p>}
+            </div>
+          </section>
+        )}
+      </main>
     </section>
   );
+}
+
+function AdminNavButton({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
+  return <button type="button" className={active ? 'active' : ''} onClick={onClick}>{label}</button>;
+}
+
+function AdminUserRow({ item, currentUserId, onUpdate, onToggleStatus }: { item: UserResponse; currentUserId: string; onUpdate: (user: UserResponse, patch: Partial<Pick<UserResponse, 'role' | 'status' | 'display_name' | 'plan'>>) => Promise<void>; onToggleStatus: (user: UserResponse) => Promise<void> }) {
+  const [displayName, setDisplayName] = useState(item.display_name ?? '');
+  const [role, setRole] = useState<UserResponse['role']>(item.role);
+  const [status, setStatus] = useState<UserResponse['status']>(item.status);
+  const [plan, setPlan] = useState(item.plan);
+  const [saving, setSaving] = useState(false);
+  const [sessionsOpen, setSessionsOpen] = useState(false);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+  const [sessions, setSessions] = useState<AdminSessionResponse[]>([]);
+  const isSelf = item.id === currentUserId;
+
+  useEffect(() => {
+    setDisplayName(item.display_name ?? '');
+    setRole(item.role);
+    setStatus(item.status);
+    setPlan(item.plan);
+  }, [item]);
+
+  async function loadSessions() {
+    setSessionsLoading(true);
+    try {
+      setSessions(await getAdminUserSessions(item.id));
+      setSessionsOpen(true);
+    } finally {
+      setSessionsLoading(false);
+    }
+  }
+
+  async function revokeSession(sessionId: string) {
+    await revokeAdminUserSession(item.id, sessionId);
+    await loadSessions();
+  }
+
+  async function revokeAllSessions() {
+    await revokeAllAdminUserSessions(item.id);
+    await loadSessions();
+  }
+
+  async function save() {
+    const patch: Partial<Pick<UserResponse, 'role' | 'status' | 'display_name' | 'plan'>> = {};
+    const nextDisplayName = displayName.trim() || null;
+    const nextPlan = plan.trim() || 'free';
+    if (nextDisplayName !== (item.display_name ?? null)) patch.display_name = nextDisplayName;
+    if (!isSelf && role !== item.role) patch.role = role;
+    if (!isSelf && status !== item.status) patch.status = status;
+    if (nextPlan !== item.plan) patch.plan = nextPlan;
+    if (Object.keys(patch).length === 0) return;
+
+    setSaving(true);
+    try {
+      await onUpdate(item, patch);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <article className="admin-row admin-row-editable">
+      <div>
+        <strong>{item.display_name || item.email}</strong>
+        <span>{item.email} · {item.role} · {item.status} · {item.plan}</span>
+        {isSelf && <span>Đang đăng nhập: khoá sửa role/status để tránh tự mất quyền.</span>}
+      </div>
+      <div className="admin-inline-form">
+        <label className="field-label">Tên hiển thị<input value={displayName} onChange={(event) => setDisplayName(event.target.value)} /></label>
+        <label className="field-label">Role<select value={role} onChange={(event) => setRole(event.target.value as UserResponse['role'])} disabled={isSelf}><option value="user">user</option><option value="admin">admin</option></select></label>
+        <label className="field-label">Status<select value={status} onChange={(event) => setStatus(event.target.value as UserResponse['status'])} disabled={isSelf}><option value="active">active</option><option value="disabled">disabled</option></select></label>
+        <label className="field-label">Plan<input value={plan} onChange={(event) => setPlan(event.target.value)} /></label>
+      </div>
+      <div className="admin-row-actions">
+        <button type="button" className="secondary-button" onClick={save} disabled={saving}>{saving ? 'Đang lưu...' : 'Lưu'}</button>
+        <button type="button" className="secondary-button" onClick={() => void onToggleStatus(item)} disabled={isSelf || saving}>{item.status === 'active' ? 'Vô hiệu hoá' : 'Kích hoạt'}</button>
+        <button type="button" className="secondary-button" onClick={() => (sessionsOpen ? setSessionsOpen(false) : void loadSessions())} disabled={sessionsLoading}>{sessionsLoading ? 'Đang tải...' : 'Phiên đăng nhập'}</button>
+      </div>
+      {sessionsOpen && (
+        <div className="admin-session-panel">
+          <div className="admin-detail-header"><h4>Phiên đăng nhập</h4><button type="button" className="secondary-button" onClick={() => void revokeAllSessions()}>Thu hồi tất cả</button></div>
+          {sessions.map((session) => (
+            <article className="admin-row" key={session.id}>
+              <div><strong>{session.id}</strong><span>{formatHistoryDate(session.created_at)} · hết hạn {formatHistoryDate(session.expires_at)} · {session.ip_address || 'unknown IP'}</span><span>{session.user_agent || 'unknown user agent'}</span></div>
+              <button type="button" className="secondary-button" onClick={() => void revokeSession(session.id)}>Thu hồi</button>
+            </article>
+          ))}
+          {sessions.length === 0 && <p className="field-hint">Không có phiên còn hiệu lực.</p>}
+        </div>
+      )}
+    </article>
+  );
+}
+
+function AdminRenderJobDetailPanel({ detail, onOpen, onClose }: { detail: AdminRenderHistoryDetail; onOpen: () => void; onClose: () => void }) {
+  return (
+    <section className="admin-detail-panel">
+      <div className="admin-detail-header">
+        <div><h4>Chi tiết render job</h4><p>{detail.id}</p></div>
+        <div className="admin-row-actions"><button type="button" className="secondary-button" onClick={onOpen}>Mở trong renderer</button><button type="button" className="secondary-button" onClick={onClose}>Đóng</button></div>
+      </div>
+      <div className="admin-field-grid">
+        <span><strong>User</strong>{detail.user_id || 'guest'}</span>
+        <span><strong>Thời gian</strong>{formatHistoryDate(detail.created_at)}</span>
+        <span><strong>Provider</strong>{detail.provider || 'auto'}</span>
+        <span><strong>Model</strong>{detail.model || 'default'}</span>
+        <span><strong>Renderer</strong>{detail.renderer || 'auto'}</span>
+        <span><strong>Source</strong>{detail.source_type}</span>
+      </div>
+      <p className="admin-problem-text">{detail.problem_text}</p>
+      {detail.warnings.length > 0 && <AdminDetails title="Warnings" value={detail.warnings} />}
+      <AdminDetails title="Scene JSON" value={detail.scene} />
+      <AdminDetails title="Payload JSON" value={detail.payload} />
+      <AdminDetails title="Render request" value={detail.render_request} />
+      <AdminDetails title="Advanced settings" value={detail.advanced_settings} />
+      <AdminDetails title="Runtime settings" value={detail.runtime_settings} />
+    </section>
+  );
+}
+
+function AdminSystemSettingRow({ item }: { item: SystemSettingResponse }) {
+  return (
+    <article className="admin-row admin-row-block">
+      <div><strong>{item.key}</strong><span>Cập nhật {formatHistoryDate(item.updated_at)}{item.updated_by ? ` · ${item.updated_by}` : ''}</span></div>
+      <AdminDetails title="Giá trị JSON" value={item.value} />
+    </article>
+  );
+}
+
+function AdminAuditLogRow({ log }: { log: AuditLogResponse }) {
+  return (
+    <article className="admin-row admin-row-block">
+      <div><strong>{log.action}</strong><span>{formatHistoryDate(log.created_at)} · {log.actor_user_id || 'system'} · {log.target_type}{log.target_id ? `/${log.target_id}` : ''}</span></div>
+      {hasObjectKeys(log.metadata) && <AdminDetails title="Metadata" value={log.metadata} />}
+    </article>
+  );
+}
+
+function AdminDetails({ title, value }: { title: string; value: unknown }) {
+  return <details className="admin-details"><summary>{title}</summary><AdminJsonBlock value={value} /></details>;
+}
+
+function AdminJsonBlock({ value }: { value: unknown }) {
+  return <pre className="admin-json-block">{JSON.stringify(value ?? null, null, 2)}</pre>;
+}
+
+function hasObjectKeys(value: Record<string, unknown>) {
+  return Object.keys(value).length > 0;
+}
+
+function summarizeRenderJobs(renderJobs: AdminRenderHistoryItem[]) {
+  const counts = new Map<string, number>();
+  renderJobs.forEach((job) => {
+    const key = `${job.provider || 'auto'} / ${job.model || 'default'}`;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  });
+  return [...counts.entries()].map(([key, count]) => ({ key, count })).sort((left, right) => right.count - left.count).slice(0, 8);
 }
 
 function AdminAiSettingsForm({ value, saving, onSave }: { value: Record<string, unknown>; saving: boolean; onSave: (patch: Record<string, unknown>) => Promise<void> }) {
   const [provider, setProvider] = useState<'openrouter' | 'nvidia' | 'ollama' | 'router9'>('router9');
   const providerValue = getAdminProviderSettings(value, provider);
+  const ocrValue = getAdminOcrSettings(value);
+  const [defaultProvider, setDefaultProvider] = useState(getStringValue(value.default_provider, 'auto'));
+  const [baseUrl, setBaseUrl] = useState(providerValue.base_url);
   const [model, setModel] = useState(providerValue.model);
   const [allowed, setAllowed] = useState(providerValue.allowed_model_ids.join('\n'));
+  const [router9OnlyMode, setRouter9OnlyMode] = useState(providerValue.only_mode);
+  const [ocrProvider, setOcrProvider] = useState(ocrValue.provider);
+  const [ocrModel, setOcrModel] = useState(ocrValue.model);
+  const [ocrMaxImageMb, setOcrMaxImageMb] = useState(String(ocrValue.max_image_mb));
+  const [openrouterReferer, setOpenrouterReferer] = useState(getStringValue(value.openrouter_http_referer, ''));
+  const [openrouterTitle, setOpenrouterTitle] = useState(getStringValue(value.openrouter_x_title, ''));
+  const [openrouterReasoning, setOpenrouterReasoning] = useState(value.openrouter_reasoning_enabled === true);
+  const [scanning, setScanning] = useState(false);
 
   useEffect(() => {
     const next = getAdminProviderSettings(value, provider);
+    setBaseUrl(next.base_url);
     setModel(next.model);
     setAllowed(next.allowed_model_ids.join('\n'));
+    setRouter9OnlyMode(next.only_mode);
   }, [provider, value]);
+
+  useEffect(() => {
+    const nextOcr = getAdminOcrSettings(value);
+    setDefaultProvider(getStringValue(value.default_provider, 'auto'));
+    setOcrProvider(nextOcr.provider);
+    setOcrModel(nextOcr.model);
+    setOcrMaxImageMb(String(nextOcr.max_image_mb));
+    setOpenrouterReferer(getStringValue(value.openrouter_http_referer, ''));
+    setOpenrouterTitle(getStringValue(value.openrouter_x_title, ''));
+    setOpenrouterReasoning(value.openrouter_reasoning_enabled === true);
+  }, [value]);
+
+  async function saveGlobalRouting() {
+    await onSave({ default_provider: defaultProvider });
+  }
 
   async function saveProvider() {
     const current = getAdminProviderSettings(value, provider);
     await onSave({
       [provider]: {
         ...current,
+        base_url: baseUrl.trim(),
         model: model.trim(),
-        allowed_model_ids: allowed.split('\n').map((item) => item.trim()).filter(Boolean),
+        allowed_model_ids: parseLines(allowed),
+        ...(provider === 'router9' ? { only_mode: router9OnlyMode } : {}),
       },
+    });
+  }
+
+  async function saveOcr() {
+    await onSave({
+      ocr: {
+        provider: ocrProvider,
+        model: ocrModel.trim(),
+        max_image_mb: clamp(Number(ocrMaxImageMb) || 8, 1, 32),
+      },
+    });
+  }
+
+  async function scanModels() {
+    setScanning(true);
+    try {
+      const runtime = adminSettingsToRuntime(value);
+      const models = provider === 'router9' ? await scanRouter9Models(runtime) : await scanProviderModels(provider, runtime);
+      await onSave({
+        [provider]: {
+          ...getAdminProviderSettings(value, provider),
+          scanned_models: models,
+          last_scanned_at: new Date().toISOString(),
+        },
+      });
+    } finally {
+      setScanning(false);
+    }
+  }
+
+  async function saveOpenRouter() {
+    await onSave({
+      openrouter_http_referer: openrouterReferer.trim(),
+      openrouter_x_title: openrouterTitle.trim(),
+      openrouter_reasoning_enabled: openrouterReasoning,
     });
   }
 
   return (
     <div className="admin-ai-settings">
-      <label className="field-label">
-        Provider
-        <select value={provider} onChange={(event) => setProvider(event.target.value as typeof provider)}>
-          <option value="openrouter">OpenRouter</option>
-          <option value="nvidia">NVIDIA</option>
-          <option value="ollama">Ollama</option>
-          <option value="router9">9router</option>
-        </select>
-      </label>
-      <label className="field-label">
-        Model mặc định
-        <input value={model} onChange={(event) => setModel(event.target.value)} placeholder="vd: codex-5.5" />
-      </label>
-      <label className="field-label">
-        Allowlist model hiển thị cho user
-        <textarea value={allowed} onChange={(event) => setAllowed(event.target.value)} rows={6} placeholder="Mỗi dòng một model id" />
-      </label>
-      <button type="button" className="secondary-button" onClick={saveProvider} disabled={saving}>{saving ? 'Đang lưu...' : 'Lưu cấu hình model'}</button>
+      <section className="admin-settings-section">
+        <h4>Routing mặc định</h4>
+        <div className="admin-field-grid">
+          <label className="field-label">Default provider<select value={defaultProvider} onChange={(event) => setDefaultProvider(event.target.value)}><option value="auto">auto</option><option value="openrouter">OpenRouter</option><option value="nvidia">NVIDIA</option><option value="ollama">Ollama</option><option value="router9">9router</option></select></label>
+        </div>
+        <button type="button" className="secondary-button" onClick={saveGlobalRouting} disabled={saving}>{saving ? 'Đang lưu...' : 'Lưu routing'}</button>
+      </section>
+
+      <section className="admin-settings-section">
+        <h4>Provider model</h4>
+        <div className="admin-field-grid">
+          <label className="field-label">Provider<select value={provider} onChange={(event) => setProvider(event.target.value as typeof provider)}><option value="openrouter">OpenRouter</option><option value="nvidia">NVIDIA</option><option value="ollama">Ollama</option><option value="router9">9router</option></select></label>
+          <label className="field-label">Base URL<input value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} placeholder="https://..." /></label>
+          <label className="field-label">Model mặc định<input value={model} onChange={(event) => setModel(event.target.value)} placeholder="vd: codex-5.5" /></label>
+          {provider === 'router9' && <label className="checkbox-label"><input type="checkbox" checked={router9OnlyMode} onChange={(event) => setRouter9OnlyMode(event.target.checked)} /> Chỉ dùng 9router</label>}
+        </div>
+        <label className="field-label">Allowlist model hiển thị cho user<textarea value={allowed} onChange={(event) => setAllowed(event.target.value)} rows={6} placeholder="Mỗi dòng một model id" /></label>
+        <div className="admin-field-grid">
+          <span><strong>Scanned models</strong>{providerValue.scanned_models.length} model</span>
+          <span><strong>Last scan</strong>{providerValue.last_scanned_at || 'Chưa scan'}</span>
+        </div>
+        {providerValue.scanned_models.length > 0 && <AdminDetails title="Scanned model JSON" value={providerValue.scanned_models} />}
+        <div className="admin-row-actions"><button type="button" className="secondary-button" onClick={scanModels} disabled={saving || scanning}>{scanning ? 'Đang scan...' : 'Scan models'}</button><button type="button" className="secondary-button" onClick={saveProvider} disabled={saving}>{saving ? 'Đang lưu...' : 'Lưu provider'}</button></div>
+      </section>
+
+      <section className="admin-settings-section">
+        <h4>OCR</h4>
+        <div className="admin-field-grid">
+          <label className="field-label">OCR provider<select value={ocrProvider} onChange={(event) => setOcrProvider(event.target.value)}><option value="openrouter">OpenRouter</option><option value="router9">9router</option></select></label>
+          <label className="field-label">OCR model<input value={ocrModel} onChange={(event) => setOcrModel(event.target.value)} /></label>
+          <label className="field-label">Max image MB<input type="number" min="1" max="32" value={ocrMaxImageMb} onChange={(event) => setOcrMaxImageMb(event.target.value)} /></label>
+        </div>
+        <button type="button" className="secondary-button" onClick={saveOcr} disabled={saving}>{saving ? 'Đang lưu...' : 'Lưu OCR'}</button>
+      </section>
+
+      <section className="admin-settings-section">
+        <h4>OpenRouter metadata</h4>
+        <div className="admin-field-grid">
+          <label className="field-label">HTTP Referer<input value={openrouterReferer} onChange={(event) => setOpenrouterReferer(event.target.value)} /></label>
+          <label className="field-label">X-Title<input value={openrouterTitle} onChange={(event) => setOpenrouterTitle(event.target.value)} /></label>
+          <label className="checkbox-label"><input type="checkbox" checked={openrouterReasoning} onChange={(event) => setOpenrouterReasoning(event.target.checked)} /> Bật reasoning</label>
+        </div>
+        <button type="button" className="secondary-button" onClick={saveOpenRouter} disabled={saving}>{saving ? 'Đang lưu...' : 'Lưu OpenRouter'}</button>
+      </section>
     </div>
+  );
+}
+
+function AdminPlanSettingsForm({ value, onSave }: { value: Record<string, unknown>; onSave: (value: Record<string, unknown>) => Promise<void> }) {
+  const plansValue = value.plans && typeof value.plans === 'object' ? value.plans as Record<string, unknown> : {};
+  const free = getPlanQuota(plansValue.free);
+  const pro = getPlanQuota(plansValue.pro);
+  const [freeRender, setFreeRender] = useState(String(free.daily_render_limit ?? ''));
+  const [freeOcr, setFreeOcr] = useState(String(free.daily_ocr_limit ?? ''));
+  const [proRender, setProRender] = useState(String(pro.daily_render_limit ?? ''));
+  const [proOcr, setProOcr] = useState(String(pro.daily_ocr_limit ?? ''));
+  return (
+    <section className="admin-settings-section"><h4>Plan quota</h4><div className="admin-field-grid">
+      <label className="field-label">Free render/ngày<input type="number" value={freeRender} onChange={(event) => setFreeRender(event.target.value)} /></label>
+      <label className="field-label">Free OCR/ngày<input type="number" value={freeOcr} onChange={(event) => setFreeOcr(event.target.value)} /></label>
+      <label className="field-label">Pro render/ngày<input type="number" value={proRender} onChange={(event) => setProRender(event.target.value)} /></label>
+      <label className="field-label">Pro OCR/ngày<input type="number" value={proOcr} onChange={(event) => setProOcr(event.target.value)} /></label>
+    </div><button type="button" className="secondary-button" onClick={() => void onSave({ version: 1, plans: { free: { daily_render_limit: optionalNumber(freeRender), daily_ocr_limit: optionalNumber(freeOcr) }, pro: { daily_render_limit: optionalNumber(proRender), daily_ocr_limit: optionalNumber(proOcr) } } })}>Lưu quota</button></section>
+  );
+}
+
+function AdminFeatureFlagsForm({ value, onSave }: { value: Record<string, unknown>; onSave: (value: Record<string, unknown>) => Promise<void> }) {
+  const [maintenanceMode, setMaintenanceMode] = useState(value.maintenance_mode === true);
+  const [message, setMessage] = useState(getStringValue(value.maintenance_message, 'Hệ thống đang bảo trì. Vui lòng thử lại sau.'));
+  const [googleOAuth, setGoogleOAuth] = useState(value.google_oauth_enabled !== false);
+  const [ocr, setOcr] = useState(value.ocr_enabled !== false);
+  const [render, setRender] = useState(value.render_enabled !== false);
+  return (
+    <section className="admin-settings-section"><h4>Feature flags</h4><div className="admin-field-grid">
+      <label className="checkbox-label"><input type="checkbox" checked={maintenanceMode} onChange={(event) => setMaintenanceMode(event.target.checked)} /> Maintenance mode</label>
+      <label className="checkbox-label"><input type="checkbox" checked={render} onChange={(event) => setRender(event.target.checked)} /> Render enabled</label>
+      <label className="checkbox-label"><input type="checkbox" checked={ocr} onChange={(event) => setOcr(event.target.checked)} /> OCR enabled</label>
+      <label className="checkbox-label"><input type="checkbox" checked={googleOAuth} onChange={(event) => setGoogleOAuth(event.target.checked)} /> Google OAuth enabled</label>
+    </div><label className="field-label">Maintenance message<input value={message} onChange={(event) => setMessage(event.target.value)} /></label><button type="button" className="secondary-button" onClick={() => void onSave({ version: 1, maintenance_mode: maintenanceMode, maintenance_message: message, google_oauth_enabled: googleOAuth, ocr_enabled: ocr, render_enabled: render })}>Lưu flags</button></section>
+  );
+}
+
+function AdminAiProfilesForm({ value, onSave }: { value: Record<string, unknown>; onSave: (value: Record<string, unknown>) => Promise<void> }) {
+  const geometry = getAiTaskProfile(value.geometry_reasoning);
+  const ocr = getAiTaskProfile(value.ocr);
+  const [geometryProvider, setGeometryProvider] = useState(geometry.provider);
+  const [geometryModel, setGeometryModel] = useState(geometry.model);
+  const [geometryFallbacks, setGeometryFallbacks] = useState(geometry.fallbacks.join('\n'));
+  const [ocrProvider, setOcrProvider] = useState(ocr.provider);
+  const [ocrModel, setOcrModel] = useState(ocr.model);
+  const [ocrFallbacks, setOcrFallbacks] = useState(ocr.fallbacks.join('\n'));
+  return (
+    <section className="admin-settings-section"><h4>AI profiles</h4><div className="admin-field-grid">
+      <label className="field-label">Geometry provider<input value={geometryProvider} onChange={(event) => setGeometryProvider(event.target.value)} /></label>
+      <label className="field-label">Geometry model<input value={geometryModel} onChange={(event) => setGeometryModel(event.target.value)} /></label>
+      <label className="field-label">OCR provider<input value={ocrProvider} onChange={(event) => setOcrProvider(event.target.value)} /></label>
+      <label className="field-label">OCR model<input value={ocrModel} onChange={(event) => setOcrModel(event.target.value)} /></label>
+    </div><label className="field-label">Geometry fallbacks<textarea rows={3} value={geometryFallbacks} onChange={(event) => setGeometryFallbacks(event.target.value)} /></label><label className="field-label">OCR fallbacks<textarea rows={3} value={ocrFallbacks} onChange={(event) => setOcrFallbacks(event.target.value)} /></label><button type="button" className="secondary-button" onClick={() => void onSave({ version: 1, geometry_reasoning: { provider: geometryProvider, model: geometryModel, fallbacks: parseLines(geometryFallbacks) }, ocr: { provider: ocrProvider, model: ocrModel, fallbacks: parseLines(ocrFallbacks) } })}>Lưu AI profiles</button></section>
   );
 }
 
@@ -1346,7 +1829,7 @@ function defaultAdminAiSettings() {
 }
 
 function defaultAdminProviderSettings() {
-  return { base_url: '', model: '', scanned_models: [], allowed_model_ids: [], last_scanned_at: '' };
+  return { base_url: '', model: '', scanned_models: [] as unknown[], allowed_model_ids: [] as string[], last_scanned_at: '', only_mode: false };
 }
 
 function getAdminProviderSettings(value: Record<string, unknown>, provider: 'openrouter' | 'nvidia' | 'ollama' | 'router9') {
@@ -1356,16 +1839,78 @@ function getAdminProviderSettings(value: Record<string, unknown>, provider: 'ope
   return {
     ...defaultAdminProviderSettings(),
     ...data,
+    base_url: typeof data.base_url === 'string' ? data.base_url : '',
     model: typeof data.model === 'string' ? data.model : '',
+    scanned_models: Array.isArray(data.scanned_models) ? data.scanned_models : [],
     allowed_model_ids: Array.isArray(data.allowed_model_ids) ? data.allowed_model_ids.map(String) : [],
+    last_scanned_at: typeof data.last_scanned_at === 'string' ? data.last_scanned_at : '',
+    only_mode: data.only_mode === true,
   };
 }
 
-function MetricCard({ label, value }: { label: string; value: number }) {
+function adminSettingsToRuntime(value: Record<string, unknown>): RuntimeSettings {
+  const router9 = getAdminProviderSettings(value, 'router9');
+  return {
+    ...defaultRuntimeSettings,
+    default_provider: getStringValue(value.default_provider, 'auto'),
+    openrouter: { ...defaultRuntimeSettings.openrouter, ...getAdminProviderSettings(value, 'openrouter') },
+    nvidia: { ...defaultRuntimeSettings.nvidia, ...getAdminProviderSettings(value, 'nvidia') },
+    ollama: { ...defaultRuntimeSettings.ollama, ...getAdminProviderSettings(value, 'ollama') },
+    router9: { ...defaultRuntimeSettings.router9, ...router9 },
+    ocr: { ...defaultRuntimeSettings.ocr, ...getAdminOcrSettings(value), provider: getAdminOcrSettings(value).provider as OcrProvider },
+    openrouter_http_referer: getStringValue(value.openrouter_http_referer, ''),
+    openrouter_x_title: getStringValue(value.openrouter_x_title, ''),
+    openrouter_reasoning_enabled: value.openrouter_reasoning_enabled === true,
+  };
+}
+
+function getPlanQuota(value: unknown) {
+  const data = value && typeof value === 'object' ? value as Record<string, unknown> : {};
+  return {
+    daily_render_limit: typeof data.daily_render_limit === 'number' ? data.daily_render_limit : null,
+    daily_ocr_limit: typeof data.daily_ocr_limit === 'number' ? data.daily_ocr_limit : null,
+  };
+}
+
+function getAiTaskProfile(value: unknown) {
+  const data = value && typeof value === 'object' ? value as Record<string, unknown> : {};
+  return {
+    provider: getStringValue(data.provider, 'auto'),
+    model: getStringValue(data.model, ''),
+    fallbacks: Array.isArray(data.fallbacks) ? data.fallbacks.map(String) : [],
+  };
+}
+
+function optionalNumber(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return Math.max(0, Number(trimmed) || 0);
+}
+
+function getAdminOcrSettings(value: Record<string, unknown>) {
+  const item = value.ocr;
+  const data = item && typeof item === 'object' ? item as Record<string, unknown> : {};
+  const maxImageMb = typeof data.max_image_mb === 'number' ? data.max_image_mb : 8;
+  return {
+    provider: getStringValue(data.provider, 'openrouter'),
+    model: getStringValue(data.model, ''),
+    max_image_mb: clamp(maxImageMb, 1, 32),
+  };
+}
+
+function getStringValue(value: unknown, fallback: string) {
+  return typeof value === 'string' ? value : fallback;
+}
+
+function parseLines(value: string) {
+  return value.split('\n').map((item) => item.trim()).filter(Boolean);
+}
+
+function MetricCard({ label, value, suffix = '' }: { label: string; value: number; suffix?: string }) {
   return (
     <article className="admin-metric-card">
       <span>{label}</span>
-      <strong>{value.toLocaleString('vi-VN')}</strong>
+      <strong>{value.toLocaleString('vi-VN')}{suffix}</strong>
     </article>
   );
 }

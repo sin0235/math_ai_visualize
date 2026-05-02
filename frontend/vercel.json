@@ -1,6 +1,6 @@
 {
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "https://math-renderer-api.sin235.live/api/$1" },
+    { "source": "/api/(.*)", "destination": "https://math-renderer-api.sin-studio.tech/api/$1" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]
 }

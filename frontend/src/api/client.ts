@@ -73,9 +73,48 @@ export interface AdminSummaryResponse {
   active_users: number;
   admins: number;
   render_jobs: number;
+  render_jobs_today: number;
+  users_today: number;
+  ai_warning_jobs: number;
+  ai_warning_rate: number;
+}
+
+export interface AdminUserFilters {
+  q?: string;
+  role?: string;
+  status?: string;
+  plan?: string;
+}
+
+export interface AdminRenderJobFilters {
+  provider?: string;
+  model?: string;
+  renderer?: string;
+  source_type?: string;
+  user_id?: string;
+  q?: string;
+}
+
+export interface AdminAuditLogFilters {
+  action?: string;
+  actor_user_id?: string;
+  target_type?: string;
+}
+
+export interface AdminSessionResponse {
+  id: string;
+  created_at: string;
+  expires_at: string;
+  last_seen_at?: string | null;
+  ip_address?: string | null;
+  user_agent?: string | null;
 }
 
 export interface AdminRenderHistoryItem extends RenderHistoryItem {
+  user_id?: string | null;
+}
+
+export interface AdminRenderHistoryDetail extends RenderHistoryDetail {
   user_id?: string | null;
 }
 
@@ -259,9 +298,9 @@ export async function getAdminSummary(): Promise<AdminSummaryResponse> {
   return requestJson('/api/admin/summary', { credentials: 'include' }, 'Không thể tải dashboard quản trị.');
 }
 
-export async function getAdminUsers(query = ''): Promise<UserResponse[]> {
-  const suffix = query.trim() ? `?q=${encodeURIComponent(query.trim())}` : '';
-  return requestJson(`/api/admin/users${suffix}`, { credentials: 'include' }, 'Không thể tải danh sách người dùng.');
+export async function getAdminUsers(filters: AdminUserFilters | string = {}): Promise<UserResponse[]> {
+  const normalized = typeof filters === 'string' ? { q: filters } : filters;
+  return requestJson(`/api/admin/users${queryString(normalized)}`, { credentials: 'include' }, 'Không thể tải danh sách người dùng.');
 }
 
 export async function updateAdminUser(id: string, patch: Partial<Pick<UserResponse, 'role' | 'status' | 'display_name' | 'plan'>>): Promise<UserResponse> {
@@ -273,8 +312,12 @@ export async function updateAdminUser(id: string, patch: Partial<Pick<UserRespon
   }, 'Không thể cập nhật người dùng.');
 }
 
-export async function getAdminRenderJobs(): Promise<AdminRenderHistoryItem[]> {
-  return requestJson('/api/admin/render-jobs', { credentials: 'include' }, 'Không thể tải lịch sử render hệ thống.');
+export async function getAdminRenderJobs(filters: AdminRenderJobFilters = {}): Promise<AdminRenderHistoryItem[]> {
+  return requestJson(`/api/admin/render-jobs${queryString(filters)}`, { credentials: 'include' }, 'Không thể tải lịch sử render hệ thống.');
+}
+
+export async function getAdminRenderJobDetail(id: string): Promise<AdminRenderHistoryDetail> {
+  return requestJson(`/api/admin/render-jobs/${encodeURIComponent(id)}`, { credentials: 'include' }, 'Không thể tải chi tiết render job.');
 }
 
 export async function deleteAdminRenderJob(id: string): Promise<void> {
@@ -294,8 +337,20 @@ export async function saveAdminSystemSetting(key: string, value: Record<string, 
   }, 'Không thể lưu cấu hình hệ thống.');
 }
 
-export async function getAdminAuditLogs(): Promise<AuditLogResponse[]> {
-  return requestJson('/api/admin/audit-logs', { credentials: 'include' }, 'Không thể tải audit logs.');
+export async function getAdminAuditLogs(filters: AdminAuditLogFilters = {}): Promise<AuditLogResponse[]> {
+  return requestJson(`/api/admin/audit-logs${queryString(filters)}`, { credentials: 'include' }, 'Không thể tải audit logs.');
+}
+
+export async function getAdminUserSessions(userId: string): Promise<AdminSessionResponse[]> {
+  return requestJson(`/api/admin/users/${encodeURIComponent(userId)}/sessions`, { credentials: 'include' }, 'Không thể tải phiên đăng nhập của user.');
+}
+
+export async function revokeAdminUserSession(userId: string, sessionId: string): Promise<void> {
+  await requestVoid(`/api/admin/users/${encodeURIComponent(userId)}/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE', credentials: 'include' }, 'Không thể thu hồi phiên đăng nhập của user.');
+}
+
+export async function revokeAllAdminUserSessions(userId: string): Promise<void> {
+  await requestVoid(`/api/admin/users/${encodeURIComponent(userId)}/sessions/revoke-all`, { method: 'POST', credentials: 'include' }, 'Không thể thu hồi toàn bộ phiên đăng nhập của user.');
 }
 
 export async function renderProblem(
@@ -364,6 +419,16 @@ export async function renderEditedScene(scene: MathScene, advancedSettings: Adva
       advanced_settings: advancedSettings,
     }),
   }, 'Không thể dựng lại scene.');
+}
+
+function queryString(filters: object) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    const text = typeof value === 'string' ? value.trim() : '';
+    if (text) params.set(key, text);
+  }
+  const serialized = params.toString();
+  return serialized ? `?${serialized}` : '';
 }
 
 async function requestJson<T>(path: string, init: RequestInit | undefined, fallbackMessage: string): Promise<T> {

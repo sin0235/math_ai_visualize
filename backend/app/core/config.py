@@ -56,11 +56,13 @@ class Settings(BaseSettings):
     smtp_password: str | None = None
     smtp_from_email: str = "no-reply@example.local"
     smtp_use_tls: bool = True
+    resend_api_key: str | None = None
+    resend_from_email: str | None = None
     auth_email_dev_mode: bool = True
     require_email_verification: bool = False
     google_oauth_client_id: str | None = None
     google_oauth_client_secret: str | None = None
-    google_oauth_redirect_uri: str = "https://math-renderer-api.sin235.live/api/auth/google/callback"
+    google_oauth_redirect_uri: str = "https://math-renderer-api.sin-studio.tech/api/auth/google/callback"
     allow_missing_origin_for_cookie_mutations: bool = True
 
     model_config = SettingsConfigDict(env_file=(".env", "backend/.env"), env_file_encoding="utf-8")
