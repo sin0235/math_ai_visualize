@@ -64,7 +64,10 @@ class D1Client:
         payload = {"sql": sql, "params": list(params or [])}
         async with httpx.AsyncClient(timeout=20) as client:
             response = await client.post(self.url, headers=self.headers, json=payload)
-        response.raise_for_status()
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as error:
+            raise RuntimeError(response.text) from error
         body = response.json()
         if not body.get("success", False):
             errors = body.get("errors") or []

@@ -305,7 +305,13 @@ def session_response(session: SessionRecord, current_session_id: str | None) -> 
 
 
 async def enforce_rate_limit(db: DatabaseClient, key: str, limit: int, window_seconds: int) -> None:
-    result = await RateLimitRepository(db).hit(key, limit, window_seconds)
+    try:
+        result = await RateLimitRepository(db).hit(key, limit, window_seconds)
+    except Exception as error:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database auth schema chưa được migrate. Hãy áp dụng migrations mới trước khi dùng auth.",
+        ) from error
     if not result.allowed:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
