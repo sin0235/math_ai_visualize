@@ -47,6 +47,8 @@ export interface ProviderSettingsDefaults {
   api_key_configured: boolean;
   base_url: string;
   model?: string | null;
+  scanned_models: ScannedModelInfo[];
+  allowed_model_ids: string[];
 }
 
 export interface OpenRouterSettingsDefaults extends ProviderSettingsDefaults {
@@ -70,7 +72,7 @@ export interface SettingsDefaults {
   router9: Router9SettingsDefaults;
 }
 
-export const SETTINGS_STORAGE_VERSION = 3;
+export const SETTINGS_STORAGE_VERSION = 4;
 
 export const defaultRuntimeSettings: RuntimeSettings = {
   default_provider: 'auto',

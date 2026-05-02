@@ -13,6 +13,7 @@ from app.schemas.auth import (
     AdminSummaryResponse,
     AdminUserUpdateRequest,
     AuditLogResponse,
+    SystemAiSettings,
     SystemSettingRequest,
     SystemSettingResponse,
     UserResponse,
@@ -113,7 +114,8 @@ async def admin_save_system_setting(
     db: DatabaseClient = Depends(get_database),
 ) -> SystemSettingResponse:
     repo = AdminRepository(db)
-    setting = await repo.upsert_system_setting(request.key, request.value, admin.id)
+    value = validate_system_setting(request.key, request.value)
+    setting = await repo.upsert_system_setting(request.key, value, admin.id)
     await repo.audit(admin.id, "admin.system_settings.update", "system_setting", request.key, {"key": request.key})
     return SystemSettingResponse(key=setting.key, value=parse_setting_value(setting.value_json), updated_by=setting.updated_by, updated_at=setting.updated_at)
 
@@ -138,6 +140,15 @@ async def admin_audit_logs(_: UserRecord = Depends(require_admin_user), db: Data
 def parse_setting_value(value: str) -> dict:
     parsed = json.loads(value)
     return parsed if isinstance(parsed, dict) else {}
+
+
+def validate_system_setting(key: str, value: dict) -> dict:
+    if key == "ai_settings":
+        try:
+            return SystemAiSettings.model_validate(value).model_dump(mode="json")
+        except ValidationError as error:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=error.errors()) from error
+    return value
 
 
 def user_response(user: UserRecord) -> UserResponse:

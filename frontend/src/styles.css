@@ -878,6 +878,15 @@ select {
   padding: 18px;
 }
 
+.admin-panel-wide {
+  grid-column: 1 / -1;
+}
+
+.admin-ai-settings {
+  display: grid;
+  gap: 14px;
+}
+
 .admin-panel h3 {
   margin: 0 0 14px;
   color: #0f172a;

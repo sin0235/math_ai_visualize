@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-import { ApiError, changePassword, deleteAdminRenderJob, deleteRenderHistory, forgotPassword, getAdminAuditLogs, getAdminRenderJobs, getAdminSummary, getAdminSystemSettings, getAdminUsers, getCurrentUser, getGoogleOAuthStartUrl, getHealth, getRenderHistory, getRenderHistoryDetail, getSessions, getSettingsDefaults, getUserSettings, login, logout, ocrImage, register, renderEditedScene, renderProblem, resendVerification, resetPassword, revokeOtherSessions, revokeSession, saveUserSettings, updateAdminUser, updateProfile, verifyEmail, type AdminRenderHistoryItem, type AdminSummaryResponse, type AuditLogResponse, type RenderHistoryItem, type SessionResponse, type SystemSettingResponse, type UserResponse } from './api/client';
+import { ApiError, changePassword, deleteAdminRenderJob, deleteRenderHistory, forgotPassword, getAdminAuditLogs, getAdminRenderJobs, getAdminSummary, getAdminSystemSettings, getAdminUsers, getCurrentUser, getGoogleOAuthStartUrl, getHealth, getRenderHistory, getRenderHistoryDetail, getSessions, getSettingsDefaults, getUserSettings, login, logout, ocrImage, register, renderEditedScene, renderProblem, resendVerification, resetPassword, revokeOtherSessions, revokeSession, saveAdminSystemSetting, saveUserSettings, updateAdminUser, updateProfile, verifyEmail, type AdminRenderHistoryItem, type AdminSummaryResponse, type AuditLogResponse, type RenderHistoryItem, type SessionResponse, type SystemSettingResponse, type UserResponse } from './api/client';
 import { defaultAdvancedSettings, ProblemInput, staticModelOptions, type ModelOption } from './components/ProblemInput';
 import { GeneralSettingsPanel } from './components/GeneralSettingsPanel';
 import { AccountPage } from './components/AccountPage';
@@ -9,9 +9,7 @@ import { LoginPage } from './components/LoginPage';
 import { ResetPasswordPage } from './components/ResetPasswordPage';
 import { VerifyEmailPage } from './components/VerifyEmailPage';
 import { RendererPanel } from './components/RendererPanel';
-import { Router9SettingsPanel } from './components/Router9SettingsPanel';
 import { SceneEditorPanel, type PointPlacementPlane } from './components/SceneEditorPanel';
-import { SettingsPanel } from './components/SettingsPanel';
 import { PrivacyPolicyPage, TermsPage } from './components/LegalPages';
 import type { AdvancedRenderSettings, MathScene, RenderResponse, Renderer } from './types/scene';
 import { defaultRuntimeSettings, SETTINGS_STORAGE_VERSION, type RuntimeSettings, type SettingsDefaults } from './types/settings';
@@ -25,7 +23,6 @@ const DEVELOPER_GITHUB_URL = 'https://github.com/sin0235';
 const CONTACT_EMAIL = 'contact@math-renderer.sin235.live';
 
 type AppView = 'home' | 'render' | 'history' | 'guide' | 'about' | 'privacy-policy' | 'terms' | 'login' | 'settings' | 'admin' | 'account' | 'reset-password' | 'verify-email';
-type SettingsTab = 'general' | 'providers' | 'router9';
 type EditTool = 'move' | 'connect' | 'project_to_segment' | 'add_point';
 type Vec3 = { x: number; y: number; z: number };
 type Notification = {
@@ -78,7 +75,6 @@ function FooterNavMailLink({
 
 export default function App() {
   const [activeView, setActiveView] = useState<AppView>('home');
-  const [activeSettingsTab, setActiveSettingsTab] = useState<SettingsTab>('general');
   const [result, setResult] = useState<RenderResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [editorSaving, setEditorSaving] = useState(false);
@@ -230,7 +226,7 @@ export default function App() {
     setEditorButtonTop(clamp(window.innerHeight * 0.55, 84, window.innerHeight - 88));
   }, []);
 
-  const modelOptions = buildModelOptions(runtimeSettings);
+  const modelOptions = buildModelOptions(runtimeSettings, settingsDefaults);
   const threeInteraction = result?.scene.renderer === 'threejs_3d'
     ? {
         mode: editTool,
@@ -269,8 +265,8 @@ export default function App() {
   }
 
   async function handleOcrImage(file: File) {
-    if (runtimeSettings.router9.only_mode && !runtimeSettings.router9.model.trim() && runtimeSettings.router9.allowed_model_ids.length === 0) {
-      const message = '9router-only đang bật. Hãy quét/chọn model 9router trước khi OCR.';
+    if (settingsDefaults?.router9.only_mode && settingsDefaults.router9.allowed_model_ids.length === 0 && !settingsDefaults.router9.model) {
+      const message = '9router-only đang bật nhưng admin chưa cấu hình model OCR khả dụng.';
       showNotification('OCR thất bại', message);
       return;
     }
@@ -326,10 +322,6 @@ export default function App() {
 
   function resetSettings() {
     setRuntimeSettings(defaultRuntimeSettings);
-  }
-
-  function forgetApiKeys() {
-    setRuntimeSettings((current) => dropApiKeys(current));
   }
 
   function dismissMobileWarning() {
@@ -801,14 +793,11 @@ export default function App() {
                 ocrError={null}
                 problemText={problemText}
                 modelOptions={modelOptions}
-                router9Only={runtimeSettings.router9.only_mode}
+                router9Only={settingsDefaults?.router9.only_mode ?? false}
                 onProblemTextChange={setProblemText}
                 onOcrImage={handleOcrImage}
                 onOcrClipboardImage={handleOcrClipboardImage}
-                onOpenRouter9Settings={() => {
-                  setActiveView('settings');
-                  setActiveSettingsTab('router9');
-                }}
+                onOpenRouter9Settings={() => setActiveView(user?.role === 'admin' ? 'admin' : 'settings')}
                 onSubmit={handleSubmit}
               />
               {user && (
@@ -921,6 +910,7 @@ export default function App() {
           <AccountPage
             user={user}
             authLoading={authLoading}
+            onToast={(title, message, kind = 'info') => showNotification(title, message, [], kind)}
             onBackWorkspace={() => setActiveView('render')}
             onLogout={handleLogout}
             onResendVerification={handleResendVerification}
@@ -939,18 +929,7 @@ export default function App() {
         )}
         {activeView === 'settings' && (
           <section className="settings-page">
-            <div className="settings-tabs">
-              <button type="button" className={`settings-tab ${activeSettingsTab === 'general' ? 'active' : ''}`} onClick={() => setActiveSettingsTab('general')}>General</button>
-              <button type="button" className={`settings-tab ${activeSettingsTab === 'providers' ? 'active' : ''}`} onClick={() => setActiveSettingsTab('providers')}>Provider</button>
-              <button type="button" className={`settings-tab ${activeSettingsTab === 'router9' ? 'active' : ''}`} onClick={() => setActiveSettingsTab('router9')}>9router</button>
-            </div>
-            {activeSettingsTab === 'general' ? (
-              <GeneralSettingsPanel value={runtimeSettings} defaults={settingsDefaults} onChange={setRuntimeSettings} onReset={resetSettings} />
-            ) : activeSettingsTab === 'providers' ? (
-              <SettingsPanel value={runtimeSettings} defaults={settingsDefaults} onChange={setRuntimeSettings} onReset={resetSettings} onForgetApiKeys={forgetApiKeys} />
-            ) : (
-              <Router9SettingsPanel value={runtimeSettings} defaults={settingsDefaults} onChange={setRuntimeSettings} onForgetApiKeys={forgetApiKeys} />
-            )}
+            <GeneralSettingsPanel value={runtimeSettings} defaults={settingsDefaults} onChange={setRuntimeSettings} onReset={resetSettings} />
           </section>
         )}
       </main>
@@ -1194,6 +1173,19 @@ function HistoryPage({ user, items, loading, onOpen, onDelete, onLogin, onWorksp
 }
 
 function AdminConsole({ user, summary, users, renderJobs, settings, auditLogs, loading, onRefresh, onToggleUserStatus, onDeleteRenderJob, onBackToApp }: { user: UserResponse | null; summary: AdminSummaryResponse | null; users: UserResponse[]; renderJobs: AdminRenderHistoryItem[]; settings: SystemSettingResponse[]; auditLogs: AuditLogResponse[]; loading: boolean; onRefresh: () => void; onToggleUserStatus: (user: UserResponse) => void; onDeleteRenderJob: (id: string) => void; onBackToApp: () => void }) {
+  const [savingAiSettings, setSavingAiSettings] = useState(false);
+  const aiSettings = settings.find((item) => item.key === 'ai_settings')?.value ?? {};
+
+  async function saveAiSettingsPatch(patch: Record<string, unknown>) {
+    setSavingAiSettings(true);
+    try {
+      await saveAdminSystemSetting('ai_settings', { ...defaultAdminAiSettings(), ...aiSettings, ...patch });
+      onRefresh();
+    } finally {
+      setSavingAiSettings(false);
+    }
+  }
+
   if (user?.role !== 'admin') {
     return (
       <section className="product-page-card">
@@ -1256,6 +1248,7 @@ function AdminConsole({ user, summary, users, renderJobs, settings, auditLogs, l
 
         <section className="admin-panel">
           <h3>Cấu hình hệ thống</h3>
+          <p className="field-hint">Các cấu hình non-secret được lưu trong database. API key vẫn lấy từ môi trường deploy.</p>
           {settings.length === 0 ? <p>Chưa có cấu hình non-secret nào được lưu.</p> : settings.map((item) => (
             <article className="admin-row" key={item.key}>
               <div>
@@ -1264,6 +1257,12 @@ function AdminConsole({ user, summary, users, renderJobs, settings, auditLogs, l
               </div>
             </article>
           ))}
+        </section>
+
+        <section className="admin-panel admin-panel-wide">
+          <h3>Quản lý model</h3>
+          <p className="field-hint">Admin quản lý allowlist và model mặc định tại đây; người dùng thường chỉ chọn trong danh sách đã bật.</p>
+          <AdminAiSettingsForm value={aiSettings} saving={savingAiSettings} onSave={saveAiSettingsPatch} />
         </section>
 
         <section className="admin-panel">
@@ -1282,6 +1281,84 @@ function AdminConsole({ user, summary, users, renderJobs, settings, auditLogs, l
       </div>
     </section>
   );
+}
+
+function AdminAiSettingsForm({ value, saving, onSave }: { value: Record<string, unknown>; saving: boolean; onSave: (patch: Record<string, unknown>) => Promise<void> }) {
+  const [provider, setProvider] = useState<'openrouter' | 'nvidia' | 'ollama' | 'router9'>('router9');
+  const providerValue = getAdminProviderSettings(value, provider);
+  const [model, setModel] = useState(providerValue.model);
+  const [allowed, setAllowed] = useState(providerValue.allowed_model_ids.join('\n'));
+
+  useEffect(() => {
+    const next = getAdminProviderSettings(value, provider);
+    setModel(next.model);
+    setAllowed(next.allowed_model_ids.join('\n'));
+  }, [provider, value]);
+
+  async function saveProvider() {
+    const current = getAdminProviderSettings(value, provider);
+    await onSave({
+      [provider]: {
+        ...current,
+        model: model.trim(),
+        allowed_model_ids: allowed.split('\n').map((item) => item.trim()).filter(Boolean),
+      },
+    });
+  }
+
+  return (
+    <div className="admin-ai-settings">
+      <label className="field-label">
+        Provider
+        <select value={provider} onChange={(event) => setProvider(event.target.value as typeof provider)}>
+          <option value="openrouter">OpenRouter</option>
+          <option value="nvidia">NVIDIA</option>
+          <option value="ollama">Ollama</option>
+          <option value="router9">9router</option>
+        </select>
+      </label>
+      <label className="field-label">
+        Model mặc định
+        <input value={model} onChange={(event) => setModel(event.target.value)} placeholder="vd: codex-5.5" />
+      </label>
+      <label className="field-label">
+        Allowlist model hiển thị cho user
+        <textarea value={allowed} onChange={(event) => setAllowed(event.target.value)} rows={6} placeholder="Mỗi dòng một model id" />
+      </label>
+      <button type="button" className="secondary-button" onClick={saveProvider} disabled={saving}>{saving ? 'Đang lưu...' : 'Lưu cấu hình model'}</button>
+    </div>
+  );
+}
+
+function defaultAdminAiSettings() {
+  return {
+    version: 1,
+    default_provider: 'auto',
+    openrouter: defaultAdminProviderSettings(),
+    nvidia: defaultAdminProviderSettings(),
+    ollama: defaultAdminProviderSettings(),
+    router9: { ...defaultAdminProviderSettings(), only_mode: false },
+    ocr: { provider: 'openrouter', model: '', max_image_mb: 8 },
+    openrouter_http_referer: '',
+    openrouter_x_title: '',
+    openrouter_reasoning_enabled: false,
+  };
+}
+
+function defaultAdminProviderSettings() {
+  return { base_url: '', model: '', scanned_models: [], allowed_model_ids: [], last_scanned_at: '' };
+}
+
+function getAdminProviderSettings(value: Record<string, unknown>, provider: 'openrouter' | 'nvidia' | 'ollama' | 'router9') {
+  const item = value[provider];
+  if (!item || typeof item !== 'object') return defaultAdminProviderSettings();
+  const data = item as Record<string, unknown>;
+  return {
+    ...defaultAdminProviderSettings(),
+    ...data,
+    model: typeof data.model === 'string' ? data.model : '',
+    allowed_model_ids: Array.isArray(data.allowed_model_ids) ? data.allowed_model_ids.map(String) : [],
+  };
 }
 
 function MetricCard({ label, value }: { label: string; value: number }) {
@@ -1475,17 +1552,19 @@ function mergeRuntimeSettingsShape(rawSettings: Partial<RuntimeSettings>, base: 
 }
 
 function sanitizeSettingsForStorage(settings: RuntimeSettings): RuntimeSettings {
-  return dropApiKeys(settings);
+  return {
+    ...defaultRuntimeSettings,
+    default_provider: settings.default_provider,
+    openrouter: { ...defaultRuntimeSettings.openrouter, model: settings.openrouter.model },
+    nvidia: { ...defaultRuntimeSettings.nvidia, model: settings.nvidia.model },
+    ollama: { ...defaultRuntimeSettings.ollama, model: settings.ollama.model },
+    router9: { ...defaultRuntimeSettings.router9, model: settings.router9.model },
+    ocr: settings.ocr,
+  };
 }
 
 function dropApiKeys(settings: RuntimeSettings): RuntimeSettings {
-  return {
-    ...settings,
-    openrouter: { ...settings.openrouter, api_key: '' },
-    nvidia: { ...settings.nvidia, api_key: '' },
-    ollama: { ...settings.ollama, api_key: '' },
-    router9: { ...settings.router9, api_key: '' },
-  };
+  return sanitizeSettingsForStorage(settings);
 }
 
 function dropLegacyDefaults(settings: RuntimeSettings) {
@@ -1588,19 +1667,28 @@ function fileToDataUrl(file: File): Promise<string> {
   });
 }
 
-function buildModelOptions(settings: RuntimeSettings): ModelOption[] {
-  const scannedProviderOptions = (['openrouter', 'nvidia', 'ollama'] as const).flatMap((provider) =>
-    settings[provider].scanned_models.map((model) => ({
-      key: `${provider}:${model.id}`,
-      provider,
-      modelId: model.id,
-      label: `${providerLabel(provider)}: ${model.label}`,
-      description: `${providerLabel(provider)} model ${model.id}${model.context_length ? ` — context ${model.context_length}` : ''}`,
-    }))
-  );
+function buildModelOptions(settings: RuntimeSettings, defaults?: SettingsDefaults | null): ModelOption[] {
+  const providerOptions = (['openrouter', 'nvidia', 'ollama'] as const).flatMap((provider) => {
+    const providerDefaults = defaults?.[provider];
+    const allowedIds = providerDefaults?.allowed_model_ids ?? [];
+    const scanned = providerDefaults?.scanned_models ?? [];
+    const ids = allowedIds.length > 0 ? allowedIds : [providerDefaults?.model ?? settings[provider].model].filter(Boolean) as string[];
+    return ids.map((modelId) => {
+      const model = scanned.find((item) => item.id === modelId);
+      return {
+        key: `${provider}:${modelId}`,
+        provider,
+        modelId,
+        label: `${providerLabel(provider)}: ${model?.label ?? modelId}`,
+        description: `${providerLabel(provider)} model ${modelId}${model?.context_length ? ` — context ${model.context_length}` : ''}`,
+      };
+    });
+  });
 
-  const router9Options = settings.router9.allowed_model_ids.map((modelId) => {
-    const scanned = settings.router9.scanned_models.find((model) => model.id === modelId);
+  const router9Defaults = defaults?.router9;
+  const router9Ids = router9Defaults?.allowed_model_ids.length ? router9Defaults.allowed_model_ids : [router9Defaults?.model ?? settings.router9.model].filter(Boolean) as string[];
+  const router9Options = router9Ids.map((modelId) => {
+    const scanned = router9Defaults?.scanned_models.find((model) => model.id === modelId);
     return {
       key: `router9:${modelId}`,
       provider: 'router9',
@@ -1610,11 +1698,11 @@ function buildModelOptions(settings: RuntimeSettings): ModelOption[] {
     };
   });
 
-  if (settings.router9.only_mode) {
+  if (defaults?.router9.only_mode) {
     return router9Options;
   }
 
-  return [...staticModelOptions, ...scannedProviderOptions, ...router9Options];
+  return [...staticModelOptions, ...providerOptions, ...router9Options];
 }
 
 function providerLabel(provider: 'openrouter' | 'nvidia' | 'ollama') {

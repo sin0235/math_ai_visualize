@@ -1,5 +1,3 @@
-import { type ChangeEvent } from 'react';
-
 import type { OcrProvider, RuntimeSettings, SettingsDefaults } from '../types/settings';
 
 interface GeneralSettingsPanelProps {
@@ -10,9 +8,10 @@ interface GeneralSettingsPanelProps {
 }
 
 export function GeneralSettingsPanel({ value, defaults, onChange, onReset }: GeneralSettingsPanelProps) {
+  const providerModelOptions = buildProviderModelOptions(defaults, value.default_provider);
   const ocrModels = value.ocr.provider === 'router9'
-    ? value.router9.scanned_models
-    : value[value.ocr.provider].scanned_models;
+    ? defaults?.router9.scanned_models ?? []
+    : defaults?.openrouter.scanned_models ?? [];
   const selectedOcrModel = ocrModels.some((model) => model.id === value.ocr.model) ? value.ocr.model : '';
 
   function updateField<Key extends keyof RuntimeSettings>(key: Key, nextValue: RuntimeSettings[Key]) {
@@ -29,73 +28,69 @@ export function GeneralSettingsPanel({ value, defaults, onChange, onReset }: Gen
     });
   }
 
+  function updateDefaultModel(modelId: string) {
+    const provider = value.default_provider;
+    if (provider === 'openrouter' || provider === 'nvidia' || provider === 'ollama' || provider === 'router9') {
+      onChange({
+        ...value,
+        [provider]: { ...value[provider], model: modelId },
+      });
+    }
+  }
+
   return (
     <section className="settings-layout">
       <div className="panel settings-hero">
-        <div className="panel-title">General Settings</div>
-        <p className="field-hint">Configure app-wide defaults. These values are stored in this browser and sent with each request.</p>
+        <div className="panel-title">Cài đặt cá nhân</div>
+        <p className="field-hint">Bạn chỉ chọn provider/model mặc định và các tuỳ chọn cơ bản. Quét model, allowlist và cấu hình provider nằm trong Admin Dashboard.</p>
       </div>
 
       <div className="settings-grid settings-grid-balanced">
         <div className="settings-stack">
           <section className="panel settings-section">
-            <div className="panel-title">Default AI</div>
+            <div className="panel-title">AI mặc định</div>
             <label className="field-label">
-              Default provider
+              Provider mặc định
               <select value={value.default_provider} onChange={(event) => updateField('default_provider', event.target.value)}>
-                <option value="auto">Auto select provider</option>
+                <option value="auto">Tự động chọn provider</option>
+                <option value="openrouter">OpenRouter</option>
                 <option value="nvidia">NVIDIA</option>
-                <option value="openrouter">OpenRouter Nemotron</option>
-                <option value="openrouter_gpt_oss">OpenRouter GPT OSS</option>
-                <option value="opencode_nemotron">OpenCode Nemotron</option>
+                <option value="ollama">Ollama / OpenAI-compatible</option>
                 <option value="router9">9router</option>
-                <option value="ollama_gpt_oss">Ollama GPT OSS</option>
                 <option value="mock">Mock extractor</option>
               </select>
             </label>
 
-            <label className="checkbox-label settings-checkbox">
-              <input
-                type="checkbox"
-                checked={value.openrouter_reasoning_enabled}
-                onChange={(event: ChangeEvent<HTMLInputElement>) => updateField('openrouter_reasoning_enabled', event.target.checked)}
-              />
-              Enable OpenRouter reasoning by default
+            <label className="field-label">
+              Model mặc định
+              {providerModelOptions.length > 0 ? (
+                <select value={currentProviderModel(value)} onChange={(event) => updateDefaultModel(event.target.value)} disabled={value.default_provider === 'auto' || value.default_provider === 'mock'}>
+                  <option value="">Dùng mặc định hệ thống</option>
+                  {providerModelOptions.map((model) => <option key={model.id} value={model.id}>{model.label}</option>)}
+                </select>
+              ) : (
+                <select value="" disabled>
+                  <option value="">Admin chưa bật model tuỳ chọn</option>
+                </select>
+              )}
+              <span className="field-hint">Danh sách này do admin bật trong dashboard quản trị.</span>
             </label>
           </section>
 
           <section className="panel settings-section">
-            <div className="panel-title">OpenRouter metadata overrides</div>
-            <label className="field-label">
-              HTTP Referer
-              <input
-                type="url"
-                value={value.openrouter_http_referer}
-                onChange={(event) => updateField('openrouter_http_referer', event.target.value)}
-                placeholder={defaults?.openrouter.http_referer || 'Backend default: empty'}
-              />
-            </label>
-
-            <label className="field-label">
-              X-Title
-              <input
-                type="text"
-                value={value.openrouter_x_title}
-                onChange={(event) => updateField('openrouter_x_title', event.target.value)}
-                placeholder={defaults?.openrouter.x_title || 'Backend default'}
-              />
-            </label>
+            <div className="panel-title">Phân quyền cấu hình</div>
+            <p className="field-hint">Người dùng thường không thể đổi base URL, quét model hoặc quản lý allowlist. Các cấu hình đó được lưu ở cơ sở dữ liệu bởi admin.</p>
           </section>
         </div>
 
         <section className="panel settings-section">
           <div className="settings-provider-header">
-            <div className="panel-title">Image OCR</div>
-            <p className="field-hint">Images are sent to the selected provider to extract editable problem text before rendering.</p>
+            <div className="panel-title">OCR ảnh</div>
+            <p className="field-hint">Ảnh được gửi tới provider/model OCR đã được admin cấu hình để trích xuất đề bài.</p>
           </div>
 
           <label className="field-label">
-            Default OCR provider
+            Provider OCR mặc định
             <select value={value.ocr.provider} onChange={(event) => updateOcr('provider', event.target.value as OcrProvider)}>
               <option value="openrouter">OpenRouter vision</option>
               <option value="router9">9router vision</option>
@@ -103,22 +98,22 @@ export function GeneralSettingsPanel({ value, defaults, onChange, onReset }: Gen
           </label>
 
           <label className="field-label">
-            OCR model override
+            Model OCR mặc định
             {ocrModels.length > 0 ? (
               <select value={selectedOcrModel} onChange={(event) => updateOcr('model', event.target.value)}>
-                <option value="">Backend default: {value.ocr.provider === 'openrouter' ? defaults?.openrouter.vision_model : defaults?.router9.model || 'not set'}</option>
+                <option value="">Dùng mặc định hệ thống: {value.ocr.provider === 'openrouter' ? defaults?.openrouter.vision_model : defaults?.router9.model || 'chưa đặt'}</option>
                 {ocrModels.map((model) => <option key={model.id} value={model.id}>{model.label}</option>)}
               </select>
             ) : (
               <select value="" disabled>
-                <option value="">Scan provider models first</option>
+                <option value="">Admin chưa bật model OCR</option>
               </select>
             )}
-            <span className="field-hint">Leave empty to use backend default; scan models first if you want to override OCR model.</span>
+            <span className="field-hint">Để trống để dùng mặc định hệ thống; danh sách model do admin bật.</span>
           </label>
 
           <label className="field-label">
-            Max image size (MB)
+            Kích thước ảnh tối đa (MB)
             <input
               type="number"
               min="1"
@@ -131,10 +126,26 @@ export function GeneralSettingsPanel({ value, defaults, onChange, onReset }: Gen
       </div>
 
       <section className="panel settings-section">
-        <div className="panel-title">Storage</div>
-        <p className="field-hint">Non-secret settings are saved locally and sync to your account after login. API key overrides stay temporary and are never saved to the database or backend .env files.</p>
-        <button type="button" className="secondary-button settings-reset" onClick={onReset}>Reset to defaults</button>
+        <div className="panel-title">Lưu trữ</div>
+        <p className="field-hint">Cài đặt cá nhân được lưu cục bộ và đồng bộ vào tài khoản sau khi đăng nhập. Các cấu hình hệ thống/model được admin lưu trong cơ sở dữ liệu.</p>
+        <button type="button" className="secondary-button settings-reset" onClick={onReset}>Khôi phục mặc định</button>
       </section>
     </section>
   );
+}
+
+function currentProviderModel(value: RuntimeSettings) {
+  const provider = value.default_provider;
+  if (provider === 'openrouter' || provider === 'nvidia' || provider === 'ollama' || provider === 'router9') return value[provider].model;
+  return '';
+}
+
+function buildProviderModelOptions(defaults: SettingsDefaults | null, provider: string) {
+  if (!defaults || !(provider === 'openrouter' || provider === 'nvidia' || provider === 'ollama' || provider === 'router9')) return [];
+  const providerDefaults = defaults[provider];
+  const ids = providerDefaults.allowed_model_ids.length > 0 ? providerDefaults.allowed_model_ids : [providerDefaults.model ?? ''].filter(Boolean);
+  return ids.map((id) => {
+    const scanned = providerDefaults.scanned_models.find((model) => model.id === id);
+    return { id, label: scanned?.label ?? id };
+  });
 }

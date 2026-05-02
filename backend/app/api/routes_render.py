@@ -28,7 +28,7 @@ async def render_problem(
             request.preferred_ai_provider,
             request.preferred_ai_model,
             request.advanced_settings,
-            request.runtime_settings,
+            sanitize_public_runtime_settings(request.runtime_settings),
         )
     except (RuntimeError, ValidationError, ValueError, KeyError) as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
@@ -103,9 +103,20 @@ def sanitize_request_dump(request: RenderRequest | SceneRenderRequest) -> dict:
 def sanitize_runtime_settings(runtime_settings: object) -> dict | None:
     if runtime_settings is None or not hasattr(runtime_settings, "model_dump"):
         return None
+    sanitized = sanitize_public_runtime_settings(runtime_settings)
+    return sanitized.model_dump(mode="json", exclude_none=True) if sanitized is not None else None
+
+
+def sanitize_public_runtime_settings(runtime_settings: object):
+    if runtime_settings is None or not hasattr(runtime_settings, "model_dump"):
+        return None
     data = runtime_settings.model_dump(mode="json")
-    for provider in ("openrouter", "nvidia", "ollama", "router9"):
-        provider_settings = data.get(provider)
-        if isinstance(provider_settings, dict):
-            provider_settings["api_key"] = None
-    return data
+    return type(runtime_settings).model_validate(
+        {
+            "default_provider": data.get("default_provider"),
+            "openrouter": {"model": (data.get("openrouter") or {}).get("model")},
+            "nvidia": {"model": (data.get("nvidia") or {}).get("model")},
+            "ollama": {"model": (data.get("ollama") or {}).get("model")},
+            "router9": {"model": (data.get("router9") or {}).get("model")},
+        }
+    )

@@ -338,6 +338,7 @@ export async function scanProviderModels(provider: ProviderKey, runtimeSettings:
   const payload = await requestJson<{ models: ScannedModelInfo[] }>('/api/ai/models/scan', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
     body: JSON.stringify({ provider, runtime_settings: compactRuntimeSettings(runtimeSettings) }),
   }, 'Không thể quét model provider.');
   return payload.models;
@@ -347,6 +348,7 @@ export async function scanRouter9Models(runtimeSettings: RuntimeSettings): Promi
   const payload = await requestJson<{ models: ScannedModelInfo[] }>('/api/ai/router9/models/scan', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
     body: JSON.stringify({ runtime_settings: compactRuntimeSettings(runtimeSettings) }),
   }, 'Không thể quét model 9router.');
   return payload.models;

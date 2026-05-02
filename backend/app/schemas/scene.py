@@ -242,6 +242,8 @@ class ProviderSettingsDefaults(BaseModel):
     api_key_configured: bool
     base_url: str
     model: str | None = None
+    scanned_models: list[AiModelInfo] = Field(default_factory=list)
+    allowed_model_ids: list[str] = Field(default_factory=list)
 
 
 class OpenRouterSettingsDefaults(ProviderSettingsDefaults):

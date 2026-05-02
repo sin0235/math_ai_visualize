@@ -186,6 +186,57 @@ class StoredRuntimeSettings(BaseModel):
     openrouter_reasoning_enabled: bool = False
 
 
+class UserBasicSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    version: int = 2
+    default_provider: str = Field(default="auto", max_length=64)
+    default_model: str = Field(default="", max_length=MAX_MODEL_ID_CHARS)
+    ocr: StoredOcrSettings = Field(default_factory=StoredOcrSettings)
+
+
+class AdminProviderModelSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    base_url: str = Field(default="", max_length=MAX_BASE_URL_CHARS)
+    model: str = Field(default="", max_length=MAX_MODEL_ID_CHARS)
+    scanned_models: list[StoredModelInfo] = Field(default_factory=list, max_length=MAX_STORED_MODELS)
+    allowed_model_ids: list[str] = Field(default_factory=list, max_length=MAX_STORED_MODELS)
+    last_scanned_at: str = Field(default="", max_length=64)
+
+    @field_validator("allowed_model_ids")
+    @classmethod
+    def validate_allowed_models(cls, values: list[str]) -> list[str]:
+        return [value[:MAX_MODEL_ID_CHARS] for value in values]
+
+
+class AdminRouter9ModelSettings(AdminProviderModelSettings):
+    only_mode: bool = False
+
+
+class AdminOcrModelSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    provider: Literal["openrouter", "router9"] = "openrouter"
+    model: str = Field(default="", max_length=MAX_MODEL_ID_CHARS)
+    max_image_mb: int = Field(default=8, ge=1, le=32)
+
+
+class SystemAiSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    version: int = 1
+    default_provider: str = Field(default="auto", max_length=64)
+    openrouter: AdminProviderModelSettings = Field(default_factory=AdminProviderModelSettings)
+    nvidia: AdminProviderModelSettings = Field(default_factory=AdminProviderModelSettings)
+    ollama: AdminProviderModelSettings = Field(default_factory=AdminProviderModelSettings)
+    router9: AdminRouter9ModelSettings = Field(default_factory=AdminRouter9ModelSettings)
+    ocr: AdminOcrModelSettings = Field(default_factory=AdminOcrModelSettings)
+    openrouter_http_referer: str = Field(default="", max_length=MAX_BASE_URL_CHARS)
+    openrouter_x_title: str = Field(default="", max_length=256)
+    openrouter_reasoning_enabled: bool = False
+
+
 class RenderHistoryItem(BaseModel):
     id: str
     problem_text: str
@@ -206,12 +257,12 @@ class RenderHistoryDetail(RenderHistoryItem):
 
 
 class UserSettingsResponse(BaseModel):
-    settings: StoredRuntimeSettings | None = None
+    settings: UserBasicSettings | None = None
     updated_at: str | None = None
 
 
 class UserSettingsRequest(BaseModel):
-    settings: StoredRuntimeSettings
+    settings: UserBasicSettings
 
 
 class AdminSummaryResponse(BaseModel):

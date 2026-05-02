@@ -2,9 +2,12 @@ import { useEffect, useState } from 'react';
 
 import type { SessionResponse, UserResponse } from '../api/client';
 
+type ToastKind = 'error' | 'warning' | 'info';
+
 interface AccountPageProps {
   user: UserResponse;
   authLoading: boolean;
+  onToast: (title: string, message: string, kind?: ToastKind) => void;
   onBackWorkspace: () => void;
   onLogout: () => Promise<void>;
   onResendVerification: () => Promise<string>;
@@ -18,6 +21,7 @@ interface AccountPageProps {
 export function AccountPage({
   user,
   authLoading,
+  onToast,
   onBackWorkspace,
   onLogout,
   onResendVerification,
@@ -32,7 +36,6 @@ export function AccountPage({
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [sessions, setSessions] = useState<SessionResponse[]>([]);
-  const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -40,7 +43,10 @@ export function AccountPage({
   }, [user.display_name]);
 
   useEffect(() => {
-    refreshSessions().catch((error) => setMessage(error instanceof Error ? error.message : 'Không thể tải phiên đăng nhập.'));
+    refreshSessions().catch((error) =>
+      onToast('Phiên đăng nhập', error instanceof Error ? error.message : 'Không thể tải phiên đăng nhập.', 'error'),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- chỉ tải danh sách phiên khi vào trang
   }, []);
 
   async function refreshSessions() {
@@ -50,12 +56,11 @@ export function AccountPage({
   async function submitProfile(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setLoading(true);
-    setMessage('');
     try {
       await onUpdateProfile(displayName);
-      setMessage('Hồ sơ đã được cập nhật.');
+      onToast('Hồ sơ', 'Hồ sơ đã được cập nhật.', 'info');
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Không thể cập nhật hồ sơ.');
+      onToast('Hồ sơ', error instanceof Error ? error.message : 'Không thể cập nhật hồ sơ.', 'error');
     } finally {
       setLoading(false);
     }
@@ -63,20 +68,20 @@ export function AccountPage({
 
   async function submitPassword(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setMessage('');
     if (newPassword !== confirmPassword) {
-      setMessage('Mật khẩu xác nhận chưa khớp.');
+      onToast('Đổi mật khẩu', 'Mật khẩu xác nhận chưa khớp.', 'error');
       return;
     }
     setLoading(true);
     try {
-      setMessage(await onChangePassword(currentPassword, newPassword));
+      const text = await onChangePassword(currentPassword, newPassword);
+      onToast('Đổi mật khẩu', text, 'info');
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
       await refreshSessions();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Không thể đổi mật khẩu.');
+      onToast('Đổi mật khẩu', error instanceof Error ? error.message : 'Không thể đổi mật khẩu.', 'error');
     } finally {
       setLoading(false);
     }
@@ -84,11 +89,10 @@ export function AccountPage({
 
   async function handleResendVerification() {
     setLoading(true);
-    setMessage('');
     try {
-      setMessage(await onResendVerification());
+      onToast('Xác minh email', await onResendVerification(), 'info');
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Không thể gửi lại email xác minh.');
+      onToast('Xác minh email', error instanceof Error ? error.message : 'Không thể gửi lại email xác minh.', 'error');
     } finally {
       setLoading(false);
     }
@@ -96,12 +100,11 @@ export function AccountPage({
 
   async function handleRevokeSession(id: string) {
     setLoading(true);
-    setMessage('');
     try {
-      setMessage(await onRevokeSession(id));
+      onToast('Phiên đăng nhập', await onRevokeSession(id), 'info');
       await refreshSessions();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Không thể thu hồi phiên.');
+      onToast('Phiên đăng nhập', error instanceof Error ? error.message : 'Không thể thu hồi phiên.', 'error');
     } finally {
       setLoading(false);
     }
@@ -109,12 +112,11 @@ export function AccountPage({
 
   async function handleRevokeOthers() {
     setLoading(true);
-    setMessage('');
     try {
-      setMessage(await onRevokeOtherSessions());
+      onToast('Phiên đăng nhập', await onRevokeOtherSessions(), 'info');
       await refreshSessions();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Không thể thu hồi các phiên khác.');
+      onToast('Phiên đăng nhập', error instanceof Error ? error.message : 'Không thể thu hồi các phiên khác.', 'error');
     } finally {
       setLoading(false);
     }
@@ -198,7 +200,6 @@ export function AccountPage({
           <button type="button" onClick={onBackWorkspace}>Vào workspace</button>
           <button type="button" className="secondary-button" onClick={onLogout} disabled={authLoading}>Đăng xuất</button>
         </div>
-        {message && <p className="login-message">{message}</p>}
       </div>
     </section>
   );
