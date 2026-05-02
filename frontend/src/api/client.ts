@@ -77,6 +77,7 @@ export interface AdminSummaryResponse {
   users_today: number;
   ai_warning_jobs: number;
   ai_warning_rate: number;
+  daily_stats: Array<{ day: string; count: number }>;
 }
 
 export interface AdminUserFilters {

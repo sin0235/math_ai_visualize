@@ -80,7 +80,7 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
     try {
       const [s, u, r, st, a] = await Promise.all([
         getAdminSummary(),
-        getAdminUsers('', {}),
+        getAdminUsers({}),
         getAdminRenderJobs({}),
         getAdminSystemSettings(),
         getAdminAuditLogs({}),
@@ -107,7 +107,7 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
   const onSearchUsers = async (q: string, filters: AdminUserFilters) => {
     setSearchingUsers(true);
     try {
-      setUsers(await getAdminUsers(q, filters));
+      setUsers(await getAdminUsers({ ...filters, q }));
     } finally {
       setSearchingUsers(false);
     }
@@ -267,6 +267,7 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
             <div className="admin-grid">
               <section className="admin-panel"><h3>Phân tích provider/model</h3><div className="admin-table">{providerStats.map((item) => <article className="admin-row" key={item.key}><div><strong>{item.key}</strong><span>{item.count} render jobs</span></div></article>)}{providerStats.length === 0 && <p className="field-hint">Chưa có dữ liệu render để phân tích.</p>}</div></section>
               <section className="admin-panel"><h3>Tình trạng cấu hình</h3><div className="admin-table"><article className="admin-row"><div><strong>ai_settings</strong><span>{settings.some((item) => item.key === 'ai_settings') ? 'Đã lưu trong database' : 'Chưa cấu hình trong database'}</span></div></article><article className="admin-row"><div><strong>Audit</strong><span>{auditLogs.length} sự kiện gần nhất</span></div></article></div></section>
+            </div>
             </div>
           </>
         )}

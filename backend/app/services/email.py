@@ -111,21 +111,57 @@ def auth_email_html(
     footer: str,
     otp: str | None = None,
 ) -> str:
-    # SVG Logo inline
-    logo_svg = '''<svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect width="48" height="48" rx="12" fill="#171717"/>
-      <path d="M14 32V16h4v6.5h8V16h4v16h-4v-6.5h-8V32h-4z" fill="#ffffff"/>
+    # Logo SVG thật từ frontend/img.svg - simplified version cho email
+    logo_svg = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="96" height="96">
+      <defs>
+        <filter id="core-glow" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="8" result="blur1" />
+          <feMerge>
+            <feMergeNode in="blur1" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+        <linearGradient id="prism-top" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#00F2FE" stop-opacity="0.9" />
+          <stop offset="100%" stop-color="#4FACFE" stop-opacity="0.6" />
+        </linearGradient>
+        <linearGradient id="prism-right" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#FF0844" stop-opacity="0.9" />
+          <stop offset="100%" stop-color="#FFB199" stop-opacity="0.6" />
+        </linearGradient>
+        <linearGradient id="prism-left" x1="100%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#B224EF" stop-opacity="0.9" />
+          <stop offset="100%" stop-color="#7579FF" stop-opacity="0.6" />
+        </linearGradient>
+      </defs>
+      <g transform="translate(256, 256)">
+        <circle cx="0" cy="0" r="220" fill="none" stroke="#e5e5e5" stroke-width="1" stroke-dasharray="4 8" opacity="0.3" />
+        <ellipse cx="0" cy="0" rx="190" ry="60" fill="none" stroke="#00F2FE" stroke-width="1.5" stroke-dasharray="12 6" transform="rotate(-30)" opacity="0.6" />
+        <g filter="url(#core-glow)">
+          <polygon points="0,-90 77.94,-45 0,0 -77.94,-45" fill="url(#prism-top)" stroke="#00F2FE" stroke-width="1.5" />
+          <polygon points="0,0 77.94,-45 77.94,45 0,90" fill="url(#prism-right)" stroke="#FFB199" stroke-width="1.5" />
+          <polygon points="0,0 0,90 -77.94,45 -77.94,-45" fill="url(#prism-left)" stroke="#B224EF" stroke-width="1.5" />
+        </g>
+        <polyline points="0,-90 0,0" fill="none" stroke="#FFFFFF" stroke-width="2.5" opacity="0.9" />
+        <polyline points="-77.94,-45 0,0 77.94,-45" fill="none" stroke="#FFFFFF" stroke-width="2.5" opacity="0.7" />
+        <path d="M 0,-40 C 6,-12 12,-6 40,0 C 12,6 6,12 0,40 C -6,12 -12,6 -40,0 C -12,-6 -6,-12 0,-40 Z" fill="#FFFFFF" filter="url(#core-glow)" />
+        <circle cx="0" cy="0" r="5" fill="#FFFFFF" />
+      </g>
     </svg>'''
 
     otp_block = ""
     if otp:
         otp_digits = "".join(f'<span class="otp-digit">{escape(digit)}</span>' for digit in otp)
+        copy_icon = '''<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="5" y="5" width="9" height="9" rx="1.5" stroke="currentColor" stroke-width="1.5" fill="none"/>
+          <path d="M3 10.5V3.5C3 2.67 3.67 2 4.5 2H10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+        </svg>'''
         otp_block = f'''
           <div class="otp-section">
             <div class="section-label">Mã xác minh</div>
             <div class="otp-container">
               <div class="otp-display">{otp_digits}</div>
-              <button class="copy-button" onclick="navigator.clipboard.writeText('{escape(otp)}')">Sao chép</button>
+              <button class="copy-button" onclick="navigator.clipboard.writeText('{escape(otp)}')" title="Sao chép mã">{copy_icon}</button>
             </div>
             <p class="hint-text">Mã này có hiệu lực trong 24 giờ. Không chia sẻ với bất kỳ ai.</p>
           </div>
@@ -167,30 +203,34 @@ def auth_email_html(
       .email-header {{
         padding: 32px 32px 24px;
         background: linear-gradient(135deg, #171717 0%, #262626 100%);
-        text-align: center;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
       }}
       .logo-container {{
-        margin: 0 auto 16px;
-        display: inline-block;
+        margin: 0;
+        width: 132px;
+        height: 132px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
       }}
-      .brand-name {{
-        margin: 12px 0 0;
-        color: #ffffff;
-        font-size: 24px;
-        font-weight: 700;
-        letter-spacing: -0.02em;
+      .logo-container svg {{
+        width: 132px;
+        height: 132px;
       }}
       .eyebrow {{
         display: inline-block;
-        margin: 8px 0 0;
-        padding: 4px 12px;
+        margin: 0;
+        padding: 8px 16px;
         border-radius: 6px;
         background: rgba(255, 255, 255, 0.15);
         color: #e5e5e5;
-        font-size: 12px;
-        font-weight: 600;
+        font-size: 18px;
+        font-weight: 700;
         text-transform: uppercase;
-        letter-spacing: 0.05em;
+        letter-spacing: 0.08em;
       }}
       .email-body {{
         padding: 32px;
@@ -267,7 +307,7 @@ def auth_email_html(
         user-select: all;
       }}
       .copy-button {{
-        padding: 10px 16px;
+        padding: 10px 12px;
         border: 1px solid #d4d4d4;
         border-radius: 8px;
         background: #ffffff;
@@ -276,49 +316,22 @@ def auth_email_html(
         font-weight: 600;
         cursor: pointer;
         white-space: nowrap;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
       }}
       .copy-button:hover {{
         background: #f5f5f5;
         border-color: #a3a3a3;
+      }}
+      .copy-button svg {{
+        display: block;
       }}
       .hint-text {{
         margin: 0;
         color: #737373;
         font-size: 13px;
         line-height: 1.5;
-      }}
-      .token-section {{
-        margin: 0 0 24px;
-        padding: 20px;
-        border: 1px solid #e5e5e5;
-        border-radius: 12px;
-        background: #fafafa;
-      }}
-      .token-value {{
-        margin: 8px 0 0;
-        padding: 12px;
-        border: 1px solid #d4d4d4;
-        border-radius: 8px;
-        background: #ffffff;
-        color: #525252;
-        font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace;
-        font-size: 13px;
-        word-break: break-all;
-        user-select: all;
-      }}
-      .alt-link {{
-        margin: 0 0 24px;
-        padding: 16px;
-        border-left: 3px solid #d4d4d4;
-        background: #fafafa;
-        color: #737373;
-        font-size: 13px;
-        line-height: 1.6;
-      }}
-      .alt-link a {{
-        color: #171717;
-        text-decoration: underline;
-        word-break: break-all;
       }}
       .email-footer {{
         padding: 24px 32px;
@@ -341,6 +354,9 @@ def auth_email_html(
       @media (max-width: 600px) {{
         .email-wrapper {{ padding: 20px 12px; }}
         .email-header {{ padding: 24px 20px 20px; }}
+        .email-header {{ gap: 12px; }}
+        .logo-container, .logo-container svg {{ width: 96px; height: 96px; }}
+        .eyebrow {{ font-size: 14px; padding: 6px 12px; }}
         .email-body {{ padding: 24px 20px; }}
         .email-title {{ font-size: 24px; }}
         .otp-digit {{ width: 40px; height: 48px; font-size: 24px; }}
@@ -360,11 +376,8 @@ def auth_email_html(
         .otp-digit {{ background: #171717; border-color: #404040; color: #fafafa; }}
         .copy-button {{ background: #262626; border-color: #404040; color: #fafafa; }}
         .copy-button:hover {{ background: #404040; }}
+        .copy-button svg {{ color: #fafafa; }}
         .hint-text {{ color: #a3a3a3; }}
-        .token-section {{ background: #0a0a0a; border-color: #262626; }}
-        .token-value {{ background: #171717; border-color: #404040; color: #d4d4d4; }}
-        .alt-link {{ background: #0a0a0a; border-color: #404040; color: #a3a3a3; }}
-        .alt-link a {{ color: #fafafa; }}
         .email-footer {{ background: #0a0a0a; border-color: #262626; }}
         .footer-text {{ color: #a3a3a3; }}
         .footer-brand {{ color: #fafafa; }}
@@ -376,7 +389,6 @@ def auth_email_html(
       <div class="email-card">
         <div class="email-header">
           <div class="logo-container">{logo_svg}</div>
-          <h1 class="brand-name">Hinh</h1>
           <span class="eyebrow">{escape(eyebrow)}</span>
         </div>
         <div class="email-body">
@@ -384,15 +396,6 @@ def auth_email_html(
           <p class="email-intro">{escape(intro)}</p>
           <a class="cta-button" href="{escape(action_url, quote=True)}">{escape(action_label)}</a>
           {otp_block}
-          <div class="token-section">
-            <div class="section-label">Token dự phòng</div>
-            <p class="hint-text">Nếu nút không hoạt động, copy token này và dán vào trang xác thực.</p>
-            <div class="token-value">{escape(token)}</div>
-          </div>
-          <div class="alt-link">
-            <strong>Hoặc mở liên kết này:</strong><br>
-            <a href="{escape(action_url, quote=True)}">{escape(action_url)}</a>
-          </div>
         </div>
         <div class="email-footer">
           <p class="footer-text">{escape(footer)}</p>

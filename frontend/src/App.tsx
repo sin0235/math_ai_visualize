@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { AdminConsole } from './components/admin/AdminConsole';
-import { ApiError, changePassword, deleteRenderHistory, forgotPassword, getCurrentUser, getGoogleOAuthStartUrl, getHealth, getRenderHistory, getRenderHistoryDetail, getSessions, getSettingsDefaults, getUserSettings, login, logout, ocrImage, register, renderEditedScene, renderProblem, resendVerification, resetPassword, revokeOtherSessions, revokeSession, saveUserSettings, updateProfile, verifyEmail, type RenderHistoryItem, type SessionResponse, type UserResponse } from './api/client';
+import { ApiError, changePassword, deleteRenderHistory, forgotPassword, getCurrentUser, getGoogleOAuthStartUrl, getHealth, getRenderHistory, getRenderHistoryDetail, getSessions, getSettingsDefaults, getUserSettings, login, logout, ocrImage, register, renderEditedScene, renderProblem, resendVerification, resetPassword, revokeOtherSessions, revokeSession, saveUserSettings, updateProfile, verifyEmail, type AdminRenderHistoryDetail, type RenderHistoryItem, type SessionResponse, type UserResponse } from './api/client';
 import { defaultAdvancedSettings, ProblemInput, staticModelOptions, type ModelOption } from './components/ProblemInput';
 import { GeneralSettingsPanel } from './components/GeneralSettingsPanel';
 import { AccountPage } from './components/AccountPage';
@@ -348,7 +348,6 @@ export default function App() {
       await loadRemoteWorkspace(response.user);
       if (response.user.role === 'admin') {
         setActiveView('admin');
-        await loadAdminWorkspaceForUser(response.user);
       } else {
         setActiveView('render');
       }
@@ -463,96 +462,6 @@ export default function App() {
       setHistoryItems(await getRenderHistory());
     } finally {
       setHistoryLoading(false);
-    }
-  }
-
-  async function loadAdminWorkspace() {
-    if (!user) return;
-    await loadAdminWorkspaceForUser(user);
-  }
-
-  async function loadAdminWorkspaceForUser(targetUser: UserResponse) {
-    if (targetUser.role !== 'admin') {
-      showNotification('Không có quyền quản trị', 'Tài khoản hiện tại không có quyền truy cập trang quản trị.');
-      setActiveView('render');
-      return;
-    }
-    setAdminLoading(true);
-    try {
-      const [summary, users, jobs, settings, logs] = await Promise.all([
-        getAdminSummary(),
-        getAdminUsers({ ...adminUserFilters, q: adminUserQuery }),
-        getAdminRenderJobs(adminRenderJobFilters),
-        getAdminSystemSettings(),
-        getAdminAuditLogs(adminAuditLogFilters),
-      ]);
-      setAdminSummary(summary);
-      setAdminUsers(users);
-      setAdminRenderJobs(jobs);
-      setAdminSettings(settings);
-      setAuditLogs(logs);
-    } catch (caught) {
-      const apiError = toApiError(caught, 'Không thể tải trang quản trị.');
-      showApiError('Không thể tải admin', apiError, 'Hãy kiểm tra tài khoản có quyền admin và phiên đăng nhập còn hiệu lực.');
-    } finally {
-      setAdminLoading(false);
-    }
-  }
-
-  async function searchAdminUsers(query: string, filters: AdminUserFilters = adminUserFilters) {
-    try {
-      setAdminUsers(await getAdminUsers({ ...filters, q: query }));
-    } catch (caught) {
-      const apiError = toApiError(caught, 'Không thể tìm người dùng.');
-      showApiError('Không thể tìm user', apiError, 'Hãy thử lại hoặc kiểm tra quyền admin.');
-    }
-  }
-
-  async function searchAdminRenderJobs(filters: AdminRenderJobFilters) {
-    setAdminRenderJobFilters(filters);
-    try {
-      setAdminRenderJobs(await getAdminRenderJobs(filters));
-    } catch (caught) {
-      const apiError = toApiError(caught, 'Không thể lọc render jobs.');
-      showApiError('Không thể lọc render jobs', apiError, 'Hãy thử lại hoặc kiểm tra quyền admin.');
-    }
-  }
-
-  async function searchAdminAuditLogs(filters: AdminAuditLogFilters) {
-    setAdminAuditLogFilters(filters);
-    try {
-      setAuditLogs(await getAdminAuditLogs(filters));
-    } catch (caught) {
-      const apiError = toApiError(caught, 'Không thể lọc audit logs.');
-      showApiError('Không thể lọc audit logs', apiError, 'Hãy thử lại hoặc kiểm tra quyền admin.');
-    }
-  }
-
-  async function updateAdminUserPatch(target: UserResponse, patch: Partial<Pick<UserResponse, 'role' | 'status' | 'display_name' | 'plan'>>) {
-    try {
-      const updated = await updateAdminUser(target.id, patch);
-      setAdminUsers((current) => current.map((item) => (item.id === updated.id ? updated : item)));
-      void loadAdminWorkspace();
-    } catch (caught) {
-      const apiError = toApiError(caught, 'Không thể cập nhật người dùng.');
-      showApiError('Không thể cập nhật user', apiError, 'Hãy thử lại hoặc kiểm tra quyền admin.');
-      throw apiError;
-    }
-  }
-
-  async function toggleUserStatus(target: UserResponse) {
-    const nextStatus = target.status === 'active' ? 'disabled' : 'active';
-    await updateAdminUserPatch(target, { status: nextStatus });
-  }
-
-  async function removeAdminRenderJob(id: string) {
-    try {
-      await deleteAdminRenderJob(id);
-      setAdminRenderJobs((current) => current.filter((item) => item.id !== id));
-      void loadAdminWorkspace();
-    } catch (caught) {
-      const apiError = toApiError(caught, 'Không thể xoá render job.');
-      showApiError('Không thể xoá render job', apiError, 'Hãy thử lại hoặc kiểm tra quyền admin.');
     }
   }
 
@@ -771,7 +680,6 @@ export default function App() {
           {user?.role === 'admin' && (
             <button type="button" className="nav-item" onClick={() => {
               setActiveView('admin');
-              void loadAdminWorkspace();
             }}>
               <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
               Admin

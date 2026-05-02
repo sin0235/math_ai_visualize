@@ -63,6 +63,26 @@ export interface Router9SettingsDefaults extends ProviderSettingsDefaults {
   allowed_model_ids: string[];
 }
 
+export interface AdminProviderModelSettings {
+  base_url: string;
+  model: string;
+  scanned_models: ScannedModelInfo[];
+  allowed_model_ids: string[];
+  last_scanned_at: string;
+  only_mode: boolean;
+}
+
+export interface AdminRouter9ModelSettings extends AdminProviderModelSettings {
+  only_mode: boolean;
+  allowed_model_ids: string[];
+}
+
+export interface AdminOcrModelSettings {
+  provider: OcrProvider;
+  model: string;
+  max_image_mb: number;
+}
+
 export interface SettingsDefaults {
   app_name: string;
   default_provider: string;

@@ -28,7 +28,6 @@ function clamp(value: number, min: number, max: number) {
 }
 
 const defaultRuntimeSettings: RuntimeSettings = {
-  version: 1,
   default_provider: 'auto',
   openrouter: { api_key: '', base_url: '', model: '', scanned_models: [], last_scanned_at: '' },
   nvidia: { api_key: '', base_url: '', model: '', scanned_models: [], last_scanned_at: '' },
