@@ -101,24 +101,205 @@ Quy tắc annotations:
 
 Quy tắc renderer:
 - Với bài giao điểm đồ thị, hãy tạo các object function_graph/line_2d/circle_2d riêng; backend/GeoGebra sẽ tự tạo lệnh Intersect khi người dùng bật cài đặt giao điểm.
-- Đồ thị hàm số, Oxy, vector 2D, đường tròn dùng renderer geogebra_2d.
-- Hình chóp, lăng trụ, tứ diện, hình hộp, Oxyz và mô phỏng vector không gian dùng renderer threejs_3d.
+- Đồ thị hàm số, Oxy, vector 2D, đường tròn, conic dùng renderer geogebra_2d.
+- Hình chóp, lăng trụ, tứ diện, hình hộp, hình nón, hình trụ, Oxyz và mô phỏng vector không gian dùng renderer threejs_3d.
 - Nếu đề hình không gian thiếu toạ độ, hãy chọn toạ độ minh hoạ đơn giản nhưng giữ quan hệ chính.
 - Với function expression, dùng x và toán tử ^, *, +, -, /; không đưa y= vào expression.
+
+Quy tắc conic (elip, hyperbol, parabol):
+- Elip: (x-a)^2/a^2 + (y-b)^2/b^2 = 1 → dùng function_graph cho nửa trên và nửa dưới, hoặc dùng circle_2d nếu a=b. Tạo point_2d cho tâm, hai tiêu điểm F1/F2, các đỉnh A1/A2/B1/B2. Thêm segment nối tiêu điểm, length cho bán trục.
+- Hyperbol: tương tự elip, tạo point cho tâm và tiêu điểm, function_graph cho hai nhánh. Thêm segment dashed cho hai tiệm cận.
+- Parabol: y = ax^2 + bx + c hoặc x = ay^2 + by + c. Tạo function_graph, point cho đỉnh và tiêu điểm, line_2d dashed cho đường chuẩn.
+- Luôn tạo đầy đủ các điểm đặc biệt của conic (tâm, tiêu điểm, đỉnh) dưới dạng point_2d với tên rõ ràng.
+
+Quy tắc khối tròn xoay (hình nón, hình trụ, khối cầu cắt):
+- Hình trụ: tạo hai face tròn (xấp xỉ đa giác đều 12-16 đỉnh) cho đáy trên/dưới, segment nối các đỉnh tương ứng cho thân trụ. Tâm hai đáy trên trục Oy.
+- Hình nón: tạo face tròn cho đáy (đa giác đều), segment từ mỗi đỉnh đáy đến đỉnh nón S. S nằm trên trục Oy.
+- Hình nón cụt: tương tự hình nón nhưng có hai đáy tròn kích thước khác nhau.
+- Khi vẽ khối tròn xoay bằng đa giác xấp xỉ, dùng ít nhất 12 đỉnh cho đáy tròn, đặt tên P1, P2,..., P12 (hoặc Q1,...). Chỉ tạo face cho đáy, không tạo face cho toàn bộ mặt xung quanh (quá nhiều tam giác).
+- Thêm segment dashed cho đường kính và chiều cao, length annotation cho bán kính và chiều cao.
+
+Quy tắc hình đặc biệt bổ sung:
+- Tứ diện đều cạnh a: A(0,0,0), B(a,0,0), C(a/2, 0, a*sqrt(3)/2), D(a/2, a*sqrt(6)/3, a*sqrt(3)/6). 6 cạnh bằng nhau, 4 mặt tam giác đều.
+- Hình chóp đều S.ABC đáy tam giác đều: tâm đáy G = trọng tâm ABC, S nằm trên đường thẳng vuông góc đáy qua G. SA=SB=SC.
+- Hình chóp S.ABCDEF đáy lục giác đều: đáy là lục giác đều, S nằm trên đường thẳng vuông góc đáy qua tâm. Tạo 6 điểm đáy theo công thức: Pi = (R*cos(i*60°), 0, R*sin(i*60°)) với R = cạnh lục giác.
+- Lăng trụ đứng: tất cả cạnh bên vuông góc với đáy, chiều cao dọc Oy. Lăng trụ xiên: cạnh bên không vuông góc đáy, cần tính toạ độ đỉnh trên chính xác.
+- Hình thang: ABCD với AB // CD, AB ≠ CD. Thêm parallel relation cho AB-CD. Nếu hình thang cân thì thêm equal_length cho AD-BC.
+- Hình thang vuông tại A: thêm right_angle tại A với arms phù hợp, AB // CD.
+- Tam giác vuông cân tại A: AB = AC và góc A = 90°. Thêm cả perpendicular relation, right_angle annotation VÀ equal_length + equal_marks cho AB/AC.
+
+Quy tắc toán ứng dụng / thực tế:
+- Nếu đề mô tả tình huống thực tế (bể bơi, tòa nhà, cánh đồng, quỹ đạo...), phải chuyển sang mô hình hình học trước rồi mới tạo JSON.
+- Ví dụ: "bể bơi hình hộp chữ nhật dài 25m, rộng 10m, sâu 2m" → hình hộp chữ nhật ABCD.A'B'C'D' với AB=25, AD=10, AA'=2.
+- Ví dụ: "quỹ đạo hình elip" → tạo conic elip với tham số phù hợp.
+- Ví dụ: "bóng bay lên theo đường parabol" → tạo function_graph cho parabol.
+- Đặt problem_text giữ nguyên đề gốc, không dịch/tóm tắt.
+
+Quy tắc chống lỗi thường gặp (QUAN TRỌNG):
+- KHÔNG tạo object có type không hợp lệ. Chỉ dùng: point_2d, point_3d, segment, line_2d, line_3d, vector_2d, vector_3d, circle_2d, function_graph, face, sphere, plane.
+- KHÔNG trộn point_2d với renderer threejs_3d. Nếu renderer là threejs_3d thì mọi điểm phải là point_3d.
+- KHÔNG trộn point_3d với renderer geogebra_2d. Nếu renderer là geogebra_2d thì mọi điểm phải là point_2d.
+- KHÔNG tạo segment/face/line/plane tham chiếu đến tên điểm chưa được khai báo trong objects.
+- KHÔNG để annotation.target hoặc relation.object_1/object_2 tham chiếu điểm/cạnh không tồn tại.
+- KHÔNG bỏ trống trường bắt buộc: mọi point phải có name, x, y (và z nếu 3d); mọi segment phải có points; mọi face phải có points, color, opacity.
+- Segment.points phải là mảng đúng 2 phần tử [string, string], không phải 3 hay nhiều hơn.
+- Face.points phải có ít nhất 3 phần tử.
+- Relation.type phải là một trong: perpendicular, equal_length, parallel, midpoint, intersection, tangent.
+- Với equal_marks: target phải có dạng "X-Y" (hai tên điểm cách nhau bằng dấu gạch ngang), ví dụ "A-B". Không viết "AB" không có dấu gạch.
+- Với right_angle/angle: target phải là tên một điểm (đỉnh góc), KHÔNG phải cạnh. metadata.arms phải là mảng 2 tên điểm.
+- Với length: target phải có dạng "X-Y", label là chuỗi mô tả độ dài ví dụ "a = 3" hoặc "3".
+- Mọi giá trị opacity phải trong khoảng 0.05 đến 0.5. Face opacity khuyến nghị 0.10-0.20.
+- grade phải là 10, 11, 12 hoặc null. Không dùng giá trị khác.
+
+Ví dụ đầy đủ 1 — Hình chóp S.ABCD đáy vuông cạnh 4, SA⊥(ABCD), SA=3:
+{"problem_text":"Cho hình chóp S.ABCD có đáy ABCD là hình vuông cạnh 4, SA vuông góc với mặt phẳng đáy, SA = 3.","grade":11,"topic":"solid_geometry","renderer":"threejs_3d","objects":[{"type":"point_3d","name":"A","x":0,"y":0,"z":0},{"type":"point_3d","name":"B","x":4,"y":0,"z":0},{"type":"point_3d","name":"C","x":4,"y":0,"z":4},{"type":"point_3d","name":"D","x":0,"y":0,"z":4},{"type":"point_3d","name":"S","x":0,"y":3,"z":0},{"type":"face","name":"ABCD","points":["A","B","C","D"],"color":"#5da9ff","opacity":0.15},{"type":"face","name":"SAB","points":["S","A","B"],"color":"#ffb86b","opacity":0.14},{"type":"face","name":"SBC","points":["S","B","C"],"color":"#ffd166","opacity":0.14},{"type":"face","name":"SCD","points":["S","C","D"],"color":"#c9a0dc","opacity":0.14},{"type":"face","name":"SDA","points":["S","D","A"],"color":"#7fcdbb","opacity":0.14}],"relations":[{"type":"perpendicular","object_1":"SA","object_2":"plane(ABCD)","metadata":{}},{"type":"equal_length","object_1":"AB","object_2":"BC","metadata":{"value":4}},{"type":"equal_length","object_1":"BC","object_2":"CD","metadata":{"value":4}},{"type":"equal_length","object_1":"CD","object_2":"DA","metadata":{"value":4}}],"annotations":[{"type":"right_angle","target":"A","metadata":{"arms":["S","B"]}},{"type":"right_angle","target":"A","metadata":{"arms":["S","D"]}},{"type":"right_angle","target":"A","metadata":{"arms":["B","D"]}},{"type":"equal_marks","target":"A-B","metadata":{"group":1}},{"type":"equal_marks","target":"B-C","metadata":{"group":1}},{"type":"equal_marks","target":"C-D","metadata":{"group":1}},{"type":"equal_marks","target":"D-A","metadata":{"group":1}},{"type":"length","target":"A-B","label":"a = 4","metadata":{}},{"type":"length","target":"S-A","label":"SA = 3","metadata":{}}],"view":{"dimension":"3d","show_axes":true,"show_grid":true,"show_coordinates":true}}
+
+Ví dụ đầy đủ 2 — Đường tròn tâm I(2;-1) bán kính 3, tiếp tuyến qua A(5;-1):
+{"problem_text":"Cho đường tròn (C) tâm I(2;-1) bán kính 3. Viết phương trình tiếp tuyến của (C) tại điểm A(5;-1).","grade":10,"topic":"coordinate_2d","renderer":"geogebra_2d","objects":[{"type":"point_2d","name":"I","x":2,"y":-1},{"type":"point_2d","name":"A","x":5,"y":-1},{"type":"circle_2d","name":"C","center":"I","radius":3},{"type":"segment","points":["I","A"],"hidden":false,"color":"#1d3557","style":"solid"},{"type":"line_2d","name":"t","through":["A","T"]}],"relations":[{"type":"perpendicular","object_1":"IA","object_2":"t","metadata":{}},{"type":"tangent","object_1":"t","object_2":"C","metadata":{}}],"annotations":[{"type":"right_angle","target":"A","metadata":{"arms":["I","T"]}},{"type":"length","target":"I-A","label":"r = 3","metadata":{}}],"view":{"dimension":"2d","show_axes":true,"show_grid":true,"show_coordinates":true}}
+
+Ví dụ đầy đủ 3 — Đồ thị hàm số y = x^3 - 3x + 2:
+{"problem_text":"Khảo sát và vẽ đồ thị hàm số y = x^3 - 3x + 2","grade":12,"topic":"function_graph","renderer":"geogebra_2d","objects":[{"type":"function_graph","name":"f","expression":"x^3 - 3*x + 2"},{"type":"point_2d","name":"A","x":-1,"y":4},{"type":"point_2d","name":"B","x":1,"y":0}],"relations":[],"annotations":[{"type":"length","target":"A-B","label":"CĐ, CT","metadata":{}}],"view":{"dimension":"2d","show_axes":true,"show_grid":true,"show_coordinates":true}}
+
+Ví dụ đầy đủ 4 — Vector tổng u+v theo quy tắc hình bình hành:
+{"problem_text":"Cho hai vectơ u = (2;1) và v = (1;3). Mô phỏng phép cộng u + v theo quy tắc hình bình hành.","grade":10,"topic":"vector_2d","renderer":"geogebra_2d","objects":[{"type":"point_2d","name":"O","x":0,"y":0},{"type":"point_2d","name":"A","x":2,"y":1},{"type":"point_2d","name":"B","x":1,"y":3},{"type":"point_2d","name":"C","x":3,"y":4},{"type":"vector_2d","name":"u","from_point":"O","to_point":"A"},{"type":"vector_2d","name":"v","from_point":"O","to_point":"B"},{"type":"vector_2d","name":"u+v","from_point":"O","to_point":"C"},{"type":"segment","points":["A","C"],"hidden":false,"color":"#8b95a7","style":"dashed"},{"type":"segment","points":["B","C"],"hidden":false,"color":"#8b95a7","style":"dashed"}],"relations":[{"type":"parallel","object_1":"AC","object_2":"OB","metadata":{}},{"type":"parallel","object_1":"BC","object_2":"OA","metadata":{}}],"annotations":[],"view":{"dimension":"2d","show_axes":true,"show_grid":true,"show_coordinates":true}}
 """.strip()
 
 
-def build_scene_extraction_prompt(problem_text: str, grade: int | None, reasoning_layer: str = "off") -> str:
+# ---------------------------------------------------------------------------
+# TẦNG 1 — SUY LUẬN (Reasoning Layer)
+# Phân tích đề bài, xác định đối tượng, tính toạ độ, xác định quan hệ.
+# Output: JSON kế hoạch dựng hình (reasoning plan), KHÔNG phải scene cuối.
+# ---------------------------------------------------------------------------
+
+REASONING_SYSTEM_PROMPT = """
+Bạn là bộ phân tích bài toán hình học/toán học Việt Nam lớp 10-12.
+Nhiệm vụ: đọc đề bài, suy luận từng bước, và xuất ra một KẾ HOẠCH DỰNG HÌNH dưới dạng JSON.
+Bạn KHÔNG vẽ hình, KHÔNG tạo scene cuối cùng. Bạn chỉ phân tích và lập kế hoạch.
+
+Chỉ trả về JSON hợp lệ, không markdown, không giải thích, không code.
+
+Schema kế hoạch dựng hình:
+{
+  "problem_analysis": {
+    "original_text": string,
+    "problem_type": "solid_geometry" | "coordinate_2d" | "coordinate_3d" | "function_graph" | "conic" | "vector_2d" | "vector_3d" | "circle" | "applied_math" | "unknown",
+    "grade": 10 | 11 | 12 | null,
+    "key_conditions": [string],
+    "implicit_properties": [string],
+    "requires_auxiliary_points": boolean
+  },
+  "geometric_model": {
+    "base_shape": string,
+    "renderer": "geogebra_2d" | "threejs_3d",
+    "dimension": "2d" | "3d",
+    "coordinate_system": {
+      "origin_point": string,
+      "x_axis_along": string,
+      "y_axis_along": string,
+      "z_axis_along": string | null
+    }
+  },
+  "points": [
+    {
+      "name": string,
+      "role": "vertex" | "center" | "midpoint" | "foot" | "intersection" | "auxiliary" | "focus" | "apex",
+      "coordinates": {"x": number, "y": number, "z": number | null},
+      "derivation": string
+    }
+  ],
+  "edges_and_faces": [
+    {
+      "type": "segment" | "face" | "line" | "circle" | "function_graph" | "sphere" | "plane" | "vector",
+      "points": [string],
+      "properties": {"hidden": boolean, "style": "solid" | "dashed", "color_hint": string},
+      "notes": string
+    }
+  ],
+  "relations": [
+    {
+      "type": "perpendicular" | "equal_length" | "parallel" | "midpoint" | "tangent" | "intersection",
+      "objects": [string],
+      "value": number | null,
+      "reasoning": string
+    }
+  ],
+  "annotations_needed": [
+    {
+      "type": "right_angle" | "equal_marks" | "length" | "angle",
+      "target": string,
+      "label": string | null,
+      "details": string
+    }
+  ],
+  "warnings": [string]
+}
+
+Quy tắc phân tích:
+
+1. Đọc kỹ đề bài, liệt kê MỌI dữ kiện trong key_conditions.
+2. Suy luận các tính chất ẩn (implicit_properties):
+   - "đáy ABCD là hình vuông" → 4 cạnh bằng, 4 góc vuông, 2 đường chéo bằng nhau cắt tại trung điểm
+   - "tam giác đều" → 3 cạnh bằng, 3 góc 60°
+   - "SA ⊥ (ABCD)" → SA vuông góc với mọi đường thẳng trong mặt phẳng ABCD qua A
+   - "hình chóp đều" → đáy là đa giác đều, đỉnh chiếu vuông góc xuống tâm đáy
+   - "trung điểm M của AB" → M = ((Ax+Bx)/2, (Ay+By)/2, ...)
+3. Xác định hệ trục toạ độ phù hợp:
+   - Hình không gian: đặt A hoặc gốc O tại (0,0,0), đáy trên mặt xOz, chiều cao theo Oy
+   - Hình phẳng: theo đề cho, hoặc chọn hệ trục đẹp
+   - KHÔNG tịnh tiến nếu đề đã cho toạ độ cụ thể
+4. Tính toạ độ CHÍNH XÁC cho mỗi điểm, ghi rõ derivation (cách tính).
+5. Xác định mọi cạnh/mặt cần vẽ, đánh dấu cạnh khuất (hidden=true, dashed).
+6. Liệt kê mọi quan hệ hình học kèm reasoning.
+7. Liệt kê mọi annotation cần hiển thị trên hình.
+8. Với toán ứng dụng/thực tế: chuyển mô hình đời thực thành hình học trước.
+9. Nếu đề thiếu số liệu, dùng giá trị mặc định a=3.
+10. Thêm warnings nếu phát hiện mâu thuẫn hoặc thiếu dữ kiện.
+""".strip()
+
+
+def build_reasoning_prompt(problem_text: str, grade: int | None) -> str:
+    """Build the user prompt for the reasoning task (Task 1)."""
     grade_text = "không rõ" if grade is None else str(grade)
-    reasoning_instruction = _reasoning_instruction(reasoning_layer)
+    return f"""Lớp: {grade_text}
+Đề bài: {problem_text}
+
+Hãy phân tích đề bài trên và trả về JSON kế hoạch dựng hình theo schema."""
+
+
+# ---------------------------------------------------------------------------
+# TẦNG 2 — VẼ HÌNH (Scene Extraction Layer)
+# Nhận kế hoạch dựng hình từ tầng 1, chuyển thành JSON scene cuối cùng.
+# ---------------------------------------------------------------------------
+
+def build_scene_extraction_prompt(problem_text: str, grade: int | None, reasoning_layer: str = "off", reasoning_plan: dict | None = None) -> str:
+    """Build the user prompt for the scene extraction task (Task 2).
+
+    If reasoning_plan is provided (from Task 1), it is included as context
+    so the scene extractor does not need to re-analyze the problem.
+    """
+    grade_text = "không rõ" if grade is None else str(grade)
     parts = [f"Lớp: {grade_text}", f"Đề bài: {problem_text}"]
-    if reasoning_instruction:
-        parts.append(reasoning_instruction)
-    parts.append("Trả về JSON scene theo schema.")
+
+    if reasoning_plan is not None:
+        # Two-stage mode: reasoning plan already computed
+        import json as _json
+        plan_text = _json.dumps(reasoning_plan, ensure_ascii=False)
+        parts.append(f"\nKẾ HOẠCH DỰNG HÌNH (đã được phân tích sẵn, hãy tuân theo):\n{plan_text}")
+        parts.append("\nDựa trên kế hoạch dựng hình ở trên, hãy tạo JSON scene cuối cùng theo schema.")
+        parts.append("Tuân thủ chính xác toạ độ, quan hệ và annotation trong kế hoạch.")
+        parts.append("Chỉ trả về JSON scene, không giải thích.")
+    elif reasoning_layer in ("auto", "force"):
+        # Legacy single-stage mode with internal reasoning
+        parts.append(_reasoning_instruction(reasoning_layer))
+        parts.append("Trả về JSON scene theo schema.")
+    else:
+        parts.append("Trả về JSON scene theo schema.")
+
     return "\n".join(parts)
 
 
 def _reasoning_instruction(reasoning_layer: str) -> str:
+    """Legacy: instruction for single-stage internal reasoning."""
     if reasoning_layer == "auto":
         return """Tùy chọn suy luận trước khi vẽ đang ở chế độ tự động.
 Nếu đề cần suy luận, mô hình hóa tình huống thực tế, hoặc phải xác định trước đối tượng cần dựng, hãy suy luận nội bộ theo các bước:

@@ -6,7 +6,7 @@ import httpx
 
 from app.core.config import Settings
 from app.schemas.scene import AiModelInfo
-from app.services.ai_prompt import SCENE_EXTRACTION_SYSTEM_PROMPT, build_scene_extraction_prompt
+from app.services.ai_prompt import REASONING_SYSTEM_PROMPT, SCENE_EXTRACTION_SYSTEM_PROMPT, build_reasoning_prompt, build_scene_extraction_prompt
 from app.services.openrouter_client import OCR_SYSTEM_PROMPT
 from app.services.provider_logging import format_provider_error, log_ocr_summary, log_provider_request, log_provider_response, log_scene_summary
 
@@ -52,7 +52,7 @@ class Router9Client:
             )
         return sorted(models, key=lambda model: model.id.lower())
 
-    async def extract_scene_json(self, problem_text: str, grade: int | None = None, reasoning_layer: str = "off") -> dict:
+    async def extract_scene_json(self, problem_text: str, grade: int | None = None, reasoning_layer: str = "off", reasoning_plan: dict | None = None) -> dict:
         if not self.settings.router9_api_key:
             raise RuntimeError("ROUTER9_API_KEY chưa được cấu hình.")
         if not self.model:
@@ -62,7 +62,7 @@ class Router9Client:
             "model": self.model,
             "messages": [
                 {"role": "system", "content": SCENE_EXTRACTION_SYSTEM_PROMPT},
-                {"role": "user", "content": build_scene_extraction_prompt(problem_text, grade, reasoning_layer)},
+                {"role": "user", "content": build_scene_extraction_prompt(problem_text, grade, reasoning_layer, reasoning_plan=reasoning_plan)},
             ],
             "temperature": 0.1,
             "stream": False,
@@ -81,6 +81,35 @@ class Router9Client:
             return scene_json
         except json.JSONDecodeError as error:
             raise RuntimeError(f"9router trả về JSON không hợp lệ: {error.msg}") from error
+
+    async def reason_about_problem(self, problem_text: str, grade: int | None = None) -> dict:
+        """Task 1: Analyze the problem and return a structured reasoning plan."""
+        if not self.settings.router9_api_key:
+            raise RuntimeError("ROUTER9_API_KEY chưa được cấu hình.")
+        if not self.model:
+            raise RuntimeError("Chưa chọn model 9router.")
+
+        payload = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": REASONING_SYSTEM_PROMPT},
+                {"role": "user", "content": build_reasoning_prompt(problem_text, grade)},
+            ],
+            "temperature": 0.15,
+            "stream": False,
+        }
+        response = await self._post_chat(payload)
+
+        try:
+            content = _extract_message_content(response)
+        except (KeyError, IndexError, TypeError, ValueError) as error:
+            raise RuntimeError("9router reasoning response không đúng định dạng") from error
+        if not isinstance(content, str) or not content.strip():
+            raise RuntimeError("9router không trả về nội dung reasoning.")
+        try:
+            return json.loads(_strip_json_fences(content))
+        except json.JSONDecodeError as error:
+            raise RuntimeError(f"9router reasoning JSON không hợp lệ: {error.msg}") from error
 
     async def ocr_image(self, image_data_url: str, model: str | None = None) -> str:
         if not self.settings.router9_api_key:

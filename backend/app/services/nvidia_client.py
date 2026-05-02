@@ -4,7 +4,7 @@ import time
 import httpx
 
 from app.core.config import Settings
-from app.services.ai_prompt import SCENE_EXTRACTION_SYSTEM_PROMPT, build_scene_extraction_prompt
+from app.services.ai_prompt import REASONING_SYSTEM_PROMPT, SCENE_EXTRACTION_SYSTEM_PROMPT, build_reasoning_prompt, build_scene_extraction_prompt
 from app.services.openrouter_client import OCR_SYSTEM_PROMPT
 from app.services.provider_logging import format_provider_error, log_ocr_summary, log_provider_request, log_provider_response, log_scene_summary
 
@@ -22,7 +22,7 @@ class NvidiaClient:
         self.reasoning_effort = reasoning_effort
         self.thinking = thinking
 
-    async def extract_scene_json(self, problem_text: str, grade: int | None = None, reasoning_layer: str = "off") -> dict:
+    async def extract_scene_json(self, problem_text: str, grade: int | None = None, reasoning_layer: str = "off", reasoning_plan: dict | None = None) -> dict:
         if not self.settings.nvidia_api_key:
             raise RuntimeError("NVIDIA_API_KEY chưa được cấu hình.")
 
@@ -36,7 +36,7 @@ class NvidiaClient:
             "model": self.model,
             "messages": [
                 {"role": "system", "content": SCENE_EXTRACTION_SYSTEM_PROMPT},
-                {"role": "user", "content": build_scene_extraction_prompt(problem_text, grade, reasoning_layer)},
+                {"role": "user", "content": build_scene_extraction_prompt(problem_text, grade, reasoning_layer, reasoning_plan=reasoning_plan)},
             ],
             "temperature": 0.1,
             "top_p": 0.95,
@@ -73,6 +73,51 @@ class NvidiaClient:
             return scene_json
         except json.JSONDecodeError as error:
             raise RuntimeError(f"NVIDIA trả về JSON không hợp lệ: {error.msg}") from error
+
+    async def reason_about_problem(self, problem_text: str, grade: int | None = None) -> dict:
+        """Task 1: Analyze the problem and return a structured reasoning plan."""
+        if not self.settings.nvidia_api_key:
+            raise RuntimeError("NVIDIA_API_KEY chưa được cấu hình.")
+
+        payload = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": REASONING_SYSTEM_PROMPT},
+                {"role": "user", "content": build_reasoning_prompt(problem_text, grade)},
+            ],
+            "temperature": 0.15,
+            "top_p": 0.95,
+            "max_tokens": 16384,
+        }
+        if self.thinking:
+            payload["chat_template_kwargs"] = {"thinking": True}
+        headers = {
+            "Authorization": f"Bearer {self.settings.nvidia_api_key}",
+            "Content-Type": "application/json",
+        }
+        url = f"{self.settings.nvidia_base_url.rstrip('/')}/chat/completions"
+
+        try:
+            started_at = time.perf_counter()
+            log_provider_request("nvidia", "reasoning", url, payload["model"], problem_chars=len(problem_text), thinking=self.thinking)
+            async with httpx.AsyncClient(timeout=90) as client:
+                response = await client.post(url, headers=headers, json=payload)
+                elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+                log_provider_response("nvidia", "reasoning", response.status_code, elapsed_ms, len(response.text))
+                if response.status_code >= 400:
+                    raise RuntimeError(_format_nvidia_error(response))
+        except httpx.HTTPError as error:
+            message = str(error) or error.__class__.__name__
+            raise RuntimeError(f"NVIDIA reasoning request lỗi: {message}") from error
+
+        message = _extract_message(response)
+        content = message.get("content")
+        if not isinstance(content, str) or not content.strip():
+            raise RuntimeError("NVIDIA không trả về reasoning content.")
+        try:
+            return json.loads(_strip_json_fences(content))
+        except json.JSONDecodeError as error:
+            raise RuntimeError(f"NVIDIA reasoning JSON không hợp lệ: {error.msg}") from error
 
     async def ocr_image(self, image_data_url: str, model: str | None = None) -> str:
         if not self.settings.nvidia_api_key:

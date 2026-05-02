@@ -125,7 +125,6 @@ export function AccountPage({
       <div className="account-card">
         <div className="account-header">
           <div>
-            <span className="home-eyebrow">Tài khoản</span>
             <h2>{user.display_name || user.email}</h2>
             <p className="field-hint">Quản lý bảo mật, hồ sơ và các phiên đăng nhập của bạn.</p>
           </div>

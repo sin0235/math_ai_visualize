@@ -12,6 +12,7 @@ import { RendererPanel } from './components/RendererPanel';
 import { Router9SettingsPanel } from './components/Router9SettingsPanel';
 import { SceneEditorPanel, type PointPlacementPlane } from './components/SceneEditorPanel';
 import { SettingsPanel } from './components/SettingsPanel';
+import { PrivacyPolicyPage, TermsPage } from './components/LegalPages';
 import type { AdvancedRenderSettings, MathScene, RenderResponse, Renderer } from './types/scene';
 import { defaultRuntimeSettings, SETTINGS_STORAGE_VERSION, type RuntimeSettings, type SettingsDefaults } from './types/settings';
 import logoUrl from '../img.svg';
@@ -21,6 +22,7 @@ const SETTINGS_STORAGE_KEY = 'hinh-runtime-settings';
 const MOBILE_WARNING_STORAGE_KEY = 'hinh-mobile-warning-dismissed';
 const MOBILE_BREAKPOINT_QUERY = '(max-width: 900px)';
 const DEVELOPER_GITHUB_URL = 'https://github.com/sin0235';
+const CONTACT_EMAIL = 'contact@math-renderer.sin235.live';
 
 type AppView = 'home' | 'render' | 'history' | 'guide' | 'about' | 'privacy-policy' | 'terms' | 'login' | 'settings' | 'admin' | 'account' | 'reset-password' | 'verify-email';
 type SettingsTab = 'general' | 'providers' | 'router9';
@@ -52,6 +54,25 @@ function FooterNavButton({ onClick, children, icon }: { onClick: () => void; chi
       {icon}
       <span className="footer-nav-label">{children}</span>
     </button>
+  );
+}
+
+function FooterNavMailLink({
+  href,
+  title,
+  children,
+  icon,
+}: {
+  href: string;
+  title?: string;
+  children: React.ReactNode;
+  icon: React.ReactNode;
+}) {
+  return (
+    <a href={href} className="footer-nav-link" title={title}>
+      {icon}
+      <span className="footer-nav-label">{children}</span>
+    </a>
   );
 }
 
@@ -862,8 +883,8 @@ export default function App() {
         )}
         {activeView === 'guide' && <GuidePage onStart={() => setActiveView('render')} onSettings={() => setActiveView('settings')} />}
         {activeView === 'about' && <AboutPage onStart={() => setActiveView('render')} onGuide={() => setActiveView('guide')} />}
-        {activeView === 'privacy-policy' && <PrivacyPolicyPage onBack={() => setActiveView('home')} />}
-        {activeView === 'terms' && <TermsPage onBack={() => setActiveView('home')} />}
+        {activeView === 'privacy-policy' && <PrivacyPolicyPage />}
+        {activeView === 'terms' && <TermsPage />}
         {activeView === 'admin' && (
           <AdminConsole
             user={user}
@@ -996,8 +1017,9 @@ export default function App() {
               >
                 Báo lỗi GitHub
               </FooterNavButton>
-              <FooterNavButton
-                onClick={() => setNotification({ id: Date.now(), kind: 'info', title: 'Liên hệ', message: 'Email liên hệ sẽ được bổ sung trong cấu hình triển khai.', details: [] })}
+              <FooterNavMailLink
+                href={`mailto:${CONTACT_EMAIL}`}
+                title={CONTACT_EMAIL}
                 icon={
                   <FooterNavIcon>
                     <rect x="2" y="4" width="20" height="16" rx="2" />
@@ -1006,7 +1028,7 @@ export default function App() {
                 }
               >
                 Liên hệ
-              </FooterNavButton>
+              </FooterNavMailLink>
             </div>
             <div>
               <strong>Pháp lý</strong>
@@ -1105,73 +1127,6 @@ function GuidePage({ onStart, onSettings }: { onStart: () => void; onSettings: (
   );
 }
 
-function PrivacyPolicyPage({ onBack }: { onBack: () => void }) {
-  const sections = [
-    { title: 'Dữ liệu tài khoản', text: 'Chúng tôi lưu email, tên hiển thị, trạng thái xác minh email, phiên đăng nhập và các sự kiện bảo mật để vận hành tài khoản.' },
-    { title: 'Dữ liệu workspace', text: 'Khi đăng nhập, lịch sử dựng hình, scene, cấu hình renderer/model và các chỉnh sửa có thể được lưu để bạn tiếp tục làm việc ở phiên sau.' },
-    { title: 'Email xác minh và khôi phục', text: 'Hệ thống gửi link token và mã OTP để xác minh email; link đặt lại mật khẩu dùng token riêng và có thời hạn.' },
-    { title: 'API key provider', text: 'API key cấu hình trong trình duyệt không được lưu server trong cấu hình cá nhân; backend chỉ nhận key trong yêu cầu render khi cần xử lý.' },
-  ];
-
-  return (
-    <section className="legal-page product-page-card">
-      <span className="home-eyebrow">Chính sách bảo mật</span>
-      <div className="legal-hero-row">
-        <div>
-          <h2>Chính sách bảo mật AI Math Renderer</h2>
-          <p>Phiên bản 2026-05-02. Chính sách này mô tả dữ liệu được thu thập để vận hành đăng nhập, lưu workspace và bảo vệ tài khoản.</p>
-        </div>
-        <button type="button" className="secondary-button" onClick={onBack}>Về trang chủ</button>
-      </div>
-      <div className="legal-section-grid">
-        {sections.map((section) => (
-          <article key={section.title}>
-            <h3>{section.title}</h3>
-            <p>{section.text}</p>
-          </article>
-        ))}
-      </div>
-      <section className="legal-note">
-        <h3>Quyền riêng tư và bảo mật</h3>
-        <p>Chúng tôi dùng cookie phiên HttpOnly cho đăng nhập, audit log cho sự kiện nhạy cảm và giới hạn tốc độ cho các endpoint auth. Người dùng nên không nhập thông tin cá nhân nhạy cảm vào đề bài nếu không cần thiết.</p>
-      </section>
-    </section>
-  );
-}
-
-function TermsPage({ onBack }: { onBack: () => void }) {
-  const sections = [
-    { title: 'Sử dụng hợp lệ', text: 'Bạn đồng ý dùng ứng dụng cho học tập, giảng dạy, kiểm tra mô hình hình học và không lạm dụng hệ thống, spam hoặc cố tình vượt giới hạn bảo mật.' },
-    { title: 'Nội dung người dùng', text: 'Bạn chịu trách nhiệm với đề bài, ảnh OCR và dữ liệu tọa độ đã nhập. Không tải nội dung vi phạm pháp luật hoặc quyền của bên thứ ba.' },
-    { title: 'Giới hạn độ chính xác AI', text: 'Kết quả dựng hình có thể sai hoặc thiếu chi tiết. Hãy kiểm tra lại scene, tọa độ, quan hệ hình học và lời giải trước khi sử dụng trong tài liệu chính thức.' },
-    { title: 'Tài khoản và xác minh email', text: 'Tạo tài khoản yêu cầu đồng ý chính sách pháp lý và xác minh email bằng token + OTP trước khi dùng đầy đủ các tính năng tài khoản.' },
-  ];
-
-  return (
-    <section className="legal-page product-page-card">
-      <span className="home-eyebrow">Điều khoản sử dụng</span>
-      <div className="legal-hero-row">
-        <div>
-          <h2>Điều khoản sử dụng AI Math Renderer</h2>
-          <p>Phiên bản 2026-05-02. Các điều khoản này đặt phạm vi sử dụng an toàn, trách nhiệm nội dung và giới hạn của kết quả AI.</p>
-        </div>
-        <button type="button" className="secondary-button" onClick={onBack}>Về trang chủ</button>
-      </div>
-      <div className="legal-section-grid">
-        {sections.map((section) => (
-          <article key={section.title}>
-            <h3>{section.title}</h3>
-            <p>{section.text}</p>
-          </article>
-        ))}
-      </div>
-      <section className="legal-note">
-        <h3>Thay đổi điều khoản</h3>
-        <p>Khi phiên bản điều khoản hoặc chính sách thay đổi đáng kể, ứng dụng có thể yêu cầu người dùng đọc và xác nhận lại trước khi tiếp tục sử dụng tài khoản.</p>
-      </section>
-    </section>
-  );
-}
 
 function AboutPage({ onStart, onGuide }: { onStart: () => void; onGuide: () => void }) {
   const values = [

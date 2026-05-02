@@ -66,13 +66,30 @@ async def extract_scene(
     render_settings = advanced_settings or AdvancedRenderSettings()
     warnings: list[str] = []
     attempts: list[RenderAttempt] = []
+    use_two_stage = render_settings.reasoning_layer in ("auto", "force")
 
+    # --- TẦNG 1: Suy luận (nếu bật) ---
+    reasoning_plan: dict | None = None
+    if use_two_stage:
+        reasoning_plan = await _run_reasoning_stage(
+            settings, problem_text, grade,
+            preferred_ai_provider, preferred_ai_model,
+            warnings,
+        )
+        if reasoning_plan is not None:
+            warnings.append("Đã hoàn thành tầng suy luận (reasoning layer).")
+
+    # --- TẦNG 2: Trích xuất scene ---
     requested_provider = preferred_ai_provider or settings.ai_provider
     for provider in _provider_order(settings, preferred_ai_provider):
         explicit_model = preferred_ai_model if provider == requested_provider else None
         for model in _provider_model_candidates(provider, settings, explicit_model):
             try:
-                scene_json = await _extract_with_provider(provider, settings, problem_text, grade, render_settings.reasoning_layer, model)
+                scene_json = await _extract_with_provider(
+                    provider, settings, problem_text, grade,
+                    render_settings.reasoning_layer, model,
+                    reasoning_plan=reasoning_plan,
+                )
                 warnings.extend(_render_attempt_warnings(attempts))
                 return MathScene.model_validate(normalize_scene_json(scene_json)), warnings
             except (RuntimeError, ValidationError, ValueError, KeyError) as error:
@@ -91,6 +108,39 @@ async def extract_scene(
     else:
         warnings.append("Đang dùng mock extractor vì AI provider chưa sẵn sàng.")
     return extract_scene_mock(problem_text, grade), warnings
+
+
+async def _run_reasoning_stage(
+    settings: Settings,
+    problem_text: str,
+    grade: int | None,
+    preferred_ai_provider: str | None,
+    preferred_ai_model: str | None,
+    warnings: list[str],
+) -> dict | None:
+    """Run the reasoning layer (Task 1) and return the reasoning plan.
+
+    Returns None if reasoning fails (the pipeline will fall back to
+    single-stage extraction).
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    requested_provider = preferred_ai_provider or settings.ai_provider
+    for provider in _provider_order(settings, preferred_ai_provider):
+        explicit_model = preferred_ai_model if provider == requested_provider else None
+        for model in _provider_model_candidates(provider, settings, explicit_model):
+            try:
+                plan = await _reason_with_provider(provider, settings, problem_text, grade, model)
+                if isinstance(plan, dict):
+                    logger.info("Reasoning stage succeeded via %s/%s", provider, model)
+                    return plan
+            except Exception as error:
+                logger.warning("Reasoning stage failed via %s/%s: %s", provider, model, error)
+                warnings.append(f"Tầng suy luận lỗi ({provider}/{model}): {_short_error(str(error))}")
+                continue
+    warnings.append("Tầng suy luận không thành công; sẽ dùng single-stage extraction.")
+    return None
 
 
 def normalize_scene_json(scene_json: dict) -> dict:
@@ -402,18 +452,36 @@ def _router9_model_candidates(settings: Settings, preferred_ai_model: str | None
     return candidates
 
 
-async def _extract_with_provider(provider: str, settings: Settings, problem_text: str, grade: int | None, reasoning_layer: str, preferred_ai_model: str | None = None) -> dict:
+async def _extract_with_provider(provider: str, settings: Settings, problem_text: str, grade: int | None, reasoning_layer: str, preferred_ai_model: str | None = None, reasoning_plan: dict | None = None) -> dict:
     if provider == "nvidia":
-        return await NvidiaClient(settings, model=preferred_ai_model).extract_scene_json(problem_text, grade, reasoning_layer)
+        return await NvidiaClient(settings, model=preferred_ai_model).extract_scene_json(problem_text, grade, reasoning_layer, reasoning_plan=reasoning_plan)
     if provider == "router9":
         model = _router9_model(settings, preferred_ai_model)
-        return await Router9Client(settings, model=model).extract_scene_json(problem_text, grade, reasoning_layer)
+        return await Router9Client(settings, model=model).extract_scene_json(problem_text, grade, reasoning_layer, reasoning_plan=reasoning_plan)
     if provider == "openrouter":
-        return await OpenRouterClient(settings, model=preferred_ai_model).extract_scene_json(problem_text, grade, reasoning_layer)
+        return await OpenRouterClient(settings, model=preferred_ai_model).extract_scene_json(problem_text, grade, reasoning_layer, reasoning_plan=reasoning_plan)
     if provider == "opencode_nemotron":
-        return await OpenRouterClient(settings, model=settings.opencode_nemotron_model, reasoning_enabled=False).extract_scene_json(problem_text, grade, reasoning_layer)
+        return await OpenRouterClient(settings, model=settings.opencode_nemotron_model, reasoning_enabled=False).extract_scene_json(problem_text, grade, reasoning_layer, reasoning_plan=reasoning_plan)
     if provider == "ollama_gpt_oss":
-        return await OllamaClient(settings, model=preferred_ai_model).extract_scene_json(problem_text, grade, reasoning_layer)
+        return await OllamaClient(settings, model=preferred_ai_model).extract_scene_json(problem_text, grade, reasoning_layer, reasoning_plan=reasoning_plan)
     if provider == "openrouter_gpt_oss":
-        return await OpenRouterClient(settings, model="openai/gpt-oss-120b:free", reasoning_enabled=True).extract_scene_json(problem_text, grade, reasoning_layer)
+        return await OpenRouterClient(settings, model="openai/gpt-oss-120b:free", reasoning_enabled=True).extract_scene_json(problem_text, grade, reasoning_layer, reasoning_plan=reasoning_plan)
     raise RuntimeError(f"Provider không hỗ trợ: {provider}")
+
+
+async def _reason_with_provider(provider: str, settings: Settings, problem_text: str, grade: int | None, preferred_ai_model: str | None = None) -> dict:
+    """Run reasoning task (Task 1) with the given provider."""
+    if provider == "nvidia":
+        return await NvidiaClient(settings, model=preferred_ai_model).reason_about_problem(problem_text, grade)
+    if provider == "router9":
+        model = _router9_model(settings, preferred_ai_model)
+        return await Router9Client(settings, model=model).reason_about_problem(problem_text, grade)
+    if provider == "openrouter":
+        return await OpenRouterClient(settings, model=preferred_ai_model).reason_about_problem(problem_text, grade)
+    if provider == "opencode_nemotron":
+        return await OpenRouterClient(settings, model=settings.opencode_nemotron_model, reasoning_enabled=False).reason_about_problem(problem_text, grade)
+    if provider == "ollama_gpt_oss":
+        return await OllamaClient(settings, model=preferred_ai_model).reason_about_problem(problem_text, grade)
+    if provider == "openrouter_gpt_oss":
+        return await OpenRouterClient(settings, model="openai/gpt-oss-120b:free", reasoning_enabled=True).reason_about_problem(problem_text, grade)
+    raise RuntimeError(f"Provider không hỗ trợ reasoning: {provider}")

@@ -119,6 +119,10 @@ select {
   gap: 10px;
 }
 
+.footer-nav a.footer-nav-link {
+  text-decoration: none;
+}
+
 .footer-nav .footer-nav-label {
   text-align: left;
   line-height: 1.35;
@@ -730,7 +734,30 @@ select {
 
 .legal-page {
   display: grid;
-  gap: 24px;
+  gap: 14px;
+}
+
+.legal-page.product-page-card.professional-legal-doc {
+  padding: clamp(12px, 2.8vw, 22px);
+  border: 1px solid #e5e5e5;
+  border-radius: 20px;
+  background: #ffffff;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.05);
+}
+
+.legal-page .legal-hero-row {
+  gap: clamp(12px, 2.2vw, 18px);
+}
+
+.legal-page .legal-hero-row h2 {
+  margin: 0 0 6px;
+  color: #0a0a0a;
+}
+
+.legal-page .legal-hero-row p {
+  color: #404040;
+  font-size: 0.93rem;
+  line-height: 1.52;
 }
 
 .legal-hero-row {
@@ -2705,3 +2732,87 @@ pre {
     grid-column: 1 / -1;
   }
 }
+
+/* Legal document body (Privacy / Terms): chỉ đạo đen-trắng, gọn */
+.professional-legal-doc .legal-content {
+  margin-top: 0.65rem;
+  padding: clamp(14px, 2.8vw, 20px);
+  background: #fafafa;
+  border-radius: 14px;
+  border: 1px solid #e8e8e8;
+  box-shadow: none;
+}
+
+.professional-legal-doc .legal-intro {
+  font-size: 1rem;
+  color: #262626;
+  line-height: 1.52;
+  margin-bottom: 1.25rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #e5e5e5;
+}
+
+.professional-legal-doc .legal-section {
+  margin-bottom: 1.25rem;
+}
+
+.professional-legal-doc .legal-section:last-child {
+  margin-bottom: 0;
+}
+
+.professional-legal-doc .legal-section h3 {
+  font-size: 1.05rem;
+  color: #0a0a0a;
+  margin: 0 0 0.45rem;
+  display: flex;
+  align-items: center;
+  font-weight: 700;
+}
+
+.professional-legal-doc .legal-section p {
+  color: #404040;
+  line-height: 1.55;
+  margin: 0 0 0.6rem;
+}
+
+.professional-legal-doc .legal-section ul {
+  margin: 0 0 0.85rem;
+  padding-left: 1.25rem;
+  list-style-type: disc;
+}
+
+.professional-legal-doc .legal-section li {
+  color: #404040;
+  line-height: 1.52;
+  margin-bottom: 0.4rem;
+}
+
+.professional-legal-doc .legal-section li:last-child {
+  margin-bottom: 0;
+}
+
+.professional-legal-doc .legal-section strong {
+  color: #0a0a0a;
+  font-weight: 650;
+}
+
+@media (max-width: 768px) {
+  .professional-legal-doc .legal-content {
+    padding: 12px 14px;
+  }
+}
+
+ / *   N e w   l e g a l   s t y l e s   * / 
+ . p r o f e s s i o n a l - l e g a l - d o c   . l e g a l - h e r o - r o w   { 
+     m a r g i n - b o t t o m :   1 . 5 r e m ; 
+ } 
+ 
+ . p r o f e s s i o n a l - l e g a l - d o c   . l e g a l - u p d a t e - d a t e   { 
+     f o n t - s i z e :   0 . 8 5 r e m ; 
+     c o l o r :   # 6 b 7 2 8 0 ; 
+     m a r g i n - b o t t o m :   1 r e m ; 
+     f o n t - s t y l e :   i t a l i c ; 
+ } 
+ 
+ 
+ 
