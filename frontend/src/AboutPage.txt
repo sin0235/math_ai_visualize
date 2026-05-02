@@ -1,0 +1,38 @@
+function AboutPage({ onStart, onGuide }: { onStart: () => void; onGuide: () => void }) {
+  const features = [
+    { title: 'Xuất hình phân tích (Reasoning Model)', text: 'Luồng xử lý AI 2 tầng độc lập: Phân tích suy luận (Task 1) trước khi vẽ (Task 2) giảm thiểu hallucination, giúp tọa độ và quan hệ hình học luôn vững chắc.' },
+    { title: 'Công nhận tọa độ & OCR', text: 'Hỗ trợ đọc đề bài từ ảnh (kéo thả hoặc clipboard) và giữ nguyên tọa độ người dùng nhập vào, tham chiếu dưới gốc tọa độ.' },
+    { title: 'Kiểm soát & Tinh chỉnh', text: 'Không chỉ là vẽ ảnh tĩnh, AI Math Renderer sinh ra Scene JSON có cấu trúc, cho phép bạn kéo thả điểm, thêm chân đường cao và chỉnh sửa trực tiếp trên giao diện.' },
+  ];
+
+  return (
+    <section className="about-page">
+      <div className="about-hero">
+        <span className="home-eyebrow">Về chúng tôi (About)</span>
+        <h2>AI tạo hình toán học với sự kiểm soát tuyệt đối.</h2>
+        <p>AI Math Renderer được xây dựng nhằm giải quyết một nỗi đau lớn trong giáo dục: <strong>Việc vẽ hình học không gian hay đồ thị quá mất thời gian</strong>. Chúng tôi tinh lọc quá trình này bằng cách kết hợp LLM, OCR và các renderer mạnh mẽ như GeoGebra, Three.js.</p>
+        <div className="home-actions">
+          <button type="button" onClick={onStart}>Mở workspace</button>
+          <button type="button" className="secondary-button" onClick={onGuide}>Xem hướng dẫn</button>
+        </div>
+      </div>
+
+      <div className="about-grid">
+        {features.map((feature) => (
+          <article key={feature.title}>
+            <h3>{feature.title}</h3>
+            <p>{feature.text}</p>
+          </article>
+        ))}
+      </div>
+
+      <section className="about-section">
+        <div>
+          <span>Định hướng sản phẩm</span>
+          <h3>Không thay thế việc học toán, mà giúp quá trình nhìn hình và kiểm tra mô hình trở nên dễ dàng hơn.</h3>
+        </div>
+        <p>Áp dụng phương pháp <strong>"Infrastructure as Code"</strong> cho hình học. Lời giải của bạn là chân lý, AI chỉ đóng vai trò là "trợ lý vẽ kỹ thuật". Nó giúp bạn <em>Hiển thị hệ tọa độ 3D</em> hoặc <em>Khảo sát đồ thị quỹ tích</em> một cách dễ dàng thay vì phải đánh vật với bút và giấy thước đo độ.</p>
+      </section>
+    </section>
+  );
+}

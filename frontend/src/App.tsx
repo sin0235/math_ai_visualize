@@ -1087,7 +1087,6 @@ function GuidePage({ onStart, onSettings }: { onStart: () => void; onSettings: (
   return (
     <section className="guide-page">
       <div className="guide-hero">
-        <span className="home-eyebrow">Hướng dẫn</span>
         <h2>Bắt đầu dựng hình toán học trong vài bước.</h2>
         <p>Quy trình tốt nhất là mô tả đề rõ ràng, chọn renderer phù hợp, kiểm tra scene và tinh chỉnh lại khi cần.</p>
         <div className="home-actions">
@@ -1129,18 +1128,17 @@ function GuidePage({ onStart, onSettings }: { onStart: () => void; onSettings: (
 
 
 function AboutPage({ onStart, onGuide }: { onStart: () => void; onGuide: () => void }) {
-  const values = [
-    { title: 'Nhanh hơn khi dựng hình', text: 'Giảm thời gian chuyển đề bài thành hình minh họa để tập trung vào ý tưởng và lời giải.' },
-    { title: 'Kiểm soát được kết quả', text: 'Scene có cấu trúc giúp người dùng xem lại, chỉnh điểm và dựng lại khi hình chưa đúng.' },
-    { title: 'Phù hợp học tập', text: 'Tối ưu cho hình học phổ thông, Oxy/Oxyz, OCR ảnh đề bài và các mô hình trực quan.' },
+  const features = [
+    { title: 'Xuất hình phân tích (Reasoning Model)', text: 'Luồng xử lý AI 2 tầng độc lập: Phân tích suy luận (Task 1) trước khi vẽ (Task 2) giảm thiểu hallucination, giúp tọa độ và quan hệ hình học luôn vững chắc.' },
+    { title: 'Công nhận tọa độ & OCR', text: 'Hỗ trợ đọc đề bài từ ảnh (kéo thả hoặc clipboard) và giữ nguyên tọa độ người dùng nhập vào, tham chiếu dưới gốc tọa độ.' },
+    { title: 'Kiểm soát & Tinh chỉnh', text: 'Không chỉ là vẽ ảnh tĩnh, AI Math Renderer sinh ra Scene JSON có cấu trúc, cho phép bạn kéo thả điểm, thêm chân đường cao và chỉnh sửa trực tiếp trên giao diện.' },
   ];
 
   return (
     <section className="about-page">
       <div className="about-hero">
-        <span className="home-eyebrow">About</span>
-        <h2>AI Math Renderer giúp biến đề toán thành hình trực quan.</h2>
-        <p>Ứng dụng được xây dựng cho học sinh, giáo viên và người học hình học muốn tạo hình GeoGebra/Three.js nhanh từ ngôn ngữ tự nhiên, ảnh chụp hoặc dữ liệu tọa độ.</p>
+        <h2>AI tạo hình toán học với sự kiểm soát tuyệt đối.</h2>
+        <p>AI Math Renderer được xây dựng nhằm giải quyết một nỗi đau lớn trong giáo dục: <strong>Việc vẽ hình học không gian hay đồ thị quá mất thời gian</strong>. Chúng tôi tinh lọc quá trình này bằng cách kết hợp LLM, OCR và các renderer mạnh mẽ như GeoGebra, Three.js.</p>
         <div className="home-actions">
           <button type="button" onClick={onStart}>Mở workspace</button>
           <button type="button" className="secondary-button" onClick={onGuide}>Xem hướng dẫn</button>
@@ -1148,10 +1146,10 @@ function AboutPage({ onStart, onGuide }: { onStart: () => void; onGuide: () => v
       </div>
 
       <div className="about-grid">
-        {values.map((value) => (
-          <article key={value.title}>
-            <h3>{value.title}</h3>
-            <p>{value.text}</p>
+        {features.map((feature) => (
+          <article key={feature.title}>
+            <h3>{feature.title}</h3>
+            <p>{feature.text}</p>
           </article>
         ))}
       </div>
@@ -1159,13 +1157,14 @@ function AboutPage({ onStart, onGuide }: { onStart: () => void; onGuide: () => v
       <section className="about-section">
         <div>
           <span>Định hướng sản phẩm</span>
-          <h3>Không thay thế việc học toán, mà giúp quá trình nhìn hình và kiểm tra mô hình trở nên dễ hơn.</h3>
+          <h3>Không thay thế việc học toán, mà giúp quá trình nhìn hình và kiểm tra mô hình trở nên dễ dàng hơn.</h3>
         </div>
-        <p>AI Math Renderer tập trung vào trải nghiệm dựng hình có thể kiểm soát: nhập đề rõ ràng, sinh scene có cấu trúc, hiển thị bằng renderer phù hợp và cho phép tinh chỉnh lại thay vì chỉ tạo một ảnh tĩnh.</p>
+        <p>Áp dụng phương pháp <strong>"Infrastructure as Code"</strong> cho hình học. Lời giải của bạn là chân lý, AI chỉ đóng vai trò là "trợ lý vẽ kỹ thuật". Nó giúp bạn <em>Hiển thị hệ tọa độ 3D</em> hoặc <em>Khảo sát đồ thị quỹ tích</em> một cách dễ dàng thay vì phải đánh vật với bút và giấy thước đo độ.</p>
       </section>
     </section>
   );
 }
+
 
 function HistoryPage({ user, items, loading, onOpen, onDelete, onLogin, onWorkspace }: { user: UserResponse | null; items: RenderHistoryItem[]; loading: boolean; onOpen: (id: string) => void; onDelete: (id: string) => void; onLogin: () => void; onWorkspace: () => void }) {
   if (!user) {
