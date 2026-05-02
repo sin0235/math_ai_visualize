@@ -28,8 +28,9 @@ import {
 import { 
   formatHistoryDate, 
   MetricCard, 
-  AdminNavButton, 
-  AdminDetails, 
+  AdminNavButton,
+  AdminDetails,
+  AdminIcon,
   hasObjectKeys 
 } from './AdminComponents';
 import { 
@@ -209,16 +210,16 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
   return (
     <section className="admin-dashboard">
       <aside className="admin-sidebar">
-        <div className="admin-brand"><span>H</span><div><strong>Hinh Admin</strong><small>Project Control Center</small></div></div>
+        <div className="admin-brand"><span><AdminIcon name="admin" /></span><div><strong>Hinh Admin</strong><small>Project Control Center</small></div></div>
         <nav className="admin-sidebar-nav">
-          <AdminNavButton active={activeSection === 'overview'} onClick={() => setActiveSection('overview')} label="Tổng quan" />
-          <AdminNavButton active={activeSection === 'users'} onClick={() => setActiveSection('users')} label="Người dùng" />
-          <AdminNavButton active={activeSection === 'renders'} onClick={() => setActiveSection('renders')} label="Render jobs" />
-          <AdminNavButton active={activeSection === 'models'} onClick={() => setActiveSection('models')} label="Model & AI" />
-          <AdminNavButton active={activeSection === 'settings'} onClick={() => setActiveSection('settings')} label="Cài đặt DB" />
-          <AdminNavButton active={activeSection === 'audit'} onClick={() => setActiveSection('audit')} label="Audit logs" />
+          <AdminNavButton active={activeSection === 'overview'} onClick={() => setActiveSection('overview')} icon="overview" label="Tổng quan" />
+          <AdminNavButton active={activeSection === 'users'} onClick={() => setActiveSection('users')} icon="users" label="Người dùng" />
+          <AdminNavButton active={activeSection === 'renders'} onClick={() => setActiveSection('renders')} icon="renders" label="Render jobs" />
+          <AdminNavButton active={activeSection === 'models'} onClick={() => setActiveSection('models')} icon="models" label="Model & AI" />
+          <AdminNavButton active={activeSection === 'settings'} onClick={() => setActiveSection('settings')} icon="settings" label="Cài đặt DB" />
+          <AdminNavButton active={activeSection === 'audit'} onClick={() => setActiveSection('audit')} icon="audit" label="Audit logs" />
         </nav>
-        <div className="admin-sidebar-footer"><small>{user.email}</small><button type="button" className="secondary-button" onClick={onBackToApp}>Trang người dùng</button></div>
+        <div className="admin-sidebar-footer"><small>{user.email}</small><button type="button" className="secondary-button admin-button-with-icon" onClick={onBackToApp}><AdminIcon name="back" />Trang người dùng</button></div>
       </aside>
 
       <main className="admin-main">
@@ -230,14 +231,14 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
             </header>
             <div className="admin-section-stack">
             <div className="admin-metric-grid">
-              <MetricCard label="Người dùng" value={summary?.users ?? 0} variant="primary" />
-              <MetricCard label="Đang hoạt động" value={summary?.active_users ?? 0} variant="success" />
-              <MetricCard label="Admin" value={summary?.admins ?? 0} variant="info" />
-              <MetricCard label="Render jobs" value={summary?.render_jobs ?? 0} variant="primary" />
-              <MetricCard label="Render hôm nay" value={summary?.render_jobs_today ?? 0} variant="success" />
-              <MetricCard label="User mới hôm nay" value={summary?.users_today ?? 0} variant="info" />
-              <MetricCard label="Job cảnh báo AI" value={summary?.ai_warning_jobs ?? 0} variant="warning" />
-              <MetricCard label="Tỉ lệ cảnh báo AI" value={summary?.ai_warning_rate ?? 0} suffix="%" variant="warning" />
+              <MetricCard label="Người dùng" value={summary?.users ?? 0} variant="primary" icon="users" />
+              <MetricCard label="Đang hoạt động" value={summary?.active_users ?? 0} variant="success" icon="active" />
+              <MetricCard label="Admin" value={summary?.admins ?? 0} variant="info" icon="admin" />
+              <MetricCard label="Render jobs" value={summary?.render_jobs ?? 0} variant="primary" icon="renders" />
+              <MetricCard label="Render hôm nay" value={summary?.render_jobs_today ?? 0} variant="success" icon="chart" />
+              <MetricCard label="User mới hôm nay" value={summary?.users_today ?? 0} variant="info" icon="users" />
+              <MetricCard label="Job cảnh báo AI" value={summary?.ai_warning_jobs ?? 0} variant="warning" icon="warning" />
+              <MetricCard label="Tỉ lệ cảnh báo AI" value={summary?.ai_warning_rate ?? 0} suffix="%" variant="warning" icon="warning" />
             </div>
             
             <section className="admin-panel admin-panel-full">

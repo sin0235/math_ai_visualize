@@ -856,9 +856,26 @@ select {
   gap: 8px;
 }
 
+.admin-icon {
+  display: block;
+  flex-shrink: 0;
+}
+
+.admin-metric-label,
+.admin-sidebar-nav button,
+.admin-button-with-icon {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.admin-metric-label {
+  color: #737373;
+}
+
 .admin-metric-card span {
   display: block;
-  color: #737373;
+  color: inherit;
   font-size: 12px;
   font-weight: 600;
   text-transform: uppercase;
@@ -926,6 +943,11 @@ select {
   color: #ffffff;
   font-weight: 800;
   font-size: 14px;
+}
+
+.admin-brand > span .admin-icon {
+  width: 18px;
+  height: 18px;
 }
 
 .admin-brand > div {

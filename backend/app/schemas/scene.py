@@ -258,6 +258,12 @@ class Router9SettingsDefaults(ProviderSettingsDefaults):
     allowed_model_ids: list[str] = Field(default_factory=list)
 
 
+class OcrSettingsDefaults(BaseModel):
+    provider: OcrProvider
+    model: str
+    max_image_mb: int
+
+
 class SettingsDefaultsResponse(BaseModel):
     app_name: str
     default_provider: str
@@ -265,6 +271,7 @@ class SettingsDefaultsResponse(BaseModel):
     nvidia: ProviderSettingsDefaults
     ollama: ProviderSettingsDefaults
     router9: Router9SettingsDefaults
+    ocr: OcrSettingsDefaults
 
 
 class RenderRequest(BaseModel):
