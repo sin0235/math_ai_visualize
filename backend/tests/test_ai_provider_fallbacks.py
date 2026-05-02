@@ -8,7 +8,12 @@ from app.main import app
 from app.schemas.scene import AiModelInfo, OcrRequest, RenderRequest, RuntimeSettings
 from app.services.extractor import extract_scene, _provider_order
 from app.services.provider_logging import format_provider_error, redact_sensitive
-from app.services.router9_bootstrap import bootstrap_router9_models, select_codex_model_ids
+from app.services.router9_bootstrap import (
+    bootstrap_router9_models,
+    select_codex_model_ids,
+    select_router9_ocr_model_ids,
+    select_router9_render_model_ids,
+)
 from app.services.router9_client import Router9Client
 
 
@@ -67,7 +72,7 @@ def test_provider_error_redaction_removes_secrets_and_image_data():
 
 
 def test_provider_order_auto_includes_special_fallbacks():
-    order = _provider_order(Settings(ai_provider="auto"))
+    order = _provider_order(Settings(_env_file=None, ai_provider="auto"))
 
     assert order == [
         "nvidia",
@@ -78,24 +83,37 @@ def test_provider_order_auto_includes_special_fallbacks():
     ]
 
 
+def test_provider_order_auto_prefers_router9_when_connected():
+    order = _provider_order(Settings(_env_file=None, ai_provider="auto", router9_api_key="secret"))
+
+    assert order == [
+        "router9",
+        "nvidia",
+        "openrouter",
+        "opencode_nemotron",
+        "ollama_gpt_oss",
+        "openrouter_gpt_oss",
+    ]
+
+
 def test_provider_order_keeps_nemotron_fallbacks_together():
-    order = _provider_order(Settings(), "opencode_nemotron")
+    order = _provider_order(Settings(_env_file=None), "opencode_nemotron")
 
     assert order[:4] == ["opencode_nemotron", "openrouter", "ollama_gpt_oss", "openrouter_gpt_oss"]
 
 
 def test_provider_order_prefers_local_gpt_oss_when_selected():
-    order = _provider_order(Settings(), "ollama_gpt_oss")
+    order = _provider_order(Settings(_env_file=None), "ollama_gpt_oss")
 
     assert order[:4] == ["ollama_gpt_oss", "openrouter_gpt_oss", "openrouter", "opencode_nemotron"]
 
 
 def test_provider_order_mock_skips_ai_providers():
-    assert _provider_order(Settings(), "mock") == []
+    assert _provider_order(Settings(_env_file=None), "mock") == []
 
 
 def test_provider_order_router9_direct_selection_can_fallback_when_not_only_mode():
-    order = _provider_order(Settings(), "router9")
+    order = _provider_order(Settings(_env_file=None), "router9")
 
     assert order == [
         "router9",
@@ -108,13 +126,13 @@ def test_provider_order_router9_direct_selection_can_fallback_when_not_only_mode
 
 
 def test_provider_order_router9_only_restricts_to_router9():
-    assert _provider_order(Settings(router9_only=True), "auto") == ["router9"]
-    assert _provider_order(Settings(router9_only=True), "router9") == ["router9"]
+    assert _provider_order(Settings(_env_file=None, router9_only=True), "auto") == ["router9"]
+    assert _provider_order(Settings(_env_file=None, router9_only=True), "router9") == ["router9"]
 
 
 def test_provider_order_router9_only_rejects_other_providers():
     try:
-        _provider_order(Settings(router9_only=True), "nvidia")
+        _provider_order(Settings(_env_file=None, router9_only=True), "nvidia")
     except RuntimeError as error:
         assert "9router-only" in str(error)
     else:
@@ -211,12 +229,29 @@ def test_select_codex_model_ids_keeps_5_1_and_newer():
     assert selected == ["codex-mini-6", "cc/codex-5.5", "cc/codex-5.1"]
 
 
+def test_select_router9_preferred_models_match_requested_order():
+    models = [
+        AiModelInfo(id="gh/gpt-5.2", label="gh/gpt-5.2"),
+        AiModelInfo(id="cc/codex-5.4-image", label="cc/codex-5.4-image"),
+        AiModelInfo(id="cc/codex-5.5-image", label="cc/codex-5.5-image"),
+        AiModelInfo(id="cc/codex-5.3", label="cc/codex-5.3"),
+        AiModelInfo(id="cc/codex-5.4", label="cc/codex-5.4"),
+        AiModelInfo(id="cc/codex-5.5", label="cc/codex-5.5"),
+    ]
+
+    assert select_router9_ocr_model_ids(models) == ["cc/codex-5.5-image", "cc/codex-5.4-image", "gh/gpt-5.2"]
+    assert select_router9_render_model_ids(models) == ["cc/codex-5.5", "cc/codex-5.5-image", "cc/codex-5.4", "cc/codex-5.4-image", "cc/codex-5.3", "gh/gpt-5.2"]
+
+
 def test_bootstrap_router9_models_adds_codex_defaults(monkeypatch):
     async def fake_list_models(self):
         return [
-            AiModelInfo(id="cc/codex-5.1", label="cc/codex-5.1"),
+            AiModelInfo(id="gh/gpt-5.2", label="gh/gpt-5.2"),
+            AiModelInfo(id="cc/codex-5.4-image", label="cc/codex-5.4-image"),
+            AiModelInfo(id="cc/codex-5.5-image", label="cc/codex-5.5-image"),
+            AiModelInfo(id="cc/codex-5.3", label="cc/codex-5.3"),
+            AiModelInfo(id="cc/codex-5.4", label="cc/codex-5.4"),
             AiModelInfo(id="cc/codex-5.5", label="cc/codex-5.5"),
-            AiModelInfo(id="cc/codex-5", label="cc/codex-5"),
         ]
 
     settings = Settings(router9_api_key="secret", router9_allowed_models=["existing/model"])
@@ -224,9 +259,17 @@ def test_bootstrap_router9_models_adds_codex_defaults(monkeypatch):
 
     asyncio.run(bootstrap_router9_models(settings))
 
-    assert settings.router9_allowed_models == ["existing/model", "cc/codex-5.5", "cc/codex-5.1"]
+    assert settings.router9_allowed_models == [
+        "existing/model",
+        "cc/codex-5.5-image",
+        "cc/codex-5.4-image",
+        "gh/gpt-5.2",
+        "cc/codex-5.5",
+        "cc/codex-5.4",
+        "cc/codex-5.3",
+    ]
     assert settings.router9_text_model == "cc/codex-5.5"
-    assert settings.router9_ocr_model == "cc/codex-5.5"
+    assert settings.router9_ocr_model == "cc/codex-5.5-image"
 
 
 def test_router9_list_models_uses_openai_compatible_models_endpoint(monkeypatch):
@@ -312,6 +355,35 @@ def test_render_fallback_success_returns_prior_failures_as_warnings(monkeypatch)
 
     assert scene.renderer == "geogebra_2d"
     assert any("AI fallback: nvidia/" in warning and "quota exceeded" in warning for warning in warnings)
+
+
+def test_render_router9_tries_preferred_model_chain(monkeypatch):
+    calls = []
+
+    async def fake_extract(provider, settings, problem_text, grade, reasoning_layer, preferred_ai_model=None):
+        calls.append((provider, preferred_ai_model))
+        if preferred_ai_model != "gh/gpt-5.2":
+            raise RuntimeError("model unavailable")
+        return {"problem_text": problem_text, "renderer": "geogebra_2d", "objects": [], "view": {"dimension": "2d"}}
+
+    monkeypatch.setattr("app.services.extractor._extract_with_provider", fake_extract)
+
+    runtime_settings = RuntimeSettings.model_validate({
+        "router9": {
+            "api_key": "secret",
+            "allowed_model_ids": ["cc/codex-5.5", "cc/codex-5.4", "cc/codex-5.3", "gh/gpt-5.2"],
+        }
+    })
+    scene, warnings = asyncio.run(extract_scene("x", runtime_settings=runtime_settings))
+
+    assert scene.renderer == "geogebra_2d"
+    assert calls == [
+        ("router9", "cc/codex-5.5"),
+        ("router9", "cc/codex-5.4"),
+        ("router9", "cc/codex-5.3"),
+        ("router9", "gh/gpt-5.2"),
+    ]
+    assert len(warnings) == 3
 
 
 def test_render_all_ai_failures_warn_with_attempt_chain_before_mock(monkeypatch):

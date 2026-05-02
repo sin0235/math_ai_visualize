@@ -9,6 +9,7 @@ from app.schemas.scene import AdvancedRenderSettings, MathScene, RuntimeSettings
 from app.services.nvidia_client import NvidiaClient
 from app.services.ollama_client import OllamaClient
 from app.services.openrouter_client import OpenRouterClient
+from app.services.router9_bootstrap import select_router9_render_model_ids_from_ids
 from app.services.router9_client import Router9Client
 from app.services.provider_logging import redact_sensitive
 from app.services.solid_presets import equilateral_triangle, rectangular_box, square_pyramid, triangular_prism, triangular_pyramid
@@ -66,21 +67,23 @@ async def extract_scene(
     warnings: list[str] = []
     attempts: list[RenderAttempt] = []
 
+    requested_provider = preferred_ai_provider or settings.ai_provider
     for provider in _provider_order(settings, preferred_ai_provider):
-        model = _provider_model(provider, settings, preferred_ai_model)
-        try:
-            scene_json = await _extract_with_provider(provider, settings, problem_text, grade, render_settings.reasoning_layer, preferred_ai_model)
-            warnings.extend(_render_attempt_warnings(attempts))
-            return MathScene.model_validate(normalize_scene_json(scene_json)), warnings
-        except (RuntimeError, ValidationError, ValueError, KeyError) as error:
-            attempts.append(RenderAttempt(provider, model, str(error)))
-            if settings.router9_only:
-                raise RuntimeError(_format_render_failure("9router-only đang bật nên không fallback sang provider khác.", attempts, True)) from error
-        except Exception as error:
-            message = str(error) or error.__class__.__name__
-            attempts.append(RenderAttempt(provider, model, message))
-            if settings.router9_only:
-                raise RuntimeError(_format_render_failure("9router-only đang bật nên không fallback sang provider khác.", attempts, True)) from error
+        explicit_model = preferred_ai_model if provider == requested_provider else None
+        for model in _provider_model_candidates(provider, settings, explicit_model):
+            try:
+                scene_json = await _extract_with_provider(provider, settings, problem_text, grade, render_settings.reasoning_layer, model)
+                warnings.extend(_render_attempt_warnings(attempts))
+                return MathScene.model_validate(normalize_scene_json(scene_json)), warnings
+            except (RuntimeError, ValidationError, ValueError, KeyError) as error:
+                attempts.append(RenderAttempt(provider, model or _provider_model(provider, settings), str(error)))
+                if settings.router9_only:
+                    raise RuntimeError(_format_render_failure("9router-only đang bật nên không fallback sang provider khác.", attempts, True)) from error
+            except Exception as error:
+                message = str(error) or error.__class__.__name__
+                attempts.append(RenderAttempt(provider, model or _provider_model(provider, settings), message))
+                if settings.router9_only:
+                    raise RuntimeError(_format_render_failure("9router-only đang bật nên không fallback sang provider khác.", attempts, True)) from error
 
     warnings.extend(_render_attempt_warnings(attempts))
     if attempts:
@@ -315,6 +318,8 @@ def _provider_order(settings: Settings, preferred_ai_provider: str | None = None
         return _dedupe([provider, *nemotron_providers, *gpt_oss_providers, *nvidia_providers])
     if provider in gpt_oss_providers:
         return _dedupe([provider, *gpt_oss_providers, *nemotron_providers, *nvidia_providers])
+    if settings.router9_api_key:
+        return _dedupe([*router9_providers, *nvidia_providers, *nemotron_providers, *gpt_oss_providers])
     return _dedupe([*nvidia_providers, *nemotron_providers, *gpt_oss_providers])
 
 
@@ -332,6 +337,14 @@ def _provider_model(provider: str, settings: Settings, preferred_ai_model: str |
     if provider == "nvidia":
         return preferred_ai_model or settings.nvidia_text_model
     return "<unknown>"
+
+
+def _provider_model_candidates(provider: str, settings: Settings, preferred_ai_model: str | None = None) -> list[str | None]:
+    if provider == "router9":
+        return _router9_model_candidates(settings, preferred_ai_model)
+    if provider in {"openrouter", "nvidia", "ollama_gpt_oss"}:
+        return [preferred_ai_model]
+    return [None]
 
 
 def _render_attempt_warnings(attempts: list[RenderAttempt]) -> list[str]:
@@ -369,6 +382,24 @@ def _router9_model(settings: Settings, preferred_ai_model: str | None) -> str:
     if settings.router9_allowed_models and model not in settings.router9_allowed_models:
         raise RuntimeError(f"Model 9router không nằm trong danh sách được phép: {model}")
     return model
+
+
+def _router9_model_candidates(settings: Settings, preferred_ai_model: str | None) -> list[str]:
+    if preferred_ai_model is not None:
+        return [_router9_model(settings, preferred_ai_model)]
+
+    if settings.router9_allowed_models:
+        candidates = _dedupe([
+            settings.router9_text_model or "",
+            *select_router9_render_model_ids_from_ids(settings.router9_allowed_models),
+        ])
+        candidates = [model for model in candidates if model and model in settings.router9_allowed_models]
+    else:
+        candidates = _dedupe(settings.router9_text_fallback_models)
+
+    if not candidates:
+        raise RuntimeError("Chưa chọn model 9router phù hợp cho render.")
+    return candidates
 
 
 async def _extract_with_provider(provider: str, settings: Settings, problem_text: str, grade: int | None, reasoning_layer: str, preferred_ai_model: str | None = None) -> dict:

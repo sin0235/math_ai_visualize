@@ -112,6 +112,10 @@ function apiUrl(path: string) {
   return `${API_BASE_URL}${path}`;
 }
 
+export function getGoogleOAuthStartUrl(): string {
+  return apiUrl('/api/auth/google/start');
+}
+
 function normalizeApiBaseUrl(value: string | undefined) {
   const baseUrl = value?.trim().replace(/\/$/, '') ?? '';
   if (!baseUrl) return '';
@@ -141,12 +145,18 @@ export async function login(email: string, password: string): Promise<AuthRespon
   }, 'Không thể đăng nhập.');
 }
 
-export async function register(email: string, password: string, displayName?: string): Promise<AuthResponse> {
+export async function register(email: string, password: string, displayName: string | undefined, acceptPrivacyPolicy: boolean, acceptTerms: boolean): Promise<AuthResponse> {
   return requestJson('/api/auth/register', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ email, password, display_name: displayName ? cleanText(displayName) : undefined }),
+    body: JSON.stringify({
+      email,
+      password,
+      display_name: displayName ? cleanText(displayName) : undefined,
+      accept_privacy_policy: acceptPrivacyPolicy,
+      accept_terms: acceptTerms,
+    }),
   }, 'Không thể tạo tài khoản.');
 }
 
@@ -168,17 +178,22 @@ export async function resetPassword(token: string, password: string): Promise<Me
   }, 'Không thể đặt lại mật khẩu.');
 }
 
-export async function verifyEmail(token: string): Promise<AuthResponse> {
+export async function verifyEmail(token: string, otp: string): Promise<AuthResponse> {
   return requestJson('/api/auth/verify-email', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ token }),
+    body: JSON.stringify({ token, otp }),
   }, 'Không thể xác minh email.');
 }
 
-export async function resendVerification(): Promise<MessageResponse> {
-  return requestJson('/api/auth/resend-verification', { method: 'POST', credentials: 'include' }, 'Không thể gửi lại email xác minh.');
+export async function resendVerification(email: string): Promise<MessageResponse> {
+  return requestJson('/api/auth/resend-verification', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ email }),
+  }, 'Không thể gửi lại email xác minh.');
 }
 
 export async function changePassword(currentPassword: string, newPassword: string): Promise<MessageResponse> {

@@ -11,6 +11,7 @@ from app.repositories.auth import SESSION_COOKIE_NAME, SessionRepository, UserRe
 async def get_current_user(
     hinh_session: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
     db: DatabaseClient = Depends(get_database),
+    settings: Settings = Depends(get_settings),
 ) -> UserRecord:
     if not hinh_session:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Bạn chưa đăng nhập.")
@@ -22,6 +23,8 @@ async def get_current_user(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Tài khoản không còn tồn tại.")
     if user.status != "active":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Tài khoản này đã bị vô hiệu hoá.")
+    if settings.require_email_verification and user.email_verified_at is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Bạn cần xác minh email trước khi dùng tài khoản.")
     return user
 
 

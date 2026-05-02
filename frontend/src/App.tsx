@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-import { ApiError, changePassword, deleteAdminRenderJob, deleteRenderHistory, forgotPassword, getAdminAuditLogs, getAdminRenderJobs, getAdminSummary, getAdminSystemSettings, getAdminUsers, getCurrentUser, getHealth, getRenderHistory, getRenderHistoryDetail, getSessions, getSettingsDefaults, getUserSettings, login, logout, ocrImage, register, renderEditedScene, renderProblem, resendVerification, resetPassword, revokeOtherSessions, revokeSession, saveUserSettings, updateAdminUser, updateProfile, verifyEmail, type AdminRenderHistoryItem, type AdminSummaryResponse, type AuditLogResponse, type RenderHistoryItem, type SessionResponse, type SystemSettingResponse, type UserResponse } from './api/client';
+import { ApiError, changePassword, deleteAdminRenderJob, deleteRenderHistory, forgotPassword, getAdminAuditLogs, getAdminRenderJobs, getAdminSummary, getAdminSystemSettings, getAdminUsers, getCurrentUser, getGoogleOAuthStartUrl, getHealth, getRenderHistory, getRenderHistoryDetail, getSessions, getSettingsDefaults, getUserSettings, login, logout, ocrImage, register, renderEditedScene, renderProblem, resendVerification, resetPassword, revokeOtherSessions, revokeSession, saveUserSettings, updateAdminUser, updateProfile, verifyEmail, type AdminRenderHistoryItem, type AdminSummaryResponse, type AuditLogResponse, type RenderHistoryItem, type SessionResponse, type SystemSettingResponse, type UserResponse } from './api/client';
 import { defaultAdvancedSettings, ProblemInput, staticModelOptions, type ModelOption } from './components/ProblemInput';
 import { GeneralSettingsPanel } from './components/GeneralSettingsPanel';
 import { AccountPage } from './components/AccountPage';
@@ -20,8 +20,9 @@ import './styles.css';
 const SETTINGS_STORAGE_KEY = 'hinh-runtime-settings';
 const MOBILE_WARNING_STORAGE_KEY = 'hinh-mobile-warning-dismissed';
 const MOBILE_BREAKPOINT_QUERY = '(max-width: 900px)';
+const DEVELOPER_GITHUB_URL = 'https://github.com/sin0235';
 
-type AppView = 'home' | 'render' | 'history' | 'login' | 'settings' | 'admin' | 'account' | 'reset-password' | 'verify-email';
+type AppView = 'home' | 'render' | 'history' | 'guide' | 'about' | 'privacy-policy' | 'terms' | 'login' | 'settings' | 'admin' | 'account' | 'reset-password' | 'verify-email';
 type SettingsTab = 'general' | 'providers' | 'router9';
 type EditTool = 'move' | 'connect' | 'project_to_segment' | 'add_point';
 type Vec3 = { x: number; y: number; z: number };
@@ -36,6 +37,23 @@ type BackendStatus = {
   state: 'checking' | 'online' | 'offline';
   appName?: string;
 };
+
+function FooterNavIcon({ children }: { children: React.ReactNode }) {
+  return (
+    <svg className="footer-nav-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {children}
+    </svg>
+  );
+}
+
+function FooterNavButton({ onClick, children, icon }: { onClick: () => void; children: React.ReactNode; icon: React.ReactNode }) {
+  return (
+    <button type="button" className="footer-nav-link" onClick={onClick}>
+      {icon}
+      <span className="footer-nav-label">{children}</span>
+    </button>
+  );
+}
 
 export default function App() {
   const [activeView, setActiveView] = useState<AppView>('home');
@@ -129,7 +147,23 @@ export default function App() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const action = params.get('auth');
+    const authError = params.get('auth_error');
     const token = params.get('token');
+    if (action === 'google-success') {
+      setActiveView('render');
+      showNotification('Đăng nhập Google', 'Đăng nhập Google thành công. Workspace của bạn đã được đồng bộ.', [], 'info');
+      window.history.replaceState({}, document.title, window.location.pathname);
+      return;
+    }
+    if (authError) {
+      setActiveView('login');
+      const message = authError === 'google_unverified_email'
+        ? 'Email Google này chưa được xác minh nên chưa thể đăng nhập.'
+        : 'Không thể hoàn tất đăng nhập Google. Hãy thử lại hoặc dùng email/mật khẩu.';
+      showNotification('Đăng nhập Google', message, [], 'error');
+      window.history.replaceState({}, document.title, window.location.pathname);
+      return;
+    }
     if (action && token) {
       setAuthToken(token);
       if (action === 'reset-password') setActiveView('reset-password');
@@ -308,16 +342,25 @@ export default function App() {
     }
   }
 
-  async function handleRegister(email: string, password: string, displayName?: string) {
+  function handleGoogleLogin() {
+    window.location.href = getGoogleOAuthStartUrl();
+  }
+
+  async function handleRegister(email: string, password: string, displayName: string | undefined, acceptPrivacyPolicy: boolean, acceptTerms: boolean) {
     setAuthLoading(true);
     try {
       setRemoteSettingsHydrated(false);
-      const response = await register(email, password, displayName);
+      const response = await register(email, password, displayName, acceptPrivacyPolicy, acceptTerms);
       setUser(response.user);
-      await saveUserSettings(sanitizeSettingsForStorage(runtimeSettings));
-      await refreshHistory();
-      setRemoteSettingsHydrated(true);
-      setActiveView('account');
+      if (response.user.email_verified_at) {
+        await saveUserSettings(sanitizeSettingsForStorage(runtimeSettings));
+        await refreshHistory();
+        setRemoteSettingsHydrated(true);
+        setActiveView('account');
+      } else {
+        setRemoteSettingsHydrated(true);
+        setActiveView('login');
+      }
     } finally {
       setAuthLoading(false);
     }
@@ -347,13 +390,14 @@ export default function App() {
     return response.message;
   }
 
-  async function handleVerifyEmail(token: string) {
-    const response = await verifyEmail(token);
+  async function handleVerifyEmail(token: string, otp: string) {
+    const response = await verifyEmail(token, otp);
     setUser(response.user);
   }
 
   async function handleResendVerification() {
-    const response = await resendVerification();
+    if (!user?.email) return 'Hãy nhập email ở trang đăng nhập để gửi lại xác minh.';
+    const response = await resendVerification(user.email);
     return response.message;
   }
 
@@ -816,6 +860,10 @@ export default function App() {
             onWorkspace={() => setActiveView('render')}
           />
         )}
+        {activeView === 'guide' && <GuidePage onStart={() => setActiveView('render')} onSettings={() => setActiveView('settings')} />}
+        {activeView === 'about' && <AboutPage onStart={() => setActiveView('render')} onGuide={() => setActiveView('guide')} />}
+        {activeView === 'privacy-policy' && <PrivacyPolicyPage onBack={() => setActiveView('home')} />}
+        {activeView === 'terms' && <TermsPage onBack={() => setActiveView('home')} />}
         {activeView === 'admin' && (
           <AdminConsole
             user={user}
@@ -836,13 +884,16 @@ export default function App() {
             logoUrl={logoUrl}
             user={user}
             authLoading={authLoading}
-            onBackHome={() => setActiveView('home')}
             onContinueAsGuest={() => setActiveView('render')}
+            onToast={(title, message, kind = 'info') => showNotification(title, message, [], kind)}
             onLogin={handleLogin}
+            onGoogleLogin={handleGoogleLogin}
             onRegister={handleRegister}
             onForgotPassword={handleForgotPassword}
             onLogout={handleLogout}
             onOpenAccount={() => setActiveView('account')}
+            onOpenPrivacyPolicy={() => setActiveView('privacy-policy')}
+            onOpenTerms={() => setActiveView('terms')}
           />
         )}
         {activeView === 'account' && user && (
@@ -889,32 +940,275 @@ export default function App() {
               <img src={logoUrl} alt="AI Math Renderer" />
               <strong>AI Math Renderer</strong>
             </div>
-            <p>Dựng hình toán học từ ngôn ngữ tự nhiên, ảnh đề bài và dữ liệu tọa độ.</p>
+            <p>Biến đề bài tiếng Việt, ảnh chụp và dữ liệu tọa độ thành hình GeoGebra/Three.js để học, giảng dạy và kiểm tra lời giải trực quan.</p>
           </div>
           <nav className="footer-nav" aria-label="Footer navigation">
             <div>
               <strong>Sản phẩm</strong>
-              <button type="button" onClick={() => setActiveView('render')}>Workspace</button>
-              <button type="button" onClick={() => setActiveView('render')}>Hướng dẫn</button>
-              <button type="button" onClick={() => setNotification({ id: Date.now(), kind: 'info', title: 'Changelog', message: 'Changelog sẽ được bổ sung trong bản phát hành tiếp theo.', details: [] })}>Changelog</button>
+              <FooterNavButton
+                onClick={() => setActiveView('guide')}
+                icon={
+                  <FooterNavIcon>
+                    <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+                    <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+                    <path d="M8 7h8M8 11h6" />
+                  </FooterNavIcon>
+                }
+              >
+                Hướng dẫn
+              </FooterNavButton>
+              <FooterNavButton
+                onClick={() => setActiveView('about')}
+                icon={
+                  <FooterNavIcon>
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M12 16v-4" />
+                    <path d="M12 8h.01" />
+                  </FooterNavIcon>
+                }
+              >
+                About
+              </FooterNavButton>
             </div>
             <div>
               <strong>Hỗ trợ</strong>
-              <button type="button" onClick={() => setActiveView(user ? 'account' : 'login')}>Feedback</button>
-              <button type="button" onClick={() => setNotification({ id: Date.now(), kind: 'info', title: 'Báo lỗi', message: 'Kênh GitHub issue sẽ được bổ sung khi repository public.', details: [] })}>Báo lỗi GitHub</button>
-              <button type="button" onClick={() => setNotification({ id: Date.now(), kind: 'info', title: 'Liên hệ', message: 'Email liên hệ sẽ được bổ sung trong cấu hình triển khai.', details: [] })}>Liên hệ</button>
+              <FooterNavButton
+                onClick={() => setActiveView(user ? 'account' : 'login')}
+                icon={
+                  <FooterNavIcon>
+                    <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+                  </FooterNavIcon>
+                }
+              >
+                Feedback
+              </FooterNavButton>
+              <FooterNavButton
+                onClick={() => setNotification({ id: Date.now(), kind: 'info', title: 'Báo lỗi', message: 'Kênh GitHub issue sẽ được bổ sung khi repository public.', details: [] })}
+                icon={
+                  <svg className="footer-nav-icon footer-nav-icon--github" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                    <path
+                      fill="currentColor"
+                      stroke="none"
+                      d="M12 .5C5.65.5.5 5.65.5 12c0 5.1 3.29 9.43 7.86 10.96.58.11.79-.25.79-.56 0-.28-.01-1.02-.01-2.04-3.2.69-3.87-1.55-3.87-1.55-.52-1.33-1.28-1.68-1.28-1.68-1.05-.72.08-.71.08-.71 1.16.08 1.77 1.2 1.77 1.2 1.03 1.77 2.72 1.26 3.38.96.1-.75.4-1.26.73-1.55-2.55-.29-5.23-1.28-5.23-5.74 0-1.27.45-2.31 1.2-3.12-.12-.3-.52-1.52.11-3.18 0 0 .98-.31 3.2 1.2a11.14 11.14 0 0 1 5.8 0c2.22-1.51 3.19-1.2 3.19-1.2.64 1.66.24 2.88.12 3.18.75.81 1.19 1.85 1.19 3.12 0 4.48-2.69 5.44-5.26 5.73.42.36.79 1.08.79 2.18 0 1.57-.01 2.84-.01 3.23 0 .31.21.68.8.56A10.48 10.48 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5z"
+                    />
+                  </svg>
+                }
+              >
+                Báo lỗi GitHub
+              </FooterNavButton>
+              <FooterNavButton
+                onClick={() => setNotification({ id: Date.now(), kind: 'info', title: 'Liên hệ', message: 'Email liên hệ sẽ được bổ sung trong cấu hình triển khai.', details: [] })}
+                icon={
+                  <FooterNavIcon>
+                    <rect x="2" y="4" width="20" height="16" rx="2" />
+                    <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+                  </FooterNavIcon>
+                }
+              >
+                Liên hệ
+              </FooterNavButton>
+            </div>
+            <div>
+              <strong>Pháp lý</strong>
+              <FooterNavButton
+                onClick={() => setActiveView('privacy-policy')}
+                icon={
+                  <FooterNavIcon>
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10" />
+                  </FooterNavIcon>
+                }
+              >
+                Chính sách bảo mật
+              </FooterNavButton>
+              <FooterNavButton
+                onClick={() => setActiveView('terms')}
+                icon={
+                  <FooterNavIcon>
+                    <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
+                    <polyline points="14 2 14 8 20 8" />
+                    <path d="M10 13h4M10 17h4" />
+                  </FooterNavIcon>
+                }
+              >
+                Điều khoản sử dụng
+              </FooterNavButton>
             </div>
           </nav>
         </div>
         <div className="footer-bottom">
-          <span>© 2026 AI Math Renderer · v0.1.0</span>
-          <div>
-            <span>Developed by <strong>Sin Tran</strong></span>
-            <button type="button" onClick={() => setNotification({ id: Date.now(), kind: 'info', title: 'GitHub', message: 'GitHub repository sẽ được liên kết khi public.', details: [] })}>GitHub</button>
-          </div>
+          <span>
+            © 2026 AI Math Renderer · v0.1.0 · Developed by{' '}
+            <a href={DEVELOPER_GITHUB_URL} target="_blank" rel="noopener noreferrer" className="footer-developer-link">
+              <strong>Sin Tran</strong>
+            </a>
+          </span>
         </div>
       </footer>
     </>
+  );
+}
+
+function GuidePage({ onStart, onSettings }: { onStart: () => void; onSettings: () => void }) {
+  const guideSteps = [
+    { title: 'Nhập đề bài', text: 'Gõ đề hình học tiếng Việt, dán dữ liệu tọa độ hoặc kéo thả ảnh đề bài vào khu vực OCR.' },
+    { title: 'Chọn renderer', text: 'Dùng GeoGebra cho Oxy, đồ thị hàm số; dùng Three.js cho hình học không gian hoặc mô hình 3D.' },
+    { title: 'Dựng hình', text: 'AI chuyển đề bài thành scene có cấu trúc, sau đó renderer hiển thị hình để bạn kiểm tra trực quan.' },
+    { title: 'Tinh chỉnh', text: 'Kéo điểm, chỉnh scene hoặc dựng lại bằng prompt rõ hơn khi hình chưa đúng ý.' },
+  ];
+  const promptTips = [
+    'Nêu rõ hệ tọa độ: Oxy, Oxyz hoặc hình học không gian.',
+    'Đặt tên điểm, đường, mặt phẳng nhất quán: A(1,2), B(4,5), mặt phẳng (P).',
+    'Tách yêu cầu dựng hình và yêu cầu hiển thị nếu đề dài.',
+    'Với OCR, kiểm tra lại ký hiệu toán học trước khi bấm dựng hình.',
+  ];
+
+  return (
+    <section className="guide-page">
+      <div className="guide-hero">
+        <span className="home-eyebrow">Hướng dẫn</span>
+        <h2>Bắt đầu dựng hình toán học trong vài bước.</h2>
+        <p>Quy trình tốt nhất là mô tả đề rõ ràng, chọn renderer phù hợp, kiểm tra scene và tinh chỉnh lại khi cần.</p>
+        <div className="home-actions">
+          <button type="button" onClick={onStart}>Mở workspace</button>
+          <button type="button" className="secondary-button" onClick={onSettings}>Cấu hình model</button>
+        </div>
+      </div>
+
+      <div className="guide-grid">
+        {guideSteps.map((step, index) => (
+          <article className="guide-card" key={step.title}>
+            <span>0{index + 1}</span>
+            <h3>{step.title}</h3>
+            <p>{step.text}</p>
+          </article>
+        ))}
+      </div>
+
+      <div className="guide-columns">
+        <section>
+          <h3>Mẹo viết prompt</h3>
+          <ul>
+            {promptTips.map((tip) => <li key={tip}>{tip}</li>)}
+          </ul>
+        </section>
+        <section>
+          <h3>Khi nào dùng renderer nào?</h3>
+          <dl>
+            <dt>GeoGebra 2D</dt>
+            <dd>Bài Oxy, đồ thị hàm số, đường tròn, tam giác và quan hệ phẳng.</dd>
+            <dt>GeoGebra 3D / Three.js</dt>
+            <dd>Oxyz, khối đa diện, mặt phẳng, đường thẳng không gian và góc nhìn 3D.</dd>
+          </dl>
+        </section>
+      </div>
+    </section>
+  );
+}
+
+function PrivacyPolicyPage({ onBack }: { onBack: () => void }) {
+  const sections = [
+    { title: 'Dữ liệu tài khoản', text: 'Chúng tôi lưu email, tên hiển thị, trạng thái xác minh email, phiên đăng nhập và các sự kiện bảo mật để vận hành tài khoản.' },
+    { title: 'Dữ liệu workspace', text: 'Khi đăng nhập, lịch sử dựng hình, scene, cấu hình renderer/model và các chỉnh sửa có thể được lưu để bạn tiếp tục làm việc ở phiên sau.' },
+    { title: 'Email xác minh và khôi phục', text: 'Hệ thống gửi link token và mã OTP để xác minh email; link đặt lại mật khẩu dùng token riêng và có thời hạn.' },
+    { title: 'API key provider', text: 'API key cấu hình trong trình duyệt không được lưu server trong cấu hình cá nhân; backend chỉ nhận key trong yêu cầu render khi cần xử lý.' },
+  ];
+
+  return (
+    <section className="legal-page product-page-card">
+      <span className="home-eyebrow">Chính sách bảo mật</span>
+      <div className="legal-hero-row">
+        <div>
+          <h2>Chính sách bảo mật AI Math Renderer</h2>
+          <p>Phiên bản 2026-05-02. Chính sách này mô tả dữ liệu được thu thập để vận hành đăng nhập, lưu workspace và bảo vệ tài khoản.</p>
+        </div>
+        <button type="button" className="secondary-button" onClick={onBack}>Về trang chủ</button>
+      </div>
+      <div className="legal-section-grid">
+        {sections.map((section) => (
+          <article key={section.title}>
+            <h3>{section.title}</h3>
+            <p>{section.text}</p>
+          </article>
+        ))}
+      </div>
+      <section className="legal-note">
+        <h3>Quyền riêng tư và bảo mật</h3>
+        <p>Chúng tôi dùng cookie phiên HttpOnly cho đăng nhập, audit log cho sự kiện nhạy cảm và giới hạn tốc độ cho các endpoint auth. Người dùng nên không nhập thông tin cá nhân nhạy cảm vào đề bài nếu không cần thiết.</p>
+      </section>
+    </section>
+  );
+}
+
+function TermsPage({ onBack }: { onBack: () => void }) {
+  const sections = [
+    { title: 'Sử dụng hợp lệ', text: 'Bạn đồng ý dùng ứng dụng cho học tập, giảng dạy, kiểm tra mô hình hình học và không lạm dụng hệ thống, spam hoặc cố tình vượt giới hạn bảo mật.' },
+    { title: 'Nội dung người dùng', text: 'Bạn chịu trách nhiệm với đề bài, ảnh OCR và dữ liệu tọa độ đã nhập. Không tải nội dung vi phạm pháp luật hoặc quyền của bên thứ ba.' },
+    { title: 'Giới hạn độ chính xác AI', text: 'Kết quả dựng hình có thể sai hoặc thiếu chi tiết. Hãy kiểm tra lại scene, tọa độ, quan hệ hình học và lời giải trước khi sử dụng trong tài liệu chính thức.' },
+    { title: 'Tài khoản và xác minh email', text: 'Tạo tài khoản yêu cầu đồng ý chính sách pháp lý và xác minh email bằng token + OTP trước khi dùng đầy đủ các tính năng tài khoản.' },
+  ];
+
+  return (
+    <section className="legal-page product-page-card">
+      <span className="home-eyebrow">Điều khoản sử dụng</span>
+      <div className="legal-hero-row">
+        <div>
+          <h2>Điều khoản sử dụng AI Math Renderer</h2>
+          <p>Phiên bản 2026-05-02. Các điều khoản này đặt phạm vi sử dụng an toàn, trách nhiệm nội dung và giới hạn của kết quả AI.</p>
+        </div>
+        <button type="button" className="secondary-button" onClick={onBack}>Về trang chủ</button>
+      </div>
+      <div className="legal-section-grid">
+        {sections.map((section) => (
+          <article key={section.title}>
+            <h3>{section.title}</h3>
+            <p>{section.text}</p>
+          </article>
+        ))}
+      </div>
+      <section className="legal-note">
+        <h3>Thay đổi điều khoản</h3>
+        <p>Khi phiên bản điều khoản hoặc chính sách thay đổi đáng kể, ứng dụng có thể yêu cầu người dùng đọc và xác nhận lại trước khi tiếp tục sử dụng tài khoản.</p>
+      </section>
+    </section>
+  );
+}
+
+function AboutPage({ onStart, onGuide }: { onStart: () => void; onGuide: () => void }) {
+  const values = [
+    { title: 'Nhanh hơn khi dựng hình', text: 'Giảm thời gian chuyển đề bài thành hình minh họa để tập trung vào ý tưởng và lời giải.' },
+    { title: 'Kiểm soát được kết quả', text: 'Scene có cấu trúc giúp người dùng xem lại, chỉnh điểm và dựng lại khi hình chưa đúng.' },
+    { title: 'Phù hợp học tập', text: 'Tối ưu cho hình học phổ thông, Oxy/Oxyz, OCR ảnh đề bài và các mô hình trực quan.' },
+  ];
+
+  return (
+    <section className="about-page">
+      <div className="about-hero">
+        <span className="home-eyebrow">About</span>
+        <h2>AI Math Renderer giúp biến đề toán thành hình trực quan.</h2>
+        <p>Ứng dụng được xây dựng cho học sinh, giáo viên và người học hình học muốn tạo hình GeoGebra/Three.js nhanh từ ngôn ngữ tự nhiên, ảnh chụp hoặc dữ liệu tọa độ.</p>
+        <div className="home-actions">
+          <button type="button" onClick={onStart}>Mở workspace</button>
+          <button type="button" className="secondary-button" onClick={onGuide}>Xem hướng dẫn</button>
+        </div>
+      </div>
+
+      <div className="about-grid">
+        {values.map((value) => (
+          <article key={value.title}>
+            <h3>{value.title}</h3>
+            <p>{value.text}</p>
+          </article>
+        ))}
+      </div>
+
+      <section className="about-section">
+        <div>
+          <span>Định hướng sản phẩm</span>
+          <h3>Không thay thế việc học toán, mà giúp quá trình nhìn hình và kiểm tra mô hình trở nên dễ hơn.</h3>
+        </div>
+        <p>AI Math Renderer tập trung vào trải nghiệm dựng hình có thể kiểm soát: nhập đề rõ ràng, sinh scene có cấu trúc, hiển thị bằng renderer phù hợp và cho phép tinh chỉnh lại thay vì chỉ tạo một ảnh tĩnh.</p>
+      </section>
+    </section>
   );
 }
 
@@ -1172,8 +1466,8 @@ function mergeBackendDefaults(current: RuntimeSettings, defaults: SettingsDefaul
       allowed_model_ids: router9Allowed,
       scanned_models: router9Scanned,
     },
-    ocr: current.ocr.provider === 'router9' && !current.ocr.model && router9Model
-      ? { ...current.ocr, model: router9Model }
+    ocr: defaults.router9.api_key_configured || router9Allowed.length > 0
+      ? { ...current.ocr, provider: 'router9', model: '' }
       : current.ocr,
   };
 }

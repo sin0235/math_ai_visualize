@@ -33,7 +33,9 @@ class Settings(BaseSettings):
     router9_api_key: str | None = None
     router9_base_url: str = "http://localhost:20128/v1"
     router9_text_model: str | None = None
-    router9_ocr_model: str = "codex-5.5"
+    router9_text_fallback_models: list[str] = ["codex-5.5", "codex-5.4", "codex-5.3", "github/gpt-5.2"]
+    router9_ocr_model: str | None = None
+    router9_ocr_fallback_models: list[str] = ["codex-5.5-image", "codex-5.4-image", "github/gpt-5.2"]
     router9_only: bool = False
     router9_allowed_models: list[str] = []
     ai_provider: str = "auto"
@@ -56,6 +58,9 @@ class Settings(BaseSettings):
     smtp_use_tls: bool = True
     auth_email_dev_mode: bool = True
     require_email_verification: bool = False
+    google_oauth_client_id: str | None = None
+    google_oauth_client_secret: str | None = None
+    google_oauth_redirect_uri: str = "https://math-renderer-api.sin235.live/api/auth/google/callback"
     allow_missing_origin_for_cookie_mutations: bool = True
 
     model_config = SettingsConfigDict(env_file=(".env", "backend/.env"), env_file_encoding="utf-8")

@@ -2,7 +2,8 @@ from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from sqlite3 import IntegrityError
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Query, Request, Response, status
+from fastapi.responses import RedirectResponse
 
 from app.api.deps import get_current_user, require_trusted_origin
 from app.core.config import Settings, get_settings
@@ -14,6 +15,10 @@ from app.repositories.auth import (
     TOKEN_PURPOSE_EMAIL_VERIFICATION,
     TOKEN_PURPOSE_PASSWORD_RESET,
     AuthTokenRepository,
+    LegalAcceptanceRepository,
+    OAUTH_PROVIDER_GOOGLE,
+    OAuthIdentityRepository,
+    OAuthStateRepository,
     RateLimitRepository,
     SessionRepository,
     UserRepository,
@@ -34,6 +39,7 @@ from app.schemas.auth import (
     VerifyEmailRequest,
 )
 from app.services.email import send_password_reset_email, send_verification_email
+from app.services.google_oauth import build_google_authorization_url, exchange_google_code, fetch_google_userinfo, google_oauth_configured
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 GENERIC_LOGIN_ERROR = "Email hoặc mật khẩu không đúng."
@@ -53,7 +59,6 @@ async def register(
     await enforce_rate_limit(db, f"auth:register:ip:{client_ip(raw_request)}", 10, 3600)
     await enforce_rate_limit(db, f"auth:register:email:{normalize_email(str(request.email))}", 3, 3600)
     users = UserRepository(db)
-    sessions = SessionRepository(db)
     if await users.find_by_email(str(request.email)):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email này đã được đăng ký.")
     try:
@@ -62,14 +67,94 @@ async def register(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email này đã được đăng ký.") from error
     if request.display_name:
         user = await users.update_profile(user.id, request.display_name.strip())
+    await LegalAcceptanceRepository(db).record_registration_acceptances(user.id, client_ip(raw_request), raw_request.headers.get("user-agent"))
     token_repo = AuthTokenRepository(db)
-    _, verification_token = await token_repo.create(user.id, TOKEN_PURPOSE_EMAIL_VERIFICATION, 24 * 60, client_ip(raw_request), raw_request.headers.get("user-agent"))
-    await send_verification_email(user, verification_token, settings)
+    _, verification_token, verification_otp = await token_repo.create(user.id, TOKEN_PURPOSE_EMAIL_VERIFICATION, 24 * 60, client_ip(raw_request), raw_request.headers.get("user-agent"), include_otp=True)
+    await send_verification_email(user, verification_token, verification_otp, settings)
+    await audit(db, user.id, "legal.privacy_policy_accepted", "user", user.id, raw_request)
+    await audit(db, user.id, "legal.terms_accepted", "user", user.id, raw_request)
     await audit(db, user.id, "auth.registered", "user", user.id, raw_request)
     await audit(db, user.id, "auth.email_verification_sent", "user", user.id, raw_request)
-    _, token = await sessions.create(user.id, client_ip(raw_request), raw_request.headers.get("user-agent"))
-    set_session_cookie(response, token, settings)
+    if not settings.require_email_verification:
+        _, session_token = await SessionRepository(db).create(user.id, client_ip(raw_request), raw_request.headers.get("user-agent"))
+        set_session_cookie(response, session_token, settings)
     return AuthResponse(user=user_response(user))
+
+
+@router.get("/google/start")
+async def google_start(raw_request: Request, db: DatabaseClient = Depends(get_database), settings: Settings = Depends(get_settings)) -> RedirectResponse:
+    await enforce_rate_limit(db, f"auth:google:start:ip:{client_ip(raw_request)}", 20, 15 * 60)
+    if not google_oauth_configured(settings):
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Google OAuth chưa được cấu hình.")
+    _, state = await OAuthStateRepository(db).create(OAUTH_PROVIDER_GOOGLE, 10, client_ip(raw_request), raw_request.headers.get("user-agent"))
+    await audit(db, None, "auth.google_start", "oauth", OAUTH_PROVIDER_GOOGLE, raw_request)
+    return RedirectResponse(build_google_authorization_url(settings, state), status_code=status.HTTP_302_FOUND)
+
+
+@router.get("/google/callback")
+async def google_callback(
+    raw_request: Request,
+    code: str | None = Query(default=None),
+    state: str | None = Query(default=None),
+    error: str | None = Query(default=None),
+    db: DatabaseClient = Depends(get_database),
+    settings: Settings = Depends(get_settings),
+) -> RedirectResponse:
+    await enforce_rate_limit(db, f"auth:google:callback:ip:{client_ip(raw_request)}", 30, 15 * 60)
+    if error:
+        await audit(db, None, "auth.google_failed", "oauth", OAUTH_PROVIDER_GOOGLE, raw_request, {"reason": "provider_error"})
+        return frontend_redirect(settings, "auth_error=google_oauth_failed")
+    if not code or not state:
+        await audit(db, None, "auth.google_failed", "oauth", OAUTH_PROVIDER_GOOGLE, raw_request, {"reason": "missing_code_or_state"})
+        return frontend_redirect(settings, "auth_error=google_oauth_failed")
+    if not google_oauth_configured(settings):
+        await audit(db, None, "auth.google_failed", "oauth", OAUTH_PROVIDER_GOOGLE, raw_request, {"reason": "missing_config"})
+        return frontend_redirect(settings, "auth_error=google_oauth_failed")
+    oauth_state = await OAuthStateRepository(db).consume_valid(state, OAUTH_PROVIDER_GOOGLE)
+    if oauth_state is None:
+        await audit(db, None, "auth.google_failed", "oauth", OAUTH_PROVIDER_GOOGLE, raw_request, {"reason": "invalid_state"})
+        return frontend_redirect(settings, "auth_error=google_oauth_failed")
+    try:
+        access_token = await exchange_google_code(settings, code)
+        google_user = await fetch_google_userinfo(access_token)
+    except Exception:
+        await audit(db, None, "auth.google_failed", "oauth", OAUTH_PROVIDER_GOOGLE, raw_request, {"reason": "google_exchange_failed"})
+        return frontend_redirect(settings, "auth_error=google_oauth_failed")
+    if not google_user.email_verified:
+        await audit(db, None, "auth.google_failed", "oauth", OAUTH_PROVIDER_GOOGLE, raw_request, {"reason": "google_email_unverified", "email_hash": email_hash(normalize_email(google_user.email))})
+        return frontend_redirect(settings, "auth_error=google_unverified_email")
+
+    users = UserRepository(db)
+    identities = OAuthIdentityRepository(db)
+    identity = await identities.find_by_provider_subject(OAUTH_PROVIDER_GOOGLE, google_user.subject)
+    if identity:
+        user = await users.find_by_id(identity.user_id)
+        if user is None or user.status != "active":
+            await audit(db, identity.user_id, "auth.google_failed", "user", identity.user_id, raw_request, {"reason": "disabled_or_missing_user"})
+            return frontend_redirect(settings, "auth_error=google_oauth_failed")
+        await identities.update_from_google(identity.id, google_user.email, google_user.email_verified, google_user.display_name, google_user.picture_url)
+    else:
+        email = normalize_email(google_user.email)
+        user = await users.find_by_email(email)
+        if user:
+            if user.status != "active":
+                await audit(db, user.id, "auth.google_failed", "user", user.id, raw_request, {"reason": "disabled"})
+                return frontend_redirect(settings, "auth_error=google_oauth_failed")
+            user = await users.ensure_email_verified(user.id)
+            await identities.create(user.id, OAUTH_PROVIDER_GOOGLE, google_user.subject, email, google_user.email_verified, google_user.display_name, google_user.picture_url)
+            await audit(db, user.id, "auth.google_linked", "user", user.id, raw_request)
+        else:
+            user = await users.create_oauth_user(email, google_user.display_name)
+            await identities.create(user.id, OAUTH_PROVIDER_GOOGLE, google_user.subject, email, google_user.email_verified, google_user.display_name, google_user.picture_url)
+            await audit(db, user.id, "auth.google_registered", "user", user.id, raw_request)
+
+    await users.mark_login(user.id)
+    user = await users.find_by_id(user.id) or user
+    _, session_token = await SessionRepository(db).create(user.id, client_ip(raw_request), raw_request.headers.get("user-agent"))
+    response = frontend_redirect(settings, "auth=google-success")
+    set_session_cookie(response, session_token, settings)
+    await audit(db, user.id, "auth.google_login_success", "user", user.id, raw_request)
+    return response
 
 
 @router.post("/login", response_model=AuthResponse)
@@ -102,6 +187,9 @@ async def login(
     if user.status != "active":
         await audit(db, user.id, "auth.login_blocked", "user", user.id, raw_request, {"reason": "disabled"})
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Tài khoản này đã bị vô hiệu hoá.")
+    if settings.require_email_verification and user.email_verified_at is None:
+        await audit(db, user.id, "auth.login_blocked", "user", user.id, raw_request, {"reason": "email_unverified"})
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Bạn cần xác minh email trước khi đăng nhập.")
     await users.mark_login(user.id)
     user = await users.find_by_id(user.id) or user
     _, token = await SessionRepository(db).create(user.id, client_ip(raw_request), raw_request.headers.get("user-agent"))
@@ -172,29 +260,33 @@ async def reset_password(request: ResetPasswordRequest, raw_request: Request, db
 @router.post("/verify-email", response_model=AuthResponse)
 async def verify_email(request: VerifyEmailRequest, raw_request: Request, db: DatabaseClient = Depends(get_database)) -> AuthResponse:
     tokens = AuthTokenRepository(db)
-    token = await tokens.find_valid_by_token(request.token, TOKEN_PURPOSE_EMAIL_VERIFICATION)
+    token = await tokens.find_valid_by_token_and_otp(request.token, request.otp, TOKEN_PURPOSE_EMAIL_VERIFICATION)
     if token is None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Liên kết xác minh email không hợp lệ hoặc đã hết hạn.")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Liên kết hoặc mã OTP xác minh email không hợp lệ hoặc đã hết hạn.")
     user = await UserRepository(db).mark_email_verified(token.user_id)
     await tokens.consume(token.id)
     await audit(db, user.id, "auth.email_verified", "user", user.id, raw_request)
     return AuthResponse(user=user_response(user))
 
 
-@router.post("/resend-verification", response_model=MessageResponse, dependencies=[Depends(require_trusted_origin)])
+@router.post("/resend-verification", response_model=MessageResponse)
 async def resend_verification(
+    request: ForgotPasswordRequest,
     raw_request: Request,
-    user: UserRecord = Depends(get_current_user),
     db: DatabaseClient = Depends(get_database),
     settings: Settings = Depends(get_settings),
 ) -> MessageResponse:
-    if user.email_verified_at:
-        return MessageResponse(message="Email đã được xác minh.")
-    await enforce_rate_limit(db, f"auth:verify:user:{user.id}", 3, 3600)
-    _, token = await AuthTokenRepository(db).create(user.id, TOKEN_PURPOSE_EMAIL_VERIFICATION, 24 * 60, client_ip(raw_request), raw_request.headers.get("user-agent"))
-    await send_verification_email(user, token, settings)
-    await audit(db, user.id, "auth.email_verification_sent", "user", user.id, raw_request)
-    return MessageResponse(message="Đã gửi lại liên kết xác minh email.")
+    email = normalize_email(str(request.email))
+    await enforce_rate_limit(db, f"auth:verify:ip:{client_ip(raw_request)}", 10, 3600)
+    await enforce_rate_limit(db, f"auth:verify:email:{email}", 3, 3600)
+    user = await UserRepository(db).find_by_email(email)
+    if user and user.status == "active" and user.email_verified_at is None:
+        _, token, otp = await AuthTokenRepository(db).create(user.id, TOKEN_PURPOSE_EMAIL_VERIFICATION, 24 * 60, client_ip(raw_request), raw_request.headers.get("user-agent"), include_otp=True)
+        await send_verification_email(user, token, otp, settings)
+        await audit(db, user.id, "auth.email_verification_sent", "user", user.id, raw_request)
+    else:
+        await audit(db, user.id if user else None, "auth.email_verification_requested", "user", user.id if user else None, raw_request, {"email_hash": email_hash(email)})
+    return MessageResponse(message="Nếu tài khoản tồn tại và chưa xác minh, hướng dẫn xác minh đã được gửi.")
 
 
 @router.post("/change-password", response_model=MessageResponse, dependencies=[Depends(require_trusted_origin)])
@@ -343,6 +435,11 @@ def client_ip(request: Request) -> str:
 
 def email_hash(email: str) -> str:
     return sha256(email.encode("utf-8")).hexdigest()
+
+
+def frontend_redirect(settings: Settings, query: str) -> RedirectResponse:
+    separator = "&" if "?" in settings.public_app_url else "?"
+    return RedirectResponse(f"{settings.public_app_url}{separator}{query}", status_code=status.HTTP_302_FOUND)
 
 
 def is_locked(user: UserRecord) -> bool:

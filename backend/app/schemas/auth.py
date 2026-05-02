@@ -41,6 +41,15 @@ class AuthRequest(PasswordPolicyMixin):
 
 class RegisterRequest(AuthRequest):
     display_name: str | None = Field(default=None, max_length=256)
+    accept_privacy_policy: bool
+    accept_terms: bool
+
+    @field_validator("accept_privacy_policy", "accept_terms")
+    @classmethod
+    def require_legal_acceptance(cls, value: bool) -> bool:
+        if value is not True:
+            raise ValueError("Bạn cần đồng ý Chính sách bảo mật và Điều khoản sử dụng để tạo tài khoản.")
+        return value
 
 
 class LoginRequest(BaseModel):
@@ -59,6 +68,15 @@ class ResetPasswordRequest(PasswordPolicyMixin):
 
 class VerifyEmailRequest(BaseModel):
     token: str = Field(min_length=20, max_length=512)
+    otp: str = Field(min_length=6, max_length=16)
+
+    @field_validator("otp")
+    @classmethod
+    def clean_otp(cls, value: str) -> str:
+        otp = "".join(value.split())
+        if len(otp) != 6 or not otp.isdigit():
+            raise ValueError("Mã OTP phải gồm 6 chữ số.")
+        return otp
 
 
 class ChangePasswordRequest(PasswordPolicyMixin):

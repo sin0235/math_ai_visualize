@@ -9,14 +9,15 @@ from app.db.models import UserRecord
 logger = logging.getLogger(__name__)
 
 
-async def send_verification_email(user: UserRecord, token: str, settings: Settings) -> None:
+async def send_verification_email(user: UserRecord, token: str, otp: str, settings: Settings) -> None:
     link = auth_link(settings, "verify-email", token)
-    await send_email(
-        user.email,
-        "Xác minh email tài khoản Hinh",
-        f"Mở liên kết này để xác minh email của bạn: {link}",
-        settings,
+    body = (
+        "Mở liên kết này để xác minh email tài khoản Hinh:\n"
+        f"{link}\n\n"
+        f"Mã OTP của bạn là: {otp}\n\n"
+        "Liên kết và mã OTP sẽ hết hạn sớm. Không chia sẻ mã này với bất kỳ ai."
     )
+    await send_email(user.email, "Xác minh email tài khoản Hinh", body, settings)
 
 
 async def send_password_reset_email(user: UserRecord, token: str, settings: Settings) -> None:

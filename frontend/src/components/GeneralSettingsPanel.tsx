@@ -1,4 +1,4 @@
-import { useEffect, type ChangeEvent } from 'react';
+import { type ChangeEvent } from 'react';
 
 import type { OcrProvider, RuntimeSettings, SettingsDefaults } from '../types/settings';
 
@@ -13,15 +13,7 @@ export function GeneralSettingsPanel({ value, defaults, onChange, onReset }: Gen
   const ocrModels = value.ocr.provider === 'router9'
     ? value.router9.scanned_models
     : value[value.ocr.provider].scanned_models;
-  const selectedOcrModel = ocrModels.some((model) => model.id === value.ocr.model)
-    ? value.ocr.model
-    : ocrModels[0]?.id ?? '';
-
-  useEffect(() => {
-    if (ocrModels.length > 0 && value.ocr.model !== selectedOcrModel) {
-      updateOcr('model', selectedOcrModel);
-    }
-  }, [ocrModels, selectedOcrModel, value.ocr.model]);
+  const selectedOcrModel = ocrModels.some((model) => model.id === value.ocr.model) ? value.ocr.model : '';
 
   function updateField<Key extends keyof RuntimeSettings>(key: Key, nextValue: RuntimeSettings[Key]) {
     onChange({ ...value, [key]: nextValue });

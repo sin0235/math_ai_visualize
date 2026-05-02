@@ -71,9 +71,9 @@ def test_ocr_prefers_router9_codex_when_connected(monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["text"] == "Đề từ Codex 5.5."
-    assert response.json()["model"] == "codex-5.5"
+    assert response.json()["model"] == "codex-5.5-image"
     assert response.json()["provider"] == "router9"
-    assert calls == [("router9", "codex-5.5")]
+    assert calls == [("router9", "codex-5.5-image")]
 
 
 def test_ocr_falls_back_to_nvidia_when_openrouter_fails(monkeypatch):
@@ -110,6 +110,40 @@ def test_ocr_falls_back_to_nvidia_when_openrouter_fails(monkeypatch):
     ]
 
 
+def test_ocr_router9_tries_image_models_then_github_gpt52(monkeypatch):
+    calls = []
+
+    async def fake_router9(self, image_data_url: str, model: str | None = None):
+        calls.append(("router9", model))
+        if model != "gh/gpt-5.2":
+            raise RuntimeError("model unavailable")
+        return "Đề từ GPT 5.2."
+
+    monkeypatch.setattr("app.services.router9_client.Router9Client.ocr_image", fake_router9)
+
+    response = TestClient(app).post(
+        "/api/ocr",
+        json={
+            "image_data_url": _IMAGE_DATA_URL,
+            "runtime_settings": {
+                "router9": {
+                    "api_key": "router9-secret",
+                    "allowed_model_ids": ["cc/codex-5.5-image", "cc/codex-5.4-image", "gh/gpt-5.2"],
+                }
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["text"] == "Đề từ GPT 5.2."
+    assert response.json()["model"] == "gh/gpt-5.2"
+    assert calls == [
+        ("router9", "cc/codex-5.5-image"),
+        ("router9", "cc/codex-5.4-image"),
+        ("router9", "gh/gpt-5.2"),
+    ]
+
+
 def test_ocr_router9_falls_back_to_openrouter_when_not_only(monkeypatch):
     calls = []
 
@@ -137,8 +171,13 @@ def test_ocr_router9_falls_back_to_openrouter_when_not_only(monkeypatch):
     assert response.json()["text"] == "Đề từ OpenRouter."
     assert response.json()["provider"] == "openrouter"
     assert response.json()["model"] == "google/gemma-4-31b-it:free"
-    assert "router9/codex-5.5" in response.json()["warnings"][0]
-    assert calls == [("router9", "codex-5.5"), ("openrouter", "google/gemma-4-31b-it:free")]
+    assert "router9/codex-5.5-image" in response.json()["warnings"][0]
+    assert calls == [
+        ("router9", "codex-5.5-image"),
+        ("router9", "codex-5.4-image"),
+        ("router9", "github/gpt-5.2"),
+        ("openrouter", "google/gemma-4-31b-it:free"),
+    ]
 
 
 def test_ocr_router9_only_rejects_openrouter_provider():

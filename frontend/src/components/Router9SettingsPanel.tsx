@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 
 import { scanRouter9Models } from '../api/client';
-import type { RuntimeSettings, SettingsDefaults } from '../types/settings';
+import type { RuntimeSettings, ScannedModelInfo, SettingsDefaults } from '../types/settings';
 
 interface Router9SettingsPanelProps {
   value: RuntimeSettings;
@@ -32,12 +32,23 @@ export function Router9SettingsPanel({ value, defaults, onChange, onForgetApiKey
     try {
       const models = await scanRouter9Models(value);
       const availableIds = new Set(models.map((model) => model.id));
-      const allowed_model_ids = router9.allowed_model_ids.filter((id) => availableIds.has(id));
-      updateRouter9({
-        scanned_models: models,
-        allowed_model_ids,
-        model: availableIds.has(router9.model) ? router9.model : allowed_model_ids[0] ?? '',
-        last_scanned_at: new Date().toISOString(),
+      const preferredRenderIds = selectRouter9RenderModelIds(models);
+      const preferredOcrIds = selectRouter9OcrModelIds(models);
+      const allowed_model_ids = mergeUnique([
+        ...router9.allowed_model_ids.filter((id) => availableIds.has(id)),
+        ...preferredOcrIds,
+        ...preferredRenderIds,
+      ]);
+      onChange({
+        ...value,
+        ocr: preferredOcrIds.length > 0 ? { ...value.ocr, provider: 'router9', model: '' } : value.ocr,
+        router9: {
+          ...router9,
+          scanned_models: models,
+          allowed_model_ids,
+          model: preferredRenderIds[0] ?? (availableIds.has(router9.model) ? router9.model : allowed_model_ids[0] ?? ''),
+          last_scanned_at: new Date().toISOString(),
+        },
       });
     } catch (caught) {
       setScanError(caught instanceof Error ? caught.message : 'Không thể quét model 9router.');
@@ -139,4 +150,66 @@ export function Router9SettingsPanel({ value, defaults, onChange, onForgetApiKey
       </div>
     </section>
   );
+}
+
+const renderCodexVersions = ['5.5', '5.4', '5.3'];
+const ocrCodexVersions = ['5.5', '5.4'];
+
+function selectRouter9RenderModelIds(models: ScannedModelInfo[]) {
+  return selectByScore(models, renderModelScore);
+}
+
+function selectRouter9OcrModelIds(models: ScannedModelInfo[]) {
+  const selected = selectByScore(models, ocrModelScore);
+  const primary = selected.filter((id) => (ocrModelScore(id)?.[0] ?? 9) < 3);
+  return primary.length > 0 ? primary : selected;
+}
+
+function selectByScore(models: ScannedModelInfo[], scoreModel: (id: string) => [number, number] | null) {
+  return models
+    .map((model) => ({ id: model.id, score: scoreModel(model.id) }))
+    .filter((item): item is { id: string; score: [number, number] } => item.score !== null)
+    .sort((left, right) => left.score[0] - right.score[0] || left.score[1] - right.score[1] || left.id.localeCompare(right.id))
+    .map((item) => item.id);
+}
+
+function renderModelScore(modelId: string): [number, number] | null {
+  const version = codexVersion(modelId);
+  const codexIndex = version ? renderCodexVersions.indexOf(version) : -1;
+  if (codexIndex >= 0) return [0, codexIndex * 2 + (looksImageModel(modelId) ? 1 : 0)];
+  if (isGithubGpt52(modelId)) return [1, 0];
+  if (gptVersion(modelId) === '5.2') return [2, 0];
+  return null;
+}
+
+function ocrModelScore(modelId: string): [number, number] | null {
+  const version = codexVersion(modelId);
+  const codexIndex = version ? ocrCodexVersions.indexOf(version) : -1;
+  if (codexIndex >= 0 && looksImageModel(modelId)) return [0, codexIndex];
+  if (isGithubGpt52(modelId)) return [1, 0];
+  if (gptVersion(modelId) === '5.2') return [2, 0];
+  if (codexIndex >= 0) return [3, codexIndex];
+  return null;
+}
+
+function codexVersion(modelId: string) {
+  return modelId.match(/codex[^0-9]*(\d+(?:\.\d+)*)/i)?.[1] ?? null;
+}
+
+function gptVersion(modelId: string) {
+  return modelId.match(/gpt[^0-9]*(\d+(?:\.\d+)*)/i)?.[1] ?? null;
+}
+
+function looksImageModel(modelId: string) {
+  const lowered = modelId.toLowerCase();
+  return lowered.includes('image') || lowered.includes('vision') || lowered.includes('vl');
+}
+
+function isGithubGpt52(modelId: string) {
+  const lowered = modelId.toLowerCase();
+  return gptVersion(modelId) === '5.2' && (lowered.includes('github') || lowered.includes('copilot') || /(^|[/:_-])gh([/:_-]|$)/.test(lowered));
+}
+
+function mergeUnique(modelIds: string[]) {
+  return [...new Set(modelIds.filter(Boolean))];
 }

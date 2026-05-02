@@ -1,12 +1,12 @@
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
-from secrets import token_urlsafe
+from secrets import randbelow, token_urlsafe
 from uuid import uuid4
 
 from passlib.context import CryptContext
 
-from app.db.models import AuthTokenRecord, DbRow, SessionRecord, UserRecord
+from app.db.models import AuthTokenRecord, DbRow, LegalAcceptanceRecord, OAuthIdentityRecord, OAuthStateRecord, SessionRecord, UserRecord
 from app.db.session import DatabaseClient
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -14,6 +14,12 @@ SESSION_COOKIE_NAME = "hinh_session"
 SESSION_DAYS = 30
 TOKEN_PURPOSE_EMAIL_VERIFICATION = "email_verification"
 TOKEN_PURPOSE_PASSWORD_RESET = "password_reset"
+LEGAL_DOCUMENT_PRIVACY_POLICY = "privacy_policy"
+LEGAL_DOCUMENT_TERMS = "terms"
+LEGAL_DOCUMENT_PRIVACY_POLICY_VERSION = "2026-05-02"
+LEGAL_DOCUMENT_TERMS_VERSION = "2026-05-02"
+OAUTH_PROVIDER_GOOGLE = "google"
+OAUTH_PASSWORD_SENTINEL = "oauth:google"
 
 
 @dataclass(frozen=True)
@@ -37,6 +43,17 @@ class UserRepository:
         row = await self.db.fetch_one("SELECT * FROM users WHERE id = ?", [user_id])
         if row is None:
             raise RuntimeError("Không thể tạo tài khoản.")
+        return user_from_row(row)
+
+    async def create_oauth_user(self, email: str, display_name: str | None = None) -> UserRecord:
+        user_id = str(uuid4())
+        await self.db.execute(
+            "INSERT INTO users (id, email, password_hash, display_name, email_verified_at, status) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, 'active')",
+            [user_id, normalize_email(email), OAUTH_PASSWORD_SENTINEL, display_name],
+        )
+        row = await self.db.fetch_one("SELECT * FROM users WHERE id = ?", [user_id])
+        if row is None:
+            raise RuntimeError("Không thể tạo tài khoản Google.")
         return user_from_row(row)
 
     async def find_by_email(self, email: str) -> UserRecord | None:
@@ -92,6 +109,9 @@ class UserRepository:
             raise RuntimeError("Không thể xác minh email.")
         return user
 
+    async def ensure_email_verified(self, user_id: str) -> UserRecord:
+        return await self.mark_email_verified(user_id)
+
     async def update_profile(self, user_id: str, display_name: str | None) -> UserRecord:
         await self.db.execute("UPDATE users SET display_name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [display_name, user_id])
         user = await self.find_by_id(user_id)
@@ -100,6 +120,8 @@ class UserRepository:
         return user
 
     def verify_password(self, password: str, password_hash: str) -> bool:
+        if not password_hash.startswith("$2"):
+            return False
         return pwd_context.verify(password, password_hash)
 
 
@@ -172,19 +194,31 @@ class AuthTokenRepository:
     def __init__(self, db: DatabaseClient) -> None:
         self.db = db
 
-    async def create(self, user_id: str, purpose: str, ttl_minutes: int, ip_address: str | None = None, user_agent: str | None = None) -> tuple[AuthTokenRecord, str]:
+    async def create(
+        self,
+        user_id: str,
+        purpose: str,
+        ttl_minutes: int,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
+        include_otp: bool = False,
+    ) -> tuple[AuthTokenRecord, str] | tuple[AuthTokenRecord, str, str]:
         await self.invalidate_for_user(user_id, purpose)
         token_id = str(uuid4())
         token = token_urlsafe(48)
+        otp = generate_otp() if include_otp else None
         expires_at = (datetime.now(UTC) + timedelta(minutes=ttl_minutes)).isoformat()
         await self.db.execute(
-            "INSERT INTO auth_tokens (id, user_id, purpose, token_hash, expires_at, created_ip, user_agent) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            [token_id, user_id, purpose, hash_token(token), expires_at, ip_address, clean_user_agent(user_agent)],
+            "INSERT INTO auth_tokens (id, user_id, purpose, token_hash, expires_at, created_ip, user_agent, otp_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            [token_id, user_id, purpose, hash_token(token), expires_at, ip_address, clean_user_agent(user_agent), hash_token(otp) if otp else None],
         )
         row = await self.db.fetch_one("SELECT * FROM auth_tokens WHERE id = ?", [token_id])
         if row is None:
             raise RuntimeError("Không thể tạo token xác thực.")
-        return auth_token_from_row(row), token
+        record = auth_token_from_row(row)
+        if otp is None:
+            return record, token
+        return record, token, otp
 
     async def find_valid_by_token(self, token: str, purpose: str) -> AuthTokenRecord | None:
         row = await self.db.fetch_one("SELECT * FROM auth_tokens WHERE token_hash = ? AND purpose = ?", [hash_token(token), purpose])
@@ -192,6 +226,17 @@ class AuthTokenRepository:
             return None
         record = auth_token_from_row(row)
         if record.consumed_at is not None or parse_datetime(record.expires_at) <= datetime.now(UTC):
+            return None
+        return record
+
+    async def find_valid_by_token_and_otp(self, token: str, otp: str, purpose: str) -> AuthTokenRecord | None:
+        record = await self.find_valid_by_token(token, purpose)
+        if record is None or record.otp_hash is None:
+            return None
+        if record.otp_attempts >= record.max_otp_attempts:
+            return None
+        if hash_token(otp) != record.otp_hash:
+            await self.db.execute("UPDATE auth_tokens SET otp_attempts = otp_attempts + 1 WHERE id = ?", [record.id])
             return None
         return record
 
@@ -203,6 +248,105 @@ class AuthTokenRepository:
             "UPDATE auth_tokens SET consumed_at = CURRENT_TIMESTAMP WHERE user_id = ? AND purpose = ? AND consumed_at IS NULL",
             [user_id, purpose],
         )
+
+
+class LegalAcceptanceRepository:
+    def __init__(self, db: DatabaseClient) -> None:
+        self.db = db
+
+    async def record(self, user_id: str, document_type: str, document_version: str, ip_address: str | None = None, user_agent: str | None = None) -> LegalAcceptanceRecord:
+        acceptance_id = str(uuid4())
+        await self.db.execute(
+            "INSERT INTO legal_acceptances (id, user_id, document_type, document_version, accepted_ip, user_agent) VALUES (?, ?, ?, ?, ?, ?)",
+            [acceptance_id, user_id, document_type, document_version, ip_address, clean_user_agent(user_agent)],
+        )
+        row = await self.db.fetch_one("SELECT * FROM legal_acceptances WHERE id = ?", [acceptance_id])
+        if row is None:
+            raise RuntimeError("Không thể lưu xác nhận điều khoản.")
+        return legal_acceptance_from_row(row)
+
+    async def record_registration_acceptances(self, user_id: str, ip_address: str | None = None, user_agent: str | None = None) -> None:
+        await self.record(user_id, LEGAL_DOCUMENT_PRIVACY_POLICY, LEGAL_DOCUMENT_PRIVACY_POLICY_VERSION, ip_address, user_agent)
+        await self.record(user_id, LEGAL_DOCUMENT_TERMS, LEGAL_DOCUMENT_TERMS_VERSION, ip_address, user_agent)
+
+
+class OAuthStateRepository:
+    def __init__(self, db: DatabaseClient) -> None:
+        self.db = db
+
+    async def create(
+        self,
+        provider: str,
+        ttl_minutes: int,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
+        redirect_after: str | None = None,
+    ) -> tuple[OAuthStateRecord, str]:
+        state = token_urlsafe(32)
+        state_hash = hash_token(state)
+        expires_at = (datetime.now(UTC) + timedelta(minutes=ttl_minutes)).isoformat()
+        await self.db.execute(
+            "INSERT INTO oauth_states (state_hash, provider, redirect_after, expires_at, created_ip, user_agent) VALUES (?, ?, ?, ?, ?, ?)",
+            [state_hash, provider, redirect_after, expires_at, ip_address, clean_user_agent(user_agent)],
+        )
+        row = await self.db.fetch_one("SELECT * FROM oauth_states WHERE state_hash = ?", [state_hash])
+        if row is None:
+            raise RuntimeError("Không thể tạo OAuth state.")
+        return oauth_state_from_row(row), state
+
+    async def consume_valid(self, state: str, provider: str) -> OAuthStateRecord | None:
+        state_hash = hash_token(state)
+        row = await self.db.fetch_one("SELECT * FROM oauth_states WHERE state_hash = ? AND provider = ?", [state_hash, provider])
+        if row is None:
+            return None
+        record = oauth_state_from_row(row)
+        if record.consumed_at is not None or parse_datetime(record.expires_at) <= datetime.now(UTC):
+            return None
+        await self.db.execute("UPDATE oauth_states SET consumed_at = CURRENT_TIMESTAMP WHERE state_hash = ? AND consumed_at IS NULL", [state_hash])
+        return record
+
+
+class OAuthIdentityRepository:
+    def __init__(self, db: DatabaseClient) -> None:
+        self.db = db
+
+    async def find_by_provider_subject(self, provider: str, subject: str) -> OAuthIdentityRecord | None:
+        row = await self.db.fetch_one("SELECT * FROM oauth_identities WHERE provider = ? AND provider_subject = ?", [provider, subject])
+        return oauth_identity_from_row(row) if row else None
+
+    async def find_by_user_provider(self, user_id: str, provider: str) -> OAuthIdentityRecord | None:
+        row = await self.db.fetch_one("SELECT * FROM oauth_identities WHERE user_id = ? AND provider = ?", [user_id, provider])
+        return oauth_identity_from_row(row) if row else None
+
+    async def create(
+        self,
+        user_id: str,
+        provider: str,
+        subject: str,
+        email: str,
+        email_verified: bool,
+        display_name: str | None = None,
+        picture_url: str | None = None,
+    ) -> OAuthIdentityRecord:
+        identity_id = str(uuid4())
+        await self.db.execute(
+            "INSERT INTO oauth_identities (id, user_id, provider, provider_subject, email, email_verified, display_name, picture_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            [identity_id, user_id, provider, subject, normalize_email(email), 1 if email_verified else 0, display_name, picture_url],
+        )
+        row = await self.db.fetch_one("SELECT * FROM oauth_identities WHERE id = ?", [identity_id])
+        if row is None:
+            raise RuntimeError("Không thể liên kết Google OAuth.")
+        return oauth_identity_from_row(row)
+
+    async def update_from_google(self, identity_id: str, email: str, email_verified: bool, display_name: str | None = None, picture_url: str | None = None) -> OAuthIdentityRecord:
+        await self.db.execute(
+            "UPDATE oauth_identities SET email = ?, email_verified = ?, display_name = ?, picture_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            [normalize_email(email), 1 if email_verified else 0, display_name, picture_url, identity_id],
+        )
+        row = await self.db.fetch_one("SELECT * FROM oauth_identities WHERE id = ?", [identity_id])
+        if row is None:
+            raise RuntimeError("Không thể cập nhật Google OAuth.")
+        return oauth_identity_from_row(row)
 
 
 class RateLimitRepository:
@@ -232,6 +376,10 @@ def normalize_email(email: str) -> str:
 
 def hash_token(token: str) -> str:
     return sha256(token.encode("utf-8")).hexdigest()
+
+
+def generate_otp() -> str:
+    return f"{randbelow(1_000_000):06d}"
 
 
 def clean_user_agent(user_agent: str | None) -> str | None:
@@ -292,6 +440,49 @@ def auth_token_from_row(row: DbRow) -> AuthTokenRecord:
         expires_at=str(row["expires_at"]),
         consumed_at=optional_str(row, "consumed_at"),
         created_at=str(row["created_at"]),
+        created_ip=optional_str(row, "created_ip"),
+        user_agent=optional_str(row, "user_agent"),
+        otp_hash=optional_str(row, "otp_hash"),
+        otp_attempts=int(row.get("otp_attempts") or 0),
+        max_otp_attempts=int(row.get("max_otp_attempts") or 5),
+    )
+
+
+def legal_acceptance_from_row(row: DbRow) -> LegalAcceptanceRecord:
+    return LegalAcceptanceRecord(
+        id=str(row["id"]),
+        user_id=str(row["user_id"]),
+        document_type=str(row["document_type"]),
+        document_version=str(row["document_version"]),
+        accepted_at=str(row["accepted_at"]),
+        accepted_ip=optional_str(row, "accepted_ip"),
+        user_agent=optional_str(row, "user_agent"),
+    )
+
+
+def oauth_identity_from_row(row: DbRow) -> OAuthIdentityRecord:
+    return OAuthIdentityRecord(
+        id=str(row["id"]),
+        user_id=str(row["user_id"]),
+        provider=str(row["provider"]),
+        provider_subject=str(row["provider_subject"]),
+        email=str(row["email"]),
+        email_verified=bool(row.get("email_verified")),
+        created_at=str(row["created_at"]),
+        updated_at=str(row["updated_at"]),
+        display_name=optional_str(row, "display_name"),
+        picture_url=optional_str(row, "picture_url"),
+    )
+
+
+def oauth_state_from_row(row: DbRow) -> OAuthStateRecord:
+    return OAuthStateRecord(
+        state_hash=str(row["state_hash"]),
+        provider=str(row["provider"]),
+        expires_at=str(row["expires_at"]),
+        created_at=str(row["created_at"]),
+        redirect_after=optional_str(row, "redirect_after"),
+        consumed_at=optional_str(row, "consumed_at"),
         created_ip=optional_str(row, "created_ip"),
         user_agent=optional_str(row, "user_agent"),
     )

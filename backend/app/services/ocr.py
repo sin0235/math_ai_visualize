@@ -6,6 +6,7 @@ from app.core.config import Settings
 from app.schemas.scene import OcrProvider
 from app.services.nvidia_client import NvidiaClient
 from app.services.openrouter_client import OpenRouterClient
+from app.services.router9_bootstrap import select_router9_ocr_model_ids_from_ids
 from app.services.router9_client import Router9Client
 from app.services.provider_logging import redact_sensitive
 
@@ -92,16 +93,17 @@ async def _try_router9_ocr(
     explicit_model: str | None,
     attempts: list[OcrAttempt],
 ) -> OcrResult | None:
-    selected_model = explicit_model or settings.router9_ocr_model or settings.router9_text_model
-    if not selected_model:
+    models = _router9_ocr_model_candidates(settings, explicit_model)
+    if not models:
         attempts.append(OcrAttempt("router9", "<none>", "Chưa chọn model OCR 9router."))
         return None
-    try:
-        text = await Router9Client(settings, model=selected_model).ocr_image(image_data_url, selected_model)
-        return OcrResult(text=text, provider="router9", model=selected_model, warnings=_attempt_warnings(attempts))
-    except RuntimeError as error:
-        attempts.append(OcrAttempt("router9", selected_model, str(error)))
-        return None
+    for selected_model in models:
+        try:
+            text = await Router9Client(settings, model=selected_model).ocr_image(image_data_url, selected_model)
+            return OcrResult(text=text, provider="router9", model=selected_model, warnings=_attempt_warnings(attempts))
+        except RuntimeError as error:
+            attempts.append(OcrAttempt("router9", selected_model, str(error)))
+    return None
 
 
 async def _try_openrouter_ocr(
@@ -125,6 +127,31 @@ async def _try_openrouter_ocr(
 
 def _attempt_warnings(attempts: list[OcrAttempt]) -> list[str]:
     return [f"OCR fallback: {attempt.warning()}" for attempt in attempts]
+
+
+def _router9_ocr_model_candidates(settings: Settings, explicit_model: str | None) -> list[str]:
+    if explicit_model is not None:
+        return [explicit_model]
+
+    if settings.router9_allowed_models:
+        candidates = _dedupe([
+            settings.router9_ocr_model or "",
+            *select_router9_ocr_model_ids_from_ids(settings.router9_allowed_models),
+        ])
+        return [model for model in candidates if model and model in settings.router9_allowed_models]
+
+    return _dedupe(settings.router9_ocr_fallback_models)
+
+
+def _dedupe(models: list[str]) -> list[str]:
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for model in models:
+        if not model or model in seen:
+            continue
+        seen.add(model)
+        ordered.append(model)
+    return ordered
 
 
 def _format_ocr_failure(message: str, attempts: list[OcrAttempt], router9_only: bool) -> str:

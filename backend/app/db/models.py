@@ -48,6 +48,46 @@ class AuthTokenRecord:
     created_at: str
     created_ip: str | None = None
     user_agent: str | None = None
+    otp_hash: str | None = None
+    otp_attempts: int = 0
+    max_otp_attempts: int = 5
+
+
+@dataclass(frozen=True)
+class LegalAcceptanceRecord:
+    id: str
+    user_id: str
+    document_type: str
+    document_version: str
+    accepted_at: str
+    accepted_ip: str | None = None
+    user_agent: str | None = None
+
+
+@dataclass(frozen=True)
+class OAuthIdentityRecord:
+    id: str
+    user_id: str
+    provider: str
+    provider_subject: str
+    email: str
+    email_verified: bool
+    created_at: str
+    updated_at: str
+    display_name: str | None = None
+    picture_url: str | None = None
+
+
+@dataclass(frozen=True)
+class OAuthStateRecord:
+    state_hash: str
+    provider: str
+    expires_at: str
+    created_at: str
+    redirect_after: str | None = None
+    consumed_at: str | None = None
+    created_ip: str | None = None
+    user_agent: str | None = None
 
 
 @dataclass(frozen=True)
