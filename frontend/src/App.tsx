@@ -1287,9 +1287,11 @@ function mergeBackendDefaults(current: RuntimeSettings, defaults: SettingsDefaul
   const router9Allowed = mergeUnique(current.router9.allowed_model_ids, [defaults.router9.model ?? '', ...defaults.router9.allowed_model_ids]);
   const router9Model = current.router9.model || defaults.router9.model || router9Allowed[0] || '';
   const router9Scanned = mergeScannedModels(
-    current.router9.scanned_models,
+    mergeScannedModels(current.router9.scanned_models, defaults.router9.scanned_models),
     router9Allowed.map((id) => ({ id, label: id, provider: 'router9' }))
   );
+  const ocrProvider = current.ocr.provider || defaults.ocr.provider;
+  const ocrModel = current.ocr.model || defaults.ocr.model || (ocrProvider === 'router9' ? router9Model : defaults.openrouter.vision_model) || '';
 
   return {
     ...current,
@@ -1302,9 +1304,12 @@ function mergeBackendDefaults(current: RuntimeSettings, defaults: SettingsDefaul
       allowed_model_ids: router9Allowed,
       scanned_models: router9Scanned,
     },
-    ocr: defaults.router9.api_key_configured || router9Allowed.length > 0
-      ? { ...current.ocr, provider: 'router9', model: '' }
-      : current.ocr,
+    ocr: {
+      ...current.ocr,
+      provider: ocrProvider,
+      model: ocrModel,
+      max_image_mb: current.ocr.max_image_mb || defaults.ocr.max_image_mb,
+    },
   };
 }
 

@@ -9,6 +9,7 @@ from app.schemas.auth import SystemAiSettings
 from app.schemas.scene import (
     OpenRouterSettingsDefaults,
     ProviderSettingsDefaults,
+    OcrSettingsDefaults,
     Router9SettingsDefaults,
     SettingsDefaultsResponse,
 )
@@ -55,6 +56,11 @@ async def get_settings_defaults(db: DatabaseClient = Depends(get_database)) -> S
             only_mode=ai_settings.router9.only_mode or settings.router9_only,
             allowed_model_ids=ai_settings.router9.allowed_model_ids or settings.router9_allowed_models,
             scanned_models=ai_settings.router9.scanned_models,
+        ),
+        ocr=OcrSettingsDefaults(
+            provider=ai_settings.ocr.provider,
+            model=ai_settings.ocr.model or (ai_settings.router9.model if ai_settings.ocr.provider == "router9" else settings.openrouter_vision_model),
+            max_image_mb=ai_settings.ocr.max_image_mb,
         ),
     )
 

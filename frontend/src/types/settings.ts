@@ -90,6 +90,7 @@ export interface SettingsDefaults {
   nvidia: ProviderSettingsDefaults;
   ollama: ProviderSettingsDefaults;
   router9: Router9SettingsDefaults;
+  ocr: OcrSettings;
 }
 
 export const SETTINGS_STORAGE_VERSION = 4;
