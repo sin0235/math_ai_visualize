@@ -351,7 +351,7 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
             <p className="field-hint">Các cấu hình non-secret được lưu trong bảng system_settings; API key vẫn nằm trong secret/env deploy.</p>
             <AdminPlanSettingsForm value={settings.find((item) => item.key === 'plan_settings')?.value ?? {}} onSave={async (value) => { await saveAdminSystemSetting('plan_settings', value); void onRefresh(); }} />
             <AdminFeatureFlagsForm value={settings.find((item) => item.key === 'feature_flags')?.value ?? {}} onSave={async (value) => { await saveAdminSystemSetting('feature_flags', value); void onRefresh(); }} />
-            <AdminAiProfilesForm value={settings.find((item) => item.key === 'ai_profiles')?.value ?? {}} onSave={async (value) => { await saveAdminSystemSetting('ai_profiles', value); void onRefresh(); }} />
+            <AdminAiProfilesForm value={settings.find((item) => item.key === 'ai_profiles')?.value ?? {}} aiSettings={aiSettings} onSave={async (value) => { await saveAdminSystemSetting('ai_profiles', value); void onRefresh(); }} />
             <AdminAiPromptsForm value={settings.find((item) => item.key === 'ai_prompts')?.value ?? {}} onSave={async (value) => { await saveAdminSystemSetting('ai_prompts', value); void onRefresh(); }} />
             <div className="admin-table">
               {settings.map((item) => <AdminSystemSettingRow key={item.key} item={item} />)}

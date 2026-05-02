@@ -203,13 +203,35 @@ export function AdminAiSettingsForm({ value, saving, onSave }: { value: Record<s
     );
   }
 
+  const scannedModelOptions = providerValue.scanned_models
+    .map((modelItem: any) => ({
+      id: typeof modelItem === 'string' ? modelItem : modelItem.id,
+      name: typeof modelItem === 'object' && modelItem.name ? modelItem.name : typeof modelItem === 'string' ? modelItem : modelItem.id,
+    }))
+    .filter((item) => item.id);
+
+  const modelOptions = model && !scannedModelOptions.some((item) => item.id === model)
+    ? [{ id: model, name: model }, ...scannedModelOptions]
+    : scannedModelOptions;
+
+  const ocrProviderValue = getAdminProviderSettings(value, ocrProvider);
+  const ocrScannedModelOptions = ocrProviderValue.scanned_models
+    .map((modelItem: any) => ({
+      id: typeof modelItem === 'string' ? modelItem : modelItem.id,
+      name: typeof modelItem === 'object' && modelItem.name ? modelItem.name : typeof modelItem === 'string' ? modelItem : modelItem.id,
+    }))
+    .filter((item) => item.id);
+  const ocrModelOptions = ocrModel && !ocrScannedModelOptions.some((item) => item.id === ocrModel)
+    ? [{ id: ocrModel, name: ocrModel }, ...ocrScannedModelOptions]
+    : ocrScannedModelOptions;
+
   return (
     <div className="admin-ai-settings">
       <section className="admin-settings-section">
         <h4>9router Configuration</h4>
         <div className="admin-field-grid">
           <label className="field-label">Base URL<input value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} placeholder="https://..." /></label>
-          <label className="field-label">Model mặc định<input value={model} onChange={(event) => setModel(event.target.value)} placeholder="vd: codex-5.5" /></label>
+          <label className="field-label">Model mặc định<select value={model} onChange={(event) => setModel(event.target.value)}><option value="">Chọn model</option>{modelOptions.map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.name}</option>)}</select></label>
           <label className="checkbox-label"><input type="checkbox" checked={router9OnlyMode} onChange={(event) => setRouter9OnlyMode(event.target.checked)} /> Chỉ dùng 9router</label>
         </div>
         <div className="admin-field-grid">
@@ -260,7 +282,7 @@ export function AdminAiSettingsForm({ value, saving, onSave }: { value: Record<s
         <h4>OCR</h4>
         <div className="admin-field-grid">
           <label className="field-label">OCR provider<select value={ocrProvider} onChange={(event) => setOcrProvider(event.target.value)}><option value="openrouter">OpenRouter</option><option value="router9">9router</option></select></label>
-          <label className="field-label">OCR model<input value={ocrModel} onChange={(event) => setOcrModel(event.target.value)} /></label>
+          <label className="field-label">OCR model<select value={ocrModel} onChange={(event) => setOcrModel(event.target.value)}><option value="">Chọn model</option>{ocrModelOptions.map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.name}</option>)}</select></label>
           <label className="field-label">Max image MB<input type="number" min="1" max="32" value={ocrMaxImageMb} onChange={(event) => setOcrMaxImageMb(event.target.value)} /></label>
         </div>
         <button type="button" className="secondary-button" onClick={saveOcr} disabled={saving}>{saving ? 'Đang lưu...' : 'Lưu OCR'}</button>
@@ -303,21 +325,36 @@ export function AdminFeatureFlagsForm({ value, onSave }: { value: Record<string,
   );
 }
 
-export function AdminAiProfilesForm({ value, onSave }: { value: Record<string, unknown>; onSave: (value: Record<string, unknown>) => Promise<void> }) {
+export function AdminAiProfilesForm({ value, aiSettings, onSave }: { value: Record<string, unknown>; aiSettings: Record<string, unknown>; onSave: (value: Record<string, unknown>) => Promise<void> }) {
   const geometry = getAiTaskProfile(value.geometry_reasoning);
   const ocr = getAiTaskProfile(value.ocr);
+  const router9 = getAdminProviderSettings(aiSettings, 'router9');
   const [geometryProvider, setGeometryProvider] = useState(geometry.provider);
   const [geometryModel, setGeometryModel] = useState(geometry.model);
   const [geometryFallbacks, setGeometryFallbacks] = useState(geometry.fallbacks.join('\n'));
   const [ocrProvider, setOcrProvider] = useState(ocr.provider);
   const [ocrModel, setOcrModel] = useState(ocr.model);
   const [ocrFallbacks, setOcrFallbacks] = useState(ocr.fallbacks.join('\n'));
+
+  const scannedModelOptions = router9.scanned_models
+    .map((modelItem: any) => ({
+      id: typeof modelItem === 'string' ? modelItem : modelItem.id,
+      name: typeof modelItem === 'object' && modelItem.name ? modelItem.name : typeof modelItem === 'string' ? modelItem : modelItem.id,
+    }))
+    .filter((item) => item.id);
+
+  function modelOptions(selectedModel: string) {
+    return selectedModel && !scannedModelOptions.some((item) => item.id === selectedModel)
+      ? [{ id: selectedModel, name: selectedModel }, ...scannedModelOptions]
+      : scannedModelOptions;
+  }
+
   return (
     <section className="admin-settings-section"><h4>AI profiles</h4><div className="admin-field-grid">
       <label className="field-label">Geometry provider<input value={geometryProvider} onChange={(event) => setGeometryProvider(event.target.value)} /></label>
-      <label className="field-label">Geometry model<input value={geometryModel} onChange={(event) => setGeometryModel(event.target.value)} /></label>
+      <label className="field-label">Geometry model<select value={geometryModel} onChange={(event) => setGeometryModel(event.target.value)}><option value="">Chọn model</option>{modelOptions(geometryModel).map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.name}</option>)}</select></label>
       <label className="field-label">OCR provider<input value={ocrProvider} onChange={(event) => setOcrProvider(event.target.value)} /></label>
-      <label className="field-label">OCR model<input value={ocrModel} onChange={(event) => setOcrModel(event.target.value)} /></label>
+      <label className="field-label">OCR model<select value={ocrModel} onChange={(event) => setOcrModel(event.target.value)}><option value="">Chọn model</option>{modelOptions(ocrModel).map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.name}</option>)}</select></label>
     </div><label className="field-label">Geometry fallbacks<textarea rows={3} value={geometryFallbacks} onChange={(event) => setGeometryFallbacks(event.target.value)} /></label><label className="field-label">OCR fallbacks<textarea rows={3} value={ocrFallbacks} onChange={(event) => setOcrFallbacks(event.target.value)} /></label><button type="button" className="secondary-button" onClick={() => void onSave({ version: 1, geometry_reasoning: { provider: geometryProvider, model: geometryModel, fallbacks: parseLines(geometryFallbacks) }, ocr: { provider: ocrProvider, model: ocrModel, fallbacks: parseLines(ocrFallbacks) } })}>Lưu AI profiles</button></section>
   );
 }

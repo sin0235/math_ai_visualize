@@ -150,12 +150,12 @@ def auth_email_html(
     </svg>'''
 
     otp_block = ""
+    copy_icon = '''<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="5" y="5" width="9" height="9" rx="1.5" stroke="currentColor" stroke-width="1.5" fill="none"/>
+      <path d="M3 10.5V3.5C3 2.67 3.67 2 4.5 2H10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+    </svg>'''
     if otp:
         otp_digits = "".join(f'<span class="otp-digit">{escape(digit)}</span>' for digit in otp)
-        copy_icon = '''<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <rect x="5" y="5" width="9" height="9" rx="1.5" stroke="currentColor" stroke-width="1.5" fill="none"/>
-          <path d="M3 10.5V3.5C3 2.67 3.67 2 4.5 2H10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none"/>
-        </svg>'''
         otp_block = f'''
           <div class="otp-section">
             <div class="section-label">Mã xác minh</div>
@@ -164,6 +164,18 @@ def auth_email_html(
               <button class="copy-button" onclick="navigator.clipboard.writeText('{escape(otp)}')" title="Sao chép mã">{copy_icon}</button>
             </div>
             <p class="hint-text">Mã này có hiệu lực trong 24 giờ. Không chia sẻ với bất kỳ ai.</p>
+          </div>
+        '''
+    else:
+        escaped_token = escape(token)
+        otp_block = f'''
+          <div class="otp-section">
+            <div class="section-label">Token đặt lại mật khẩu</div>
+            <div class="token-container">
+              <code class="token-display">{escaped_token}</code>
+              <button class="copy-button" onclick="navigator.clipboard.writeText('{escaped_token}')" title="Sao chép token">{copy_icon}</button>
+            </div>
+            <p class="hint-text">Token này chỉ dùng để đặt lại mật khẩu và sẽ hết hạn sớm. Không chia sẻ với bất kỳ ai.</p>
           </div>
         '''
 
@@ -280,7 +292,8 @@ def auth_email_html(
         text-transform: uppercase;
         letter-spacing: 0.08em;
       }}
-      .otp-container {{
+      .otp-container,
+      .token-container {{
         display: flex;
         align-items: center;
         gap: 12px;
@@ -290,6 +303,21 @@ def auth_email_html(
         display: flex;
         gap: 8px;
         flex: 1;
+      }}
+      .token-display {{
+        display: block;
+        flex: 1;
+        padding: 14px 16px;
+        border: 2px solid #d4d4d4;
+        border-radius: 10px;
+        background: #ffffff;
+        color: #171717;
+        font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+        font-size: 14px;
+        font-weight: 600;
+        line-height: 1.5;
+        word-break: break-all;
+        user-select: all;
       }}
       .otp-digit {{
         display: inline-flex;
@@ -360,7 +388,7 @@ def auth_email_html(
         .email-body {{ padding: 24px 20px; }}
         .email-title {{ font-size: 24px; }}
         .otp-digit {{ width: 40px; height: 48px; font-size: 24px; }}
-        .otp-container {{ flex-direction: column; align-items: stretch; }}
+        .otp-container, .token-container {{ flex-direction: column; align-items: stretch; }}
         .copy-button {{ width: 100%; }}
       }}
       @media (prefers-color-scheme: dark) {{
@@ -373,7 +401,7 @@ def auth_email_html(
         .cta-button:hover {{ background: #e5e5e5; }}
         .otp-section {{ background: #0a0a0a; border-color: #262626; }}
         .section-label {{ color: #a3a3a3; }}
-        .otp-digit {{ background: #171717; border-color: #404040; color: #fafafa; }}
+        .otp-digit, .token-display {{ background: #171717; border-color: #404040; color: #fafafa; }}
         .copy-button {{ background: #262626; border-color: #404040; color: #fafafa; }}
         .copy-button:hover {{ background: #404040; }}
         .copy-button svg {{ color: #fafafa; }}
