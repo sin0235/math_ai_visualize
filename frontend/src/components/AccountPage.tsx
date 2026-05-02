@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 
 import type { SessionResponse, UserResponse } from '../api/client';
 
+type AccountIconName = 'profile' | 'lock' | 'sessions' | 'shield' | 'workspace' | 'logout';
 type ToastKind = 'error' | 'warning' | 'info';
 
 interface AccountPageProps {
@@ -126,9 +127,12 @@ export function AccountPage({
     <section className="login-page">
       <div className="account-card">
         <div className="account-header">
-          <div>
-            <h2>{user.display_name || user.email}</h2>
-            <p className="field-hint">Quản lý bảo mật, hồ sơ và các phiên đăng nhập của bạn.</p>
+          <div className="account-header-title">
+            <AccountIcon name="shield" />
+            <div>
+              <h2>{user.display_name || user.email}</h2>
+              <p className="field-hint">Quản lý bảo mật, hồ sơ và các phiên đăng nhập của bạn.</p>
+            </div>
           </div>
           <div className={user.email_verified_at ? 'status-pill success' : 'status-pill warning'}>
             {user.email_verified_at ? 'Email đã xác minh' : 'Chưa xác minh email'}
@@ -137,7 +141,7 @@ export function AccountPage({
 
         {!user.email_verified_at && (
           <div className="account-panel highlight-panel">
-            <strong>Xác minh email để bảo vệ tài khoản.</strong>
+            <div className="account-panel-title"><AccountIcon name="shield" /><strong>Xác minh email để bảo vệ tài khoản.</strong></div>
             <p className="field-hint">Nếu chưa thấy email, bạn có thể gửi lại liên kết xác minh.</p>
             <button type="button" onClick={handleResendVerification} disabled={loading}>Gửi lại email xác minh</button>
           </div>
@@ -145,7 +149,7 @@ export function AccountPage({
 
         <div className="account-grid">
           <form className="account-panel" onSubmit={submitProfile}>
-            <h3>Hồ sơ</h3>
+            <div className="account-panel-title"><AccountIcon name="profile" /><h3>Hồ sơ</h3></div>
             <label className="field-label">
               Email
               <input value={user.email} disabled />
@@ -158,7 +162,7 @@ export function AccountPage({
           </form>
 
           <form className="account-panel" onSubmit={submitPassword}>
-            <h3>Đổi mật khẩu</h3>
+            <div className="account-panel-title"><AccountIcon name="lock" /><h3>Đổi mật khẩu</h3></div>
             <label className="field-label">
               Mật khẩu hiện tại
               <input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} autoComplete="current-password" required />
@@ -178,7 +182,7 @@ export function AccountPage({
 
         <div className="account-panel">
           <div className="account-section-title">
-            <h3>Phiên đăng nhập</h3>
+            <div className="account-panel-title"><AccountIcon name="sessions" /><h3>Phiên đăng nhập</h3></div>
             <button type="button" className="secondary-button" onClick={handleRevokeOthers} disabled={loading}>Đăng xuất thiết bị khác</button>
           </div>
           <div className="session-list">
@@ -197,11 +201,27 @@ export function AccountPage({
         </div>
 
         <div className="auth-actions">
-          <button type="button" onClick={onBackWorkspace}>Vào workspace</button>
-          <button type="button" className="secondary-button" onClick={onLogout} disabled={authLoading}>Đăng xuất</button>
+          <button type="button" className="icon-button-content" onClick={onBackWorkspace}><AccountIcon name="workspace" />Vào workspace</button>
+          <button type="button" className="secondary-button icon-button-content" onClick={onLogout} disabled={authLoading}><AccountIcon name="logout" />Đăng xuất</button>
         </div>
       </div>
     </section>
+  );
+}
+
+function AccountIcon({ name }: { name: AccountIconName }) {
+  const common = { fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
+  return (
+    <span className="account-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="20" height="20">
+        {name === 'profile' && <><path {...common} d="M20 21a8 8 0 1 0-16 0" /><circle {...common} cx="12" cy="7" r="4" /></>}
+        {name === 'lock' && <><rect {...common} x="4" y="10" width="16" height="10" rx="2" /><path {...common} d="M8 10V7a4 4 0 0 1 8 0v3" /></>}
+        {name === 'sessions' && <><rect {...common} x="3" y="4" width="18" height="12" rx="2" /><path {...common} d="M8 20h8" /><path {...common} d="M12 16v4" /></>}
+        {name === 'shield' && <><path {...common} d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><path {...common} d="m9 12 2 2 4-5" /></>}
+        {name === 'workspace' && <><path {...common} d="M4 19V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v14" /><path {...common} d="M2 19h20" /><path {...common} d="M8 9h8M8 13h5" /></>}
+        {name === 'logout' && <><path {...common} d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path {...common} d="M16 17l5-5-5-5" /><path {...common} d="M21 12H9" /></>}
+      </svg>
+    </span>
   );
 }
 

@@ -203,6 +203,15 @@ export function AdminAiSettingsForm({ value, saving, onSave }: { value: Record<s
     );
   }
 
+  function selectOcrProvider(nextProvider: string) {
+    const nextSettings = getAdminProviderSettings(value, nextProvider);
+    const firstScannedModel = nextSettings.scanned_models
+      .map((modelItem: any) => typeof modelItem === 'string' ? modelItem : modelItem.id)
+      .find(Boolean);
+    setOcrProvider(nextProvider);
+    setOcrModel(nextSettings.model || firstScannedModel || '');
+  }
+
   const scannedModelOptions = providerValue.scanned_models
     .map((modelItem: any) => ({
       id: typeof modelItem === 'string' ? modelItem : modelItem.id,
@@ -281,8 +290,8 @@ export function AdminAiSettingsForm({ value, saving, onSave }: { value: Record<s
       <section className="admin-settings-section">
         <h4>OCR</h4>
         <div className="admin-field-grid">
-          <label className="field-label">OCR provider<select value={ocrProvider} onChange={(event) => setOcrProvider(event.target.value)}><option value="openrouter">OpenRouter</option><option value="router9">9router</option></select></label>
-          <label className="field-label">OCR model<select value={ocrModel} onChange={(event) => setOcrModel(event.target.value)}><option value="">Chọn model</option>{ocrModelOptions.map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.name}</option>)}</select></label>
+          <label className="field-label">OCR provider<select value={ocrProvider} onChange={(event) => selectOcrProvider(event.target.value)}><option value="openrouter">OpenRouter</option><option value="router9">9router</option></select></label>
+          <label className="field-label">OCR model<select value={ocrModel} onChange={(event) => setOcrModel(event.target.value)}><option value="">Chọn model</option>{ocrModelOptions.map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.name}</option>)}</select><span className="field-hint">{ocrModelOptions.length > 0 ? `${ocrModelOptions.length} model khả dụng` : 'Chưa có model scan cho provider này'}</span></label>
           <label className="field-label">Max image MB<input type="number" min="1" max="32" value={ocrMaxImageMb} onChange={(event) => setOcrMaxImageMb(event.target.value)} /></label>
         </div>
         <button type="button" className="secondary-button" onClick={saveOcr} disabled={saving}>{saving ? 'Đang lưu...' : 'Lưu OCR'}</button>

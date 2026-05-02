@@ -9,10 +9,9 @@ interface GeneralSettingsPanelProps {
 
 export function GeneralSettingsPanel({ value, defaults, onChange, onReset }: GeneralSettingsPanelProps) {
   const providerModelOptions = buildProviderModelOptions(defaults, value.default_provider);
-  const ocrModels = value.ocr.provider === 'router9'
-    ? defaults?.router9.scanned_models ?? []
-    : defaults?.openrouter.scanned_models ?? [];
-  const selectedOcrModel = ocrModels.some((model) => model.id === value.ocr.model) ? value.ocr.model : '';
+  const ocrProviderDefaults = value.ocr.provider === 'router9' ? defaults?.router9 : defaults?.openrouter;
+  const ocrModels = buildModelOptionsFromDefaults(ocrProviderDefaults);
+  const selectedOcrModel = value.ocr.model && !ocrModels.some((model) => model.id === value.ocr.model) ? value.ocr.model : value.ocr.model;
 
   function updateField<Key extends keyof RuntimeSettings>(key: Key, nextValue: RuntimeSettings[Key]) {
     onChange({ ...value, [key]: nextValue });
@@ -63,16 +62,11 @@ export function GeneralSettingsPanel({ value, defaults, onChange, onReset }: Gen
 
             <label className="field-label">
               Model mặc định
-              {providerModelOptions.length > 0 ? (
-                <select value={currentProviderModel(value)} onChange={(event) => updateDefaultModel(event.target.value)} disabled={value.default_provider === 'auto' || value.default_provider === 'mock'}>
-                  <option value="">Dùng mặc định hệ thống</option>
-                  {providerModelOptions.map((model) => <option key={model.id} value={model.id}>{model.label}</option>)}
-                </select>
-              ) : (
-                <select value="" disabled>
-                  <option value="">Admin chưa bật model tuỳ chọn</option>
-                </select>
-              )}
+              <select value={currentProviderModel(value)} onChange={(event) => updateDefaultModel(event.target.value)} disabled={value.default_provider === 'auto' || value.default_provider === 'mock'}>
+                <option value="">Dùng mặc định hệ thống</option>
+                {currentProviderModel(value) && !providerModelOptions.some((model) => model.id === currentProviderModel(value)) && <option value={currentProviderModel(value)}>{currentProviderModel(value)}</option>}
+                {providerModelOptions.map((model) => <option key={model.id} value={model.id}>{model.label}</option>)}
+              </select>
               <span className="field-hint">Danh sách này do admin bật trong dashboard quản trị.</span>
             </label>
           </section>
@@ -99,16 +93,11 @@ export function GeneralSettingsPanel({ value, defaults, onChange, onReset }: Gen
 
           <label className="field-label">
             Model OCR mặc định
-            {ocrModels.length > 0 ? (
-              <select value={selectedOcrModel} onChange={(event) => updateOcr('model', event.target.value)}>
-                <option value="">Dùng mặc định hệ thống: {value.ocr.provider === 'openrouter' ? defaults?.openrouter.vision_model : defaults?.router9.model || 'chưa đặt'}</option>
-                {ocrModels.map((model) => <option key={model.id} value={model.id}>{model.label}</option>)}
-              </select>
-            ) : (
-              <select value="" disabled>
-                <option value="">Admin chưa bật model OCR</option>
-              </select>
-            )}
+            <select value={selectedOcrModel} onChange={(event) => updateOcr('model', event.target.value)}>
+              <option value="">Dùng mặc định hệ thống: {value.ocr.provider === 'openrouter' ? defaults?.openrouter.vision_model : defaults?.router9.model || 'chưa đặt'}</option>
+              {value.ocr.model && !ocrModels.some((model) => model.id === value.ocr.model) && <option value={value.ocr.model}>{value.ocr.model}</option>}
+              {ocrModels.map((model) => <option key={model.id} value={model.id}>{model.label}</option>)}
+            </select>
             <span className="field-hint">Để trống để dùng mặc định hệ thống; danh sách model do admin bật.</span>
           </label>
 
@@ -142,8 +131,16 @@ function currentProviderModel(value: RuntimeSettings) {
 
 function buildProviderModelOptions(defaults: SettingsDefaults | null, provider: string) {
   if (!defaults || !(provider === 'openrouter' || provider === 'nvidia' || provider === 'ollama' || provider === 'router9')) return [];
-  const providerDefaults = defaults[provider];
-  const ids = providerDefaults.allowed_model_ids.length > 0 ? providerDefaults.allowed_model_ids : [providerDefaults.model ?? ''].filter(Boolean);
+  return buildModelOptionsFromDefaults(defaults[provider]);
+}
+
+function buildModelOptionsFromDefaults(providerDefaults: SettingsDefaults[keyof Pick<SettingsDefaults, 'openrouter' | 'nvidia' | 'ollama' | 'router9'>] | undefined) {
+  if (!providerDefaults) return [];
+  const ids = providerDefaults.allowed_model_ids.length > 0
+    ? providerDefaults.allowed_model_ids
+    : providerDefaults.scanned_models.length > 0
+      ? providerDefaults.scanned_models.map((model) => model.id)
+      : [providerDefaults.model ?? ''].filter(Boolean);
   return ids.map((id) => {
     const scanned = providerDefaults.scanned_models.find((model) => model.id === id);
     return { id, label: scanned?.label ?? id };

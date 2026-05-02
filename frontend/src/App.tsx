@@ -37,6 +37,28 @@ type BackendStatus = {
   appName?: string;
 };
 
+const viewPaths: Record<AppView, string> = {
+  home: '/',
+  render: '/render',
+  history: '/history',
+  guide: '/guide',
+  about: '/about',
+  'privacy-policy': '/privacy-policy',
+  terms: '/terms',
+  login: '/login',
+  settings: '/settings',
+  admin: '/admin',
+  account: '/account',
+  'reset-password': '/reset-password',
+  'verify-email': '/verify-email',
+};
+
+function pathToView(pathname: string): AppView {
+  const normalized = pathname.replace(/\/+$/, '') || '/';
+  const match = Object.entries(viewPaths).find(([, path]) => path === normalized);
+  return match ? match[0] as AppView : 'home';
+}
+
 function FooterNavIcon({ children }: { children: React.ReactNode }) {
   return (
     <svg className="footer-nav-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -74,7 +96,7 @@ function FooterNavMailLink({
 }
 
 export default function App() {
-  const [activeView, setActiveView] = useState<AppView>('home');
+  const [activeView, setActiveView] = useState<AppView>(() => pathToView(window.location.pathname));
   const [result, setResult] = useState<RenderResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [editorSaving, setEditorSaving] = useState(false);
@@ -103,6 +125,22 @@ export default function App() {
   const resultAnchorRef = useRef<HTMLDivElement | null>(null);
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
   const editorButtonDragRef = useRef<{ pointerId: number; startY: number; startTop: number; moved: boolean } | null>(null);
+
+  function navigateTo(view: AppView, replace = false) {
+    setActiveView(view);
+    const nextPath = viewPaths[view];
+    if (window.location.pathname === nextPath && !window.location.search) return;
+    const method = replace ? 'replaceState' : 'pushState';
+    window.history[method]({}, document.title, nextPath);
+  }
+
+  useEffect(() => {
+    function handlePopState() {
+      setActiveView(pathToView(window.location.pathname));
+    }
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   useEffect(() => {
     try {
@@ -161,25 +199,26 @@ export default function App() {
     const authError = params.get('auth_error');
     const token = params.get('token');
     if (action === 'google-success') {
-      setActiveView('render');
+      navigateTo('render', true);
       showNotification('Đăng nhập Google', 'Đăng nhập Google thành công. Workspace của bạn đã được đồng bộ.', [], 'info');
-      window.history.replaceState({}, document.title, window.location.pathname);
       return;
     }
     if (authError) {
-      setActiveView('login');
+      navigateTo('login', true);
       const message = authError === 'google_unverified_email'
         ? 'Email Google này chưa được xác minh nên chưa thể đăng nhập.'
         : 'Không thể hoàn tất đăng nhập Google. Hãy thử lại hoặc dùng email/mật khẩu.';
       showNotification('Đăng nhập Google', message, [], 'error');
-      window.history.replaceState({}, document.title, window.location.pathname);
       return;
     }
-    if (action && token) {
+    if (token) {
       setAuthToken(token);
-      if (action === 'reset-password') setActiveView('reset-password');
-      if (action === 'verify-email') setActiveView('verify-email');
-      window.history.replaceState({}, document.title, window.location.pathname);
+      const targetView = action === 'verify-email' || window.location.pathname === viewPaths['verify-email']
+        ? 'verify-email'
+        : action === 'reset-password' || window.location.pathname === viewPaths['reset-password']
+          ? 'reset-password'
+          : null;
+      if (targetView) navigateTo(targetView, true);
     }
   }, []);
 
@@ -190,8 +229,8 @@ export default function App() {
         if (cancelled) return;
         setUser(user);
         await loadRemoteWorkspace(user);
-        if (user.role === 'admin') {
-          setActiveView('admin');
+        if (user.role === 'admin' && pathToView(window.location.pathname) === 'home') {
+          navigateTo('admin', true);
         }
       })
       .catch(() => {
@@ -347,9 +386,9 @@ export default function App() {
       setUser(response.user);
       await loadRemoteWorkspace(response.user);
       if (response.user.role === 'admin') {
-        setActiveView('admin');
+        navigateTo('admin');
       } else {
-        setActiveView('render');
+        navigateTo('render');
       }
     } finally {
       setAuthLoading(false);
@@ -370,10 +409,10 @@ export default function App() {
         await saveUserSettings(sanitizeSettingsForStorage(runtimeSettings));
         await refreshHistory();
         setRemoteSettingsHydrated(true);
-        setActiveView('account');
+        navigateTo('account');
       } else {
         setRemoteSettingsHydrated(true);
-        setActiveView('login');
+        navigateTo('login');
       }
     } finally {
       setAuthLoading(false);
@@ -388,7 +427,7 @@ export default function App() {
       setHistoryItems([]);
       setHistoryOpen(false);
       setRemoteSettingsHydrated(true);
-      setActiveView('login');
+      navigateTo('login');
     } finally {
       setAuthLoading(false);
     }
@@ -468,7 +507,7 @@ export default function App() {
   function openAdminRenderJobDetail(detail: AdminRenderHistoryDetail) {
     setProblemText(detail.problem_text);
     setResult({ scene: detail.scene, payload: detail.payload, warnings: detail.warnings });
-    setActiveView('render');
+    navigateTo('render');
     scrollToResultOnMobile();
   }
 
@@ -477,7 +516,7 @@ export default function App() {
       const detail = await getRenderHistoryDetail(id);
       setProblemText(detail.problem_text);
       setResult({ scene: detail.scene, payload: detail.payload, warnings: detail.warnings });
-      setActiveView('render');
+      navigateTo('render');
       scrollToResultOnMobile();
     } catch (caught) {
       const apiError = toApiError(caught, 'Không thể mở lịch sử dựng hình.');
@@ -644,7 +683,7 @@ export default function App() {
         <NotificationBanner notification={notification} onDismiss={() => setNotification(null)} />
         <AdminConsole
           user={user}
-          onBackToApp={() => setActiveView('home')}
+          onBackToApp={() => navigateTo('home')}
           onOpenRenderJobDetail={openAdminRenderJobDetail}
         />
       </>
@@ -658,11 +697,11 @@ export default function App() {
           className="header-left"
           role="button"
           tabIndex={0}
-          onClick={() => setActiveView('home')}
+          onClick={() => navigateTo('home')}
           onKeyDown={(event) => {
             if (event.key === 'Enter' || event.key === ' ') {
               event.preventDefault();
-              setActiveView('home');
+              navigateTo('home');
             }
           }}
         >
@@ -673,13 +712,13 @@ export default function App() {
           </div>
         </div>
         <nav className="header-nav">
-          <button type="button" className={`nav-item ${activeView === 'render' ? 'active' : ''}`} onClick={() => setActiveView('render')}>
+          <button type="button" className={`nav-item ${activeView === 'render' ? 'active' : ''}`} onClick={() => navigateTo('render')}>
             <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><line x1="4" y1="6" x2="20" y2="6"></line><line x1="4" y1="12" x2="14" y2="12"></line><line x1="4" y1="18" x2="18" y2="18"></line></svg>
             Workspace
           </button>
           {user?.role === 'admin' && (
             <button type="button" className="nav-item" onClick={() => {
-              setActiveView('admin');
+              navigateTo('admin');
             }}>
               <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
               Admin
@@ -698,7 +737,7 @@ export default function App() {
                   <div className="account-dropdown-group">
                     <button type="button" role="menuitem" onClick={() => {
                       setAccountMenuOpen(false);
-                      setActiveView('history');
+                      navigateTo('history');
                       void refreshHistory();
                     }}>
                       <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"></path><path d="M3 3v6h6"></path><path d="M12 7v5l3 2"></path></svg>
@@ -706,14 +745,14 @@ export default function App() {
                     </button>
                     <button type="button" role="menuitem" onClick={() => {
                       setAccountMenuOpen(false);
-                      setActiveView('settings');
+                      navigateTo('settings');
                     }}>
                       <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0A1.65 1.65 0 0 0 10.91 3H11a2 2 0 1 1 4 0h.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0A1.65 1.65 0 0 0 21 10.91V11a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
                       Cài đặt chung
                     </button>
                     <button type="button" role="menuitem" onClick={() => {
                       setAccountMenuOpen(false);
-                      setActiveView('account');
+                      navigateTo('account');
                     }}>
                       <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
                       Đổi mật khẩu
@@ -732,7 +771,7 @@ export default function App() {
               )}
             </div>
           ) : (
-            <button type="button" className={`nav-item ${activeView === 'login' ? 'active' : ''}`} onClick={() => setActiveView('login')}>
+            <button type="button" className={`nav-item ${activeView === 'login' ? 'active' : ''}`} onClick={() => navigateTo('login')}>
               <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path><path d="M10 17l5-5-5-5"></path><path d="M15 12H3"></path></svg>
               Đăng nhập
             </button>
@@ -748,9 +787,9 @@ export default function App() {
           <HomePage
             logoUrl={logoUrl}
             backendStatus={{ ...backendStatus, settingsDefaults }}
-            onStartRender={() => setActiveView('render')}
-            onOpenSettings={() => setActiveView('settings')}
-            onOpenLogin={() => setActiveView('login')}
+            onStartRender={() => navigateTo('render')}
+            onOpenSettings={() => navigateTo('settings')}
+            onOpenLogin={() => navigateTo('login')}
           />
         )}
         {activeView === 'render' && (
@@ -766,7 +805,7 @@ export default function App() {
                 onProblemTextChange={setProblemText}
                 onOcrImage={handleOcrImage}
                 onOcrClipboardImage={handleOcrClipboardImage}
-                onOpenRouter9Settings={() => setActiveView(user?.role === 'admin' ? 'admin' : 'settings')}
+                onOpenRouter9Settings={() => navigateTo(user?.role === 'admin' ? 'admin' : 'settings')}
                 onSubmit={handleSubmit}
               />
               {user && (
@@ -835,12 +874,12 @@ export default function App() {
             loading={historyLoading}
             onOpen={openHistoryItem}
             onDelete={removeHistoryItem}
-            onLogin={() => setActiveView('login')}
-            onWorkspace={() => setActiveView('render')}
+            onLogin={() => navigateTo('login')}
+            onWorkspace={() => navigateTo('render')}
           />
         )}
-        {activeView === 'guide' && <GuidePage onStart={() => setActiveView('render')} onSettings={() => setActiveView('settings')} />}
-        {activeView === 'about' && <AboutPage onStart={() => setActiveView('render')} onGuide={() => setActiveView('guide')} />}
+        {activeView === 'guide' && <GuidePage onStart={() => navigateTo('render')} onSettings={() => navigateTo('settings')} />}
+        {activeView === 'about' && <AboutPage onStart={() => navigateTo('render')} onGuide={() => navigateTo('guide')} />}
         {activeView === 'privacy-policy' && <PrivacyPolicyPage />}
         {activeView === 'terms' && <TermsPage />}
         {activeView === 'login' && (
@@ -848,16 +887,16 @@ export default function App() {
             logoUrl={logoUrl}
             user={user}
             authLoading={authLoading}
-            onContinueAsGuest={() => setActiveView('render')}
+            onContinueAsGuest={() => navigateTo('render')}
             onToast={(title, message, kind = 'info') => showNotification(title, message, [], kind)}
             onLogin={handleLogin}
             onGoogleLogin={handleGoogleLogin}
             onRegister={handleRegister}
             onForgotPassword={handleForgotPassword}
             onLogout={handleLogout}
-            onOpenAccount={() => setActiveView('account')}
-            onOpenPrivacyPolicy={() => setActiveView('privacy-policy')}
-            onOpenTerms={() => setActiveView('terms')}
+            onOpenAccount={() => navigateTo('account')}
+            onOpenPrivacyPolicy={() => navigateTo('privacy-policy')}
+            onOpenTerms={() => navigateTo('terms')}
           />
         )}
         {activeView === 'account' && user && (
@@ -865,7 +904,7 @@ export default function App() {
             user={user}
             authLoading={authLoading}
             onToast={(title, message, kind = 'info') => showNotification(title, message, [], kind)}
-            onBackWorkspace={() => setActiveView('render')}
+            onBackWorkspace={() => navigateTo('render')}
             onLogout={handleLogout}
             onResendVerification={handleResendVerification}
             onUpdateProfile={handleUpdateProfile}
@@ -876,10 +915,10 @@ export default function App() {
           />
         )}
         {activeView === 'reset-password' && (
-          <ResetPasswordPage token={authToken} onResetPassword={handleResetPassword} onBackLogin={() => setActiveView('login')} />
+          <ResetPasswordPage token={authToken} onResetPassword={handleResetPassword} onBackLogin={() => navigateTo('login')} />
         )}
         {activeView === 'verify-email' && (
-          <VerifyEmailPage token={authToken} onVerifyEmail={handleVerifyEmail} onBackWorkspace={() => setActiveView('render')} onBackLogin={() => setActiveView('login')} />
+          <VerifyEmailPage token={authToken} onVerifyEmail={handleVerifyEmail} onBackWorkspace={() => navigateTo('render')} onBackLogin={() => navigateTo('login')} />
         )}
         {activeView === 'settings' && (
           <section className="settings-page">
@@ -900,7 +939,7 @@ export default function App() {
             <div>
               <strong>Sản phẩm</strong>
               <FooterNavButton
-                onClick={() => setActiveView('guide')}
+                onClick={() => navigateTo('guide')}
                 icon={
                   <FooterNavIcon>
                     <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
@@ -912,7 +951,7 @@ export default function App() {
                 Hướng dẫn
               </FooterNavButton>
               <FooterNavButton
-                onClick={() => setActiveView('about')}
+                onClick={() => navigateTo('about')}
                 icon={
                   <FooterNavIcon>
                     <circle cx="12" cy="12" r="10" />
@@ -927,7 +966,7 @@ export default function App() {
             <div>
               <strong>Hỗ trợ</strong>
               <FooterNavButton
-                onClick={() => setActiveView(user ? 'account' : 'login')}
+                onClick={() => navigateTo(user ? 'account' : 'login')}
                 icon={
                   <FooterNavIcon>
                     <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
@@ -966,7 +1005,7 @@ export default function App() {
             <div>
               <strong>Pháp lý</strong>
               <FooterNavButton
-                onClick={() => setActiveView('privacy-policy')}
+                onClick={() => navigateTo('privacy-policy')}
                 icon={
                   <FooterNavIcon>
                     <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10" />
@@ -976,7 +1015,7 @@ export default function App() {
                 Chính sách bảo mật
               </FooterNavButton>
               <FooterNavButton
-                onClick={() => setActiveView('terms')}
+                onClick={() => navigateTo('terms')}
                 icon={
                   <FooterNavIcon>
                     <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />

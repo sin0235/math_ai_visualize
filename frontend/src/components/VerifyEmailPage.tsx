@@ -39,6 +39,13 @@ export function VerifyEmailPage({ token, onVerifyEmail, onBackWorkspace, onBackL
   return (
     <section className="login-page">
       <form className="login-form standalone-auth-card" onSubmit={handleSubmit}>
+        <div className="auth-page-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M4 4h16v16H4z" />
+            <path d="m22 6-10 7L2 6" />
+            <path d="m9 16 2 2 4-5" />
+          </svg>
+        </div>
         <span className="home-eyebrow">Xác minh email</span>
         <h2>Bảo vệ tài khoản của bạn</h2>
         <p className="field-hint">{message}</p>

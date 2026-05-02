@@ -34,6 +34,13 @@ export function ResetPasswordPage({ token, onResetPassword, onBackLogin }: Reset
   return (
     <section className="login-page">
       <form className="login-form standalone-auth-card" onSubmit={handleSubmit}>
+        <div className="auth-page-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M15 7a4 4 0 1 0-3.46 3.97L4 18.5V21h2.5L14 13.5" />
+            <path d="M17 14v7" />
+            <path d="M13.5 17.5h7" />
+          </svg>
+        </div>
         <span className="home-eyebrow">Đặt lại mật khẩu</span>
         <h2>Tạo mật khẩu mới</h2>
         <p className="field-hint">Sau khi đặt lại mật khẩu, các phiên đăng nhập cũ sẽ bị thu hồi và bạn cần đăng nhập lại.</p>

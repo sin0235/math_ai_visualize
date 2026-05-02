@@ -2892,12 +2892,26 @@ button:disabled {
 }
 
 .account-header,
+.account-header-title,
 .account-section-title,
-.session-item {
+.account-panel-title,
+.session-item,
+.icon-button-content {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 16px;
+}
+
+.account-header,
+.account-section-title,
+.session-item {
+  justify-content: space-between;
+}
+
+.account-header-title,
+.account-panel-title,
+.icon-button-content {
+  justify-content: flex-start;
 }
 
 .account-grid {
@@ -2918,6 +2932,40 @@ button:disabled {
 .account-panel h3,
 .account-header h2 {
   margin: 0;
+}
+
+.account-icon,
+.auth-page-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: #2563eb;
+  background: #eff6ff;
+}
+
+.account-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 14px;
+}
+
+.auth-page-icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 20px;
+}
+
+.icon-button-content {
+  gap: 8px;
+}
+
+.icon-button-content .account-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  color: currentColor;
+  background: transparent;
 }
 
 .highlight-panel {

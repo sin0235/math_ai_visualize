@@ -97,7 +97,7 @@ async def send_email(to_email: str, subject: str, text: str, html: str, settings
 
 def auth_link(settings: Settings, auth_action: str, token: str) -> str:
     base_url = settings.public_app_url.rstrip("/") or "http://localhost:5173"
-    return f"{base_url}/?{urlencode({'auth': auth_action, 'token': token})}"
+    return f"{base_url}/{auth_action}?{urlencode({'token': token})}"
 
 
 def auth_email_html(
