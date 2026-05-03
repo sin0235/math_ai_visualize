@@ -677,15 +677,24 @@ export default function App() {
     }, 0);
   }
 
-  if (activeView === 'admin' && user) {
+  if (activeView === 'admin') {
+    if (user?.role === 'admin') {
+      return (
+        <>
+          <NotificationBanner notification={notification} onDismiss={() => setNotification(null)} />
+          <AdminConsole
+            user={user}
+            onBackToApp={() => navigateTo('home')}
+            onOpenRenderJobDetail={openAdminRenderJobDetail}
+          />
+        </>
+      );
+    }
+
     return (
       <>
         <NotificationBanner notification={notification} onDismiss={() => setNotification(null)} />
-        <AdminConsole
-          user={user}
-          onBackToApp={() => navigateTo('home')}
-          onOpenRenderJobDetail={openAdminRenderJobDetail}
-        />
+        <AccessDeniedPage user={user} onHome={() => navigateTo('home')} onLogin={() => navigateTo('login')} />
       </>
     );
   }
@@ -808,6 +817,11 @@ export default function App() {
                 onOpenRouter9Settings={() => navigateTo(user?.role === 'admin' ? 'admin' : 'settings')}
                 onSubmit={handleSubmit}
               />
+              <div className="onboarding-card">
+                <strong>Bắt đầu nhanh</strong>
+                <p>Thử đề mẫu để xem cách hệ thống dựng hình và tinh chỉnh kết quả.</p>
+                <button type="button" className="secondary-button" onClick={() => setProblemText('Trong mặt phẳng Oxy, cho A(0,0), B(4,0), C(1,3). Dựng tam giác ABC, vẽ đường cao từ C xuống AB và ghi tên chân đường cao H.')}>Dùng đề mẫu</button>
+              </div>
               {user && (
                 <div className="history-drawer-wrap">
                   <button type="button" className="secondary-button history-toggle" onClick={() => setHistoryOpen((open) => !open)}>
@@ -939,6 +953,17 @@ export default function App() {
             <div>
               <strong>Sản phẩm</strong>
               <FooterNavButton
+                onClick={() => navigateTo('render')}
+                icon={
+                  <FooterNavIcon>
+                    <path d="M4 4h16v16H4z" />
+                    <path d="M8 16 16 8M8 8h8v8" />
+                  </FooterNavIcon>
+                }
+              >
+                Workspace
+              </FooterNavButton>
+              <FooterNavButton
                 onClick={() => navigateTo('guide')}
                 icon={
                   <FooterNavIcon>
@@ -1031,9 +1056,9 @@ export default function App() {
         </div>
         <div className="footer-bottom">
           <span>
-            © 2026 AI Math Renderer · v0.1.0 · Developed by{' '}
+            © 2026 AI Math Renderer by{' '}
             <a href={DEVELOPER_GITHUB_URL} target="_blank" rel="noopener noreferrer" className="footer-developer-link">
-              <strong>Sin Tran</strong>
+              <strong>Sin Studio</strong>
             </a>
           </span>
         </div>
@@ -1042,12 +1067,26 @@ export default function App() {
   );
 }
 
+function AccessDeniedPage({ user, onHome, onLogin }: { user: UserResponse | null; onHome: () => void; onLogin: () => void }) {
+  return (
+    <section className="product-page-card">
+      <span className="home-eyebrow">Không thể mở trang</span>
+      <h2>Bạn không có quyền truy cập khu vực này.</h2>
+      <p>{user ? 'Tài khoản hiện tại không có quyền sử dụng trang này.' : 'Vui lòng đăng nhập bằng tài khoản được cấp quyền để tiếp tục.'}</p>
+      <div className="home-actions">
+        <button type="button" onClick={onHome}>Về trang chủ</button>
+        {!user && <button type="button" className="secondary-button" onClick={onLogin}>Đăng nhập</button>}
+      </div>
+    </section>
+  );
+}
+
 function GuidePage({ onStart, onSettings }: { onStart: () => void; onSettings: () => void }) {
   const guideSteps = [
     { title: 'Nhập đề bài', text: 'Gõ đề hình học tiếng Việt, dán dữ liệu tọa độ hoặc kéo thả ảnh đề bài vào khu vực OCR.' },
-    { title: 'Chọn renderer', text: 'Dùng GeoGebra cho Oxy, đồ thị hàm số; dùng Three.js cho hình học không gian hoặc mô hình 3D.' },
-    { title: 'Dựng hình', text: 'AI chuyển đề bài thành scene có cấu trúc, sau đó renderer hiển thị hình để bạn kiểm tra trực quan.' },
-    { title: 'Tinh chỉnh', text: 'Kéo điểm, chỉnh scene hoặc dựng lại bằng prompt rõ hơn khi hình chưa đúng ý.' },
+    { title: 'Chọn cách hiển thị', text: 'Dùng GeoGebra cho Oxy, đồ thị hàm số; dùng Three.js cho hình học không gian hoặc mô hình 3D.' },
+    { title: 'Dựng hình', text: 'Hệ thống chuyển đề bài thành hình có cấu trúc để bạn kiểm tra trực quan.' },
+    { title: 'Tinh chỉnh', text: 'Kéo điểm, chỉnh scene hoặc dựng lại bằng mô tả rõ hơn khi hình chưa đúng ý.' },
   ];
   const promptTips = [
     'Nêu rõ hệ tọa độ: Oxy, Oxyz hoặc hình học không gian.',
@@ -1079,7 +1118,11 @@ function GuidePage({ onStart, onSettings }: { onStart: () => void; onSettings: (
 
       <div className="guide-columns">
         <section>
-          <h3>Mẹo viết prompt</h3>
+          <h3>Thử nhanh với ví dụ này</h3>
+          <p>Trong mặt phẳng Oxy, cho A(0,0), B(4,0), C(1,3). Dựng tam giác ABC, vẽ đường cao từ C xuống AB và ghi tên chân đường cao H.</p>
+        </section>
+        <section>
+          <h3>Mẹo viết đề bài</h3>
           <ul>
             {promptTips.map((tip) => <li key={tip}>{tip}</li>)}
           </ul>
@@ -1101,16 +1144,16 @@ function GuidePage({ onStart, onSettings }: { onStart: () => void; onSettings: (
 
 function AboutPage({ onStart, onGuide }: { onStart: () => void; onGuide: () => void }) {
   const features = [
-    { title: 'Xuất hình phân tích (Reasoning Model)', text: 'Luồng xử lý AI 2 tầng độc lập: Phân tích suy luận (Task 1) trước khi vẽ (Task 2) giảm thiểu hallucination, giúp tọa độ và quan hệ hình học luôn vững chắc.' },
-    { title: 'Công nhận tọa độ & OCR', text: 'Hỗ trợ đọc đề bài từ ảnh (kéo thả hoặc clipboard) và giữ nguyên tọa độ người dùng nhập vào, tham chiếu dưới gốc tọa độ.' },
-    { title: 'Kiểm soát & Tinh chỉnh', text: 'Không chỉ là vẽ ảnh tĩnh, AI Math Renderer sinh ra Scene JSON có cấu trúc, cho phép bạn kéo thả điểm, thêm chân đường cao và chỉnh sửa trực tiếp trên giao diện.' },
+    { title: 'Dựng hình có kiểm tra ngữ cảnh', text: 'Hệ thống đọc đề bài, nhận diện điểm/đường/mặt phẳng và dựng hình theo quan hệ toán học thay vì tạo ảnh tĩnh.' },
+    { title: 'Đọc ảnh & giữ tọa độ', text: 'Hỗ trợ đọc đề bài từ ảnh chụp, clipboard và giữ nguyên các tọa độ người dùng nhập vào.' },
+    { title: 'Tinh chỉnh trực quan', text: 'Bạn có thể kéo điểm, thêm chi tiết hình học và sửa lại scene ngay trên giao diện khi cần.' },
   ];
 
   return (
     <section className="about-page">
       <div className="about-hero">
-        <h2>AI tạo hình toán học với sự kiểm soát tuyệt đối.</h2>
-        <p>AI Math Renderer được xây dựng nhằm giải quyết một nỗi đau lớn trong giáo dục: <strong>Việc vẽ hình học không gian hay đồ thị quá mất thời gian</strong>. Chúng tôi tinh lọc quá trình này bằng cách kết hợp LLM, OCR và các renderer mạnh mẽ như GeoGebra, Three.js.</p>
+        <h2>AI hỗ trợ dựng hình toán học nhanh và dễ kiểm soát.</h2>
+        <p>AI Math Renderer giúp giáo viên và học sinh biến đề bài tiếng Việt, ảnh chụp hoặc dữ liệu tọa độ thành hình GeoGebra/Three.js để kiểm tra trực quan.</p>
         <div className="home-actions">
           <button type="button" onClick={onStart}>Mở workspace</button>
           <button type="button" className="secondary-button" onClick={onGuide}>Xem hướng dẫn</button>
@@ -1129,9 +1172,9 @@ function AboutPage({ onStart, onGuide }: { onStart: () => void; onGuide: () => v
       <section className="about-section">
         <div>
           <span>Định hướng sản phẩm</span>
-          <h3>Không thay thế việc học toán, mà giúp quá trình nhìn hình và kiểm tra mô hình trở nên dễ dàng hơn.</h3>
+          <h3>Không thay thế việc học toán, mà giúp bạn nhìn hình và kiểm tra mô hình nhanh hơn.</h3>
         </div>
-        <p>Áp dụng phương pháp <strong>"Infrastructure as Code"</strong> cho hình học. Lời giải của bạn là chân lý, AI chỉ đóng vai trò là "trợ lý vẽ kỹ thuật". Nó giúp bạn <em>Hiển thị hệ tọa độ 3D</em> hoặc <em>Khảo sát đồ thị quỹ tích</em> một cách dễ dàng thay vì phải đánh vật với bút và giấy thước đo độ.</p>
+        <p>Lời giải vẫn là phần quan trọng nhất. AI Math Renderer đóng vai trò trợ lý dựng hình: hiển thị hệ tọa độ 3D, khảo sát đồ thị hoặc kiểm tra quan hệ hình học để bạn tập trung vào tư duy toán học.</p>
       </section>
     </section>
   );

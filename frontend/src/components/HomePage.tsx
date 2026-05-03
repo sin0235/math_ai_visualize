@@ -23,10 +23,12 @@ const features = [
 
 const steps = [
   { title: 'Nhập đề', text: 'Gõ đề tiếng Việt hoặc dán ảnh bài toán từ clipboard.' },
-  { title: 'Chọn model', text: 'Dùng model mặc định hoặc cấu hình provider riêng.' },
+  { title: 'Chọn cách dựng', text: 'Giữ mặc định hoặc chọn model phù hợp với bài 2D/3D.' },
   { title: 'Dựng hình', text: 'AI sinh scene, renderer chuyển thành hình 2D/3D.' },
   { title: 'Tinh chỉnh', text: 'Kéo điểm, sửa scene và lưu lịch sử khi đăng nhập.' },
 ];
+
+const trustSignals = ['Dành cho giáo viên và học sinh THPT', 'Hỗ trợ Oxy/Oxyz', 'Xuất GeoGebra/Three.js'];
 
 export function HomePage({ onStartRender, onOpenSettings, onOpenLogin }: HomePageProps) {
   return (
@@ -39,8 +41,11 @@ export function HomePage({ onStartRender, onOpenSettings, onOpenLogin }: HomePag
             Phù hợp để học hình học 10-12, kiểm tra mô hình Oxy/Oxyz và tinh chỉnh trực quan.
           </p>
           <div className="home-actions">
-            <button type="button" onClick={onStartRender}>Bắt đầu dựng hình</button>
-            <button type="button" className="secondary-button" onClick={onOpenSettings}>Cấu hình model</button>
+            <button type="button" onClick={onStartRender}>Dùng thử miễn phí — không cần tài khoản</button>
+            <button type="button" className="secondary-button" onClick={onOpenSettings}>Tùy chỉnh trải nghiệm</button>
+          </div>
+          <div className="home-trust-strip" aria-label="Điểm nổi bật">
+            {trustSignals.map((item) => <span key={item}>{item}</span>)}
           </div>
           <button type="button" className="home-login-link" onClick={onOpenLogin}>Đã có tài khoản? Đăng nhập để đồng bộ lịch sử.</button>
         </div>

@@ -140,7 +140,7 @@ export function SettingsPanel({ value, defaults, onChange, onReset, onForgetApiK
           <li>Muốn cấu hình API key lâu dài, hãy đặt key trong backend `.env`.</li>
         </ul>
         <button type="button" className="secondary-button settings-reset" onClick={onForgetApiKeys}>Quên tất cả API key override</button>
-        <button type="button" className="secondary-button settings-reset" onClick={onReset}>Khôi phục mặc định</button>
+        <button type="button" className="secondary-button settings-reset" onClick={() => { if (window.confirm('Bạn có chắc muốn xoá toàn bộ cài đặt cá nhân và khôi phục mặc định?')) onReset(); }}>Khôi phục mặc định</button>
       </section>
     </section>
   );

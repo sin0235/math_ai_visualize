@@ -44,13 +44,13 @@ export function GeneralSettingsPanel({ value, defaults, onChange, onReset }: Gen
     <section className="settings-layout">
       <div className="panel settings-hero">
         <div className="panel-title">Cài đặt cá nhân</div>
-        <p className="field-hint">Bạn chỉ chọn provider/model mặc định và các tuỳ chọn cơ bản. Quét model, allowlist và cấu hình provider nằm trong Admin Dashboard.</p>
+        <p className="field-hint">Chọn trải nghiệm dựng hình phù hợp với cách bạn học, dạy và kiểm tra bài toán.</p>
       </div>
 
       <div className="settings-grid settings-grid-balanced">
         <div className="settings-stack">
           <section className="panel settings-section">
-            <div className="panel-title">AI mặc định</div>
+            <div className="panel-title">Tùy chỉnh render</div>
             <label className="field-label">
               Provider mặc định
               <select value={value.default_provider} onChange={(event) => updateField('default_provider', event.target.value)}>
@@ -65,20 +65,20 @@ export function GeneralSettingsPanel({ value, defaults, onChange, onReset }: Gen
                 {currentProviderModel(value) && !providerModelOptions.some((model) => model.id === currentProviderModel(value)) && <option value={currentProviderModel(value)}>{currentProviderModel(value)}</option>}
                 {providerModelOptions.map((model) => <option key={model.id} value={model.id}>{model.label}</option>)}
               </select>
-              <span className="field-hint">Danh sách này do admin bật trong dashboard quản trị.</span>
+              <span className="field-hint">Liên hệ quản trị viên nếu bạn cần thêm model.</span>
             </label>
           </section>
 
           <section className="panel settings-section">
-            <div className="panel-title">Phân quyền cấu hình</div>
-            <p className="field-hint">Người dùng thường không thể đổi base URL, quét model hoặc quản lý allowlist. Các cấu hình đó được lưu ở cơ sở dữ liệu bởi admin.</p>
+            <div className="panel-title">Gợi ý sử dụng</div>
+            <p className="field-hint">Nếu chưa chắc nên chọn gì, hãy giữ mặc định để hệ thống tự dùng model phù hợp nhất.</p>
           </section>
         </div>
 
         <section className="panel settings-section">
           <div className="settings-provider-header">
-            <div className="panel-title">OCR ảnh</div>
-            <p className="field-hint">Ảnh được gửi tới provider/model OCR đã được admin cấu hình để trích xuất đề bài.</p>
+            <div className="panel-title">Ảnh & OCR</div>
+            <p className="field-hint">Tùy chọn cách đọc đề bài từ ảnh chụp hoặc ảnh dán từ clipboard.</p>
           </div>
 
           <label className="field-label">
@@ -95,7 +95,7 @@ export function GeneralSettingsPanel({ value, defaults, onChange, onReset }: Gen
               {value.ocr.model && !ocrModels.some((model) => model.id === value.ocr.model) && <option value={value.ocr.model}>{value.ocr.model}</option>}
               {ocrModels.map((model) => <option key={model.id} value={model.id}>{model.label}</option>)}
             </select>
-            <span className="field-hint">Để trống để dùng mặc định hệ thống; danh sách model do admin bật.</span>
+            <span className="field-hint">Để trống nếu bạn muốn hệ thống tự chọn model đọc ảnh.</span>
           </label>
 
           <label className="field-label">
@@ -112,9 +112,9 @@ export function GeneralSettingsPanel({ value, defaults, onChange, onReset }: Gen
       </div>
 
       <section className="panel settings-section">
-        <div className="panel-title">Lưu trữ</div>
-        <p className="field-hint">Cài đặt cá nhân được lưu cục bộ và đồng bộ vào tài khoản sau khi đăng nhập. Các cấu hình hệ thống/model được admin lưu trong cơ sở dữ liệu.</p>
-        <button type="button" className="secondary-button settings-reset" onClick={onReset}>Khôi phục mặc định</button>
+        <div className="panel-title">Tài khoản & dữ liệu</div>
+        <p className="field-hint">Cài đặt cá nhân được ghi nhớ trên thiết bị này và đồng bộ khi bạn đăng nhập.</p>
+        <button type="button" className="secondary-button settings-reset" onClick={() => { if (window.confirm('Bạn có chắc muốn xoá toàn bộ cài đặt cá nhân và khôi phục mặc định?')) onReset(); }}>Khôi phục mặc định</button>
       </section>
     </section>
   );

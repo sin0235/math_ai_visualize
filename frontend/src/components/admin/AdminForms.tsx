@@ -135,6 +135,22 @@ function adminModelOptions(providerValue: ReturnType<typeof defaultAdminProvider
   return [...byId.values()];
 }
 
+/** Thứ tự cố định theo lần quét; tránh reorder DOM khi tick checkbox làm danh sách nhảy. */
+function orderedAllowlistModelOptions(
+  providerValue: ReturnType<typeof defaultAdminProviderSettings>,
+  allowedModelIds: string[]
+) {
+  const optionMap = new Map(adminModelOptions(providerValue, allowedModelIds).map((o) => [o.id, o]));
+  const ordered: Array<{ id: string; name: string }> = [];
+  for (const modelItem of providerValue.scanned_models) {
+    const id = typeof modelItem === 'string' ? modelItem : modelItem?.id;
+    if (id && optionMap.has(id)) ordered.push(optionMap.get(id)!);
+  }
+  const seenIds = new Set(ordered.map((o) => o.id));
+  const restIds = [...optionMap.keys()].filter((id) => !seenIds.has(id)).sort((a, b) => a.localeCompare(b));
+  return [...ordered, ...restIds.map((id) => optionMap.get(id)!)];
+}
+
 function adminSettingsToDefaults(value: Record<string, unknown>): SettingsDefaults {
   const openrouter = adminProviderToDefaults(value, 'openrouter');
   return {
@@ -284,22 +300,22 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave }: { value
   }
 
   const modelOptions = adminModelOptions(providerValue, [model]);
-  const allowlistOptions = adminModelOptions(providerValue, allowedModelIds);
+  const allowlistOptions = orderedAllowlistModelOptions(providerValue, allowedModelIds);
   const ocrProviderValue = getAdminProviderSettings(value, ocrProvider, defaults);
   const ocrModelOptions = adminModelOptions(ocrProviderValue, [ocrModel, defaults?.ocr.provider === ocrProvider ? defaults.ocr.model : '']);
 
   return (
     <div className="admin-ai-settings">
       <section className="admin-settings-section">
-        <h4>9router Configuration</h4>
+        <h4>Cấu hình 9router</h4>
         <div className="admin-field-grid">
-          <label className="field-label">Base URL<input type="url" value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} placeholder="https://..." /></label>
+          <label className="field-label">URL cơ sở<input type="url" value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} placeholder="https://..." /></label>
           <label className="field-label">Model mặc định<select value={model} onChange={(event) => setModel(event.target.value)}><option value="">Chọn model</option>{modelOptions.map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.name}</option>)}</select></label>
           <label className="checkbox-label"><input type="checkbox" checked={router9OnlyMode} onChange={(event) => setRouter9OnlyMode(event.target.checked)} /> Chỉ dùng 9router</label>
         </div>
         <div className="admin-field-grid">
-          <span><strong>Scanned models</strong>{providerValue.scanned_models.length} model</span>
-          <span><strong>Last scan</strong>{providerValue.last_scanned_at || 'Chưa scan'}</span>
+          <span><strong>Model đã quét</strong>{providerValue.scanned_models.length} model</span>
+          <span><strong>Lần quét gần nhất</strong>{providerValue.last_scanned_at || 'Chưa quét'}</span>
         </div>
         {checkResult && (
           <div className={`admin-status-box ${checkResult.status}`}>
@@ -309,40 +325,41 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave }: { value
         )}
         <div className="admin-row-actions">
           <button type="button" className="secondary-button" onClick={checkProvider} disabled={saving || checking}>{checking ? 'Đang kiểm tra...' : 'Kiểm tra kết nối'}</button>
-          <button type="button" className="secondary-button" onClick={scanModels} disabled={saving || scanning}>{scanning ? 'Đang scan...' : 'Scan models'}</button>
-          <button type="button" className="secondary-button" onClick={saveProvider} disabled={saving}>{saving ? 'Đang lưu...' : 'Lưu cấu hình'}</button>
+          <button type="button" className="secondary-button" onClick={scanModels} disabled={saving || scanning}>{scanning ? 'Đang quét...' : 'Quét model'}</button>
         </div>
       </section>
 
-      {allowlistOptions.length > 0 && (
-        <section className="admin-settings-section">
-          <h4>Allowlist models hiển thị cho user ({allowedModelIds.length} đã chọn)</h4>
-          <p className="field-hint">Chọn các model mà user có thể thấy và sử dụng trong dropdown.</p>
-          <div className="admin-model-checklist">
-            {allowlistOptions.map((modelItem) => (
-              <label key={modelItem.id} className="checkbox-label admin-model-checkbox">
-                <input
-                  type="checkbox"
-                  checked={allowedModelIds.includes(modelItem.id)}
-                  onChange={() => toggleModelId(modelItem.id)}
-                />
-                <span className="model-label">
-                  <strong>{modelItem.name}</strong>
-                  {modelItem.id !== modelItem.name && <small>{modelItem.id}</small>}
-                </span>
-              </label>
-            ))}
-          </div>
-          <button type="button" className="secondary-button" onClick={saveProvider} disabled={saving}>{saving ? 'Đang lưu...' : 'Lưu allowlist'}</button>
-        </section>
-      )}
+      <section className="admin-settings-section">
+        <h4>Model hiển thị cho người dùng ({allowedModelIds.length} đã chọn)</h4>
+        {allowlistOptions.length > 0 && (
+          <>
+            <p className="field-hint">Chọn model người dùng có thể thấy và sử dụng trong danh sách chọn.</p>
+            <div className="admin-model-checklist">
+              {allowlistOptions.map((modelItem) => (
+                <label key={modelItem.id} className="checkbox-label admin-model-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={allowedModelIds.includes(modelItem.id)}
+                    onChange={() => toggleModelId(modelItem.id)}
+                  />
+                  <span className="model-label">
+                    <strong>{modelItem.name}</strong>
+                    {modelItem.id !== modelItem.name && <small>{modelItem.id}</small>}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </>
+        )}
+        <button type="button" className="secondary-button" onClick={saveProvider} disabled={saving}>{saving ? 'Đang lưu...' : 'Lưu danh sách model'}</button>
+      </section>
 
       <section className="admin-settings-section">
         <h4>OCR</h4>
         <div className="admin-field-grid">
-          <label className="field-label">OCR provider<select value={ocrProvider} onChange={(event) => selectOcrProvider(event.target.value)}><option value="openrouter">OpenRouter</option><option value="router9">9router</option></select></label>
-          <label className="field-label">OCR model<select value={ocrModel} onChange={(event) => setOcrModel(event.target.value)}><option value="">Chọn model</option>{ocrModelOptions.map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.name}</option>)}</select><span className="field-hint">{ocrModelOptions.length > 0 ? `${ocrModelOptions.length} model khả dụng` : 'Chưa có model scan cho provider này'}</span></label>
-          <label className="field-label">Max image MB<input type="number" min="1" max="32" value={ocrMaxImageMb} onChange={(event) => setOcrMaxImageMb(event.target.value)} /></label>
+          <label className="field-label">Provider OCR<select value={ocrProvider} onChange={(event) => selectOcrProvider(event.target.value)}><option value="openrouter">OpenRouter</option><option value="router9">9router</option></select></label>
+          <label className="field-label">Model OCR<select value={ocrModel} onChange={(event) => setOcrModel(event.target.value)}><option value="">Chọn model</option>{ocrModelOptions.map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.name}</option>)}</select></label>
+          <label className="field-label">Dung lượng ảnh tối đa (MB)<input type="number" min="1" max="32" value={ocrMaxImageMb} onChange={(event) => setOcrMaxImageMb(event.target.value)} /></label>
         </div>
         <button type="button" className="secondary-button" onClick={saveOcr} disabled={saving}>{saving ? 'Đang lưu...' : 'Lưu OCR'}</button>
       </section>
@@ -370,14 +387,14 @@ export function AdminPlanSettingsForm({ value, onSave }: { value: Record<string,
   }
 
   return (
-    <section className="admin-settings-section"><h4>Plan quota</h4><div className="admin-field-grid">
+    <section className="admin-settings-section"><h4>Giới hạn theo gói</h4><div className="admin-field-grid">
       {planIds.map((planId) => (
         <React.Fragment key={planId}>
           <label className="field-label">{planId} render/ngày<input type="number" min="0" value={quotas[planId]?.render ?? ''} onChange={(event) => updateQuota(planId, 'render', event.target.value)} /></label>
           <label className="field-label">{planId} OCR/ngày<input type="number" min="0" value={quotas[planId]?.ocr ?? ''} onChange={(event) => updateQuota(planId, 'ocr', event.target.value)} /></label>
         </React.Fragment>
       ))}
-    </div><button type="button" className="secondary-button" onClick={() => void onSave({ version: 1, plans: Object.fromEntries(planIds.map((planId) => [planId, { daily_render_limit: optionalNumber(quotas[planId]?.render ?? ''), daily_ocr_limit: optionalNumber(quotas[planId]?.ocr ?? '') }])) })}>Lưu quota</button></section>
+    </div><button type="button" className="secondary-button" onClick={() => void onSave({ version: 1, plans: Object.fromEntries(planIds.map((planId) => [planId, { daily_render_limit: optionalNumber(quotas[planId]?.render ?? ''), daily_ocr_limit: optionalNumber(quotas[planId]?.ocr ?? '') }])) })}>Lưu giới hạn</button></section>
   );
 }
 
@@ -388,12 +405,12 @@ export function AdminFeatureFlagsForm({ value, onSave }: { value: Record<string,
   const [ocr, setOcr] = useState(value.ocr_enabled !== false);
   const [render, setRender] = useState(value.render_enabled !== false);
   return (
-    <section className="admin-settings-section"><h4>Feature flags</h4><div className="admin-field-grid">
-      <label className="checkbox-label"><input type="checkbox" checked={maintenanceMode} onChange={(event) => setMaintenanceMode(event.target.checked)} /> Maintenance mode</label>
-      <label className="checkbox-label"><input type="checkbox" checked={render} onChange={(event) => setRender(event.target.checked)} /> Render enabled</label>
-      <label className="checkbox-label"><input type="checkbox" checked={ocr} onChange={(event) => setOcr(event.target.checked)} /> OCR enabled</label>
-      <label className="checkbox-label"><input type="checkbox" checked={googleOAuth} onChange={(event) => setGoogleOAuth(event.target.checked)} /> Google OAuth enabled</label>
-    </div><label className="field-label">Maintenance message<textarea rows={3} value={message} onChange={(event) => setMessage(event.target.value)} /></label><button type="button" className="secondary-button" onClick={() => void onSave({ version: 1, maintenance_mode: maintenanceMode, maintenance_message: message, google_oauth_enabled: googleOAuth, ocr_enabled: ocr, render_enabled: render })}>Lưu flags</button></section>
+    <section className="admin-settings-section"><h4>Cờ tính năng</h4><div className="admin-field-grid">
+      <label className="checkbox-label"><input type="checkbox" checked={maintenanceMode} onChange={(event) => setMaintenanceMode(event.target.checked)} /> Chế độ bảo trì</label>
+      <label className="checkbox-label"><input type="checkbox" checked={render} onChange={(event) => setRender(event.target.checked)} /> Cho phép dựng hình</label>
+      <label className="checkbox-label"><input type="checkbox" checked={ocr} onChange={(event) => setOcr(event.target.checked)} /> Cho phép OCR</label>
+      <label className="checkbox-label"><input type="checkbox" checked={googleOAuth} onChange={(event) => setGoogleOAuth(event.target.checked)} /> Cho phép đăng nhập Google</label>
+    </div><label className="field-label">Thông báo bảo trì<textarea rows={3} value={message} onChange={(event) => setMessage(event.target.value)} /></label><button type="button" className="secondary-button" onClick={() => void onSave({ version: 1, maintenance_mode: maintenanceMode, maintenance_message: message, google_oauth_enabled: googleOAuth, ocr_enabled: ocr, render_enabled: render })}>Lưu cờ tính năng</button></section>
   );
 }
 
@@ -419,12 +436,12 @@ export function AdminAiProfilesForm({ value, aiSettings, onSave }: { value: Reco
   }
 
   return (
-    <section className="admin-settings-section"><h4>AI profiles</h4><div className="admin-field-grid">
-      <label className="field-label">Geometry provider<select value={geometryProvider} onChange={(event) => setGeometryProvider(event.target.value)}><option value="auto">auto</option>{providerOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
-      <label className="field-label">Geometry model<select value={geometryModel} onChange={(event) => setGeometryModel(event.target.value)}><option value="">Chọn model</option>{modelOptions(geometryProvider, geometryModel).map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.label}</option>)}</select></label>
-      <label className="field-label">OCR provider<select value={ocrProvider} onChange={(event) => setOcrProvider(event.target.value)}><option value="auto">auto</option>{providerOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
-      <label className="field-label">OCR model<select value={ocrModel} onChange={(event) => setOcrModel(event.target.value)}><option value="">Chọn model</option>{modelOptions(ocrProvider, ocrModel).map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.label}</option>)}</select></label>
-    </div><label className="field-label">Geometry fallbacks<textarea rows={3} value={geometryFallbacks} onChange={(event) => setGeometryFallbacks(event.target.value)} /></label><label className="field-label">OCR fallbacks<textarea rows={3} value={ocrFallbacks} onChange={(event) => setOcrFallbacks(event.target.value)} /></label><button type="button" className="secondary-button" onClick={() => void onSave({ version: 1, geometry_reasoning: { provider: geometryProvider, model: geometryModel, fallbacks: parseLines(geometryFallbacks) }, ocr: { provider: ocrProvider, model: ocrModel, fallbacks: parseLines(ocrFallbacks) } })}>Lưu AI profiles</button></section>
+    <section className="admin-settings-section"><h4>Hồ sơ AI</h4><div className="admin-field-grid">
+      <label className="field-label">Provider hình học<select value={geometryProvider} onChange={(event) => setGeometryProvider(event.target.value)}><option value="auto">auto</option>{providerOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
+      <label className="field-label">Model hình học<select value={geometryModel} onChange={(event) => setGeometryModel(event.target.value)}><option value="">Chọn model</option>{modelOptions(geometryProvider, geometryModel).map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.label}</option>)}</select></label>
+      <label className="field-label">Provider OCR<select value={ocrProvider} onChange={(event) => setOcrProvider(event.target.value)}><option value="auto">auto</option>{providerOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
+      <label className="field-label">Model OCR<select value={ocrModel} onChange={(event) => setOcrModel(event.target.value)}><option value="">Chọn model</option>{modelOptions(ocrProvider, ocrModel).map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.label}</option>)}</select></label>
+    </div><label className="field-label">Model dự phòng hình học<textarea rows={3} value={geometryFallbacks} onChange={(event) => setGeometryFallbacks(event.target.value)} /></label><label className="field-label">Model dự phòng OCR<textarea rows={3} value={ocrFallbacks} onChange={(event) => setOcrFallbacks(event.target.value)} /></label><button type="button" className="secondary-button" onClick={() => void onSave({ version: 1, geometry_reasoning: { provider: geometryProvider, model: geometryModel, fallbacks: parseLines(geometryFallbacks) }, ocr: { provider: ocrProvider, model: ocrModel, fallbacks: parseLines(ocrFallbacks) } })}>Lưu hồ sơ AI</button></section>
   );
 }
 
@@ -439,11 +456,11 @@ export function AdminAiPromptsForm({ value, onSave }: { value: Record<string, un
 
   return (
     <section className="admin-settings-section">
-      <h4>Hệ thống prompt AI (Task 1 & Task 2)</h4>
-      <p className="field-hint">Nếu để trống, hệ thống sẽ dùng prompt mặc định được code trong backend.</p>
-      <label className="field-label">Scene Extraction Prompt (Task 2)<textarea rows={10} value={sceneExtraction} onChange={(event) => setSceneExtraction(event.target.value)} placeholder="Prompt cho việc chuyển đề bài thành JSON..." /></label>
-      <label className="field-label">Reasoning Prompt (Task 1)<textarea rows={10} value={reasoning} onChange={(event) => setReasoning(event.target.value)} placeholder="Prompt cho việc phân tích suy luận bài toán..." /></label>
-      <button type="button" className="secondary-button" onClick={() => void onSave({ version: 1, scene_extraction: sceneExtraction.trim(), reasoning: reasoning.trim() })}>Lưu prompts</button>
+      <h4>Prompt hệ thống AI</h4>
+      <p className="field-hint">Nếu để trống, hệ thống sẽ dùng prompt mặc định trong backend.</p>
+      <label className="field-label">Prompt dựng scene<textarea rows={10} value={sceneExtraction} onChange={(event) => setSceneExtraction(event.target.value)} placeholder="Prompt cho việc chuyển đề bài thành JSON..." /></label>
+      <label className="field-label">Prompt phân tích suy luận<textarea rows={10} value={reasoning} onChange={(event) => setReasoning(event.target.value)} placeholder="Prompt cho việc phân tích suy luận bài toán..." /></label>
+      <button type="button" className="secondary-button" onClick={() => void onSave({ version: 1, scene_extraction: sceneExtraction.trim(), reasoning: reasoning.trim() })}>Lưu prompt</button>
     </section>
   );
 }

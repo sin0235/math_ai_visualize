@@ -522,6 +522,23 @@ select {
   overscroll-behavior: contain;
 }
 
+.onboarding-card {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(37, 99, 235, 0.14);
+  border-radius: 18px;
+  padding: 14px;
+  background: linear-gradient(135deg, rgba(239, 246, 255, 0.92), rgba(255, 255, 255, 0.96));
+  color: #1f2937;
+}
+
+.onboarding-card p {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
 .history-drawer-wrap {
   display: grid;
   gap: 10px;
@@ -2442,6 +2459,22 @@ button:disabled {
   flex-wrap: wrap;
   align-items: center;
   gap: 12px;
+}
+
+.home-trust-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.home-trust-strip span {
+  border: 1px solid rgba(37, 99, 235, 0.16);
+  border-radius: 999px;
+  padding: 7px 10px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #1e3a8a;
+  font-size: 0.84rem;
+  font-weight: 800;
 }
 
 .home-login-link {

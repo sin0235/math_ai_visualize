@@ -188,9 +188,13 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
     setSavingAiSettings(true);
     try {
       const next = { ...aiSettings, ...patch };
-      await updateAdminSystemSetting('ai_settings', next);
-      setAiSettings(next);
-      void onRefresh();
+      const updated = await updateAdminSystemSetting('ai_settings', next);
+      setAiSettings(updated.value);
+      setSettings((prev) =>
+        prev.some((item) => item.key === 'ai_settings')
+          ? prev.map((item) => (item.key === 'ai_settings' ? updated : item))
+          : [...prev, updated]
+      );
     } finally {
       setSavingAiSettings(false);
     }
@@ -248,14 +252,14 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
   return (
     <section className="admin-dashboard">
       <aside className="admin-sidebar">
-        <div className="admin-brand"><span><img src={adminLogoUrl} alt="" className="admin-brand-logo" width={32} height={32} decoding="async" /></span><div><strong>Admin Dashboard</strong><small>Project Control Center</small></div></div>
+        <div className="admin-brand"><span><img src={adminLogoUrl} alt="" className="admin-brand-logo" width={32} height={32} decoding="async" /></span><div><strong>Bảng quản trị</strong><small>Trung tâm vận hành</small></div></div>
         <nav className="admin-sidebar-nav">
           <AdminNavButton active={activeSection === 'overview'} onClick={() => setActiveSection('overview')} icon="overview" label="Tổng quan" />
           <AdminNavButton active={activeSection === 'users'} onClick={() => setActiveSection('users')} icon="users" label="Người dùng" />
-          <AdminNavButton active={activeSection === 'renders'} onClick={() => setActiveSection('renders')} icon="renders" label="Render jobs" />
+          <AdminNavButton active={activeSection === 'renders'} onClick={() => setActiveSection('renders')} icon="renders" label="Lượt dựng hình" />
           <AdminNavButton active={activeSection === 'models'} onClick={() => setActiveSection('models')} icon="models" label="Model & AI" />
           <AdminNavButton active={activeSection === 'settings'} onClick={() => setActiveSection('settings')} icon="settings" label="Cài đặt DB" />
-          <AdminNavButton active={activeSection === 'audit'} onClick={() => setActiveSection('audit')} icon="audit" label="Audit logs" />
+          <AdminNavButton active={activeSection === 'audit'} onClick={() => setActiveSection('audit')} icon="audit" label="Nhật ký kiểm toán" />
         </nav>
         <div className="admin-sidebar-footer"><small>{user.email}</small><button type="button" className="secondary-button admin-button-with-icon" onClick={onBackToApp}><AdminIcon name="back" />Trang người dùng</button></div>
       </aside>
@@ -264,7 +268,7 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
         {activeSection === 'overview' && (
           <>
             <header className="admin-topbar">
-              <div><span className="home-eyebrow">Admin Dashboard</span><h2>Quản lý dự án AI Math Renderer</h2><p>Dashboard riêng cho admin: vận hành, phân tích, người dùng, model, cài đặt và audit.</p></div>
+              <div><span className="home-eyebrow">Bảng quản trị</span><h2>Quản lý dự án AI Math Renderer</h2><p>Khu vực vận hành, phân tích, quản lý người dùng, model, cài đặt và nhật ký.</p></div>
               <AdminToolbarRefreshButton loading={loading} onClick={onRefresh} />
             </header>
             <div className="admin-section-stack">
@@ -272,7 +276,7 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
               <MetricCard label="Người dùng" value={summary?.users ?? 0} variant="primary" icon="users" />
               <MetricCard label="Đang hoạt động" value={summary?.active_users ?? 0} variant="success" icon="active" />
               <MetricCard label="Admin" value={summary?.admins ?? 0} variant="info" icon="admin" />
-              <MetricCard label="Render jobs" value={summary?.render_jobs ?? 0} variant="primary" icon="renders" />
+              <MetricCard label="Lượt dựng hình" value={summary?.render_jobs ?? 0} variant="primary" icon="renders" />
               <MetricCard label="Render hôm nay" value={summary?.render_jobs_today ?? 0} variant="success" icon="chart" />
               <MetricCard label="User mới hôm nay" value={summary?.users_today ?? 0} variant="info" icon="users" />
               <MetricCard label="Job cảnh báo AI" value={summary?.ai_warning_jobs ?? 0} variant="warning" icon="warning" />
@@ -320,9 +324,9 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
             <section className="admin-panel admin-panel-full">
             <form className="admin-toolbar" onSubmit={submitUserSearch}>
               <input value={userQuery} onChange={(event) => setUserQuery(event.target.value)} placeholder="Tìm email, tên hiển thị hoặc ID" />
-              <select value={userFilters.role ?? ''} onChange={(event) => setUserFilters((current) => ({ ...current, role: event.target.value }))}><option value="">Role</option><option value="user">user</option><option value="admin">admin</option></select>
-              <select value={userFilters.status ?? ''} onChange={(event) => setUserFilters((current) => ({ ...current, status: event.target.value }))}><option value="">Status</option><option value="active">active</option><option value="disabled">disabled</option></select>
-              <select value={userFilters.plan ?? ''} onChange={(event) => setUserFilters((current) => ({ ...current, plan: event.target.value }))}><option value="">Plan</option>{planOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select>
+              <select value={userFilters.role ?? ''} onChange={(event) => setUserFilters((current) => ({ ...current, role: event.target.value }))}><option value="">Vai trò</option><option value="user">user</option><option value="admin">admin</option></select>
+              <select value={userFilters.status ?? ''} onChange={(event) => setUserFilters((current) => ({ ...current, status: event.target.value }))}><option value="">Trạng thái</option><option value="active">active</option><option value="disabled">disabled</option></select>
+              <select value={userFilters.plan ?? ''} onChange={(event) => setUserFilters((current) => ({ ...current, plan: event.target.value }))}><option value="">Gói</option>{planOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select>
               <button type="submit" className="secondary-button" disabled={searchingUsers}>{searchingUsers ? 'Đang tìm...' : 'Tìm user'}</button>
               <button type="button" className="secondary-button" onClick={() => { setUserQuery(''); setUserFilters({}); void onSearchUsers('', {}); }}>Xoá lọc</button>
             </form>
@@ -346,8 +350,8 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
               <select value={localRenderJobFilters.provider ?? ''} onChange={(event) => setLocalRenderJobFilters((current) => ({ ...current, provider: event.target.value }))}><option value="">Provider</option>{renderProviderOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select>
               <select value={localRenderJobFilters.model ?? ''} onChange={(event) => setLocalRenderJobFilters((current) => ({ ...current, model: event.target.value }))}><option value="">Model</option>{renderModelOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select>
               <select value={localRenderJobFilters.renderer ?? ''} onChange={(event) => setLocalRenderJobFilters((current) => ({ ...current, renderer: event.target.value }))}><option value="">Renderer</option>{renderRendererOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select>
-              <select value={localRenderJobFilters.source_type ?? ''} onChange={(event) => setLocalRenderJobFilters((current) => ({ ...current, source_type: event.target.value }))}><option value="">Source</option>{renderSourceFilterOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select>
-              <input list="admin-user-id-options" value={localRenderJobFilters.user_id ?? ''} onChange={(event) => setLocalRenderJobFilters((current) => ({ ...current, user_id: event.target.value }))} placeholder="User ID" />
+              <select value={localRenderJobFilters.source_type ?? ''} onChange={(event) => setLocalRenderJobFilters((current) => ({ ...current, source_type: event.target.value }))}><option value="">Nguồn</option>{renderSourceFilterOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select>
+              <input list="admin-user-id-options" value={localRenderJobFilters.user_id ?? ''} onChange={(event) => setLocalRenderJobFilters((current) => ({ ...current, user_id: event.target.value }))} placeholder="ID người dùng" />
               <button type="submit" className="secondary-button" disabled={filteringRenderJobs}>{filteringRenderJobs ? 'Đang lọc...' : 'Lọc jobs'}</button>
               <button type="button" className="secondary-button" onClick={() => { setLocalRenderJobFilters({}); void onSearchRenderJobs({}); }}>Xoá lọc</button>
             </form>
@@ -371,11 +375,11 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
         {activeSection === 'models' && (
           <>
             <header className="admin-page-header">
-              <h2>Model & AI management</h2>
+              <h2>Quản lý model & AI</h2>
               <AdminToolbarRefreshButton loading={loading} onClick={onRefresh} />
             </header>
             <section className="admin-panel admin-panel-full">
-            <p className="field-hint">Admin quản lý provider, model mặc định, allowlist, OCR và routing AI.</p>
+            <p className="field-hint">Quản lý provider, model mặc định, danh sách model hiển thị, OCR và định tuyến AI.</p>
             <AdminAiSettingsForm value={aiSettings} defaults={settingsDefaults} saving={savingAiSettings} onSave={saveAiSettingsPatch} />
           </section>
           </>
@@ -404,7 +408,7 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
         {activeSection === 'audit' && (
           <>
             <header className="admin-page-header">
-              <h2>Audit logs</h2>
+              <h2>Nhật ký kiểm toán</h2>
               <AdminToolbarRefreshButton loading={loading} onClick={onRefresh} />
             </header>
             <section className="admin-panel admin-panel-full">
@@ -509,9 +513,9 @@ function AdminUserRow({ item, currentUserId, planOptions, onUpdate, onToggleStat
         <div className="admin-edit-panel">
           <div className="admin-field-grid">
             <label className="field-label">Tên hiển thị<input value={displayName} onChange={(event) => setDisplayName(event.target.value)} /></label>
-            <label className="field-label">Role<select value={role} onChange={(event) => setRole(event.target.value as UserResponse['role'])} disabled={isSelf}><option value="user">user</option><option value="admin">admin</option></select></label>
-            <label className="field-label">Status<select value={status} onChange={(event) => setStatus(event.target.value as UserResponse['status'])} disabled={isSelf}><option value="active">active</option><option value="disabled">disabled</option></select></label>
-            <label className="field-label">Plan<select value={plan} onChange={(event) => setPlan(event.target.value)}>{!planOptions.some((option) => option.id === plan) && <option value={plan}>{plan}</option>}{planOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
+            <label className="field-label">Vai trò<select value={role} onChange={(event) => setRole(event.target.value as UserResponse['role'])} disabled={isSelf}><option value="user">user</option><option value="admin">admin</option></select></label>
+            <label className="field-label">Trạng thái<select value={status} onChange={(event) => setStatus(event.target.value as UserResponse['status'])} disabled={isSelf}><option value="active">active</option><option value="disabled">disabled</option></select></label>
+            <label className="field-label">Gói<select value={plan} onChange={(event) => setPlan(event.target.value)}>{!planOptions.some((option) => option.id === plan) && <option value={plan}>{plan}</option>}{planOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
           </div>
           {isSelf && <p className="field-hint">Bạn không thể thay đổi role/status của chính mình.</p>}
           <button type="button" className="secondary-button" onClick={() => void save()} disabled={saving}>{saving ? 'Đang lưu...' : 'Lưu thay đổi'}</button>
@@ -546,7 +550,7 @@ function AdminRenderJobDetailPanel({ detail, onOpen, onClose }: { detail: AdminR
         <span><strong>Provider</strong>{detail.provider || 'auto'}</span>
         <span><strong>Model</strong>{detail.model || 'default'}</span>
         <span><strong>Renderer</strong>{detail.renderer || 'auto'}</span>
-        <span><strong>Source</strong>{detail.source_type}</span>
+        <span><strong>Nguồn</strong>{detail.source_type}</span>
       </div>
       <p className="admin-problem-text">{detail.problem_text}</p>
       {detail.warnings.length > 0 && <AdminDetails title="Warnings" value={detail.warnings} />}
