@@ -885,8 +885,8 @@ select {
 }
 
 .metric-group-ai-health {
-  border-color: rgba(245, 158, 11, 0.24);
-  background: linear-gradient(135deg, rgba(255, 251, 235, 0.92), rgba(255, 255, 255, 0.9));
+  border-color: #d4d4d4;
+  background: #ffffff;
 }
 
 .admin-metric-grid {
@@ -962,58 +962,51 @@ select {
   white-space: nowrap;
 }
 
-.admin-metric-card.metric-primary {
-  border-color: rgba(37, 99, 235, 0.18);
-  background: linear-gradient(135deg, rgba(239, 246, 255, 0.94), #ffffff);
+.admin-metric-card.metric-primary,
+.admin-metric-card.metric-info {
+  border-color: #d4d4d4;
+  background: #ffffff;
 }
 
 .admin-metric-card.metric-primary::before,
+.admin-metric-card.metric-info::before {
+  background: #171717;
+}
+
 .admin-metric-card.metric-primary .admin-icon,
-.admin-metric-card.metric-primary strong {
-  color: #2563eb;
-  background: #2563eb;
+.admin-metric-card.metric-primary strong,
+.admin-metric-card.metric-info .admin-icon,
+.admin-metric-card.metric-info strong {
+  color: #171717;
 }
 
 .admin-metric-card.metric-success {
-  border-color: rgba(22, 163, 74, 0.2);
-  background: linear-gradient(135deg, rgba(240, 253, 244, 0.96), #ffffff);
+  border-color: #d4d4d4;
+  background: #ffffff;
 }
 
-.admin-metric-card.metric-success::before,
+.admin-metric-card.metric-success::before {
+  background: #262626;
+}
+
 .admin-metric-card.metric-success .admin-icon,
 .admin-metric-card.metric-success strong {
-  color: #16a34a;
-  background: #16a34a;
+  color: #171717;
 }
 
 .admin-metric-card.metric-warning {
-  border-color: rgba(234, 88, 12, 0.28);
-  background: linear-gradient(135deg, rgba(255, 247, 237, 0.98), #ffffff);
-  box-shadow: 0 10px 22px rgba(234, 88, 12, 0.08);
+  border-color: #a3a3a3;
+  background: linear-gradient(135deg, #ffffff, #f5f5f5);
+  box-shadow: 0 10px 22px rgba(23, 23, 23, 0.06);
 }
 
-.admin-metric-card.metric-warning::before,
+.admin-metric-card.metric-warning::before {
+  background: #0a0a0a;
+}
+
 .admin-metric-card.metric-warning .admin-icon,
 .admin-metric-card.metric-warning strong {
-  color: #ea580c;
-  background: #ea580c;
-}
-
-.admin-metric-card.metric-info {
-  border-color: rgba(8, 145, 178, 0.2);
-  background: linear-gradient(135deg, rgba(236, 254, 255, 0.96), #ffffff);
-}
-
-.admin-metric-card.metric-info::before,
-.admin-metric-card.metric-info .admin-icon,
-.admin-metric-card.metric-info strong {
-  color: #0891b2;
-  background: #0891b2;
-}
-
-.admin-metric-card .admin-icon,
-.admin-metric-card strong {
-  background: transparent !important;
+  color: #0a0a0a;
 }
 
 .admin-dashboard {
@@ -1103,13 +1096,13 @@ select {
 }
 
 .admin-sidebar-nav button.active {
-  border-left-color: #2563eb;
-  background: #eff6ff;
-  color: #1d4ed8;
+  border-left-color: #171717;
+  background: #f5f5f5;
+  color: #171717;
 }
 
 .admin-sidebar-nav button.active .admin-icon {
-  color: #2563eb;
+  color: #171717;
 }
 
 .admin-sidebar-nav button:hover {
@@ -3588,8 +3581,8 @@ pre {
   height: 220px;
   gap: 10px;
   padding: 18px 6px 34px;
-  border-bottom: 1px solid #cbd5e1;
-  background: linear-gradient(to top, rgba(226, 232, 240, 0.8) 1px, transparent 1px) 0 0 / 100% 25%;
+  border-bottom: 1px solid #d4d4d4;
+  background: linear-gradient(to top, rgba(229, 229, 229, 0.85) 1px, transparent 1px) 0 0 / 100% 25%;
   min-width: 720px;
 }
 
@@ -3605,18 +3598,18 @@ pre {
 .admin-chart-bar {
   width: 100%;
   max-width: 42px;
-  background: linear-gradient(180deg, #60a5fa, #2563eb);
+  background: linear-gradient(180deg, #404040, #0a0a0a);
   border-radius: 10px 10px 4px 4px;
   transition: height 0.3s ease, opacity 0.2s, transform 0.2s;
   position: relative;
   min-height: 3px;
-  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.16);
+  box-shadow: 0 8px 18px rgba(23, 23, 23, 0.14);
 }
 
 .admin-chart-bar.is-empty {
-  background: #e2e8f0;
+  background: #e5e5e5;
   box-shadow: none;
-  opacity: 0.8;
+  opacity: 0.9;
 }
 
 .admin-chart-bar:hover {
@@ -3650,26 +3643,26 @@ pre {
   place-items: center;
   gap: 8px;
   min-height: 180px;
-  border: 1px dashed #cbd5e1;
+  border: 1px dashed #d4d4d4;
   border-radius: 16px;
-  background: #f8fafc;
-  color: #475569;
+  background: #fafafa;
+  color: #525252;
   text-align: center;
   padding: 28px;
 }
 
 .admin-chart-empty-state .admin-icon {
-  color: #94a3b8;
+  color: #737373;
 }
 
 .admin-chart-empty-state strong {
-  color: #1f2937;
+  color: #171717;
   font-size: 15px;
 }
 
 .admin-chart-empty-state p {
   margin: 0;
-  color: #64748b;
+  color: #737373;
   font-size: 13px;
 }
 
