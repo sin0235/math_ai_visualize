@@ -21,614 +21,152 @@
     <main class="review-shell">
       <header class="review-header">
         <h1>Email HTML review</h1>
-        <p>Preview song song 2 template auth email hiện tại: xác thực tài khoản và quên mật khẩu.</p>
+        <p>Preview lấy trực tiếp từ <code>auth_email_html</code> (backend). Chạy <code>python backend/scripts/generate_email_preview.py</code> sau khi sửa template.</p>
       </header>
       <section class="review-grid">
         <article class="review-panel">
           <h2>Email xác thực tài khoản</h2>
-          <iframe title="Email xác thực tài khoản" srcdoc="<!doctype html>
-<html lang=&quot;vi&quot;>
-  <head>
-    <meta charset=&quot;utf-8&quot; />
-    <meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1&quot; />
-    <meta name=&quot;color-scheme&quot; content=&quot;light dark&quot; />
-    <meta name=&quot;supported-color-schemes&quot; content=&quot;light dark&quot; />
-    <style>
-      :root {
-        color-scheme: light dark;
-        supported-color-schemes: light dark;
-      }
-      body {
-    margin: 0;
-        padding: 0;
-        background: #fafafa;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-        -webkit-font-smoothing: antialiased;
-        -moz-osx-font-smoothing: grayscale;
-      }
-      .email-wrapper {
-        max-width: 600px;
-        margin: 0 auto;
-        padding: 40px 20px;
-      }
-      .email-card {
-        background: #ffffff;
-        border: 1px solid #e5e5e5;
-        border-radius: 16px;
-        overflow: hidden;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-      }
-      .email-header {
-        padding: 32px 32px 24px;
-        background: linear-gradient(135deg, #171717 0%, #262626 100%);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 16px;
-      }
-      .logo-container {
-        margin: 0;
-        width: 132px;
-        height: 132px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-      }
-      .logo-container svg {
-        width: 132px;
-        height: 132px;
-      }
-      .eyebrow {
-        display: inline-block;
-        margin: 0;
-        padding: 8px 16px;
-        border-radius: 6px;
-        background: rgba(255, 255, 255, 0.15);
-        color: #e5e5e5;
-        font-size: 18px;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-      }
-      .email-body {
-        padding: 32px;
-      }
-      .email-title {
-        margin: 0 0 12px;
-        color: #171717;
-        font-size: 28px;
-        font-weight: 700;
-        line-height: 1.2;
-        letter-spacing: -0.02em;
-      }
-      .email-intro {
-        margin: 0 0 28px;
-        color: #525252;
-        font-size: 16px;
-        line-height: 1.6;
-      }
-      .cta-button {
-        display: inline-block;
-        margin: 0 0 32px;
-        padding: 14px 28px;
-        border-radius: 10px;
-        background: #171717;
-        color: #ffffff !important;
-        text-decoration: none;
-        font-size: 16px;
-        font-weight: 600;
-        text-align: center;
-        transition: background 0.2s;
-      }
-      .cta-button:hover {
-        background: #262626;
-      }
-      .otp-section {
-        margin: 0 0 28px;
-        padding: 24px;
-        border: 1px solid #e5e5e5;
-        border-radius: 12px;
-        background: #fafafa;
-      }
-      .section-label {
-        margin: 0 0 12px;
-        color: #737373;
-        font-size: 12px;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-      }
-      .otp-container,
-      .token-container {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        margin: 0 0 12px;
-      }
-      .otp-display {
-        display: flex;
-        gap: 8px;
-        flex: 1;
-      }
-      .token-display {
-        display: block;
-        flex: 1;
-        padding: 14px 16px;
-        border: 2px solid #d4d4d4;
-        border-radius: 10px;
-        background: #ffffff;
-        color: #171717;
-        font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
-        font-size: 14px;
-        font-weight: 600;
-        line-height: 1.5;
-        word-break: break-all;
-        user-select: all;
-      }
-      .otp-digit {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 48px;
-        height: 56px;
-        border: 2px solid #d4d4d4;
-        border-radius: 10px;
-        background: #ffffff;
-        color: #171717;
-        font-size: 28px;
-        font-weight: 700;
-        font-variant-numeric: tabular-nums;
-        user-select: all;
-      }
-      .copy-button {
-        padding: 10px 12px;
-        border: 1px solid #d4d4d4;
-        border-radius: 8px;
-        background: #ffffff;
-        color: #171717;
-        font-size: 14px;
-        font-weight: 600;
-        cursor: pointer;
-        white-space: nowrap;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-      }
-      .copy-button:hover {
-        background: #f5f5f5;
-        border-color: #a3a3a3;
-      }
-      .copy-button svg {
-        display: block;
-      }
-      .hint-text {
-        margin: 0;
-        color: #737373;
-        font-size: 13px;
-        line-height: 1.5;
-      }
-      .email-footer {
-        padding: 24px 32px;
-        border-top: 1px solid #e5e5e5;
-        background: #fafafa;
-      }
-      .footer-text {
-        margin: 0 0 8px;
-        color: #737373;
-        font-size: 13px;
-        line-height: 1.6;
-      }
-      .footer-text:last-child {
-        margin: 0;
-      }
-      .footer-brand {
-        color: #171717;
-        font-weight: 600;
-      }
-      @media (max-width: 600px) {
-        .email-wrapper { padding: 20px 12px; }
-        .email-header { padding: 24px 20px 20px; }
-        .email-header { gap: 12px; }
-        .logo-container, .logo-container svg { width: 96px; height: 96px; }
-        .eyebrow { font-size: 14px; padding: 6px 12px; }
-        .email-body { padding: 24px 20px; }
-        .email-title { font-size: 24px; }
-        .otp-digit { width: 40px; height: 48px; font-size: 24px; }
-        .otp-container, .token-container { flex-direction: column; align-items: stretch; }
-        .copy-button { width: 100%; }
-      }
-      @media (prefers-color-scheme: dark) {
-        body { background: #0a0a0a; }
-        .email-card { background: #171717; border-color: #262626; }
-        .email-body { background: #171717; }
-        .email-title { color: #fafafa; }
-        .email-intro { color: #a3a3a3; }
-        .cta-button { background: #fafafa; color: #171717 !important; }
-        .cta-button:hover { background: #e5e5e5; }
-        .otp-section { background: #0a0a0a; border-color: #262626; }
-        .section-label { color: #a3a3a3; }
-        .otp-digit, .token-display { background: #171717; border-color: #404040; color: #fafafa; }
-        .copy-button { background: #262626; border-color: #404040; color: #fafafa; }
-        .copy-button:hover { background: #404040; }
-        .copy-button svg { color: #fafafa; }
-        .hint-text { color: #a3a3a3; }
-        .email-footer { background: #0a0a0a; border-color: #262626; }
-        .footer-text { color: #a3a3a3; }
-        .footer-brand { color: #fafafa; }
-      }
-    </style>
-  </head>
-  <body>
-    <div class=&quot;email-wrapper&quot;>
-      <div class=&quot;email-card&quot;>
-        <div class=&quot;email-header&quot;>
-          <div class=&quot;logo-container&quot;><svg xmlns=&quot;http://www.w3.org/2000/svg&quot; viewBox=&quot;0 0 512 512&quot; width=&quot;96&quot; height=&quot;96&quot;>
-      <defs>
-        <filter id=&quot;core-glow&quot; x=&quot;-50%&quot; y=&quot;-50%&quot; width=&quot;200%&quot; height=&quot;200%&quot;>
-          <feGaussianBlur stdDeviation=&quot;8&quot; result=&quot;blur1&quot; />
-          <feMerge>
-            <feMergeNode in=&quot;blur1&quot; />
-            <feMergeNode in=&quot;SourceGraphic&quot; />
-          </feMerge>
-        </filter>
-        <linearGradient id=&quot;prism-top&quot; x1=&quot;0%&quot; y1=&quot;0%&quot; x2=&quot;100%&quot; y2=&quot;100%&quot;>
-          <stop offset=&quot;0%&quot; stop-color=&quot;#00F2FE&quot; stop-opacity=&quot;0.9&quot; />
-          <stop offset=&quot;100%&quot; stop-color=&quot;#4FACFE&quot; stop-opacity=&quot;0.6&quot; />
-        </linearGradient>
-        <linearGradient id=&quot;prism-right&quot; x1=&quot;0%&quot; y1=&quot;0%&quot; x2=&quot;0%&quot; y2=&quot;100%&quot;>
-          <stop offset=&quot;0%&quot; stop-color=&quot;#FF0844&quot; stop-opacity=&quot;0.9&quot; />
-          <stop offset=&quot;100%&quot; stop-color=&quot;#FFB199&quot; stop-opacity=&quot;0.6&quot; />
-        </linearGradient>
-        <linearGradient id=&quot;prism-left&quot; x1=&quot;100%&quot; y1=&quot;0%&quot; x2=&quot;0%&quot; y2=&quot;100%&quot;>
-          <stop offset=&quot;0%&quot; stop-color=&quot;#B224EF&quot; stop-opacity=&quot;0.9&quot; />
-          <stop offset=&quot;100%&quot; stop-color=&quot;#7579FF&quot; stop-opacity=&quot;0.6&quot; />
-        </linearGradient>
-      </defs>
-      <g transform=&quot;translate(256, 256)&quot;>
-        <circle cx=&quot;0&quot; cy=&quot;0&quot; r=&quot;220&quot; fill=&quot;none&quot; stroke=&quot;#e5e5e5&quot; stroke-width=&quot;1&quot; stroke-dasharray=&quot;4 8&quot; opacity=&quot;0.3&quot; />
-        <ellipse cx=&quot;0&quot; cy=&quot;0&quot; rx=&quot;190&quot; ry=&quot;60&quot; fill=&quot;none&quot; stroke=&quot;#00F2FE&quot; stroke-width=&quot;1.5&quot; stroke-dasharray=&quot;12 6&quot; transform=&quot;rotate(-30)&quot; opacity=&quot;0.6&quot; />
-        <g filter=&quot;url(#core-glow)&quot;>
-          <polygon points=&quot;0,-90 77.94,-45 0,0 -77.94,-45&quot; fill=&quot;url(#prism-top)&quot; stroke=&quot;#00F2FE&quot; stroke-width=&quot;1.5&quot; />
-          <polygon points=&quot;0,0 77.94,-45 77.94,45 0,90&quot; fill=&quot;url(#prism-right)&quot; stroke=&quot;#FFB199&quot; stroke-width=&quot;1.5&quot; />
-          <polygon points=&quot;0,0 0,90 -77.94,45 -77.94,-45&quot; fill=&quot;url(#prism-left)&quot; stroke=&quot;#B224EF&quot; stroke-width=&quot;1.5&quot; />
-        </g>
-        <polyline points=&quot;0,-90 0,0&quot; fill=&quot;none&quot; stroke=&quot;#FFFFFF&quot; stroke-width=&quot;2.5&quot; opacity=&quot;0.9&quot; />
-        <polyline points=&quot;-77.94,-45 0,0 77.94,-45&quot; fill=&quot;none&quot; stroke=&quot;#FFFFFF&quot; stroke-width=&quot;2.5&quot; opacity=&quot;0.7&quot; />
-        <path d=&quot;M 0,-40 C 6,-12 12,-6 40,0 C 12,6 6,12 0,40 C -6,12 -12,6 -40,0 C -12,-6 -6,-12 0,-40 Z&quot; fill=&quot;#FFFFFF&quot; filter=&quot;url(#core-glow)&quot; />
-        <circle cx=&quot;0&quot; cy=&quot;0&quot; r=&quot;5&quot; fill=&quot;#FFFFFF&quot; />
-      </g>
-    </svg></div>
-          <span class=&quot;eyebrow&quot;>AI Math Renderer</span>
-        </div>
-        <div class=&quot;email-body&quot;>
-          <h2 class=&quot;email-title&quot;>Xác minh email của bạn</h2>
-          <p class=&quot;email-intro&quot;>Nhập mã OTP bên dưới hoặc mở liên kết xác minh để hoàn tất đăng ký tài khoản.</p>
-          <a class=&quot;cta-button&quot; href=&quot;https://math-renderer.sin-studio.tech/verify-email?token=verify-preview-token&quot;>Xác minh email</a>
-          
-          <div class=&quot;otp-section&quot;>
-            <div class=&quot;section-label&quot;>Mã xác minh</div>
-            <div class=&quot;otp-container&quot;>
-              <div class=&quot;otp-display&quot;><span class=&quot;otp-digit&quot;>1</span><span class=&quot;otp-digit&quot;>2</span><span class=&quot;otp-digit&quot;>3</span><span class=&quot;otp-digit&quot;>4</span><span class=&quot;otp-digit&quot;>5</span><span class=&quot;otp-digit&quot;>6</span></div>
-              <button class=&quot;copy-button&quot; onclick=&quot;navigator.clipboard.writeText('123456')&quot; title=&quot;Sao chép mã&quot;><svg width=&quot;16&quot; height=&quot;16&quot; viewBox=&quot;0 0 16 16&quot; fill=&quot;none&quot; xmlns=&quot;http://www.w3.org/2000/svg&quot;>
-      <rect x=&quot;5&quot; y=&quot;5&quot; width=&quot;9&quot; height=&quot;9&quot; rx=&quot;1.5&quot; stroke=&quot;currentColor&quot; stroke-width=&quot;1.5&quot; fill=&quot;none&quot;/>
-      <path d=&quot;M3 10.5V3.5C3 2.67 3.67 2 4.5 2H10&quot; stroke=&quot;currentColor&quot; stroke-width=&quot;1.5&quot; stroke-linecap=&quot;round&quot; fill=&quot;none&quot;/>
-    </svg></button>
-            </div>
-            <p class=&quot;hint-text&quot;>Mã này có hiệu lực trong 24 giờ. Không chia sẻ với bất kỳ ai.</p>
-          </div>
+          <iframe title="Email xác thực tài khoản" srcdoc="&lt;!doctype html&gt;
+&lt;html lang=&quot;vi&quot;&gt;
+  &lt;head&gt;
+    &lt;meta charset=&quot;utf-8&quot; /&gt;
+    &lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1&quot; /&gt;
+    &lt;meta name=&quot;color-scheme&quot; content=&quot;light&quot; /&gt;
+    &lt;meta name=&quot;supported-color-schemes&quot; content=&quot;light&quot; /&gt;
+    &lt;title&gt;Xác minh email của bạn&lt;/title&gt;
+  &lt;/head&gt;
+  &lt;body style=&quot;margin:0;padding:0;background:#fafafa;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;&quot;&gt;
+    &lt;table role=&quot;presentation&quot; width=&quot;100%&quot; cellspacing=&quot;0&quot; cellpadding=&quot;0&quot; border=&quot;0&quot; style=&quot;background:#fafafa;border-collapse:collapse;&quot;&gt;
+      &lt;tr&gt;
+        &lt;td align=&quot;center&quot; style=&quot;padding:40px 16px;&quot;&gt;
+          &lt;table role=&quot;presentation&quot; width=&quot;600&quot; cellspacing=&quot;0&quot; cellpadding=&quot;0&quot; border=&quot;0&quot; style=&quot;width:100%;max-width:600px;border-collapse:separate;border-spacing:0;background:#ffffff;border:1px solid #e5e5e5;border-radius:16px;overflow:hidden;&quot;&gt;
+            &lt;tr&gt;
+              &lt;td align=&quot;center&quot; style=&quot;padding:32px 32px 24px 32px;background:#171717;background-image:linear-gradient(135deg,#171717 0%,#262626 100%);&quot;&gt;
+                &lt;table role=&quot;presentation&quot; width=&quot;100%&quot; cellspacing=&quot;0&quot; cellpadding=&quot;0&quot; border=&quot;0&quot; style=&quot;border-collapse:collapse;&quot;&gt;
+                  
+          &lt;tr&gt;
+            &lt;td align=&quot;center&quot; style=&quot;padding:0 0 12px 0;&quot;&gt;
+              &lt;img src=&quot;https://example.com/logo.svg&quot; width=&quot;96&quot; height=&quot;96&quot; alt=&quot;AI Math Renderer&quot; style=&quot;display:block;width:96px;height:96px;border:0;outline:none;text-decoration:none;&quot; /&gt;
+            &lt;/td&gt;
+          &lt;/tr&gt;
         
-        </div>
-        <div class=&quot;email-footer&quot;>
-          <p class=&quot;footer-text&quot;>Nếu bạn không tạo tài khoản AI Math Renderer, hãy bỏ qua email này.</p>
-          <p class=&quot;footer-text&quot;><span class=&quot;footer-brand&quot;>Hinh Math Renderer</span> · Email tự động, vui lòng không trả lời.</p>
-        </div>
-      </div>
-    </div>
-  </body>
-</html>"></iframe>
+                  &lt;tr&gt;
+                    &lt;td align=&quot;center&quot;&gt;
+                      &lt;span style=&quot;display:inline-block;padding:8px 16px;border-radius:6px;background:#3a3a3a;color:#e5e5e5;font-family:Arial,sans-serif;font-size:15px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;&quot;&gt;AI Math Renderer&lt;/span&gt;
+                    &lt;/td&gt;
+                  &lt;/tr&gt;
+                &lt;/table&gt;
+              &lt;/td&gt;
+            &lt;/tr&gt;
+            &lt;tr&gt;
+              &lt;td style=&quot;padding:32px;font-family:-apple-system,BlinkMacSystemFont,&#x27;Segoe UI&#x27;,Roboto,Arial,sans-serif;&quot;&gt;
+                &lt;h1 style=&quot;margin:0 0 12px 0;color:#171717;font-size:28px;font-weight:700;line-height:1.2;letter-spacing:-.02em;&quot;&gt;Xác minh email của bạn&lt;/h1&gt;
+                &lt;p style=&quot;margin:0 0 28px 0;color:#525252;font-size:16px;line-height:1.6;&quot;&gt;Nhập mã OTP bên dưới hoặc mở liên kết xác minh để hoàn tất đăng ký tài khoản.&lt;/p&gt;
+                &lt;table role=&quot;presentation&quot; cellspacing=&quot;0&quot; cellpadding=&quot;0&quot; border=&quot;0&quot; style=&quot;margin:0 0 32px 0;border-collapse:collapse;&quot;&gt;
+                  &lt;tr&gt;
+                    &lt;td align=&quot;center&quot; bgcolor=&quot;#171717&quot; style=&quot;border-radius:10px;&quot;&gt;
+                      &lt;a href=&quot;https://example.com/verify-email?token=verify-preview-token&quot; style=&quot;display:inline-block;padding:14px 28px;border-radius:10px;background:#171717;color:#ffffff;text-decoration:none;font-size:16px;font-weight:700;font-family:Arial,sans-serif;&quot;&gt;Xác minh email&lt;/a&gt;
+                    &lt;/td&gt;
+                  &lt;/tr&gt;
+                &lt;/table&gt;
+                
+          &lt;table role=&quot;presentation&quot; width=&quot;100%&quot; cellspacing=&quot;0&quot; cellpadding=&quot;0&quot; border=&quot;0&quot; style=&quot;margin:0 0 28px 0;border:1px solid #e5e5e5;border-radius:12px;background:#fafafa;&quot;&gt;
+            &lt;tr&gt;
+              &lt;td style=&quot;padding:22px 20px;&quot;&gt;
+                &lt;p style=&quot;margin:0 0 12px 0;color:#737373;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;font-family:Arial,sans-serif;&quot;&gt;Mã xác minh&lt;/p&gt;
+                &lt;table role=&quot;presentation&quot; cellspacing=&quot;0&quot; cellpadding=&quot;0&quot; border=&quot;0&quot; style=&quot;margin:0 0 12px 0;&quot;&gt;
+                  &lt;tr&gt;&lt;td align=&quot;center&quot; style=&quot;padding:0 4px;&quot;&gt;&lt;span style=&quot;display:inline-block;width:42px;padding:12px 0;border:2px solid #d4d4d4;border-radius:10px;background:#ffffff;color:#171717;font-size:26px;font-weight:700;line-height:1;text-align:center;font-family:Arial,sans-serif;&quot;&gt;1&lt;/span&gt;&lt;/td&gt;&lt;td align=&quot;center&quot; style=&quot;padding:0 4px;&quot;&gt;&lt;span style=&quot;display:inline-block;width:42px;padding:12px 0;border:2px solid #d4d4d4;border-radius:10px;background:#ffffff;color:#171717;font-size:26px;font-weight:700;line-height:1;text-align:center;font-family:Arial,sans-serif;&quot;&gt;2&lt;/span&gt;&lt;/td&gt;&lt;td align=&quot;center&quot; style=&quot;padding:0 4px;&quot;&gt;&lt;span style=&quot;display:inline-block;width:42px;padding:12px 0;border:2px solid #d4d4d4;border-radius:10px;background:#ffffff;color:#171717;font-size:26px;font-weight:700;line-height:1;text-align:center;font-family:Arial,sans-serif;&quot;&gt;3&lt;/span&gt;&lt;/td&gt;&lt;td align=&quot;center&quot; style=&quot;padding:0 4px;&quot;&gt;&lt;span style=&quot;display:inline-block;width:42px;padding:12px 0;border:2px solid #d4d4d4;border-radius:10px;background:#ffffff;color:#171717;font-size:26px;font-weight:700;line-height:1;text-align:center;font-family:Arial,sans-serif;&quot;&gt;4&lt;/span&gt;&lt;/td&gt;&lt;td align=&quot;center&quot; style=&quot;padding:0 4px;&quot;&gt;&lt;span style=&quot;display:inline-block;width:42px;padding:12px 0;border:2px solid #d4d4d4;border-radius:10px;background:#ffffff;color:#171717;font-size:26px;font-weight:700;line-height:1;text-align:center;font-family:Arial,sans-serif;&quot;&gt;5&lt;/span&gt;&lt;/td&gt;&lt;td align=&quot;center&quot; style=&quot;padding:0 4px;&quot;&gt;&lt;span style=&quot;display:inline-block;width:42px;padding:12px 0;border:2px solid #d4d4d4;border-radius:10px;background:#ffffff;color:#171717;font-size:26px;font-weight:700;line-height:1;text-align:center;font-family:Arial,sans-serif;&quot;&gt;6&lt;/span&gt;&lt;/td&gt;&lt;/tr&gt;
+                &lt;/table&gt;
+                &lt;p style=&quot;margin:0;color:#737373;font-size:13px;line-height:1.5;font-family:Arial,sans-serif;&quot;&gt;Mã này có hiệu lực trong 24 giờ. Không chia sẻ với bất kỳ ai.&lt;/p&gt;
+              &lt;/td&gt;
+            &lt;/tr&gt;
+          &lt;/table&gt;
+        
+              &lt;/td&gt;
+            &lt;/tr&gt;
+            &lt;tr&gt;
+              &lt;td style=&quot;padding:24px 32px;border-top:1px solid #e5e5e5;background:#fafafa;font-family:Arial,sans-serif;&quot;&gt;
+                &lt;p style=&quot;margin:0 0 8px 0;color:#737373;font-size:13px;line-height:1.6;&quot;&gt;Nếu bạn không tạo tài khoản AI Math Renderer, hãy bỏ qua email này.&lt;/p&gt;
+                &lt;p style=&quot;margin:0;color:#737373;font-size:13px;line-height:1.6;&quot;&gt;&lt;strong style=&quot;color:#171717;&quot;&gt;AI Math Renderer&lt;/strong&gt; · Email tự động, vui lòng không trả lời.&lt;/p&gt;
+              &lt;/td&gt;
+            &lt;/tr&gt;
+          &lt;/table&gt;
+        &lt;/td&gt;
+      &lt;/tr&gt;
+    &lt;/table&gt;
+  &lt;/body&gt;
+&lt;/html&gt;"></iframe>
         </article>
         <article class="review-panel">
           <h2>Email quên mật khẩu</h2>
-          <iframe title="Email quên mật khẩu" srcdoc="<!doctype html>
-<html lang=&quot;vi&quot;>
-  <head>
-    <meta charset=&quot;utf-8&quot; />
-    <meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1&quot; />
-    <meta name=&quot;color-scheme&quot; content=&quot;light dark&quot; />
-    <meta name=&quot;supported-color-schemes&quot; content=&quot;light dark&quot; />
-    <style>
-      :root {
-        color-scheme: light dark;
-        supported-color-schemes: light dark;
-      }
-      body {
-        margin: 0;
-        padding: 0;
-        background: #fafafa;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-        -webkit-font-smoothing: antialiased;
-        -moz-osx-font-smoothing: grayscale;
-      }
-      .email-wrapper {
-        max-width: 600px;
-        margin: 0 auto;
-        padding: 40px 20px;
-      }
-      .email-card {
-        background: #ffffff;
-        border: 1px solid #e5e5e5;
-        border-radius: 16px;
-        overflow: hidden;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-      }
-      .email-header {
-        padding: 32px 32px 24px;
-        background: linear-gradient(135deg, #171717 0%, #262626 100%);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 16px;
-      }
-      .logo-container {
-        margin: 0;
-        width: 132px;
-        height: 132px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-      }
-      .logo-container svg {
-        width: 132px;
-        height: 132px;
-      }
-      .eyebrow {
-        display: inline-block;
-        margin: 0;
-        padding: 8px 16px;
-        border-radius: 6px;
-        background: rgba(255, 255, 255, 0.15);
-        color: #e5e5e5;
-        font-size: 18px;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-      }
-      .email-body {
-        padding: 32px;
-      }
-      .email-title {
-        margin: 0 0 12px;
-        color: #171717;
-        font-size: 28px;
-        font-weight: 700;
-        line-height: 1.2;
-        letter-spacing: -0.02em;
-      }
-      .email-intro {
-        margin: 0 0 28px;
-        color: #525252;
-        font-size: 16px;
-        line-height: 1.6;
-      }
-      .cta-button {
-        display: inline-block;
-        margin: 0 0 32px;
-        padding: 14px 28px;
-        border-radius: 10px;
-        background: #171717;
-        color: #ffffff !important;
-        text-decoration: none;
-        font-size: 16px;
-        font-weight: 600;
-        text-align: center;
-        transition: background 0.2s;
-      }
-      .cta-button:hover {
-        background: #262626;
-      }
-      .otp-section {
-        margin: 0 0 28px;
-        padding: 24px;
-        border: 1px solid #e5e5e5;
-        border-radius: 12px;
-        background: #fafafa;
-      }
-      .section-label {
-        margin: 0 0 12px;
-        color: #737373;
-        font-size: 12px;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-      }
-      .otp-container,
-      .token-container {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        margin: 0 0 12px;
-      }
-      .otp-display {
-        display: flex;
-        gap: 8px;
-        flex: 1;
-      }
-      .token-display {
-        display: block;
-        flex: 1;
-        padding: 14px 16px;
-        border: 2px solid #d4d4d4;
-        border-radius: 10px;
-        background: #ffffff;
-        color: #171717;
-        font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
-        font-size: 14px;
-        font-weight: 600;
-        line-height: 1.5;
-        word-break: break-all;
-        user-select: all;
-      }
-      .otp-digit {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 48px;
-        height: 56px;
-        border: 2px solid #d4d4d4;
-        border-radius: 10px;
-        background: #ffffff;
-        color: #171717;
-        font-size: 28px;
-        font-weight: 700;
-        font-variant-numeric: tabular-nums;
-        user-select: all;
-      }
-      .copy-button {
-        padding: 10px 12px;
-        border: 1px solid #d4d4d4;
-        border-radius: 8px;
-        background: #ffffff;
-        color: #171717;
-        font-size: 14px;
-        font-weight: 600;
-        cursor: pointer;
-        white-space: nowrap;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-      }
-      .copy-button:hover {
-        background: #f5f5f5;
-        border-color: #a3a3a3;
-      }
-      .copy-button svg {
-        display: block;
-      }
-      .hint-text {
-        margin: 0;
-        color: #737373;
-        font-size: 13px;
-        line-height: 1.5;
-      }
-      .email-footer {
-        padding: 24px 32px;
-        border-top: 1px solid #e5e5e5;
-        background: #fafafa;
-      }
-      .footer-text {
-        margin: 0 0 8px;
-        color: #737373;
-        font-size: 13px;
-        line-height: 1.6;
-      }
-      .footer-text:last-child {
-        margin: 0;
-      }
-      .footer-brand {
-        color: #171717;
-        font-weight: 600;
-      }
-      @media (max-width: 600px) {
-        .email-wrapper { padding: 20px 12px; }
-        .email-header { padding: 24px 20px 20px; }
-        .email-header { gap: 12px; }
-        .logo-container, .logo-container svg { width: 96px; height: 96px; }
-        .eyebrow { font-size: 14px; padding: 6px 12px; }
-        .email-body { padding: 24px 20px; }
-        .email-title { font-size: 24px; }
-        .otp-digit { width: 40px; height: 48px; font-size: 24px; }
-        .otp-container, .token-container { flex-direction: column; align-items: stretch; }
-        .copy-button { width: 100%; }
-      }
-      @media (prefers-color-scheme: dark) {
-        body { background: #0a0a0a; }
-        .email-card { background: #171717; border-color: #262626; }
-        .email-body { background: #171717; }
-        .email-title { color: #fafafa; }
-        .email-intro { color: #a3a3a3; }
-        .cta-button { background: #fafafa; color: #171717 !important; }
-        .cta-button:hover { background: #e5e5e5; }
-        .otp-section { background: #0a0a0a; border-color: #262626; }
-        .section-label { color: #a3a3a3; }
-        .otp-digit, .token-display { background: #171717; border-color: #404040; color: #fafafa; }
-        .copy-button { background: #262626; border-color: #404040; color: #fafafa; }
-        .copy-button:hover { background: #404040; }
-        .copy-button svg { color: #fafafa; }
-        .hint-text { color: #a3a3a3; }
-        .email-footer { background: #0a0a0a; border-color: #262626; }
-        .footer-text { color: #a3a3a3; }
-        .footer-brand { color: #fafafa; }
-      }
-    </style>
-  </head>
-  <body>
-    <div class=&quot;email-wrapper&quot;>
-      <div class=&quot;email-card&quot;>
-        <div class=&quot;email-header&quot;>
-          <div class=&quot;logo-container&quot;><svg xmlns=&quot;http://www.w3.org/2000/svg&quot; viewBox=&quot;0 0 512 512&quot; width=&quot;96&quot; height=&quot;96&quot;>
-      <defs>
-        <filter id=&quot;core-glow&quot; x=&quot;-50%&quot; y=&quot;-50%&quot; width=&quot;200%&quot; height=&quot;200%&quot;>
-          <feGaussianBlur stdDeviation=&quot;8&quot; result=&quot;blur1&quot; />
-          <feMerge>
-            <feMergeNode in=&quot;blur1&quot; />
-            <feMergeNode in=&quot;SourceGraphic&quot; />
-          </feMerge>
-        </filter>
-        <linearGradient id=&quot;prism-top&quot; x1=&quot;0%&quot; y1=&quot;0%&quot; x2=&quot;100%&quot; y2=&quot;100%&quot;>
-          <stop offset=&quot;0%&quot; stop-color=&quot;#00F2FE&quot; stop-opacity=&quot;0.9&quot; />
-          <stop offset=&quot;100%&quot; stop-color=&quot;#4FACFE&quot; stop-opacity=&quot;0.6&quot; />
-        </linearGradient>
-        <linearGradient id=&quot;prism-right&quot; x1=&quot;0%&quot; y1=&quot;0%&quot; x2=&quot;0%&quot; y2=&quot;100%&quot;>
-          <stop offset=&quot;0%&quot; stop-color=&quot;#FF0844&quot; stop-opacity=&quot;0.9&quot; />
-          <stop offset=&quot;100%&quot; stop-color=&quot;#FFB199&quot; stop-opacity=&quot;0.6&quot; />
-        </linearGradient>
-        <linearGradient id=&quot;prism-left&quot; x1=&quot;100%&quot; y1=&quot;0%&quot; x2=&quot;0%&quot; y2=&quot;100%&quot;>
-          <stop offset=&quot;0%&quot; stop-color=&quot;#B224EF&quot; stop-opacity=&quot;0.9&quot; />
-          <stop offset=&quot;100%&quot; stop-color=&quot;#7579FF&quot; stop-opacity=&quot;0.6&quot; />
-        </linearGradient>
-      </defs>
-      <g transform=&quot;translate(256, 256)&quot;>
-        <circle cx=&quot;0&quot; cy=&quot;0&quot; r=&quot;220&quot; fill=&quot;none&quot; stroke=&quot;#e5e5e5&quot; stroke-width=&quot;1&quot; stroke-dasharray=&quot;4 8&quot; opacity=&quot;0.3&quot; />
-        <ellipse cx=&quot;0&quot; cy=&quot;0&quot; rx=&quot;190&quot; ry=&quot;60&quot; fill=&quot;none&quot; stroke=&quot;#00F2FE&quot; stroke-width=&quot;1.5&quot; stroke-dasharray=&quot;12 6&quot; transform=&quot;rotate(-30)&quot; opacity=&quot;0.6&quot; />
-        <g filter=&quot;url(#core-glow)&quot;>
-          <polygon points=&quot;0,-90 77.94,-45 0,0 -77.94,-45&quot; fill=&quot;url(#prism-top)&quot; stroke=&quot;#00F2FE&quot; stroke-width=&quot;1.5&quot; />
-          <polygon points=&quot;0,0 77.94,-45 77.94,45 0,90&quot; fill=&quot;url(#prism-right)&quot; stroke=&quot;#FFB199&quot; stroke-width=&quot;1.5&quot; />
-          <polygon points=&quot;0,0 0,90 -77.94,45 -77.94,-45&quot; fill=&quot;url(#prism-left)&quot; stroke=&quot;#B224EF&quot; stroke-width=&quot;1.5&quot; />
-        </g>
-        <polyline points=&quot;0,-90 0,0&quot; fill=&quot;none&quot; stroke=&quot;#FFFFFF&quot; stroke-width=&quot;2.5&quot; opacity=&quot;0.9&quot; />
-        <polyline points=&quot;-77.94,-45 0,0 77.94,-45&quot; fill=&quot;none&quot; stroke=&quot;#FFFFFF&quot; stroke-width=&quot;2.5&quot; opacity=&quot;0.7&quot; />
-        <path d=&quot;M 0,-40 C 6,-12 12,-6 40,0 C 12,6 6,12 0,40 C -6,12 -12,6 -40,0 C -12,-6 -6,-12 0,-40 Z&quot; fill=&quot;#FFFFFF&quot; filter=&quot;url(#core-glow)&quot; />
-        <circle cx=&quot;0&quot; cy=&quot;0&quot; r=&quot;5&quot; fill=&quot;#FFFFFF&quot; />
-      </g>
-    </svg></div>
-          <span class=&quot;eyebrow&quot;>Bảo mật tài khoản</span>
-        </div>
-        <div class=&quot;email-body&quot;>
-          <h2 class=&quot;email-title&quot;>Đặt lại mật khẩu</h2>
-          <p class=&quot;email-intro&quot;>Bạn vừa yêu cầu đặt lại mật khẩu. Mở liên kết bên dưới hoặc dùng token để tiếp tục.</p>
-          <a class=&quot;cta-button&quot; href=&quot;https://math-renderer.sin-studio.tech/reset-password?token=reset-preview-token&quot;>Đặt lại mật khẩu</a>
-          
-          <div class=&quot;otp-section&quot;>
-            <div class=&quot;section-label&quot;>Token đặt lại mật khẩu</div>
-            <div class=&quot;token-container&quot;>
-              <code class=&quot;token-display&quot;>reset-preview-token-9qW4f7L2mP8xR1sT6vB3nY0cA5dE</code>
-              <button class=&quot;copy-button&quot; onclick=&quot;navigator.clipboard.writeText('reset-preview-token-9qW4f7L2mP8xR1sT6vB3nY0cA5dE')&quot; title=&quot;Sao chép token&quot;><svg width=&quot;16&quot; height=&quot;16&quot; viewBox=&quot;0 0 16 16&quot; fill=&quot;none&quot; xmlns=&quot;http://www.w3.org/2000/svg&quot;>
-      <rect x=&quot;5&quot; y=&quot;5&quot; width=&quot;9&quot; height=&quot;9&quot; rx=&quot;1.5&quot; stroke=&quot;currentColor&quot; stroke-width=&quot;1.5&quot; fill=&quot;none&quot;/>
-      <path d=&quot;M3 10.5V3.5C3 2.67 3.67 2 4.5 2H10&quot; stroke=&quot;currentColor&quot; stroke-width=&quot;1.5&quot; stroke-linecap=&quot;round&quot; fill=&quot;none&quot;/>
-    </svg></button>
-            </div>
-            <p class=&quot;hint-text&quot;>Token này chỉ dùng để đặt lại mật khẩu và sẽ hết hạn sớm. Không chia sẻ với bất kỳ ai.</p>
-          </div>
+          <iframe title="Email quên mật khẩu" srcdoc="&lt;!doctype html&gt;
+&lt;html lang=&quot;vi&quot;&gt;
+  &lt;head&gt;
+    &lt;meta charset=&quot;utf-8&quot; /&gt;
+    &lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1&quot; /&gt;
+    &lt;meta name=&quot;color-scheme&quot; content=&quot;light&quot; /&gt;
+    &lt;meta name=&quot;supported-color-schemes&quot; content=&quot;light&quot; /&gt;
+    &lt;title&gt;Đặt lại mật khẩu&lt;/title&gt;
+  &lt;/head&gt;
+  &lt;body style=&quot;margin:0;padding:0;background:#fafafa;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;&quot;&gt;
+    &lt;table role=&quot;presentation&quot; width=&quot;100%&quot; cellspacing=&quot;0&quot; cellpadding=&quot;0&quot; border=&quot;0&quot; style=&quot;background:#fafafa;border-collapse:collapse;&quot;&gt;
+      &lt;tr&gt;
+        &lt;td align=&quot;center&quot; style=&quot;padding:40px 16px;&quot;&gt;
+          &lt;table role=&quot;presentation&quot; width=&quot;600&quot; cellspacing=&quot;0&quot; cellpadding=&quot;0&quot; border=&quot;0&quot; style=&quot;width:100%;max-width:600px;border-collapse:separate;border-spacing:0;background:#ffffff;border:1px solid #e5e5e5;border-radius:16px;overflow:hidden;&quot;&gt;
+            &lt;tr&gt;
+              &lt;td align=&quot;center&quot; style=&quot;padding:32px 32px 24px 32px;background:#171717;background-image:linear-gradient(135deg,#171717 0%,#262626 100%);&quot;&gt;
+                &lt;table role=&quot;presentation&quot; width=&quot;100%&quot; cellspacing=&quot;0&quot; cellpadding=&quot;0&quot; border=&quot;0&quot; style=&quot;border-collapse:collapse;&quot;&gt;
+                  
+          &lt;tr&gt;
+            &lt;td align=&quot;center&quot; style=&quot;padding:0 0 12px 0;&quot;&gt;
+              &lt;img src=&quot;https://example.com/logo.svg&quot; width=&quot;96&quot; height=&quot;96&quot; alt=&quot;AI Math Renderer&quot; style=&quot;display:block;width:96px;height:96px;border:0;outline:none;text-decoration:none;&quot; /&gt;
+            &lt;/td&gt;
+          &lt;/tr&gt;
         
-        </div>
-        <div class=&quot;email-footer&quot;>
-          <p class=&quot;footer-text&quot;>Nếu bạn không yêu cầu đặt lại mật khẩu, tài khoản của bạn vẫn an toàn và bạn có thể bỏ qua email này.</p>
-          <p class=&quot;footer-text&quot;><span class=&quot;footer-brand&quot;>Hinh Math Renderer</span> · Email tự động, vui lòng không trả lời.</p>
-        </div>
-      </div>
-    </div>
-  </body>
-</html>"></iframe>
+                  &lt;tr&gt;
+                    &lt;td align=&quot;center&quot;&gt;
+                      &lt;span style=&quot;display:inline-block;padding:8px 16px;border-radius:6px;background:#3a3a3a;color:#e5e5e5;font-family:Arial,sans-serif;font-size:15px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;&quot;&gt;Bảo mật tài khoản&lt;/span&gt;
+                    &lt;/td&gt;
+                  &lt;/tr&gt;
+                &lt;/table&gt;
+              &lt;/td&gt;
+            &lt;/tr&gt;
+            &lt;tr&gt;
+              &lt;td style=&quot;padding:32px;font-family:-apple-system,BlinkMacSystemFont,&#x27;Segoe UI&#x27;,Roboto,Arial,sans-serif;&quot;&gt;
+                &lt;h1 style=&quot;margin:0 0 12px 0;color:#171717;font-size:28px;font-weight:700;line-height:1.2;letter-spacing:-.02em;&quot;&gt;Đặt lại mật khẩu&lt;/h1&gt;
+                &lt;p style=&quot;margin:0 0 28px 0;color:#525252;font-size:16px;line-height:1.6;&quot;&gt;Bạn vừa yêu cầu đặt lại mật khẩu. Mở liên kết bên dưới hoặc dùng token để tiếp tục.&lt;/p&gt;
+                &lt;table role=&quot;presentation&quot; cellspacing=&quot;0&quot; cellpadding=&quot;0&quot; border=&quot;0&quot; style=&quot;margin:0 0 32px 0;border-collapse:collapse;&quot;&gt;
+                  &lt;tr&gt;
+                    &lt;td align=&quot;center&quot; bgcolor=&quot;#171717&quot; style=&quot;border-radius:10px;&quot;&gt;
+                      &lt;a href=&quot;https://example.com/reset-password?token=reset-preview-token-9qW4f7L2mP8xR1sT6vB3nY0cA5dE&quot; style=&quot;display:inline-block;padding:14px 28px;border-radius:10px;background:#171717;color:#ffffff;text-decoration:none;font-size:16px;font-weight:700;font-family:Arial,sans-serif;&quot;&gt;Đặt lại mật khẩu&lt;/a&gt;
+                    &lt;/td&gt;
+                  &lt;/tr&gt;
+                &lt;/table&gt;
+                
+          &lt;table role=&quot;presentation&quot; width=&quot;100%&quot; cellspacing=&quot;0&quot; cellpadding=&quot;0&quot; border=&quot;0&quot; style=&quot;margin:0 0 28px 0;border:1px solid #e5e5e5;border-radius:12px;background:#fafafa;&quot;&gt;
+            &lt;tr&gt;
+              &lt;td style=&quot;padding:22px 20px;&quot;&gt;
+                &lt;p style=&quot;margin:0 0 12px 0;color:#737373;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;font-family:Arial,sans-serif;&quot;&gt;Token đặt lại mật khẩu&lt;/p&gt;
+                &lt;div style=&quot;padding:14px 16px;border:2px solid #d4d4d4;border-radius:10px;background:#ffffff;color:#171717;font-family:Consolas,&#x27;Liberation Mono&#x27;,monospace;font-size:14px;font-weight:600;line-height:1.5;word-break:break-all;&quot;&gt;reset-preview-token-9qW4f7L2mP8xR1sT6vB3nY0cA5dE&lt;/div&gt;
+                &lt;p style=&quot;margin:12px 0 0 0;color:#737373;font-size:13px;line-height:1.5;font-family:Arial,sans-serif;&quot;&gt;Token này chỉ dùng để đặt lại mật khẩu và sẽ hết hạn sớm. Không chia sẻ với bất kỳ ai.&lt;/p&gt;
+              &lt;/td&gt;
+            &lt;/tr&gt;
+          &lt;/table&gt;
+        
+              &lt;/td&gt;
+            &lt;/tr&gt;
+            &lt;tr&gt;
+              &lt;td style=&quot;padding:24px 32px;border-top:1px solid #e5e5e5;background:#fafafa;font-family:Arial,sans-serif;&quot;&gt;
+                &lt;p style=&quot;margin:0 0 8px 0;color:#737373;font-size:13px;line-height:1.6;&quot;&gt;Nếu bạn không yêu cầu đặt lại mật khẩu, tài khoản của bạn vẫn an toàn và bạn có thể bỏ qua email này.&lt;/p&gt;
+                &lt;p style=&quot;margin:0;color:#737373;font-size:13px;line-height:1.6;&quot;&gt;&lt;strong style=&quot;color:#171717;&quot;&gt;AI Math Renderer&lt;/strong&gt; · Email tự động, vui lòng không trả lời.&lt;/p&gt;
+              &lt;/td&gt;
+            &lt;/tr&gt;
+          &lt;/table&gt;
+        &lt;/td&gt;
+      &lt;/tr&gt;
+    &lt;/table&gt;
+  &lt;/body&gt;
+&lt;/html&gt;"></iframe>
         </article>
       </section>
     </main>

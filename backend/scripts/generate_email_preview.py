@@ -10,7 +10,7 @@ BACKEND_ROOT = Path(__file__).resolve().parent.parent
 REPO_ROOT = BACKEND_ROOT.parent
 sys.path.insert(0, str(BACKEND_ROOT))
 
-from app.services.email import auth_email_html  # noqa: E402
+from app.services.email_template import auth_email_html  # noqa: E402
 
 
 def _srcdoc_attr(doc: str) -> str:
@@ -18,6 +18,7 @@ def _srcdoc_attr(doc: str) -> str:
 
 
 def main() -> None:
+    logo_url = "https://example.com/logo.svg"
     verify_doc = auth_email_html(
         title="Xác minh email của bạn",
         eyebrow="AI Math Renderer",
@@ -27,6 +28,7 @@ def main() -> None:
         otp="123456",
         token="verify-preview-token",
         footer="Nếu bạn không tạo tài khoản AI Math Renderer, hãy bỏ qua email này.",
+        logo_url=logo_url,
     )
     reset_token = "reset-preview-token-9qW4f7L2mP8xR1sT6vB3nY0cA5dE"
     reset_doc = auth_email_html(
@@ -38,6 +40,7 @@ def main() -> None:
         token=reset_token,
         footer="Nếu bạn không yêu cầu đặt lại mật khẩu, tài khoản của bạn vẫn an toàn và bạn có thể bỏ qua email này.",
         otp=None,
+        logo_url=logo_url,
     )
 
     v_esc = _srcdoc_attr(verify_doc)
