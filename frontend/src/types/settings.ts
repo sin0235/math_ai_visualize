@@ -15,6 +15,7 @@ export interface ProviderConnectionSettings {
   base_url: string;
   model: string;
   scanned_models: ScannedModelInfo[];
+  allowed_model_ids: string[];
   last_scanned_at: string;
 }
 
@@ -109,6 +110,7 @@ export const defaultRuntimeSettings: RuntimeSettings = {
     base_url: '',
     model: '',
     scanned_models: [],
+    allowed_model_ids: [],
     last_scanned_at: '',
   },
   nvidia: {
@@ -116,6 +118,7 @@ export const defaultRuntimeSettings: RuntimeSettings = {
     base_url: '',
     model: '',
     scanned_models: [],
+    allowed_model_ids: [],
     last_scanned_at: '',
   },
   ollama: {
@@ -123,6 +126,7 @@ export const defaultRuntimeSettings: RuntimeSettings = {
     base_url: '',
     model: '',
     scanned_models: [],
+    allowed_model_ids: [],
     last_scanned_at: '',
   },
   router9: {

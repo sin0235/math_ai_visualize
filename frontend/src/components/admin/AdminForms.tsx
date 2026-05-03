@@ -31,9 +31,9 @@ function clamp(value: number, min: number, max: number) {
 
 const defaultRuntimeSettings: RuntimeSettings = {
   default_provider: 'auto',
-  openrouter: { api_key: '', base_url: '', model: '', scanned_models: [], last_scanned_at: '' },
-  nvidia: { api_key: '', base_url: '', model: '', scanned_models: [], last_scanned_at: '' },
-  ollama: { api_key: '', base_url: '', model: '', scanned_models: [], last_scanned_at: '' },
+  openrouter: { api_key: '', base_url: '', model: '', scanned_models: [], allowed_model_ids: [], last_scanned_at: '' },
+  nvidia: { api_key: '', base_url: '', model: '', scanned_models: [], allowed_model_ids: [], last_scanned_at: '' },
+  ollama: { api_key: '', base_url: '', model: '', scanned_models: [], allowed_model_ids: [], last_scanned_at: '' },
   router9: { api_key: '', base_url: '', model: '', scanned_models: [], last_scanned_at: '', only_mode: false, allowed_model_ids: [] },
   ocr: { provider: 'openrouter', model: '', max_image_mb: 8 },
   openrouter_http_referer: '',

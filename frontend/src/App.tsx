@@ -1284,25 +1284,22 @@ function friendlyDetail(detail: string) {
 }
 
 function mergeBackendDefaults(current: RuntimeSettings, defaults: SettingsDefaults): RuntimeSettings {
-  const router9Allowed = mergeUnique(current.router9.allowed_model_ids, [defaults.router9.model ?? '', ...defaults.router9.allowed_model_ids]);
-  const router9Model = current.router9.model || defaults.router9.model || router9Allowed[0] || '';
-  const router9Scanned = mergeScannedModels(
-    mergeScannedModels(current.router9.scanned_models, defaults.router9.scanned_models),
-    router9Allowed.map((id) => ({ id, label: id, provider: 'router9' }))
-  );
+  const openrouter = mergeProviderDefaults(current.openrouter, defaults.openrouter, 'openrouter');
+  const nvidia = mergeProviderDefaults(current.nvidia, defaults.nvidia, 'nvidia');
+  const ollama = mergeProviderDefaults(current.ollama, defaults.ollama, 'ollama');
+  const router9 = mergeProviderDefaults(current.router9, defaults.router9, 'router9');
   const ocrProvider = current.ocr.provider || defaults.ocr.provider;
-  const ocrModel = current.ocr.model || defaults.ocr.model || (ocrProvider === 'router9' ? router9Model : defaults.openrouter.vision_model) || '';
+  const ocrModel = current.ocr.model || defaults.ocr.model || (ocrProvider === 'router9' ? router9.model : defaults.openrouter.vision_model) || '';
 
   return {
     ...current,
     default_provider: current.default_provider === 'auto' && defaults.default_provider ? defaults.default_provider : current.default_provider,
+    openrouter,
+    nvidia,
+    ollama,
     router9: {
-      ...current.router9,
-      base_url: current.router9.base_url || defaults.router9.base_url || '',
-      model: router9Model,
+      ...router9,
       only_mode: current.router9.only_mode || defaults.router9.only_mode,
-      allowed_model_ids: router9Allowed,
-      scanned_models: router9Scanned,
     },
     ocr: {
       ...current.ocr,
@@ -1310,6 +1307,27 @@ function mergeBackendDefaults(current: RuntimeSettings, defaults: SettingsDefaul
       model: ocrModel,
       max_image_mb: current.ocr.max_image_mb || defaults.ocr.max_image_mb,
     },
+  };
+}
+
+function mergeProviderDefaults<Provider extends 'openrouter' | 'nvidia' | 'ollama' | 'router9'>(
+  current: RuntimeSettings[Provider],
+  defaults: SettingsDefaults[Provider],
+  provider: Provider,
+): RuntimeSettings[Provider] {
+  const allowed_model_ids = mergeUnique(current.allowed_model_ids ?? [], [defaults.model ?? '', ...defaults.allowed_model_ids]);
+  const model = current.model || defaults.model || allowed_model_ids[0] || '';
+  const scanned_models = mergeScannedModels(
+    mergeScannedModels(current.scanned_models, defaults.scanned_models),
+    allowed_model_ids.map((id) => ({ id, label: id, provider }))
+  );
+
+  return {
+    ...current,
+    base_url: current.base_url || defaults.base_url || '',
+    model,
+    allowed_model_ids,
+    scanned_models,
   };
 }
 
@@ -1385,10 +1403,10 @@ function sanitizeSettingsForStorage(settings: RuntimeSettings): RuntimeSettings 
   return {
     ...defaultRuntimeSettings,
     default_provider: settings.default_provider,
-    openrouter: { ...defaultRuntimeSettings.openrouter, model: settings.openrouter.model },
-    nvidia: { ...defaultRuntimeSettings.nvidia, model: settings.nvidia.model },
-    ollama: { ...defaultRuntimeSettings.ollama, model: settings.ollama.model },
-    router9: { ...defaultRuntimeSettings.router9, model: settings.router9.model },
+    openrouter: { ...defaultRuntimeSettings.openrouter, model: settings.openrouter.model, allowed_model_ids: settings.openrouter.allowed_model_ids },
+    nvidia: { ...defaultRuntimeSettings.nvidia, model: settings.nvidia.model, allowed_model_ids: settings.nvidia.allowed_model_ids },
+    ollama: { ...defaultRuntimeSettings.ollama, model: settings.ollama.model, allowed_model_ids: settings.ollama.allowed_model_ids },
+    router9: { ...defaultRuntimeSettings.router9, model: settings.router9.model, allowed_model_ids: settings.router9.allowed_model_ids },
     ocr: settings.ocr,
   };
 }

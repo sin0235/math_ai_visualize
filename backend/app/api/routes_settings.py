@@ -35,21 +35,21 @@ async def get_settings_defaults(db: DatabaseClient = Depends(get_database)) -> S
             http_referer=merge_text(ai_settings.openrouter_http_referer, settings.openrouter_http_referer, loaded.raw, "openrouter_http_referer"),
             x_title=merge_text(ai_settings.openrouter_x_title, settings.openrouter_x_title, loaded.raw, "openrouter_x_title"),
             reasoning_enabled=merge_bool(ai_settings.openrouter_reasoning_enabled, settings.openrouter_reasoning_enabled, loaded.raw, "openrouter_reasoning_enabled"),
-            scanned_models=ai_settings.openrouter.scanned_models,
+            scanned_models=dump_scanned_models(ai_settings.openrouter.scanned_models),
             allowed_model_ids=merge_provider_list(ai_settings.openrouter.allowed_model_ids, [], loaded.raw, "openrouter", "allowed_model_ids"),
         ),
         nvidia=ProviderSettingsDefaults(
             api_key_configured=bool(settings.nvidia_api_key),
             base_url=merge_provider_text(ai_settings.nvidia.base_url, settings.nvidia_base_url, loaded.raw, "nvidia", "base_url"),
             model=merge_provider_text(ai_settings.nvidia.model, settings.nvidia_text_model, loaded.raw, "nvidia", "model"),
-            scanned_models=ai_settings.nvidia.scanned_models,
+            scanned_models=dump_scanned_models(ai_settings.nvidia.scanned_models),
             allowed_model_ids=merge_provider_list(ai_settings.nvidia.allowed_model_ids, [], loaded.raw, "nvidia", "allowed_model_ids"),
         ),
         ollama=ProviderSettingsDefaults(
             api_key_configured=bool(settings.ollama_api_key),
             base_url=merge_provider_text(ai_settings.ollama.base_url, settings.ollama_base_url, loaded.raw, "ollama", "base_url"),
             model=merge_provider_text(ai_settings.ollama.model, settings.ollama_text_model, loaded.raw, "ollama", "model"),
-            scanned_models=ai_settings.ollama.scanned_models,
+            scanned_models=dump_scanned_models(ai_settings.ollama.scanned_models),
             allowed_model_ids=merge_provider_list(ai_settings.ollama.allowed_model_ids, [], loaded.raw, "ollama", "allowed_model_ids"),
         ),
         router9=Router9SettingsDefaults(
@@ -58,7 +58,7 @@ async def get_settings_defaults(db: DatabaseClient = Depends(get_database)) -> S
             model=merge_provider_text(ai_settings.router9.model, settings.router9_text_model, loaded.raw, "router9", "model"),
             only_mode=merge_provider_bool(ai_settings.router9.only_mode, settings.router9_only, loaded.raw, "router9", "only_mode"),
             allowed_model_ids=merge_provider_list(ai_settings.router9.allowed_model_ids, settings.router9_allowed_models, loaded.raw, "router9", "allowed_model_ids"),
-            scanned_models=ai_settings.router9.scanned_models,
+            scanned_models=dump_scanned_models(ai_settings.router9.scanned_models),
         ),
         ocr=OcrSettingsDefaults(
             provider=ai_settings.ocr.provider,
@@ -124,3 +124,7 @@ def merge_provider_list(db_value: list[str], env_value: list[str], raw: dict[str
     if has_provider_key(raw, provider, key):
         return db_value
     return env_value
+
+
+def dump_scanned_models(models: list[Any]) -> list[dict[str, Any]]:
+    return [model.model_dump() if hasattr(model, "model_dump") else dict(model) for model in models]
