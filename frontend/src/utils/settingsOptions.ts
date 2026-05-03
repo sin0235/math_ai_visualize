@@ -46,8 +46,8 @@ export function buildOcrProviderOptions(defaults: SettingsDefaults | null): Opti
   return options;
 }
 
-export function buildModelOptionsFromDefaults(providerDefaults: ProviderSettingsDefaults | undefined, currentModel = ''): Option[] {
-  if (!providerDefaults) return currentModel ? [{ id: currentModel, label: currentModel }] : [];
+export function buildModelOptionsFromDefaults(providerDefaults: ProviderSettingsDefaults | undefined, currentModel = '', extraModelIds: string[] = []): Option[] {
+  if (!providerDefaults) return uniqueOptions([currentModel, ...extraModelIds]);
   const ids = providerDefaults.allowed_model_ids.length > 0
     ? providerDefaults.allowed_model_ids
     : providerDefaults.scanned_models.length > 0
@@ -57,10 +57,19 @@ export function buildModelOptionsFromDefaults(providerDefaults: ProviderSettings
     const scanned = providerDefaults.scanned_models.find((model) => model.id === id);
     return { id, label: scanned?.label ?? id };
   });
-  if (currentModel && !options.some((option) => option.id === currentModel)) {
-    return [{ id: currentModel, label: currentModel }, ...options];
-  }
+  [currentModel, ...extraModelIds].filter(Boolean).forEach((id) => {
+    if (!options.some((option) => option.id === id)) options.unshift({ id, label: id });
+  });
   return options;
+}
+
+function uniqueOptions(ids: string[]) {
+  const seen = new Set<string>();
+  return ids.filter(Boolean).filter((id) => {
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  }).map((id) => ({ id, label: id }));
 }
 
 export function buildPlanOptions(settingsValue: Record<string, unknown> | undefined): Option[] {

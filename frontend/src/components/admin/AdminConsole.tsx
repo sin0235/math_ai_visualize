@@ -23,7 +23,8 @@ import {
   deleteAdminRenderJob, 
   getAdminSystemSettings, 
   updateAdminSystemSetting, 
-  getAdminAuditLogs 
+  getAdminAuditLogs,
+  getSettingsDefaults
 } from '../../api/client';
 import { 
   formatHistoryDate, 
@@ -41,6 +42,7 @@ import {
   AdminAiPromptsForm,
 } from './AdminForms';
 import { buildPlanOptions, distinctOptions, providerLabels, rendererOptions, renderSourceOptions } from '../../utils/settingsOptions';
+import type { SettingsDefaults } from '../../types/settings';
 
 interface AdminConsoleProps {
   user: UserResponse;
@@ -71,6 +73,7 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
 
   // AI settings state
   const [aiSettings, setAiSettings] = useState<Record<string, unknown>>({});
+  const [settingsDefaults, setSettingsDefaults] = useState<SettingsDefaults | null>(null);
   const [savingAiSettings, setSavingAiSettings] = useState(false);
 
   // Audit log filters
@@ -80,18 +83,20 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
   const onRefresh = async () => {
     setLoading(true);
     try {
-      const [s, u, r, st, a] = await Promise.all([
+      const [s, u, r, st, a, defaults] = await Promise.all([
         getAdminSummary(),
         getAdminUsers({}),
         getAdminRenderJobs({}),
         getAdminSystemSettings(),
         getAdminAuditLogs({}),
+        getSettingsDefaults(),
       ]);
       setSummary(s);
       setUsers(u);
       setRenderJobs(r);
       setSettings(st);
       setAuditLogs(a);
+      setSettingsDefaults(defaults);
 
       const ai = st.find((item) => item.key === 'ai_settings');
       if (ai) setAiSettings(ai.value);
@@ -355,7 +360,7 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
             </header>
             <section className="admin-panel admin-panel-full">
             <p className="field-hint">Admin quản lý provider, model mặc định, allowlist, OCR và routing AI.</p>
-            <AdminAiSettingsForm value={aiSettings} saving={savingAiSettings} onSave={saveAiSettingsPatch} />
+            <AdminAiSettingsForm value={aiSettings} defaults={settingsDefaults} saving={savingAiSettings} onSave={saveAiSettingsPatch} />
           </section>
           </>
         )}

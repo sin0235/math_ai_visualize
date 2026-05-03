@@ -13,7 +13,7 @@ export function GeneralSettingsPanel({ value, defaults, onChange, onReset }: Gen
   const providerModelOptions = buildProviderModelOptions(defaults, value.default_provider, currentProviderModel(value));
   const ocrProviderOptions = buildOcrProviderOptions(defaults);
   const ocrProviderDefaults = value.ocr.provider === 'router9' ? defaults?.router9 : defaults?.openrouter;
-  const ocrModels = buildModelOptionsFromDefaults(ocrProviderDefaults, value.ocr.model);
+  const ocrModels = buildModelOptionsFromDefaults(ocrProviderDefaults, value.ocr.model, [defaults?.ocr.model ?? '']);
   const selectedOcrModel = value.ocr.model;
 
   function updateField<Key extends keyof RuntimeSettings>(key: Key, nextValue: RuntimeSettings[Key]) {

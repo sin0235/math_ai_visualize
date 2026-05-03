@@ -45,20 +45,26 @@ function defaultAdminProviderSettings() {
   return { base_url: '', model: '', scanned_models: [] as any[], allowed_model_ids: [] as string[], last_scanned_at: '', only_mode: false };
 }
 
-function getAdminProviderSettings(value: Record<string, unknown>, provider: string) {
+function getAdminProviderSettings(value: Record<string, unknown>, provider: string, defaults?: SettingsDefaults | null) {
   const item = value[provider];
-  if (!item || typeof item !== 'object') return defaultAdminProviderSettings();
-  const data = item as Record<string, unknown>;
+  const data = item && typeof item === 'object' ? item as Record<string, unknown> : {};
+  const providerDefaults = providerDefaultsFor(defaults, provider);
   return {
     ...defaultAdminProviderSettings(),
     ...data,
-    base_url: typeof data.base_url === 'string' ? data.base_url : '',
-    model: typeof data.model === 'string' ? data.model : '',
-    scanned_models: Array.isArray(data.scanned_models) ? data.scanned_models : [],
-    allowed_model_ids: Array.isArray(data.allowed_model_ids) ? data.allowed_model_ids.map(String) : [],
+    base_url: typeof data.base_url === 'string' && data.base_url ? data.base_url : providerDefaults?.base_url ?? '',
+    model: typeof data.model === 'string' && data.model ? data.model : providerDefaults?.model ?? '',
+    scanned_models: Array.isArray(data.scanned_models) && data.scanned_models.length > 0 ? data.scanned_models : providerDefaults?.scanned_models ?? [],
+    allowed_model_ids: Array.isArray(data.allowed_model_ids) ? data.allowed_model_ids.map(String) : providerDefaults?.allowed_model_ids ?? [],
     last_scanned_at: typeof data.last_scanned_at === 'string' ? data.last_scanned_at : '',
-    only_mode: data.only_mode === true,
+    only_mode: typeof data.only_mode === 'boolean' ? data.only_mode : provider === 'router9' ? defaults?.router9.only_mode ?? false : false,
   };
+}
+
+function providerDefaultsFor(defaults: SettingsDefaults | null | undefined, provider: string): ProviderSettingsDefaults | undefined {
+  if (!defaults) return undefined;
+  if (provider === 'openrouter' || provider === 'nvidia' || provider === 'ollama' || provider === 'router9') return defaults[provider];
+  return undefined;
 }
 
 function getAdminOcrSettings(value: Record<string, unknown>) {
@@ -113,6 +119,22 @@ function adminProviderToDefaults(value: Record<string, unknown>, provider: strin
   };
 }
 
+function adminModelOptions(providerValue: ReturnType<typeof defaultAdminProviderSettings>, preferredIds: string[] = []) {
+  const byId = new Map<string, { id: string; name: string }>();
+  function add(id: string, name = id) {
+    if (id && !byId.has(id)) byId.set(id, { id, name });
+  }
+  preferredIds.forEach((id) => add(id));
+  add(providerValue.model);
+  providerValue.allowed_model_ids.forEach((id) => add(id));
+  providerValue.scanned_models.forEach((modelItem: any) => {
+    const id = typeof modelItem === 'string' ? modelItem : modelItem?.id;
+    const name = typeof modelItem === 'object' ? modelItem.label || modelItem.name || id : id;
+    add(id, name);
+  });
+  return [...byId.values()];
+}
+
 function adminSettingsToDefaults(value: Record<string, unknown>): SettingsDefaults {
   const openrouter = adminProviderToDefaults(value, 'openrouter');
   return {
@@ -160,9 +182,9 @@ function getAiTaskProfile(value: unknown) {
 
 // --- Form Components ---
 
-export function AdminAiSettingsForm({ value, saving, onSave }: { value: Record<string, unknown>; saving: boolean; onSave: (patch: Record<string, unknown>) => Promise<void> }) {
-  const provider = 'router9'; // Chỉ dùng router9
-  const providerValue = getAdminProviderSettings(value, provider);
+export function AdminAiSettingsForm({ value, defaults, saving, onSave }: { value: Record<string, unknown>; defaults: SettingsDefaults | null; saving: boolean; onSave: (patch: Record<string, unknown>) => Promise<void> }) {
+  const provider = 'router9';
+  const providerValue = getAdminProviderSettings(value, provider, defaults);
   const ocrValue = getAdminOcrSettings(value);
   const [baseUrl, setBaseUrl] = useState(providerValue.base_url);
   const [model, setModel] = useState(providerValue.model);
@@ -176,13 +198,13 @@ export function AdminAiSettingsForm({ value, saving, onSave }: { value: Record<s
   const [checkResult, setCheckResult] = useState<{ status: string; message: string } | null>(null);
 
   useEffect(() => {
-    const next = getAdminProviderSettings(value, provider);
+    const next = getAdminProviderSettings(value, provider, defaults);
     setBaseUrl(next.base_url);
     setModel(next.model);
     setAllowedModelIds(next.allowed_model_ids);
     setRouter9OnlyMode(next.only_mode);
     setCheckResult(null);
-  }, [value]);
+  }, [value, defaults]);
 
   useEffect(() => {
     const nextOcr = getAdminOcrSettings(value);
@@ -192,7 +214,7 @@ export function AdminAiSettingsForm({ value, saving, onSave }: { value: Record<s
   }, [value]);
 
   async function saveProvider() {
-    const current = getAdminProviderSettings(value, provider);
+    const current = getAdminProviderSettings(value, provider, defaults);
     await onSave({
       [provider]: {
         ...current,
@@ -221,7 +243,7 @@ export function AdminAiSettingsForm({ value, saving, onSave }: { value: Record<s
       const models = await scanRouter9Models(runtime);
       await onSave({
         [provider]: {
-          ...getAdminProviderSettings(value, provider),
+          ...getAdminProviderSettings(value, provider, defaults),
           scanned_models: models,
           last_scanned_at: new Date().toISOString(),
         },
@@ -253,35 +275,18 @@ export function AdminAiSettingsForm({ value, saving, onSave }: { value: Record<s
   }
 
   function selectOcrProvider(nextProvider: string) {
-    const nextSettings = getAdminProviderSettings(value, nextProvider);
+    const nextSettings = getAdminProviderSettings(value, nextProvider, defaults);
     const firstScannedModel = nextSettings.scanned_models
       .map((modelItem: any) => typeof modelItem === 'string' ? modelItem : modelItem.id)
       .find(Boolean);
     setOcrProvider(nextProvider);
-    setOcrModel(nextSettings.model || firstScannedModel || '');
+    setOcrModel(defaults?.ocr.provider === nextProvider ? defaults.ocr.model : nextSettings.model || firstScannedModel || '');
   }
 
-  const scannedModelOptions = providerValue.scanned_models
-    .map((modelItem: any) => ({
-      id: typeof modelItem === 'string' ? modelItem : modelItem.id,
-      name: typeof modelItem === 'object' && modelItem.name ? modelItem.name : typeof modelItem === 'string' ? modelItem : modelItem.id,
-    }))
-    .filter((item) => item.id);
-
-  const modelOptions = model && !scannedModelOptions.some((item) => item.id === model)
-    ? [{ id: model, name: model }, ...scannedModelOptions]
-    : scannedModelOptions;
-
-  const ocrProviderValue = getAdminProviderSettings(value, ocrProvider);
-  const ocrScannedModelOptions = ocrProviderValue.scanned_models
-    .map((modelItem: any) => ({
-      id: typeof modelItem === 'string' ? modelItem : modelItem.id,
-      name: typeof modelItem === 'object' && modelItem.name ? modelItem.name : typeof modelItem === 'string' ? modelItem : modelItem.id,
-    }))
-    .filter((item) => item.id);
-  const ocrModelOptions = ocrModel && !ocrScannedModelOptions.some((item) => item.id === ocrModel)
-    ? [{ id: ocrModel, name: ocrModel }, ...ocrScannedModelOptions]
-    : ocrScannedModelOptions;
+  const modelOptions = adminModelOptions(providerValue, [model]);
+  const allowlistOptions = adminModelOptions(providerValue, allowedModelIds);
+  const ocrProviderValue = getAdminProviderSettings(value, ocrProvider, defaults);
+  const ocrModelOptions = adminModelOptions(ocrProviderValue, [ocrModel, defaults?.ocr.provider === ocrProvider ? defaults.ocr.model : '']);
 
   return (
     <div className="admin-ai-settings">
@@ -309,28 +314,24 @@ export function AdminAiSettingsForm({ value, saving, onSave }: { value: Record<s
         </div>
       </section>
 
-      {providerValue.scanned_models.length > 0 && (
+      {allowlistOptions.length > 0 && (
         <section className="admin-settings-section">
           <h4>Allowlist models hiển thị cho user ({allowedModelIds.length} đã chọn)</h4>
           <p className="field-hint">Chọn các model mà user có thể thấy và sử dụng trong dropdown.</p>
           <div className="admin-model-checklist">
-            {providerValue.scanned_models.map((modelItem: any) => {
-              const modelId = typeof modelItem === 'string' ? modelItem : modelItem.id;
-              const modelName = typeof modelItem === 'object' && modelItem.name ? modelItem.name : modelId;
-              return (
-                <label key={modelId} className="checkbox-label admin-model-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={allowedModelIds.includes(modelId)}
-                    onChange={() => toggleModelId(modelId)}
-                  />
-                  <span className="model-label">
-                    <strong>{modelName}</strong>
-                    {modelId !== modelName && <small>{modelId}</small>}
-                  </span>
-                </label>
-              );
-            })}
+            {allowlistOptions.map((modelItem) => (
+              <label key={modelItem.id} className="checkbox-label admin-model-checkbox">
+                <input
+                  type="checkbox"
+                  checked={allowedModelIds.includes(modelItem.id)}
+                  onChange={() => toggleModelId(modelItem.id)}
+                />
+                <span className="model-label">
+                  <strong>{modelItem.name}</strong>
+                  {modelItem.id !== modelItem.name && <small>{modelItem.id}</small>}
+                </span>
+              </label>
+            ))}
           </div>
           <button type="button" className="secondary-button" onClick={saveProvider} disabled={saving}>{saving ? 'Đang lưu...' : 'Lưu allowlist'}</button>
         </section>

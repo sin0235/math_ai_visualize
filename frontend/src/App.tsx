@@ -1500,11 +1500,9 @@ function fileToDataUrl(file: File): Promise<string> {
 function buildModelOptions(settings: RuntimeSettings, defaults?: SettingsDefaults | null): ModelOption[] {
   const providerOptions = (['openrouter', 'nvidia', 'ollama'] as const).flatMap((provider) => {
     const providerDefaults = defaults?.[provider];
-    const allowedIds = providerDefaults?.allowed_model_ids ?? [];
-    const scanned = providerDefaults?.scanned_models ?? [];
-    const ids = allowedIds.length > 0 ? allowedIds : [providerDefaults?.model ?? settings[provider].model].filter(Boolean) as string[];
+    const ids = modelIdsForProvider(providerDefaults, settings[provider].model);
     return ids.map((modelId) => {
-      const model = scanned.find((item) => item.id === modelId);
+      const model = providerDefaults?.scanned_models.find((item) => item.id === modelId);
       return {
         key: `${provider}:${modelId}`,
         provider,
@@ -1516,7 +1514,7 @@ function buildModelOptions(settings: RuntimeSettings, defaults?: SettingsDefault
   });
 
   const router9Defaults = defaults?.router9;
-  const router9Ids = router9Defaults?.allowed_model_ids.length ? router9Defaults.allowed_model_ids : [router9Defaults?.model ?? settings.router9.model].filter(Boolean) as string[];
+  const router9Ids = modelIdsForProvider(router9Defaults, settings.router9.model);
   const router9Options = router9Ids.map((modelId) => {
     const scanned = router9Defaults?.scanned_models.find((model) => model.id === modelId);
     return {
@@ -1533,6 +1531,14 @@ function buildModelOptions(settings: RuntimeSettings, defaults?: SettingsDefault
   }
 
   return [{ key: 'provider:auto', provider: 'auto', label: 'Tự động chọn mô hình phù hợp', description: 'Tự động dùng provider/model do admin cấu hình.' }, ...providerOptions, ...router9Options];
+}
+
+function modelIdsForProvider(providerDefaults: SettingsDefaults['openrouter'] | SettingsDefaults['nvidia'] | SettingsDefaults['ollama'] | SettingsDefaults['router9'] | undefined, currentModel: string) {
+  const allowedIds = providerDefaults?.allowed_model_ids ?? [];
+  if (allowedIds.length > 0) return allowedIds;
+  const scannedIds = providerDefaults?.scanned_models.map((model) => model.id).filter(Boolean) ?? [];
+  if (scannedIds.length > 0) return scannedIds;
+  return [providerDefaults?.model ?? currentModel].filter(Boolean) as string[];
 }
 
 function providerLabel(provider: 'openrouter' | 'nvidia' | 'ollama') {
