@@ -33,17 +33,43 @@ export function LoginPage({ logoUrl, user, authLoading, onContinueAsGuest, onToa
   const [acceptPrivacyPolicy, setAcceptPrivacyPolicy] = useState(false);
   const [acceptTerms, setAcceptTerms] = useState(false);
 
+  function switchMode(nextMode: AuthMode) {
+    setMode(nextMode);
+    setPassword('');
+    setConfirmPassword('');
+    setShowPassword(false);
+    setShowConfirmPassword(false);
+    if (nextMode !== 'register') {
+      setDisplayName('');
+      setAcceptPrivacyPolicy(false);
+      setAcceptTerms(false);
+    }
+  }
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const cleanEmail = email.trim();
+    if (!cleanEmail) {
+      onToast('Đăng nhập', 'Hãy nhập email.', 'error');
+      return;
+    }
     try {
       if (mode === 'forgot') {
-        const text = await onForgotPassword(email);
+        const text = await onForgotPassword(cleanEmail);
         onToast('Quên mật khẩu', text, 'info');
         return;
       }
+      if (!password) {
+        onToast(mode === 'login' ? 'Đăng nhập' : 'Tạo tài khoản', 'Hãy nhập mật khẩu.', 'error');
+        return;
+      }
       if (mode === 'login') {
-        await onLogin(email, password);
+        await onLogin(cleanEmail, password);
         onToast('Đăng nhập', 'Đăng nhập thành công. Lịch sử dựng hình và cấu hình cá nhân đã được bật.', 'info');
+        return;
+      }
+      if (password.length < 10) {
+        onToast('Tạo tài khoản', 'Mật khẩu cần tối thiểu 10 ký tự.', 'error');
         return;
       }
       if (password !== confirmPassword) {
@@ -54,10 +80,13 @@ export function LoginPage({ logoUrl, user, authLoading, onContinueAsGuest, onToa
         onToast('Tạo tài khoản', 'Bạn cần đồng ý Chính sách bảo mật và Điều khoản sử dụng để tạo tài khoản.', 'error');
         return;
       }
-      await onRegister(email, password, displayName, acceptPrivacyPolicy, acceptTerms);
+      await onRegister(cleanEmail, password, displayName.trim() || undefined, acceptPrivacyPolicy, acceptTerms);
       onToast('Tạo tài khoản', 'Tạo tài khoản thành công. Hãy kiểm tra email, mở liên kết xác minh và nhập mã OTP.', 'info');
     } catch (caught) {
-      onToast('Đăng nhập', caught instanceof Error ? caught.message : 'Không thể xử lý đăng nhập.', 'error');
+      const message = caught instanceof Error ? caught.message : 'Không thể xử lý đăng nhập.';
+      const title = mode === 'register' ? 'Tạo tài khoản' : mode === 'forgot' ? 'Quên mật khẩu' : 'Đăng nhập';
+      const hint = /xác minh email|verify/i.test(message) ? `${message} Hãy kiểm tra hộp thư hoặc dùng trang tài khoản để gửi lại email xác minh.` : message;
+      onToast(title, hint, 'error');
     }
   }
 
@@ -127,7 +156,7 @@ export function LoginPage({ logoUrl, user, authLoading, onContinueAsGuest, onToa
               )}
               {mode === 'login' && (
                 <div className="login-forgot-password-row">
-                  <button type="button" className="login-forgot-password-link" onClick={() => setMode('forgot')}>Quên mật khẩu?</button>
+                  <button type="button" className="login-forgot-password-link" onClick={() => switchMode('forgot')}>Quên mật khẩu?</button>
                 </div>
               )}
               {mode === 'register' && (
@@ -156,10 +185,10 @@ export function LoginPage({ logoUrl, user, authLoading, onContinueAsGuest, onToa
               <button type="button" className="auth-guest-button" onClick={onContinueAsGuest}>Tiếp tục không cần đăng nhập</button>
               <div className="auth-secondary-links">
                 {mode === 'login' && (
-                  <span>Chưa có tài khoản? <button type="button" onClick={() => setMode('register')}>Tạo tài khoản</button></span>
+                  <span>Chưa có tài khoản? <button type="button" onClick={() => switchMode('register')}>Tạo tài khoản</button></span>
                 )}
-                {mode === 'register' && <span>Đã có tài khoản? <button type="button" onClick={() => setMode('login')}>Đăng nhập</button></span>}
-                {mode === 'forgot' && <span>Nhớ mật khẩu rồi? <button type="button" onClick={() => setMode('login')}>Quay lại đăng nhập</button></span>}
+                {mode === 'register' && <span>Đã có tài khoản? <button type="button" onClick={() => switchMode('login')}>Đăng nhập</button></span>}
+                {mode === 'forgot' && <span>Nhớ mật khẩu rồi? <button type="button" onClick={() => switchMode('login')}>Quay lại đăng nhập</button></span>}
               </div>
             </>
           )}

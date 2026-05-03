@@ -49,7 +49,7 @@ MAX_FAILED_LOGINS = 5
 LOCK_MINUTES = 15
 
 
-@router.post("/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_trusted_origin)])
 async def register(
     request: RegisterRequest,
     raw_request: Request,
@@ -163,7 +163,7 @@ async def google_callback(
     return response
 
 
-@router.post("/login", response_model=AuthResponse)
+@router.post("/login", response_model=AuthResponse, dependencies=[Depends(require_trusted_origin)])
 async def login(
     request: LoginRequest,
     raw_request: Request,
@@ -249,7 +249,7 @@ async def forgot_password(request: ForgotPasswordRequest, raw_request: Request, 
     return MessageResponse(message=GENERIC_RESET_MESSAGE)
 
 
-@router.post("/reset-password", response_model=MessageResponse)
+@router.post("/reset-password", response_model=MessageResponse, dependencies=[Depends(require_trusted_origin)])
 async def reset_password(request: ResetPasswordRequest, raw_request: Request, db: DatabaseClient = Depends(get_database)) -> MessageResponse:
     await enforce_rate_limit(db, f"auth:reset:ip:{client_ip(raw_request)}", 20, 3600)
     tokens = AuthTokenRepository(db)
@@ -263,15 +263,26 @@ async def reset_password(request: ResetPasswordRequest, raw_request: Request, db
     return MessageResponse(message="Mật khẩu đã được đặt lại. Hãy đăng nhập bằng mật khẩu mới.")
 
 
-@router.post("/verify-email", response_model=AuthResponse)
-async def verify_email(request: VerifyEmailRequest, raw_request: Request, db: DatabaseClient = Depends(get_database)) -> AuthResponse:
+@router.post("/verify-email", response_model=AuthResponse, dependencies=[Depends(require_trusted_origin)])
+async def verify_email(
+    request: VerifyEmailRequest,
+    raw_request: Request,
+    response: Response,
+    db: DatabaseClient = Depends(get_database),
+    settings: Settings = Depends(get_settings),
+) -> AuthResponse:
     tokens = AuthTokenRepository(db)
     token = await tokens.find_valid_by_token_and_otp(request.token, request.otp, TOKEN_PURPOSE_EMAIL_VERIFICATION)
     if token is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Liên kết hoặc mã OTP xác minh email không hợp lệ hoặc đã hết hạn.")
     user = await UserRepository(db).mark_email_verified(token.user_id)
     await tokens.consume(token.id)
+    await UserRepository(db).mark_login(user.id)
+    user = await UserRepository(db).find_by_id(user.id) or user
+    _, session_token = await SessionRepository(db).create(user.id, client_ip(raw_request), raw_request.headers.get("user-agent"))
+    set_session_cookie(response, session_token, settings)
     await audit(db, user.id, "auth.email_verified", "user", user.id, raw_request)
+    await audit(db, user.id, "auth.login_success", "user", user.id, raw_request, {"source": "email_verification"})
     return AuthResponse(user=user_response(user))
 
 

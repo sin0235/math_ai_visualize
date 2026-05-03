@@ -378,18 +378,26 @@ export default function App() {
     window.requestAnimationFrame(() => scrollToResult());
   }
 
+  function clearSessionState() {
+    setUser(null);
+    setHistoryItems([]);
+    setHistoryOpen(false);
+    setAccountMenuOpen(false);
+    setRemoteSettingsHydrated(true);
+  }
+
+  async function applyAuthenticatedUser(nextUser: UserResponse) {
+    setRemoteSettingsHydrated(false);
+    setUser(nextUser);
+    await loadRemoteWorkspace(nextUser);
+  }
+
   async function handleLogin(email: string, password: string) {
     setAuthLoading(true);
     try {
-      setRemoteSettingsHydrated(false);
       const response = await login(email, password);
-      setUser(response.user);
-      await loadRemoteWorkspace(response.user);
-      if (response.user.role === 'admin') {
-        navigateTo('admin');
-      } else {
-        navigateTo('render');
-      }
+      await applyAuthenticatedUser(response.user);
+      navigateTo(response.user.role === 'admin' ? 'admin' : 'render');
     } finally {
       setAuthLoading(false);
     }
@@ -402,16 +410,13 @@ export default function App() {
   async function handleRegister(email: string, password: string, displayName: string | undefined, acceptPrivacyPolicy: boolean, acceptTerms: boolean) {
     setAuthLoading(true);
     try {
-      setRemoteSettingsHydrated(false);
       const response = await register(email, password, displayName, acceptPrivacyPolicy, acceptTerms);
-      setUser(response.user);
       if (response.user.email_verified_at) {
-        await saveUserSettings(toUserBasicSettings(runtimeSettings));
-        await refreshHistory();
-        setRemoteSettingsHydrated(true);
-        navigateTo('account');
+        await applyAuthenticatedUser(response.user);
+        navigateTo('render');
       } else {
-        setRemoteSettingsHydrated(true);
+        await logout().catch(() => undefined);
+        clearSessionState();
         navigateTo('login');
       }
     } finally {
@@ -423,12 +428,9 @@ export default function App() {
     setAuthLoading(true);
     try {
       await logout();
-      setUser(null);
-      setHistoryItems([]);
-      setHistoryOpen(false);
-      setRemoteSettingsHydrated(true);
-      navigateTo('login');
     } finally {
+      clearSessionState();
+      navigateTo('login');
       setAuthLoading(false);
     }
   }
@@ -440,12 +442,15 @@ export default function App() {
 
   async function handleResetPassword(token: string, password: string) {
     const response = await resetPassword(token, password);
+    clearSessionState();
     return response.message;
   }
 
   async function handleVerifyEmail(token: string, otp: string) {
     const response = await verifyEmail(token, otp);
-    setUser(response.user);
+    await applyAuthenticatedUser(response.user);
+    setAuthToken('');
+    navigateTo(response.user.role === 'admin' ? 'admin' : 'render');
   }
 
   async function handleResendVerification() {

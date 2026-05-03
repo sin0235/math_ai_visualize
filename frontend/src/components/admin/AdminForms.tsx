@@ -419,10 +419,10 @@ export function AdminAiProfilesForm({ value, aiSettings, onSave }: { value: Reco
   const ocr = getAiTaskProfile(value.ocr);
   const [geometryProvider, setGeometryProvider] = useState(geometry.provider);
   const [geometryModel, setGeometryModel] = useState(geometry.model);
-  const [geometryFallbacks, setGeometryFallbacks] = useState(geometry.fallbacks.join('\n'));
+  const [geometryFallbacks, setGeometryFallbacks] = useState<string[]>(geometry.fallbacks);
   const [ocrProvider, setOcrProvider] = useState(ocr.provider);
   const [ocrModel, setOcrModel] = useState(ocr.model);
-  const [ocrFallbacks, setOcrFallbacks] = useState(ocr.fallbacks.join('\n'));
+  const [ocrFallbacks, setOcrFallbacks] = useState<string[]>(ocr.fallbacks);
   const settingsDefaults = adminSettingsToDefaults(aiSettings);
   const providerOptions = buildProviderOptions(settingsDefaults, false);
 
@@ -431,17 +431,41 @@ export function AdminAiProfilesForm({ value, aiSettings, onSave }: { value: Reco
     return settingsDefaults.router9;
   }
 
-  function modelOptions(selectedProvider: string, selectedModel: string) {
-    return buildModelOptionsFromDefaults(providerDefaults(selectedProvider), selectedModel);
+  function modelOptions(selectedProvider: string, selectedModel: string, fallbackModels: string[] = []) {
+    return buildModelOptionsFromDefaults(providerDefaults(selectedProvider), selectedModel, fallbackModels);
+  }
+
+  function updateFallbacks(kind: 'geometry' | 'ocr', modelId: string, checked: boolean) {
+    const setter = kind === 'geometry' ? setGeometryFallbacks : setOcrFallbacks;
+    setter((current) => checked ? [...new Set([...current, modelId])] : current.filter((item) => item !== modelId));
   }
 
   return (
     <section className="admin-settings-section"><h4>Hồ sơ AI</h4><div className="admin-field-grid">
       <label className="field-label">Provider hình học<select value={geometryProvider} onChange={(event) => setGeometryProvider(event.target.value)}><option value="auto">auto</option>{providerOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
-      <label className="field-label">Model hình học<select value={geometryModel} onChange={(event) => setGeometryModel(event.target.value)}><option value="">Chọn model</option>{modelOptions(geometryProvider, geometryModel).map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.label}</option>)}</select></label>
+      <label className="field-label">Model hình học<select value={geometryModel} onChange={(event) => setGeometryModel(event.target.value)}><option value="">Chọn model</option>{modelOptions(geometryProvider, geometryModel, geometryFallbacks).map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.label}</option>)}</select></label>
       <label className="field-label">Provider OCR<select value={ocrProvider} onChange={(event) => setOcrProvider(event.target.value)}><option value="auto">auto</option>{providerOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
-      <label className="field-label">Model OCR<select value={ocrModel} onChange={(event) => setOcrModel(event.target.value)}><option value="">Chọn model</option>{modelOptions(ocrProvider, ocrModel).map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.label}</option>)}</select></label>
-    </div><label className="field-label">Model dự phòng hình học<textarea rows={3} value={geometryFallbacks} onChange={(event) => setGeometryFallbacks(event.target.value)} /></label><label className="field-label">Model dự phòng OCR<textarea rows={3} value={ocrFallbacks} onChange={(event) => setOcrFallbacks(event.target.value)} /></label><button type="button" className="secondary-button" onClick={() => void onSave({ version: 1, geometry_reasoning: { provider: geometryProvider, model: geometryModel, fallbacks: parseLines(geometryFallbacks) }, ocr: { provider: ocrProvider, model: ocrModel, fallbacks: parseLines(ocrFallbacks) } })}>Lưu hồ sơ AI</button></section>
+      <label className="field-label">Model OCR<select value={ocrModel} onChange={(event) => setOcrModel(event.target.value)}><option value="">Chọn model</option>{modelOptions(ocrProvider, ocrModel, ocrFallbacks).map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.label}</option>)}</select></label>
+    </div>
+    <div className="admin-model-fallback-grid">
+      <ModelFallbackChecklist title="Model dự phòng hình học" options={modelOptions(geometryProvider, geometryModel, geometryFallbacks)} selected={geometryFallbacks} onToggle={(modelId, checked) => updateFallbacks('geometry', modelId, checked)} />
+      <ModelFallbackChecklist title="Model dự phòng OCR" options={modelOptions(ocrProvider, ocrModel, ocrFallbacks)} selected={ocrFallbacks} onToggle={(modelId, checked) => updateFallbacks('ocr', modelId, checked)} />
+    </div>
+    <button type="button" className="secondary-button" onClick={() => void onSave({ version: 1, geometry_reasoning: { provider: geometryProvider, model: geometryModel, fallbacks: geometryFallbacks }, ocr: { provider: ocrProvider, model: ocrModel, fallbacks: ocrFallbacks } })}>Lưu hồ sơ AI</button></section>
+  );
+}
+
+function ModelFallbackChecklist({ title, options, selected, onToggle }: { title: string; options: Array<{ id: string; label: string }>; selected: string[]; onToggle: (modelId: string, checked: boolean) => void }) {
+  return (
+    <fieldset className="admin-model-fallback-list">
+      <legend>{title}</legend>
+      {options.length > 0 ? options.map((option) => (
+        <label key={option.id} className="admin-model-checkbox">
+          <input type="checkbox" checked={selected.includes(option.id)} onChange={(event) => onToggle(option.id, event.target.checked)} />
+          <span className="model-label"><strong>{option.label}</strong><small>{option.id}</small></span>
+        </label>
+      )) : <p className="field-hint">Chưa có model đã quét hoặc allowlist cho provider này.</p>}
+    </fieldset>
   );
 }
 

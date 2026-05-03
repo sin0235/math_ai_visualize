@@ -15,6 +15,14 @@ export function ResetPasswordPage({ token, onResetPassword, onBackLogin }: Reset
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage('');
+    if (!token) {
+      setMessage('Liên kết đặt lại mật khẩu không hợp lệ hoặc thiếu token.');
+      return;
+    }
+    if (password.length < 10) {
+      setMessage('Mật khẩu mới cần tối thiểu 10 ký tự.');
+      return;
+    }
     if (password !== confirmPassword) {
       setMessage('Mật khẩu xác nhận chưa khớp.');
       return;
@@ -43,17 +51,21 @@ export function ResetPasswordPage({ token, onResetPassword, onBackLogin }: Reset
         </div>
         <span className="home-eyebrow">Đặt lại mật khẩu</span>
         <h2>Tạo mật khẩu mới</h2>
-        <p className="field-hint">Sau khi đặt lại mật khẩu, các phiên đăng nhập cũ sẽ bị thu hồi và bạn cần đăng nhập lại.</p>
-        <label className="field-label">
-          Mật khẩu mới
-          <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={10} autoComplete="new-password" required />
-        </label>
-        <label className="field-label">
-          Nhập lại mật khẩu mới
-          <input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} minLength={10} autoComplete="new-password" required />
-        </label>
+        <p className="field-hint">{token ? 'Sau khi đặt lại mật khẩu, các phiên đăng nhập cũ sẽ bị thu hồi và bạn cần đăng nhập lại.' : 'Liên kết đặt lại mật khẩu không hợp lệ hoặc thiếu token. Hãy yêu cầu email đặt lại mật khẩu mới.'}</p>
+        {token && (
+          <>
+            <label className="field-label">
+              Mật khẩu mới
+              <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={10} autoComplete="new-password" required />
+            </label>
+            <label className="field-label">
+              Nhập lại mật khẩu mới
+              <input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} minLength={10} autoComplete="new-password" required />
+            </label>
+          </>
+        )}
         <div className="auth-actions">
-          <button type="submit" disabled={loading}>{loading ? 'Đang xử lý...' : 'Đặt lại mật khẩu'}</button>
+          {token && <button type="submit" disabled={loading}>{loading ? 'Đang xử lý...' : 'Đặt lại mật khẩu'}</button>}
           <button type="button" className="secondary-button" onClick={onBackLogin}>Quay lại đăng nhập</button>
         </div>
         {message && <p className="login-message">{message}</p>}

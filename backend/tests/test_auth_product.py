@@ -123,6 +123,8 @@ def test_verify_email_requires_token_and_otp(client):
 
     assert response.status_code == 200
     assert response.json()["user"]["email_verified_at"] is not None
+    assert response.cookies.get("hinh_session")
+    assert client.get("/api/auth/me").status_code == 200
     assert client.post("/api/auth/verify-email", json={"token": token, "otp": otp}).status_code == 400
 
 
@@ -150,7 +152,10 @@ def test_require_email_verification_blocks_login_until_verified(client):
         return raw, otp
 
     token, otp = asyncio.run(get_token())
-    assert client.post("/api/auth/verify-email", json={"token": token, "otp": otp}).status_code == 200
+    verified = client.post("/api/auth/verify-email", json={"token": token, "otp": otp})
+    assert verified.status_code == 200
+    assert verified.cookies.get("hinh_session")
+    assert client.get("/api/auth/me").status_code == 200
     assert client.post("/api/auth/login", json={"email": "required@example.com", "password": "StrongPass123"}).status_code == 200
 
 

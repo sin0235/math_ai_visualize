@@ -28,7 +28,7 @@ export function VerifyEmailPage({ token, onVerifyEmail, onBackWorkspace, onBackL
     try {
       await onVerifyEmail(token, cleanOtp);
       setVerified(true);
-      setMessage('Email đã được xác minh thành công. Bạn có thể quay lại đăng nhập hoặc mở workspace.');
+      setMessage('Email đã được xác minh thành công. Phiên đăng nhập đã được bật và workspace sẽ mở tự động.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Không thể xác minh email.');
     } finally {

@@ -236,6 +236,9 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
   const renderSourceFilterOptions = distinctOptions(renderJobs.map((job) => job.source_type), renderSourceOptions);
   const auditActionOptions = distinctOptions(auditLogs.map((log) => log.action));
   const auditTargetOptions = distinctOptions(auditLogs.map((log) => log.target_type));
+  const dailyActivity = buildDailyActivity(summary?.daily_stats ?? []);
+  const dailyActivityTotal = dailyActivity.reduce((total, item) => total + item.count, 0);
+  const dailyActivityMax = Math.max(...dailyActivity.map((item) => item.count), 1);
 
   if (user.role !== 'admin') {
     return (
@@ -272,37 +275,69 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
               <AdminToolbarRefreshButton loading={loading} onClick={onRefresh} />
             </header>
             <div className="admin-section-stack">
-            <div className="admin-metric-grid">
-              <MetricCard label="Người dùng" value={summary?.users ?? 0} variant="primary" icon="users" />
-              <MetricCard label="Đang hoạt động" value={summary?.active_users ?? 0} variant="success" icon="active" />
-              <MetricCard label="Admin" value={summary?.admins ?? 0} variant="info" icon="admin" />
-              <MetricCard label="Lượt dựng hình" value={summary?.render_jobs ?? 0} variant="primary" icon="renders" />
-              <MetricCard label="Render hôm nay" value={summary?.render_jobs_today ?? 0} variant="success" icon="chart" />
-              <MetricCard label="User mới hôm nay" value={summary?.users_today ?? 0} variant="info" icon="users" />
-              <MetricCard label="Job cảnh báo AI" value={summary?.ai_warning_jobs ?? 0} variant="warning" icon="warning" />
-              <MetricCard label="Tỉ lệ cảnh báo AI" value={summary?.ai_warning_rate ?? 0} suffix="%" variant="warning" icon="warning" />
-            </div>
-            
+              <div className="admin-metric-groups">
+                <section className="admin-metric-group metric-group-users">
+                  <div className="admin-metric-group-header">
+                    <span>Người dùng</span>
+                    <small>Tài khoản và phân quyền</small>
+                  </div>
+                  <div className="admin-metric-grid admin-metric-grid-4">
+                    <MetricCard label="Người dùng" value={summary?.users ?? 0} variant="primary" icon="users" />
+                    <MetricCard label="Đang hoạt động" value={summary?.active_users ?? 0} variant="success" icon="active" />
+                    <MetricCard label="Admin" value={summary?.admins ?? 0} variant="info" icon="admin" />
+                    <MetricCard label="User mới hôm nay" value={summary?.users_today ?? 0} variant="info" icon="users" />
+                  </div>
+                </section>
+                <section className="admin-metric-group metric-group-renders">
+                  <div className="admin-metric-group-header">
+                    <span>Render</span>
+                    <small>Lưu lượng dựng hình</small>
+                  </div>
+                  <div className="admin-metric-grid admin-metric-grid-2">
+                    <MetricCard label="Lượt dựng hình" value={summary?.render_jobs ?? 0} variant="primary" icon="renders" />
+                    <MetricCard label="Render hôm nay" value={summary?.render_jobs_today ?? 0} variant="success" icon="chart" />
+                  </div>
+                </section>
+                <section className="admin-metric-group metric-group-ai-health">
+                  <div className="admin-metric-group-header">
+                    <span>AI Health</span>
+                    <small>Cảnh báo và chất lượng</small>
+                  </div>
+                  <div className="admin-metric-grid admin-metric-grid-2">
+                    <MetricCard label="Job cảnh báo AI" value={summary?.ai_warning_jobs ?? 0} variant="warning" icon="warning" />
+                    <MetricCard label="Tỉ lệ cảnh báo AI" value={summary?.ai_warning_rate ?? 0} suffix="%" variant="warning" icon="warning" />
+                  </div>
+                </section>
+              </div>
+
             <section className="admin-panel admin-panel-full">
-              <h3>Biểu đồ hoạt động (14 ngày gần nhất)</h3>
+              <div className="admin-panel-title-row">
+                <div>
+                  <h3>Biểu đồ hoạt động</h3>
+                  <p>14 ngày gần nhất, bao gồm cả ngày chưa có lượt dựng hình.</p>
+                </div>
+              </div>
               <div className="admin-chart-container">
-                {summary?.daily_stats && summary.daily_stats.length > 0 ? (
+                {dailyActivityTotal > 0 ? (
                   <div className="admin-bar-chart">
-                    {summary.daily_stats.map((item: any) => {
-                      const maxCount = Math.max(...summary.daily_stats.map((d: any) => d.count), 1);
-                      const height = (item.count / maxCount) * 100;
+                    {dailyActivity.map((item) => {
+                      const height = item.count > 0 ? Math.max((item.count / dailyActivityMax) * 100, 8) : 3;
                       return (
-                        <div key={item.day} className="admin-chart-bar-group" title={`${item.day}: ${item.count} renders`}>
-                          <div className="admin-chart-bar" style={{ height: `${height}%` }}>
-                            <span className="admin-chart-value">{item.count}</span>
+                        <div key={item.day} className="admin-chart-bar-group" title={`${item.day}: ${item.count} lượt dựng`}>
+                          <div className={`admin-chart-bar${item.count === 0 ? ' is-empty' : ''}`} style={{ height: `${height}%` }}>
+                            {item.count > 0 && <span className="admin-chart-value">{item.count}</span>}
                           </div>
-                          <span className="admin-chart-label">{item.day.split('-').slice(1).reverse().join('/')}</span>
+                          <span className="admin-chart-label">{item.label}</span>
                         </div>
                       );
                     })}
                   </div>
                 ) : (
-                  <p className="field-hint">Chưa có dữ liệu hoạt động trong 14 ngày qua.</p>
+                  <div className="admin-chart-empty-state">
+                    <AdminIcon name="chart" />
+                    <strong>Chưa có hoạt động trong 14 ngày gần nhất</strong>
+                    <p>Khi có lượt dựng hình mới, biểu đồ sẽ hiển thị theo từng ngày.</p>
+                  </div>
                 )}
               </div>
             </section>
@@ -609,6 +644,22 @@ function collectAdminModelIds(aiSettings: Record<string, unknown>) {
     }
   });
   return [...ids];
+}
+
+function buildDailyActivity(stats: Array<{ day: string; count: number }>) {
+  const counts = new Map(stats.map((item) => [item.day, Number(item.count) || 0]));
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Array.from({ length: 14 }, (_, index) => {
+    const date = new Date(today);
+    date.setDate(today.getDate() - (13 - index));
+    const day = date.toISOString().slice(0, 10);
+    return {
+      day,
+      count: counts.get(day) ?? 0,
+      label: date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' }),
+    };
+  });
 }
 
 function summarizeRenderJobs(renderJobs: AdminRenderHistoryItem[]) {
