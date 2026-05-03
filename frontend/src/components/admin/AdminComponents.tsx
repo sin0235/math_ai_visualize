@@ -14,7 +14,7 @@ export function formatHistoryDate(value: string) {
   return date.toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' });
 }
 
-export type AdminIconName = 'overview' | 'users' | 'renders' | 'models' | 'settings' | 'audit' | 'active' | 'admin' | 'warning' | 'chart' | 'back';
+export type AdminIconName = 'overview' | 'users' | 'renders' | 'models' | 'settings' | 'audit' | 'active' | 'admin' | 'warning' | 'chart' | 'back' | 'refresh';
 
 export function AdminIcon({ name }: { name: AdminIconName }) {
   const common = { fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
@@ -31,6 +31,7 @@ export function AdminIcon({ name }: { name: AdminIconName }) {
       {name === 'warning' && <><path {...common} d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><path {...common} d="M12 9v4" /><path {...common} d="M12 17h.01" /></>}
       {name === 'chart' && <><path {...common} d="M3 3v18h18" /><rect {...common} x="7" y="12" width="3" height="5" /><rect {...common} x="12" y="8" width="3" height="9" /><rect {...common} x="17" y="5" width="3" height="12" /></>}
       {name === 'back' && <><path {...common} d="M19 12H5" /><path {...common} d="m12 19-7-7 7-7" /></>}
+      {name === 'refresh' && <><path {...common} d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path {...common} d="M21 3v5h-5" /><path {...common} d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path {...common} d="M3 21v-5h5" /></>}
     </svg>
   );
 }

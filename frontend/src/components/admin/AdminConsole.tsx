@@ -43,11 +43,27 @@ import {
 } from './AdminForms';
 import { buildPlanOptions, distinctOptions, providerLabels, rendererOptions, renderSourceOptions } from '../../utils/settingsOptions';
 import type { SettingsDefaults } from '../../types/settings';
+import adminLogoUrl from '../../../logo.svg';
 
 interface AdminConsoleProps {
   user: UserResponse;
   onBackToApp: () => void;
   onOpenRenderJobDetail: (detail: AdminRenderHistoryDetail) => void;
+}
+
+function AdminToolbarRefreshButton({ loading, onClick }: { loading: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      className={`secondary-button admin-button-with-icon admin-topbar-refresh${loading ? ' is-loading' : ''}`}
+      onClick={onClick}
+      disabled={loading}
+      aria-busy={loading}
+      aria-label={loading ? 'Đang tải dữ liệu' : 'Làm mới dữ liệu'}
+    >
+      <AdminIcon name="refresh" />
+    </button>
+  );
 }
 
 export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: AdminConsoleProps) {
@@ -232,7 +248,7 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
   return (
     <section className="admin-dashboard">
       <aside className="admin-sidebar">
-        <div className="admin-brand"><span><AdminIcon name="admin" /></span><div><strong>Hinh Admin</strong><small>Project Control Center</small></div></div>
+        <div className="admin-brand"><span><img src={adminLogoUrl} alt="" className="admin-brand-logo" width={32} height={32} decoding="async" /></span><div><strong>Admin Dashboard</strong><small>Project Control Center</small></div></div>
         <nav className="admin-sidebar-nav">
           <AdminNavButton active={activeSection === 'overview'} onClick={() => setActiveSection('overview')} icon="overview" label="Tổng quan" />
           <AdminNavButton active={activeSection === 'users'} onClick={() => setActiveSection('users')} icon="users" label="Người dùng" />
@@ -249,7 +265,7 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
           <>
             <header className="admin-topbar">
               <div><span className="home-eyebrow">Admin Dashboard</span><h2>Quản lý dự án AI Math Renderer</h2><p>Dashboard riêng cho admin: vận hành, phân tích, người dùng, model, cài đặt và audit.</p></div>
-              <button type="button" className="secondary-button" onClick={onRefresh} disabled={loading}>{loading ? 'Đang tải...' : 'Làm mới'}</button>
+              <AdminToolbarRefreshButton loading={loading} onClick={onRefresh} />
             </header>
             <div className="admin-section-stack">
             <div className="admin-metric-grid">
@@ -299,7 +315,7 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
           <>
             <header className="admin-page-header">
               <h2>Quản lý người dùng</h2>
-              <button type="button" className="secondary-button" onClick={onRefresh} disabled={loading}>{loading ? 'Đang tải...' : 'Làm mới'}</button>
+              <AdminToolbarRefreshButton loading={loading} onClick={onRefresh} />
             </header>
             <section className="admin-panel admin-panel-full">
             <form className="admin-toolbar" onSubmit={submitUserSearch}>
@@ -322,7 +338,7 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
           <>
             <header className="admin-page-header">
               <h2>Quản lý render jobs</h2>
-              <button type="button" className="secondary-button" onClick={onRefresh} disabled={loading}>{loading ? 'Đang tải...' : 'Làm mới'}</button>
+              <AdminToolbarRefreshButton loading={loading} onClick={onRefresh} />
             </header>
             <section className="admin-panel admin-panel-full">
             <form className="admin-toolbar admin-filter-grid" onSubmit={submitRenderJobFilters}>
@@ -356,7 +372,7 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
           <>
             <header className="admin-page-header">
               <h2>Model & AI management</h2>
-              <button type="button" className="secondary-button" onClick={onRefresh} disabled={loading}>{loading ? 'Đang tải...' : 'Làm mới'}</button>
+              <AdminToolbarRefreshButton loading={loading} onClick={onRefresh} />
             </header>
             <section className="admin-panel admin-panel-full">
             <p className="field-hint">Admin quản lý provider, model mặc định, allowlist, OCR và routing AI.</p>
@@ -369,7 +385,7 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
           <>
             <header className="admin-page-header">
               <h2>Cài đặt hệ thống</h2>
-              <button type="button" className="secondary-button" onClick={onRefresh} disabled={loading}>{loading ? 'Đang tải...' : 'Làm mới'}</button>
+              <AdminToolbarRefreshButton loading={loading} onClick={onRefresh} />
             </header>
             <section className="admin-panel admin-panel-full">
             <p className="field-hint">Các cấu hình non-secret được lưu trong bảng system_settings; API key vẫn nằm trong secret/env deploy.</p>
@@ -389,7 +405,7 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
           <>
             <header className="admin-page-header">
               <h2>Audit logs</h2>
-              <button type="button" className="secondary-button" onClick={onRefresh} disabled={loading}>{loading ? 'Đang tải...' : 'Làm mới'}</button>
+              <AdminToolbarRefreshButton loading={loading} onClick={onRefresh} />
             </header>
             <section className="admin-panel admin-panel-full">
             <form className="admin-toolbar admin-filter-grid" onSubmit={submitAuditLogFilters}>

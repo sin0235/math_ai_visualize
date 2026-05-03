@@ -934,20 +934,22 @@ select {
 }
 
 .admin-brand > span {
-  display: grid;
+  display: flex;
+  flex-shrink: 0;
   width: 32px;
   height: 32px;
-  place-items: center;
+  align-items: center;
+  justify-content: center;
   border-radius: 8px;
-  background: #171717;
-  color: #ffffff;
-  font-weight: 800;
-  font-size: 14px;
+  background: #f5f5f5;
+  overflow: hidden;
 }
 
-.admin-brand > span .admin-icon {
-  width: 18px;
-  height: 18px;
+.admin-brand-logo {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
 }
 
 .admin-brand > div {
@@ -1037,6 +1039,16 @@ select {
   margin: 4px 0 0;
   color: #737373;
   font-size: 14px;
+}
+
+.admin-topbar-refresh {
+  padding: 8px 10px;
+  min-width: 40px;
+  justify-content: center;
+}
+
+.admin-topbar-refresh.is-loading .admin-icon {
+  animation: spin 800ms linear infinite;
 }
 
 .admin-topbar .home-eyebrow {
