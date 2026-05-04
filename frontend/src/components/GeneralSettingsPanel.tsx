@@ -1,5 +1,6 @@
 import type { OcrProvider, RuntimeSettings, SettingsDefaults } from '../types/settings';
-import { buildModelOptionsFromDefaults, buildOcrProviderOptions, buildProviderOptions } from '../utils/settingsOptions';
+import { buildOcrProviderOptions, buildProviderOptions } from '../utils/settingsOptions';
+import type { Option } from '../utils/settingsOptions';
 
 interface GeneralSettingsPanelProps {
   value: RuntimeSettings;
@@ -13,7 +14,7 @@ export function GeneralSettingsPanel({ value, defaults, onChange, onReset }: Gen
   const providerModelOptions = buildProviderModelOptions(defaults, value.default_provider, currentProviderModel(value));
   const ocrProviderOptions = buildOcrProviderOptions(defaults);
   const ocrProviderDefaults = value.ocr.provider === 'router9' ? defaults?.router9 : defaults?.openrouter;
-  const ocrModels = buildModelOptionsFromDefaults(ocrProviderDefaults, value.ocr.model, [defaults?.ocr.model ?? '']);
+  const ocrModels = buildUserModelOptionsFromDefaults(ocrProviderDefaults, value.ocr.model, [defaults?.ocr.model ?? '']);
   const selectedOcrModel = value.ocr.model;
 
   function updateField<Key extends keyof RuntimeSettings>(key: Key, nextValue: RuntimeSettings[Key]) {
@@ -128,5 +129,29 @@ function currentProviderModel(value: RuntimeSettings) {
 
 function buildProviderModelOptions(defaults: SettingsDefaults | null, provider: string, currentModel: string) {
   if (!defaults || !(provider === 'openrouter' || provider === 'nvidia' || provider === 'ollama' || provider === 'router9')) return currentModel ? [{ id: currentModel, label: currentModel }] : [];
-  return buildModelOptionsFromDefaults(defaults[provider], currentModel);
+  return buildUserModelOptionsFromDefaults(defaults[provider], currentModel);
+}
+
+function buildUserModelOptionsFromDefaults(providerDefaults: SettingsDefaults['openrouter'] | SettingsDefaults['nvidia'] | SettingsDefaults['ollama'] | SettingsDefaults['router9'] | undefined, currentModel = '', extraModelIds: string[] = []): Option[] {
+  if (!providerDefaults) return uniqueOptions([currentModel, ...extraModelIds]);
+  const ids = providerDefaults.allowed_model_ids.length > 0
+    ? providerDefaults.allowed_model_ids
+    : [providerDefaults.model ?? '', ...extraModelIds].filter(Boolean);
+  const options = ids.map((id) => {
+    const scanned = providerDefaults.scanned_models.find((model) => model.id === id);
+    return { id, label: scanned?.label ?? id };
+  });
+  [currentModel, ...extraModelIds].filter(Boolean).forEach((id) => {
+    if (!options.some((option) => option.id === id)) options.unshift({ id, label: id });
+  });
+  return options;
+}
+
+function uniqueOptions(ids: string[]): Option[] {
+  const seen = new Set<string>();
+  return ids.filter(Boolean).filter((id) => {
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  }).map((id) => ({ id, label: id }));
 }

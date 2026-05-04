@@ -1363,10 +1363,13 @@ function mergeProviderDefaults<Provider extends 'openrouter' | 'nvidia' | 'ollam
   defaults: SettingsDefaults[Provider],
   provider: Provider,
 ): RuntimeSettings[Provider] {
-  const allowed_model_ids = mergeUnique(current.allowed_model_ids ?? [], [defaults.model ?? '', ...defaults.allowed_model_ids]);
-  const model = current.model || defaults.model || allowed_model_ids[0] || '';
+  const allowlist = defaults.allowed_model_ids.length > 0 ? defaults.allowed_model_ids : [defaults.model ?? ''].filter(Boolean);
+  const allowed_model_ids = allowlist;
+  const model = defaults.model && (!allowed_model_ids.length || allowed_model_ids.includes(defaults.model))
+    ? defaults.model
+    : allowed_model_ids[0] || '';
   const scanned_models = mergeScannedModels(
-    mergeScannedModels(current.scanned_models, defaults.scanned_models),
+    defaults.scanned_models.filter((item) => !allowed_model_ids.length || allowed_model_ids.includes(item.id)),
     allowed_model_ids.map((id) => ({ id, label: id, provider }))
   );
 
@@ -1600,11 +1603,9 @@ function buildModelOptions(settings: RuntimeSettings, defaults?: SettingsDefault
 }
 
 function modelIdsForProvider(providerDefaults: SettingsDefaults['openrouter'] | SettingsDefaults['nvidia'] | SettingsDefaults['ollama'] | SettingsDefaults['router9'] | undefined, currentModel: string) {
-  const allowedIds = providerDefaults?.allowed_model_ids ?? [];
-  if (allowedIds.length > 0) return allowedIds;
-  const scannedIds = providerDefaults?.scanned_models.map((model) => model.id).filter(Boolean) ?? [];
-  if (scannedIds.length > 0) return scannedIds;
-  return [providerDefaults?.model ?? currentModel].filter(Boolean) as string[];
+  if (!providerDefaults) return [currentModel].filter(Boolean) as string[];
+  if (providerDefaults.allowed_model_ids.length > 0) return providerDefaults.allowed_model_ids;
+  return [providerDefaults.model].filter(Boolean) as string[];
 }
 
 function providerLabel(provider: 'openrouter' | 'nvidia' | 'ollama') {

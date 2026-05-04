@@ -1,10 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.core.config import get_settings, merge_runtime_settings
+from app.core.config import merge_runtime_settings
 from app.db.session import DatabaseClient, get_database
 from app.services.system_settings import load_feature_flags
 from app.schemas.scene import OcrRequest, OcrResponse
 from app.services.ocr import extract_text_from_image
+from app.services.extractor import _merge_admin_ai_settings
+from app.core.config import get_settings
 
 router = APIRouter(prefix="/api", tags=["ocr"])
 
@@ -16,7 +18,8 @@ async def ocr_image(request: OcrRequest, db: DatabaseClient = Depends(get_databa
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=flags.maintenance_message)
     if not flags.ocr_enabled:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Tính năng OCR đang tạm tắt.")
-    settings = merge_runtime_settings(get_settings(), sanitize_public_runtime_settings(request.runtime_settings))
+    settings = await _merge_admin_ai_settings(get_settings(), db)
+    settings = merge_runtime_settings(settings, request.runtime_settings)
     try:
         result = await extract_text_from_image(
             request.image_data_url,

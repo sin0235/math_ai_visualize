@@ -261,6 +261,10 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave }: { value
       await onSave({
         [provider]: {
           ...getAdminProviderSettings(value, provider, defaults),
+          base_url: baseUrl.trim(),
+          model: model.trim(),
+          allowed_model_ids: allowedModelIds,
+          only_mode: router9OnlyMode,
           scanned_models: models,
           last_scanned_at: new Date().toISOString(),
         },
