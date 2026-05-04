@@ -1,12 +1,34 @@
+import asyncio
+
 import httpx
+import pytest
 from fastapi.testclient import TestClient
 
-from app.core.config import Settings
+from app.core.config import Settings, get_settings
+from app.db.migrations import apply_sqlite_migrations
+from app.db.session import SQLiteClient, get_database
 from app.main import app
 from app.services.ocr import validate_image_data_url
 from app.services.openrouter_client import OpenRouterClient
 
 _IMAGE_DATA_URL = "data:image/png;base64,aGVsbG8="
+
+
+@pytest.fixture(autouse=True)
+def isolated_database(tmp_path):
+    db = SQLiteClient(str(tmp_path / "ocr.db"))
+    asyncio.run(apply_sqlite_migrations(db))
+    settings = Settings(_env_file=None, sqlite_path=db.path)
+
+    async def override_db():
+        return db
+
+    app.dependency_overrides[get_database] = override_db
+    app.dependency_overrides[get_settings] = lambda: settings
+    try:
+        yield db
+    finally:
+        app.dependency_overrides.clear()
 
 
 def test_validate_image_data_url_accepts_supported_images():

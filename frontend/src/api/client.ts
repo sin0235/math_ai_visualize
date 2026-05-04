@@ -136,6 +136,23 @@ export interface SystemSettingResponse {
   updated_at: string;
 }
 
+export interface AdminDatabaseDiagnostics {
+  backend: string;
+  sqlite_path?: string | null;
+  configured_sqlite_path: string;
+  migrations: Array<{ filename: string; applied_at: string }>;
+  counts: Record<string, number | string>;
+  system_settings: Record<string, { updated_at: string; updated_by?: string | null }>;
+  ai_settings: {
+    exists: boolean;
+    default_provider?: string | null;
+    router9_model?: string | null;
+    router9_only_mode?: boolean | null;
+    router9_allowed_model_count: number;
+    router9_scanned_model_count: number;
+  };
+}
+
 export class ApiError extends Error {
   details: string[];
 
@@ -336,6 +353,10 @@ export async function updateAdminSystemSetting(key: string, value: Record<string
     credentials: 'include',
     body: JSON.stringify({ key, value }),
   }, 'Không thể lưu cấu hình hệ thống.');
+}
+
+export async function getAdminDatabaseDiagnostics(): Promise<AdminDatabaseDiagnostics> {
+  return requestJson('/api/admin/database/diagnostics', { credentials: 'include' }, 'Không thể tải chẩn đoán database.');
 }
 
 export async function checkAdminProvider(provider: string): Promise<{ status: string; message: string }> {

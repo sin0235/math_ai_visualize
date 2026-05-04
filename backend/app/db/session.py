@@ -19,8 +19,8 @@ class SQLiteClient:
     backend = "sqlite"
 
     def __init__(self, path: str) -> None:
-        self.path = path
-        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        self.path = str(resolve_sqlite_path(path))
+        Path(self.path).parent.mkdir(parents=True, exist_ok=True)
 
     async def execute(self, sql: str, params: list[Any] | tuple[Any, ...] | None = None) -> None:
         async with aiosqlite.connect(self.path) as db:
@@ -30,6 +30,7 @@ class SQLiteClient:
 
     async def fetch_one(self, sql: str, params: list[Any] | tuple[Any, ...] | None = None) -> DbRow | None:
         async with aiosqlite.connect(self.path) as db:
+            await db.execute("PRAGMA foreign_keys = ON")
             db.row_factory = aiosqlite.Row
             cursor = await db.execute(sql, params or [])
             row = await cursor.fetchone()
@@ -37,6 +38,7 @@ class SQLiteClient:
 
     async def fetch_all(self, sql: str, params: list[Any] | tuple[Any, ...] | None = None) -> list[DbRow]:
         async with aiosqlite.connect(self.path) as db:
+            await db.execute("PRAGMA foreign_keys = ON")
             db.row_factory = aiosqlite.Row
             cursor = await db.execute(sql, params or [])
             rows = await cursor.fetchall()
@@ -79,6 +81,12 @@ class D1Client:
         rows = result[0].get("results") or []
         return [dict(row) for row in rows]
 
+
+def resolve_sqlite_path(path: str) -> Path:
+    sqlite_path = Path(path)
+    if sqlite_path.is_absolute():
+        return sqlite_path
+    return Path(__file__).resolve().parents[3] / sqlite_path
 
 def create_database_client(settings: Settings) -> DatabaseClient:
     if settings.database_backend == "sqlite":

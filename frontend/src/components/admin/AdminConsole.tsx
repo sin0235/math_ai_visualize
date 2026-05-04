@@ -9,7 +9,8 @@ import type {
   UserResponse,
   AdminUserFilters,
   AdminRenderJobFilters,
-  AdminAuditLogFilters
+  AdminAuditLogFilters,
+  AdminDatabaseDiagnostics
 } from '../../api/client';
 import { 
   getAdminSummary, 
@@ -24,7 +25,8 @@ import {
   getAdminSystemSettings, 
   updateAdminSystemSetting, 
   getAdminAuditLogs,
-  getSettingsDefaults
+  getSettingsDefaults,
+  getAdminDatabaseDiagnostics
 } from '../../api/client';
 import { 
   formatHistoryDate, 
@@ -90,6 +92,7 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
   // AI settings state
   const [aiSettings, setAiSettings] = useState<Record<string, unknown>>({});
   const [settingsDefaults, setSettingsDefaults] = useState<SettingsDefaults | null>(null);
+  const [databaseDiagnostics, setDatabaseDiagnostics] = useState<AdminDatabaseDiagnostics | null>(null);
   const [savingAiSettings, setSavingAiSettings] = useState(false);
 
   // Audit log filters
@@ -99,13 +102,14 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
   const onRefresh = async () => {
     setLoading(true);
     try {
-      const [s, u, r, st, a, defaults] = await Promise.all([
+      const [s, u, r, st, a, defaults, diagnostics] = await Promise.all([
         getAdminSummary(),
         getAdminUsers({}),
         getAdminRenderJobs({}),
         getAdminSystemSettings(),
         getAdminAuditLogs({}),
         getSettingsDefaults(),
+        getAdminDatabaseDiagnostics(),
       ]);
       setSummary(s);
       setUsers(u);
@@ -113,6 +117,7 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
       setSettings(st);
       setAuditLogs(a);
       setSettingsDefaults(defaults);
+      setDatabaseDiagnostics(diagnostics);
 
       const ai = st.find((item) => item.key === 'ai_settings');
       if (ai) setAiSettings(ai.value);
@@ -344,7 +349,7 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
 
             <div className="admin-grid">
               <section className="admin-panel"><h3>Phân tích provider/model</h3><div className="admin-table">{providerStats.map((item) => <article className="admin-row" key={item.key}><div><strong>{item.key}</strong><span>{item.count} render jobs</span></div></article>)}{providerStats.length === 0 && <p className="field-hint">Chưa có dữ liệu render để phân tích.</p>}</div></section>
-              <section className="admin-panel"><h3>Tình trạng cấu hình</h3><div className="admin-table"><article className="admin-row"><div><strong>ai_settings</strong><span>{settings.some((item) => item.key === 'ai_settings') ? 'Đã lưu trong database' : 'Chưa cấu hình trong database'}</span></div></article><article className="admin-row"><div><strong>Audit</strong><span>{auditLogs.length} sự kiện gần nhất</span></div></article></div></section>
+              <section className="admin-panel"><h3>Tình trạng cấu hình</h3><div className="admin-table"><article className="admin-row"><div><strong>Database</strong><span>{databaseDiagnostics ? `${databaseDiagnostics.backend}${databaseDiagnostics.sqlite_path ? ` · ${databaseDiagnostics.sqlite_path}` : ''}` : 'Đang tải...'}</span></div></article><article className="admin-row"><div><strong>ai_settings</strong><span>{databaseDiagnostics?.ai_settings.exists ? `Đã lưu · allowlist ${databaseDiagnostics.ai_settings.router9_allowed_model_count} model · scanned ${databaseDiagnostics.ai_settings.router9_scanned_model_count}` : 'Chưa cấu hình trong database'}</span></div></article><article className="admin-row"><div><strong>Migrations</strong><span>{databaseDiagnostics ? `${databaseDiagnostics.migrations.length} migration đã áp dụng` : 'Đang tải...'}</span></div></article><article className="admin-row"><div><strong>Audit</strong><span>{auditLogs.length} sự kiện gần nhất</span></div></article></div></section>
             </div>
             </div>
           </>
