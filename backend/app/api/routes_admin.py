@@ -78,10 +78,21 @@ async def admin_update_user(
     db: DatabaseClient = Depends(get_database),
 ) -> UserResponse:
     repo = AdminRepository(db)
-    updated = await repo.update_user(user_id, role=request.role, status=request.status, display_name=request.display_name, plan=request.plan)
+    patch = request.model_dump(exclude_unset=True)
+    if user_id == admin.id and ("role" in patch or "status" in patch):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Không thể tự thay đổi role hoặc trạng thái của chính mình.")
+    current = await repo.find_user(user_id)
+    if current is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy người dùng.")
+    removing_active_admin = current.role == "admin" and current.status == "active" and (patch.get("role") == "user" or patch.get("status") == "disabled")
+    if removing_active_admin and await repo.count_active_admins() <= 1:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Không thể xoá hoặc vô hiệu hoá admin hoạt động cuối cùng.")
+    updated = await repo.update_user(user_id, patch)
     if updated is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy người dùng.")
-    await repo.audit(admin.id, "admin.user.update", "user", user_id, request.model_dump(exclude_none=True))
+    if patch.get("status") == "disabled":
+        await repo.revoke_user_sessions(user_id)
+    await repo.audit(admin.id, "admin.user.update", "user", user_id, patch)
     return user_response(updated)
 
 

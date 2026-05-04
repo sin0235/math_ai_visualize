@@ -72,24 +72,29 @@ class AdminRepository:
         rows = await self.db.fetch_all(f"SELECT * FROM users{where} ORDER BY created_at DESC LIMIT ?", params)
         return [user_from_row(row) for row in rows]
 
-    async def update_user(self, user_id: str, *, role: str | None, status: str | None, display_name: str | None, plan: str | None) -> UserRecord | None:
+    async def find_user(self, user_id: str) -> UserRecord | None:
+        row = await self.db.fetch_one("SELECT * FROM users WHERE id = ?", [user_id])
+        return user_from_row(row) if row else None
+
+    async def update_user(self, user_id: str, patch: dict[str, object]) -> UserRecord | None:
         current = await self.db.fetch_one("SELECT * FROM users WHERE id = ?", [user_id])
         if current is None:
             return None
-        await self.db.execute(
-            """
-            UPDATE users
-            SET role = COALESCE(?, role),
-                status = COALESCE(?, status),
-                display_name = ?,
-                plan = COALESCE(?, plan),
-                updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-            """,
-            [role, status, display_name, plan, user_id],
-        )
+        allowed_fields = ["role", "status", "display_name", "plan"]
+        assignments = [f"{field} = ?" for field in allowed_fields if field in patch]
+        if assignments:
+            params = [patch[field] for field in allowed_fields if field in patch]
+            params.append(user_id)
+            await self.db.execute(
+                f"UPDATE users SET {', '.join(assignments)}, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                params,
+            )
         row = await self.db.fetch_one("SELECT * FROM users WHERE id = ?", [user_id])
         return user_from_row(row) if row else None
+
+    async def count_active_admins(self) -> int:
+        row = await self.db.fetch_one("SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND status = 'active'")
+        return int((row or {}).get("count") or 0)
 
     async def list_render_jobs(
         self,
