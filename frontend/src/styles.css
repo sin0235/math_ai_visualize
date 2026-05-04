@@ -2656,6 +2656,34 @@ button:disabled {
   object-fit: cover;
 }
 
+.home-outcome-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.home-outcome-strip div {
+  display: grid;
+  gap: 4px;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.home-outcome-strip strong {
+  color: #111827;
+  font-size: 1.05rem;
+  font-weight: 900;
+}
+
+.home-outcome-strip span {
+  color: #4b5563;
+  font-size: 0.84rem;
+  line-height: 1.35;
+}
+
 .feature-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -3390,6 +3418,7 @@ pre {
     min-height: 300px;
   }
 
+  .home-outcome-strip,
   .feature-grid,
   .workflow-strip,
   .guide-grid,

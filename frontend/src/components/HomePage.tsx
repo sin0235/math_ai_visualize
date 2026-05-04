@@ -23,6 +23,12 @@ const features = [
 
 const trustSignals = ['Dành cho giáo viên và học sinh THPT', 'Hỗ trợ Oxy/Oxyz', 'Xuất GeoGebra/Three.js'];
 
+const learningOutcomes = [
+  { value: '1 phút', label: 'từ đề bài sang hình minh họa' },
+  { value: '2D/3D', label: 'GeoGebra và Three.js trong cùng luồng' },
+  { value: 'OCR', label: 'dán ảnh đề và dựng lại ngay' },
+];
+
 export function HomePage({ onStartRender, onOpenSettings, onOpenLogin }: HomePageProps) {
   return (
     <section className="home-page">
@@ -41,6 +47,14 @@ export function HomePage({ onStartRender, onOpenSettings, onOpenLogin }: HomePag
             {trustSignals.map((item) => <span key={item}>{item}</span>)}
           </div>
           <button type="button" className="home-login-link" onClick={onOpenLogin}>Đã có tài khoản? Đăng nhập để đồng bộ lịch sử.</button>
+          <div className="home-outcome-strip" aria-label="Kết quả học tập">
+            {learningOutcomes.map((item) => (
+              <div key={item.value}>
+                <strong>{item.value}</strong>
+                <span>{item.label}</span>
+              </div>
+            ))}
+          </div>
         </div>
 
         <div className="home-visual-card home-visual-card--3d" role="region" aria-label="Minh họa tứ diện đều SABC, kéo để xoay góc nhìn.">
