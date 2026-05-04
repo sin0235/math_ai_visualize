@@ -20,7 +20,7 @@ const SETTINGS_STORAGE_KEY = 'hinh-runtime-settings';
 const MOBILE_WARNING_STORAGE_KEY = 'hinh-mobile-warning-dismissed';
 const MOBILE_BREAKPOINT_QUERY = '(max-width: 900px)';
 const DEVELOPER_GITHUB_URL = 'https://github.com/sin0235';
-const CONTACT_EMAIL = 'contact@math-renderer.sin235.live';
+const CONTACT_EMAIL = 'support@sin-studio.tech';
 
 type AppView = 'home' | 'render' | 'history' | 'guide' | 'about' | 'privacy-policy' | 'terms' | 'login' | 'settings' | 'admin' | 'account' | 'reset-password' | 'verify-email';
 type EditTool = 'move' | 'connect' | 'project_to_segment' | 'add_point';
