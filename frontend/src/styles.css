@@ -1090,7 +1090,7 @@ select {
   color: #525252;
   text-align: left;
   font-weight: 700;
-  font-size: 15px;
+  font-size: 16px;
   cursor: pointer;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
