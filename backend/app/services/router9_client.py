@@ -22,35 +22,33 @@ class Router9Client:
 
         headers = _build_headers(self.settings)
         url = f"{self.settings.router9_base_url.rstrip('/')}/models"
+        models: list[AiModelInfo] = []
+        params: dict[str, str] = {}
+        seen_cursors: set[str] = set()
         try:
             async with httpx.AsyncClient(timeout=60) as client:
-                response = await client.get(url, headers=headers)
-                if response.status_code >= 400:
-                    raise RuntimeError(_format_router9_error(response))
+                while True:
+                    response = await client.get(url, headers=headers, params=params or None)
+                    if response.status_code >= 400:
+                        raise RuntimeError(_format_router9_error(response))
+                    body = response.json()
+                    data = body.get("data") if isinstance(body, dict) else None
+                    if not isinstance(data, list):
+                        raise RuntimeError("9router response không đúng định dạng data[].")
+                    models.extend(_parse_router9_models(data))
+                    next_cursor = _next_models_cursor(body)
+                    if not next_cursor or next_cursor in seen_cursors:
+                        break
+                    seen_cursors.add(next_cursor)
+                    params = {"cursor": next_cursor}
         except httpx.HTTPError as error:
             message = str(error) or error.__class__.__name__
             raise RuntimeError(f"9router models request lỗi: {message}") from error
+        except ValueError as error:
+            raise RuntimeError("9router response không phải JSON hợp lệ.") from error
 
-        try:
-            data = response.json()["data"]
-        except (KeyError, TypeError, ValueError) as error:
-            raise RuntimeError("9router response không đúng định dạng data[].") from error
-
-        models: list[AiModelInfo] = []
-        for item in data:
-            if not isinstance(item, dict) or not isinstance(item.get("id"), str):
-                continue
-            model_id = item["id"]
-            models.append(
-                AiModelInfo(
-                    id=model_id,
-                    label=model_id,
-                    owned_by=_optional_str(item.get("owned_by")),
-                    created=_optional_int(item.get("created")),
-                    context_length=_extract_context_length(item),
-                )
-            )
-        return sorted(models, key=lambda model: model.id.lower())
+        by_id = {model.id: model for model in models}
+        return sorted(by_id.values(), key=lambda model: model.id.lower())
 
     async def extract_scene_json(
         self,
@@ -194,6 +192,40 @@ def _extract_message_content(response: httpx.Response) -> str:
         ]
         return "".join(text_parts)
     return content
+
+
+def _parse_router9_models(data: list[Any]) -> list[AiModelInfo]:
+    models: list[AiModelInfo] = []
+    for item in data:
+        if not isinstance(item, dict) or not isinstance(item.get("id"), str):
+            continue
+        model_id = item["id"]
+        models.append(
+            AiModelInfo(
+                id=model_id,
+                label=model_id,
+                owned_by=_optional_str(item.get("owned_by")),
+                created=_optional_int(item.get("created")),
+                context_length=_extract_context_length(item),
+            )
+        )
+    return models
+
+
+def _next_models_cursor(body: Any) -> str | None:
+    if not isinstance(body, dict):
+        return None
+    for key in ("next_cursor", "next", "cursor"):
+        value = body.get(key)
+        if isinstance(value, str) and value:
+            return value
+    meta = body.get("meta")
+    if isinstance(meta, dict):
+        for key in ("next_cursor", "next", "cursor"):
+            value = meta.get(key)
+            if isinstance(value, str) and value:
+                return value
+    return None
 
 
 def _optional_str(value: Any) -> str | None:

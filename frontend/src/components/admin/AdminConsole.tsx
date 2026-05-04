@@ -255,7 +255,7 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
   return (
     <section className="admin-dashboard">
       <aside className="admin-sidebar">
-        <div className="admin-brand"><span><img src={adminLogoUrl} alt="" className="admin-brand-logo" width={32} height={32} decoding="async" /></span><div><strong>Bảng quản trị</strong><small>Trung tâm vận hành</small></div></div>
+        <div className="admin-brand"><span><img src={adminLogoUrl} alt="" className="admin-brand-logo" width={32} height={32} decoding="async" /></span><div><strong>Admin Dashboard</strong><small>Operations Center</small></div></div>
         <nav className="admin-sidebar-nav">
           <AdminNavButton active={activeSection === 'overview'} onClick={() => setActiveSection('overview')} icon="overview" label="Tổng quan" />
           <AdminNavButton active={activeSection === 'users'} onClick={() => setActiveSection('users')} icon="users" label="Người dùng" />
@@ -271,7 +271,7 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
         {activeSection === 'overview' && (
           <>
             <header className="admin-topbar">
-              <div><span className="home-eyebrow">Bảng quản trị</span><h2>Quản lý dự án AI Math Renderer</h2><p>Khu vực vận hành, phân tích, quản lý người dùng, model, cài đặt và nhật ký.</p></div>
+              <div><span className="home-eyebrow">Admin Dashboard</span><h2>Quản lý dự án AI Math Renderer</h2><p>Khu vực vận hành, phân tích, quản lý người dùng, model, cài đặt và nhật ký.</p></div>
               <AdminToolbarRefreshButton loading={loading} onClick={onRefresh} />
             </header>
             <div className="admin-section-stack">

@@ -4,7 +4,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from app.schemas.scene import MAX_BASE_URL_CHARS, MAX_MODEL_ID_CHARS, MathScene, RenderPayload
 
-MAX_STORED_MODELS = 100
+MAX_STORED_MODELS = 1000
 MAX_SETTINGS_JSON_CHARS = 80_000
 
 

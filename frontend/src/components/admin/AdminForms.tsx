@@ -211,6 +211,7 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave }: { value
   const [ocrMaxImageMb, setOcrMaxImageMb] = useState(String(ocrValue.max_image_mb));
   const [scanning, setScanning] = useState(false);
   const [checking, setChecking] = useState(false);
+  const [modelFilter, setModelFilter] = useState('');
   const [checkResult, setCheckResult] = useState<{ status: string; message: string } | null>(null);
 
   useEffect(() => {
@@ -301,6 +302,10 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave }: { value
 
   const modelOptions = adminModelOptions(providerValue, [model]);
   const allowlistOptions = orderedAllowlistModelOptions(providerValue, allowedModelIds);
+  const normalizedModelFilter = modelFilter.trim().toLowerCase();
+  const filteredAllowlistOptions = normalizedModelFilter
+    ? allowlistOptions.filter((modelItem) => modelItem.id.toLowerCase().includes(normalizedModelFilter) || modelItem.name.toLowerCase().includes(normalizedModelFilter))
+    : allowlistOptions;
   const ocrProviderValue = getAdminProviderSettings(value, ocrProvider, defaults);
   const ocrModelOptions = adminModelOptions(ocrProviderValue, [ocrModel, defaults?.ocr.provider === ocrProvider ? defaults.ocr.model : '']);
 
@@ -334,8 +339,10 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave }: { value
         {allowlistOptions.length > 0 && (
           <>
             <p className="field-hint">Chọn model người dùng có thể thấy và sử dụng trong danh sách chọn.</p>
+            <label className="field-label">Tìm model<input type="search" value={modelFilter} onChange={(event) => setModelFilter(event.target.value)} placeholder="Nhập tên hoặc ID model" /></label>
+            <p className="field-hint">Hiển thị {filteredAllowlistOptions.length}/{allowlistOptions.length} model.</p>
             <div className="admin-model-checklist">
-              {allowlistOptions.map((modelItem) => (
+              {filteredAllowlistOptions.map((modelItem) => (
                 <label key={modelItem.id} className="checkbox-label admin-model-checkbox">
                   <input
                     type="checkbox"
