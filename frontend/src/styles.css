@@ -30,7 +30,7 @@ select {
 }
 
 .app-footer {
-  margin: 42px 0 0;
+  margin: 32px 0 0;
   border-top: 1px solid #dedede;
   background: #f0f0f0;
   color: #475569;
@@ -48,15 +48,15 @@ select {
 .footer-top {
   display: grid;
   grid-template-columns: minmax(240px, 0.72fr) minmax(420px, 1.28fr);
-  gap: clamp(32px, 5vw, 76px);
-  padding-top: clamp(28px, 4vw, 46px);
-  padding-bottom: clamp(24px, 4vw, 40px);
+  gap: clamp(24px, 4vw, 48px);
+  padding-top: clamp(20px, 3vw, 32px);
+  padding-bottom: clamp(20px, 3vw, 32px);
 }
 
 .footer-brand-block {
   display: grid;
   align-content: start;
-  gap: 14px;
+  gap: 8px;
   max-width: 360px;
 }
 
@@ -86,13 +86,13 @@ select {
 .footer-nav {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: clamp(24px, 5vw, 64px);
+  gap: clamp(16px, 3vw, 40px);
 }
 
 .footer-nav div {
   display: grid;
   align-content: start;
-  gap: 10px;
+  gap: 8px;
 }
 
 .footer-nav strong {
@@ -116,7 +116,7 @@ select {
 .footer-nav .footer-nav-link {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .footer-nav a.footer-nav-link {
@@ -162,10 +162,10 @@ select {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 18px;
+  gap: 12px;
   border-top: 1px solid #dedede;
-  padding-top: 18px;
-  padding-bottom: 24px;
+  padding-top: 12px;
+  padding-bottom: 16px;
   color: #64748b;
   font-size: 0.86rem;
   font-weight: 600;
@@ -3406,7 +3406,7 @@ pre {
   }
 
   .app-footer {
-    margin-top: 34px;
+    margin-top: 24px;
   }
 
   .footer-top,
@@ -3418,11 +3418,13 @@ pre {
   .footer-top,
   .footer-nav {
     grid-template-columns: 1fr;
+    gap: 20px;
   }
 
   .footer-bottom {
     flex-direction: column;
     align-items: center;
+    gap: 8px;
   }
 
   .floating-card-live {

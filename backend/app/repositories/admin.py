@@ -124,6 +124,19 @@ class AdminRepository:
         row = await self.db.fetch_one(f"SELECT COUNT(*) AS count FROM render_jobs WHERE user_id = ? AND created_at >= ?{source_clause}", params)
         return int((row or {}).get("count") or 0)
 
+    async def count_user_usage_events_since(self, user_id: str, event_type: str, since_iso: str) -> int:
+        row = await self.db.fetch_one(
+            "SELECT COUNT(*) AS count FROM usage_events WHERE user_id = ? AND event_type = ? AND created_at >= ?",
+            [user_id, event_type, since_iso],
+        )
+        return int((row or {}).get("count") or 0)
+
+    async def record_user_usage_event(self, user_id: str, event_type: str, metadata: dict | None = None) -> None:
+        await self.db.execute(
+            "INSERT INTO usage_events (id, user_id, event_type, metadata_json) VALUES (?, ?, ?, ?)",
+            [str(uuid4()), user_id, event_type, json.dumps(metadata or {}, ensure_ascii=False)],
+        )
+
     async def find_render_job(self, job_id: str) -> RenderJobRecord | None:
         row = await self.db.fetch_one("SELECT * FROM render_jobs WHERE id = ?", [job_id])
         return render_job_from_row(row) if row else None

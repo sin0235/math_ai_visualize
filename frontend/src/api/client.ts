@@ -409,6 +409,7 @@ export async function ocrImage(imageDataUrl: string, runtimeSettings: RuntimeSet
   return requestJson('/api/ocr', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
     body: JSON.stringify({
       image_data_url: imageDataUrl,
       ocr_provider: runtimeSettings.router9.only_mode ? 'router9' : runtimeSettings.ocr.provider,

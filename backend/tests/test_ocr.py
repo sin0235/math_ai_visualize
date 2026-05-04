@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from app.core.config import Settings, get_settings
 from app.db.migrations import apply_sqlite_migrations
 from app.db.session import SQLiteClient, get_database
+from app.repositories.auth import SESSION_COOKIE_NAME, SessionRepository, UserRepository
 from app.main import app
 from app.services.ocr import validate_image_data_url
 from app.services.openrouter_client import OpenRouterClient
@@ -264,6 +265,40 @@ def test_ocr_explicit_model_does_not_try_fallback_model(monkeypatch):
     assert response.status_code == 400
     assert "vision/model" in response.json()["detail"]
     assert calls == ["vision/model"]
+
+
+def test_ocr_enforces_daily_plan_limit(isolated_database, monkeypatch):
+    async def fake_ocr_image(self, image_data_url: str, model: str | None = None):
+        return "Đề từ OCR."
+
+    async def seed_user_and_plan():
+        user = await UserRepository(isolated_database).create("quota@example.com", "StrongPass123")
+        session, token = await SessionRepository(isolated_database).create(user.id)
+        await isolated_database.execute(
+            "INSERT INTO system_settings (key, value_json) VALUES (?, ?)",
+            ['plan_settings', '{"version":1,"plans":{"free":{"daily_render_limit":20,"daily_ocr_limit":1}}}'],
+        )
+        await isolated_database.execute(
+            "INSERT INTO usage_events (id, user_id, event_type) VALUES (?, ?, ?)",
+            ["used-ocr", user.id, "ocr"],
+        )
+        return token
+
+    monkeypatch.setattr("app.services.openrouter_client.OpenRouterClient.ocr_image", fake_ocr_image)
+    token = asyncio.run(seed_user_and_plan())
+
+    response = TestClient(app).post(
+        "/api/ocr",
+        cookies={SESSION_COOKIE_NAME: token},
+        json={
+            "image_data_url": _IMAGE_DATA_URL,
+            "ocr_provider": "openrouter",
+            "runtime_settings": {"openrouter": {"api_key": "secret"}},
+        },
+    )
+
+    assert response.status_code == 429
+    assert "hạn mức OCR" in response.json()["detail"]
 
 
 def test_openrouter_ocr_payload_uses_vision_message(monkeypatch):

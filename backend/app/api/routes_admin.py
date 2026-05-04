@@ -162,6 +162,7 @@ async def admin_database_diagnostics(_: UserRecord = Depends(require_admin_user)
         "legal_acceptances",
         "oauth_identities",
         "oauth_states",
+        "usage_events",
         "schema_migrations",
     ]
     counts: dict[str, int | str] = {}

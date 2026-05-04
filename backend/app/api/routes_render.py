@@ -108,7 +108,7 @@ async def enforce_render_access(db: DatabaseClient, user: UserRecord | None) -> 
     quota = plan_settings.plans.get(user.plan) or plan_settings.plans.get("free")
     if quota is None or quota.daily_render_limit is None:
         return
-    since = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    since = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
     used = await AdminRepository(db).count_user_render_jobs_since(user.id, since)
     if used >= quota.daily_render_limit:
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Bạn đã dùng hết hạn mức render hôm nay.")
