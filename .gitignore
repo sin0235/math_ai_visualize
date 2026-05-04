@@ -26,3 +26,4 @@ frontend/.vite/
 Thumbs.db
 .vscode/
 .idea/
+.gstack/

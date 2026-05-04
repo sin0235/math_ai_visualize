@@ -28,7 +28,10 @@ class Router9Client:
         try:
             async with httpx.AsyncClient(timeout=60) as client:
                 while True:
-                    response = await client.get(url, headers=headers, params=params or None)
+                    if params:
+                        response = await client.get(url, headers=headers, params=params)
+                    else:
+                        response = await client.get(url, headers=headers)
                     if response.status_code >= 400:
                         raise RuntimeError(_format_router9_error(response))
                     body = response.json()

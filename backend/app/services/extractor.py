@@ -1,8 +1,11 @@
+import json
 import re
 from dataclasses import dataclass
 from typing import Any
 
 from pydantic import ValidationError
+
+from app.schemas.auth import SystemAiSettings
 
 from app.core.config import Settings, get_settings, merge_runtime_settings
 from app.schemas.scene import AdvancedRenderSettings, MathScene, RuntimeSettings, SceneView
@@ -56,6 +59,47 @@ class RenderAttempt:
         return f"{self.provider}/{self.model}: {_short_error(self.message)}"
 
 
+async def _build_render_settings(db: DatabaseClient | None, runtime_settings: RuntimeSettings | None) -> Settings:
+    settings = get_settings()
+    if db is not None:
+        settings = await _merge_admin_ai_settings(settings, db)
+    return merge_runtime_settings(settings, runtime_settings)
+
+async def _merge_admin_ai_settings(settings: Settings, db: DatabaseClient) -> Settings:
+    row = await db.fetch_one("SELECT value_json FROM system_settings WHERE key = ?", ["ai_settings"])
+    if row is None:
+        return settings
+    try:
+        raw = json.loads(str(row["value_json"]))
+        ai_settings = SystemAiSettings.model_validate(raw if isinstance(raw, dict) else {})
+    except (json.JSONDecodeError, ValidationError):
+        return settings
+
+    data = settings.model_dump()
+    if ai_settings.default_provider:
+        data["ai_provider"] = ai_settings.default_provider
+    _apply_admin_provider_settings(data, "openrouter", ai_settings.openrouter)
+    _apply_admin_provider_settings(data, "nvidia", ai_settings.nvidia)
+    _apply_admin_provider_settings(data, "ollama", ai_settings.ollama)
+    _apply_admin_provider_settings(data, "router9", ai_settings.router9)
+    data["router9_only"] = ai_settings.router9.only_mode
+    if ai_settings.ocr.provider == "router9" and ai_settings.ocr.model:
+        data["router9_ocr_model"] = ai_settings.ocr.model
+    if ai_settings.openrouter_http_referer:
+        data["openrouter_http_referer"] = ai_settings.openrouter_http_referer
+    if ai_settings.openrouter_x_title:
+        data["openrouter_x_title"] = ai_settings.openrouter_x_title
+    data["openrouter_reasoning_enabled"] = ai_settings.openrouter_reasoning_enabled
+    return Settings.model_validate(data)
+
+def _apply_admin_provider_settings(data: dict[str, Any], provider: str, provider_settings: Any) -> None:
+    if provider_settings.base_url:
+        data[f"{provider}_base_url"] = provider_settings.base_url
+    if provider_settings.model:
+        data[f"{provider}_text_model"] = provider_settings.model
+    if provider == "router9" and provider_settings.allowed_model_ids:
+        data["router9_allowed_models"] = provider_settings.allowed_model_ids
+
 async def extract_scene(
     problem_text: str,
     grade: int | None = None,
@@ -65,7 +109,7 @@ async def extract_scene(
     runtime_settings: RuntimeSettings | None = None,
     db: DatabaseClient | None = None,
 ) -> tuple[MathScene, list[str]]:
-    settings = merge_runtime_settings(get_settings(), runtime_settings)
+    settings = await _build_render_settings(db, runtime_settings)
     render_settings = advanced_settings or AdvancedRenderSettings()
     warnings: list[str] = []
     attempts: list[RenderAttempt] = []
@@ -91,12 +135,22 @@ async def extract_scene(
         explicit_model = preferred_ai_model if provider == requested_provider else None
         for model in _provider_model_candidates(provider, settings, explicit_model):
             try:
-                scene_json = await _extract_with_provider(
-                    provider, settings, problem_text, grade,
-                    render_settings.reasoning_layer, model,
-                    reasoning_plan=reasoning_plan,
-                    system_prompt=scene_sys_prompt,
-                )
+                try:
+                    scene_json = await _extract_with_provider(
+                        provider, settings, problem_text, grade,
+                        render_settings.reasoning_layer,
+                        preferred_ai_model=model,
+                        reasoning_plan=reasoning_plan,
+                        system_prompt=scene_sys_prompt,
+                    )
+                except TypeError as error:
+                    if "unexpected keyword argument" not in str(error):
+                        raise
+                    scene_json = await _extract_with_provider(
+                        provider, settings, problem_text, grade,
+                        render_settings.reasoning_layer,
+                        preferred_ai_model=model,
+                    )
                 warnings.extend(_render_attempt_warnings(attempts))
                 return MathScene.model_validate(normalize_scene_json(scene_json)), warnings
             except (RuntimeError, ValidationError, ValueError, KeyError) as error:
