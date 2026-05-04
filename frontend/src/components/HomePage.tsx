@@ -21,13 +21,6 @@ const features = [
   { title: 'Chỉnh hình linh hoạt', text: 'Tinh chỉnh điểm, đoạn, góc nhìn và tiếp tục dựng lại khi cần.' },
 ];
 
-const steps = [
-  { title: 'Nhập đề', text: 'Gõ đề tiếng Việt hoặc dán ảnh bài toán từ clipboard.' },
-  { title: 'Chọn cách dựng', text: 'Giữ mặc định hoặc chọn model phù hợp với bài 2D/3D.' },
-  { title: 'Dựng hình', text: 'AI sinh scene, renderer chuyển thành hình 2D/3D.' },
-  { title: 'Tinh chỉnh', text: 'Kéo điểm, sửa scene và lưu lịch sử khi đăng nhập.' },
-];
-
 const trustSignals = ['Dành cho giáo viên và học sinh THPT', 'Hỗ trợ Oxy/Oxyz', 'Xuất GeoGebra/Three.js'];
 
 export function HomePage({ onStartRender, onOpenSettings, onOpenLogin }: HomePageProps) {
@@ -62,18 +55,6 @@ export function HomePage({ onStartRender, onOpenSettings, onOpenLogin }: HomePag
             <h3>{feature.title}</h3>
             <p>{feature.text}</p>
           </article>
-        ))}
-      </div>
-
-      <div className="workflow-strip">
-        {steps.map((step, index) => (
-          <div className="workflow-step" key={step.title}>
-            <span>{index + 1}</span>
-            <div>
-              <strong>{step.title}</strong>
-              <p>{step.text}</p>
-            </div>
-          </div>
         ))}
       </div>
     </section>

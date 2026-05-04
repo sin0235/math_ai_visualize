@@ -1,4 +1,5 @@
 import re
+from dataclasses import dataclass
 from itertools import combinations
 
 from app.schemas.scene import (
@@ -21,6 +22,12 @@ from app.schemas.scene import (
 _SAFE_EXPRESSION_RE = re.compile(r"^[0-9xXyY+\-*/^()., sincostanlogsqrt abs]+$")
 _HEX_COLOR_RE = re.compile(r"^#?([0-9a-fA-F]{6})$")
 _LINE_STYLE_CODES = {"solid": 0, "dashed": 1, "dotted": 2}
+
+
+@dataclass(frozen=True)
+class LabelPosition:
+    name: str
+    commands: list[str]
 
 
 def build_geogebra_commands(scene: MathScene, settings: AdvancedRenderSettings | None = None) -> list[str]:
@@ -129,12 +136,16 @@ def _annotation_commands(scene: MathScene) -> list[str]:
             if not endpoints or endpoints[0] not in points or endpoints[1] not in points:
                 continue
             label_count += 1
-            midpoint = f"annMid{label_count}"
-            text = annotation.label or ("≅" if annotation.type == "equal_marks" else annotation.target.replace("-", ""))
-            commands.append(f"{midpoint} = Midpoint({endpoints[0]}, {endpoints[1]})")
-            commands.append(f'annText{label_count} = Text("{_escape_text(text)}", {midpoint})')
-            if annotation.color:
-                commands.extend(_style_commands(f"annText{label_count}", color=annotation.color))
+            first_point = points[endpoints[0]]
+            second_point = points[endpoints[1]]
+            if annotation.type == "equal_marks":
+                commands.extend(_equal_mark_commands(f"annTick{label_count}", first_point, second_point, annotation.color))
+                continue
+            text = _clean_product_label(annotation.label or annotation.target.replace("-", ""))
+            label_position = _segment_label_position(f"annMid{label_count}", first_point, second_point, label_count)
+            commands.extend(label_position.commands)
+            commands.append(f'annText{label_count} = Text("{_escape_text(text)}", {label_position.name})')
+            commands.extend(_style_commands(f"annText{label_count}", color=annotation.color or "#1d3557"))
         elif annotation.type in {"angle", "right_angle"}:
             arms = annotation.metadata.get("arms")
             if not isinstance(arms, list) or len(arms) < 2:
@@ -161,6 +172,57 @@ def _target_endpoints(target: str) -> tuple[str, str] | None:
     if len(target) == 2:
         return target[0], target[1]
     return None
+
+
+def _segment_label_position(name: str, first: Point2D | Point3D, second: Point2D | Point3D, index: int) -> LabelPosition:
+    first_x, first_y = _point_screen_xy(first)
+    second_x, second_y = _point_screen_xy(second)
+    dx = second_x - first_x
+    dy = second_y - first_y
+    length = max((dx * dx + dy * dy) ** 0.5, 1)
+    side = 1 if index % 2 else -1
+    offset = 0.28 * side
+    x = (first_x + second_x) / 2 - (dy / length) * offset
+    y = (first_y + second_y) / 2 + (dx / length) * offset
+    commands = [f"{name} = ({_format_number(x)}, {_format_number(y)})"]
+    return LabelPosition(name=name, commands=commands)
+
+
+def _equal_mark_commands(name: str, first: Point2D | Point3D, second: Point2D | Point3D, color: str | None) -> list[str]:
+    first_x, first_y = _point_screen_xy(first)
+    second_x, second_y = _point_screen_xy(second)
+    dx = second_x - first_x
+    dy = second_y - first_y
+    length = max((dx * dx + dy * dy) ** 0.5, 1)
+    tick_half = min(0.12, length * 0.08)
+    mid_x = (first_x + second_x) / 2
+    mid_y = (first_y + second_y) / 2
+    nx = -dy / length
+    ny = dx / length
+    start = f"{name}A"
+    end = f"{name}B"
+    segment = f"{name}Seg"
+    commands = [
+        f"{start} = ({_format_number(mid_x - nx * tick_half)}, {_format_number(mid_y - ny * tick_half)})",
+        f"{end} = ({_format_number(mid_x + nx * tick_half)}, {_format_number(mid_y + ny * tick_half)})",
+        f"{segment} = Segment({start}, {end})",
+        f"ShowLabel({start}, false)",
+        f"ShowLabel({end}, false)",
+    ]
+    commands.extend(_style_commands(segment, color=color or "#e63946", line_width=2))
+    return commands
+
+
+def _point_screen_xy(point: Point2D | Point3D) -> tuple[float, float]:
+    if isinstance(point, Point3D):
+        return point.x, point.y
+    return point.x, point.y
+
+
+def _clean_product_label(value: str) -> str:
+    text = re.sub(r"\s+", " ", value).strip()
+    text = text.replace("metadata", "").replace("relation", "")
+    return text[:24]
 
 
 def _coordinate_label_commands(name: str, caption: str) -> list[str]:

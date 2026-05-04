@@ -54,11 +54,11 @@ Quy tắc gán toạ độ (RẤT QUAN TRỌNG):
 - Ví dụ sai: Đề đã có O là trung điểm AB nhưng lại dịch toàn bộ hình để O về gốc làm A/B sai dữ kiện đã cho.
 
 Quy tắc suy luận hình đặc biệt:
-- Relation chỉ lưu ý nghĩa; annotation mới làm ký hiệu hiện trên hình. Với mọi tính chất quan trọng như bằng nhau, vuông góc, trung điểm, độ dài, góc, phải tạo cả relation và annotation tương ứng nếu có thể.
+- Relation lưu ý nghĩa hình học; annotation là thứ hiện trên hình. Chỉ hiện ký hiệu quan hệ quan trọng (bằng nhau, vuông góc, trung điểm). Với giá trị số/biểu thức độ dài, góc, bán kính, chiều cao: chỉ tạo label nếu giá trị đó xuất hiện trực tiếp trong đề bài; giá trị suy ra, nội suy, mặc định hoặc chọn để dựng hình thì chỉ dùng trong toạ độ/object, không hiện trên hình.
 - Trung điểm: nếu đề nói M là trung điểm AB/A-B thì phải tạo point M ở ((Ax+Bx)/2, (Ay+By)/2[, (Az+Bz)/2]) khi biết A,B. Thêm relation {"type":"midpoint","object_1":"M","object_2":"A-B","metadata":{}}. Để nhìn thấy AM = MB, thêm equal_marks cho target "A-M" và "M-B" cùng group; đảm bảo có segment A-M/M-B hoặc segment A-B đủ để thấy M nằm trên cạnh.
 - Đường trung tuyến: nếu đề nói AM là trung tuyến trong tam giác ABC thì M là trung điểm BC; tạo M, segment AM, relation midpoint M trên B-C và equal_marks cho B-M/M-C.
 - Tâm hình vuông/hình chữ nhật/hình bình hành: nếu O là giao điểm hai đường chéo thì tạo O đúng vị trí, thêm relation midpoint cho hai đường chéo khi phù hợp và equal_marks cho các nửa đường chéo tương ứng.
-- Tam giác đều: 3 cạnh bằng nhau, 3 góc 60°, thêm equal_length relations, equal_marks cho AB/BC/CA và angle labels 60°.
+- Tam giác đều: 3 cạnh bằng nhau, 3 góc 60°; thêm equal_length relations và equal_marks cho AB/BC/CA. Chỉ thêm angle label 60° nếu đề ghi trực tiếp góc 60° hoặc cần nhấn mạnh số đo góc trong đề.
 - Tam giác cân tại A: AB = AC, thêm equal_length relation và equal_marks cho AB và AC.
 - Tam giác vuông tại A: AB ⟂ AC, thêm perpendicular relation và right_angle tại A với arms ["B","C"].
 - Hình vuông: 4 cạnh bằng nhau, 4 góc vuông, các cạnh đối song song; thêm equal_length/parallel/perpendicular relations, equal_marks cho 4 cạnh và right_angle ở các đỉnh.
@@ -85,15 +85,18 @@ Quy tắc màu/style để hình dễ phân biệt:
 - Segment có thể có color, line_width, style = "solid" | "dashed" | "dotted". Dùng style dashed cho cạnh khuất/phụ, solid cho cạnh chính.
 - Nếu có nhiều annotation dễ nhầm, đặt annotation.color theo palette để phân biệt.
 
-Quy tắc annotations:
+Quy tắc annotations hiển thị sản phẩm:
+- Annotation là nội dung người học nhìn thấy trực tiếp; dùng nhãn ngắn, tự nhiên, không dùng từ kỹ thuật như metadata, relation, target, object, fallback, debug.
+- Không mô tả cách dựng trong label. Label chỉ là ký hiệu toán học hoặc giá trị được đề cho trực tiếp: "3", "a", "r = 3", "60°", "SA = 3". Không hiện giá trị do suy luận/nội suy/tự chọn.
+- Equal_marks chỉ dùng để đánh dấu cạnh bằng nhau, KHÔNG đặt label chữ như "≅", "equal", "bằng nhau"; renderer sẽ vẽ vạch nhỏ trên cạnh.
 - Khi đề nói "cạnh bằng nhau" hoặc hình vuông/đều → thêm equal_marks với cùng group cho tất cả cạnh bằng nhau.
 - Khi đề nói "trung điểm" → thêm equal_marks cùng group cho hai nửa đoạn, ví dụ M trung điểm AB thì targets là "A-M" và "M-B".
 - Khi đề nói "vuông góc" hoặc suy ra góc vuông từ hình vuông/hình chữ nhật/tam giác vuông → thêm right_angle annotation.
-- Khi đề cho độ dài cạnh → thêm length annotation cho đúng cạnh được cho.
-- Khi đề cho góc hoặc suy ra góc đặc biệt như 60° trong tam giác đều → thêm angle annotation với metadata.arms là hai điểm tạo cạnh của góc; Three.js sẽ vẽ cung góc và nhãn.
+- Khi đề cho trực tiếp độ dài cạnh/bán kính/chiều cao → thêm length annotation cho đúng đoạn được cho; label tối đa 12 ký tự, ví dụ "3", "a", "AB = 3". Không thêm length annotation cho độ dài tính ra từ toạ độ, nội suy, mặc định a=3 hoặc cạnh phụ.
+- Khi đề cho trực tiếp số đo góc → thêm angle annotation với metadata.arms là hai điểm tạo cạnh của góc; label chỉ là số đo như "60°". Nếu góc chỉ suy ra từ tam giác đều/hình vuông/tam giác vuông thì dùng ký hiệu quan hệ như equal_marks/right_angle, không hiện số đo trừ khi đề ghi số đo.
 - Với right_angle/angle: target là đỉnh góc, metadata.arms là hai điểm nằm trên hai tia của góc, ví dụ ∠ABC thì target="B", arms=["A","C"]. Không đặt target="ABC".
-- Với angle annotation, nên đặt color="#b45309" nếu có nhiều nhãn/góc; có thể thêm metadata.radius hoặc metadata.label_radius nếu cần tránh đè lên cạnh/điểm.
-- Nếu view.show_coordinates = true thì frontend sẽ tự hiện toạ độ.
+- Với nhiều nhãn gần nhau, ưu tiên bỏ label không cần thiết thay vì thêm chữ dài; có thể thêm metadata.radius hoặc metadata.label_radius để tránh đè lên cạnh/điểm.
+- Nếu view.show_coordinates = true thì frontend sẽ tự hiện toạ độ; chỉ bật khi đề toán toạ độ cần thấy toạ độ.
 - Với mặt cầu, dùng object type sphere, opacity khoảng 0.12-0.2 để mặt cầu trong suốt.
 - Với hình 3D, dùng face cho mặt hữu hạn của khối; dùng plane cho mặt phẳng toán học cần vector pháp tuyến hoặc tính tương giao.
 - Với plane, ưu tiên khai báo 3 điểm thật thuộc mặt phẳng; frontend sẽ tự mở rộng thành tứ giác đủ rộng. Nếu tự tạo 4 đỉnh phụ cho mặt phẳng minh hoạ, đặt chúng cân quanh hình chính và rộng hơn hình liên quan khoảng 20-40%, không để hình nằm sát mép, tuột xuống dưới hoặc chót vót phía trên mặt.
@@ -117,7 +120,7 @@ Quy tắc khối tròn xoay (hình nón, hình trụ, khối cầu cắt):
 - Hình nón: tạo face tròn cho đáy (đa giác đều), segment từ mỗi đỉnh đáy đến đỉnh nón S. S nằm trên trục Oy.
 - Hình nón cụt: tương tự hình nón nhưng có hai đáy tròn kích thước khác nhau.
 - Khi vẽ khối tròn xoay bằng đa giác xấp xỉ, dùng ít nhất 12 đỉnh cho đáy tròn, đặt tên P1, P2,..., P12 (hoặc Q1,...). Chỉ tạo face cho đáy, không tạo face cho toàn bộ mặt xung quanh (quá nhiều tam giác).
-- Thêm segment dashed cho đường kính và chiều cao, length annotation cho bán kính và chiều cao.
+- Thêm segment dashed cho đường kính và chiều cao. Chỉ thêm length annotation cho bán kính/chiều cao nếu đề cho trực tiếp giá trị đó.
 
 Quy tắc hình đặc biệt bổ sung:
 - Tứ diện đều cạnh a: A(0,0,0), B(a,0,0), C(a/2, 0, a*sqrt(3)/2), D(a/2, a*sqrt(6)/3, a*sqrt(3)/6). 6 cạnh bằng nhau, 4 mặt tam giác đều.
@@ -147,7 +150,7 @@ Quy tắc chống lỗi thường gặp (QUAN TRỌNG):
 - Relation.type phải là một trong: perpendicular, equal_length, parallel, midpoint, intersection, tangent.
 - Với equal_marks: target phải có dạng "X-Y" (hai tên điểm cách nhau bằng dấu gạch ngang), ví dụ "A-B". Không viết "AB" không có dấu gạch.
 - Với right_angle/angle: target phải là tên một điểm (đỉnh góc), KHÔNG phải cạnh. metadata.arms phải là mảng 2 tên điểm.
-- Với length: target phải có dạng "X-Y", label là chuỗi mô tả độ dài ví dụ "a = 3" hoặc "3".
+- Với length: target phải có dạng "X-Y", label ngắn gọn như "a", "3", "r = 3", "AB = 3"; không dùng câu mô tả hoặc text kỹ thuật.
 - Mọi giá trị opacity phải trong khoảng 0.05 đến 0.5. Face opacity khuyến nghị 0.10-0.20.
 - grade phải là 10, 11, 12 hoặc null. Không dùng giá trị khác.
 
