@@ -19,7 +19,7 @@ from app.schemas.scene import (
     Vector3D,
 )
 
-_SAFE_EXPRESSION_RE = re.compile(r"^[0-9xXyY+\-*/^()., sincostanlogsqrt abs]+$")
+_SAFE_EXPRESSION_RE = re.compile(r"^[0-9xXyY+\-*/^()., sincostanlogsqrtexp abs]+$")
 _HEX_COLOR_RE = re.compile(r"^#?([0-9a-fA-F]{6})$")
 _LINE_STYLE_CODES = {"solid": 0, "dashed": 1, "dotted": 2}
 
@@ -49,11 +49,11 @@ def build_geogebra_commands(scene: MathScene, settings: AdvancedRenderSettings |
         if isinstance(obj, Point2D):
             commands.append(f"{obj.name} = ({obj.x}, {obj.y})")
             if show_coordinates:
-                commands.extend(_coordinate_label_commands(obj.name, f"{obj.name} = ({_format_number(obj.x)}, {_format_number(obj.y)})"))
+                commands.extend(_coordinate_label_commands(obj.name, f"{obj.name}({_format_number(obj.x)}; {_format_number(obj.y)})"))
         elif isinstance(obj, Point3D):
             commands.append(f"{obj.name} = ({obj.x}, {obj.y}, {obj.z})")
             if show_coordinates:
-                commands.extend(_coordinate_label_commands(obj.name, f"{obj.name} = ({_format_number(obj.x)}, {_format_number(obj.y)}, {_format_number(obj.z)})"))
+                commands.extend(_coordinate_label_commands(obj.name, f"{obj.name}({_format_number(obj.x)}; {_format_number(obj.y)}; {_format_number(obj.z)})"))
         elif isinstance(obj, Line2D):
             line_count += 1
             name = obj.name or f"d{line_count}"
@@ -127,9 +127,9 @@ def _annotation_commands(scene: MathScene) -> list[str]:
         if annotation.type == "coordinate_label" and annotation.target in points:
             point = points[annotation.target]
             if isinstance(point, Point3D):
-                caption = annotation.label or f"{point.name} = ({_format_number(point.x)}, {_format_number(point.y)}, {_format_number(point.z)})"
+                caption = annotation.label or f"{point.name}({_format_number(point.x)}; {_format_number(point.y)}; {_format_number(point.z)})"
             else:
-                caption = annotation.label or f"{point.name} = ({_format_number(point.x)}, {_format_number(point.y)})"
+                caption = annotation.label or f"{point.name}({_format_number(point.x)}; {_format_number(point.y)})"
             commands.extend(_coordinate_label_commands(annotation.target, caption))
         elif annotation.type in {"length", "equal_marks"}:
             endpoints = _target_endpoints(annotation.target)
@@ -142,7 +142,7 @@ def _annotation_commands(scene: MathScene) -> list[str]:
                 commands.extend(_equal_mark_commands(f"annTick{label_count}", first_point, second_point, annotation.color))
                 continue
             text = _clean_product_label(annotation.label or annotation.target.replace("-", ""))
-            label_position = _segment_label_position(f"annMid{label_count}", first_point, second_point, label_count)
+            label_position = _segment_label_position(f"annMid{label_count}", first_point, second_point, scene)
             commands.extend(label_position.commands)
             commands.append(f'annText{label_count} = Text("{_escape_text(text)}", {label_position.name})')
             commands.extend(_style_commands(f"annText{label_count}", color=annotation.color or "#1d3557"))
@@ -174,16 +174,34 @@ def _target_endpoints(target: str) -> tuple[str, str] | None:
     return None
 
 
-def _segment_label_position(name: str, first: Point2D | Point3D, second: Point2D | Point3D, index: int) -> LabelPosition:
+def _segment_label_position(name: str, first: Point2D | Point3D, second: Point2D | Point3D, scene: MathScene) -> LabelPosition:
     first_x, first_y = _point_screen_xy(first)
     second_x, second_y = _point_screen_xy(second)
     dx = second_x - first_x
     dy = second_y - first_y
-    length = max((dx * dx + dy * dy) ** 0.5, 1)
-    side = 1 if index % 2 else -1
-    offset = 0.28 * side
-    x = (first_x + second_x) / 2 - (dy / length) * offset
-    y = (first_y + second_y) / 2 + (dx / length) * offset
+    length = max((dx * dx + dy * dy) ** 0.5, 1e-6)
+
+    # Unit normal vector
+    nx = -dy / length
+    ny = dx / length
+
+    # Calculate scene centroid to push labels outward
+    all_points = [obj for obj in scene.objects if isinstance(obj, Point2D | Point3D)]
+    if all_points:
+        cx = sum(p.x for p in all_points) / len(all_points)
+        cy = sum(p.y for p in all_points) / len(all_points)
+        mid_x = (first_x + second_x) / 2
+        mid_y = (first_y + second_y) / 2
+        # Vector from centroid to midpoint
+        vx = mid_x - cx
+        vy = mid_y - cy
+        # If normal points towards centroid, flip it
+        if vx * nx + vy * ny < 0:
+            nx, ny = -nx, -ny
+
+    offset = 0.3
+    x = (first_x + second_x) / 2 + nx * offset
+    y = (first_y + second_y) / 2 + ny * offset
     commands = [f"{name} = ({_format_number(x)}, {_format_number(y)})"]
     return LabelPosition(name=name, commands=commands)
 
@@ -226,7 +244,11 @@ def _clean_product_label(value: str) -> str:
 
 
 def _coordinate_label_commands(name: str, caption: str) -> list[str]:
-    return [f'SetCaption({name}, "{_escape_text(caption)}")', f"ShowLabel({name}, true)"]
+    return [
+        f'SetCaption({name}, "{_escape_text(caption)}")',
+        f"ShowLabel({name}, true)",
+        f"SetLabelMode({name}, 3)",
+    ]
 
 
 def _escape_text(value: str) -> str:

@@ -281,21 +281,44 @@ function applyCommands(api: GeoGebraApi, commands: string[], view: SceneView, sc
 function isSideEffectCommand(command: string) {
   // GeoGebra's JS API can return false for scripting commands that mutate
   // existing objects because those commands do not create a new object.
-  return /^\s*(Set(Color|Caption|Filling|LineStyle|LineThickness|VisibleInView)|ShowLabel)\s*\(/i.test(command);
+  return /^\s*(Set(Color|Caption|Filling|LineStyle|LineThickness|PointSize|VisibleInView|LabelMode)|ShowLabel)\s*\(/i.test(command);
 }
 
 function fit2dView(api: GeoGebraApi, scene: MathScene) {
   if (!api.setCoordSystem) return;
-  const points = scene.objects.filter((obj) => obj.type === 'point_2d');
-  if (points.length === 0) return;
-  const xs = points.map((point) => point.x);
-  const ys = points.map((point) => point.y);
-  const minX = Math.min(...xs);
-  const maxX = Math.max(...xs);
-  const minY = Math.min(...ys);
-  const maxY = Math.max(...ys);
-  const width = Math.max(maxX - minX, 1);
-  const height = Math.max(maxY - minY, 1);
-  const padding = Math.max(width, height) * 0.25 + 1;
-  api.setCoordSystem(minX - padding, maxX + padding, minY - padding, maxY + padding);
+  
+  const min = { x: Infinity, y: Infinity };
+  const max = { x: -Infinity, y: -Infinity };
+  let hasGeometry = false;
+
+  // 1. Points
+  scene.objects.forEach(obj => {
+    if (obj.type === 'point_2d') {
+      min.x = Math.min(min.x, obj.x);
+      max.x = Math.max(max.x, obj.x);
+      min.y = Math.min(min.y, obj.y);
+      max.y = Math.max(max.y, obj.y);
+      hasGeometry = true;
+    } else if (obj.type === 'circle_2d') {
+      const center = scene.objects.find(o => o.type === 'point_2d' && o.name === obj.center) as any;
+      if (center && obj.radius != null) {
+        min.x = Math.min(min.x, center.x - obj.radius);
+        max.x = Math.max(max.x, center.x + obj.radius);
+        min.y = Math.min(min.y, center.y - obj.radius);
+        max.y = Math.max(max.y, center.y + obj.radius);
+        hasGeometry = true;
+      }
+    }
+  });
+
+  if (!hasGeometry) {
+    api.setCoordSystem(-5, 5, -5, 5);
+    return;
+  }
+
+  const width = Math.max(max.x - min.x, 1);
+  const height = Math.max(max.y - min.y, 1);
+  const padding = Math.max(width, height) * 0.3 + 0.5;
+  
+  api.setCoordSystem(min.x - padding, max.x + padding, min.y - padding, max.y + padding);
 }

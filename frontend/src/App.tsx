@@ -11,6 +11,9 @@ import { VerifyEmailPage } from './components/VerifyEmailPage';
 import { RendererPanel } from './components/RendererPanel';
 import { SceneEditorPanel, type PointPlacementPlane } from './components/SceneEditorPanel';
 import { PrivacyPolicyPage, TermsPage } from './components/LegalPages';
+import { SolverPanel } from './components/SolverPanel';
+import { FunctionAnalyzerPanel } from './components/FunctionAnalyzerPanel';
+import { KatexSpan } from './components/KatexSpan';
 import type { AdvancedRenderSettings, MathScene, RenderResponse, Renderer } from './types/scene';
 import { defaultRuntimeSettings, SETTINGS_STORAGE_VERSION, type OcrProvider, type RuntimeSettings, type SettingsDefaults, type UserBasicSettings } from './types/settings';
 import logoUrl from '../img.svg';
@@ -22,7 +25,7 @@ const MOBILE_BREAKPOINT_QUERY = '(max-width: 900px)';
 const DEVELOPER_GITHUB_URL = 'https://github.com/sin0235';
 const CONTACT_EMAIL = 'support@sin-studio.tech';
 
-type AppView = 'home' | 'render' | 'history' | 'guide' | 'about' | 'privacy-policy' | 'terms' | 'login' | 'settings' | 'admin' | 'account' | 'reset-password' | 'verify-email';
+type AppView = 'home' | 'render' | 'analyzer' | 'analyzer-guide' | 'history' | 'guide' | 'about' | 'privacy-policy' | 'terms' | 'login' | 'settings' | 'admin' | 'account' | 'reset-password' | 'verify-email';
 type EditTool = 'move' | 'connect' | 'project_to_segment' | 'add_point';
 type Vec3 = { x: number; y: number; z: number };
 type Notification = {
@@ -40,6 +43,8 @@ type BackendStatus = {
 const viewPaths: Record<AppView, string> = {
   home: '/',
   render: '/render',
+  analyzer: '/analyzer',
+  'analyzer-guide': '/analyzer/guide',
   history: '/history',
   guide: '/guide',
   about: '/about',
@@ -113,6 +118,7 @@ export default function App() {
   const [notification, setNotification] = useState<Notification | null>(null);
   const [mobileWarningDismissed, setMobileWarningDismissed] = useState(readMobileWarningDismissed);
   const [sceneEditorOpen, setSceneEditorOpen] = useState(false);
+  const [highlightedObjects, setHighlightedObjects] = useState<string[]>([]);
   const [editorButtonTop, setEditorButtonTop] = useState(220);
   const [user, setUser] = useState<UserResponse | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
@@ -122,8 +128,11 @@ export default function App() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [remoteSettingsHydrated, setRemoteSettingsHydrated] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [toolsMenuOpen, setToolsMenuOpen] = useState(false);
+  const [pdfWordPopupOpen, setPdfWordPopupOpen] = useState(false);
   const resultAnchorRef = useRef<HTMLDivElement | null>(null);
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
+  const toolsMenuRef = useRef<HTMLDivElement | null>(null);
   const editorButtonDragRef = useRef<{ pointerId: number; startY: number; startTop: number; moved: boolean } | null>(null);
 
   function navigateTo(view: AppView, replace = false) {
@@ -153,12 +162,17 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!accountMenuOpen) return;
+    if (!accountMenuOpen && !toolsMenuOpen) return;
     function handlePointerDown(event: PointerEvent) {
-      if (!accountMenuRef.current?.contains(event.target as Node)) setAccountMenuOpen(false);
+      const target = event.target as Node;
+      if (!accountMenuRef.current?.contains(target)) setAccountMenuOpen(false);
+      if (!toolsMenuRef.current?.contains(target)) setToolsMenuOpen(false);
     }
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') setAccountMenuOpen(false);
+      if (event.key === 'Escape') {
+        setAccountMenuOpen(false);
+        setToolsMenuOpen(false);
+      }
     }
     document.addEventListener('pointerdown', handlePointerDown);
     document.addEventListener('keydown', handleKeyDown);
@@ -166,7 +180,7 @@ export default function App() {
       document.removeEventListener('pointerdown', handlePointerDown);
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [accountMenuOpen]);
+  }, [accountMenuOpen, toolsMenuOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -726,10 +740,38 @@ export default function App() {
           </div>
         </div>
         <nav className="header-nav">
-          <button type="button" className={`nav-item ${activeView === 'render' ? 'active' : ''}`} onClick={() => navigateTo('render')}>
-            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><line x1="4" y1="6" x2="20" y2="6"></line><line x1="4" y1="12" x2="14" y2="12"></line><line x1="4" y1="18" x2="18" y2="18"></line></svg>
-            Workspace
-          </button>
+          <div className="tools-menu" ref={toolsMenuRef}>
+            <button type="button" className={`nav-item ${activeView === 'render' || activeView === 'analyzer' ? 'active' : ''}`} aria-haspopup="menu" aria-expanded={toolsMenuOpen} onClick={() => setToolsMenuOpen((open) => !open)}>
+              <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3v18"></path><path d="M3 12h18"></path><path d="M5 5l14 14"></path><path d="M19 5L5 19"></path></svg>
+              Công cụ
+              <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+            </button>
+            {toolsMenuOpen && (
+              <div className="tools-dropdown" role="menu">
+                <button type="button" role="menuitem" className={activeView === 'render' ? 'active' : ''} onClick={() => {
+                  setToolsMenuOpen(false);
+                  navigateTo('render');
+                }}>
+                  <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="4" y1="6" x2="20" y2="6"></line><line x1="4" y1="12" x2="14" y2="12"></line><line x1="4" y1="18" x2="18" y2="18"></line></svg>
+                  <span><strong>Dựng hình</strong><small>Vẽ hình học từ đề bài</small></span>
+                </button>
+                <button type="button" role="menuitem" className={activeView === 'analyzer' ? 'active' : ''} onClick={() => {
+                  setToolsMenuOpen(false);
+                  navigateTo('analyzer');
+                }}>
+                  <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                  <span><strong>Khảo sát hàm</strong><small>Đồ thị, đạo hàm, cực trị</small></span>
+                </button>
+                <button type="button" role="menuitem" onClick={() => {
+                  setToolsMenuOpen(false);
+                  setPdfWordPopupOpen(true);
+                }}>
+                  <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path><path d="M8 13h8"></path><path d="M8 17h5"></path></svg>
+                  <span><strong>PDF → Word</strong><small>Chuẩn cấu trúc đề trắc nghiệm</small></span>
+                </button>
+              </div>
+            )}
+          </div>
           {user?.role === 'admin' && (
             <button type="button" className="nav-item" onClick={() => {
               navigateTo('admin');
@@ -794,6 +836,25 @@ export default function App() {
       </header>
 
       <NotificationBanner notification={notification} onDismiss={() => setNotification(null)} />
+      {pdfWordPopupOpen && (
+        <div className="pdf-word-modal-backdrop" role="presentation" onClick={() => setPdfWordPopupOpen(false)}>
+          <div className="pdf-word-modal" role="dialog" aria-modal="true" aria-labelledby="pdf-word-modal-title" onClick={(event) => event.stopPropagation()}>
+            <h2 id="pdf-word-modal-title">PDF → Word chuẩn đề trắc nghiệm</h2>
+            <p>
+              Do chức năng này cần sử dụng GPU mới chạy ổn nên tạm chưa thể deploy để thầy cô sử dụng trực tiếp.
+              Quý thầy cô vui lòng bấm nút Chuyển để được tự động chuyển đến Mail/Outlook, sau đó gửi mail đến địa chỉ bên dưới và để lại liên hệ.
+            </p>
+            <p>
+              Khuyến khích để lại Zalo, hoặc mail/Facebook để em hỗ trợ cài đặt hoàn toàn miễn phí.
+            </p>
+            <div className="pdf-word-modal-email">{CONTACT_EMAIL}</div>
+            <div className="pdf-word-modal-actions">
+              <a className="pdf-word-modal-primary" href={`mailto:${CONTACT_EMAIL}?subject=Hỗ trợ cài đặt PDF sang Word&body=Em/chào bạn,%0D%0A%0D%0AMình cần hỗ trợ cài đặt chức năng PDF sang Word chuẩn cấu trúc đề trắc nghiệm.%0D%0A%0D%0AThông tin liên hệ:%0D%0A- Zalo:%0D%0A- Email/Facebook:%0D%0A%0D%0AXin cảm ơn.`}>Chuyển</a>
+              <button type="button" onClick={() => setPdfWordPopupOpen(false)}>Để sau</button>
+            </div>
+          </div>
+        </div>
+      )}
       {activeView === 'render' && <MobileRendererWarning dismissed={mobileWarningDismissed} onDismiss={dismissMobileWarning} />}
 
       <main className="app-shell">
@@ -839,7 +900,7 @@ export default function App() {
             {result && <button type="button" className="mobile-scroll-notice" onClick={scrollToResult}>↓ Xem hình vừa dựng</button>}
             <div className="result-area" ref={resultAnchorRef}>
               <div className="render-stage">
-                <RendererPanel result={result} threeInteraction={threeInteraction} onGeoGebraPointChange={handlePointDragEnd} />
+                <RendererPanel result={result} threeInteraction={threeInteraction} onGeoGebraPointChange={handlePointDragEnd} highlightedObjects={highlightedObjects} />
                 {result?.scene && (
                   <button
                     type="button"
@@ -884,8 +945,37 @@ export default function App() {
                 )}
               </div>
             </div>
+            {/* Lựa chọn 2: Giải toán từng bước (chỉ cho hình 3D) */}
+            {result?.scene && result.scene.renderer === 'threejs_3d' && (
+              <div className="result-area">
+                <SolverPanel
+                  scene={result.scene}
+                  onHighlight={setHighlightedObjects}
+                />
+              </div>
+            )}
+            {/* Lựa chọn 1: Khảo sát hàm số (chỉ khi có function_graph) */}
+            {result?.scene && result.scene.topic === 'function_graph' && (
+              <div className="result-area">
+                <FunctionAnalyzerPanel
+                  initialExpression={
+                    (() => {
+                      const fg = result.scene.objects.find((o: { type: string }) => o.type === 'function_graph') as { expression?: string } | undefined;
+                      return fg?.expression ?? '';
+                    })()
+                  }
+                  onOpenGuide={() => navigateTo('analyzer-guide')}
+                />
+              </div>
+            )}
           </section>
         )}
+        {activeView === 'analyzer' && (
+          <div className="analyzer-standalone-wrap">
+            <FunctionAnalyzerPanel onOpenGuide={() => navigateTo('analyzer-guide')} />
+          </div>
+        )}
+        {activeView === 'analyzer-guide' && <AnalyzerGuidePage onOpenGeneralGuide={() => navigateTo('guide')} />}
         {activeView === 'history' && (
           <HistoryPage
             user={user}
@@ -897,7 +987,7 @@ export default function App() {
             onWorkspace={() => navigateTo('render')}
           />
         )}
-        {activeView === 'guide' && <GuidePage onStart={() => navigateTo('render')} onSettings={() => navigateTo('settings')} />}
+        {activeView === 'guide' && <GuidePage onOpenAnalyzerGuide={() => navigateTo('analyzer-guide')} />}
         {activeView === 'about' && <AboutPage onStart={() => navigateTo('render')} onGuide={() => navigateTo('guide')} />}
         {activeView === 'privacy-policy' && <PrivacyPolicyPage />}
         {activeView === 'terms' && <TermsPage />}
@@ -1086,7 +1176,7 @@ function AccessDeniedPage({ user, onHome, onLogin }: { user: UserResponse | null
   );
 }
 
-function GuidePage({ onStart, onSettings }: { onStart: () => void; onSettings: () => void }) {
+function GuidePage({ onOpenAnalyzerGuide }: { onOpenAnalyzerGuide: () => void }) {
   const guideSteps = [
     { title: 'Nhập đề bài', text: 'Gõ đề hình học tiếng Việt, dán dữ liệu tọa độ hoặc kéo thả ảnh đề bài vào khu vực OCR.' },
     { title: 'Chọn cách hiển thị', text: 'Dùng GeoGebra cho Oxy, đồ thị hàm số; dùng Three.js cho hình học không gian hoặc mô hình 3D.' },
@@ -1104,11 +1194,6 @@ function GuidePage({ onStart, onSettings }: { onStart: () => void; onSettings: (
     <section className="guide-page">
       <div className="guide-hero">
         <h2>Bắt đầu dựng hình toán học trong vài bước.</h2>
-        <p>Quy trình tốt nhất là mô tả đề rõ ràng, chọn renderer phù hợp, kiểm tra scene và tinh chỉnh lại khi cần.</p>
-        <div className="home-actions">
-          <button type="button" onClick={onStart}>Mở workspace</button>
-          <button type="button" className="secondary-button" onClick={onSettings}>Cấu hình model</button>
-        </div>
       </div>
 
       <div className="guide-grid">
@@ -1132,15 +1217,116 @@ function GuidePage({ onStart, onSettings }: { onStart: () => void; onSettings: (
             {promptTips.map((tip) => <li key={tip}>{tip}</li>)}
           </ul>
         </section>
-        <section>
+        <section className="guide-renderer-section">
           <h3>Khi nào dùng renderer nào?</h3>
-          <dl>
-            <dt>GeoGebra 2D</dt>
-            <dd>Bài Oxy, đồ thị hàm số, đường tròn, tam giác và quan hệ phẳng.</dd>
-            <dt>GeoGebra 3D / Three.js</dt>
-            <dd>Oxyz, khối đa diện, mặt phẳng, đường thẳng không gian và góc nhìn 3D.</dd>
-          </dl>
+          <div className="guide-renderer-grid">
+            <article>
+              <h4>GeoGebra 2D</h4>
+              <p>Phù hợp cho bài toán trên mặt phẳng Oxy: đồ thị hàm số, đường thẳng, đường tròn, tam giác, tứ giác và các quan hệ đồng quy - song song - vuông góc.</p>
+              <ul>
+                <li>Dùng khi đề chỉ có tọa độ 2D hoặc ký hiệu nằm trên mặt phẳng.</li>
+                <li>Thích hợp để khảo sát hàm số, xem giao điểm, cực trị và tiệm cận.</li>
+                <li>Nên chọn nếu bạn cần hình rõ, nhanh và dễ chỉnh các điểm phẳng.</li>
+              </ul>
+            </article>
+            <article>
+              <h4>GeoGebra 3D / Three.js</h4>
+              <p>Phù hợp cho bài toán không gian Oxyz: khối đa diện, mặt phẳng, đường thẳng chéo nhau, giao tuyến, khoảng cách và góc trong không gian.</p>
+              <ul>
+                <li>Dùng khi đề có tọa độ 3D, mặt phẳng (P), đường thẳng d hoặc hình chóp/lăng trụ.</li>
+                <li>Hữu ích khi cần xoay góc nhìn để kiểm tra quan hệ hình học khó thấy ở 2D.</li>
+                <li>Nên chọn Three.js khi muốn thao tác trực quan mạnh hơn với mô hình 3D.</li>
+              </ul>
+            </article>
+          </div>
+          <button type="button" className="guide-analyzer-label" onClick={onOpenAnalyzerGuide}>
+            <span>Hướng dẫn khảo sát hàm số</span>
+            <span className="guide-analyzer-label-arrow" aria-hidden="true">→</span>
+          </button>
         </section>
+      </div>
+    </section>
+  );
+}
+
+function AnalyzerGuidePage({ onOpenGeneralGuide }: { onOpenGeneralGuide: () => void }) {
+  const formulaGroups = [
+    {
+      title: 'Toán tử cơ bản',
+      rows: [
+        { raw: '2*x, x*(x-1)', tex: '2x,\\; x(x-1)', note: 'Dùng * để nhân tường minh.' },
+        { raw: '(x^2-1)/(x-2)', tex: '\\frac{x^2-1}{x-2}' },
+        { raw: 'x^3 - 3*x + 2', tex: 'x^3-3x+2', note: 'Lũy thừa dùng dấu ^.' },
+        { raw: 'pi, E', tex: '\\pi,\\; e' },
+      ],
+    },
+    {
+      title: 'Hàm thường gặp',
+      rows: [
+        { raw: 'sqrt(x^2+1), abs(x)', tex: '\\sqrt{x^2+1},\\; |x|' },
+        { raw: 'exp(x), ln(x), log(x)', tex: 'e^x,\\; \\ln(x),\\; \\ln(x)' },
+        { raw: 'log(x,2), log(x,10)', tex: '\\log_2(x),\\; \\log_{10}(x)', note: 'Log cơ số bất kỳ: log(x,a).' },
+        { raw: 'sin(x), cos(x), tan(x)', tex: '\\sin(x),\\; \\cos(x),\\; \\tan(x)' },
+        { raw: 'asin(x), acos(x), atan(x)', tex: '\\arcsin(x),\\; \\arccos(x),\\; \\arctan(x)' },
+        { raw: 'sinh(x), cosh(x), tanh(x)', tex: '\\sinh(x),\\; \\cosh(x),\\; \\tanh(x)' },
+      ],
+    },
+    {
+      title: 'Hàm hỗ trợ',
+      rows: [
+        { raw: 'floor(x), ceil(x)', tex: '\\lfloor x \\rfloor,\\; \\lceil x \\rceil' },
+        { raw: 'sign(x), Min(a,b), Max(a,b)', tex: '\\operatorname{sign}(x),\\; \\min(a,b),\\; \\max(a,b)' },
+        { raw: 'Piecewise((x^2, x<0), (x, x>=0))', tex: '\\begin{cases}x^2,&x<0\\\\x,&x\\ge 0\\end{cases}' },
+      ],
+    },
+  ];
+
+  return (
+    <section className="analyzer-guide-page">
+      <div className="analyzer-guide-hero">
+        <div className="analyzer-guide-hero-head">
+          <h2>Hướng dẫn chi tiết cách nhập công thức và dùng OCR</h2>
+          <button type="button" className="analyzer-guide-label" onClick={onOpenGeneralGuide}>
+            <span>Hướng dẫn vẽ hình</span>
+            <span className="analyzer-guide-label-arrow" aria-hidden="true">→</span>
+          </button>
+        </div>
+      </div>
+
+      <div className="analyzer-guide-grid">
+        {formulaGroups.map((group) => (
+          <article key={group.title} className="analyzer-guide-card">
+            <h3>{group.title}</h3>
+            <div className="analyzer-guide-table">
+              {group.rows.map((row) => (
+                <div key={row.raw} className="analyzer-guide-row">
+                  <code>{row.raw}</code>
+                  <KatexSpan tex={row.tex} className="analyzer-guide-katex" />
+                  {row.note && <p>{row.note}</p>}
+                </div>
+              ))}
+            </div>
+          </article>
+        ))}
+      </div>
+
+      <div className="analyzer-guide-ocr">
+        <article>
+          <h3>OCR từ clipboard (dán ảnh)</h3>
+          <ol>
+            <li>Chụp/copy ảnh đề vào clipboard.</li>
+            <li>Tại ô nhập hàm, bấm chuột phải để kích hoạt đọc ảnh từ clipboard.</li>
+            <li>Nếu không có ảnh trong clipboard, hệ thống tự mở hộp chọn tệp ảnh.</li>
+          </ol>
+        </article>
+        <article>
+          <h3>OCR từ tệp ảnh</h3>
+          <ol>
+            <li>Bấm nút đính kèm ảnh (icon kẹp giấy) cạnh ô nhập.</li>
+            <li>Chọn ảnh từ máy hoặc camera điện thoại.</li>
+            <li>Kiểm tra lại biểu thức sau OCR rồi bấm “Phân tích”.</li>
+          </ol>
+        </article>
       </div>
     </section>
   );

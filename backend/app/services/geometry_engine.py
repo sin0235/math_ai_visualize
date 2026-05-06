@@ -371,9 +371,19 @@ def _segment_segment_intersection(segment_1: Segment, segment_2: Segment, points
 
 
 def _next_intersection_name(existing_names: set[str], offset: int = 0) -> str:
+    # Natural intersection labels: I, J, K, M, N, P, Q, R...
+    candidates = ["I", "J", "K", "M", "N", "P", "Q", "R"]
+    
+    # First try the primary candidates
+    for i in range(offset, len(candidates)):
+        name = candidates[i]
+        if name not in existing_names:
+            return name
+            
+    # Fallback to I with index if all candidates are taken
     index = 1 + offset
     while True:
-        name = "I" if index == 1 else f"I{index}"
+        name = f"I{index}"
         if name not in existing_names:
             return name
         index += 1

@@ -451,6 +451,104 @@ export async function renderEditedScene(scene: MathScene, advancedSettings: Adva
   }, 'Không thể dựng lại scene.');
 }
 
+// ---------------------------------------------------------------------------
+// Solver (Lựa chọn 2) & Function Analyzer (Lựa chọn 1)
+// ---------------------------------------------------------------------------
+
+export interface SolveStep {
+  index: number;
+  title: string;
+  explanation: string;
+  expression: string | null;
+  result: string | null;
+  highlight: string[];
+}
+
+export interface SolveResponse {
+  question: string;
+  answer: string;
+  steps: SolveStep[];
+  warnings: string[];
+}
+
+export interface CriticalPoint {
+  x: string;
+  x_exact: string;
+  y: string | null;
+  kind: string;
+  kind_label: string;
+}
+
+export interface VariationRow {
+  x: string;
+  y: string | null;
+  kind: string;
+  arrow_to_next: string | null;
+}
+
+export interface AnalyzeResponse {
+  expression: string;
+  expression_latex: string | null;
+  derivative: string | null;
+  derivative_latex: string | null;
+  second_derivative: string | null;
+  second_derivative_latex: string | null;
+  critical_points: CriticalPoint[];
+  inflection_points: Array<{ x: string; x_exact: string; y: string }>;
+  intervals_increasing: string[];
+  intervals_decreasing: string[];
+  concave_up_intervals: string[];
+  concave_down_intervals: string[];
+  horizontal_asymptotes: Array<{ direction: string; value: string }>;
+  vertical_asymptotes: Array<{ x: string; lim_right: string; lim_left: string }>;
+  oblique_asymptote: string | null;
+  x_intercepts: string[];
+  y_intercept: string | null;
+  variation_table: VariationRow[];
+  domain: string | null;
+  domain_latex: string | null;
+  range_val: string | null;
+  range_latex: string | null;
+  parity: 'even' | 'odd' | 'neither' | null;
+  geogebra_commands: string[];
+  graph_scene: MathScene | null;
+  graph_points: Array<{ x: number; y: number }>;
+  ocr_text: string | null;
+  ocr_expression: string | null;
+  warnings: string[];
+  error?: string | null;
+}
+
+export async function solveProblem(
+  scene: unknown,
+  question: string,
+): Promise<SolveResponse> {
+  return requestJson('/api/solve', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ scene, question }),
+  }, 'Không thể giải toán từ scene này.');
+}
+
+export async function analyzeFunction(expression: string): Promise<AnalyzeResponse> {
+  return requestJson('/api/analyze', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ expression }),
+  }, 'Không thể phân tích hàm số.');
+}
+
+export async function analyzeFunctionImage(imageDataUrl: string, runtimeSettings?: RuntimeSettings): Promise<AnalyzeResponse> {
+  return requestJson('/api/analyze/ocr', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ image_data_url: imageDataUrl, runtime_settings: compactRuntimeSettings(runtimeSettings) }),
+  }, 'Không thể phân tích hàm số từ ảnh.');
+}
+
 function queryString(filters: object) {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(filters)) {

@@ -18,7 +18,7 @@ const features = [
   { title: 'Nhập đề tự nhiên', text: 'Viết đề bài toán như cách học sinh đọc đề, hệ thống sẽ chuyển thành scene hình học có cấu trúc.' },
   { title: 'OCR ảnh đề bài', text: 'Tải ảnh, kéo thả hoặc dán ảnh từ clipboard để trích xuất nội dung đề nhanh hơn.' },
   { title: 'Render 2D/3D', text: 'Dùng GeoGebra cho Oxy, đồ thị hàm số và Three.js cho hình học không gian sinh động.' },
-  { title: 'Chỉnh hình linh hoạt', text: 'Tinh chỉnh điểm, đoạn, góc nhìn và tiếp tục dựng lại khi cần.' },
+  { title: 'PDF → Word', text: 'Chuyển PDF sang Word theo cấu trúc đề trắc nghiệm. Thầy cô liên hệ support@sin-studio.tech để được hỗ trợ cài đặt miễn phí.' },
 ];
 
 const trustSignals = ['Dành cho giáo viên và học sinh THPT', 'Hỗ trợ Oxy/Oxyz', 'Xuất GeoGebra/Three.js'];

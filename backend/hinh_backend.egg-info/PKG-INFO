@@ -11,5 +11,7 @@ Requires-Dist: email-validator>=2.2.0
 Requires-Dist: httpx>=0.27.0
 Requires-Dist: aiosqlite>=0.20.0
 Requires-Dist: passlib[bcrypt]>=1.7.4
+Requires-Dist: bcrypt<5
+Requires-Dist: resend>=2.4.0
 Provides-Extra: dev
 Requires-Dist: pytest>=8.3.0; extra == "dev"

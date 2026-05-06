@@ -141,7 +141,7 @@ export function ProblemInput({ loading, ocrLoading, ocrError, problemText, model
     onOcrImage(file);
   }
 
-  function handleTextAreaClick(event: MouseEvent<HTMLTextAreaElement>) {
+  function handleTextAreaDoubleClick(event: MouseEvent<HTMLTextAreaElement>) {
     if (problemText.trim() || loading || ocrLoading) return;
     event.preventDefault();
     fileInputRef.current?.click();
@@ -186,13 +186,13 @@ export function ProblemInput({ loading, ocrLoading, ocrError, problemText, model
             onProblemTextChange(event.target.value);
           }}
           onPaste={handlePaste}
-          onClick={handleTextAreaClick}
+          onDoubleClick={handleTextAreaDoubleClick}
           onContextMenu={handleContextMenu}
           rows={10}
           maxLength={2000}
           placeholder="Ví dụ: Cho tam giác ABC vuông tại A, AB = 3, AC = 4. Vẽ đường trung tuyến AM."
         />
-        {!busy && !problemText.trim() && <div className="ocr-empty-hint">Click để chọn ảnh, chuột phải để paste ảnh vừa crop, hoặc kéo-thả/paste ảnh vào đây.</div>}
+        {!busy && !problemText.trim() && <div className="ocr-empty-hint">Double click để chọn ảnh, chuột phải để paste ảnh vừa crop, hoặc kéo-thả/paste ảnh vào đây.</div>}
         {ocrError && <div className="ocr-error">{ocrError}</div>}
         <div className="char-counter">{problemText.length}/2000 ký tự</div>
         {busy && (
@@ -301,7 +301,7 @@ export function ProblemInput({ loading, ocrLoading, ocrError, problemText, model
         </label>
       </details>
       <details className="examples" open>
-        <summary className="examples-title">Demo nhanh cho giám khảo</summary>
+        <summary className="examples-title">Đề mẫu</summary>
         {examples.map((example) => (
           <button key={example.text} type="button" onClick={() => onProblemTextChange(example.text)} className="example-card">
             <span className="example-tag">{example.tag}</span>

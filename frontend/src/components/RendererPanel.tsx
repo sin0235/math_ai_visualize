@@ -8,9 +8,10 @@ interface RendererPanelProps {
   result: RenderResponse | null;
   threeInteraction?: ThreeSceneInteraction;
   onGeoGebraPointChange?: (name: string, point: Vec3) => void | Promise<void>;
+  highlightedObjects?: string[];
 }
 
-export function RendererPanel({ result, threeInteraction, onGeoGebraPointChange }: RendererPanelProps) {
+export function RendererPanel({ result, threeInteraction, onGeoGebraPointChange, highlightedObjects }: RendererPanelProps) {
   if (!result) {
     return <EmptyState />;
   }
@@ -20,7 +21,7 @@ export function RendererPanel({ result, threeInteraction, onGeoGebraPointChange 
   }
 
   if (result.payload.three_scene) {
-    return <ThreeGeometryView scene={result.payload.three_scene} interaction={threeInteraction} />;
+    return <ThreeGeometryView scene={result.payload.three_scene} interaction={threeInteraction} highlightedObjects={highlightedObjects} />;
   }
 
   return (

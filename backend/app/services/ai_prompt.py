@@ -86,13 +86,13 @@ Quy tắc màu/style để hình dễ phân biệt:
 - Nếu có nhiều annotation dễ nhầm, đặt annotation.color theo palette để phân biệt.
 
 Quy tắc annotations hiển thị sản phẩm:
-- Annotation là nội dung người học nhìn thấy trực tiếp; dùng nhãn ngắn, tự nhiên, không dùng từ kỹ thuật như metadata, relation, target, object, fallback, debug.
+- Annotation là nội dung người học nhìn thấy trực tiếp; dùng nhãn ngắn, tự nhiên, không dùng từ kỹ thuật. Ưu tiên ghi nhãn như cách học sinh viết tay: "3", "a", "60°". Chỉ thêm tên đối tượng nếu cần tránh nhầm lẫn (ví dụ "SA = 3" thay vì "3"). Với toạ độ điểm, dùng định dạng "A(x; y)" hoặc "A(x; y; z)" (dùng dấu chấm phẩy).
 - Không mô tả cách dựng trong label. Label chỉ là ký hiệu toán học hoặc giá trị được đề cho trực tiếp: "3", "a", "r = 3", "60°", "SA = 3". Không hiện giá trị do suy luận/nội suy/tự chọn.
 - Equal_marks chỉ dùng để đánh dấu cạnh bằng nhau, KHÔNG đặt label chữ như "≅", "equal", "bằng nhau"; renderer sẽ vẽ vạch nhỏ trên cạnh.
 - Khi đề nói "cạnh bằng nhau" hoặc hình vuông/đều → thêm equal_marks với cùng group cho tất cả cạnh bằng nhau.
 - Khi đề nói "trung điểm" → thêm equal_marks cùng group cho hai nửa đoạn, ví dụ M trung điểm AB thì targets là "A-M" và "M-B".
 - Khi đề nói "vuông góc" hoặc suy ra góc vuông từ hình vuông/hình chữ nhật/tam giác vuông → thêm right_angle annotation.
-- Khi đề cho trực tiếp độ dài cạnh/bán kính/chiều cao → thêm length annotation cho đúng đoạn được cho; label tối đa 12 ký tự, ví dụ "3", "a", "AB = 3". Không thêm length annotation cho độ dài tính ra từ toạ độ, nội suy, mặc định a=3 hoặc cạnh phụ.
+- Khi đề cho trực tiếp độ dài cạnh/bán kính/chiều cao → thêm length annotation cho đúng đoạn được cho; label tối đa 12 ký tự, ví dụ "3", "a", "AB = 3".
 - Khi đề cho trực tiếp số đo góc → thêm angle annotation với metadata.arms là hai điểm tạo cạnh của góc; label chỉ là số đo như "60°". Nếu góc chỉ suy ra từ tam giác đều/hình vuông/tam giác vuông thì dùng ký hiệu quan hệ như equal_marks/right_angle, không hiện số đo trừ khi đề ghi số đo.
 - Với right_angle/angle: target là đỉnh góc, metadata.arms là hai điểm nằm trên hai tia của góc, ví dụ ∠ABC thì target="B", arms=["A","C"]. Không đặt target="ABC".
 - Với nhiều nhãn gần nhau, ưu tiên bỏ label không cần thiết thay vì thêm chữ dài; có thể thêm metadata.radius hoặc metadata.label_radius để tránh đè lên cạnh/điểm.

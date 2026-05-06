@@ -1,7 +1,8 @@
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Billboard, Line, OrbitControls, Text } from '@react-three/drei';
 import { Canvas, ThreeEvent, useThree } from '@react-three/fiber';
 import type { ComponentProps, ReactNode } from 'react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+
 import * as THREE from 'three';
 
 import type { Annotation, ThreeScene } from '../types/scene';
@@ -10,7 +11,13 @@ interface ThreeGeometryViewProps {
   scene: ThreeScene;
   interaction?: ThreeSceneInteraction;
   embedded?: boolean;
+  highlightedObjects?: string[];
 }
+
+// Context to pass highlighted object names deep without prop drilling
+const HighlightContext = React.createContext<string[]>([]);
+
+
 
 export interface ThreeSceneInteraction {
   mode: 'move' | 'connect' | 'project_to_segment' | 'add_point';
@@ -27,7 +34,7 @@ export interface ThreeSceneInteraction {
 type Vec3 = { x: number; y: number; z: number };
 type SceneFrame = ReturnType<typeof getSceneFrame>;
 
-export function ThreeGeometryView({ scene, interaction, embedded = false }: ThreeGeometryViewProps) {
+export function ThreeGeometryView({ scene, interaction, embedded = false, highlightedObjects = [] }: ThreeGeometryViewProps) {
   const [workingScene, setWorkingScene] = useState(scene);
   const [draggingPoint, setDraggingPoint] = useState<string | null>(null);
   const [hoveredPoint, setHoveredPoint] = useState<string | null>(null);
@@ -84,6 +91,7 @@ export function ThreeGeometryView({ scene, interaction, embedded = false }: Thre
   }
 
   const content = (
+    <HighlightContext.Provider value={highlightedObjects}>
     <div className="three-view">
       <Canvas camera={{ position: [5, 4, 6], fov: 48 }} className="three-canvas" style={{ display: 'block' }}>
         <color attach="background" args={["#f8fbff"]} />
@@ -148,6 +156,7 @@ export function ThreeGeometryView({ scene, interaction, embedded = false }: Thre
         </group>
       </Canvas>
     </div>
+    </HighlightContext.Provider>
   );
 
   if (embedded) return content;
@@ -230,22 +239,42 @@ function OxyzAxes({ hideOriginLabel = false }: { hideOriginLabel?: boolean }) {
 }
 
 function getSceneFrame(scene: ThreeScene) {
-  const points = Object.values(scene.points);
-  if (points.length === 0) {
-    return { center: { x: 0, y: 0, z: 0 }, scale: 1 };
-  }
-
   const min = { x: Infinity, y: Infinity, z: Infinity };
   const max = { x: -Infinity, y: -Infinity, z: -Infinity };
 
-  points.forEach((point) => {
+  let hasGeometry = false;
+
+  // 1. Points
+  Object.values(scene.points).forEach((point) => {
     min.x = Math.min(min.x, point.x);
     min.y = Math.min(min.y, point.y);
     min.z = Math.min(min.z, point.z);
     max.x = Math.max(max.x, point.x);
     max.y = Math.max(max.y, point.y);
     max.z = Math.max(max.z, point.z);
+    hasGeometry = true;
   });
+
+  // 2. Spheres
+  (scene.spheres || []).forEach(sphere => {
+    const center = scene.points[sphere.center];
+    if (center) {
+      min.x = Math.min(min.x, center.x - sphere.radius);
+      max.x = Math.max(max.x, center.x + sphere.radius);
+      min.y = Math.min(min.y, center.y - sphere.radius);
+      max.y = Math.max(max.y, center.y + sphere.radius);
+      min.z = Math.min(min.z, center.z - sphere.radius);
+      max.z = Math.max(max.z, center.z + sphere.radius);
+      hasGeometry = true;
+    }
+  });
+
+  // 3. Faces (points already covered by scene.points, but just to be sure)
+  // No extra logic needed for faces since their points are in scene.points
+
+  if (!hasGeometry) {
+    return { center: { x: 0, y: 0, z: 0 }, scale: 1 };
+  }
 
   const center = {
     x: (min.x + max.x) / 2,
@@ -254,7 +283,8 @@ function getSceneFrame(scene: ThreeScene) {
   };
   const size = Math.max(max.x - min.x, max.y - min.y, max.z - min.z, 1);
 
-  return { center, scale: 4.5 / size };
+  // Pad the framing slightly
+  return { center, scale: 4.2 / size };
 }
 
 function hasPointAtOrigin(scene: ThreeScene) {
@@ -272,13 +302,15 @@ function Planes({ scene }: ThreeGeometryViewProps) {
         const geometry = polygonGeometry(vertices);
         if (!geometry) return null;
         const center = centroid(vertices);
+        const normal = planeNormal(anchors);
+        const labelPos = add(center, scale(normal, 0.22));
         return (
           <group key={plane.name ?? plane.points.join('-')}>
             <mesh geometry={geometry}>
               <meshStandardMaterial color={plane.color} opacity={Math.min(plane.opacity, 0.18)} transparent side={THREE.DoubleSide} depthWrite={false} />
             </mesh>
             {plane.name && (
-              <LabelText position={[center.x, center.y + 0.14, center.z]} fontSize={0.2} color={plane.color} anchorX="center" anchorY="middle" fontWeight={700}>
+              <LabelText position={[labelPos.x, labelPos.y, labelPos.z]} fontSize={0.2} color={plane.color} anchorX="center" anchorY="middle" fontWeight={700}>
                 {plane.name}
               </LabelText>
             )}
@@ -360,6 +392,7 @@ function Lines3D({ scene }: ThreeGeometryViewProps) {
 }
 
 function Segments({ scene, frame, interaction }: ThreeGeometryViewProps & { frame: SceneFrame; interaction?: ThreeSceneInteraction }) {
+  const highlighted = React.useContext(HighlightContext);
   return (
     <>
       {scene.segments.map((segment, index) => {
@@ -368,6 +401,12 @@ function Segments({ scene, frame, interaction }: ThreeGeometryViewProps & { fram
         const end = scene.points[endName];
         if (!start || !end) return null;
         const dashed = segment.hidden || segment.style === 'dashed' || segment.style === 'dotted';
+        const isHighlighted = highlighted.includes(startName) && highlighted.includes(endName);
+        const baseColor = segment.color ?? (segment.hidden ? '#8b95a7' : '#1d3557');
+        const color = isHighlighted ? '#f97316' : baseColor;
+        const lineWidth = isHighlighted
+          ? Math.max(segment.line_width ?? 3, 6)
+          : (interaction ? Math.max(segment.line_width ?? 3, 5) : segment.line_width ?? 3);
         return (
           <Line
             key={`${startName}-${endName}-${index}`}
@@ -375,11 +414,11 @@ function Segments({ scene, frame, interaction }: ThreeGeometryViewProps & { fram
               [start.x, start.y, start.z],
               [end.x, end.y, end.z],
             ]}
-            color={segment.color ?? (segment.hidden ? '#8b95a7' : '#1d3557')}
+            color={color}
             dashed={dashed}
             dashSize={segment.style === 'dotted' ? 0.04 : 0.12}
             gapSize={segment.style === 'dotted' ? 0.08 : 0.08}
-            lineWidth={interaction ? Math.max(segment.line_width ?? 3, 5) : segment.line_width ?? 3}
+            lineWidth={lineWidth}
             onClick={(event) => {
               if (interaction?.mode !== 'project_to_segment') return;
               event.stopPropagation();
@@ -549,12 +588,15 @@ function Points({
   return (
     <>
       {sortedPoints.map(([name, point], index) => {
-        const coordText = `(${fmtN(point.x)}, ${fmtN(point.y)}, ${fmtN(point.z)})`;
-        const labelOffset = pointLabelOffset(index);
+        const coordLabel = scene.annotations?.find(ann => ann.type === 'coordinate_label' && ann.target === name);
+        const displayName = coordLabel?.label || name;
+        const coordText = `(${fmtN(point.x)}; ${fmtN(point.y)}; ${fmtN(point.z)})`;
+        const labelOffset = pointLabelOffset(name, scene);
         return (
           <DraggablePoint
             key={name}
             name={name}
+            displayName={displayName}
             point={point}
             coordText={coordText}
             labelOffset={labelOffset}
@@ -563,7 +605,7 @@ function Points({
             isSelected={interaction?.selectedPoint === name}
             isConnectSource={connectStart === name}
             isConnectHover={connectHover === name}
-            showCoords={showCoords}
+            showCoords={showCoords && !coordLabel} // Hide default coords if explicit label has them
             dimension={scene.view.dimension}
             mode={interaction?.mode ?? 'move'}
             onPointClick={interaction?.onPointClick}
@@ -583,6 +625,7 @@ function Points({
 
 interface DraggablePointProps {
   name: string;
+  displayName: string;
   point: Vec3;
   coordText: string;
   labelOffset: Vec3;
@@ -604,7 +647,7 @@ interface DraggablePointProps {
   onPointChange: (name: string, point: Vec3) => void;
 }
 
-function DraggablePoint({ name, point, coordText, labelOffset, frame, isDragging, isSelected, isConnectSource, isConnectHover, showCoords, dimension, mode, onPointClick, onPointHover, onConnectStart, onConnectHover, onConnectEnd, onDragStart, onDragEnd, onPointChange }: DraggablePointProps) {
+function DraggablePoint({ name, displayName, point, coordText, labelOffset, frame, isDragging, isSelected, isConnectSource, isConnectHover, showCoords, dimension, mode, onPointClick, onPointHover, onConnectStart, onConnectHover, onConnectEnd, onDragStart, onDragEnd, onPointChange }: DraggablePointProps) {
   const { camera, gl } = useThree();
   const [hovered, setHovered] = useState(false);
   const dragPlaneRef = useRef<THREE.Plane | null>(null);
@@ -690,7 +733,7 @@ function DraggablePoint({ name, point, coordText, labelOffset, frame, isDragging
         <meshStandardMaterial color={pointColor({ isSelected, isDragging, isConnectSource, isConnectHover, hovered })} />
       </mesh>
       <LabelText position={[labelOffset.x, labelOffset.y, labelOffset.z]} fontSize={0.28} color="#1d3557" anchorX="center" anchorY="middle" fontWeight={700}>
-        {name}
+        {displayName}
       </LabelText>
       {showCoords && (
         <LabelText position={[labelOffset.x, labelOffset.y - 0.22, labelOffset.z]} fontSize={0.18} color="#64748b" anchorX="center" anchorY="middle">
@@ -701,18 +744,64 @@ function DraggablePoint({ name, point, coordText, labelOffset, frame, isDragging
   );
 }
 
-function pointLabelOffset(index: number): Vec3 {
-  const offsets = [
-    { x: 0.2, y: 0.24, z: 0.04 },
-    { x: -0.2, y: 0.24, z: 0.04 },
-    { x: 0.22, y: -0.2, z: 0.04 },
-    { x: -0.22, y: -0.2, z: 0.04 },
-    { x: 0, y: 0.32, z: 0.08 },
-    { x: 0.28, y: 0.04, z: 0.08 },
-    { x: -0.28, y: 0.04, z: 0.08 },
-    { x: 0, y: -0.3, z: 0.08 },
-  ];
-  return offsets[index % offsets.length];
+function pointLabelOffset(name: string, scene: ThreeScene): Vec3 {
+  const point = scene.points[name];
+  if (!point) return { x: 0.2, y: 0.24, z: 0.04 };
+
+  const sceneCentroid = centroid(Object.values(scene.points));
+  const toPoint = normalize(sub(point, sceneCentroid));
+
+  const connectedDirections: Vec3[] = [];
+
+  // Segments
+  (scene.segments || []).forEach(seg => {
+    if (seg.points.includes(name)) {
+      const otherName = seg.points[0] === name ? seg.points[1] : seg.points[0];
+      const otherPoint = scene.points[otherName];
+      if (otherPoint) {
+        connectedDirections.push(normalize(sub(otherPoint, point)));
+      }
+    }
+  });
+
+  // Faces
+  (scene.faces || []).forEach(face => {
+    if (face.points.includes(name)) {
+      const idx = face.points.indexOf(name);
+      const prev = face.points[(idx + face.points.length - 1) % face.points.length];
+      const next = face.points[(idx + 1) % face.points.length];
+      [prev, next].forEach(pName => {
+        const p = scene.points[pName];
+        if (p) connectedDirections.push(normalize(sub(p, point)));
+      });
+    }
+  });
+
+  if (connectedDirections.length === 0) {
+    // Default: away from centroid
+    return scale(toPoint, 0.35);
+  }
+
+  const avgDir = { x: 0, y: 0, z: 0 };
+  connectedDirections.forEach(d => {
+    avgDir.x += d.x;
+    avgDir.y += d.y;
+    avgDir.z += d.z;
+  });
+
+  const mag = length(avgDir);
+  let offsetDir: Vec3;
+  if (mag < 1e-3) {
+    offsetDir = toPoint;
+  } else {
+    offsetDir = normalize(scale(avgDir, -1));
+    // Bias away from centroid if the offset is neutral
+    if (dot(offsetDir, toPoint) < 0) {
+      offsetDir = normalize(add(scale(offsetDir, 2), toPoint));
+    }
+  }
+
+  return scale(offsetDir, 0.4);
 }
 
 function ConnectPreview({ scene, start, end }: { scene: ThreeScene; start: string | null; end: Vec3 | null }) {
@@ -760,7 +849,7 @@ function Annotations({ scene }: ThreeGeometryViewProps) {
           case 'equal_marks':
             return <EqualMarks key={`em-${index}`} ann={ann} points={scene.points} />;
           case 'length':
-            return <LengthLabel key={`ll-${index}`} ann={ann} points={scene.points} />;
+            return <LengthLabel key={`ll-${index}`} ann={ann} points={scene.points} scene={scene} />;
           case 'angle':
             return <AngleMark key={`al-${index}`} ann={ann} points={scene.points} />;
           default:
@@ -841,7 +930,7 @@ function EqualMarks({ ann, points }: { ann: Annotation; points: Record<string, V
   return <>{ticks}</>;
 }
 
-function LengthLabel({ ann, points }: { ann: Annotation; points: Record<string, Vec3> }) {
+function LengthLabel({ ann, points, scene }: { ann: Annotation; points: Record<string, Vec3>; scene: ThreeScene }) {
   const [startName, endName] = ann.target.split('-');
   const p1 = points[startName];
   const p2 = points[endName];
@@ -849,14 +938,45 @@ function LengthLabel({ ann, points }: { ann: Annotation; points: Record<string, 
 
   const mid = midpoint(p1, p2);
   const dir = normalize(sub(p2, p1));
-  const up = { x: 0, y: 1, z: 0 };
-  let perp = cross(dir, up);
-  if (length(perp) < 0.01) {
-    perp = cross(dir, { x: 1, y: 0, z: 0 });
-  }
-  perp = normalize(perp);
 
-  const offset = add(mid, scale(perp, 0.28));
+  // Try to find a good perpendicular vector
+  const connectedFaces = (scene.faces || []).filter(f =>
+    f.points.includes(startName) && f.points.includes(endName)
+  );
+
+  let perp: Vec3;
+  if (connectedFaces.length > 0) {
+    const avgNormal = { x: 0, y: 0, z: 0 };
+    connectedFaces.forEach(f => {
+      const fPoints = f.points.map(n => points[n]).filter(Boolean);
+      const n = planeNormal(fPoints);
+      avgNormal.x += n.x;
+      avgNormal.y += n.y;
+      avgNormal.z += n.z;
+    });
+    perp = normalize(avgNormal);
+    if (Math.abs(dot(perp, dir)) > 0.9) {
+      perp = { x: 0, y: 1, z: 0 };
+    }
+    // Ensure perp is actually perpendicular to dir
+    perp = normalize(sub(perp, scale(dir, dot(perp, dir))));
+  } else {
+    const up = { x: 0, y: 1, z: 0 };
+    perp = cross(dir, up);
+    if (length(perp) < 0.01) {
+      perp = cross(dir, { x: 1, y: 0, z: 0 });
+    }
+    perp = normalize(perp);
+  }
+
+  // Always bias away from scene centroid
+  const sceneCentroid = centroid(Object.values(scene.points));
+  const toMid = sub(mid, sceneCentroid);
+  if (dot(perp, toMid) < 0) {
+    perp = scale(perp, -1);
+  }
+
+  const offset = add(mid, scale(perp, 0.32));
 
   return (
     <LabelText

@@ -11,6 +11,7 @@ app/api/routes_history.py
 app/api/routes_ocr.py
 app/api/routes_render.py
 app/api/routes_settings.py
+app/api/routes_solve.py
 app/api/routes_user_settings.py
 app/core/__init__.py
 app/core/config.py
@@ -31,8 +32,13 @@ app/schemas/auth.py
 app/schemas/scene.py
 app/services/__init__.py
 app/services/ai_prompt.py
+app/services/email.py
+app/services/email_template.py
 app/services/extractor.py
+app/services/function_analyzer.py
+app/services/function_graph_builder.py
 app/services/geometry_engine.py
+app/services/google_oauth.py
 app/services/model_scan.py
 app/services/nvidia_client.py
 app/services/ocr.py
@@ -43,12 +49,15 @@ app/services/renderer_router.py
 app/services/router9_bootstrap.py
 app/services/router9_client.py
 app/services/solid_presets.py
+app/services/solver_service.py
+app/services/system_settings.py
 hinh_backend.egg-info/PKG-INFO
 hinh_backend.egg-info/SOURCES.txt
 hinh_backend.egg-info/dependency_links.txt
 hinh_backend.egg-info/requires.txt
 hinh_backend.egg-info/top_level.txt
 tests/test_ai_provider_fallbacks.py
+tests/test_auth_product.py
 tests/test_geometry_engine.py
 tests/test_ocr.py
 tests/test_scene_output_normalization.py
