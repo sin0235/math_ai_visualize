@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import re
 from math import isfinite
-from typing import Any
+from typing import Any, Mapping
 
 from sympy import (
     S, Symbol, oo, simplify, diff, solve, limit,
@@ -26,7 +26,9 @@ from sympy.calculus.singularities import singularities
 
 
 x = Symbol("x", real=True)
+m = Symbol("m", real=True)
 
+_PARAMETER_RANGES = {"m": {"min": -10.0, "max": 10.0, "step": 0.1}}
 _CLEAN_RE = re.compile(r"\s+")
 
 
@@ -39,9 +41,15 @@ def _parse_expr(expression: str):
         .replace("ctg", "cot")
     )
     try:
-        return sympify(cleaned, locals={"x": x})
+        expr = sympify(cleaned, locals={"x": x, "m": m})
     except (SympifyError, SyntaxError, TypeError) as e:
         raise ValueError(f"Không thể phân tích biểu thức: {expression!r}. Lỗi: {e}") from e
+
+    unsupported = expr.free_symbols - {x, m}
+    if unsupported:
+        names = ", ".join(sorted(str(symbol) for symbol in unsupported))
+        raise ValueError(f"Chỉ hỗ trợ biến x và tham số m trong phiên bản này. Ký hiệu chưa hỗ trợ: {names}.")
+    return expr
 
 
 def _fmt_sym(expr) -> str:
@@ -60,15 +68,50 @@ def _fmt_num(val) -> str:
         return str(val)
 
 
-def analyze_function(expression: str) -> dict[str, Any]:
+def _parameter_value(parameters: Mapping[str, float] | None, name: str) -> float:
+    raw = 1.0 if parameters is None else parameters.get(name, 1.0)
+    try:
+        value = float(raw)
+    except (TypeError, ValueError) as e:
+        raise ValueError(f"Tham số {name} không hợp lệ.") from e
+    if not isfinite(value):
+        raise ValueError(f"Tham số {name} phải là số hữu hạn.")
+    config = _PARAMETER_RANGES[name]
+    return min(max(value, config["min"]), config["max"])
+
+
+def analyze_function(expression: str, parameters: Mapping[str, float] | None = None) -> dict[str, Any]:
     warnings: list[str] = []
 
     try:
-        f = _parse_expr(expression)
+        parsed = _parse_expr(expression)
     except ValueError as e:
         return {"error": str(e), "warnings": [str(e)]}
 
-    result: dict[str, Any] = {"expression": expression, "expression_latex": latex(f)}
+    detected_parameters = ["m"] if m in parsed.free_symbols else []
+    active_parameters: dict[str, float] = {}
+    f = parsed
+    if "m" in detected_parameters:
+        try:
+            m_value = _parameter_value(parameters, "m")
+        except ValueError as e:
+            return {"error": str(e), "warnings": [str(e)]}
+        active_parameters["m"] = m_value
+        f = f.subs(m, m_value)
+        warnings.append(f"Kết quả khảo sát tại m = {_fmt_num(m_value)}.")
+
+    result: dict[str, Any] = {
+        "expression": expression,
+        "expression_latex": latex(parsed),
+        "evaluated_expression": _fmt_sym(f),
+        "evaluated_expression_latex": latex(f),
+        "analysis_mode": "numeric_substituted" if detected_parameters else "symbolic",
+        "parameters": {
+            "detected": detected_parameters,
+            "active": active_parameters,
+            "ranges": {name: dict(config) for name, config in _PARAMETER_RANGES.items() if name in detected_parameters},
+        },
+    }
 
     try:
         dom = continuous_domain(f, x, S.Reals)

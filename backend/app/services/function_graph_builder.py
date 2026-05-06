@@ -4,13 +4,15 @@ from app.renderers.geogebra_commands import build_geogebra_commands
 from app.schemas.scene import Annotation, FunctionGraph, MathScene, Point2D, SceneView, Segment
 
 x = Symbol("x", real=True)
+m = Symbol("m", real=True)
 
 
 def build_function_graph(analysis: dict) -> tuple[MathScene, list[str], list[dict[str, float]]]:
     objects = []
     annotations = []
 
-    objects.append(FunctionGraph(name="f", expression=_geogebra_expression(analysis["expression"])))
+    graph_expression = analysis.get("evaluated_expression") or analysis["expression"]
+    objects.append(FunctionGraph(name="f", expression=_geogebra_expression(graph_expression)))
 
     for i, cp in enumerate(analysis.get("critical_points", [])):
         x_val = _safe_float(cp.get("x"))
@@ -106,12 +108,12 @@ def build_function_graph(analysis: dict) -> tuple[MathScene, list[str], list[dic
         if isinstance(obj, Point2D) and obj.name.startswith(("VA", "HA", "ProjX", "ProjY")):
             commands.append(f"SetVisibleInView({obj.name}, 1, false)")
 
-    return scene, commands, _sample_graph_points(analysis["expression"])
+    return scene, commands, _sample_graph_points(graph_expression)
 
 
 def _sample_graph_points(expression: str) -> list[dict[str, float]]:
     try:
-        expr = sympify(expression.replace("^", "**"), locals={"x": x})
+        expr = sympify(expression.replace("^", "**"), locals={"x": x, "m": m})
         fn = lambdify(x, expr, "math")
     except Exception:
         return []

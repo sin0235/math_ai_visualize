@@ -486,9 +486,25 @@ export interface VariationRow {
   arrow_to_next: string | null;
 }
 
+export interface AnalyzeParameterRange {
+  min: number;
+  max: number;
+  step: number;
+}
+
+export interface AnalyzeParameters {
+  detected: string[];
+  active: Record<string, number>;
+  ranges: Record<string, AnalyzeParameterRange>;
+}
+
 export interface AnalyzeResponse {
   expression: string;
   expression_latex: string | null;
+  evaluated_expression: string | null;
+  evaluated_expression_latex: string | null;
+  parameters: AnalyzeParameters | null;
+  analysis_mode: 'symbolic' | 'numeric_substituted' | null;
   derivative: string | null;
   derivative_latex: string | null;
   second_derivative: string | null;
@@ -531,12 +547,12 @@ export async function solveProblem(
   }, 'Không thể giải toán từ scene này.');
 }
 
-export async function analyzeFunction(expression: string): Promise<AnalyzeResponse> {
+export async function analyzeFunction(expression: string, parameters?: { m?: number }): Promise<AnalyzeResponse> {
   return requestJson('/api/analyze', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ expression }),
+    body: JSON.stringify({ expression, parameters }),
   }, 'Không thể phân tích hàm số.');
 }
 

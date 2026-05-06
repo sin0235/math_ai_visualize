@@ -4042,6 +4042,77 @@ pre {
 }
 .sp-chip:hover { border-color: var(--ink-2); background: var(--surface); }
 
+.fa2-parameter-panel {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  background: #ffffff;
+}
+
+.fa2-parameter-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--ink-3);
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.fa2-parameter-head strong {
+  border-radius: 999px;
+  padding: 4px 10px;
+  background: var(--surface);
+  color: var(--ink);
+  font-family: 'Courier New', monospace;
+}
+
+.fa2-parameter-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 96px;
+  gap: 10px;
+  align-items: center;
+}
+
+.fa2-parameter-control input[type="range"] {
+  width: 100%;
+  box-shadow: none;
+}
+
+.fa2-parameter-control input[type="number"] {
+  width: 100%;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  padding: 6px 8px;
+  color: var(--ink);
+  background: var(--paper);
+  font-family: 'Courier New', monospace;
+  font-size: 0.85rem;
+  font-weight: 800;
+}
+
+.fa2-parameter-control input[type="number"]:focus {
+  border-color: var(--line-2);
+  box-shadow: none;
+}
+
+.fa2-parameter-note,
+.fa2-parameter-result-note {
+  color: var(--ink-4);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.fa2-parameter-result-note {
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: var(--surface);
+  color: var(--ink-3);
+  font-weight: 800;
+}
+
 /* Error */
 .sp-error {
   display: flex;

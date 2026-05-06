@@ -53,6 +53,7 @@ class SolveResponse(BaseModel):
 
 class AnalyzeRequest(BaseModel):
     expression: str = Field(min_length=1, max_length=1000)
+    parameters: dict[str, float] | None = None
 
 
 class AnalyzeOcrRequest(BaseModel):
@@ -78,6 +79,10 @@ class VariationRow(BaseModel):
 class AnalyzeResponse(BaseModel):
     expression: str
     expression_latex: str | None = None
+    evaluated_expression: str | None = None
+    evaluated_expression_latex: str | None = None
+    parameters: dict[str, Any] | None = None
+    analysis_mode: str | None = None
     derivative: str | None = None
     derivative_latex: str | None = None
     second_derivative: str | None = None
@@ -136,7 +141,7 @@ async def solve_problem(request: SolveRequest) -> SolveResponse:
 @router.post("/analyze", response_model=AnalyzeResponse, dependencies=[Depends(require_trusted_origin)])
 async def analyze_function_endpoint(request: AnalyzeRequest) -> AnalyzeResponse:
     try:
-        data = analyze_function(request.expression)
+        data = analyze_function(request.expression, request.parameters)
         if "error" not in data:
             scene, data["geogebra_commands"], data["graph_points"] = build_function_graph(data)
             data["graph_scene"] = scene.model_dump(mode="json")
@@ -174,6 +179,10 @@ def _analysis_response(expression: str, data: dict[str, Any]) -> AnalyzeResponse
     return AnalyzeResponse(
         expression=data["expression"],
         expression_latex=data.get("expression_latex"),
+        evaluated_expression=data.get("evaluated_expression"),
+        evaluated_expression_latex=data.get("evaluated_expression_latex"),
+        parameters=data.get("parameters"),
+        analysis_mode=data.get("analysis_mode"),
         derivative=data.get("derivative"),
         derivative_latex=data.get("derivative_latex"),
         second_derivative=data.get("second_derivative"),

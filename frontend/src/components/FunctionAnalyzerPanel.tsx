@@ -1,4 +1,4 @@
-import { Fragment, useId, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { analyzeFunction, analyzeFunctionImage, type AnalyzeResponse } from '../api/client';
 import { GeoGebraView } from './GeoGebraView';
 import { KatexSpan, sympyToLatex } from './KatexSpan';
@@ -15,49 +15,90 @@ const EXAMPLES = [
   { label: 'Bậc 4', value: 'x^4 - 8*x^2' },
   { label: 'Căn', value: 'sqrt(x^2 + 1)' },
   { label: 'Mũ', value: 'exp(x)' },
+  { label: 'Tham số', value: 'x^2 + m*x + 1' },
 ];
+
+const DEFAULT_M_RANGE = { min: -10, max: 10, step: 0.1 };
 
 export function FunctionAnalyzerPanel({ initialExpression = '', onOpenGuide }: FunctionAnalyzerPanelProps) {
   const [expression, setExpression] = useState(initialExpression);
   const [loading, setLoading] = useState(false);
   const [ocrLoading, setOcrLoading] = useState(false);
+  const [sliderLoading, setSliderLoading] = useState(false);
+  const [mValue, setMValue] = useState(1);
   const [result, setResult] = useState<AnalyzeResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const analyzeRequestRef = useRef(0);
+  const sliderDebounceRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (sliderDebounceRef.current !== null) window.clearTimeout(sliderDebounceRef.current);
+    };
+  }, []);
+
+  const hasParameterM = !!result?.parameters?.detected.includes('m');
+  const mRange = result?.parameters?.ranges.m ?? DEFAULT_M_RANGE;
+  const activeMValue = result?.parameters?.active.m ?? mValue;
+
+  async function runAnalyze(expr: string, nextMValue: number, options?: { slider?: boolean; clearResult?: boolean }) {
+    const requestId = ++analyzeRequestRef.current;
+    if (options?.slider) setSliderLoading(true);
+    else setLoading(true);
+    setError(null);
+    if (options?.clearResult) setResult(null);
+    try {
+      const res = await analyzeFunction(expr, { m: nextMValue });
+      if (requestId !== analyzeRequestRef.current) return;
+      if (res.error) setError(res.error);
+      else setResult(res);
+    } catch (e: unknown) {
+      if (requestId === analyzeRequestRef.current) setError(e instanceof Error ? e.message : 'Lỗi không xác định.');
+    } finally {
+      if (requestId === analyzeRequestRef.current) {
+        if (options?.slider) setSliderLoading(false);
+        else setLoading(false);
+      }
+    }
+  }
 
   async function handleAnalyze() {
     const expr = expression.trim();
     if (!expr) return;
-    setLoading(true);
-    setError(null);
-    setResult(null);
-    try {
-      const res = await analyzeFunction(expr);
-      if (res.error) setError(res.error);
-      else setResult(res);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Lỗi không xác định.');
-    } finally {
-      setLoading(false);
-    }
+    await runAnalyze(expr, mValue, { clearResult: true });
   }
 
   async function handleImageChange(file?: File) {
     if (!file) return;
+    const requestId = ++analyzeRequestRef.current;
     setOcrLoading(true);
     setError(null);
     setResult(null);
     try {
       const res = await analyzeFunctionImage(await readFileAsDataUrl(file));
+      if (requestId !== analyzeRequestRef.current) return;
       if (res.ocr_expression) setExpression(res.ocr_expression);
+      if (res.parameters?.active.m !== undefined) setMValue(res.parameters.active.m);
       if (res.error) setError(res.error);
       else setResult(res);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Lỗi OCR không xác định.');
+      if (requestId === analyzeRequestRef.current) setError(e instanceof Error ? e.message : 'Lỗi OCR không xác định.');
     } finally {
-      setOcrLoading(false);
+      if (requestId === analyzeRequestRef.current) setOcrLoading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
+  }
+
+  function handleParameterChange(value: number) {
+    const nextValue = clampToRange(value, mRange.min, mRange.max);
+    setMValue(nextValue);
+    const expr = expression.trim();
+    if (!expr || !hasParameterM) return;
+    if (sliderDebounceRef.current !== null) window.clearTimeout(sliderDebounceRef.current);
+    sliderDebounceRef.current = window.setTimeout(() => {
+      void runAnalyze(expr, nextValue, { slider: true });
+    }, 180);
   }
 
   async function handleImageButtonClick() {
@@ -139,16 +180,60 @@ export function FunctionAnalyzerPanel({ initialExpression = '', onOpenGuide }: F
         {EXAMPLES.map((ex) => <button key={ex.value} type="button" className="sp-chip" onClick={() => setExpression(ex.value)}>{ex.label}</button>)}
       </div>
 
+      {hasParameterM && (
+        <div className="fa2-parameter-panel">
+          <div className="fa2-parameter-head">
+            <span>Bài toán tham số</span>
+            <strong>m = {formatSliderValue(mValue)}</strong>
+          </div>
+          <div className="fa2-parameter-control">
+            <input
+              type="range"
+              min={mRange.min}
+              max={mRange.max}
+              step={mRange.step}
+              value={mValue}
+              onChange={(event) => handleParameterChange(Number(event.target.value))}
+              disabled={loading || ocrLoading}
+              aria-label="Giá trị tham số m"
+            />
+            <input
+              type="number"
+              min={mRange.min}
+              max={mRange.max}
+              step={mRange.step}
+              value={mValue}
+              onChange={(event) => handleParameterChange(Number(event.target.value))}
+              disabled={loading || ocrLoading}
+              aria-label="Nhập giá trị tham số m"
+            />
+          </div>
+          <div className="fa2-parameter-note">{sliderLoading ? 'Đang cập nhật đồ thị...' : `Kéo slider để khảo sát tại m từ ${mRange.min} đến ${mRange.max}.`}</div>
+        </div>
+      )}
+
       {error && <div className="sp-error" role="alert">{error}</div>}
       {result && <AnalysisResult result={result} />}
     </div>
   );
 }
 
+function clampToRange(value: number, min: number, max: number) {
+  if (!Number.isFinite(value)) return min;
+  return Math.min(Math.max(value, min), max);
+}
+
+function formatSliderValue(value: number) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+}
+
 function AnalysisResult({ result }: { result: AnalyzeResponse }) {
   return (
     <div className="fa2-result">
       <Section title="Đồ thị hàm số" icon="graph">
+        {result.analysis_mode === 'numeric_substituted' && result.parameters?.active.m !== undefined && (
+          <div className="fa2-parameter-result-note">Kết quả khảo sát tại m = {formatSliderValue(result.parameters.active.m)}.</div>
+        )}
         <FunctionGraphSvg result={result} />
       </Section>
 
