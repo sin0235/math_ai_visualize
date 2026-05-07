@@ -18,6 +18,9 @@ from app.services.function_graph_builder import build_function_graph
 from app.services.ocr import extract_text_from_image
 from app.services.openrouter_client import _build_headers as _build_openrouter_headers, _extract_message as _extract_openrouter_message
 from app.services.router9_client import Router9Client, _extract_message_content as _extract_router9_message_content
+from app.db.session import DatabaseClient, get_database
+from app.services.model_registry import resolve_effective_settings
+from app.services.solver_explainer import explain_solver_result
 from app.services.solver_service import solve
 
 router = APIRouter(prefix="/api", tags=["solver"])
@@ -33,6 +36,7 @@ Văn bản: {text}"""
 class SolveRequest(BaseModel):
     scene: dict[str, Any]
     question: str = Field(min_length=1, max_length=MAX_PROBLEM_TEXT_CHARS)
+    runtime_settings: RuntimeSettings | None = None
 
 
 class SolveStepResponse(BaseModel):
@@ -42,6 +46,10 @@ class SolveStepResponse(BaseModel):
     expression: str | None = None
     result: str | None = None
     highlight: list[str] = []
+    kind: str | None = None
+    formula_latex: str | None = None
+    substitution_latex: str | None = None
+    result_latex: str | None = None
 
 
 class SolveResponse(BaseModel):
@@ -114,9 +122,12 @@ class AnalyzeResponse(BaseModel):
 
 
 @router.post("/solve", response_model=SolveResponse, dependencies=[Depends(require_trusted_origin)])
-async def solve_problem(request: SolveRequest) -> SolveResponse:
+async def solve_problem(request: SolveRequest, db: DatabaseClient = Depends(get_database)) -> SolveResponse:
     try:
         result = solve(request.scene, request.question)
+        settings = await resolve_effective_settings(db, request.runtime_settings)
+        if settings.router9_api_key or settings.openrouter_api_key:
+            result = await explain_solver_result(result, request.scene, settings)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Lỗi khi giải toán: {e}") from e
 
@@ -131,6 +142,10 @@ async def solve_problem(request: SolveRequest) -> SolveResponse:
                 expression=s.expression,
                 result=s.result,
                 highlight=s.highlight,
+                kind=s.kind,
+                formula_latex=s.formula_latex,
+                substitution_latex=s.substitution_latex,
+                result_latex=s.result_latex,
             )
             for s in result.steps
         ],

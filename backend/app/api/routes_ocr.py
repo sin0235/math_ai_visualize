@@ -3,13 +3,12 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api.deps import get_optional_current_user, require_trusted_origin
-from app.core.config import get_settings, merge_runtime_settings
 from app.db.models import UserRecord
 from app.db.session import DatabaseClient, get_database
 from app.repositories.admin import AdminRepository
 from app.schemas.auth import SystemFeatureFlags
 from app.schemas.scene import OcrRequest, OcrResponse
-from app.services.extractor import _merge_admin_ai_settings
+from app.services.model_registry import resolve_effective_settings
 from app.services.ocr import extract_text_from_image
 from app.services.system_settings import load_feature_flags, load_plan_settings
 
@@ -23,8 +22,7 @@ async def ocr_image(
     db: DatabaseClient = Depends(get_database),
 ) -> OcrResponse:
     await enforce_ocr_access(db, user)
-    settings = await _merge_admin_ai_settings(get_settings(), db)
-    settings = merge_runtime_settings(settings, request.runtime_settings)
+    settings = await resolve_effective_settings(db, request.runtime_settings)
     try:
         result = await extract_text_from_image(
             request.image_data_url,

@@ -2,17 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { 
   AdminProviderModelSettings, 
   AdminRouter9ModelSettings, 
-  AdminOcrModelSettings, 
-  RuntimeSettings, 
+  RuntimeSettings,
   OcrProvider 
 } from '../../types/settings';
 import { 
-  scanProviderModels, 
   scanRouter9Models,
   checkAdminProvider,
 } from '../../api/client';
-import { AdminDetails } from './AdminComponents';
-import { buildModelOptionsFromDefaults, buildProviderOptions } from '../../utils/settingsOptions';
+import { buildModelOptionsFromDefaults, buildProviderOptions, providerLabels } from '../../utils/settingsOptions';
 import type { ProviderSettingsDefaults, SettingsDefaults } from '../../types/settings';
 
 // --- Utility Functions ---
@@ -34,6 +31,7 @@ const defaultRuntimeSettings: RuntimeSettings = {
   openrouter: { api_key: '', base_url: '', model: '', scanned_models: [], allowed_model_ids: [], last_scanned_at: '' },
   nvidia: { api_key: '', base_url: '', model: '', scanned_models: [], allowed_model_ids: [], last_scanned_at: '' },
   ollama: { api_key: '', base_url: '', model: '', scanned_models: [], allowed_model_ids: [], last_scanned_at: '' },
+  openai_compat: { api_key: '', base_url: 'http://localhost:8080/v1', model: '', scanned_models: [], allowed_model_ids: [], last_scanned_at: '' },
   router9: { api_key: '', base_url: '', model: '', scanned_models: [], last_scanned_at: '', only_mode: false, allowed_model_ids: [] },
   ocr: { provider: 'openrouter', model: '', max_image_mb: 8 },
   openrouter_http_referer: '',
@@ -63,7 +61,7 @@ function getAdminProviderSettings(value: Record<string, unknown>, provider: stri
 
 function providerDefaultsFor(defaults: SettingsDefaults | null | undefined, provider: string): ProviderSettingsDefaults | undefined {
   if (!defaults) return undefined;
-  if (provider === 'openrouter' || provider === 'nvidia' || provider === 'ollama' || provider === 'router9') return defaults[provider];
+  if (provider === 'openrouter' || provider === 'nvidia' || provider === 'ollama' || provider === 'openai_compat' || provider === 'router9') return defaults[provider];
   return undefined;
 }
 
@@ -86,6 +84,7 @@ function adminSettingsToRuntime(value: Record<string, unknown>): RuntimeSettings
     openrouter: { ...defaultRuntimeSettings.openrouter, ...getAdminProviderSettings(value, 'openrouter') },
     nvidia: { ...defaultRuntimeSettings.nvidia, ...getAdminProviderSettings(value, 'nvidia') },
     ollama: { ...defaultRuntimeSettings.ollama, ...getAdminProviderSettings(value, 'ollama') },
+    openai_compat: { ...defaultRuntimeSettings.openai_compat, ...getAdminProviderSettings(value, 'openai_compat') },
     router9: { ...defaultRuntimeSettings.router9, ...router9 },
     ocr: { ...defaultRuntimeSettings.ocr, ...getAdminOcrSettings(value), provider: getAdminOcrSettings(value).provider as OcrProvider },
     openrouter_http_referer: getStringValue(value.openrouter_http_referer, ''),
@@ -165,6 +164,7 @@ function adminSettingsToDefaults(value: Record<string, unknown>): SettingsDefaul
     },
     nvidia: adminProviderToDefaults(value, 'nvidia'),
     ollama: adminProviderToDefaults(value, 'ollama'),
+    openai_compat: adminProviderToDefaults(value, 'openai_compat'),
     router9: {
       ...adminProviderToDefaults(value, 'router9'),
       only_mode: getAdminProviderSettings(value, 'router9').only_mode,
@@ -199,28 +199,21 @@ function getAiTaskProfile(value: unknown) {
 // --- Form Components ---
 
 export function AdminAiSettingsForm({ value, defaults, saving, onSave }: { value: Record<string, unknown>; defaults: SettingsDefaults | null; saving: boolean; onSave: (patch: Record<string, unknown>) => Promise<void> }) {
-  const provider = 'router9';
-  const providerValue = getAdminProviderSettings(value, provider, defaults);
+  const providers = ['openrouter', 'nvidia', 'ollama', 'openai_compat', 'router9'] as const;
   const ocrValue = getAdminOcrSettings(value);
-  const [baseUrl, setBaseUrl] = useState(providerValue.base_url);
-  const [model, setModel] = useState(providerValue.model);
-  const [allowedModelIds, setAllowedModelIds] = useState<string[]>(providerValue.allowed_model_ids);
-  const [router9OnlyMode, setRouter9OnlyMode] = useState(providerValue.only_mode);
+  const [draft, setDraft] = useState(() => Object.fromEntries(providers.map((provider) => [provider, getAdminProviderSettings(value, provider, defaults)])) as Record<(typeof providers)[number], ReturnType<typeof getAdminProviderSettings>>);
   const [ocrProvider, setOcrProvider] = useState(ocrValue.provider);
   const [ocrModel, setOcrModel] = useState(ocrValue.model);
   const [ocrMaxImageMb, setOcrMaxImageMb] = useState(String(ocrValue.max_image_mb));
-  const [scanning, setScanning] = useState(false);
-  const [checking, setChecking] = useState(false);
+  const [scanning, setScanning] = useState<string | null>(null);
+  const [checking, setChecking] = useState<string | null>(null);
   const [modelFilter, setModelFilter] = useState('');
-  const [checkResult, setCheckResult] = useState<{ status: string; message: string } | null>(null);
+  const [manualModelInputs, setManualModelInputs] = useState<Record<string, string>>({});
+  const [checkResults, setCheckResults] = useState<Record<string, { status: string; message: string }>>({});
 
   useEffect(() => {
-    const next = getAdminProviderSettings(value, provider, defaults);
-    setBaseUrl(next.base_url);
-    setModel(next.model);
-    setAllowedModelIds(next.allowed_model_ids);
-    setRouter9OnlyMode(next.only_mode);
-    setCheckResult(null);
+    setDraft(Object.fromEntries(providers.map((provider) => [provider, getAdminProviderSettings(value, provider, defaults)])) as Record<(typeof providers)[number], ReturnType<typeof getAdminProviderSettings>>);
+    setCheckResults({});
   }, [value, defaults]);
 
   useEffect(() => {
@@ -230,15 +223,18 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave }: { value
     setOcrMaxImageMb(String(nextOcr.max_image_mb));
   }, [value]);
 
-  async function saveProvider() {
+  function updateProvider(provider: (typeof providers)[number], patch: Partial<ReturnType<typeof getAdminProviderSettings>>) {
+    setDraft((current) => ({ ...current, [provider]: { ...current[provider], ...patch } }));
+  }
+
+  async function saveProvider(provider: (typeof providers)[number]) {
     const current = getAdminProviderSettings(value, provider, defaults);
     await onSave({
       [provider]: {
         ...current,
-        base_url: baseUrl.trim(),
-        model: model.trim(),
-        allowed_model_ids: allowedModelIds,
-        only_mode: router9OnlyMode,
+        ...draft[provider],
+        base_url: draft[provider].base_url.trim(),
+        model: draft[provider].model.trim(),
       },
     });
   }
@@ -253,50 +249,67 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave }: { value
     });
   }
 
-  async function scanModels() {
-    setScanning(true);
+  async function scanRouter9() {
+    const provider = 'router9';
+    setScanning(provider);
     try {
-      const runtime = adminSettingsToRuntime(value);
+      const runtime = adminSettingsToRuntime({ ...value, router9: draft.router9 });
       const models = await scanRouter9Models(runtime);
-      await onSave({
-        [provider]: {
-          ...getAdminProviderSettings(value, provider, defaults),
-          base_url: baseUrl.trim(),
-          model: model.trim(),
-          allowed_model_ids: allowedModelIds,
-          only_mode: router9OnlyMode,
-          scanned_models: models,
-          last_scanned_at: new Date().toISOString(),
-        },
-      });
+      const next = { ...draft.router9, scanned_models: models, last_scanned_at: new Date().toISOString() };
+      updateProvider(provider, next);
+      await onSave({ router9: next });
     } finally {
-      setScanning(false);
+      setScanning(null);
     }
   }
 
-  async function checkProvider() {
-    setChecking(true);
-    setCheckResult(null);
+  function manualModelOptions(provider: (typeof providers)[number]) {
+    return adminModelOptions(draft[provider], [draft[provider].model]);
+  }
+
+  function addManualModel(provider: (typeof providers)[number], rawValue: string) {
+    const modelId = rawValue.trim();
+    if (!modelId) return;
+    const id = modelId.includes('/') ? modelId : `${provider}/${modelId}`;
+    const exists = draft[provider].scanned_models.some((modelItem: any) => (typeof modelItem === 'string' ? modelItem : modelItem.id) === id);
+    const scanned_models = exists ? draft[provider].scanned_models : [...draft[provider].scanned_models, { id, label: id, provider }];
+    updateProvider(provider, {
+      scanned_models,
+      allowed_model_ids: [...new Set([...draft[provider].allowed_model_ids, id])],
+      model: provider === 'router9' ? draft[provider].model || id : draft[provider].model,
+    });
+  }
+
+  function removeManualModel(provider: (typeof providers)[number], modelId: string) {
+    updateProvider(provider, {
+      scanned_models: draft[provider].scanned_models.filter((modelItem: any) => (typeof modelItem === 'string' ? modelItem : modelItem.id) !== modelId),
+      allowed_model_ids: draft[provider].allowed_model_ids.filter((id) => id !== modelId),
+      model: draft[provider].model === modelId ? '' : draft[provider].model,
+    });
+  }
+
+  async function checkProvider(provider: (typeof providers)[number]) {
+    setChecking(provider);
     try {
       const result = await checkAdminProvider(provider);
-      setCheckResult(result);
+      setCheckResults((current) => ({ ...current, [provider]: result }));
     } catch (error) {
-      setCheckResult({ status: 'error', message: String(error) });
+      setCheckResults((current) => ({ ...current, [provider]: { status: 'error', message: String(error) } }));
     } finally {
-      setChecking(false);
+      setChecking(null);
     }
   }
 
-  function toggleModelId(modelId: string) {
-    setAllowedModelIds((current) =>
-      current.includes(modelId)
-        ? current.filter((id) => id !== modelId)
-        : [...current, modelId]
-    );
+  function toggleModelId(provider: (typeof providers)[number], modelId: string) {
+    updateProvider(provider, {
+      allowed_model_ids: draft[provider].allowed_model_ids.includes(modelId)
+        ? draft[provider].allowed_model_ids.filter((id) => id !== modelId)
+        : [...draft[provider].allowed_model_ids, modelId],
+    });
   }
 
   function selectOcrProvider(nextProvider: string) {
-    const nextSettings = getAdminProviderSettings(value, nextProvider, defaults);
+    const nextSettings = draft[nextProvider as (typeof providers)[number]] ?? getAdminProviderSettings(value, nextProvider, defaults);
     const firstScannedModel = nextSettings.scanned_models
       .map((modelItem: any) => typeof modelItem === 'string' ? modelItem : modelItem.id)
       .find(Boolean);
@@ -304,70 +317,86 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave }: { value
     setOcrModel(defaults?.ocr.provider === nextProvider ? defaults.ocr.model : nextSettings.model || firstScannedModel || '');
   }
 
-  const modelOptions = adminModelOptions(providerValue, [model]);
-  const allowlistOptions = orderedAllowlistModelOptions(providerValue, allowedModelIds);
   const normalizedModelFilter = modelFilter.trim().toLowerCase();
-  const filteredAllowlistOptions = normalizedModelFilter
-    ? allowlistOptions.filter((modelItem) => modelItem.id.toLowerCase().includes(normalizedModelFilter) || modelItem.name.toLowerCase().includes(normalizedModelFilter))
-    : allowlistOptions;
-  const ocrProviderValue = getAdminProviderSettings(value, ocrProvider, defaults);
+  const ocrProviderValue = draft[ocrProvider as (typeof providers)[number]] ?? getAdminProviderSettings(value, ocrProvider, defaults);
   const ocrModelOptions = adminModelOptions(ocrProviderValue, [ocrModel, defaults?.ocr.provider === ocrProvider ? defaults.ocr.model : '']);
 
   return (
     <div className="admin-ai-settings">
       <section className="admin-settings-section">
-        <h4>Cấu hình 9router</h4>
-        <div className="admin-field-grid">
-          <label className="field-label">URL cơ sở<input type="url" value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} placeholder="https://..." /></label>
-          <label className="field-label">Model mặc định<select value={model} onChange={(event) => setModel(event.target.value)}><option value="">Chọn model</option>{modelOptions.map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.name}</option>)}</select></label>
-          <label className="checkbox-label"><input type="checkbox" checked={router9OnlyMode} onChange={(event) => setRouter9OnlyMode(event.target.checked)} /> Chỉ dùng 9router</label>
+        <h4>Provider & model</h4>
+        <p className="field-hint">9router hỗ trợ quét model. OpenRouter/NVIDIA/Ollama dùng danh sách thủ công dạng provider/model-id.</p>
+        <label className="field-label">Tìm model<input type="search" value={modelFilter} onChange={(event) => setModelFilter(event.target.value)} placeholder="Nhập tên hoặc ID model" /></label>
+        <div className="admin-provider-grid">
+          {providers.map((provider) => {
+            const providerValue = draft[provider];
+            const modelOptions = manualModelOptions(provider);
+            const allowlistOptions = orderedAllowlistModelOptions(providerValue, providerValue.allowed_model_ids);
+            const filteredAllowlistOptions = normalizedModelFilter
+              ? allowlistOptions.filter((modelItem) => modelItem.id.toLowerCase().includes(normalizedModelFilter) || modelItem.name.toLowerCase().includes(normalizedModelFilter))
+              : allowlistOptions;
+            const result = checkResults[provider];
+            return (
+              <article className="admin-provider-card" key={provider}>
+                <div className="admin-provider-card-head">
+                  <div><strong>{providerLabels[provider]}</strong><span>{provider === 'router9' ? `${providerValue.scanned_models.length} model quét` : `${providerValue.scanned_models.length} model thủ công`} · allowlist {providerValue.allowed_model_ids.length}</span></div>
+                  {provider === 'router9' ? (
+                    <label className="checkbox-label"><input type="checkbox" checked={providerValue.only_mode} onChange={(event) => updateProvider(provider, { only_mode: event.target.checked })} /> Chỉ dùng 9router</label>
+                  ) : (
+                    <div className="admin-row-actions admin-provider-card-head-actions">
+                      <button type="button" className="secondary-button" onClick={() => void checkProvider(provider)} disabled={saving || checking === provider}>{checking === provider ? 'Đang kiểm tra...' : 'Kiểm tra'}</button>
+                      <button type="button" className="secondary-button" onClick={() => void saveProvider(provider)} disabled={saving}>{saving ? 'Đang lưu...' : 'Lưu provider'}</button>
+                    </div>
+                  )}
+                </div>
+                <div className="admin-provider-config">
+                <div className={`admin-field-grid ${provider === 'router9' ? 'admin-field-grid-router9' : ''}`}>
+                  <label className="field-label">Base URL<input type="url" value={providerValue.base_url} onChange={(event) => updateProvider(provider, { base_url: event.target.value })} placeholder="https://..." /></label>
+                  <label className="field-label">API key<input type="password" value={(providerValue as any).api_key ?? ''} onChange={(event) => updateProvider(provider, { ...( { api_key: event.target.value } as any) })} placeholder={defaults?.[provider]?.api_key_configured ? 'Đã cấu hình, nhập để thay' : 'Nhập API key'} /></label>
+                  {provider === 'router9' && <label className="field-label">Model mặc định hệ thống<select value={providerValue.model} onChange={(event) => updateProvider(provider, { model: event.target.value })}><option value="">Chọn model</option>{modelOptions.map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.name}</option>)}</select></label>}
+                </div>
+                {result && <div className={`admin-status-box ${result.status}`}><strong>{result.status === 'ok' ? 'Thành công' : 'Lỗi'}</strong><p>{result.message}</p></div>}
+                {provider === 'router9' && (
+                  <div className="admin-row-actions">
+                    <button type="button" className="secondary-button" onClick={() => void checkProvider(provider)} disabled={saving || checking === provider}>{checking === provider ? 'Đang kiểm tra...' : 'Kiểm tra'}</button>
+                    <button type="button" className="secondary-button" onClick={() => void scanRouter9()} disabled={saving || scanning === provider}>{scanning === provider ? 'Đang quét...' : 'Quét model'}</button>
+                    <button type="button" className="secondary-button" onClick={() => void saveProvider(provider)} disabled={saving}>{saving ? 'Đang lưu...' : 'Lưu provider'}</button>
+                  </div>
+                )}
+                </div>
+                <div className="admin-provider-models">
+                  <div className="admin-provider-models-head">
+                    <strong>{provider === 'router9' ? 'Model inventory' : 'Model thủ công'}</strong>
+                    <span>{filteredAllowlistOptions.length}/{allowlistOptions.length}</span>
+                  </div>
+                  {provider !== 'router9' && (
+                    <div className="admin-manual-model-row">
+                      <input value={manualModelInputs[provider] ?? ''} onChange={(event) => setManualModelInputs((current) => ({ ...current, [provider]: event.target.value }))} placeholder={`${provider}/model-id hoặc model-id`} />
+                      <button type="button" className="secondary-button" onClick={() => { addManualModel(provider, manualModelInputs[provider] ?? ''); setManualModelInputs((current) => ({ ...current, [provider]: '' })); }}>Thêm model</button>
+                    </div>
+                  )}
+                  <div className="admin-model-checklist">
+                    {filteredAllowlistOptions.map((modelItem) => (
+                      <div key={modelItem.id} className="admin-model-checkbox">
+                        <label>
+                          <input type="checkbox" checked={providerValue.allowed_model_ids.includes(modelItem.id)} onChange={() => toggleModelId(provider, modelItem.id)} />
+                          <span className="model-label"><strong>{modelItem.name}</strong>{modelItem.id !== modelItem.name && <small>{modelItem.id}</small>}</span>
+                        </label>
+                        {provider !== 'router9' && <button type="button" className="history-delete" onClick={() => removeManualModel(provider, modelItem.id)} aria-label={`Xoá ${modelItem.id}`}>×</button>}
+                      </div>
+                    ))}
+                    {filteredAllowlistOptions.length === 0 && <p className="field-hint">{provider === 'router9' ? 'Chưa có model đã quét hoặc không khớp bộ lọc.' : 'Chưa có model thủ công hoặc không khớp bộ lọc.'}</p>}
+                  </div>
+                </div>
+              </article>
+            );
+          })}
         </div>
-        <div className="admin-field-grid">
-          <span><strong>Model đã quét</strong>{providerValue.scanned_models.length} model</span>
-          <span><strong>Lần quét gần nhất</strong>{providerValue.last_scanned_at || 'Chưa quét'}</span>
-        </div>
-        {checkResult && (
-          <div className={`admin-status-box ${checkResult.status}`}>
-            <strong>{checkResult.status === 'ok' ? 'Thành công' : 'Lỗi'}</strong>
-            <p>{checkResult.message}</p>
-          </div>
-        )}
-        <div className="admin-row-actions">
-          <button type="button" className="secondary-button" onClick={checkProvider} disabled={saving || checking}>{checking ? 'Đang kiểm tra...' : 'Kiểm tra kết nối'}</button>
-          <button type="button" className="secondary-button" onClick={scanModels} disabled={saving || scanning}>{scanning ? 'Đang quét...' : 'Quét model'}</button>
-        </div>
-      </section>
-
-      <section className="admin-settings-section">
-        <h4>Model hiển thị cho người dùng ({allowedModelIds.length} đã chọn)</h4>
-        {allowlistOptions.length > 0 && (
-          <>
-            <p className="field-hint">Chọn model người dùng có thể thấy và sử dụng trong danh sách chọn.</p>
-            <label className="field-label">Tìm model<input type="search" value={modelFilter} onChange={(event) => setModelFilter(event.target.value)} placeholder="Nhập tên hoặc ID model" /></label>
-            <p className="field-hint">Hiển thị {filteredAllowlistOptions.length}/{allowlistOptions.length} model.</p>
-            <div className="admin-model-checklist">
-              {filteredAllowlistOptions.map((modelItem) => (
-                <label key={modelItem.id} className="checkbox-label admin-model-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={allowedModelIds.includes(modelItem.id)}
-                    onChange={() => toggleModelId(modelItem.id)}
-                  />
-                  <span className="model-label">
-                    <strong>{modelItem.name}</strong>
-                    {modelItem.id !== modelItem.name && <small>{modelItem.id}</small>}
-                  </span>
-                </label>
-              ))}
-            </div>
-          </>
-        )}
-        <button type="button" className="secondary-button" onClick={saveProvider} disabled={saving}>{saving ? 'Đang lưu...' : 'Lưu danh sách model'}</button>
       </section>
 
       <section className="admin-settings-section">
         <h4>OCR</h4>
-        <div className="admin-field-grid">
+        <div className="admin-field-grid admin-ocr-grid">
           <label className="field-label">Provider OCR<select value={ocrProvider} onChange={(event) => selectOcrProvider(event.target.value)}><option value="openrouter">OpenRouter</option><option value="router9">9router</option></select></label>
           <label className="field-label">Model OCR<select value={ocrModel} onChange={(event) => setOcrModel(event.target.value)}><option value="">Chọn model</option>{ocrModelOptions.map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.name}</option>)}</select></label>
           <label className="field-label">Dung lượng ảnh tối đa (MB)<input type="number" min="1" max="32" value={ocrMaxImageMb} onChange={(event) => setOcrMaxImageMb(event.target.value)} /></label>
@@ -427,10 +456,14 @@ export function AdminFeatureFlagsForm({ value, onSave }: { value: Record<string,
 
 export function AdminAiProfilesForm({ value, aiSettings, onSave }: { value: Record<string, unknown>; aiSettings: Record<string, unknown>; onSave: (value: Record<string, unknown>) => Promise<void> }) {
   const geometry = getAiTaskProfile(value.geometry_reasoning);
+  const solver = getAiTaskProfile(value.solver_explanation);
   const ocr = getAiTaskProfile(value.ocr);
   const [geometryProvider, setGeometryProvider] = useState(geometry.provider);
   const [geometryModel, setGeometryModel] = useState(geometry.model);
   const [geometryFallbacks, setGeometryFallbacks] = useState<string[]>(geometry.fallbacks);
+  const [solverProvider, setSolverProvider] = useState(solver.provider);
+  const [solverModel, setSolverModel] = useState(solver.model);
+  const [solverFallbacks, setSolverFallbacks] = useState<string[]>(solver.fallbacks);
   const [ocrProvider, setOcrProvider] = useState(ocr.provider);
   const [ocrModel, setOcrModel] = useState(ocr.model);
   const [ocrFallbacks, setOcrFallbacks] = useState<string[]>(ocr.fallbacks);
@@ -443,11 +476,11 @@ export function AdminAiProfilesForm({ value, aiSettings, onSave }: { value: Reco
   }
 
   function modelOptions(selectedProvider: string, selectedModel: string, fallbackModels: string[] = []) {
-    return buildModelOptionsFromDefaults(providerDefaults(selectedProvider), selectedModel, fallbackModels);
+    return buildModelOptionsFromDefaults(providerDefaults(selectedProvider), selectedModel, fallbackModels, settingsDefaults, selectedProvider);
   }
 
-  function updateFallbacks(kind: 'geometry' | 'ocr', modelId: string, checked: boolean) {
-    const setter = kind === 'geometry' ? setGeometryFallbacks : setOcrFallbacks;
+  function updateFallbacks(kind: 'geometry' | 'solver' | 'ocr', modelId: string, checked: boolean) {
+    const setter = kind === 'geometry' ? setGeometryFallbacks : kind === 'solver' ? setSolverFallbacks : setOcrFallbacks;
     setter((current) => checked ? [...new Set([...current, modelId])] : current.filter((item) => item !== modelId));
   }
 
@@ -455,28 +488,38 @@ export function AdminAiProfilesForm({ value, aiSettings, onSave }: { value: Reco
     <section className="admin-settings-section"><h4>Hồ sơ AI</h4><div className="admin-field-grid">
       <label className="field-label">Provider hình học<select value={geometryProvider} onChange={(event) => setGeometryProvider(event.target.value)}><option value="auto">auto</option>{providerOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
       <label className="field-label">Model hình học<select value={geometryModel} onChange={(event) => setGeometryModel(event.target.value)}><option value="">Chọn model</option>{modelOptions(geometryProvider, geometryModel, geometryFallbacks).map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.label}</option>)}</select></label>
+      <label className="field-label">Provider diễn giải lời giải<select value={solverProvider} onChange={(event) => setSolverProvider(event.target.value)}><option value="auto">auto</option>{providerOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
+      <label className="field-label">Model diễn giải lời giải<select value={solverModel} onChange={(event) => setSolverModel(event.target.value)}><option value="">Chọn model</option>{modelOptions(solverProvider, solverModel, solverFallbacks).map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.label}</option>)}</select></label>
       <label className="field-label">Provider OCR<select value={ocrProvider} onChange={(event) => setOcrProvider(event.target.value)}><option value="auto">auto</option>{providerOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
       <label className="field-label">Model OCR<select value={ocrModel} onChange={(event) => setOcrModel(event.target.value)}><option value="">Chọn model</option>{modelOptions(ocrProvider, ocrModel, ocrFallbacks).map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.label}</option>)}</select></label>
     </div>
     <div className="admin-model-fallback-grid">
       <ModelFallbackChecklist title="Model dự phòng hình học" options={modelOptions(geometryProvider, geometryModel, geometryFallbacks)} selected={geometryFallbacks} onToggle={(modelId, checked) => updateFallbacks('geometry', modelId, checked)} />
+      <ModelFallbackChecklist title="Model dự phòng diễn giải lời giải" options={modelOptions(solverProvider, solverModel, solverFallbacks)} selected={solverFallbacks} onToggle={(modelId, checked) => updateFallbacks('solver', modelId, checked)} />
       <ModelFallbackChecklist title="Model dự phòng OCR" options={modelOptions(ocrProvider, ocrModel, ocrFallbacks)} selected={ocrFallbacks} onToggle={(modelId, checked) => updateFallbacks('ocr', modelId, checked)} />
     </div>
-    <button type="button" className="secondary-button" onClick={() => void onSave({ version: 1, geometry_reasoning: { provider: geometryProvider, model: geometryModel, fallbacks: geometryFallbacks }, ocr: { provider: ocrProvider, model: ocrModel, fallbacks: ocrFallbacks } })}>Lưu hồ sơ AI</button></section>
+    <button type="button" className="secondary-button" onClick={() => void onSave({ version: 1, geometry_reasoning: { provider: geometryProvider, model: geometryModel, fallbacks: geometryFallbacks }, solver_explanation: { provider: solverProvider, model: solverModel, fallbacks: solverFallbacks }, ocr: { provider: ocrProvider, model: ocrModel, fallbacks: ocrFallbacks } })}>Lưu hồ sơ AI</button></section>
   );
 }
 
 function ModelFallbackChecklist({ title, options, selected, onToggle }: { title: string; options: Array<{ id: string; label: string }>; selected: string[]; onToggle: (modelId: string, checked: boolean) => void }) {
   return (
-    <fieldset className="admin-model-fallback-list">
-      <legend>{title}</legend>
-      {options.length > 0 ? options.map((option) => (
-        <label key={option.id} className="admin-model-checkbox">
-          <input type="checkbox" checked={selected.includes(option.id)} onChange={(event) => onToggle(option.id, event.target.checked)} />
-          <span className="model-label"><strong>{option.label}</strong><small>{option.id}</small></span>
-        </label>
-      )) : <p className="field-hint">Chưa có model đã quét hoặc allowlist cho provider này.</p>}
-    </fieldset>
+    <section className="admin-model-fallback-list">
+      <div className="admin-provider-models-head">
+        <strong>{title}</strong>
+        <span>{options.length}</span>
+      </div>
+      <div className="admin-model-checklist">
+        {options.length > 0 ? options.map((option) => (
+          <div key={option.id} className="admin-model-checkbox">
+            <label>
+              <input type="checkbox" checked={selected.includes(option.id)} onChange={(event) => onToggle(option.id, event.target.checked)} />
+              <span className="model-label"><strong>{option.id}</strong></span>
+            </label>
+          </div>
+        )) : <p className="field-hint">Chưa có model đã quét hoặc allowlist cho provider này.</p>}
+      </div>
+    </section>
   );
 }
 

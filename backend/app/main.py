@@ -23,8 +23,9 @@ settings = get_settings()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await apply_migrations(create_database_client(settings), settings)
-    await bootstrap_router9_models(settings)
+    current_settings = get_settings()
+    await apply_migrations(create_database_client(current_settings), current_settings)
+    await bootstrap_router9_models(current_settings)
     yield
 
 

@@ -12,7 +12,7 @@ MAX_REFERER_CHARS = 2_048
 MAX_TITLE_CHARS = 256
 
 Renderer = Literal["geogebra_2d", "geogebra_3d", "threejs_3d"]
-AiProvider = Literal["auto", "router9", "openrouter", "openrouter_gpt_oss", "opencode_nemotron", "nvidia", "ollama_gpt_oss", "mock"]
+AiProvider = Literal["auto", "router9", "openrouter", "openrouter_gpt_oss", "opencode_nemotron", "nvidia", "ollama_gpt_oss", "openai_compat", "mock"]
 CoordinateAssignment = Literal["ai", "auto_origin", "prefer_o_origin"]
 ReasoningLayerMode = Literal["off", "auto", "force"]
 Topic = Literal[
@@ -190,6 +190,7 @@ class RuntimeSettings(BaseModel):
     openrouter: ProviderRuntimeSettings | None = None
     nvidia: ProviderRuntimeSettings | None = None
     ollama: ProviderRuntimeSettings | None = None
+    openai_compat: ProviderRuntimeSettings | None = None
     router9: Router9RuntimeSettings | None = None
     openrouter_http_referer: str | None = Field(default=None, max_length=MAX_REFERER_CHARS)
     openrouter_x_title: str | None = Field(default=None, max_length=MAX_TITLE_CHARS)
@@ -264,14 +265,50 @@ class OcrSettingsDefaults(BaseModel):
     max_image_mb: int
 
 
+class RegistryProviderDefaults(BaseModel):
+    id: str
+    label: str
+    base_url: str
+    default_model_id: str
+    api_key_configured: bool
+    enabled: bool
+    last_checked_at: str | None = None
+    last_check_status: str | None = None
+    last_check_message: str | None = None
+
+
+class RegistryModelDefaults(BaseModel):
+    provider_id: str
+    id: str
+    label: str
+    owned_by: str | None = None
+    context_length: int | None = None
+    enabled: bool
+    allowed: bool
+    source: str
+    last_seen_at: str | None = None
+
+
+class RegistryTaskProfileDefaults(BaseModel):
+    task: str
+    provider_id: str
+    model_id: str
+    fallbacks: list[str] = Field(default_factory=list)
+
+
 class SettingsDefaultsResponse(BaseModel):
     app_name: str
     default_provider: str
     openrouter: OpenRouterSettingsDefaults
     nvidia: ProviderSettingsDefaults
     ollama: ProviderSettingsDefaults
+    openai_compat: ProviderSettingsDefaults
     router9: Router9SettingsDefaults
     ocr: OcrSettingsDefaults
+    registry_providers: list[RegistryProviderDefaults] = Field(default_factory=list)
+    registry_models: list[RegistryModelDefaults] = Field(default_factory=list)
+    registry_task_profiles: list[RegistryTaskProfileDefaults] = Field(default_factory=list)
+    registry_legacy_ai_settings_present: bool = False
 
 
 class RenderRequest(BaseModel):

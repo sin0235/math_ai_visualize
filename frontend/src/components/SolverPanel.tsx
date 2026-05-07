@@ -1,23 +1,39 @@
 import { useRef, useState } from 'react';
 import { solveProblem, type SolveResponse, type SolveStep } from '../api/client';
+import type { RuntimeSettings } from '../types/settings';
 import type { MathScene } from '../types/scene';
 import { KatexSpan, sympyToLatex } from './KatexSpan';
 
 interface SolverPanelProps {
   scene: MathScene;
+  runtimeSettings?: RuntimeSettings;
   onHighlight: (names: string[]) => void;
 }
 
-const EXAMPLES = [
-  'Tính khoảng cách AB',
-  'Tính góc ABC',
-  'Tính diện tích ABCD',
-  'AB vuông góc CD?',
-  'AB song song CD?',
-  'Thể tích ABCD',
-];
+function buildExamples(scene: MathScene) {
+  const pointNames = scene.objects
+    .filter((obj): obj is Extract<MathScene['objects'][number], { type: 'point_3d' }> => obj.type === 'point_3d')
+    .map((point) => point.name);
+  const face = scene.objects.find((obj): obj is Extract<MathScene['objects'][number], { type: 'face' }> => obj.type === 'face' && obj.points.length >= 3);
+  const base = face?.points ?? pointNames.slice(0, 4);
+  const apex = pointNames.find((name) => !base.includes(name)) ?? pointNames[0];
+  const edge = base.length >= 2 ? `${base[0]}${base[1]}` : '';
+  const secondEdge = base.length >= 4 ? `${base[2]}${base[3]}` : edge;
+  const plane = base.length >= 3 ? `(${base.join('')})` : '';
+  const examples = [
+    pointNames.length >= 2 ? `d(${pointNames[0]},${pointNames[1]})` : '',
+    apex && edge && !edge.includes(apex) ? `d(${apex},${edge})` : '',
+    apex && plane && !base.includes(apex) ? `d(${apex},${plane})` : '',
+    edge && secondEdge && edge !== secondEdge ? `Góc giữa ${edge} và ${secondEdge}` : '',
+    apex && edge && plane && !base.includes(apex) ? `Góc giữa ${apex}${base[0]} và ${plane}` : '',
+    base.length >= 3 ? `S(${base.join('')})` : '',
+    apex && base.length >= 3 && !base.includes(apex) ? `V(${apex}.${base.join('')})` : '',
+  ].filter(Boolean);
+  return Array.from(new Set(examples));
+}
 
-export function SolverPanel({ scene, onHighlight }: SolverPanelProps) {
+export function SolverPanel({ scene, runtimeSettings, onHighlight }: SolverPanelProps) {
+  const examples = buildExamples(scene);
   const [question, setQuestion] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<SolveResponse | null>(null);
@@ -33,7 +49,7 @@ export function SolverPanel({ scene, onHighlight }: SolverPanelProps) {
     setActiveStep(null);
     onHighlight([]);
     try {
-      const res = await solveProblem(scene, question.trim());
+      const res = await solveProblem(scene, question.trim(), runtimeSettings);
       setResult(res);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Lỗi không xác định.');
@@ -75,7 +91,7 @@ export function SolverPanel({ scene, onHighlight }: SolverPanelProps) {
           id="solver-question-input"
           className="sp-input"
           type="text"
-          placeholder="Nhập câu hỏi, ví dụ: Tính khoảng cách AB"
+          placeholder="Nhập câu hỏi, ví dụ: d(A,(BCD))"
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') void handleSolve(); }}
@@ -99,7 +115,7 @@ export function SolverPanel({ scene, onHighlight }: SolverPanelProps) {
 
       {/* Example chips */}
       <div className="sp-chips">
-        {EXAMPLES.map((q) => (
+        {examples.map((q) => (
           <button
             key={q}
             type="button"
@@ -169,12 +185,30 @@ export function SolverPanel({ scene, onHighlight }: SolverPanelProps) {
                         )}
                       </div>
                       <p className="sp-step-text">{step.explanation}</p>
-                      {step.expression && (
+                      {step.formula_latex && (
+                        <div className="sp-step-formula">
+                          <span>Công thức: </span>
+                          <KatexSpan tex={step.formula_latex} />
+                        </div>
+                      )}
+                      {step.substitution_latex && (
+                        <div className="sp-step-formula">
+                          <span>Thế số: </span>
+                          <KatexSpan tex={step.substitution_latex} />
+                        </div>
+                      )}
+                      {step.result_latex && (
+                        <div className="sp-step-result">
+                          <span>Kết quả: </span>
+                          <KatexSpan tex={step.result_latex} />
+                        </div>
+                      )}
+                      {!step.formula_latex && step.expression && (
                         <div className="sp-step-formula">
                           <KatexSpan tex={sympyToLatex(step.expression)} />
                         </div>
                       )}
-                      {step.result && (
+                      {!step.result_latex && step.result && (
                         <div className="sp-step-result">
                           <KatexSpan tex={`= ${sympyToLatex(step.result)}`} />
                         </div>

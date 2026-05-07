@@ -17,7 +17,8 @@ export const providerLabels: Record<string, string> = {
   auto: 'Tự động chọn provider',
   openrouter: 'OpenRouter',
   nvidia: 'NVIDIA',
-  ollama: 'Ollama / OpenAI-compatible',
+  ollama: 'Ollama',
+  openai_compat: 'OpenAI-compatible',
   router9: '9router',
   mock: 'Mock extractor',
 };
@@ -25,12 +26,18 @@ export const providerLabels: Record<string, string> = {
 export function buildProviderOptions(defaults: SettingsDefaults | null, includeMock = false): Option[] {
   const options: Option[] = [{ id: 'auto', label: providerLabels.auto }];
   if (!defaults) return includeMock ? [...options, { id: 'mock', label: providerLabels.mock }] : options;
-  (['openrouter', 'nvidia', 'ollama', 'router9'] as const).forEach((provider) => {
-    const item = defaults[provider];
-    if (item.api_key_configured || item.model || item.scanned_models.length > 0 || item.allowed_model_ids.length > 0) {
-      options.push({ id: provider, label: providerLabels[provider] });
-    }
-  });
+  if (defaults.registry_providers?.length) {
+    defaults.registry_providers
+      .filter((provider) => provider.enabled && (provider.api_key_configured || provider.default_model_id || provider.id === 'ollama'))
+      .forEach((provider) => options.push({ id: provider.id, label: provider.label || providerLabels[provider.id] || provider.id }));
+  } else {
+    (['openrouter', 'nvidia', 'ollama', 'openai_compat', 'router9'] as const).forEach((provider) => {
+      const item = defaults[provider];
+      if (item.api_key_configured || item.model || item.scanned_models.length > 0 || item.allowed_model_ids.length > 0) {
+        options.push({ id: provider, label: providerLabels[provider] });
+      }
+    });
+  }
   if (includeMock) options.push({ id: 'mock', label: providerLabels.mock });
   return options;
 }
@@ -46,7 +53,22 @@ export function buildOcrProviderOptions(defaults: SettingsDefaults | null): Opti
   return options;
 }
 
-export function buildModelOptionsFromDefaults(providerDefaults: ProviderSettingsDefaults | undefined, currentModel = '', extraModelIds: string[] = []): Option[] {
+export function buildRegistryModelOptions(defaults: SettingsDefaults | null, providerId: string, currentModel = '', extraModelIds: string[] = []): Option[] {
+  const registryModels = defaults?.registry_models?.filter((model) => model.provider_id === providerId && model.enabled) ?? [];
+  if (registryModels.length === 0) return [];
+  const visibleModels = registryModels.some((model) => model.allowed) ? registryModels.filter((model) => model.allowed) : registryModels;
+  const options = visibleModels.map((model) => ({ id: model.id, label: model.label || model.id }));
+  [currentModel, ...extraModelIds].filter(Boolean).forEach((id) => {
+    if (!options.some((option) => option.id === id)) options.unshift({ id, label: id });
+  });
+  return options;
+}
+
+export function buildModelOptionsFromDefaults(providerDefaults: ProviderSettingsDefaults | undefined, currentModel = '', extraModelIds: string[] = [], defaults?: SettingsDefaults | null, providerId?: string): Option[] {
+  if (defaults && providerId) {
+    const registryOptions = buildRegistryModelOptions(defaults, providerId, currentModel, extraModelIds);
+    if (registryOptions.length > 0) return registryOptions;
+  }
   if (!providerDefaults) return uniqueOptions([currentModel, ...extraModelIds]);
   const ids = providerDefaults.allowed_model_ids.length > 0
     ? providerDefaults.allowed_model_ids

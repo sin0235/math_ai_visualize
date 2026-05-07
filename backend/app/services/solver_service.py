@@ -1,23 +1,22 @@
-"""
-Geometry Step-by-Step Solver (Lựa chọn 2).
-
-Nhận scene JSON + câu hỏi → dùng SymPy tính toán chính xác → LLM diễn giải từng bước.
-Output: list[SolverStep] với highlight objects tương ứng trên 3D viewer.
-"""
 from __future__ import annotations
 
 import re
-from math import acos, degrees, sqrt
 from typing import Any
 
-from sympy import (
-    Abs, Matrix, N, Rational, S, acos as sym_acos, cos, pi, simplify, sqrt as sym_sqrt, symbols
+from app.services.geometry_engine import (
+    Vec3,
+    calculate_line_line_angle,
+    calculate_line_line_distance,
+    calculate_line_plane_angle,
+    calculate_plane_plane_angle,
+    calculate_point_line_distance,
+    calculate_point_plane_distance,
+    calculate_point_point_distance,
+    calculate_polygon_area,
+    calculate_pyramid_volume,
+    calculate_tetrahedron_volume,
 )
 
-
-# ---------------------------------------------------------------------------
-# Data types
-# ---------------------------------------------------------------------------
 
 class SolverStep:
     def __init__(
@@ -28,13 +27,21 @@ class SolverStep:
         expression: str | None,
         result: str | None,
         highlight: list[str],
+        kind: str | None = None,
+        formula_latex: str | None = None,
+        substitution_latex: str | None = None,
+        result_latex: str | None = None,
     ) -> None:
         self.index = index
         self.title = title
         self.explanation = explanation
         self.expression = expression
         self.result = result
-        self.highlight = highlight  # list of point/segment/face names to highlight
+        self.highlight = highlight
+        self.kind = kind
+        self.formula_latex = formula_latex
+        self.substitution_latex = substitution_latex
+        self.result_latex = result_latex
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -44,6 +51,10 @@ class SolverStep:
             "expression": self.expression,
             "result": self.result,
             "highlight": self.highlight,
+            "kind": self.kind,
+            "formula_latex": self.formula_latex,
+            "substitution_latex": self.substitution_latex,
+            "result_latex": self.result_latex,
         }
 
 
@@ -63,492 +74,408 @@ class SolverResult:
         }
 
 
-# ---------------------------------------------------------------------------
-# Vector helpers (Python floats, bypass SymPy for speed)
-# ---------------------------------------------------------------------------
-
-Vec3 = tuple[float, float, float]
-
-def _v(x: float, y: float, z: float) -> Vec3:
-    return (x, y, z)
-
-def _sub(a: Vec3, b: Vec3) -> Vec3:
-    return (a[0]-b[0], a[1]-b[1], a[2]-b[2])
-
-def _dot(a: Vec3, b: Vec3) -> float:
-    return a[0]*b[0] + a[1]*b[1] + a[2]*b[2]
-
-def _cross(a: Vec3, b: Vec3) -> Vec3:
-    return (a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0])
-
-def _norm(a: Vec3) -> float:
-    return sqrt(_dot(a, a))
-
-def _normalize(a: Vec3) -> Vec3:
-    n = _norm(a)
-    if n < 1e-12:
-        return (0.0, 0.0, 0.0)
-    return (a[0]/n, a[1]/n, a[2]/n)
-
-def _fmt(v: float, digits: int = 4) -> str:
-    """Format a float nicely – avoid trailing zeros."""
-    s = f"{v:.{digits}f}".rstrip("0").rstrip(".")
-    return s or "0"
-
-
-# ---------------------------------------------------------------------------
-# Scene helpers
-# ---------------------------------------------------------------------------
-
-def _point_map(scene_dict: dict) -> dict[str, Vec3]:
-    pts: dict[str, Vec3] = {}
-    for obj in scene_dict.get("objects", []):
-        if obj.get("type") == "point_3d":
-            pts[obj["name"]] = _v(float(obj["x"]), float(obj["y"]), float(obj["z"]))
-    return pts
-
-def _parse_edge(token: str) -> tuple[str, str] | None:
-    """Parse 'AB' or 'A-B' → ('A','B')."""
-    token = token.strip()
-    if "-" in token:
-        parts = token.split("-")
-        if len(parts) == 2 and all(p.strip() for p in parts):
-            return parts[0].strip(), parts[1].strip()
-    if len(token) == 2 and token.isalpha():
-        return token[0], token[1]
-    return None
-
-def _plane_normal(pts_list: list[Vec3]) -> Vec3 | None:
-    if len(pts_list) < 3:
-        return None
-    for i in range(len(pts_list)-2):
-        v1 = _sub(pts_list[i+1], pts_list[i])
-        v2 = _sub(pts_list[i+2], pts_list[i])
-        n = _cross(v1, v2)
-        if _norm(n) > 1e-9:
-            return _normalize(n)
-    return None
-
-def _face_normal(face_name: str, scene_dict: dict, pts: dict[str, Vec3]) -> Vec3 | None:
-    for obj in scene_dict.get("objects", []):
-        if obj.get("type") == "face" and obj.get("name") == face_name:
-            face_pts = [pts[p] for p in obj["points"] if p in pts]
-            return _plane_normal(face_pts)
-    return None
-
-
-# ---------------------------------------------------------------------------
-# Core solver: detect question type → dispatch
-# ---------------------------------------------------------------------------
-
-_DISTANCE_RE = re.compile(
-    r"kho[aả]ng\s*c[áa]ch|distance|d\(|d\s*\(", re.IGNORECASE
-)
-_ANGLE_RE = re.compile(
-    r"g[oó]c|angle|cos\s*\(|sin\s*\(", re.IGNORECASE
-)
-_AREA_RE = re.compile(
-    r"di[eệ]n\s*t[íi]ch|area", re.IGNORECASE
-)
-_VOLUME_RE = re.compile(
-    r"th[eể]\s*t[íi]ch|volume", re.IGNORECASE
-)
-_PARALLEL_RE = re.compile(
-    r"song\s*song|parallel", re.IGNORECASE
-)
-_PERP_RE = re.compile(
-    r"vu[oô]ng\s*g[oó]c|perpendicular", re.IGNORECASE
-)
+_DISTANCE_RE = re.compile(r"kho[aả]ng\s*c[áa]ch|distance|\bd\s*\(", re.IGNORECASE)
+_ANGLE_RE = re.compile(r"g[oó]c|angle|cos\s*\(|sin\s*\(", re.IGNORECASE)
+_AREA_RE = re.compile(r"di[eệ]n\s*t[íi]ch|area|\bS\s*\(", re.IGNORECASE)
+_VOLUME_RE = re.compile(r"th[eể]\s*t[íi]ch|volume|\bV\s*\(", re.IGNORECASE)
+_PARALLEL_RE = re.compile(r"song\s*song|parallel", re.IGNORECASE)
+_PERP_RE = re.compile(r"vu[oô]ng\s*g[oó]c|perpendicular", re.IGNORECASE)
+_POINT_RE = r"[A-Z](?:[0-9]+|')?"
 
 
 def solve(scene_dict: dict, question: str) -> SolverResult:
-    """Main entry point. Returns SolverResult with steps."""
     pts = _point_map(scene_dict)
     warnings: list[str] = []
-
     q = question.strip()
 
     if _DISTANCE_RE.search(q):
-        return _solve_distance(scene_dict, pts, q, warnings)
+        return _solve_distance(pts, q, warnings)
+    if _PARALLEL_RE.search(q):
+        return _solve_parallel(pts, q, warnings)
+    if _PERP_RE.search(q):
+        return _solve_perpendicular(pts, q, warnings)
     if _ANGLE_RE.search(q):
-        return _solve_angle(scene_dict, pts, q, warnings)
+        return _solve_angle(pts, q, warnings)
     if _AREA_RE.search(q):
         return _solve_area(scene_dict, pts, q, warnings)
     if _VOLUME_RE.search(q):
-        return _solve_volume(scene_dict, pts, q, warnings)
-    if _PARALLEL_RE.search(q):
-        return _solve_parallel(scene_dict, pts, q, warnings)
-    if _PERP_RE.search(q):
-        return _solve_perpendicular(scene_dict, pts, q, warnings)
+        return _solve_volume(pts, q, warnings)
 
-    warnings.append("Chưa nhận diện được dạng bài. Hãy thử hỏi cụ thể hơn (khoảng cách, góc, diện tích, thể tích, song song, vuông góc).")
+    warnings.append("Chưa nhận diện được dạng bài. Hãy thử hỏi cụ thể hơn: d(A,B), d(A,BC), d(A,(BCD)), góc giữa AB và CD, S(ABC), V(S.ABCD).")
     return SolverResult(q, "Không xác định", [], warnings)
 
 
-# ---------------------------------------------------------------------------
-# Distance solver
-# ---------------------------------------------------------------------------
+def _point_map(scene_dict: dict) -> dict[str, Vec3]:
+    points: dict[str, Vec3] = {}
+    for obj in scene_dict.get("objects", []):
+        if obj.get("type") == "point_3d":
+            points[obj["name"]] = (float(obj["x"]), float(obj["y"]), float(obj["z"]))
+    return points
 
-def _solve_distance(scene_dict: dict, pts: dict[str, Vec3], question: str, warnings: list[str]) -> SolverResult:
-    steps: list[SolverStep] = []
 
-    # Extract two uppercase point names from question
-    point_names = re.findall(r'\b([A-Z][0-9\']*)\b', question)
-    # Also try edge token like AB
-    edge_tokens = re.findall(r'\b([A-Z][0-9\']*[A-Z][0-9\']*)\b', question)
-
-    if len(point_names) >= 2:
-        p_name, q_name = point_names[0], point_names[1]
-    elif edge_tokens:
-        token = edge_tokens[0]
-        p_name, q_name = token[0], token[1]
-    else:
-        warnings.append("Không tìm được hai điểm trong câu hỏi.")
+def _solve_distance(pts: dict[str, Vec3], question: str, warnings: list[str]) -> SolverResult:
+    parsed = _parse_distance(question)
+    if parsed is None:
+        warnings.append("Không nhận diện được đối tượng. Ví dụ: d(A,B), d(A,BC), d(A,(BCD)).")
         return SolverResult(question, "Không xác định", [], warnings)
 
-    if p_name not in pts:
-        warnings.append(f"Điểm {p_name} không có trong scene.")
-        return SolverResult(question, "Không xác định", steps, warnings)
-    if q_name not in pts:
-        warnings.append(f"Điểm {q_name} không có trong scene.")
-        return SolverResult(question, "Không xác định", steps, warnings)
-
-    P = pts[p_name]
-    Q = pts[q_name]
-
-    steps.append(SolverStep(
-        index=1,
-        title=f"Xác định toạ độ {p_name} và {q_name}",
-        explanation=f"Từ scene, ta có: {p_name}({_fmt(P[0])}, {_fmt(P[1])}, {_fmt(P[2])}) và {q_name}({_fmt(Q[0])}, {_fmt(Q[1])}, {_fmt(Q[2])}).",
-        expression=None,
-        result=None,
-        highlight=[p_name, q_name],
-    ))
-
-    diff = _sub(Q, P)
-    steps.append(SolverStep(
-        index=2,
-        title=f"Tính vector {p_name}{q_name}",
-        explanation=f"Vector {p_name}{q_name} = {q_name} - {p_name} = ({_fmt(diff[0])}, {_fmt(diff[1])}, {_fmt(diff[2])}).",
-        expression=f"→{p_name}{q_name} = ({_fmt(diff[0])}, {_fmt(diff[1])}, {_fmt(diff[2])})",
-        result=None,
-        highlight=[p_name, q_name],
-    ))
-
-    dist = _norm(diff)
-    sq_terms = f"{_fmt(diff[0])}² + {_fmt(diff[1])}² + {_fmt(diff[2])}²"
-    steps.append(SolverStep(
-        index=3,
-        title=f"Tính khoảng cách {p_name}{q_name}",
-        explanation=f"|{p_name}{q_name}| = √({sq_terms}) = {_fmt(dist, 6)}",
-        expression=f"|{p_name}{q_name}| = √({sq_terms})",
-        result=_fmt(dist, 6),
-        highlight=[p_name, q_name],
-    ))
-
-    return SolverResult(
-        question=question,
-        answer=f"|{p_name}{q_name}| = {_fmt(dist, 6)}",
-        steps=steps,
-        warnings=warnings,
-    )
+    kind, operands = parsed
+    if kind == "point_point":
+        calc = calculate_point_point_distance(pts, operands[0], operands[1])
+    elif kind == "point_line":
+        calc = calculate_point_line_distance(pts, operands[0], (operands[1], operands[2]))
+    elif kind == "line_line":
+        calc = calculate_line_line_distance(pts, (operands[0], operands[1]), (operands[2], operands[3]))
+    else:
+        calc = calculate_point_plane_distance(pts, operands[0], operands[1:])
+    return _result_from_calculation(question, calc)
 
 
-# ---------------------------------------------------------------------------
-# Angle solver
-# ---------------------------------------------------------------------------
+def _solve_angle(pts: dict[str, Vec3], question: str, warnings: list[str]) -> SolverResult:
+    parsed = _parse_angle(question)
+    if parsed is None:
+        warnings.append("Không nhận diện được góc. Ví dụ: góc ABC, góc giữa AB và CD, góc giữa AB và (BCD).")
+        return SolverResult(question, "Không xác định", [], warnings)
 
-def _solve_angle(scene_dict: dict, pts: dict[str, Vec3], question: str, warnings: list[str]) -> SolverResult:
-    steps: list[SolverStep] = []
-    point_names = re.findall(r'\b([A-Z][0-9\']*)\b', question)
+    kind, operands = parsed
+    if kind == "line_line":
+        calc = calculate_line_line_angle(pts, (operands[0], operands[1]), (operands[2], operands[3]))
+    elif kind == "line_plane":
+        calc = calculate_line_plane_angle(pts, (operands[0], operands[1]), operands[2:])
+    elif kind == "plane_plane":
+        split = len(operands) // 2
+        calc = calculate_plane_plane_angle(pts, operands[:split], operands[split:])
+    else:
+        calc = calculate_line_line_angle(pts, (operands[1], operands[0]), (operands[1], operands[2]))
+        calc["label"] = f"∠{''.join(operands)}"
+    return _result_from_calculation(question, calc)
 
-    if len(point_names) < 3:
-        warnings.append("Góc cần ít nhất 3 điểm (ví dụ: góc ABC).")
-        return SolverResult(question, "Không xác định", steps, warnings)
-
-    A_name, B_name, C_name = point_names[0], point_names[1], point_names[2]
-    for name in (A_name, B_name, C_name):
-        if name not in pts:
-            warnings.append(f"Điểm {name} không có trong scene.")
-            return SolverResult(question, "Không xác định", steps, warnings)
-
-    A, B, C = pts[A_name], pts[B_name], pts[C_name]
-
-    steps.append(SolverStep(
-        index=1,
-        title=f"Xác định toạ độ {A_name}, {B_name}, {C_name}",
-        explanation=f"{A_name}({_fmt(A[0])}, {_fmt(A[1])}, {_fmt(A[2])}), {B_name}({_fmt(B[0])}, {_fmt(B[1])}, {_fmt(B[2])}), {C_name}({_fmt(C[0])}, {_fmt(C[1])}, {_fmt(C[2])}).",
-        expression=None,
-        result=None,
-        highlight=[A_name, B_name, C_name],
-    ))
-
-    BA = _sub(A, B)
-    BC = _sub(C, B)
-    steps.append(SolverStep(
-        index=2,
-        title=f"Tính vector {B_name}{A_name} và {B_name}{C_name}",
-        explanation=f"→{B_name}{A_name} = ({_fmt(BA[0])}, {_fmt(BA[1])}, {_fmt(BA[2])})\n→{B_name}{C_name} = ({_fmt(BC[0])}, {_fmt(BC[1])}, {_fmt(BC[2])})",
-        expression=None,
-        result=None,
-        highlight=[A_name, B_name, C_name],
-    ))
-
-    dot = _dot(BA, BC)
-    norm_ba = _norm(BA)
-    norm_bc = _norm(BC)
-    if norm_ba < 1e-12 or norm_bc < 1e-12:
-        warnings.append("Một trong hai vector có độ dài bằng 0.")
-        return SolverResult(question, "Không xác định", steps, warnings)
-
-    cos_val = max(-1.0, min(1.0, dot / (norm_ba * norm_bc)))
-    angle_rad = acos(cos_val)
-    angle_deg = degrees(angle_rad)
-
-    steps.append(SolverStep(
-        index=3,
-        title=f"Tính cos(∠{A_name}{B_name}{C_name})",
-        explanation=f"cos(∠{A_name}{B_name}{C_name}) = (→{B_name}{A_name} · →{B_name}{C_name}) / (|{B_name}{A_name}| × |{B_name}{C_name}|)",
-        expression=f"cos = {_fmt(dot)} / ({_fmt(norm_ba)} × {_fmt(norm_bc)}) = {_fmt(cos_val, 6)}",
-        result=_fmt(cos_val, 6),
-        highlight=[A_name, B_name, C_name],
-    ))
-
-    steps.append(SolverStep(
-        index=4,
-        title=f"Kết quả góc ∠{A_name}{B_name}{C_name}",
-        explanation=f"∠{A_name}{B_name}{C_name} = arccos({_fmt(cos_val, 4)}) ≈ {_fmt(angle_deg, 2)}°",
-        expression=f"∠{A_name}{B_name}{C_name} = arccos({_fmt(cos_val, 4)})",
-        result=f"≈ {_fmt(angle_deg, 2)}°",
-        highlight=[A_name, B_name, C_name],
-    ))
-
-    return SolverResult(
-        question=question,
-        answer=f"∠{A_name}{B_name}{C_name} ≈ {_fmt(angle_deg, 2)}°",
-        steps=steps,
-        warnings=warnings,
-    )
-
-
-# ---------------------------------------------------------------------------
-# Area solver (triangle from 3 points extracted from question or face)
-# ---------------------------------------------------------------------------
 
 def _solve_area(scene_dict: dict, pts: dict[str, Vec3], question: str, warnings: list[str]) -> SolverResult:
-    steps: list[SolverStep] = []
-    point_names = re.findall(r'\b([A-Z][0-9\']*)\b', question)
+    polygon = _parse_polygon_after_marker(question, "S") or _parse_plane_refs(question)[0] if _parse_plane_refs(question) else None
+    if polygon is None:
+        polygon = _find_face_points(scene_dict, question) or _parse_point_sequence(question)
+    if polygon is None or len(polygon) < 3:
+        warnings.append("Không đủ thông tin để tính diện tích. Ví dụ: S(ABC) hoặc diện tích ABCD.")
+        return SolverResult(question, "Không xác định", [], warnings)
+    return _result_from_calculation(question, calculate_polygon_area(pts, polygon))
 
-    # Try to find a face matching point sequence
-    face_obj = None
+
+def _solve_volume(pts: dict[str, Vec3], question: str, warnings: list[str]) -> SolverResult:
+    solid = _parse_solid_after_marker(question, "V") or _parse_solid_text(question)
+    if solid and len(solid) == 2:
+        apex_or_base, base = solid
+        if len(apex_or_base) == 1 and len(base) >= 3:
+            return _result_from_calculation(question, calculate_pyramid_volume(pts, apex_or_base[0], base))
+        names = [*apex_or_base, *base]
+        if len(names) >= 4:
+            return _result_from_calculation(question, calculate_tetrahedron_volume(pts, names[:4]))
+
+    points = _parse_point_sequence(question)
+    if points and len(points) >= 4:
+        return _result_from_calculation(question, calculate_tetrahedron_volume(pts, points[:4]))
+    warnings.append("Cần chỉ rõ điểm để tính thể tích. Ví dụ: V(S.ABCD) hoặc V(ABCD).")
+    return SolverResult(question, "Không xác định", [], warnings)
+
+
+def _solve_parallel(pts: dict[str, Vec3], question: str, warnings: list[str]) -> SolverResult:
+    edges = _parse_edges(question)
+    if len(edges) < 2:
+        warnings.append("Cần hai đường thẳng. Ví dụ: AB song song CD.")
+        return SolverResult(question, "Không xác định", [], warnings)
+    calc = calculate_line_line_angle(pts, edges[0], edges[1])
+    if calc["status"] != "ok":
+        return _result_from_calculation(question, calc)
+    relation = _line_relation_status(pts, edges[0], edges[1])
+    is_parallel = abs(calc["result_value"]) < 1e-6 and relation in {"parallel", "coincident"}
+    warnings = [*calc["warnings"]]
+    if abs(calc["result_value"]) < 1e-6 and relation == "skew":
+        warnings.append("Hai đường có vector chỉ phương song song nhưng không đồng phẳng, nên là hai đường chéo nhau trong scene.")
+    answer = f"{''.join(edges[0])} song song {''.join(edges[1])}: {'ĐÚNG' if is_parallel else 'SAI'}"
+    return SolverResult(question, answer, _steps_from_calculation(calc), warnings)
+
+
+def _solve_perpendicular(pts: dict[str, Vec3], question: str, warnings: list[str]) -> SolverResult:
+    edges = _parse_edges(question)
+    if len(edges) < 2:
+        warnings.append("Cần hai đường thẳng. Ví dụ: AB vuông góc CD.")
+        return SolverResult(question, "Không xác định", [], warnings)
+    calc = calculate_line_line_angle(pts, edges[0], edges[1])
+    if calc["status"] != "ok":
+        return _result_from_calculation(question, calc)
+    relation = _line_relation_status(pts, edges[0], edges[1])
+    is_perpendicular = abs(calc["result_value"] - 90) < 1e-6 and relation == "intersect"
+    warnings = [*calc["warnings"]]
+    if abs(calc["result_value"] - 90) < 1e-6 and relation == "skew":
+        warnings.append("Hai đường có hướng vuông góc nhưng không cắt nhau, nên là hai đường chéo nhau trong scene.")
+    answer = f"{''.join(edges[0])} vuông góc {''.join(edges[1])}: {'ĐÚNG' if is_perpendicular else 'SAI'}"
+    return SolverResult(question, answer, _steps_from_calculation(calc), warnings)
+
+
+def _result_from_calculation(question: str, calc: dict[str, Any]) -> SolverResult:
+    if calc["status"] != "ok":
+        return SolverResult(question, "Không xác định", [], calc["warnings"])
+    unit = "°" if calc.get("unit") == "degrees" else ""
+    warnings = [*calc["warnings"], *_pedagogical_warnings(calc)]
+    answer = f"{calc['label']} = {_fmt(calc['result_value'], 6)}{unit}"
+    return SolverResult(question, answer, _steps_from_calculation(calc), warnings)
+
+
+def _pedagogical_warnings(calc: dict[str, Any]) -> list[str]:
+    value = calc.get("result_value")
+    if not isinstance(value, int | float) or abs(value) > 1e-9:
+        return []
+    kind = calc.get("kind")
+    label = calc.get("label", "Kết quả")
+    if kind == "distance_point_plane":
+        return [f"{label} bằng 0 vì điểm đang nằm trên mặt phẳng trong scene. Nếu hình dựng không đúng đề, hãy chỉnh lại điểm hoặc hỏi khoảng cách từ đỉnh ngoài mặt phẳng đáy."]
+    if kind == "distance_point_line":
+        return [f"{label} bằng 0 vì điểm đang nằm trên đường thẳng trong scene."]
+    if kind == "area_polygon":
+        return [f"{label} bằng 0 vì các điểm không tạo thành đa giác có diện tích trong scene."]
+    if kind in {"volume_pyramid", "volume_tetrahedron"}:
+        return [f"{label} bằng 0 vì các điểm đang đồng phẳng hoặc đáy/chiều cao suy biến trong scene."]
+    return []
+
+
+def _steps_from_calculation(calc: dict[str, Any]) -> list[SolverStep]:
+    highlight = calc["highlight"]
+    return [
+        SolverStep(
+            1,
+            "Xác định dữ liệu đầu vào",
+            f"Bài toán cần tính {calc['label']} từ các đối tượng: {', '.join(highlight)}.",
+            None,
+            None,
+            highlight,
+            kind="input",
+        ),
+        SolverStep(
+            2,
+            "Chọn công thức và thay số",
+            "Dùng công thức hình học không gian deterministic, sau đó thay tọa độ từ scene.",
+            calc["formula_latex"],
+            None,
+            highlight,
+            kind=calc["kind"],
+            formula_latex=calc["formula_latex"],
+            substitution_latex=calc["substitution_latex"],
+        ),
+        SolverStep(
+            3,
+            "Kết quả",
+            f"Suy ra {calc['label']} = {calc['result_latex']}.",
+            None,
+            calc["result_latex"],
+            highlight,
+            kind="result",
+            result_latex=calc["result_latex"],
+        ),
+    ]
+
+
+def _parse_distance(question: str) -> tuple[str, list[str]] | None:
+    inside = _inside_function(question, "d")
+    if inside:
+        first, second = _split_two_operands(inside)
+        if first:
+            point = _parse_point_token(first)
+            plane = _parse_plane_token(second)
+            edge = _parse_edge_token(second)
+            other_point = _parse_point_token(second)
+            first_edge = _parse_edge_token(first)
+            if first_edge and edge:
+                return "line_line", [*first_edge, *edge]
+            if point and plane:
+                return "point_plane", [point, *plane]
+            if point and edge:
+                return "point_line", [point, *edge]
+            if point and other_point:
+                return "point_point", [point, other_point]
+
+    plane_refs = _parse_plane_refs(question)
+    points = _parse_points(question)
+    if plane_refs and points:
+        first = next((point for point in points if point not in plane_refs[0]), None)
+        if first:
+            return "point_plane", [first, *plane_refs[0]]
+    edges = _parse_edges(question)
+    if len(edges) >= 2:
+        return "line_line", [*edges[0], *edges[1]]
+    if points and edges:
+        first = next((point for point in points if point not in edges[0]), None)
+        if first:
+            return "point_line", [first, *edges[0]]
+    if len(points) >= 2:
+        return "point_point", points[:2]
+    return None
+
+
+def _parse_angle(question: str) -> tuple[str, list[str]] | None:
+    plane_refs = _parse_plane_refs(question)
+    edges = _parse_edges(question)
+    if len(plane_refs) >= 2:
+        return "plane_plane", [*plane_refs[0], *plane_refs[1]]
+    if edges and plane_refs:
+        return "line_plane", [*edges[0], *plane_refs[0]]
+    if len(edges) >= 2:
+        return "line_line", [*edges[0], *edges[1]]
+    points = _parse_points(question)
+    if len(points) >= 3:
+        return "three_points", points[:3]
+    sequence = _parse_point_sequence(question)
+    if sequence and len(sequence) >= 3:
+        return "three_points", sequence[:3]
+    return None
+
+
+def _parse_edges(question: str) -> list[tuple[str, str]]:
+    planes = {"".join(plane) for plane in _parse_plane_refs(question)}
+    edges: list[tuple[str, str]] = []
+    for match in re.finditer(rf"(?<![A-Z0-9'])({_POINT_RE})\s*-\s*({_POINT_RE})(?![A-Z0-9'])", question):
+        edges.append((match.group(1), match.group(2)))
+    for token in re.findall(rf"\b({_POINT_RE}{_POINT_RE})\b", question):
+        if token not in planes:
+            parsed = _parse_edge_token(token)
+            if parsed:
+                edges.append(parsed)
+    return list(dict.fromkeys(edges))
+
+
+def _parse_plane_refs(question: str) -> list[list[str]]:
+    refs: list[list[str]] = []
+    for raw in re.findall(r"\(([A-Z0-9']{3,})\)", question):
+        refs.append(_split_point_sequence(raw))
+    for raw in re.findall(r"mặt\s+([A-Z0-9']{3,})", question, flags=re.IGNORECASE):
+        refs.append(_split_point_sequence(raw))
+    return refs
+
+
+def _parse_points(question: str) -> list[str]:
+    return list(dict.fromkeys(re.findall(rf"\b({_POINT_RE})\b", question)))
+
+
+def _parse_point_sequence(question: str) -> list[str] | None:
+    candidates = re.findall(r"\b([A-Z][A-Z0-9']{2,})\b", question)
+    for candidate in candidates:
+        points = _split_point_sequence(candidate)
+        if len(points) >= 3:
+            return points
+    return None
+
+
+def _parse_polygon_after_marker(question: str, marker: str) -> list[str] | None:
+    inside = _inside_function(question, marker)
+    if inside:
+        return _parse_plane_token(inside) or _split_point_sequence(inside)
+    return None
+
+
+def _parse_solid_after_marker(question: str, marker: str) -> tuple[list[str], list[str]] | None:
+    inside = _inside_function(question, marker)
+    if not inside or "." not in inside:
+        return None
+    left, right = inside.split(".", 1)
+    return _split_point_sequence(left), _split_point_sequence(right)
+
+
+def _parse_solid_text(question: str) -> tuple[list[str], list[str]] | None:
+    match = re.search(r"([A-Z0-9']+)\.([A-Z0-9']+)", question)
+    if not match:
+        return None
+    return _split_point_sequence(match.group(1)), _split_point_sequence(match.group(2))
+
+
+def _find_face_points(scene_dict: dict, question: str) -> list[str] | None:
+    sequence = _parse_point_sequence(question)
+    if sequence:
+        return sequence
     for obj in scene_dict.get("objects", []):
-        if obj.get("type") != "face":
-            continue
-        face_pts_names: list[str] = obj.get("points", [])
-        if any(p in point_names for p in face_pts_names):
-            face_obj = obj
-            break
-
-    if face_obj:
-        fp_names: list[str] = face_obj["points"]
-        face_pts_3d = [pts[n] for n in fp_names if n in pts]
-        if len(face_pts_3d) < 3:
-            warnings.append("Mặt không đủ điểm để tính diện tích.")
-            return SolverResult(question, "Không xác định", steps, warnings)
-
-        n_name = fp_names[0] if len(fp_names) > 0 else "A"
-        steps.append(SolverStep(
-            index=1,
-            title=f"Xác định mặt {face_obj.get('name', '')} và các đỉnh",
-            explanation=f"Mặt có các đỉnh: {', '.join(fp_names)}.",
-            expression=None,
-            result=None,
-            highlight=fp_names,
-        ))
-
-        # Triangulate polygon
-        total_area = 0.0
-        area_details: list[str] = []
-        anchor = face_pts_3d[0]
-        for i in range(1, len(face_pts_3d)-1):
-            v1 = _sub(face_pts_3d[i], anchor)
-            v2 = _sub(face_pts_3d[i+1], anchor)
-            cross = _cross(v1, v2)
-            tri_area = _norm(cross) / 2
-            total_area += tri_area
-            area_details.append(f"△{fp_names[0]}{fp_names[i]}{fp_names[i+1]} = {_fmt(tri_area, 4)}")
-
-        steps.append(SolverStep(
-            index=2,
-            title="Chia thành tam giác và tính diện tích",
-            explanation="Dùng công thức diện tích = ½|u⃗ × v⃗| cho mỗi tam giác. " + "; ".join(area_details),
-            expression="S = Σ ½|→AB × →AC|",
-            result=_fmt(total_area, 4),
-            highlight=fp_names,
-        ))
-
-        return SolverResult(
-            question=question,
-            answer=f"Diện tích = {_fmt(total_area, 4)}",
-            steps=steps,
-            warnings=warnings,
-        )
-
-    # Fallback: triangle from first 3 points in question
-    if len(point_names) >= 3:
-        A_name, B_name, C_name = point_names[0], point_names[1], point_names[2]
-        if all(n in pts for n in (A_name, B_name, C_name)):
-            A, B, C = pts[A_name], pts[B_name], pts[C_name]
-            AB = _sub(B, A)
-            AC = _sub(C, A)
-            cross = _cross(AB, AC)
-            area = _norm(cross) / 2
-            steps.append(SolverStep(
-                index=1,
-                title=f"Tính diện tích △{A_name}{B_name}{C_name}",
-                explanation=f"S = ½|→{A_name}{B_name} × →{A_name}{C_name}| = {_fmt(area, 4)}",
-                expression=f"S = ½|→{A_name}{B_name} × →{A_name}{C_name}|",
-                result=_fmt(area, 4),
-                highlight=[A_name, B_name, C_name],
-            ))
-            return SolverResult(question, f"Diện tích = {_fmt(area, 4)}", steps, warnings)
-
-    warnings.append("Không đủ thông tin để tính diện tích. Hãy hỏi ví dụ: diện tích mặt ABCD.")
-    return SolverResult(question, "Không xác định", steps, warnings)
+        if obj.get("type") == "face" and obj.get("points"):
+            return obj["points"]
+    return None
 
 
-# ---------------------------------------------------------------------------
-# Volume solver
-# ---------------------------------------------------------------------------
-
-def _solve_volume(scene_dict: dict, pts: dict[str, Vec3], question: str, warnings: list[str]) -> SolverResult:
-    steps: list[SolverStep] = []
-    point_names = re.findall(r'\b([A-Z][0-9\']*)\b', question)
-    known = [n for n in point_names if n in pts]
-
-    if len(known) >= 4:
-        # Tetrahedron from first 4 points
-        A, B, C, D = [pts[n] for n in known[:4]]
-        A_n, B_n, C_n, D_n = known[:4]
-        AB = _sub(B, A)
-        AC = _sub(C, A)
-        AD = _sub(D, A)
-        cross_bc = _cross(AB, AC)
-        vol = abs(_dot(cross_bc, AD)) / 6
-
-        steps.append(SolverStep(
-            index=1,
-            title=f"Xác định 4 đỉnh: {A_n}, {B_n}, {C_n}, {D_n}",
-            explanation=f"Dùng công thức thể tích tứ diện: V = ⅙|({A_n}{B_n} × {A_n}{C_n}) · {A_n}{D_n}|",
-            expression=None,
-            result=None,
-            highlight=known[:4],
-        ))
-        steps.append(SolverStep(
-            index=2,
-            title="Tính thể tích tứ diện",
-            explanation=f"V = ⅙|det[{A_n}{B_n}, {A_n}{C_n}, {A_n}{D_n}]| = {_fmt(vol, 4)}",
-            expression="V = ⅙|(→AB × →AC) · →AD|",
-            result=_fmt(vol, 4),
-            highlight=known[:4],
-        ))
-        return SolverResult(question, f"Thể tích = {_fmt(vol, 4)}", steps, warnings)
-
-    warnings.append("Cần ít nhất 4 điểm để tính thể tích tứ diện. Hãy chỉ rõ các đỉnh.")
-    return SolverResult(question, "Không xác định", steps, warnings)
+def _inside_function(question: str, name: str) -> str | None:
+    match = re.search(rf"\b{name}\s*\(([^)]*)\)", question, flags=re.IGNORECASE)
+    return match.group(1).strip() if match else None
 
 
-# ---------------------------------------------------------------------------
-# Parallel checker
-# ---------------------------------------------------------------------------
-
-def _solve_parallel(scene_dict: dict, pts: dict[str, Vec3], question: str, warnings: list[str]) -> SolverResult:
-    steps: list[SolverStep] = []
-    edges = re.findall(r'\b([A-Z]{2})\b', question)
-
-    if len(edges) < 2:
-        warnings.append("Cần hai đoạn/đường thẳng để kiểm tra song song (ví dụ: AB song song CD).")
-        return SolverResult(question, "Không xác định", steps, warnings)
-
-    e1, e2 = edges[0], edges[1]
-    p1, p2 = e1[0], e1[1]
-    p3, p4 = e2[0], e2[1]
-
-    if not all(n in pts for n in (p1, p2, p3, p4)):
-        missing = [n for n in (p1, p2, p3, p4) if n not in pts]
-        warnings.append(f"Điểm {', '.join(missing)} không có trong scene.")
-        return SolverResult(question, "Không xác định", steps, warnings)
-
-    v1 = _sub(pts[p2], pts[p1])
-    v2 = _sub(pts[p4], pts[p3])
-    cross = _cross(v1, v2)
-    is_parallel = _norm(cross) < 1e-8
-
-    steps.append(SolverStep(
-        index=1,
-        title=f"Tính vector chỉ phương của {e1} và {e2}",
-        explanation=f"→{e1} = ({_fmt(v1[0])}, {_fmt(v1[1])}, {_fmt(v1[2])})\n→{e2} = ({_fmt(v2[0])}, {_fmt(v2[1])}, {_fmt(v2[2])})",
-        expression=None,
-        result=None,
-        highlight=list({p1, p2, p3, p4}),
-    ))
-    steps.append(SolverStep(
-        index=2,
-        title=f"Kiểm tra tích có hướng →{e1} × →{e2}",
-        explanation=f"→{e1} × →{e2} = ({_fmt(cross[0])}, {_fmt(cross[1])}, {_fmt(cross[2])})\n"
-                    + ("→ Tích có hướng = 0⃗, hai vector song song." if is_parallel else "→ Tích có hướng ≠ 0⃗, hai vector KHÔNG song song."),
-        expression=f"→{e1} × →{e2} = ({_fmt(cross[0])}, {_fmt(cross[1])}, {_fmt(cross[2])})",
-        result="Song song ✓" if is_parallel else "Không song song ✗",
-        highlight=list({p1, p2, p3, p4}),
-    ))
-
-    answer = f"{e1} song song {e2}: {'ĐÚng' if is_parallel else 'SAI'}"
-    return SolverResult(question, answer, steps, warnings)
+def _split_two_operands(value: str) -> tuple[str, str]:
+    if "," in value:
+        left, right = value.split(",", 1)
+        return left.strip(), right.strip()
+    parts = value.split()
+    if len(parts) >= 2:
+        return parts[0], parts[1]
+    return value.strip(), ""
 
 
-# ---------------------------------------------------------------------------
-# Perpendicular checker
-# ---------------------------------------------------------------------------
+def _parse_point_token(token: str) -> str | None:
+    match = re.fullmatch(_POINT_RE, token.strip())
+    return match.group(0) if match else None
 
-def _solve_perpendicular(scene_dict: dict, pts: dict[str, Vec3], question: str, warnings: list[str]) -> SolverResult:
-    steps: list[SolverStep] = []
-    edges = re.findall(r'\b([A-Z]{2})\b', question)
 
-    if len(edges) < 2:
-        warnings.append("Cần hai đoạn để kiểm tra vuông góc (ví dụ: AB vuông góc CD).")
-        return SolverResult(question, "Không xác định", steps, warnings)
+def _parse_edge_token(token: str) -> tuple[str, str] | None:
+    cleaned = token.strip().replace(" ", "")
+    if "-" in cleaned:
+        left, right = cleaned.split("-", 1)
+        if _parse_point_token(left) and _parse_point_token(right):
+            return left, right
+    points = _split_point_sequence(cleaned)
+    if len(points) == 2:
+        return points[0], points[1]
+    return None
 
-    e1, e2 = edges[0], edges[1]
-    p1, p2 = e1[0], e1[1]
-    p3, p4 = e2[0], e2[1]
 
-    if not all(n in pts for n in (p1, p2, p3, p4)):
-        missing = [n for n in (p1, p2, p3, p4) if n not in pts]
-        warnings.append(f"Điểm {', '.join(missing)} không có trong scene.")
-        return SolverResult(question, "Không xác định", steps, warnings)
+def _parse_plane_token(token: str) -> list[str] | None:
+    cleaned = token.strip()
+    if cleaned.startswith("(") and cleaned.endswith(")"):
+        cleaned = cleaned[1:-1]
+    cleaned = re.sub(r"^mặt\s+", "", cleaned, flags=re.IGNORECASE).strip()
+    points = _split_point_sequence(cleaned)
+    return points if len(points) >= 3 else None
 
-    v1 = _sub(pts[p2], pts[p1])
-    v2 = _sub(pts[p4], pts[p3])
-    dot = _dot(v1, v2)
-    is_perp = abs(dot) < 1e-8
 
-    steps.append(SolverStep(
-        index=1,
-        title=f"Tính vector chỉ phương",
-        explanation=f"→{e1} = ({_fmt(v1[0])}, {_fmt(v1[1])}, {_fmt(v1[2])})\n→{e2} = ({_fmt(v2[0])}, {_fmt(v2[1])}, {_fmt(v2[2])})",
-        expression=None,
-        result=None,
-        highlight=list({p1, p2, p3, p4}),
-    ))
-    steps.append(SolverStep(
-        index=2,
-        title=f"Kiểm tra tích vô hướng →{e1} · →{e2}",
-        explanation=f"→{e1} · →{e2} = {_fmt(dot, 6)}\n"
-                    + ("→ Tích vô hướng = 0, hai đường vuông góc." if is_perp else "→ Tích vô hướng ≠ 0, hai đường KHÔNG vuông góc."),
-        expression=f"→{e1} · →{e2} = {_fmt(dot, 6)}",
-        result="Vuông góc ✓" if is_perp else "Không vuông góc ✗",
-        highlight=list({p1, p2, p3, p4}),
-    ))
+def _split_point_sequence(value: str) -> list[str]:
+    return re.findall(_POINT_RE, value.replace(" ", ""))
 
-    answer = f"{e1} vuông góc {e2}: {'ĐÚNG' if is_perp else 'SAI'}"
-    return SolverResult(question, answer, steps, warnings)
+
+def _line_relation_status(pts: dict[str, Vec3], edge_1: tuple[str, str], edge_2: tuple[str, str]) -> str:
+    a, b = edge_1
+    c, d = edge_2
+    if any(name not in pts for name in [a, b, c, d]):
+        return "missing"
+    p, q = pts[a], pts[c]
+    u = _sub(pts[b], pts[a])
+    v = _sub(pts[d], pts[c])
+    cross = _cross(u, v)
+    if _norm(cross) <= 1e-9:
+        return "coincident" if _norm(_cross(_sub(q, p), u)) <= 1e-6 else "parallel"
+    distance = abs(_dot(_sub(q, p), cross)) / _norm(cross)
+    return "intersect" if distance <= 1e-6 else "skew"
+
+
+def _sub(a: Vec3, b: Vec3) -> Vec3:
+    return (a[0] - b[0], a[1] - b[1], a[2] - b[2])
+
+
+def _dot(a: Vec3, b: Vec3) -> float:
+    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+
+
+def _cross(a: Vec3, b: Vec3) -> Vec3:
+    return (
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    )
+
+
+def _norm(v: Vec3) -> float:
+    return (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]) ** 0.5
+
+
+def _fmt(value: float, digits: int = 4) -> str:
+    text = f"{value:.{digits}f}".rstrip("0").rstrip(".")
+    return text or "0"

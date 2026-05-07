@@ -232,6 +232,7 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
     { id: 'openrouter', label: providerLabels.openrouter },
     { id: 'nvidia', label: providerLabels.nvidia },
     { id: 'ollama', label: providerLabels.ollama },
+    { id: 'openai_compat', label: providerLabels.openai_compat },
     { id: 'router9', label: providerLabels.router9 },
     { id: 'mock', label: providerLabels.mock },
   ]);
@@ -266,7 +267,7 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
           <AdminNavButton active={activeSection === 'users'} onClick={() => setActiveSection('users')} icon="users" label="Người dùng" />
           <AdminNavButton active={activeSection === 'renders'} onClick={() => setActiveSection('renders')} icon="renders" label="Lượt dựng hình" />
           <AdminNavButton active={activeSection === 'models'} onClick={() => setActiveSection('models')} icon="models" label="Model & AI" />
-          <AdminNavButton active={activeSection === 'settings'} onClick={() => setActiveSection('settings')} icon="settings" label="Cài đặt DB" />
+          <AdminNavButton active={activeSection === 'settings'} onClick={() => setActiveSection('settings')} icon="settings" label="Database" />
           <AdminNavButton active={activeSection === 'audit'} onClick={() => setActiveSection('audit')} icon="audit" label="Nhật ký kiểm toán" />
         </nav>
         <div className="admin-sidebar-footer"><small>{user.email}</small><button type="button" className="secondary-button admin-button-with-icon" onClick={onBackToApp}><AdminIcon name="back" />Trang người dùng</button></div>
@@ -419,8 +420,9 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
               <AdminToolbarRefreshButton loading={loading} onClick={onRefresh} />
             </header>
             <section className="admin-panel admin-panel-full">
-            <p className="field-hint">Quản lý provider, model mặc định, danh sách model hiển thị, OCR và định tuyến AI.</p>
             <AdminAiSettingsForm value={aiSettings} defaults={settingsDefaults} saving={savingAiSettings} onSave={saveAiSettingsPatch} />
+            <AdminAiProfilesForm value={settings.find((item) => item.key === 'ai_profiles')?.value ?? {}} aiSettings={aiSettings} onSave={async (value) => { await saveAdminSystemSetting('ai_profiles', value); void onRefresh(); }} />
+            <AdminAiPromptsForm value={settings.find((item) => item.key === 'ai_prompts')?.value ?? {}} onSave={async (value) => { await saveAdminSystemSetting('ai_prompts', value); void onRefresh(); }} />
           </section>
           </>
         )}
@@ -428,19 +430,13 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
         {activeSection === 'settings' && (
           <>
             <header className="admin-page-header">
-              <h2>Cài đặt hệ thống</h2>
+              <h2>Database</h2>
               <AdminToolbarRefreshButton loading={loading} onClick={onRefresh} />
             </header>
             <section className="admin-panel admin-panel-full">
-            <p className="field-hint">Các cấu hình non-secret được lưu trong bảng system_settings; API key vẫn nằm trong secret/env deploy.</p>
-            <AdminPlanSettingsForm value={settings.find((item) => item.key === 'plan_settings')?.value ?? {}} onSave={async (value) => { await saveAdminSystemSetting('plan_settings', value); void onRefresh(); }} />
-            <AdminFeatureFlagsForm value={settings.find((item) => item.key === 'feature_flags')?.value ?? {}} onSave={async (value) => { await saveAdminSystemSetting('feature_flags', value); void onRefresh(); }} />
-            <AdminAiProfilesForm value={settings.find((item) => item.key === 'ai_profiles')?.value ?? {}} aiSettings={aiSettings} onSave={async (value) => { await saveAdminSystemSetting('ai_profiles', value); void onRefresh(); }} />
-            <AdminAiPromptsForm value={settings.find((item) => item.key === 'ai_prompts')?.value ?? {}} onSave={async (value) => { await saveAdminSystemSetting('ai_prompts', value); void onRefresh(); }} />
-            <div className="admin-table">
-              {settings.map((item) => <AdminSystemSettingRow key={item.key} item={item} />)}
-              {settings.length === 0 && <p className="field-hint">Chưa có cấu hình hệ thống.</p>}
-            </div>
+            {databaseDiagnostics && <AdminDatabaseDiagnosticsPanel diagnostics={databaseDiagnostics} />}
+            {!databaseDiagnostics && <p className="field-hint">Đang tải chẩn đoán database...</p>}
+            <AdminDetails title="system_settings raw" value={settings.map(({ key, updated_at, updated_by }) => ({ key, updated_at, updated_by }))} />
           </section>
           </>
         )}
@@ -612,6 +608,36 @@ function AdminSystemSettingRow({ item }: { item: SystemSettingResponse }) {
   );
 }
 
+function AdminDatabaseDiagnosticsPanel({ diagnostics }: { diagnostics: AdminDatabaseDiagnostics }) {
+  const countRows = Object.entries(diagnostics.counts);
+  const settingRows = Object.entries(diagnostics.system_settings);
+  return (
+    <div className="admin-section-stack">
+      <div className="admin-field-grid">
+        <span><strong>Backend</strong>{diagnostics.backend}</span>
+        <span><strong>SQLite path</strong>{diagnostics.sqlite_path || diagnostics.configured_sqlite_path || 'Không dùng SQLite'}</span>
+        <span><strong>Migrations</strong>{diagnostics.migrations.length} đã áp dụng</span>
+        <span><strong>Legacy ai_settings</strong>{diagnostics.ai_settings.exists ? 'Có' : 'Không'}</span>
+      </div>
+      <section className="admin-settings-section">
+        <h4>Bảng dữ liệu</h4>
+        <div className="admin-table">
+          {countRows.map(([name, count]) => <article className="admin-row" key={name}><div><strong>{name}</strong><span>{String(count)} bản ghi</span></div></article>)}
+          {countRows.length === 0 && <p className="field-hint">Chưa có thống kê bảng.</p>}
+        </div>
+      </section>
+      <section className="admin-settings-section">
+        <h4>system_settings</h4>
+        <div className="admin-table">
+          {settingRows.map(([key, meta]) => <article className="admin-row" key={key}><div><strong>{key}</strong><span>Cập nhật {formatHistoryDate(meta.updated_at)}{meta.updated_by ? ` · ${meta.updated_by}` : ''}</span></div></article>)}
+          {settingRows.length === 0 && <p className="field-hint">Chưa có bản ghi system_settings.</p>}
+        </div>
+      </section>
+      <AdminDetails title="Migration raw" value={diagnostics.migrations} />
+    </div>
+  );
+}
+
 function AdminAuditLogRow({ log }: { log: AuditLogResponse }) {
   const truncateId = (id: string | null) => {
     if (!id) return '';
@@ -635,7 +661,7 @@ function AdminAuditLogRow({ log }: { log: AuditLogResponse }) {
 
 function collectAdminModelIds(aiSettings: Record<string, unknown>) {
   const ids = new Set<string>();
-  ['openrouter', 'nvidia', 'ollama', 'router9'].forEach((provider) => {
+  ['openrouter', 'nvidia', 'ollama', 'openai_compat', 'router9'].forEach((provider) => {
     const item = aiSettings[provider];
     if (!item || typeof item !== 'object') return;
     const data = item as Record<string, unknown>;

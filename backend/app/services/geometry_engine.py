@@ -1,6 +1,6 @@
 import re
 from itertools import combinations
-from math import sqrt
+from math import acos, asin, degrees, sqrt
 from typing import Any
 
 from app.schemas.scene import AdvancedRenderSettings, Face, Line3D, MathScene, Plane, Point3D, Segment, Sphere, Vector3D
@@ -329,6 +329,244 @@ def compute_three_geometry(scene: MathScene) -> dict[str, Any]:
     return {"intersections": intersections, "vectors": computed_vectors, "measurements": measurements, "warnings": warnings}
 
 
+def calculate_point_point_distance(points: dict[str, Vec3], a: str, b: str) -> dict[str, Any]:
+    result = _calculation_result("distance_point_point", f"d({a},{b})", [a, b])
+    missing = _missing_points(points, [a, b])
+    if missing:
+        return _with_warning(result, f"Điểm {', '.join(missing)} không có trong scene.")
+    delta = _sub(points[b], points[a])
+    value = _norm(delta)
+    return _complete_result(
+        result,
+        value,
+        f"d({a},{b})=\\sqrt{{(x_{b}-x_{a})^2+(y_{b}-y_{a})^2+(z_{b}-z_{a})^2}}",
+        f"\\sqrt{{{_fmt(delta[0])}^2+{_fmt(delta[1])}^2+{_fmt(delta[2])}^2}}",
+        "distance",
+    )
+
+
+def calculate_point_line_distance(points: dict[str, Vec3], point_name: str, line_points: tuple[str, str]) -> dict[str, Any]:
+    a, b = line_points
+    result = _calculation_result("distance_point_line", f"d({point_name},{a}{b})", [point_name, a, b])
+    missing = _missing_points(points, [point_name, a, b])
+    if missing:
+        return _with_warning(result, f"Điểm {', '.join(missing)} không có trong scene.")
+    p, line_a, line_b = points[point_name], points[a], points[b]
+    direction = _sub(line_b, line_a)
+    length = _norm(direction)
+    if length <= EPS:
+        return _with_warning(result, f"Đường thẳng {a}{b} suy biến vì {a} và {b} trùng nhau.")
+    cross_value = _cross(_sub(p, line_a), direction)
+    value = _norm(cross_value) / length
+    result["foot"] = _as_point(_project_point_to_line(p, line_a, direction))
+    return _complete_result(
+        result,
+        value,
+        f"d({point_name},{a}{b})=\\frac{{\\|\\overrightarrow{{{a}{point_name}}}\\times\\overrightarrow{{{a}{b}}}\\|}}{{\\|\\overrightarrow{{{a}{b}}}\\|}}",
+        f"\\frac{{\\|{_vec_latex(cross_value)}\\|}}{{{_fmt(length)}}}",
+        "distance",
+    )
+
+
+def calculate_line_line_distance(points: dict[str, Vec3], edge_1: tuple[str, str], edge_2: tuple[str, str]) -> dict[str, Any]:
+    a, b = edge_1
+    c, d = edge_2
+    result = _calculation_result("distance_line_line", f"d({a}{b},{c}{d})", [a, b, c, d])
+    missing = _missing_points(points, [a, b, c, d])
+    if missing:
+        return _with_warning(result, f"Điểm {', '.join(missing)} không có trong scene.")
+    p, q = points[a], points[c]
+    u = _sub(points[b], points[a])
+    v = _sub(points[d], points[c])
+    if _norm(u) <= EPS or _norm(v) <= EPS:
+        return _with_warning(result, f"Đường thẳng {a}{b} hoặc {c}{d} suy biến vì hai điểm trùng nhau.")
+    normal = _cross(u, v)
+    normal_norm = _norm(normal)
+    if normal_norm <= EPS:
+        cross_value = _cross(_sub(q, p), u)
+        value = _norm(cross_value) / _norm(u)
+        return _complete_result(
+            result,
+            value,
+            f"d({a}{b},{c}{d})=d({c},{a}{b})=\\frac{{\\|\\overrightarrow{{{a}{c}}}\\times\\overrightarrow{{{a}{b}}}\\|}}{{\\|\\overrightarrow{{{a}{b}}}\\|}}",
+            f"\\frac{{\\|{_vec_latex(cross_value)}\\|}}{{{_fmt(_norm(u))}}}",
+            "distance",
+        )
+    value = abs(_dot(_sub(q, p), normal)) / normal_norm
+    return _complete_result(
+        result,
+        value,
+        f"d({a}{b},{c}{d})=\\frac{{|\\overrightarrow{{{a}{c}}}\\cdot(\\overrightarrow{{{a}{b}}}\\times\\overrightarrow{{{c}{d}}})|}}{{\\|\\overrightarrow{{{a}{b}}}\\times\\overrightarrow{{{c}{d}}}\\|}}",
+        f"\\frac{{|{_fmt(_dot(_sub(q, p), normal))}|}}{{{_fmt(normal_norm)}}}",
+        "distance",
+    )
+
+
+def calculate_point_plane_distance(points: dict[str, Vec3], point_name: str, plane_points: list[str]) -> dict[str, Any]:
+    label = "".join(plane_points)
+    result = _calculation_result("distance_point_plane", f"d({point_name},({label}))", [point_name, *plane_points])
+    missing = _missing_points(points, [point_name, *plane_points])
+    if missing:
+        return _with_warning(result, f"Điểm {', '.join(missing)} không có trong scene.")
+    plane_data = _plane_data_from_names(points, plane_points)
+    if plane_data is None:
+        return _with_warning(result, f"Mặt phẳng {label} suy biến vì không xác định được vector pháp tuyến.")
+    plane_point, normal = plane_data
+    p = points[point_name]
+    signed_distance = _dot(normal, _sub(p, plane_point))
+    value = abs(signed_distance)
+    result["foot"] = _as_point(_sub(p, _scale(normal, signed_distance)))
+    return _complete_result(
+        result,
+        value,
+        f"d({point_name},({label}))=\\frac{{|\\vec n\\cdot\\overrightarrow{{{plane_points[0]}{point_name}}}|}}{{\\|\\vec n\\|}}",
+        f"\\frac{{|{_vec_latex(normal)}\\cdot{_vec_latex(_sub(p, plane_point))}|}}{{{_fmt(_norm(normal))}}}",
+        "distance",
+    )
+
+
+def calculate_line_line_angle(points: dict[str, Vec3], edge_1: tuple[str, str], edge_2: tuple[str, str]) -> dict[str, Any]:
+    a, b = edge_1
+    c, d = edge_2
+    result = _calculation_result("angle_line_line", f"\\angle({a}{b},{c}{d})", [a, b, c, d])
+    missing = _missing_points(points, [a, b, c, d])
+    if missing:
+        return _with_warning(result, f"Điểm {', '.join(missing)} không có trong scene.")
+    v1 = _sub(points[b], points[a])
+    v2 = _sub(points[d], points[c])
+    angle = _angle_between_vectors(v1, v2)
+    if angle is None:
+        return _with_warning(result, f"Không xác định được góc vì {a}{b} hoặc {c}{d} suy biến.")
+    return _complete_result(
+        result,
+        angle,
+        f"\\cos\\varphi=\\frac{{|\\overrightarrow{{{a}{b}}}\\cdot\\overrightarrow{{{c}{d}}}|}}{{\\|\\overrightarrow{{{a}{b}}}\\|\\,\\|\\overrightarrow{{{c}{d}}}\\|}}",
+        f"\\varphi=\\arccos\\left(\\frac{{|{_fmt(_dot(v1, v2))}|}}{{{_fmt(_norm(v1))}\\cdot{_fmt(_norm(v2))}}}\\right)",
+        "degrees",
+    )
+
+
+def calculate_line_plane_angle(points: dict[str, Vec3], edge: tuple[str, str], plane_points: list[str]) -> dict[str, Any]:
+    a, b = edge
+    label = "".join(plane_points)
+    result = _calculation_result("angle_line_plane", f"\\angle({a}{b},({label}))", [a, b, *plane_points])
+    missing = _missing_points(points, [a, b, *plane_points])
+    if missing:
+        return _with_warning(result, f"Điểm {', '.join(missing)} không có trong scene.")
+    plane_data = _plane_data_from_names(points, plane_points)
+    if plane_data is None:
+        return _with_warning(result, f"Mặt phẳng {label} suy biến vì không xác định được vector pháp tuyến.")
+    direction = _sub(points[b], points[a])
+    normal = plane_data[1]
+    direction_norm = _norm(direction)
+    if direction_norm <= EPS:
+        return _with_warning(result, f"Đường thẳng {a}{b} suy biến vì {a} và {b} trùng nhau.")
+    ratio = _clamp(abs(_dot(direction, normal)) / (direction_norm * _norm(normal)))
+    angle = degrees(asin(ratio))
+    return _complete_result(
+        result,
+        angle,
+        f"\\sin\\varphi=\\frac{{|\\overrightarrow{{{a}{b}}}\\cdot\\vec n|}}{{\\|\\overrightarrow{{{a}{b}}}\\|\\,\\|\\vec n\\|}}",
+        f"\\varphi=\\arcsin\\left(\\frac{{|{_fmt(_dot(direction, normal))}|}}{{{_fmt(direction_norm)}\\cdot{_fmt(_norm(normal))}}}\\right)",
+        "degrees",
+    )
+
+
+def calculate_plane_plane_angle(points: dict[str, Vec3], plane_1_points: list[str], plane_2_points: list[str]) -> dict[str, Any]:
+    label_1 = "".join(plane_1_points)
+    label_2 = "".join(plane_2_points)
+    result = _calculation_result("angle_plane_plane", f"\\angle(({label_1}),({label_2}))", [*plane_1_points, *plane_2_points])
+    missing = _missing_points(points, [*plane_1_points, *plane_2_points])
+    if missing:
+        return _with_warning(result, f"Điểm {', '.join(missing)} không có trong scene.")
+    plane_1 = _plane_data_from_names(points, plane_1_points)
+    plane_2 = _plane_data_from_names(points, plane_2_points)
+    if plane_1 is None or plane_2 is None:
+        return _with_warning(result, f"Không xác định được vector pháp tuyến của một trong hai mặt phẳng.")
+    normal_1, normal_2 = plane_1[1], plane_2[1]
+    angle = _angle_between_vectors(normal_1, normal_2)
+    if angle is None:
+        return _with_warning(result, f"Không xác định được góc giữa ({label_1}) và ({label_2}).")
+    return _complete_result(
+        result,
+        angle,
+        "\\cos\\varphi=\\frac{|\\vec n_1\\cdot\\vec n_2|}{\\|\\vec n_1\\|\\,\\|\\vec n_2\\|}",
+        f"\\varphi=\\arccos\\left(\\frac{{|{_fmt(_dot(normal_1, normal_2))}|}}{{{_fmt(_norm(normal_1))}\\cdot{_fmt(_norm(normal_2))}}}\\right)",
+        "degrees",
+    )
+
+
+def calculate_polygon_area(points: dict[str, Vec3], polygon_points: list[str]) -> dict[str, Any]:
+    label = "".join(polygon_points)
+    result = _calculation_result("area_polygon", f"S({label})", polygon_points)
+    missing = _missing_points(points, polygon_points)
+    if missing:
+        return _with_warning(result, f"Điểm {', '.join(missing)} không có trong scene.")
+    resolved = [points[name] for name in polygon_points]
+    if len(resolved) < 3:
+        return _with_warning(result, "Cần ít nhất 3 điểm để tính diện tích.")
+    area = 0.0
+    anchor = resolved[0]
+    details: list[str] = []
+    for index in range(1, len(resolved) - 1):
+        cross_value = _cross(_sub(resolved[index], anchor), _sub(resolved[index + 1], anchor))
+        triangle_area = _norm(cross_value) / 2
+        area += triangle_area
+        details.append(_fmt(triangle_area))
+    result["parts"] = details
+    return _complete_result(
+        result,
+        area,
+        f"S({label})=\\sum \\frac12\\|\\vec u_i\\times\\vec v_i\\|",
+        " + ".join(details) if details else "0",
+        "area",
+    )
+
+
+def calculate_tetrahedron_volume(points: dict[str, Vec3], tetra_points: list[str]) -> dict[str, Any]:
+    label = "".join(tetra_points)
+    result = _calculation_result("volume_tetrahedron", f"V({label})", tetra_points)
+    if len(tetra_points) < 4:
+        return _with_warning(result, "Cần 4 điểm để tính thể tích tứ diện.")
+    a, b, c, d = tetra_points[:4]
+    missing = _missing_points(points, [a, b, c, d])
+    if missing:
+        return _with_warning(result, f"Điểm {', '.join(missing)} không có trong scene.")
+    triple = _dot(_cross(_sub(points[b], points[a]), _sub(points[c], points[a])), _sub(points[d], points[a]))
+    volume = abs(triple) / 6
+    return _complete_result(
+        result,
+        volume,
+        f"V=\\frac16|[\\overrightarrow{{{a}{b}}},\\overrightarrow{{{a}{c}}},\\overrightarrow{{{a}{d}}}]|",
+        f"\\frac16|{_fmt(triple)}|",
+        "volume",
+    )
+
+
+def calculate_pyramid_volume(points: dict[str, Vec3], apex: str, base_points: list[str]) -> dict[str, Any]:
+    label = f"{apex}.{''.join(base_points)}"
+    result = _calculation_result("volume_pyramid", f"V({label})", [apex, *base_points])
+    missing = _missing_points(points, [apex, *base_points])
+    if missing:
+        return _with_warning(result, f"Điểm {', '.join(missing)} không có trong scene.")
+    area_result = calculate_polygon_area(points, base_points)
+    if area_result["status"] != "ok":
+        return _with_warning(result, "Không tính được diện tích đáy.")
+    plane_data = _plane_data_from_names(points, base_points)
+    if plane_data is None:
+        return _with_warning(result, "Đáy suy biến nên không tính được chiều cao.")
+    plane_point, normal = plane_data
+    height = abs(_dot(normal, _sub(points[apex], plane_point)))
+    volume = area_result["result_value"] * height / 3
+    return _complete_result(
+        result,
+        volume,
+        "V=\\frac13 S_{đáy}\\cdot h",
+        f"\\frac13\\cdot{_fmt(area_result['result_value'])}\\cdot{_fmt(height)}",
+        "volume",
+    )
+
+
 def _is_origin(point: Point3D) -> bool:
     return abs(point.x) < EPS and abs(point.y) < EPS and abs(point.z) < EPS
 
@@ -577,6 +815,83 @@ def _normal_length(points: dict[str, Point3D]) -> float:
 
 def _as_point(point: Vec3) -> dict[str, float]:
     return {"x": point[0], "y": point[1], "z": point[2]}
+
+
+def _calculation_result(kind: str, label: str, highlight: list[str]) -> dict[str, Any]:
+    return {
+        "kind": kind,
+        "status": "degenerate",
+        "label": label,
+        "formula_latex": None,
+        "substitution_latex": None,
+        "result_latex": None,
+        "result_value": None,
+        "highlight": list(dict.fromkeys(highlight)),
+        "warnings": [],
+    }
+
+
+def _complete_result(result: dict[str, Any], value: float, formula: str, substitution: str, unit: str) -> dict[str, Any]:
+    result.update({
+        "status": "ok",
+        "formula_latex": formula,
+        "substitution_latex": substitution,
+        "result_latex": f"{_fmt(value, 6)}^\\circ" if unit == "degrees" else _fmt(value, 6),
+        "result_value": value,
+        "unit": unit,
+    })
+    return result
+
+
+def _with_warning(result: dict[str, Any], warning: str) -> dict[str, Any]:
+    result["warnings"].append(warning)
+    return result
+
+
+def _missing_points(points: dict[str, Vec3], names: list[str]) -> list[str]:
+    return [name for name in dict.fromkeys(names) if name not in points]
+
+
+def _plane_data_from_names(points: dict[str, Vec3], names: list[str]) -> tuple[Vec3, Vec3] | None:
+    resolved = [points[name] for name in names if name in points]
+    if len(resolved) < 3:
+        return None
+    centroid = _centroid(resolved)
+    for i in range(len(resolved) - 2):
+        for j in range(i + 1, len(resolved) - 1):
+            for k in range(j + 1, len(resolved)):
+                normal = _cross(_sub(resolved[j], resolved[i]), _sub(resolved[k], resolved[i]))
+                normalized = _normalize(normal)
+                if _norm(normalized) > EPS:
+                    return centroid, normalized
+    return None
+
+
+def _project_point_to_line(point: Vec3, line_point: Vec3, direction: Vec3) -> Vec3:
+    t = _dot(_sub(point, line_point), direction) / _dot(direction, direction)
+    return _add(line_point, _scale(direction, t))
+
+
+def _angle_between_vectors(first: Vec3, second: Vec3) -> float | None:
+    first_norm = _norm(first)
+    second_norm = _norm(second)
+    if first_norm <= EPS or second_norm <= EPS:
+        return None
+    ratio = _clamp(abs(_dot(first, second)) / (first_norm * second_norm))
+    return degrees(acos(ratio))
+
+
+def _clamp(value: float) -> float:
+    return max(-1.0, min(1.0, value))
+
+
+def _fmt(value: float, digits: int = 4) -> str:
+    text = f"{value:.{digits}f}".rstrip("0").rstrip(".")
+    return text or "0"
+
+
+def _vec_latex(value: Vec3) -> str:
+    return f"({_fmt(value[0])},{_fmt(value[1])},{_fmt(value[2])})"
 
 
 def _line_label(line: Line3D) -> str:

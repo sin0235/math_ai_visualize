@@ -118,6 +118,7 @@ export default function App() {
   const [notification, setNotification] = useState<Notification | null>(null);
   const [mobileWarningDismissed, setMobileWarningDismissed] = useState(readMobileWarningDismissed);
   const [sceneEditorOpen, setSceneEditorOpen] = useState(false);
+  const [sidebarTool, setSidebarTool] = useState<'input' | 'solver'>('input');
   const [highlightedObjects, setHighlightedObjects] = useState<string[]>([]);
   const [editorButtonTop, setEditorButtonTop] = useState(220);
   const [user, setUser] = useState<UserResponse | null>(null);
@@ -275,6 +276,10 @@ export default function App() {
   useEffect(() => {
     setEditorButtonTop(clamp(window.innerHeight * 0.55, 84, window.innerHeight - 88));
   }, []);
+
+  useEffect(() => {
+    if (sidebarTool !== 'solver') setHighlightedObjects([]);
+  }, [sidebarTool]);
 
   const modelOptions = buildModelOptions(runtimeSettings, settingsDefaults);
   const threeInteraction = result?.scene.renderer === 'threejs_3d'
@@ -870,30 +875,44 @@ export default function App() {
         {activeView === 'render' && (
           <section className="workspace">
             <div className="workspace-sidebar">
-              <ProblemInput
-                loading={loading}
-                ocrLoading={ocrLoading}
-                ocrError={null}
-                problemText={problemText}
-                modelOptions={modelOptions}
-                router9Only={settingsDefaults?.router9.only_mode ?? false}
-                onProblemTextChange={setProblemText}
-                onOcrImage={handleOcrImage}
-                onOcrClipboardImage={handleOcrClipboardImage}
-                onOpenRouter9Settings={() => navigateTo(user?.role === 'admin' ? 'admin' : 'settings')}
-                onSubmit={handleSubmit}
-              />
-              <div className="onboarding-card">
-                <strong>Bắt đầu nhanh</strong>
-                <p>Thử đề mẫu để xem cách hệ thống dựng hình và tinh chỉnh kết quả.</p>
-                <button type="button" className="secondary-button" onClick={() => setProblemText('Trong mặt phẳng Oxy, cho A(0,0), B(4,0), C(1,3). Dựng tam giác ABC, vẽ đường cao từ C xuống AB và ghi tên chân đường cao H.')}>Dùng đề mẫu</button>
+              <div className="workspace-sidebar-tabs" role="tablist" aria-label="Workspace tools">
+                <button type="button" className={sidebarTool === 'input' ? 'active' : ''} onClick={() => setSidebarTool('input')} role="tab" aria-selected={sidebarTool === 'input'}>
+                  Mô tả hình
+                </button>
+                <button type="button" className={sidebarTool === 'solver' ? 'active' : ''} onClick={() => setSidebarTool('solver')} role="tab" aria-selected={sidebarTool === 'solver'} disabled={!result?.scene}>
+                  Giải từng bước
+                </button>
               </div>
-              {user && (
-                <div className="history-drawer-wrap">
-                  <button type="button" className="secondary-button history-toggle" onClick={() => setHistoryOpen((open) => !open)}>
-                    {historyOpen ? 'Ẩn lịch sử' : `Lịch sử (${historyItems.length})`}
-                  </button>
-                  {historyOpen && <HistoryPanel items={historyItems} loading={historyLoading} onOpen={openHistoryItem} onDelete={removeHistoryItem} />}
+              {sidebarTool === 'input' ? (
+                <>
+                  <ProblemInput
+                    loading={loading}
+                    ocrLoading={ocrLoading}
+                    ocrError={null}
+                    problemText={problemText}
+                    modelOptions={modelOptions}
+                    router9Only={settingsDefaults?.router9.only_mode ?? false}
+                    onProblemTextChange={setProblemText}
+                    onOcrImage={handleOcrImage}
+                    onOcrClipboardImage={handleOcrClipboardImage}
+                    onOpenRouter9Settings={() => navigateTo(user?.role === 'admin' ? 'admin' : 'settings')}
+                    onSubmit={handleSubmit}
+                  />
+                  {user && (
+                    <div className="history-drawer-wrap">
+                      <button type="button" className="secondary-button history-toggle" onClick={() => setHistoryOpen((open) => !open)}>
+                        {historyOpen ? 'Ẩn lịch sử' : `Lịch sử (${historyItems.length})`}
+                      </button>
+                      {historyOpen && <HistoryPanel items={historyItems} loading={historyLoading} onOpen={openHistoryItem} onDelete={removeHistoryItem} />}
+                    </div>
+                  )}
+                </>
+              ) : result?.scene && result.scene.renderer === 'threejs_3d' ? (
+                <SolverPanel scene={result.scene} runtimeSettings={runtimeSettings} onHighlight={setHighlightedObjects} />
+              ) : (
+                <div className="solver-disabled-state">
+                  <strong>Chưa thể giải từng bước</strong>
+                  <p>{result?.scene ? 'Giải hình không gian từng bước chỉ bật cho hình 3D.' : 'Hãy dựng hình xong trước, sau đó mở tab Giải từng bước.'}</p>
                 </div>
               )}
             </div>
@@ -945,15 +964,6 @@ export default function App() {
                 )}
               </div>
             </div>
-            {/* Lựa chọn 2: Giải toán từng bước (chỉ cho hình 3D) */}
-            {result?.scene && result.scene.renderer === 'threejs_3d' && (
-              <div className="result-area">
-                <SolverPanel
-                  scene={result.scene}
-                  onHighlight={setHighlightedObjects}
-                />
-              </div>
-            )}
             {/* Lựa chọn 1: Khảo sát hàm số (chỉ khi có function_graph) */}
             {result?.scene && result.scene.topic === 'function_graph' && (
               <div className="result-area">
@@ -1755,7 +1765,7 @@ function fileToDataUrl(file: File): Promise<string> {
 function buildModelOptions(settings: RuntimeSettings, defaults?: SettingsDefaults | null): ModelOption[] {
   const providerOptions = (['openrouter', 'nvidia', 'ollama'] as const).flatMap((provider) => {
     const providerDefaults = defaults?.[provider];
-    const ids = modelIdsForProvider(providerDefaults, settings[provider].model);
+    const ids = modelIdsForProvider(providerDefaults, settings[provider].model, defaults, provider);
     return ids.map((modelId) => {
       const model = providerDefaults?.scanned_models.find((item) => item.id === modelId);
       return {
@@ -1769,7 +1779,7 @@ function buildModelOptions(settings: RuntimeSettings, defaults?: SettingsDefault
   });
 
   const router9Defaults = defaults?.router9;
-  const router9Ids = modelIdsForProvider(router9Defaults, settings.router9.model);
+  const router9Ids = modelIdsForProvider(router9Defaults, settings.router9.model, defaults, 'router9');
   const router9Options = router9Ids.map((modelId) => {
     const scanned = router9Defaults?.scanned_models.find((model) => model.id === modelId);
     return {
@@ -1788,7 +1798,12 @@ function buildModelOptions(settings: RuntimeSettings, defaults?: SettingsDefault
   return [{ key: 'provider:auto', provider: 'auto', label: 'Tự động chọn mô hình phù hợp', description: 'Tự động dùng provider/model do admin cấu hình.' }, ...providerOptions, ...router9Options];
 }
 
-function modelIdsForProvider(providerDefaults: SettingsDefaults['openrouter'] | SettingsDefaults['nvidia'] | SettingsDefaults['ollama'] | SettingsDefaults['router9'] | undefined, currentModel: string) {
+function modelIdsForProvider(providerDefaults: SettingsDefaults['openrouter'] | SettingsDefaults['nvidia'] | SettingsDefaults['ollama'] | SettingsDefaults['router9'] | undefined, currentModel: string, defaults: SettingsDefaults | null | undefined, providerId: string) {
+  const registryModels = defaults?.registry_models?.filter((model) => model.provider_id === providerId && model.enabled) ?? [];
+  if (registryModels.length > 0) {
+    const visibleModels = registryModels.some((model) => model.allowed) ? registryModels.filter((model) => model.allowed) : registryModels;
+    return visibleModels.map((model) => model.id);
+  }
   if (!providerDefaults) return [currentModel].filter(Boolean) as string[];
   if (providerDefaults.allowed_model_ids.length > 0) return providerDefaults.allowed_model_ids;
   return [providerDefaults.model].filter(Boolean) as string[];

@@ -1,4 +1,4 @@
-export type ProviderKey = 'openrouter' | 'nvidia' | 'ollama';
+export type ProviderKey = 'openrouter' | 'nvidia' | 'ollama' | 'openai_compat';
 export type OcrProvider = 'openrouter' | 'router9';
 
 export interface ScannedModelInfo {
@@ -37,6 +37,7 @@ export interface RuntimeSettings {
   openrouter: ProviderConnectionSettings;
   nvidia: ProviderConnectionSettings;
   ollama: ProviderConnectionSettings;
+  openai_compat: ProviderConnectionSettings;
   router9: Router9Settings;
   ocr: OcrSettings;
   openrouter_http_referer: string;
@@ -91,14 +92,50 @@ export interface AdminOcrModelSettings {
   max_image_mb: number;
 }
 
+export interface RegistryProviderDefaults {
+  id: string;
+  label: string;
+  base_url: string;
+  default_model_id: string;
+  api_key_configured: boolean;
+  enabled: boolean;
+  last_checked_at?: string | null;
+  last_check_status?: string | null;
+  last_check_message?: string | null;
+}
+
+export interface RegistryModelDefaults {
+  provider_id: string;
+  id: string;
+  label: string;
+  owned_by?: string | null;
+  context_length?: number | null;
+  enabled: boolean;
+  allowed: boolean;
+  source: string;
+  last_seen_at?: string | null;
+}
+
+export interface RegistryTaskProfileDefaults {
+  task: string;
+  provider_id: string;
+  model_id: string;
+  fallbacks: string[];
+}
+
 export interface SettingsDefaults {
   app_name: string;
   default_provider: string;
   openrouter: OpenRouterSettingsDefaults;
   nvidia: ProviderSettingsDefaults;
   ollama: ProviderSettingsDefaults;
+  openai_compat: ProviderSettingsDefaults;
   router9: Router9SettingsDefaults;
   ocr: OcrSettings;
+  registry_providers?: RegistryProviderDefaults[];
+  registry_models?: RegistryModelDefaults[];
+  registry_task_profiles?: RegistryTaskProfileDefaults[];
+  registry_legacy_ai_settings_present?: boolean;
 }
 
 export const SETTINGS_STORAGE_VERSION = 4;
@@ -124,6 +161,14 @@ export const defaultRuntimeSettings: RuntimeSettings = {
   ollama: {
     api_key: '',
     base_url: '',
+    model: '',
+    scanned_models: [],
+    allowed_model_ids: [],
+    last_scanned_at: '',
+  },
+  openai_compat: {
+    api_key: '',
+    base_url: 'http://localhost:8080/v1',
     model: '',
     scanned_models: [],
     allowed_model_ids: [],

@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     nvidia_api_key: str | None = None
     nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
     nvidia_text_model: str = "qwen/qwen3-coder-480b-a35b-instruct"
+    openai_compat_api_key: str | None = None
+    openai_compat_base_url: str = "http://localhost:8080/v1"
+    openai_compat_text_model: str = ""
     ollama_base_url: str = "http://localhost:11434"
     ollama_text_model: str = "gpt-oss:120b"
     ollama_api_key: str | None = None
@@ -113,6 +116,14 @@ def merge_runtime_settings(settings: Settings, runtime_settings: RuntimeSettings
             data["ollama_base_url"] = base_url
         if model := _clean_optional_text(runtime_settings.ollama.model):
             data["ollama_text_model"] = model
+
+    if runtime_settings.openai_compat:
+        if api_key := _clean_optional_text(runtime_settings.openai_compat.api_key):
+            data["openai_compat_api_key"] = api_key
+        if base_url := _clean_optional_text(runtime_settings.openai_compat.base_url):
+            data["openai_compat_base_url"] = base_url
+        if model := _clean_optional_text(runtime_settings.openai_compat.model):
+            data["openai_compat_text_model"] = model
 
     if runtime_settings.router9:
         if api_key := _clean_optional_text(runtime_settings.router9.api_key):

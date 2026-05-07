@@ -25,7 +25,8 @@ from app.schemas.auth import (
     SystemSettingResponse,
     UserResponse,
 )
-from app.schemas.scene import MathScene, RenderPayload
+from app.schemas.scene import AiModelInfo, MathScene, RenderPayload
+from app.services.model_registry import load_model_registry, save_provider_config, save_task_profile, set_allowed_models, set_model_setting, upsert_scanned_models
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -174,6 +175,10 @@ async def admin_database_diagnostics(_: UserRecord = Depends(require_admin_user)
         "oauth_identities",
         "oauth_states",
         "usage_events",
+        "ai_providers",
+        "ai_models",
+        "ai_task_profiles",
+        "ai_model_settings",
         "schema_migrations",
     ]
     counts: dict[str, int | str] = {}
@@ -190,6 +195,13 @@ async def admin_database_diagnostics(_: UserRecord = Depends(require_admin_user)
     ai_settings_row = next((item for item in setting_rows if item.key == "ai_settings"), None)
     ai_settings = parse_setting_value(ai_settings_row.value_json) if ai_settings_row else {}
     router9 = ai_settings.get("router9") if isinstance(ai_settings.get("router9"), dict) else {}
+    registry = await load_model_registry(db, settings)
+    stale_allowed = sum(
+        1
+        for models in registry.models.values()
+        for model in models
+        if model.allowed and not model.last_seen_at and model.source == "manual"
+    )
 
     return {
         "backend": getattr(db, "backend", "unknown"),
@@ -206,6 +218,14 @@ async def admin_database_diagnostics(_: UserRecord = Depends(require_admin_user)
             "router9_allowed_model_count": len(router9.get("allowed_model_ids") or []),
             "router9_scanned_model_count": len(router9.get("scanned_models") or []),
         },
+        "model_registry": {
+            "provider_count": len(registry.providers),
+            "model_count": sum(len(models) for models in registry.models.values()),
+            "allowed_model_count": sum(1 for models in registry.models.values() for model in models if model.allowed),
+            "stale_allowed_model_count": stale_allowed,
+            "task_profiles": {task: profile.__dict__ for task, profile in registry.task_profiles.items()},
+            "legacy_ai_settings_present": registry.legacy_used,
+        },
     }
 
 
@@ -218,6 +238,8 @@ async def admin_save_system_setting(
     repo = AdminRepository(db)
     value = validate_system_setting(request.key, request.value)
     setting = await repo.upsert_system_setting(request.key, value, admin.id)
+    if request.key == "ai_settings":
+        await sync_ai_settings_to_registry(db, value)
     await repo.audit(admin.id, "admin.system_settings.update", "system_setting", request.key, {"key": request.key})
     return SystemSettingResponse(key=setting.key, value=parse_setting_value(setting.value_json), updated_by=setting.updated_by, updated_at=setting.updated_at)
 
@@ -285,6 +307,29 @@ def validate_system_setting(key: str, value: dict) -> dict:
         return schema.model_validate(value).model_dump(mode="json")
     except ValidationError as error:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=error.errors()) from error
+
+
+async def sync_ai_settings_to_registry(db: DatabaseClient, value: dict) -> None:
+    ai_settings = SystemAiSettings.model_validate(value)
+    providers = {
+        "openrouter": ai_settings.openrouter,
+        "nvidia": ai_settings.nvidia,
+        "ollama": ai_settings.ollama,
+        "openai_compat": ai_settings.openai_compat,
+        "router9": ai_settings.router9,
+    }
+    for provider_id, provider in providers.items():
+        await save_provider_config(db, provider_id, provider.base_url, provider.model)
+        await upsert_scanned_models(db, provider_id, [AiModelInfo.model_validate(model.model_dump() | {"provider": provider_id}) for model in provider.scanned_models])
+        await set_allowed_models(db, provider_id, provider.allowed_model_ids)
+    await set_model_setting(db, "default_provider", ai_settings.default_provider)
+    await set_model_setting(db, "router9_only", ai_settings.router9.only_mode)
+    await set_model_setting(db, "openrouter_reasoning_enabled", ai_settings.openrouter_reasoning_enabled)
+    await set_model_setting(db, "ocr_max_image_mb", ai_settings.ocr.max_image_mb)
+    await save_task_profile(db, "render", ai_settings.default_provider, "", [])
+    await save_task_profile(db, "reasoning", ai_settings.default_provider, "", [])
+    await save_task_profile(db, "solver_explanation", ai_settings.default_provider, "", [])
+    await save_task_profile(db, "ocr", ai_settings.ocr.provider, ai_settings.ocr.model, [])
 
 
 def user_response(user: UserRecord) -> UserResponse:

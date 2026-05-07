@@ -179,6 +179,7 @@ class StoredRuntimeSettings(BaseModel):
     openrouter: StoredProviderSettings = Field(default_factory=StoredProviderSettings)
     nvidia: StoredProviderSettings = Field(default_factory=StoredProviderSettings)
     ollama: StoredProviderSettings = Field(default_factory=StoredProviderSettings)
+    openai_compat: StoredProviderSettings = Field(default_factory=StoredProviderSettings)
     router9: StoredRouter9Settings = Field(default_factory=StoredRouter9Settings)
     ocr: StoredOcrSettings = Field(default_factory=StoredOcrSettings)
     openrouter_http_referer: str = Field(default="", max_length=MAX_BASE_URL_CHARS)
@@ -230,6 +231,7 @@ class SystemAiSettings(BaseModel):
     openrouter: AdminProviderModelSettings = Field(default_factory=AdminProviderModelSettings)
     nvidia: AdminProviderModelSettings = Field(default_factory=AdminProviderModelSettings)
     ollama: AdminProviderModelSettings = Field(default_factory=AdminProviderModelSettings)
+    openai_compat: AdminProviderModelSettings = Field(default_factory=AdminProviderModelSettings)
     router9: AdminRouter9ModelSettings = Field(default_factory=AdminRouter9ModelSettings)
     ocr: AdminOcrModelSettings = Field(default_factory=AdminOcrModelSettings)
     openrouter_http_referer: str = Field(default="", max_length=MAX_BASE_URL_CHARS)
@@ -311,6 +313,7 @@ class SystemAiProfiles(BaseModel):
 
     version: int = 1
     geometry_reasoning: AiTaskProfile = Field(default_factory=AiTaskProfile)
+    solver_explanation: AiTaskProfile = Field(default_factory=AiTaskProfile)
     ocr: AiTaskProfile = Field(default_factory=AiTaskProfile)
 
 

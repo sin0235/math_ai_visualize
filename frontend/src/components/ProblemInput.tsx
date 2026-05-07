@@ -300,7 +300,7 @@ export function ProblemInput({ loading, ocrLoading, ocrError, problemText, model
           Tìm giao điểm tự động
         </label>
       </details>
-      <details className="examples" open>
+      <details className="examples">
         <summary className="examples-title">Đề mẫu</summary>
         {examples.map((example) => (
           <button key={example.text} type="button" onClick={() => onProblemTextChange(example.text)} className="example-card">

@@ -1,22 +1,21 @@
-import json
 import re
 from dataclasses import dataclass
 from typing import Any
 
 from pydantic import ValidationError
 
-from app.schemas.auth import SystemAiSettings
-
-from app.core.config import Settings, get_settings, merge_runtime_settings
+from app.core.config import Settings
 from app.schemas.scene import AdvancedRenderSettings, MathScene, RuntimeSettings, SceneView
 from app.db.session import DatabaseClient
 from app.services.ai_prompt import get_system_prompts
 from app.services.nvidia_client import NvidiaClient
 from app.services.ollama_client import OllamaClient
+from app.services.openai_compat_client import OpenAICompatClient
 from app.services.openrouter_client import OpenRouterClient
 from app.services.router9_bootstrap import select_router9_render_model_ids_from_ids
 from app.services.router9_client import Router9Client
 from app.services.provider_logging import redact_sensitive
+from app.services.model_registry import resolve_effective_settings
 from app.services.solid_presets import equilateral_triangle, rectangular_box, square_pyramid, triangular_prism, triangular_pyramid
 
 _HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
@@ -60,45 +59,7 @@ class RenderAttempt:
 
 
 async def _build_render_settings(db: DatabaseClient | None, runtime_settings: RuntimeSettings | None) -> Settings:
-    settings = get_settings()
-    if db is not None:
-        settings = await _merge_admin_ai_settings(settings, db)
-    return merge_runtime_settings(settings, runtime_settings)
-
-async def _merge_admin_ai_settings(settings: Settings, db: DatabaseClient) -> Settings:
-    row = await db.fetch_one("SELECT value_json FROM system_settings WHERE key = ?", ["ai_settings"])
-    if row is None:
-        return settings
-    try:
-        raw = json.loads(str(row["value_json"]))
-        ai_settings = SystemAiSettings.model_validate(raw if isinstance(raw, dict) else {})
-    except (json.JSONDecodeError, ValidationError):
-        return settings
-
-    data = settings.model_dump()
-    if ai_settings.default_provider:
-        data["ai_provider"] = ai_settings.default_provider
-    _apply_admin_provider_settings(data, "openrouter", ai_settings.openrouter)
-    _apply_admin_provider_settings(data, "nvidia", ai_settings.nvidia)
-    _apply_admin_provider_settings(data, "ollama", ai_settings.ollama)
-    _apply_admin_provider_settings(data, "router9", ai_settings.router9)
-    data["router9_only"] = ai_settings.router9.only_mode
-    if ai_settings.ocr.provider == "router9" and ai_settings.ocr.model:
-        data["router9_ocr_model"] = ai_settings.ocr.model
-    if ai_settings.openrouter_http_referer:
-        data["openrouter_http_referer"] = ai_settings.openrouter_http_referer
-    if ai_settings.openrouter_x_title:
-        data["openrouter_x_title"] = ai_settings.openrouter_x_title
-    data["openrouter_reasoning_enabled"] = ai_settings.openrouter_reasoning_enabled
-    return Settings.model_validate(data)
-
-def _apply_admin_provider_settings(data: dict[str, Any], provider: str, provider_settings: Any) -> None:
-    if provider_settings.base_url:
-        data[f"{provider}_base_url"] = provider_settings.base_url
-    if provider_settings.model:
-        data[f"{provider}_text_model"] = provider_settings.model
-    if provider == "router9" and provider_settings.allowed_model_ids:
-        data["router9_allowed_models"] = provider_settings.allowed_model_ids
+    return await resolve_effective_settings(db, runtime_settings)
 
 async def extract_scene(
     problem_text: str,
@@ -413,6 +374,7 @@ def _circle_scene(text: str, grade: int | None, points: list[dict[str, Any]]) ->
 def _provider_order(settings: Settings, preferred_ai_provider: str | None = None) -> list[str]:
     provider = preferred_ai_provider or settings.ai_provider
     nvidia_providers = ["nvidia"]
+    custom_providers = ["openai_compat"]
     nemotron_providers = ["openrouter", "opencode_nemotron"]
     gpt_oss_providers = ["ollama_gpt_oss", "openrouter_gpt_oss"]
     router9_providers = ["router9"]
@@ -424,15 +386,17 @@ def _provider_order(settings: Settings, preferred_ai_provider: str | None = None
         return []
     if provider in router9_providers:
         return _dedupe([*router9_providers, *nemotron_providers, *gpt_oss_providers, *nvidia_providers])
+    if provider in custom_providers:
+        return _dedupe([provider, *router9_providers, *nvidia_providers, *nemotron_providers, *gpt_oss_providers])
     if provider in nvidia_providers:
-        return _dedupe([provider, *nemotron_providers, *gpt_oss_providers])
+        return _dedupe([provider, *custom_providers, *nemotron_providers, *gpt_oss_providers])
     if provider in nemotron_providers:
         return _dedupe([provider, *nemotron_providers, *gpt_oss_providers, *nvidia_providers])
     if provider in gpt_oss_providers:
         return _dedupe([provider, *gpt_oss_providers, *nemotron_providers, *nvidia_providers])
     if settings.router9_api_key:
-        return _dedupe([*router9_providers, *nvidia_providers, *nemotron_providers, *gpt_oss_providers])
-    return _dedupe([*nvidia_providers, *nemotron_providers, *gpt_oss_providers])
+        return _dedupe([*router9_providers, *custom_providers, *nvidia_providers, *nemotron_providers, *gpt_oss_providers])
+    return _dedupe([*custom_providers, *nvidia_providers, *nemotron_providers, *gpt_oss_providers])
 
 
 def _provider_model(provider: str, settings: Settings, preferred_ai_model: str | None = None) -> str:
@@ -448,13 +412,15 @@ def _provider_model(provider: str, settings: Settings, preferred_ai_model: str |
         return preferred_ai_model or settings.ollama_text_model
     if provider == "nvidia":
         return preferred_ai_model or settings.nvidia_text_model
+    if provider == "openai_compat":
+        return preferred_ai_model or settings.openai_compat_text_model or "<none>"
     return "<unknown>"
 
 
 def _provider_model_candidates(provider: str, settings: Settings, preferred_ai_model: str | None = None) -> list[str | None]:
     if provider == "router9":
         return _router9_model_candidates(settings, preferred_ai_model)
-    if provider in {"openrouter", "nvidia", "ollama_gpt_oss"}:
+    if provider in {"openrouter", "nvidia", "ollama_gpt_oss", "openai_compat"}:
         return [preferred_ai_model]
     return [None]
 
@@ -522,6 +488,8 @@ async def _extract_with_provider(provider: str, settings: Settings, problem_text
         return await Router9Client(settings, model=model).extract_scene_json(problem_text, grade, reasoning_layer, reasoning_plan=reasoning_plan, system_prompt=system_prompt)
     if provider == "openrouter":
         return await OpenRouterClient(settings, model=preferred_ai_model).extract_scene_json(problem_text, grade, reasoning_layer, reasoning_plan=reasoning_plan, system_prompt=system_prompt)
+    if provider == "openai_compat":
+        return await OpenAICompatClient(settings, model=preferred_ai_model).extract_scene_json(problem_text, grade, reasoning_layer, reasoning_plan=reasoning_plan, system_prompt=system_prompt)
     if provider == "opencode_nemotron":
         return await OpenRouterClient(settings, model=settings.opencode_nemotron_model, reasoning_enabled=False).extract_scene_json(problem_text, grade, reasoning_layer, reasoning_plan=reasoning_plan, system_prompt=system_prompt)
     if provider == "ollama_gpt_oss":
@@ -540,6 +508,8 @@ async def _reason_with_provider(provider: str, settings: Settings, problem_text:
         return await Router9Client(settings, model=model).reason_about_problem(problem_text, grade, system_prompt=system_prompt)
     if provider == "openrouter":
         return await OpenRouterClient(settings, model=preferred_ai_model).reason_about_problem(problem_text, grade, system_prompt=system_prompt)
+    if provider == "openai_compat":
+        return await OpenAICompatClient(settings, model=preferred_ai_model).reason_about_problem(problem_text, grade, system_prompt=system_prompt)
     if provider == "opencode_nemotron":
         return await OpenRouterClient(settings, model=settings.opencode_nemotron_model, reasoning_enabled=False).reason_about_problem(problem_text, grade, system_prompt=system_prompt)
     if provider == "ollama_gpt_oss":

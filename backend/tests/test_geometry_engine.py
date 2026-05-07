@@ -1,7 +1,19 @@
 import pytest
 
 from app.schemas.scene import Line3D, MathScene, Plane, Point3D, Relation, SceneView, Segment, Sphere
-from app.services.geometry_engine import compute_three_geometry, normalize_scene
+from app.services.geometry_engine import (
+    calculate_line_line_angle,
+    calculate_line_plane_angle,
+    calculate_plane_plane_angle,
+    calculate_point_line_distance,
+    calculate_point_plane_distance,
+    calculate_point_point_distance,
+    calculate_polygon_area,
+    calculate_pyramid_volume,
+    calculate_tetrahedron_volume,
+    compute_three_geometry,
+    normalize_scene,
+)
 
 
 def scene_with(objects):
@@ -29,8 +41,68 @@ def assert_point_close(actual, expected):
     assert actual["z"] == pytest.approx(expected[2])
 
 
+def calc_points():
+    return {
+        "A": (0.0, 0.0, 3.0),
+        "B": (0.0, 0.0, 0.0),
+        "C": (4.0, 0.0, 0.0),
+        "D": (0.0, 4.0, 0.0),
+        "E": (4.0, 4.0, 0.0),
+        "S": (0.0, 0.0, 6.0),
+    }
+
+
 def annotation_targets(scene, annotation_type):
     return [annotation.target for annotation in scene.annotations if annotation.type == annotation_type]
+
+
+def test_calculate_point_point_distance():
+    result = calculate_point_point_distance(calc_points(), "B", "C")
+
+    assert result["status"] == "ok"
+    assert result["result_value"] == pytest.approx(4)
+    assert result["formula_latex"]
+
+
+def test_calculate_point_line_distance():
+    result = calculate_point_line_distance(calc_points(), "A", ("B", "C"))
+
+    assert result["status"] == "ok"
+    assert result["result_value"] == pytest.approx(3)
+    assert_point_close(result["foot"], (0, 0, 0))
+
+
+def test_calculate_point_plane_distance():
+    result = calculate_point_plane_distance(calc_points(), "A", ["B", "C", "D"])
+
+    assert result["status"] == "ok"
+    assert result["result_value"] == pytest.approx(3)
+    assert_point_close(result["foot"], (0, 0, 0))
+
+
+def test_calculate_angles():
+    points = calc_points()
+
+    assert calculate_line_line_angle(points, ("B", "C"), ("B", "D"))["result_value"] == pytest.approx(90)
+    assert calculate_line_plane_angle(points, ("B", "A"), ["B", "C", "D"])["result_value"] == pytest.approx(90)
+    assert calculate_plane_plane_angle(points, ["B", "C", "D"], ["A", "C", "D"])["status"] == "ok"
+
+
+def test_calculate_area_and_volume():
+    points = calc_points()
+
+    assert calculate_polygon_area(points, ["B", "C", "E", "D"])["result_value"] == pytest.approx(16)
+    assert calculate_tetrahedron_volume(points, ["B", "C", "D", "A"])["result_value"] == pytest.approx(8)
+    assert calculate_pyramid_volume(points, "S", ["B", "C", "E", "D"])["result_value"] == pytest.approx(32)
+
+
+def test_calculate_degenerate_line_warning():
+    points = {"A": (0.0, 0.0, 0.0), "B": (0.0, 0.0, 0.0), "C": (1.0, 0.0, 0.0)}
+
+    result = calculate_point_line_distance(points, "C", ("A", "B"))
+
+    assert result["status"] == "degenerate"
+    assert result["warnings"]
 
 
 def test_midpoint_relation_adds_equal_marks():

@@ -462,6 +462,10 @@ export interface SolveStep {
   expression: string | null;
   result: string | null;
   highlight: string[];
+  kind?: string | null;
+  formula_latex?: string | null;
+  substitution_latex?: string | null;
+  result_latex?: string | null;
 }
 
 export interface SolveResponse {
@@ -538,12 +542,13 @@ export interface AnalyzeResponse {
 export async function solveProblem(
   scene: unknown,
   question: string,
+  runtimeSettings?: RuntimeSettings,
 ): Promise<SolveResponse> {
   return requestJson('/api/solve', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ scene, question }),
+    body: JSON.stringify({ scene, question, runtime_settings: compactRuntimeSettings(runtimeSettings) }),
   }, 'Không thể giải toán từ scene này.');
 }
 
@@ -654,6 +659,7 @@ function compactRuntimeSettings(settings?: RuntimeSettings) {
     openrouter: compactProviderSettings(settings.openrouter),
     nvidia: compactProviderSettings(settings.nvidia),
     ollama: compactProviderSettings(settings.ollama),
+    openai_compat: compactProviderSettings(settings.openai_compat),
     router9: compactRouter9Settings(settings),
     openrouter_http_referer: cleanText(settings.openrouter_http_referer),
     openrouter_x_title: cleanText(settings.openrouter_x_title),
@@ -665,6 +671,7 @@ function compactRuntimeSettings(settings?: RuntimeSettings) {
     compact.openrouter === undefined &&
     compact.nvidia === undefined &&
     compact.ollama === undefined &&
+    compact.openai_compat === undefined &&
     compact.router9 === undefined &&
     compact.openrouter_http_referer === undefined &&
     compact.openrouter_x_title === undefined &&

@@ -14,13 +14,15 @@ interface SettingsPanelProps {
 const providerLabels: Record<ProviderKey, string> = {
   openrouter: 'OpenRouter',
   nvidia: 'NVIDIA',
-  ollama: 'Ollama / OpenAI-compatible',
+  ollama: 'Ollama',
+  openai_compat: 'OpenAI-compatible',
 };
 
 const providerHints: Record<ProviderKey, string> = {
   openrouter: 'Cho phép nhập base URL tùy chỉnh cho OpenRouter hoặc gateway OpenAI-compatible.',
   nvidia: 'Dùng khi bạn muốn đổi endpoint NVIDIA mặc định sang proxy nội bộ hoặc gateway riêng.',
-  ollama: 'Phù hợp cho Ollama cloud, local, server nội bộ hoặc endpoint OpenAI-compatible.',
+  ollama: 'Phù hợp cho Ollama cloud, local hoặc server nội bộ.',
+  openai_compat: 'Dùng cho gateway bất kỳ hỗ trợ OpenAI-compatible /v1/chat/completions.',
 };
 
 export function SettingsPanel({ value, defaults, onChange, onReset, onForgetApiKeys }: SettingsPanelProps) {

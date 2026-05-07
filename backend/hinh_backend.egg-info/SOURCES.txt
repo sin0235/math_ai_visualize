@@ -62,3 +62,4 @@ tests/test_geometry_engine.py
 tests/test_ocr.py
 tests/test_scene_output_normalization.py
 tests/test_settings_defaults.py
+tests/test_solver_service.py
