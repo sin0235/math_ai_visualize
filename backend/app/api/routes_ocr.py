@@ -32,6 +32,7 @@ async def ocr_image(
             settings,
             request.ocr_provider,
             request.ocr_model,
+            request.mode,
         )
     except (RuntimeError, ValueError) as error:
         raise bad_request_from_error(error, "ocr_failed") from error

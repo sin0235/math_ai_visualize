@@ -18,7 +18,8 @@ from app.db.session import SQLiteClient, get_database
 from app.main import app
 from app.repositories.auth import UserRepository
 from app.schemas.scene import MathScene
-from app.services import diagram_ocr as diagram_ocr_module
+from app.api import routes_diagram as routes_diagram_module
+from app.services import ocr as ocr_module
 from app.services import problem_variants as variants_module
 
 _IMAGE_DATA_URL = "data:image/png;base64,aGVsbG8="
@@ -69,12 +70,18 @@ def isolated_database(tmp_path):
 def test_describe_diagram_calls_vision_model(monkeypatch):
     captured: dict[str, str] = {}
 
-    async def fake_vision(image_data_url, settings, model):
+    async def fake_extract_text_from_image(image_data_url, settings, provider=None, model=None, mode="problem"):
         captured["image"] = image_data_url
         captured["model"] = model
-        return "Cho hình chóp S.ABCD đáy là hình vuông cạnh a, SA vuông góc đáy."
+        captured["mode"] = mode
+        return ocr_module.OcrResult(
+            text="Cho hình chóp S.ABCD đáy là hình vuông cạnh a, SA vuông góc đáy.",
+            provider="openrouter",
+            model=model or "vision/default",
+            warnings=[],
+        )
 
-    monkeypatch.setattr(diagram_ocr_module, "_call_openrouter_vision", fake_vision)
+    monkeypatch.setattr(routes_diagram_module, "extract_text_from_image", fake_extract_text_from_image)
 
     response = TestClient(app).post(
         "/api/diagram/ocr",
@@ -87,6 +94,7 @@ def test_describe_diagram_calls_vision_model(monkeypatch):
     assert body["model"] == "vision/x"
     assert captured["image"] == _IMAGE_DATA_URL
     assert captured["model"] == "vision/x"
+    assert captured["mode"] == "diagram"
 
 
 def test_describe_diagram_rejects_invalid_image(monkeypatch):
@@ -96,18 +104,6 @@ def test_describe_diagram_rejects_invalid_image(monkeypatch):
     )
     assert response.status_code == 400
     assert "data URL" in response.json().get("detail", {}).get("message", "")
-
-
-def test_describe_diagram_propagates_runtime_error(monkeypatch):
-    async def fake_vision(image_data_url, settings, model):
-        raise RuntimeError("vision provider lỗi")
-
-    monkeypatch.setattr(diagram_ocr_module, "_call_openrouter_vision", fake_vision)
-
-    settings = Settings(_env_file=None, openrouter_api_key="X")
-    with pytest.raises(RuntimeError) as excinfo:
-        asyncio.run(diagram_ocr_module.describe_diagram(_IMAGE_DATA_URL, settings))
-    assert "vision provider" in str(excinfo.value) or "thất bại" in str(excinfo.value)
 
 
 def test_generate_variants_returns_list(monkeypatch):

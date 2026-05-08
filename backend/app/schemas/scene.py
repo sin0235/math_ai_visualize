@@ -231,7 +231,7 @@ class AiModelInfo(BaseModel):
     context_length: int | None = None
 
 
-ModelScanProvider = Literal["openrouter", "nvidia", "ollama"]
+ModelScanProvider = Literal["openrouter", "nvidia", "ollama", "openai_compat"]
 
 
 class ModelScanRequest(BaseModel):
@@ -248,12 +248,14 @@ class ModelScanResponse(BaseModel):
 
 
 OcrProvider = Literal["openrouter", "router9"]
+OcrMode = Literal["problem", "diagram"]
 
 
 class OcrRequest(BaseModel):
     image_data_url: str = Field(min_length=1, max_length=MAX_IMAGE_DATA_URL_CHARS)
     ocr_provider: OcrProvider | None = None
     ocr_model: str | None = Field(default=None, max_length=MAX_MODEL_ID_CHARS)
+    mode: OcrMode = "problem"
     runtime_settings: RuntimeSettings | None = None
 
 

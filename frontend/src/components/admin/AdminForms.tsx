@@ -6,6 +6,7 @@ import {
   OcrProvider 
 } from '../../types/settings';
 import { 
+  scanProviderModels,
   scanRouter9Models,
   checkAdminProvider,
 } from '../../api/client';
@@ -229,12 +230,13 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave }: { value
 
   async function saveProvider(provider: (typeof providers)[number]) {
     const current = getAdminProviderSettings(value, provider, defaults);
+    const { api_key: _apiKey, ...providerDraft } = draft[provider] as ReturnType<typeof getAdminProviderSettings> & { api_key?: string };
     await onSave({
       [provider]: {
         ...current,
-        ...draft[provider],
-        base_url: draft[provider].base_url.trim(),
-        model: draft[provider].model.trim(),
+        ...providerDraft,
+        base_url: providerDraft.base_url.trim(),
+        model: providerDraft.model.trim(),
       },
     });
   }
@@ -249,15 +251,14 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave }: { value
     });
   }
 
-  async function scanRouter9() {
-    const provider = 'router9';
+  async function scanProvider(provider: (typeof providers)[number]) {
     setScanning(provider);
     try {
-      const runtime = adminSettingsToRuntime({ ...value, router9: draft.router9 });
-      const models = await scanRouter9Models(runtime);
-      const next = { ...draft.router9, scanned_models: models, last_scanned_at: new Date().toISOString() };
+      const runtime = adminSettingsToRuntime({ ...value, [provider]: draft[provider] });
+      const models = provider === 'router9' ? await scanRouter9Models(runtime) : await scanProviderModels(provider as Exclude<typeof provider, 'router9'>, runtime);
+      const next = { ...draft[provider], scanned_models: models, last_scanned_at: new Date().toISOString() };
       updateProvider(provider, next);
-      await onSave({ router9: next });
+      await onSave({ [provider]: next });
     } finally {
       setScanning(null);
     }
@@ -291,7 +292,8 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave }: { value
   async function checkProvider(provider: (typeof providers)[number]) {
     setChecking(provider);
     try {
-      const result = await checkAdminProvider(provider);
+      const runtime = adminSettingsToRuntime({ ...value, [provider]: draft[provider] });
+      const result = await checkAdminProvider(provider, runtime);
       setCheckResults((current) => ({ ...current, [provider]: result }));
     } catch (error) {
       setCheckResults((current) => ({ ...current, [provider]: { status: 'error', message: String(error) } }));
@@ -325,7 +327,7 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave }: { value
     <div className="admin-ai-settings">
       <section className="admin-settings-section">
         <h4>Provider & model</h4>
-        <p className="field-hint">9router hỗ trợ quét model. OpenRouter/NVIDIA/Ollama dùng danh sách thủ công dạng provider/model-id.</p>
+        <p className="field-hint">Các provider hỗ trợ endpoint /models có thể quét model. Nếu endpoint không có /models, thêm model thủ công dạng provider/model-id.</p>
         <label className="field-label">Tìm model<input type="search" value={modelFilter} onChange={(event) => setModelFilter(event.target.value)} placeholder="Nhập tên hoặc ID model" /></label>
         <div className="admin-provider-grid">
           {providers.map((provider) => {
@@ -345,6 +347,7 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave }: { value
                   ) : (
                     <div className="admin-row-actions admin-provider-card-head-actions">
                       <button type="button" className="secondary-button" onClick={() => void checkProvider(provider)} disabled={saving || checking === provider}>{checking === provider ? 'Đang kiểm tra...' : 'Kiểm tra'}</button>
+                      <button type="button" className="secondary-button" onClick={() => void scanProvider(provider)} disabled={saving || scanning === provider}>{scanning === provider ? 'Đang quét...' : 'Quét model'}</button>
                       <button type="button" className="secondary-button" onClick={() => void saveProvider(provider)} disabled={saving}>{saving ? 'Đang lưu...' : 'Lưu provider'}</button>
                     </div>
                   )}
@@ -359,21 +362,23 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave }: { value
                 {provider === 'router9' && (
                   <div className="admin-row-actions">
                     <button type="button" className="secondary-button" onClick={() => void checkProvider(provider)} disabled={saving || checking === provider}>{checking === provider ? 'Đang kiểm tra...' : 'Kiểm tra'}</button>
-                    <button type="button" className="secondary-button" onClick={() => void scanRouter9()} disabled={saving || scanning === provider}>{scanning === provider ? 'Đang quét...' : 'Quét model'}</button>
+                    <button type="button" className="secondary-button" onClick={() => void scanProvider(provider)} disabled={saving || scanning === provider}>{scanning === provider ? 'Đang quét...' : 'Quét model'}</button>
                     <button type="button" className="secondary-button" onClick={() => void saveProvider(provider)} disabled={saving}>{saving ? 'Đang lưu...' : 'Lưu provider'}</button>
                   </div>
                 )}
                 </div>
                 <div className="admin-provider-models">
                   <div className="admin-provider-models-head">
-                    <strong>{provider === 'router9' ? 'Model inventory' : 'Model thủ công'}</strong>
+                    <strong>{provider === 'router9' ? 'Model inventory' : 'Model inventory / thủ công'}</strong>
                     <span>{filteredAllowlistOptions.length}/{allowlistOptions.length}</span>
                   </div>
                   {provider !== 'router9' && (
+                    <>
                     <div className="admin-manual-model-row">
                       <input value={manualModelInputs[provider] ?? ''} onChange={(event) => setManualModelInputs((current) => ({ ...current, [provider]: event.target.value }))} placeholder={`${provider}/model-id hoặc model-id`} />
                       <button type="button" className="secondary-button" onClick={() => { addManualModel(provider, manualModelInputs[provider] ?? ''); setManualModelInputs((current) => ({ ...current, [provider]: '' })); }}>Thêm model</button>
                     </div>
+                    </>
                   )}
                   <div className="admin-model-checklist">
                     {filteredAllowlistOptions.map((modelItem) => (
@@ -457,16 +462,12 @@ export function AdminFeatureFlagsForm({ value, onSave }: { value: Record<string,
 export function AdminAiProfilesForm({ value, aiSettings, onSave }: { value: Record<string, unknown>; aiSettings: Record<string, unknown>; onSave: (value: Record<string, unknown>) => Promise<void> }) {
   const geometry = getAiTaskProfile(value.geometry_reasoning);
   const solver = getAiTaskProfile(value.solver_explanation);
-  const ocr = getAiTaskProfile(value.ocr);
   const [geometryProvider, setGeometryProvider] = useState(geometry.provider);
   const [geometryModel, setGeometryModel] = useState(geometry.model);
   const [geometryFallbacks, setGeometryFallbacks] = useState<string[]>(geometry.fallbacks);
   const [solverProvider, setSolverProvider] = useState(solver.provider);
   const [solverModel, setSolverModel] = useState(solver.model);
   const [solverFallbacks, setSolverFallbacks] = useState<string[]>(solver.fallbacks);
-  const [ocrProvider, setOcrProvider] = useState(ocr.provider);
-  const [ocrModel, setOcrModel] = useState(ocr.model);
-  const [ocrFallbacks, setOcrFallbacks] = useState<string[]>(ocr.fallbacks);
   const settingsDefaults = adminSettingsToDefaults(aiSettings);
   const providerOptions = buildProviderOptions(settingsDefaults, false);
 
@@ -479,8 +480,8 @@ export function AdminAiProfilesForm({ value, aiSettings, onSave }: { value: Reco
     return buildModelOptionsFromDefaults(providerDefaults(selectedProvider), selectedModel, fallbackModels, settingsDefaults, selectedProvider);
   }
 
-  function updateFallbacks(kind: 'geometry' | 'solver' | 'ocr', modelId: string, checked: boolean) {
-    const setter = kind === 'geometry' ? setGeometryFallbacks : kind === 'solver' ? setSolverFallbacks : setOcrFallbacks;
+  function updateFallbacks(kind: 'geometry' | 'solver', modelId: string, checked: boolean) {
+    const setter = kind === 'geometry' ? setGeometryFallbacks : setSolverFallbacks;
     setter((current) => checked ? [...new Set([...current, modelId])] : current.filter((item) => item !== modelId));
   }
 
@@ -490,15 +491,12 @@ export function AdminAiProfilesForm({ value, aiSettings, onSave }: { value: Reco
       <label className="field-label">Model hình học<select value={geometryModel} onChange={(event) => setGeometryModel(event.target.value)}><option value="">Chọn model</option>{modelOptions(geometryProvider, geometryModel, geometryFallbacks).map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.label}</option>)}</select></label>
       <label className="field-label">Provider diễn giải lời giải<select value={solverProvider} onChange={(event) => setSolverProvider(event.target.value)}><option value="auto">auto</option>{providerOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
       <label className="field-label">Model diễn giải lời giải<select value={solverModel} onChange={(event) => setSolverModel(event.target.value)}><option value="">Chọn model</option>{modelOptions(solverProvider, solverModel, solverFallbacks).map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.label}</option>)}</select></label>
-      <label className="field-label">Provider OCR<select value={ocrProvider} onChange={(event) => setOcrProvider(event.target.value)}><option value="auto">auto</option>{providerOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
-      <label className="field-label">Model OCR<select value={ocrModel} onChange={(event) => setOcrModel(event.target.value)}><option value="">Chọn model</option>{modelOptions(ocrProvider, ocrModel, ocrFallbacks).map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.label}</option>)}</select></label>
     </div>
     <div className="admin-model-fallback-grid">
       <ModelFallbackChecklist title="Model dự phòng hình học" options={modelOptions(geometryProvider, geometryModel, geometryFallbacks)} selected={geometryFallbacks} onToggle={(modelId, checked) => updateFallbacks('geometry', modelId, checked)} />
       <ModelFallbackChecklist title="Model dự phòng diễn giải lời giải" options={modelOptions(solverProvider, solverModel, solverFallbacks)} selected={solverFallbacks} onToggle={(modelId, checked) => updateFallbacks('solver', modelId, checked)} />
-      <ModelFallbackChecklist title="Model dự phòng OCR" options={modelOptions(ocrProvider, ocrModel, ocrFallbacks)} selected={ocrFallbacks} onToggle={(modelId, checked) => updateFallbacks('ocr', modelId, checked)} />
     </div>
-    <button type="button" className="secondary-button" onClick={() => void onSave({ version: 1, geometry_reasoning: { provider: geometryProvider, model: geometryModel, fallbacks: geometryFallbacks }, solver_explanation: { provider: solverProvider, model: solverModel, fallbacks: solverFallbacks }, ocr: { provider: ocrProvider, model: ocrModel, fallbacks: ocrFallbacks } })}>Lưu hồ sơ AI</button></section>
+    <button type="button" className="secondary-button" onClick={() => void onSave({ version: 1, geometry_reasoning: { provider: geometryProvider, model: geometryModel, fallbacks: geometryFallbacks }, solver_explanation: { provider: solverProvider, model: solverModel, fallbacks: solverFallbacks } })}>Lưu hồ sơ AI</button></section>
   );
 }
 

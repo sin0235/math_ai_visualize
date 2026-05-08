@@ -49,7 +49,7 @@ function PolyhedronFaces() {
   const groupRef = useRef<THREE.Group>(null);
   const palette = ['#a5b4fc', '#f9a8d4', '#99f6e4', '#fde68a', '#bfdbfe', '#fecdd3', '#c4b5fd', '#bbf7d0', '#fed7aa', '#ddd6fe'];
   const geometry = useMemo(() => {
-    const shape = new THREE.IcosahedronGeometry(1.85, 0);
+    const shape = new THREE.IcosahedronGeometry(2.05, 0);
     shape.clearGroups();
     for (let face = 0; face < 20; face += 1) {
       shape.addGroup(face * 3, 3, face % palette.length);

@@ -210,8 +210,11 @@ def settings_from_registry(settings: Settings, registry: ModelRegistry) -> Setti
     if router9_allowed:
         data["router9_allowed_models"] = router9_allowed
     ocr_profile = registry.task_profiles.get("ocr")
-    if ocr_profile and ocr_profile.provider_id == "router9" and ocr_profile.model_id:
-        data["router9_ocr_model"] = ocr_profile.model_id
+    if ocr_profile and ocr_profile.model_id:
+        if ocr_profile.provider_id == "router9":
+            data["router9_ocr_model"] = ocr_profile.model_id
+        elif ocr_profile.provider_id == "openrouter":
+            data["openrouter_vision_model"] = ocr_profile.model_id
     return Settings.model_validate(data)
 
 

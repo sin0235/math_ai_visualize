@@ -76,7 +76,13 @@ interface ProblemInputProps {
   modelOptions: ModelOption[];
   router9Only: boolean;
   onProblemTextChange: (next: string) => void;
-  onOcrImage: (file: File) => void;
+  onOcrImage: (
+    file: File,
+    preferredAiProvider?: string,
+    preferredAiModel?: string,
+    advancedSettings?: AdvancedRenderSettings,
+    preferredRenderer?: Renderer,
+  ) => void;
   onOcrClipboardImage: () => void;
   onOpenRouter9Settings: () => void;
   onSubmit: (
@@ -88,7 +94,19 @@ interface ProblemInputProps {
   ) => void;
 }
 
-export function ProblemInput({ loading, ocrLoading, ocrError, problemText, modelOptions, router9Only, onProblemTextChange, onOcrImage, onOcrClipboardImage, onOpenRouter9Settings, onSubmit }: ProblemInputProps) {
+export function ProblemInput({
+  loading,
+  ocrLoading,
+  ocrError,
+  problemText,
+  modelOptions,
+  router9Only,
+  onProblemTextChange,
+  onOcrImage,
+  onOcrClipboardImage,
+  onOpenRouter9Settings,
+  onSubmit,
+}: ProblemInputProps) {
   const [selectedModelKey, setSelectedModelKey] = useState(modelOptions[0]?.key ?? '');
   const [preferredRenderer, setPreferredRenderer] = useState<'auto' | Renderer>('auto');
   const [advancedSettings, setAdvancedSettings] = useState<AdvancedRenderSettings>(defaultAdvancedSettings);
@@ -122,10 +140,18 @@ export function ProblemInput({ loading, ocrLoading, ocrError, problemText, model
 
   function pickImageFile(files: FileList | null) {
     const file = Array.from(files ?? []).find((item) => item.type.startsWith('image/'));
-    if (file) onOcrImage(file);
+    if (file) {
+      onOcrImage(
+        file,
+        selectedModel?.provider,
+        selectedModel?.modelId,
+        advancedSettings,
+        preferredRenderer === 'auto' ? undefined : preferredRenderer,
+      );
+    }
   }
 
-  function handleDrop(event: DragEvent<HTMLDivElement>) {
+  function handleDrop(event: DragEvent<HTMLElement>) {
     event.preventDefault();
     if (busy) return;
     setDragActive(false);
@@ -138,7 +164,13 @@ export function ProblemInput({ loading, ocrLoading, ocrError, problemText, model
     const file = imageItem?.getAsFile();
     if (!file) return;
     event.preventDefault();
-    onOcrImage(file);
+    onOcrImage(
+      file,
+      selectedModel?.provider,
+      selectedModel?.modelId,
+      advancedSettings,
+      preferredRenderer === 'auto' ? undefined : preferredRenderer,
+    );
   }
 
   function handleTextAreaDoubleClick(event: MouseEvent<HTMLTextAreaElement>) {
@@ -157,7 +189,24 @@ export function ProblemInput({ loading, ocrLoading, ocrError, problemText, model
     <form className="panel problem-form" onSubmit={handleSubmit}>
       <div>
         <div className="panel-title">Nhập mô tả</div>
-        <p className="field-hint">Hỗ trợ hình học phẳng, hàm số, đường tròn và hình không gian.</p>
+        <details className="ocr-image-panel">
+          <summary>OCR hình → hình</summary>
+          <p className="field-hint">Chọn ảnh để tái dựng hình trong ảnh.</p>
+          <button
+            type="button"
+            className={`ocr-image-drop-target ${dragActive ? 'drag-active' : ''}`.trim()}
+            disabled={busy}
+            onClick={() => fileInputRef.current?.click()}
+            onDragOver={(event) => {
+              event.preventDefault();
+              if (!busy) setDragActive(true);
+            }}
+            onDragLeave={() => { if (!busy) setDragActive(false); }}
+            onDrop={handleDrop}
+          >
+            Kéo thả ảnh vào đây hoặc bấm để chọn ảnh
+          </button>
+        </details>
       </div>
       <div
         className={`textarea-wrap ocr-dropzone ${dragActive ? 'drag-active' : ''} ${!problemText.trim() ? 'empty' : ''}`}
@@ -168,43 +217,43 @@ export function ProblemInput({ loading, ocrLoading, ocrError, problemText, model
         onDragLeave={() => { if (!busy) setDragActive(false); }}
         onDrop={handleDrop}
       >
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          className="hidden-file-input"
-          onChange={(event) => {
-            pickImageFile(event.target.files);
-            event.target.value = '';
-          }}
-        />
-        <textarea
-          value={problemText}
-          disabled={busy}
-          onChange={(event) => {
-            if (busy) return;
-            onProblemTextChange(event.target.value);
-          }}
-          onPaste={handlePaste}
-          onDoubleClick={handleTextAreaDoubleClick}
-          onContextMenu={handleContextMenu}
-          rows={10}
-          maxLength={2000}
-          placeholder="Ví dụ: Cho tam giác ABC vuông tại A, AB = 3, AC = 4. Vẽ đường trung tuyến AM."
-        />
-        {!busy && !problemText.trim() && <div className="ocr-empty-hint">Double click để chọn ảnh, chuột phải để paste ảnh vừa crop, hoặc kéo-thả/paste ảnh vào đây.</div>}
-        {ocrError && <div className="ocr-error">{ocrError}</div>}
-        <div className="char-counter">{problemText.length}/2000 ký tự</div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden-file-input"
+            onChange={(event) => {
+              pickImageFile(event.target.files);
+              event.target.value = '';
+            }}
+          />
+          <textarea
+            value={problemText}
+            disabled={busy}
+            onChange={(event) => {
+              if (busy) return;
+              onProblemTextChange(event.target.value);
+            }}
+            onPaste={handlePaste}
+            onDoubleClick={handleTextAreaDoubleClick}
+            onContextMenu={handleContextMenu}
+            rows={10}
+            maxLength={2000}
+            placeholder="Ví dụ: Cho tam giác ABC vuông tại A, AB = 3, AC = 4. Vẽ đường trung tuyến AM."
+          />
+          {!busy && !problemText.trim() && <div className="ocr-empty-hint">Double click để đính ảnh, chuột phải để paste ảnh vừa crop, hoặc kéo-thả/paste ảnh vào đây.</div>}
+          {ocrError && <div className="ocr-error">{ocrError}</div>}
+          <div className="char-counter">{problemText.length}/2000 ký tự</div>
         {busy && (
           <div className="textarea-overlay" role="status" aria-live="polite">
             <Spinner className="spinner-overlay" />
-            <div className="textarea-overlay-text">{loading ? 'Đang dựng hình...' : 'Đang OCR ảnh...'}</div>
+            <div className="textarea-overlay-text">{loading ? 'Đang dựng hình...' : 'Đang đọc ảnh...'}</div>
           </div>
         )}
       </div>
       <button disabled={submitDisabled || !problemText.trim()} type="submit" className="submit-button submit-button-sticky">
         {(loading || ocrLoading) && <Spinner />}
-        {ocrLoading ? 'Đang OCR ảnh...' : loading ? 'Đang dựng hình...' : 'Dựng hình'}
+        {ocrLoading ? 'Đang đọc ảnh...' : loading ? 'Đang dựng hình...' : 'Dựng hình'}
       </button>
       <label className="field-label">
         <span title="Chọn provider/model AI dùng để phân tích đề và dựng hình">Chọn AI Model</span>

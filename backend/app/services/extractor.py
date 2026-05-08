@@ -7,6 +7,7 @@ from pydantic import ValidationError
 from app.core.config import Settings
 from app.schemas.scene import AdvancedRenderSettings, MathScene, RuntimeSettings, SceneView
 from app.db.session import DatabaseClient
+from app.services.ai_fallback import text_model_candidates
 from app.services.ai_prompt import get_system_prompts
 from app.services.expression_eval import try_safe_eval
 from app.services.nvidia_client import NvidiaClient
@@ -495,7 +496,7 @@ def _circle_scene(text: str, grade: int | None, points: list[dict[str, Any]]) ->
 def _provider_order(settings: Settings, preferred_ai_provider: str | None = None) -> list[str]:
     provider = preferred_ai_provider or settings.ai_provider
     nvidia_providers = ["nvidia"]
-    custom_providers = ["openai_compat"]
+    custom_providers = ["openai_compat"] if provider == "openai_compat" or settings.openai_compat_text_model else []
     nemotron_providers = ["openrouter", "opencode_nemotron"]
     gpt_oss_providers = ["ollama_gpt_oss", "openrouter_gpt_oss"]
     router9_providers = ["router9"]
@@ -542,7 +543,7 @@ def _provider_model_candidates(provider: str, settings: Settings, preferred_ai_m
     if provider == "router9":
         return _router9_model_candidates(settings, preferred_ai_model)
     if provider in {"openrouter", "nvidia", "ollama_gpt_oss", "openai_compat"}:
-        return [preferred_ai_model]
+        return text_model_candidates(provider, settings, preferred_ai_model)
     return [None]
 
 

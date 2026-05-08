@@ -359,10 +359,12 @@ export async function getAdminDatabaseDiagnostics(): Promise<AdminDatabaseDiagno
   return requestJson('/api/admin/database/diagnostics', { credentials: 'include' }, 'Không thể tải chẩn đoán database.');
 }
 
-export async function checkAdminProvider(provider: string): Promise<{ status: string; message: string }> {
+export async function checkAdminProvider(provider: string, runtimeSettings: RuntimeSettings): Promise<{ status: string; message: string }> {
   return requestJson(`/api/admin/providers/${encodeURIComponent(provider)}/check`, {
     method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
+    body: JSON.stringify({ runtime_settings: compactRuntimeSettings(runtimeSettings) }),
   }, 'Không thể kiểm tra kết nối provider.');
 }
 
@@ -405,7 +407,7 @@ export async function renderProblem(
   }, 'Không thể dựng hình từ đề bài.');
 }
 
-export async function ocrImage(imageDataUrl: string, runtimeSettings: RuntimeSettings): Promise<OcrResponse> {
+export async function ocrImage(imageDataUrl: string, runtimeSettings: RuntimeSettings, mode: 'problem' | 'diagram' = 'problem'): Promise<OcrResponse> {
   return requestJson('/api/ocr', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -414,6 +416,7 @@ export async function ocrImage(imageDataUrl: string, runtimeSettings: RuntimeSet
       image_data_url: imageDataUrl,
       ocr_provider: runtimeSettings.router9.only_mode ? 'router9' : runtimeSettings.ocr.provider,
       ocr_model: runtimeSettings.ocr.model.trim() || undefined,
+      mode,
       runtime_settings: compactRuntimeSettings(runtimeSettings),
     }),
   }, 'Không thể OCR ảnh đề bài.');
@@ -452,48 +455,25 @@ export async function renderEditedScene(scene: MathScene, advancedSettings: Adva
 }
 
 // ---------------------------------------------------------------------------
-// Export scene → TikZ / PDF / GGB (binary download)
+// Export scene → image / SVG / PDF / TikZ / GGB / KaTeX HTML
 // ---------------------------------------------------------------------------
 
-export type ExportFormat = 'tikz' | 'ggb' | 'pdf';
+export type ExportFormat = 'png' | 'jpg' | 'svg' | 'pdf' | 'katex-html' | 'tikz' | 'ggb';
 
 const EXPORT_META: Record<ExportFormat, { path: string; filename: string; errorMessage: string }> = {
+  png: { path: '/api/export/png', filename: 'hinh.png', errorMessage: 'Không thể xuất PNG.' },
+  jpg: { path: '/api/export/jpg', filename: 'hinh.jpg', errorMessage: 'Không thể xuất JPG.' },
+  svg: { path: '/api/export/svg', filename: 'hinh.svg', errorMessage: 'Không thể xuất SVG.' },
+  pdf: { path: '/api/export/pdf', filename: 'hinh.pdf', errorMessage: 'Không thể xuất PDF.' },
+  'katex-html': { path: '/api/export/katex-html', filename: 'hinh-katex.html', errorMessage: 'Không thể xuất HTML KaTeX.' },
   tikz: { path: '/api/export/tikz', filename: 'hinh.tex', errorMessage: 'Không thể xuất TikZ.' },
   ggb: { path: '/api/export/ggb', filename: 'hinh.ggb', errorMessage: 'Không thể xuất GeoGebra.' },
-  pdf: { path: '/api/export/pdf', filename: 'hinh.pdf', errorMessage: 'Không thể xuất PDF.' },
 };
-
-export interface DiagramOcrResponse {
-  description: string;
-  provider: string;
-  model: string;
-}
 
 export interface ProblemVariantsResponse {
   variants: string[];
   provider: string;
   model: string;
-}
-
-export async function diagramOcr(
-  imageDataUrl: string,
-  runtimeSettings?: RuntimeSettings,
-  preferredAiModel?: string,
-): Promise<DiagramOcrResponse> {
-  return requestJson<DiagramOcrResponse>(
-    '/api/diagram/ocr',
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({
-        image_data_url: imageDataUrl,
-        preferred_ai_model: preferredAiModel,
-        runtime_settings: compactRuntimeSettings(runtimeSettings),
-      }),
-    },
-    'Không thể nhận diện hình.',
-  );
 }
 
 export async function generateProblemVariants(

@@ -9,19 +9,30 @@ interface RendererPanelProps {
   threeInteraction?: ThreeSceneInteraction;
   onGeoGebraPointChange?: (name: string, point: Vec3) => void | Promise<void>;
   highlightedObjects?: string[];
+  saving?: boolean;
 }
 
-export function RendererPanel({ result, threeInteraction, onGeoGebraPointChange, highlightedObjects }: RendererPanelProps) {
+export function RendererPanel({ result, threeInteraction, onGeoGebraPointChange, highlightedObjects, saving }: RendererPanelProps) {
   if (!result) {
     return <EmptyState />;
   }
 
   if (result.payload.renderer === 'geogebra_2d' || result.payload.renderer === 'geogebra_3d') {
-    return <GeoGebraView commands={result.payload.geogebra_commands} renderer={result.payload.renderer} scene={result.scene} view={result.scene.view} onPointChange={onGeoGebraPointChange} />;
+    return (
+      <div className="renderer-frame">
+        <GeoGebraView commands={result.payload.geogebra_commands} renderer={result.payload.renderer} scene={result.scene} view={result.scene.view} onPointChange={onGeoGebraPointChange} />
+        {saving && <div className="renderer-saving-overlay">Đang dựng lại hình...</div>}
+      </div>
+    );
   }
 
   if (result.payload.three_scene) {
-    return <ThreeGeometryView scene={result.payload.three_scene} interaction={threeInteraction} highlightedObjects={highlightedObjects} />;
+    return (
+      <div className="renderer-frame">
+        <ThreeGeometryView scene={result.payload.three_scene} interaction={threeInteraction} highlightedObjects={highlightedObjects} />
+        {saving && <div className="renderer-saving-overlay">Đang dựng lại hình...</div>}
+      </div>
+    );
   }
 
   return (

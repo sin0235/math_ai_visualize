@@ -107,7 +107,7 @@ class OpenRouterClient:
         except json.JSONDecodeError as error:
             raise RuntimeError(f"OpenRouter reasoning JSON không hợp lệ: {error.msg}") from error
 
-    async def ocr_image(self, image_data_url: str, model: str | None = None) -> str:
+    async def ocr_image(self, image_data_url: str, model: str | None = None, system_prompt: str | None = None, user_text: str = "Trích xuất nguyên văn đề toán trong ảnh.") -> str:
         if not self.settings.openrouter_api_key:
             raise RuntimeError("OPENROUTER_API_KEY chưa được cấu hình.")
 

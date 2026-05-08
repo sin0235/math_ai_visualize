@@ -20,9 +20,11 @@ from dataclasses import dataclass
 import httpx
 
 from app.core.config import Settings
+from app.services.ai_fallback import Attempt, format_attempts, openrouter_vision_candidates, router9_ocr_candidates
 from app.services.ocr import validate_image_data_url
 from app.services.openrouter_client import _build_headers, _extract_message, _format_openrouter_error, _normalize_model_id, _strip_text_fences
 from app.services.provider_logging import log_provider_request, log_provider_response
+from app.services.router9_client import Router9Client
 
 DIAGRAM_OCR_SYSTEM_PROMPT = """
 Bạn là trợ lý nhận diện hình hình học từ ảnh (vẽ tay hoặc in).
@@ -56,31 +58,27 @@ async def describe_diagram(
     settings: Settings,
     explicit_model: str | None = None,
 ) -> DiagramOcrResult:
-    """Gửi ảnh tới OpenRouter vision model với prompt mô tả hình.
-
-    Hiện thời chỉ hỗ trợ OpenRouter (provider có vision phổ biến nhất). Có thể
-    mở rộng sang router9/nvidia trong tương lai bằng cách thêm nhánh tương ứng.
-    """
     validate_image_data_url(image_data_url)
-    if not settings.openrouter_api_key:
-        raise RuntimeError("OPENROUTER_API_KEY chưa được cấu hình để OCR hình.")
+    attempts: list[Attempt] = []
 
-    candidates: list[str] = []
-    if explicit_model:
-        candidates.append(explicit_model)
-    else:
-        candidates.append(settings.openrouter_vision_model)
-        if settings.openrouter_vision_fallback_model not in candidates:
-            candidates.append(settings.openrouter_vision_fallback_model)
+    if settings.openrouter_api_key:
+        for model in openrouter_vision_candidates(settings, explicit_model):
+            try:
+                description = await _call_openrouter_vision(image_data_url, settings, model)
+                return DiagramOcrResult(description=description, provider="openrouter", model=model)
+            except RuntimeError as error:
+                attempts.append(Attempt("openrouter", model, "diagram_ocr", str(error)))
 
-    errors: list[str] = []
-    for model in candidates:
-        try:
-            description = await _call_openrouter_vision(image_data_url, settings, model)
-            return DiagramOcrResult(description=description, provider="openrouter", model=model)
-        except RuntimeError as error:
-            errors.append(f"{model}: {error}")
-    raise RuntimeError("OCR hình thất bại qua tất cả model: " + " | ".join(errors))
+    if explicit_model is None and settings.router9_api_key:
+        for model in router9_ocr_candidates(settings):
+            try:
+                client = Router9Client(settings, model=model)
+                description = await client.ocr_image(image_data_url, model, system_prompt=DIAGRAM_OCR_SYSTEM_PROMPT, user_text="Hãy mô tả hình hình học trong ảnh thành một đoạn văn đề bài tiếng Việt.")
+                return DiagramOcrResult(description=description, provider="router9", model=model)
+            except RuntimeError as error:
+                attempts.append(Attempt("router9", model, "diagram_ocr", str(error)))
+
+    raise RuntimeError("OCR hình thất bại qua tất cả model. Đã thử: " + format_attempts(attempts))
 
 
 async def _call_openrouter_vision(image_data_url: str, settings: Settings, model: str) -> str:

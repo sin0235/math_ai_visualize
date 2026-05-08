@@ -223,46 +223,80 @@ def _scaled_unit(
     return (length * dx / norm, length * dy / norm)
 
 
+def _build_scene_figure(scene: MathScene, problem_text: str | None = None) -> plt.Figure:
+    title = problem_text or scene.problem_text or "Hình"
+    fig = plt.figure(figsize=(8.27, 11.69), facecolor="white")
+
+    title_ax = fig.add_axes((0.08, 0.85, 0.84, 0.10))
+    title_ax.axis("off")
+    wrapped = _wrap_text(title, max_chars=90)
+    title_ax.text(
+        0.0,
+        1.0,
+        "Đề bài",
+        fontsize=11,
+        fontweight="bold",
+        color="#111111",
+        ha="left",
+        va="top",
+    )
+    title_ax.text(
+        0.0,
+        0.78,
+        wrapped,
+        fontsize=10,
+        color="#0b0c10",
+        ha="left",
+        va="top",
+        wrap=True,
+    )
+
+    figure_ax = fig.add_axes((0.08, 0.10, 0.84, 0.72))
+    _draw_scene(scene, figure_ax)
+    figure_ax.set_title(scene.topic.replace("_", " ").title(), fontsize=10, color="#525252", loc="left")
+    return fig
+
+
 def build_pdf(scene: MathScene, problem_text: str | None = None) -> bytes:
     """Trả về bytes của file PDF 1 trang gồm đề bài + hình minh hoạ."""
-    title = problem_text or scene.problem_text or "Hình"
-
     buffer = io.BytesIO()
     with PdfPages(buffer) as pdf:
-        fig = plt.figure(figsize=(8.27, 11.69))  # A4 portrait
-
-        title_ax = fig.add_axes((0.08, 0.85, 0.84, 0.10))
-        title_ax.axis("off")
-        wrapped = _wrap_text(title, max_chars=90)
-        title_ax.text(
-            0.0,
-            1.0,
-            "Đề bài",
-            fontsize=11,
-            fontweight="bold",
-            color="#1d3557",
-            ha="left",
-            va="top",
-        )
-        title_ax.text(
-            0.0,
-            0.78,
-            wrapped,
-            fontsize=10,
-            color="#0b0c10",
-            ha="left",
-            va="top",
-            wrap=True,
-        )
-
-        figure_ax = fig.add_axes((0.08, 0.10, 0.84, 0.72))
-        _draw_scene(scene, figure_ax)
-        figure_ax.set_title(scene.topic.replace("_", " ").title(), fontsize=10, color="#525252", loc="left")
-
-        pdf.savefig(fig)
-        plt.close(fig)
-
+        fig = _build_scene_figure(scene, problem_text)
+        try:
+            pdf.savefig(fig)
+        finally:
+            plt.close(fig)
     return buffer.getvalue()
 
 
-__all__ = ["build_pdf"]
+def build_png(scene: MathScene, problem_text: str | None = None) -> bytes:
+    buffer = io.BytesIO()
+    fig = _build_scene_figure(scene, problem_text)
+    try:
+        fig.savefig(buffer, format="png", dpi=180, bbox_inches="tight", facecolor="white")
+    finally:
+        plt.close(fig)
+    return buffer.getvalue()
+
+
+def build_jpg(scene: MathScene, problem_text: str | None = None) -> bytes:
+    buffer = io.BytesIO()
+    fig = _build_scene_figure(scene, problem_text)
+    try:
+        fig.savefig(buffer, format="jpg", dpi=180, bbox_inches="tight", facecolor="white")
+    finally:
+        plt.close(fig)
+    return buffer.getvalue()
+
+
+def build_svg(scene: MathScene, problem_text: str | None = None) -> str:
+    buffer = io.StringIO()
+    fig = _build_scene_figure(scene, problem_text)
+    try:
+        fig.savefig(buffer, format="svg", bbox_inches="tight", facecolor="white")
+    finally:
+        plt.close(fig)
+    return buffer.getvalue()
+
+
+__all__ = ["build_pdf", "build_png", "build_jpg", "build_svg"]

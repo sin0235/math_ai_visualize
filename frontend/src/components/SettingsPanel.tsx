@@ -75,7 +75,7 @@ export function SettingsPanel({ value, defaults, onChange, onReset, onForgetApiK
       </div>
 
       <div className="settings-grid settings-grid-providers">
-        {(['openrouter', 'nvidia', 'ollama'] as ProviderKey[]).map((provider) => {
+        {(['openrouter', 'nvidia', 'ollama', 'openai_compat'] as ProviderKey[]).map((provider) => {
           const providerDefaults = defaults?.[provider];
           return (
             <section className="panel settings-section" key={provider}>

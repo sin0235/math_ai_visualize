@@ -24,8 +24,9 @@ from app.schemas.auth import (
     SystemSettingResponse,
     UserResponse,
 )
-from app.schemas.scene import MathScene, RenderPayload
+from app.schemas.scene import MathScene, ModelScanRequest, RenderPayload
 from app.services.admin_settings import build_database_diagnostics, sync_ai_settings_to_registry
+from app.services.model_registry import resolve_effective_settings
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -183,19 +184,17 @@ async def admin_save_system_setting(
 @router.post("/providers/{provider}/check")
 async def admin_check_provider(
     provider: str,
+    request: ModelScanRequest,
     http_request: Request,
     admin: UserRecord = Depends(require_admin_user),
     db: DatabaseClient = Depends(get_database),
 ) -> dict:
     await enforce_rate_limit(db, http_request, admin, "admin_provider_check", 20, 60)
     from app.services.extractor import _extract_with_provider
-    from app.core.config import get_settings
 
-    settings = get_settings()
-    # Use a very simple problem for checking connection
+    settings = await resolve_effective_settings(db, request.runtime_settings)
     test_problem = "Vẽ điểm A(0,0)."
     try:
-        # Note: this uses the system configured API keys and settings
         await _extract_with_provider(provider, settings, test_problem, grade=None, reasoning_layer="off")
         return {"status": "ok", "message": f"Kết nối tới {provider} thành công."}
     except Exception as error:

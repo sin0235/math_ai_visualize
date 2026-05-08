@@ -19,8 +19,8 @@ from app.schemas.scene import (
     ProblemVariantsResponse,
 )
 from app.services.api_errors import bad_request_from_error
-from app.services.diagram_ocr import describe_diagram
 from app.services.model_registry import resolve_effective_settings
+from app.services.ocr import extract_text_from_image
 from app.services.problem_variants import generate_variants
 
 router = APIRouter(prefix="/api", tags=["diagram"])
@@ -41,15 +41,16 @@ async def diagram_ocr(
     await enforce_render_access(db, user)
     settings = await resolve_effective_settings(db, request.runtime_settings)
     try:
-        result = await describe_diagram(
+        result = await extract_text_from_image(
             request.image_data_url,
             settings,
-            explicit_model=request.preferred_ai_model,
+            model=request.preferred_ai_model,
+            mode="diagram",
         )
     except (RuntimeError, ValueError) as error:
         raise bad_request_from_error(error, "diagram_ocr_failed") from error
     return DiagramOcrResponse(
-        description=result.description,
+        description=result.text,
         provider=result.provider,
         model=result.model,
     )

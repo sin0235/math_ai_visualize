@@ -3,15 +3,24 @@ import re
 from dataclasses import dataclass
 
 from app.core.config import Settings
-from app.schemas.scene import OcrProvider
+from app.schemas.scene import OcrMode, OcrProvider
+from app.services.ai_fallback import openrouter_vision_candidates, router9_ocr_candidates
 from app.services.nvidia_client import NvidiaClient
 from app.services.openrouter_client import OpenRouterClient
-from app.services.router9_bootstrap import select_router9_ocr_model_ids_from_ids
 from app.services.router9_client import Router9Client
 from app.services.provider_logging import redact_sensitive
 
 _IMAGE_DATA_URL_RE = re.compile(r"^data:image/(png|jpeg|jpg|webp|gif);base64,([A-Za-z0-9+/=\s]+)$", re.IGNORECASE)
 _MAX_IMAGE_BYTES = 8 * 1024 * 1024
+DIAGRAM_OCR_SYSTEM_PROMPT = """
+Bạn là bộ mô tả hình vẽ toán học tiếng Việt.
+Nhìn ảnh hình vẽ tay/in và chuyển thành đề bài hình học có thể dựng lại.
+Nêu rõ điểm, đoạn, đường thẳng, mặt phẳng, góc vuông, song song, vuông góc, độ dài, tọa độ nếu thấy.
+Không giải bài, không thêm markdown, không bọc code fence.
+Nếu ảnh có cả đề bài và hình, kết hợp thành một mô tả đề bài ngắn gọn.
+""".strip()
+DIAGRAM_OCR_USER_TEXT = "Mô tả hình vẽ này thành đề bài hình học để dựng lại."
+PROBLEM_OCR_USER_TEXT = "Trích xuất nguyên văn đề toán trong ảnh."
 
 
 @dataclass(frozen=True)
@@ -50,28 +59,31 @@ async def extract_text_from_image(
     settings: Settings,
     provider: OcrProvider | None = None,
     model: str | None = None,
+    mode: OcrMode = "problem",
 ) -> OcrResult:
     validate_image_data_url(image_data_url)
     attempts: list[OcrAttempt] = []
     selected_provider: OcrProvider = provider or "openrouter"
+    system_prompt = DIAGRAM_OCR_SYSTEM_PROMPT if mode == "diagram" else None
+    user_text = DIAGRAM_OCR_USER_TEXT if mode == "diagram" else PROBLEM_OCR_USER_TEXT
 
     if settings.router9_only and selected_provider != "router9":
         raise RuntimeError("9router-only đang bật nên OCR không fallback sang provider khác. Hãy chọn OCR provider 9router hoặc tắt 9router-only.")
 
     if selected_provider == "router9":
-        result = await _try_router9_ocr(image_data_url, settings, model, attempts)
+        result = await _try_router9_ocr(image_data_url, settings, model, attempts, system_prompt, user_text)
         if result is not None:
             return result
         if settings.router9_only or model is not None:
             raise RuntimeError(_format_ocr_failure("OCR 9router thất bại.", attempts, settings.router9_only))
 
     elif provider is None and model is None and settings.router9_api_key:
-        result = await _try_router9_ocr(image_data_url, settings, None, attempts)
+        result = await _try_router9_ocr(image_data_url, settings, None, attempts, system_prompt, user_text)
         if result is not None:
             return result
 
     if selected_provider == "openrouter" or selected_provider == "router9":
-        result = await _try_openrouter_ocr(image_data_url, settings, model, attempts)
+        result = await _try_openrouter_ocr(image_data_url, settings, model, attempts, system_prompt, user_text)
         if result is not None:
             return result
         if model is not None:
@@ -79,7 +91,11 @@ async def extract_text_from_image(
 
     for nvidia_model in ("google/gemma-3n-e2b-it", "mistralai/mistral-large-3-675b-instruct-2512"):
         try:
-            text = await NvidiaClient(settings, model=nvidia_model).ocr_image(image_data_url, nvidia_model)
+            client = NvidiaClient(settings, model=nvidia_model)
+            if system_prompt is None and user_text == PROBLEM_OCR_USER_TEXT:
+                text = await client.ocr_image(image_data_url, nvidia_model)
+            else:
+                text = await client.ocr_image(image_data_url, nvidia_model, system_prompt=system_prompt, user_text=user_text)
             return OcrResult(text=text, provider="openrouter", model=f"nvidia:{nvidia_model}", warnings=_attempt_warnings(attempts))
         except RuntimeError as error:
             attempts.append(OcrAttempt("nvidia", nvidia_model, str(error)))
@@ -92,6 +108,8 @@ async def _try_router9_ocr(
     settings: Settings,
     explicit_model: str | None,
     attempts: list[OcrAttempt],
+    system_prompt: str | None,
+    user_text: str,
 ) -> OcrResult | None:
     models = _router9_ocr_model_candidates(settings, explicit_model)
     if not models:
@@ -99,7 +117,11 @@ async def _try_router9_ocr(
         return None
     for selected_model in models:
         try:
-            text = await Router9Client(settings, model=selected_model).ocr_image(image_data_url, selected_model)
+            client = Router9Client(settings, model=selected_model)
+            if system_prompt is None and user_text == PROBLEM_OCR_USER_TEXT:
+                text = await client.ocr_image(image_data_url, selected_model)
+            else:
+                text = await client.ocr_image(image_data_url, selected_model, system_prompt=system_prompt, user_text=user_text)
             return OcrResult(text=text, provider="router9", model=selected_model, warnings=_attempt_warnings(attempts))
         except RuntimeError as error:
             attempts.append(OcrAttempt("router9", selected_model, str(error)))
@@ -111,14 +133,18 @@ async def _try_openrouter_ocr(
     settings: Settings,
     explicit_model: str | None,
     attempts: list[OcrAttempt],
+    system_prompt: str | None,
+    user_text: str,
 ) -> OcrResult | None:
-    models = [explicit_model or settings.openrouter_vision_model]
-    if explicit_model is None and settings.openrouter_vision_fallback_model not in models:
-        models.append(settings.openrouter_vision_fallback_model)
+    models = openrouter_vision_candidates(settings, explicit_model)
 
     for selected_model in models:
         try:
-            text = await OpenRouterClient(settings).ocr_image(image_data_url, selected_model)
+            client = OpenRouterClient(settings)
+            if system_prompt is None and user_text == PROBLEM_OCR_USER_TEXT:
+                text = await client.ocr_image(image_data_url, selected_model)
+            else:
+                text = await client.ocr_image(image_data_url, selected_model, system_prompt=system_prompt, user_text=user_text)
             return OcrResult(text=text, provider="openrouter", model=selected_model, warnings=_attempt_warnings(attempts))
         except RuntimeError as error:
             attempts.append(OcrAttempt("openrouter", selected_model, str(error)))
@@ -130,17 +156,7 @@ def _attempt_warnings(attempts: list[OcrAttempt]) -> list[str]:
 
 
 def _router9_ocr_model_candidates(settings: Settings, explicit_model: str | None) -> list[str]:
-    if explicit_model is not None:
-        return [explicit_model]
-
-    if settings.router9_allowed_models:
-        candidates = _dedupe([
-            settings.router9_ocr_model or "",
-            *select_router9_ocr_model_ids_from_ids(settings.router9_allowed_models),
-        ])
-        return [model for model in candidates if model and model in settings.router9_allowed_models]
-
-    return _dedupe(settings.router9_ocr_fallback_models)
+    return router9_ocr_candidates(settings, explicit_model)
 
 
 def _dedupe(models: list[str]) -> list[str]:

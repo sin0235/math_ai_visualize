@@ -2,6 +2,8 @@ import io
 import zipfile
 
 from app.renderers.ggb_export import build_ggb
+from app.renderers.katex_html_export import build_katex_html
+from app.renderers.pdf_export import build_jpg, build_pdf, build_png, build_svg
 from app.renderers.tikz_export import build_tikz, build_tikz_document
 from app.schemas.scene import MathScene
 
@@ -100,8 +102,32 @@ def test_ggb_is_valid_zip_with_xml():
 
 
 def test_pdf_export_returns_pdf_bytes():
-    from app.renderers.pdf_export import build_pdf
-
     pdf_bytes = build_pdf(_scene_2d())
     assert pdf_bytes.startswith(b"%PDF-")
     assert len(pdf_bytes) > 1000
+
+
+def test_png_export_returns_png_bytes():
+    png_bytes = build_png(_scene_2d())
+    assert png_bytes.startswith(b"\x89PNG\r\n\x1a\n")
+    assert len(png_bytes) > 1000
+
+
+def test_jpg_export_returns_jpeg_bytes():
+    jpg_bytes = build_jpg(_scene_2d())
+    assert jpg_bytes.startswith(b"\xff\xd8")
+    assert len(jpg_bytes) > 1000
+
+
+def test_svg_export_returns_svg_text():
+    svg = build_svg(_scene_2d())
+    assert "<svg" in svg
+    assert "</svg>" in svg
+
+
+def test_katex_html_export_contains_katex_assets():
+    html = build_katex_html(_scene_2d())
+    assert "<html" in html
+    assert "katex.min.css" in html
+    assert "renderMathInElement" in html
+    assert "Tam giác ABC" in html

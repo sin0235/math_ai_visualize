@@ -1,6 +1,7 @@
 import { FormEvent, useMemo, useState } from 'react';
 
-import type { Annotation, Line2D, Line3D, MathScene, Point2D, Point3D, Relation, SceneObject, Segment, Vector2D, Vector3D } from '../types/scene';
+import { ParameterSliders } from './ParameterSliders';
+import type { Annotation, Line2D, Line3D, MathScene, Parameter, Point2D, Point3D, Relation, SceneObject, Segment, Vector2D, Vector3D } from '../types/scene';
 
 export type PointPlacementPlane = 'xy' | 'xz' | 'yz';
 type EditTool = 'move' | 'connect' | 'project_to_segment' | 'add_point';
@@ -16,6 +17,10 @@ interface SceneEditorPanelProps {
   onPointPlacementDepthChange: (depth: string) => void;
   onEditToolChange: (tool: EditTool) => void;
   onChange: (scene: MathScene) => void;
+  parameters?: Parameter[];
+  parameterValues?: Record<string, number>;
+  onParameterValuesChange?: (next: Record<string, number>) => void;
+  onParameterReset?: () => void;
 }
 
 type PointLike = Point2D | Point3D;
@@ -37,6 +42,10 @@ export function SceneEditorPanel({
   onPointPlacementDepthChange,
   onEditToolChange,
   onChange,
+  parameters = [],
+  parameterValues = {},
+  onParameterValuesChange,
+  onParameterReset,
 }: SceneEditorPanelProps) {
   const [error, setError] = useState<string | null>(null);
   const [pointName, setPointName] = useState('');
@@ -168,20 +177,20 @@ export function SceneEditorPanel({
     <section className="panel scene-editor">
       <details className="scene-editor-details" open>
         <summary className="scene-editor-summary">
-          <span>Chỉnh hình</span>
-          <span className="viewer-hint">Bấm để mở công cụ chỉnh</span>
+          <span>Sửa hình học</span>
+          <span className="viewer-hint">Bấm để mở công cụ sửa</span>
         </summary>
-        <p className="field-hint">{dimension === '3d' ? '3D' : '2D'}: kéo điểm, nối đoạn, tạo chân nối, chấm điểm, xóa điểm và tạo vector đối.</p>
+        <p className="field-hint">{dimension === '3d' ? '3D' : '2D'}: kéo điểm trực tiếp; dùng form để thêm, xóa, nối và tạo quan hệ hình học.</p>
         <div className="scene-editor-content">
           <div className="click-tool">
-            <span className="field-label">Công cụ trên hình</span>
+            <span className="field-label">Công cụ trực tiếp trên hình 3D</span>
             <div className="tool-mode-grid">
               <ToolModeButton active={editTool === 'move'} disabled={saving} onClick={() => onEditToolChange('move')} title="Kéo điểm" description="Kéo điểm để đổi vị trí." />
               <ToolModeButton active={editTool === 'connect'} disabled={saving || activeScene.renderer !== 'threejs_3d'} onClick={() => onEditToolChange('connect')} title="Kéo nối đoạn" description="Kéo từ điểm này sang điểm khác để tạo đoạn." />
               <ToolModeButton active={editTool === 'project_to_segment'} disabled={saving || activeScene.renderer !== 'threejs_3d'} onClick={() => onEditToolChange('project_to_segment')} title="Tạo chân nối" description="Click điểm nguồn rồi click đoạn đích." />
               <ToolModeButton active={editTool === 'add_point'} disabled={saving || activeScene.renderer !== 'threejs_3d'} onClick={() => onEditToolChange('add_point')} title="Chấm để thêm điểm" description="Chọn mặt phẳng rồi click lên hình." />
             </div>
-            <span className="field-hint">{activeScene.renderer === 'threejs_3d' ? toolHint(editTool, selectedPoint) : 'Công cụ kéo trực tiếp hiện hỗ trợ Three.js 3D.'}</span>
+            <span className="field-hint">{activeScene.renderer === 'threejs_3d' ? toolHint(editTool, selectedPoint) : 'Renderer này chỉ hỗ trợ kéo điểm; các thao tác còn lại dùng form bên dưới.'}</span>
             {dimension === '3d' && editTool === 'add_point' && (
               <div className="editor-grid placement-grid">
                 <label className="field-label">
@@ -199,6 +208,12 @@ export function SceneEditorPanel({
               </div>
             )}
           </div>
+
+          {parameters.length > 0 && onParameterValuesChange && (
+            <div className="scene-editor-parameters">
+              <ParameterSliders parameters={parameters} values={parameterValues} onChange={onParameterValuesChange} onReset={onParameterReset} />
+            </div>
+          )}
 
           {error && <div className="error-box">{error}</div>}
           {saving && <div className="warning-box">Đang dựng lại hình...</div>}

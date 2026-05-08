@@ -25,8 +25,6 @@ class OpenAICompatClient:
         reasoning_plan: dict | None = None,
         system_prompt: str | None = None,
     ) -> dict:
-        if not self.settings.openai_compat_api_key:
-            raise RuntimeError("OPENAI_COMPAT_API_KEY chưa được cấu hình.")
         if not self.model:
             raise RuntimeError("Chưa chọn model OpenAI-compatible.")
         payload = {
@@ -46,8 +44,6 @@ class OpenAICompatClient:
             raise RuntimeError(f"OpenAI-compatible trả về JSON không hợp lệ: {error.msg}") from error
 
     async def reason_about_problem(self, problem_text: str, grade: int | None = None, system_prompt: str | None = None) -> dict:
-        if not self.settings.openai_compat_api_key:
-            raise RuntimeError("OPENAI_COMPAT_API_KEY chưa được cấu hình.")
         if not self.model:
             raise RuntimeError("Chưa chọn model OpenAI-compatible.")
         payload = {
@@ -66,10 +62,9 @@ class OpenAICompatClient:
 
     async def _post_chat(self, payload: dict[str, Any], kind: str, **log_kwargs: Any) -> str:
         url = f"{self.settings.openai_compat_base_url.rstrip('/')}/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {self.settings.openai_compat_api_key}",
-            "Content-Type": "application/json",
-        }
+        headers = {"Content-Type": "application/json"}
+        if self.settings.openai_compat_api_key:
+            headers["Authorization"] = f"Bearer {self.settings.openai_compat_api_key}"
         started_at = time.perf_counter()
         log_provider_request("openai_compat", kind, url, payload.get("model"), **log_kwargs)
         async with httpx.AsyncClient(timeout=90) as client:

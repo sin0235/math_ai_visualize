@@ -24,8 +24,10 @@ import httpx
 
 from app.core.config import Settings
 from app.schemas.scene import MathScene
+from app.services.ai_fallback import Attempt, format_attempts, text_model_candidates, text_provider_order
 from app.services.openrouter_client import _build_headers, _extract_message, _format_openrouter_error, _normalize_model_id, _strip_json_fences
 from app.services.provider_logging import log_provider_request, log_provider_response
+from app.services.router9_client import Router9Client, _extract_message_content as _extract_router9_message_content
 
 VARIANTS_SYSTEM_PROMPT = """
 Bạn là giáo viên Toán THPT chuyên ra đề.
@@ -72,21 +74,32 @@ def _build_user_prompt(scene: MathScene, original_problem: str | None, count: in
     return "\n".join(parts)
 
 
-async def generate_variants(
-    scene: MathScene,
-    settings: Settings,
-    count: int = 3,
-    original_problem: str | None = None,
-    explicit_model: str | None = None,
-) -> VariantsResult:
-    if count < 1 or count > 10:
-        raise ValueError("Số biến thể phải từ 1 đến 10.")
+async def _call_variants_provider(provider: str, model: str, user_prompt: str, settings: Settings) -> str:
+    if provider == "router9":
+        client = Router9Client(settings, model=model)
+        response = await client._post_chat({
+            "model": model,
+            "messages": [
+                {"role": "system", "content": VARIANTS_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ],
+            "temperature": 0.6,
+            "stream": False,
+        })
+        return _extract_router9_message_content(response)
+
+    if provider == "openrouter":
+        return await _call_openrouter_variants(model, user_prompt, settings)
+
+    if provider == "nvidia":
+        return await _call_nvidia_variants(model, user_prompt, settings)
+
+    raise RuntimeError(f"Provider không hỗ trợ sinh biến thể: {provider}")
+
+
+async def _call_openrouter_variants(model: str, user_prompt: str, settings: Settings) -> str:
     if not settings.openrouter_api_key:
         raise RuntimeError("OPENROUTER_API_KEY chưa được cấu hình để sinh đề biến thể.")
-
-    model = explicit_model or settings.openrouter_text_model
-    user_prompt = _build_user_prompt(scene, original_problem, count)
-
     payload = {
         "model": _normalize_model_id(model),
         "messages": [
@@ -95,7 +108,6 @@ async def generate_variants(
         ],
         "temperature": 0.6,
     }
-
     url = f"{settings.openrouter_base_url.rstrip('/')}/chat/completions"
     started_at = time.perf_counter()
     log_provider_request("openrouter", "variants", url, payload["model"], problem_chars=len(user_prompt))
@@ -105,12 +117,42 @@ async def generate_variants(
         log_provider_response("openrouter", "variants", response.status_code, elapsed_ms, len(response.text))
         if response.status_code >= 400:
             raise RuntimeError(_format_openrouter_error(response))
-
-    message = _extract_message(response)
-    content = message.get("content")
+    content = _extract_message(response).get("content")
     if not isinstance(content, str) or not content.strip():
         raise RuntimeError("Provider không trả về nội dung biến thể.")
+    return content
 
+
+async def _call_nvidia_variants(model: str, user_prompt: str, settings: Settings) -> str:
+    if not settings.nvidia_api_key:
+        raise RuntimeError("NVIDIA_API_KEY chưa được cấu hình để sinh đề biến thể.")
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": VARIANTS_SYSTEM_PROMPT},
+            {"role": "user", "content": user_prompt},
+        ],
+        "temperature": 0.6,
+        "top_p": 0.95,
+        "max_tokens": 8192,
+    }
+    headers = {"Authorization": f"Bearer {settings.nvidia_api_key}", "Content-Type": "application/json"}
+    url = f"{settings.nvidia_base_url.rstrip('/')}/chat/completions"
+    started_at = time.perf_counter()
+    log_provider_request("nvidia", "variants", url, payload["model"], problem_chars=len(user_prompt))
+    async with httpx.AsyncClient(timeout=90) as client:
+        response = await client.post(url, headers=headers, json=payload)
+        elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+        log_provider_response("nvidia", "variants", response.status_code, elapsed_ms, len(response.text))
+        if response.status_code >= 400:
+            raise RuntimeError(f"NVIDIA variants lỗi HTTP {response.status_code}: {response.text[:300]}")
+    content = _extract_message(response).get("content")
+    if not isinstance(content, str) or not content.strip():
+        raise RuntimeError("NVIDIA không trả về nội dung biến thể.")
+    return content
+
+
+def _parse_variants(content: str, count: int) -> list[str]:
     try:
         parsed = json.loads(_strip_json_fences(content))
     except json.JSONDecodeError as error:
@@ -128,10 +170,32 @@ async def generate_variants(
                 cleaned.append(text)
     if not cleaned:
         raise RuntimeError("Không có biến thể đủ dài (tối thiểu 20 ký tự).")
-    if len(cleaned) > count:
-        cleaned = cleaned[:count]
+    return cleaned[:count]
 
-    return VariantsResult(variants=cleaned, provider="openrouter", model=model)
+
+async def generate_variants(
+    scene: MathScene,
+    settings: Settings,
+    count: int = 3,
+    original_problem: str | None = None,
+    explicit_model: str | None = None,
+) -> VariantsResult:
+    if count < 1 or count > 10:
+        raise ValueError("Số biến thể phải từ 1 đến 10.")
+
+    user_prompt = _build_user_prompt(scene, original_problem, count)
+    attempts: list[Attempt] = []
+    for provider in text_provider_order(settings, "openrouter"):
+        for model in text_model_candidates(provider, settings, explicit_model if provider == "openrouter" else None):
+            selected_model = model or "<none>"
+            try:
+                content = await _call_variants_provider(provider, selected_model, user_prompt, settings)
+                variants = _parse_variants(content, count)
+                return VariantsResult(variants=variants, provider=provider, model=selected_model)
+            except Exception as error:
+                attempts.append(Attempt(provider, selected_model, "variants", str(error)))
+
+    raise RuntimeError("Sinh đề biến thể thất bại qua tất cả provider. Đã thử: " + format_attempts(attempts))
 
 
 __all__ = ["VariantsResult", "generate_variants", "VARIANTS_SYSTEM_PROMPT"]

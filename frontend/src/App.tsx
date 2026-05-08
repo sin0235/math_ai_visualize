@@ -14,9 +14,8 @@ import { PrivacyPolicyPage, TermsPage } from './components/LegalPages';
 import { SolverPanel } from './components/SolverPanel';
 import { FunctionAnalyzerPanel } from './components/FunctionAnalyzerPanel';
 import { KatexSpan } from './components/KatexSpan';
-import { ParameterSliders } from './components/ParameterSliders';
-import { ExportMenu } from './components/ExportMenu';
-import { DiagramTools } from './components/DiagramTools';
+import { ExportMenuItems } from './components/ExportMenu';
+import { ProblemVariantTool } from './components/DiagramTools';
 import { getDefaultParamValues, patchGeogebraCommandsForScene, recomputeSceneWithParameters, recomputeThreeScene } from './utils/sceneParameters';
 import type { AdvancedRenderSettings, MathScene, RenderResponse, Renderer } from './types/scene';
 import { defaultRuntimeSettings, SETTINGS_STORAGE_VERSION, type OcrProvider, type RuntimeSettings, type SettingsDefaults, type UserBasicSettings } from './types/settings';
@@ -90,6 +89,18 @@ function FooterNavButton({ onClick, children, icon }: { onClick: () => void; chi
   );
 }
 
+function ToolboxIcon() {
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M7 12h10M9 17h6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /><circle cx="9" cy="7" r="2" fill="currentColor" /><circle cx="15" cy="12" r="2" fill="currentColor" /><circle cx="12" cy="17" r="2" fill="currentColor" /></svg>;
+}
+
+function GeometryEditIcon() {
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 17 11 6l8 12H5Z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /><path d="M11 6v12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /><circle cx="5" cy="17" r="1.8" fill="currentColor" /><circle cx="11" cy="6" r="1.8" fill="currentColor" /><circle cx="19" cy="18" r="1.8" fill="currentColor" /></svg>;
+}
+
+function CloseIcon() {
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>;
+}
+
 function FooterNavMailLink({
   href,
   title,
@@ -116,7 +127,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [editorSaving, setEditorSaving] = useState(false);
   const [ocrLoading, setOcrLoading] = useState(false);
-  const [problemText, setProblemText] = useState('Cho A(1,2), B(4,5). Vẽ đường thẳng AB.');
+  const [problemText, setProblemText] = useState('');
   const [lastAdvancedSettings, setLastAdvancedSettings] = useState<AdvancedRenderSettings>(defaultAdvancedSettings);
   const [editTool, setEditTool] = useState<EditTool>('move');
   const [pointToSegmentSource, setPointToSegmentSource] = useState<string | null>(null);
@@ -128,6 +139,8 @@ export default function App() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [mobileWarningDismissed, setMobileWarningDismissed] = useState(readMobileWarningDismissed);
   const [sceneEditorOpen, setSceneEditorOpen] = useState(false);
+  const [renderToolsOpen, setRenderToolsOpen] = useState(false);
+  const [renderToolsPanel, setRenderToolsPanel] = useState<'export' | 'variants' | null>(null);
   const [sidebarTool, setSidebarTool] = useState<'input' | 'solver'>('input');
   const [highlightedObjects, setHighlightedObjects] = useState<string[]>([]);
   const [editorButtonTop, setEditorButtonTop] = useState(220);
@@ -143,6 +156,7 @@ export default function App() {
   const resultAnchorRef = useRef<HTMLDivElement | null>(null);
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
   const toolsMenuRef = useRef<HTMLDivElement | null>(null);
+  const renderToolsMenuRef = useRef<HTMLDivElement | null>(null);
   const editorButtonDragRef = useRef<{ pointerId: number; startY: number; startTop: number; moved: boolean } | null>(null);
 
   function navigateTo(view: AppView, replace = false) {
@@ -172,16 +186,22 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!accountMenuOpen && !toolsMenuOpen) return;
+    if (!accountMenuOpen && !toolsMenuOpen && !renderToolsOpen) return;
     function handlePointerDown(event: PointerEvent) {
       const target = event.target as Node;
       if (!accountMenuRef.current?.contains(target)) setAccountMenuOpen(false);
       if (!toolsMenuRef.current?.contains(target)) setToolsMenuOpen(false);
+      if (!renderToolsMenuRef.current?.contains(target)) {
+        setRenderToolsOpen(false);
+        setRenderToolsPanel(null);
+      }
     }
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         setAccountMenuOpen(false);
         setToolsMenuOpen(false);
+        setRenderToolsOpen(false);
+        setRenderToolsPanel(null);
       }
     }
     document.addEventListener('pointerdown', handlePointerDown);
@@ -190,7 +210,7 @@ export default function App() {
       document.removeEventListener('pointerdown', handlePointerDown);
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [accountMenuOpen, toolsMenuOpen]);
+  }, [accountMenuOpen, toolsMenuOpen, renderToolsOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -323,6 +343,8 @@ export default function App() {
         pointPlacementPlane,
         pointPlacementDepth: Number(pointPlacementDepth),
         onCanvasClick: handleCanvasClickToAddPoint,
+        onBlockedPointClick: handleAddPointBlockedClick,
+        saving: editorSaving,
       }
     : undefined;
 
@@ -349,7 +371,13 @@ export default function App() {
     }
   }
 
-  async function handleOcrImage(file: File) {
+  async function handleOcrImage(
+    file: File,
+    preferredAiProvider?: string,
+    preferredAiModel?: string,
+    advancedSettings?: AdvancedRenderSettings,
+    preferredRenderer?: Renderer,
+  ) {
     if (!user) {
       showNotification('Cần đăng nhập', 'Vui lòng đăng nhập trước khi dùng OCR.', [], 'warning');
       navigateTo('login');
@@ -376,7 +404,11 @@ export default function App() {
     try {
       const imageDataUrl = await fileToDataUrl(file);
       const response = await ocrImage(imageDataUrl, runtimeSettings);
-      setProblemText(response.text.trim());
+      const nextProblemText = response.text.trim();
+      setProblemText(nextProblemText);
+      if (nextProblemText) {
+        await handleSubmit(nextProblemText, preferredAiProvider, preferredAiModel, advancedSettings, preferredRenderer);
+      }
     } catch (caught) {
       const apiError = toApiError(caught, 'Không thể OCR ảnh đề bài.');
       showApiError('OCR thất bại', apiError, 'Hãy kiểm tra ảnh có rõ chữ không, model OCR đã chọn có hỗ trợ ảnh không, hoặc thử provider/model khác.');
@@ -614,7 +646,7 @@ export default function App() {
   }
 
   async function handlePointDragEnd(name: string, point: Vec3) {
-    if (!result?.scene) return;
+    if (!result?.scene || editorSaving) return;
     const editedScene: MathScene = {
       ...result.scene,
       objects: result.scene.objects.map((obj) => {
@@ -652,7 +684,7 @@ export default function App() {
   }
 
   async function handleConnectPoints(start: string, end: string) {
-    if (!result?.scene) return;
+    if (!result?.scene || editorSaving) return;
     if (start === end) {
       const message = 'Chọn hai điểm khác nhau để nối đoạn.';
       showNotification('Không thể nối đoạn', message);
@@ -674,6 +706,7 @@ export default function App() {
   }
 
   async function handlePointToSegmentClick(segmentPoints: [string, string], clickedPoint: Vec3) {
+    if (editorSaving) return;
     if (!result?.scene || !pointToSegmentSource || editTool !== 'project_to_segment') {
       const message = 'Chọn công cụ tạo chân nối, chọn một điểm nguồn, rồi click vào đoạn đích.';
       showNotification('Không thể tạo chân nối', message);
@@ -707,6 +740,10 @@ export default function App() {
 
     setPointToSegmentSource(null);
     await handleSceneEdit(editedScene);
+  }
+
+  function handleAddPointBlockedClick(name: string) {
+    showNotification('Không thể thêm điểm', `Vị trí ${name} đã có điểm. Hãy click vào vùng trống trên hình.`, [], 'warning');
   }
 
   async function handleCanvasClickToAddPoint(clickedPoint: Vec3) {
@@ -921,7 +958,7 @@ export default function App() {
                   role="tab"
                   aria-selected={sidebarTool === 'solver'}
                   aria-disabled={!result?.scene}
-                  title={!result?.scene ? 'Hãy dựng hình trước' : undefined}
+                  title={!result?.scene ? 'Dựng hình trước để giải từng bước các câu hỏi' : undefined}
                 >
                   Giải từng bước
                 </button>
@@ -961,58 +998,99 @@ export default function App() {
             </div>
             {result && <button type="button" className="mobile-scroll-notice" onClick={scrollToResult}>↓ Xem hình vừa dựng</button>}
             <div className="result-area" ref={resultAnchorRef}>
-              {effectiveResult?.scene && (
-                <div className="result-area-toolbar">
-                  <ExportMenu
-                    scene={effectiveResult.scene}
-                    advancedSettings={lastAdvancedSettings}
-                    onError={(msg) => showNotification('Xuất hình thất bại', msg, [], 'error')}
-                  />
-                </div>
-              )}
-              <DiagramTools
-                scene={effectiveResult?.scene ?? null}
-                originalProblem={problemText}
-                runtimeSettings={runtimeSettings}
-                onDiagramRecognized={(description) => {
-                  setProblemText(description);
-                  showNotification('Đã quét hình', 'AI đã mô tả hình; bấm "Dựng hình" để render.', [], 'info');
-                }}
-                onError={(msg) => showNotification('Công cụ hình', msg, [], 'info')}
-              />
-              {result?.scene.parameters && result.scene.parameters.length > 0 && (
-                <ParameterSliders
-                  parameters={result.scene.parameters}
-                  values={paramValues}
-                  onChange={setParamValues}
-                  onReset={() => setParamValues(getDefaultParamValues(result.scene.parameters))}
-                />
-              )}
               <div className="render-stage">
-                <RendererPanel result={effectiveResult} threeInteraction={threeInteraction} onGeoGebraPointChange={handlePointDragEnd} highlightedObjects={highlightedObjects} />
-                {result?.scene && (
-                  <button
-                    type="button"
-                    className="render-editor-trigger"
-                    style={{ top: editorButtonTop }}
-                    onPointerDown={handleEditorButtonPointerDown}
-                    onPointerMove={handleEditorButtonPointerMove}
-                    onPointerUp={handleEditorButtonPointerUp}
-                    onPointerCancel={handleEditorButtonPointerUp}
-                    onClick={() => {
-                      if (editorButtonDragRef.current?.moved) return;
-                      setSceneEditorOpen(true);
-                    }}
-                  >
-                    Chỉnh hình
-                  </button>
+                <RendererPanel result={effectiveResult} threeInteraction={threeInteraction} onGeoGebraPointChange={handlePointDragEnd} highlightedObjects={highlightedObjects} saving={editorSaving} />
+                {effectiveResult?.scene && (
+                  <div ref={renderToolsMenuRef} className="render-tools-floating" style={{ top: editorButtonTop }}>
+                    <button
+                      type="button"
+                      className="render-editor-trigger"
+                      onPointerDown={handleEditorButtonPointerDown}
+                      onPointerMove={handleEditorButtonPointerMove}
+                      onPointerUp={handleEditorButtonPointerUp}
+                      onPointerCancel={handleEditorButtonPointerUp}
+                      onClick={() => {
+                        if (editorButtonDragRef.current?.moved) return;
+                        setRenderToolsOpen((open) => {
+                          const nextOpen = !open;
+                          if (!nextOpen) setRenderToolsPanel(null);
+                          return nextOpen;
+                        });
+                      }}
+                      aria-label="Mở công cụ hình"
+                      aria-haspopup="menu"
+                      aria-expanded={renderToolsOpen}
+                      title="Công cụ hình"
+                    >
+                      <ToolboxIcon />
+                    </button>
+                    {renderToolsOpen && (
+                      <div
+                        className="render-tools-menu"
+                        role="menu"
+                        style={{ top: Math.min(Math.max(editorButtonTop - 8, 72), Math.max(72, window.innerHeight - 430)) }}
+                      >
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="render-tools-menu-item"
+                          onClick={() => {
+                            setRenderToolsOpen(false);
+                            setSceneEditorOpen(true);
+                          }}
+                        >
+                          <GeometryEditIcon />
+                          <span><strong>Sửa hình học</strong><small>Kéo điểm, thêm quan hệ, chỉnh tham số.</small></span>
+                        </button>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="render-tools-menu-item"
+                          onClick={() => setRenderToolsPanel((panel) => panel === 'export' ? null : 'export')}
+                          aria-expanded={renderToolsPanel === 'export'}
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h7l4 4v14H7z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /><path d="M14 3v5h5M9 15h6M9 18h4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
+                          <span><strong>Xuất hình</strong><small>PNG, JPG, SVG, PDF, TikZ, GeoGebra.</small></span>
+                        </button>
+                        {renderToolsPanel === 'export' && (
+                          <div className="render-tools-submenu render-tools-export-submenu">
+                            <ExportMenuItems
+                              scene={effectiveResult.scene}
+                              advancedSettings={lastAdvancedSettings}
+                              onError={(msg) => showNotification('Xuất hình thất bại', msg, [], 'error')}
+                              onAfterDownload={() => {
+                                setRenderToolsOpen(false);
+                                setRenderToolsPanel(null);
+                              }}
+                              itemClassName="render-tools-menu-item render-tools-submenu-item"
+                            />
+                          </div>
+                        )}
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="render-tools-menu-item"
+                          onClick={() => setRenderToolsPanel((panel) => panel === 'variants' ? null : 'variants')}
+                          aria-expanded={renderToolsPanel === 'variants'}
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 7h12M6 12h12M6 17h8" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /><path d="M16 15l2 2 3-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                          <span><strong>Sinh đề</strong><small>Chọn số lượng đề biến thể.</small></span>
+                        </button>
+                        {renderToolsPanel === 'variants' && (
+                          <div className="render-tools-submenu">
+                            <ProblemVariantTool scene={effectiveResult.scene} originalProblem={problemText} runtimeSettings={runtimeSettings} onError={(msg) => showNotification('Công cụ hình', msg, [], 'info')} />
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 )}
                 {sceneEditorOpen && result?.scene && (
                   <div className="scene-editor-layer" role="presentation" onMouseDown={() => setSceneEditorOpen(false)}>
-                    <div className="scene-editor-popover" role="dialog" aria-modal="true" aria-label="Chỉnh hình" onMouseDown={(event) => event.stopPropagation()}>
+                    <div className="scene-editor-popover" role="dialog" aria-modal="true" aria-label="Sửa hình học" onMouseDown={(event) => event.stopPropagation()}>
                       <div className="scene-editor-popover-header">
-                        <strong>Chỉnh hình</strong>
-                        <button type="button" className="scene-editor-close" onClick={() => setSceneEditorOpen(false)} aria-label="Đóng chỉnh hình">×</button>
+                        <strong>Sửa hình học</strong>
+                        <button type="button" className="scene-editor-close" onClick={() => setSceneEditorOpen(false)} aria-label="Đóng sửa hình học"><CloseIcon /></button>
                       </div>
                       <SceneEditorPanel
                         scene={result.scene}
@@ -1028,6 +1106,10 @@ export default function App() {
                           setPointToSegmentSource(null);
                         }}
                         onChange={handleSceneEdit}
+                        parameters={result.scene.parameters}
+                        parameterValues={paramValues}
+                        onParameterValuesChange={setParamValues}
+                        onParameterReset={() => setParamValues(getDefaultParamValues(result.scene.parameters))}
                       />
                     </div>
                   </div>
@@ -1582,7 +1664,7 @@ function friendlyMessage(message: string) {
   if (!text) return 'Có lỗi xảy ra. Hãy thử lại hoặc đổi cấu hình model.';
   if (/quota|rate limit|429/i.test(text)) return 'Model hoặc tài khoản đang bị giới hạn lượt gọi. Hãy chờ một lúc hoặc chọn model/provider khác.';
   if (/api key|unauthorized|401|403|forbidden/i.test(text)) return 'Provider chưa được cấu hình đúng hoặc API key không có quyền dùng model này.';
-  if (/model.*not found|not found|404/i.test(text)) return 'Model đã chọn không khả dụng. Hãy quét lại danh sách model hoặc chọn model khác.';
+  if (/model.*not found|not found.*model/i.test(text)) return 'Model đã chọn không khả dụng. Hãy quét lại danh sách model hoặc chọn model khác.';
   if (/timeout|timed out/i.test(text)) return 'Provider phản hồi quá lâu. Hãy thử lại hoặc đổi model nhẹ hơn.';
   if (/validation|field required|Input should/i.test(text)) return 'Dữ liệu hình chưa hợp lệ. Hãy thử dựng lại hoặc chỉnh hình đơn giản hơn.';
   return text.length > 220 ? `${text.slice(0, 217)}...` : text;

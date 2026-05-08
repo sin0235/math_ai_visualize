@@ -6,6 +6,7 @@ from typing import Any
 import httpx
 
 from app.core.config import Settings
+from app.services.ai_fallback import Attempt, format_attempts, text_model_candidates, text_provider_order
 from app.services.openrouter_client import _build_headers as _build_openrouter_headers, _extract_message as _extract_openrouter_message
 from app.services.router9_client import Router9Client, _extract_message_content as _extract_router9_message_content
 from app.services.solver_service import SolverResult, SolverStep
@@ -65,19 +66,33 @@ def _payload(result: SolverResult, scene: dict[str, Any]) -> dict[str, Any]:
 
 async def _call_explainer(payload: dict[str, Any], settings: Settings) -> dict[str, Any]:
     prompt = "Diễn giải lời giải sau cho học sinh, giữ nguyên đáp số và công thức:\n" + json.dumps(payload, ensure_ascii=False)
-    if settings.router9_only or settings.ai_provider == "router9":
-        content = await _call_router9(prompt, settings)
-    else:
-        content = await _call_openrouter(prompt, settings)
-    return json.loads(_strip_json_fences(content))
+    attempts: list[Attempt] = []
+
+    for provider in text_provider_order(settings, "router9" if settings.router9_api_key else None):
+        for model in text_model_candidates(provider, settings):
+            selected_model = model or "<none>"
+            try:
+                if provider == "router9":
+                    content = await _call_router9(prompt, settings, selected_model)
+                elif provider == "openrouter":
+                    content = await _call_openrouter_model(prompt, settings, selected_model, selected_model == "openai/gpt-oss-120b:free" or settings.openrouter_reasoning_enabled)
+                elif provider == "nvidia":
+                    content = await _call_nvidia(prompt, settings, selected_model)
+                else:
+                    continue
+                return json.loads(_strip_json_fences(content))
+            except Exception as error:
+                attempts.append(Attempt(provider, selected_model, "solver_explainer", str(error)))
+
+    raise RuntimeError("Không gọi được provider diễn giải solver. Đã thử: " + format_attempts(attempts))
 
 
-async def _call_router9(prompt: str, settings: Settings) -> str:
-    if not settings.router9_api_key or not settings.router9_text_model:
+async def _call_router9(prompt: str, settings: Settings, model: str) -> str:
+    if not settings.router9_api_key or model == "<none>":
         raise RuntimeError("Chưa cấu hình 9router cho diễn giải solver.")
-    client = Router9Client(settings)
+    client = Router9Client(settings, model=model)
     response = await client._post_chat({
-        "model": settings.router9_text_model,
+        "model": model,
         "messages": [
             {"role": "system", "content": SOLVER_EXPLAINER_SYSTEM_PROMPT},
             {"role": "user", "content": prompt},
@@ -88,18 +103,43 @@ async def _call_router9(prompt: str, settings: Settings) -> str:
     return _extract_router9_message_content(response)
 
 
-async def _call_openrouter(prompt: str, settings: Settings) -> str:
+async def _call_nvidia(prompt: str, settings: Settings, model: str) -> str:
+    if not settings.nvidia_api_key:
+        raise RuntimeError("NVIDIA_API_KEY chưa được cấu hình cho diễn giải solver.")
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": SOLVER_EXPLAINER_SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+        ],
+        "temperature": 0.2,
+        "top_p": 0.95,
+        "max_tokens": 8192,
+    }
+    headers = {"Authorization": f"Bearer {settings.nvidia_api_key}", "Content-Type": "application/json"}
+    async with httpx.AsyncClient(timeout=60) as client:
+        response = await client.post(f"{settings.nvidia_base_url.rstrip('/')}/chat/completions", headers=headers, json=payload)
+        if response.status_code >= 400:
+            raise RuntimeError(f"NVIDIA explainer lỗi HTTP {response.status_code}: {response.text[:300]}")
+    message = _extract_openrouter_message(response)
+    content = message.get("content")
+    if not isinstance(content, str) or not content.strip():
+        raise RuntimeError("NVIDIA không trả về nội dung diễn giải.")
+    return content
+
+
+async def _call_openrouter_model(prompt: str, settings: Settings, model: str, reasoning_enabled: bool) -> str:
     if not settings.openrouter_api_key:
         raise RuntimeError("Chưa cấu hình OpenRouter cho diễn giải solver.")
     payload = {
-        "model": settings.openrouter_text_model,
+        "model": model.removeprefix("openrouter/"),
         "messages": [
             {"role": "system", "content": SOLVER_EXPLAINER_SYSTEM_PROMPT},
             {"role": "user", "content": prompt},
         ],
         "temperature": 0.2,
     }
-    if settings.openrouter_reasoning_enabled:
+    if reasoning_enabled:
         payload["reasoning"] = {"enabled": True}
     async with httpx.AsyncClient(timeout=60) as client:
         response = await client.post(f"{settings.openrouter_base_url.rstrip('/')}/chat/completions", headers=_build_openrouter_headers(settings), json=payload)

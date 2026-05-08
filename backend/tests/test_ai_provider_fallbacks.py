@@ -8,6 +8,7 @@ from app.main import app
 from app.schemas.scene import AiModelInfo, OcrRequest, RenderRequest, RuntimeSettings
 from app.services.extractor import extract_scene, _provider_order
 from app.services.provider_logging import format_provider_error, redact_sensitive
+from app.services.solver_explainer import _call_explainer
 from app.services.router9_bootstrap import (
     bootstrap_router9_models,
     select_codex_model_ids,
@@ -272,6 +273,35 @@ def test_bootstrap_router9_models_adds_codex_defaults(monkeypatch):
     assert settings.router9_ocr_model == "cc/codex-5.5-image"
 
 
+def test_openai_compat_scan_models_uses_models_endpoint_without_api_key(monkeypatch):
+    from app.services.model_scan import list_provider_models
+
+    calls = []
+
+    class FakeAsyncClient:
+        def __init__(self, timeout: int) -> None:
+            self.timeout = timeout
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def get(self, url: str, headers: dict[str, str]):
+            calls.append((url, headers))
+            return httpx.Response(200, json={"data": [{"id": "deepseek-chat", "owned_by": "deepseek"}]})
+
+    monkeypatch.setattr("app.services.model_scan.httpx.AsyncClient", FakeAsyncClient)
+
+    settings = Settings(_env_file=None, openai_compat_base_url="https://deepseek-reverse-api.sin-studio.tech/v1")
+    models = asyncio.run(list_provider_models(settings, "openai_compat"))
+
+    assert calls[0] == ("https://deepseek-reverse-api.sin-studio.tech/v1/models", {})
+    assert models[0].id == "deepseek-chat"
+    assert models[0].provider == "openai_compat"
+
+
 def test_router9_list_models_uses_openai_compatible_models_endpoint(monkeypatch):
     calls = []
 
@@ -430,6 +460,36 @@ def test_render_route_returns_detail_for_ai_runtime_errors(monkeypatch):
 
     assert response.status_code == 400
     assert response.json()["detail"] == "9router-only đang bật nên không fallback sang provider khác."
+
+
+def test_solver_explainer_falls_back_when_openrouter_model_is_invalid(monkeypatch):
+    calls = []
+
+    class FakeAsyncClient:
+        def __init__(self, timeout: int) -> None:
+            self.timeout = timeout
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def post(self, url: str, headers: dict[str, str], json: dict):
+            calls.append(json["model"])
+            if json["model"] == "nvidia/nemotron-3-super-120b-a12b:free":
+                return httpx.Response(400, json={"error": {"message": "not a valid model ID"}})
+            return httpx.Response(200, json={"choices": [{"message": {"content": '{"steps":[{"index":1,"title":"AI","explanation":"LLM fallback worked"}]}'}}]})
+
+    monkeypatch.setattr("app.services.solver_explainer.httpx.AsyncClient", FakeAsyncClient)
+
+    data = asyncio.run(_call_explainer(
+        {"question": "q", "answer": "a", "warnings": [], "scene_objects": [], "steps": [{"index": 1}]},
+        Settings(_env_file=None, openrouter_api_key="secret"),
+    ))
+
+    assert calls == ["nvidia/nemotron-3-super-120b-a12b:free", "openai/gpt-oss-120b:free"]
+    assert data["steps"][0]["explanation"] == "LLM fallback worked"
 
 
 def test_render_scene_route_rebuilds_payload_from_edited_scene():

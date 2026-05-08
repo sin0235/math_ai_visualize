@@ -29,6 +29,8 @@ export interface ThreeSceneInteraction {
   onPointDragEnd: (name: string, point: Vec3) => void;
   onConnectPoints: (start: string, end: string) => void;
   onCanvasClick: (point: Vec3) => void;
+  onBlockedPointClick?: (name: string) => void;
+  saving?: boolean;
 }
 
 type Vec3 = { x: number; y: number; z: number };
@@ -104,7 +106,7 @@ export function ThreeGeometryView({ scene, interaction, embedded = false, highli
           position={[-frame.center.x * frame.scale, -frame.center.y * frame.scale, -frame.center.z * frame.scale]}
           scale={frame.scale}
           onPointerDown={(event) => {
-            if (interaction?.mode !== 'add_point') return;
+            if (interaction?.mode !== 'add_point' || interaction.saving) return;
             event.stopPropagation();
 
             const plane = addPointPlane(interaction.pointPlacementPlane, interaction.pointPlacementDepth, frame);
@@ -151,6 +153,7 @@ export function ThreeGeometryView({ scene, interaction, embedded = false, highli
             onDragStart={setDraggingPoint}
             onDragEnd={finishPointDrag}
             onPointChange={updatePoint}
+            saving={interaction?.saving}
           />
           <Annotations scene={workingScene} />
         </group>
@@ -681,6 +684,7 @@ interface PointsProps extends ThreeGeometryViewProps {
   onDragStart: (name: string) => void;
   onDragEnd: (name: string, point: Vec3) => void;
   onPointChange: (name: string, point: Vec3) => void;
+  saving?: boolean;
 }
 
 function Points({
@@ -697,6 +701,7 @@ function Points({
   onDragStart,
   onDragEnd,
   onPointChange,
+  saving,
 }: PointsProps) {
   const showCoords = scene.view.show_coordinates;
   const sortedPoints = useMemo(() => Object.entries(scene.points).sort(([nameA], [nameB]) => nameA.localeCompare(nameB)), [scene.points]);
@@ -725,6 +730,7 @@ function Points({
             dimension={scene.view.dimension}
             mode={interaction?.mode ?? 'move'}
             onPointClick={interaction?.onPointClick}
+            interactionBlockedPointClick={interaction?.onBlockedPointClick}
             onPointHover={onPointHover}
             onConnectStart={onConnectStart}
             onConnectHover={onConnectHover}
@@ -732,6 +738,7 @@ function Points({
             onDragStart={onDragStart}
             onDragEnd={onDragEnd}
             onPointChange={onPointChange}
+            isSaving={Boolean(saving)}
           />
         );
       })}
@@ -754,6 +761,7 @@ interface DraggablePointProps {
   dimension: '2d' | '3d';
   mode: ThreeSceneInteraction['mode'];
   onPointClick?: (name: string) => void;
+  interactionBlockedPointClick?: (name: string) => void;
   onPointHover: (name: string | null) => void;
   onConnectStart: (name: string) => void;
   onConnectHover: (name: string | null) => void;
@@ -761,9 +769,10 @@ interface DraggablePointProps {
   onDragStart: (name: string) => void;
   onDragEnd: (name: string, point: Vec3) => void;
   onPointChange: (name: string, point: Vec3) => void;
+  isSaving: boolean;
 }
 
-function DraggablePoint({ name, displayName, point, coordText, labelOffset, frame, isDragging, isSelected, isConnectSource, isConnectHover, showCoords, dimension, mode, onPointClick, onPointHover, onConnectStart, onConnectHover, onConnectEnd, onDragStart, onDragEnd, onPointChange }: DraggablePointProps) {
+function DraggablePoint({ name, displayName, point, coordText, labelOffset, frame, isDragging, isSelected, isConnectSource, isConnectHover, showCoords, dimension, mode, onPointClick, interactionBlockedPointClick, onPointHover, onConnectStart, onConnectHover, onConnectEnd, onDragStart, onDragEnd, onPointChange, isSaving }: DraggablePointProps) {
   const { camera, gl } = useThree();
   const [hovered, setHovered] = useState(false);
   const dragPlaneRef = useRef<THREE.Plane | null>(null);
@@ -772,13 +781,14 @@ function DraggablePoint({ name, displayName, point, coordText, labelOffset, fram
   function beginDrag(event: ThreeEvent<PointerEvent>) {
     event.stopPropagation();
     if (mode === 'add_point') {
-      // Ở chế độ chấm để thêm điểm, click lên điểm hiện có không kéo/không tạo điểm mới ở đây.
+      interactionBlockedPointClick?.(name);
       return;
     }
     if (mode === 'project_to_segment') {
       onPointClick?.(name);
       return;
     }
+    if (isSaving) return;
     if (mode === 'connect') {
       gl.domElement.style.cursor = 'crosshair';
       onConnectStart(name);

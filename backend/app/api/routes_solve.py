@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from app.api.deps import enforce_rate_limit, require_active_user, require_trusted_origin
 from app.core.config import get_settings, merge_runtime_settings
 from app.schemas.scene import MAX_IMAGE_DATA_URL_CHARS, MAX_PROBLEM_TEXT_CHARS, RuntimeSettings
+from app.services.ai_fallback import Attempt, format_attempts, text_model_candidates, text_provider_order
 from app.services.function_analyzer import analyze_function
 from app.services.function_graph_builder import build_function_graph
 from app.services.ocr import extract_text_from_image
@@ -243,38 +244,37 @@ async def _extract_function_from_text(text: str, settings) -> str:
 
 
 async def _chat_text(prompt: str, settings) -> str:
-    if settings.router9_api_key:
-        models = [model for model in [settings.router9_text_model, *settings.router9_text_fallback_models] if model]
-        last_error: Exception | None = None
-        for model in models:
+    attempts: list[Attempt] = []
+    for provider in text_provider_order(settings, "router9" if settings.router9_api_key else None):
+        for model in text_model_candidates(provider, settings):
+            selected_model = model or "<none>"
             try:
-                client = Router9Client(settings, model=model)
-                response = await client._post_chat({
-                    "model": model,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "temperature": 0.1,
-                    "stream": False,
-                })
-                return _extract_router9_message_content(response).strip()
+                if provider == "router9":
+                    client = Router9Client(settings, model=selected_model)
+                    response = await client._post_chat({
+                        "model": selected_model,
+                        "messages": [{"role": "user", "content": prompt}],
+                        "temperature": 0.1,
+                        "stream": False,
+                    })
+                    return _extract_router9_message_content(response).strip()
+                if provider == "openrouter":
+                    payload = {
+                        "model": selected_model.removeprefix("openrouter/"),
+                        "messages": [{"role": "user", "content": prompt}],
+                        "temperature": 0.1,
+                    }
+                    url = f"{settings.openrouter_base_url.rstrip('/')}/chat/completions"
+                    async with httpx.AsyncClient(timeout=90) as client:
+                        response = await client.post(url, headers=_build_openrouter_headers(settings), json=payload)
+                        if response.status_code >= 400:
+                            raise RuntimeError(response.text)
+                    content = _extract_openrouter_message(response).get("content")
+                    if isinstance(content, str) and content.strip():
+                        return content.strip()
+                    raise RuntimeError("OpenRouter không trả về nội dung text.")
             except Exception as error:
-                last_error = error
-        if settings.router9_only and last_error is not None:
-            raise last_error
+                attempts.append(Attempt(provider, selected_model, "function_extract", str(error)))
 
-    if settings.openrouter_api_key:
-        payload = {
-            "model": settings.openrouter_text_model,
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.1,
-        }
-        url = f"{settings.openrouter_base_url.rstrip('/')}/chat/completions"
-        async with httpx.AsyncClient(timeout=90) as client:
-            response = await client.post(url, headers=_build_openrouter_headers(settings), json=payload)
-            if response.status_code >= 400:
-                raise RuntimeError(response.text)
-        content = _extract_openrouter_message(response).get("content")
-        if isinstance(content, str) and content.strip():
-            return content.strip()
-
-    raise RuntimeError("Chưa cấu hình Router9 hoặc OpenRouter để gọi AI.")
+    raise RuntimeError("Chưa có provider AI gọi được. Đã thử: " + format_attempts(attempts))
 
