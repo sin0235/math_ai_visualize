@@ -4,7 +4,6 @@ import re
 from typing import Any
 
 from app.services.geometry_engine import (
-    Vec3,
     calculate_line_equation,
     calculate_line_line_angle,
     calculate_line_line_distance,
@@ -26,6 +25,12 @@ from app.services.geometry_engine import (
     prove_collinear,
     prove_coplanar,
 )
+from app.services.cross_check import (
+    verify_point_plane_distance as _xc_point_plane_distance,
+    verify_tetrahedron_volume as _xc_tetra_volume,
+    verify_triangle_area as _xc_triangle_area,
+)
+from app.services.linalg import Vec3, cross as _cross, dot as _dot, norm as _norm, sub as _sub, vec3
 
 
 class SolverStep:
@@ -82,6 +87,20 @@ class SolverResult:
             "steps": [s.to_dict() for s in self.steps],
             "warnings": self.warnings,
         }
+
+
+def _latex_to_plain_text(text: str) -> str:
+    cleaned = text
+    cleaned = re.sub(r"\\overrightarrow\{([^{}]+)\}", r"vector \1", cleaned)
+    cleaned = re.sub(r"\\angle\(([^)]+)\)", r"góc(\1)", cleaned)
+    cleaned = re.sub(r"\\[a-zA-Z]+(?:\{[^{}]*\})*", " ", cleaned)
+    cleaned = cleaned.replace("{", " ").replace("}", " ")
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned
+
+
+def _sanitize_explanation(text: str) -> str:
+    return _latex_to_plain_text(text)
 
 
 _DISTANCE_RE = re.compile(r"kho[aả]ng\s*c[áa]ch|distance|\bd\s*\(", re.IGNORECASE)
@@ -143,19 +162,19 @@ def _point_map(scene_dict: dict) -> dict[str, Vec3]:
     points: dict[str, Vec3] = {}
     for obj in scene_dict.get("objects", []):
         if obj.get("type") == "point_3d":
-            points[obj["name"]] = (float(obj["x"]), float(obj["y"]), float(obj["z"]))
+            points[obj["name"]] = vec3(float(obj["x"]), float(obj["y"]), float(obj["z"]))
         elif obj.get("type") == "point_2d":
-            points[obj["name"]] = (float(obj["x"]), float(obj["y"]), 0.0)
+            points[obj["name"]] = vec3(float(obj["x"]), float(obj["y"]), 0.0)
     return points
 
 
 def _solve_equation(pts: dict[str, Vec3], question: str, warnings: list[str]) -> SolverResult:
     plane_refs = _parse_plane_refs(question)
     if plane_refs:
-        return _result_from_calculation(question, calculate_plane_equation(pts, plane_refs[0]))
+        return _result_from_calculation(question, calculate_plane_equation(pts, plane_refs[0]), pts)
     edges = _parse_edges(question)
     if edges:
-        return _result_from_calculation(question, calculate_line_equation(pts, edges[0]))
+        return _result_from_calculation(question, calculate_line_equation(pts, edges[0]), pts)
     warnings.append("Cần chỉ rõ đường thẳng hoặc mặt phẳng. Ví dụ: phương trình đường thẳng AB, phương trình mặt phẳng (ABC).")
     return SolverResult(question, "Không xác định", [], warnings)
 
@@ -170,7 +189,7 @@ def _solve_projection(pts: dict[str, Vec3], question: str, warnings: list[str]) 
         calc = calculate_point_plane_projection(pts, point, list(target))
     else:
         calc = calculate_point_line_projection(pts, point, (target[0], target[1]))
-    return _result_from_calculation(question, calc)
+    return _result_from_calculation(question, calc, pts)
 
 
 def _solve_reflection(pts: dict[str, Vec3], question: str, warnings: list[str]) -> SolverResult:
@@ -183,7 +202,7 @@ def _solve_reflection(pts: dict[str, Vec3], question: str, warnings: list[str]) 
         calc = calculate_point_plane_reflection(pts, point, list(target))
     else:
         calc = calculate_point_line_reflection(pts, point, (target[0], target[1]))
-    return _result_from_calculation(question, calc)
+    return _result_from_calculation(question, calc, pts)
 
 
 def _solve_collinear(pts: dict[str, Vec3], question: str, warnings: list[str]) -> SolverResult:
@@ -191,7 +210,7 @@ def _solve_collinear(pts: dict[str, Vec3], question: str, warnings: list[str]) -
     if len(points) < 3:
         warnings.append("Cần ít nhất 3 điểm để chứng minh thẳng hàng.")
         return SolverResult(question, "Không xác định", [], warnings)
-    return _result_from_calculation(question, prove_collinear(pts, points))
+    return _result_from_calculation(question, prove_collinear(pts, points), pts)
 
 
 def _solve_coplanar(pts: dict[str, Vec3], question: str, warnings: list[str]) -> SolverResult:
@@ -199,7 +218,7 @@ def _solve_coplanar(pts: dict[str, Vec3], question: str, warnings: list[str]) ->
     if len(points) < 3:
         warnings.append("Cần ít nhất 3 điểm để xét đồng phẳng.")
         return SolverResult(question, "Không xác định", [], warnings)
-    return _result_from_calculation(question, prove_coplanar(pts, points))
+    return _result_from_calculation(question, prove_coplanar(pts, points), pts)
 
 
 def _solve_vector_operation(pts: dict[str, Vec3], question: str, warnings: list[str], operation: str) -> SolverResult:
@@ -209,7 +228,7 @@ def _solve_vector_operation(pts: dict[str, Vec3], question: str, warnings: list[
         return SolverResult(question, "Không xác định", [], warnings)
     first, second = parsed
     calc = calculate_vector_dot(pts, first, second) if operation == "dot" else calculate_vector_cross(pts, first, second)
-    return _result_from_calculation(question, calc)
+    return _result_from_calculation(question, calc, pts)
 
 
 def _solve_distance(pts: dict[str, Vec3], question: str, warnings: list[str]) -> SolverResult:
@@ -227,7 +246,7 @@ def _solve_distance(pts: dict[str, Vec3], question: str, warnings: list[str]) ->
         calc = calculate_line_line_distance(pts, (operands[0], operands[1]), (operands[2], operands[3]))
     else:
         calc = calculate_point_plane_distance(pts, operands[0], operands[1:])
-    return _result_from_calculation(question, calc)
+    return _result_from_calculation(question, calc, pts)
 
 
 def _solve_angle(pts: dict[str, Vec3], question: str, warnings: list[str]) -> SolverResult:
@@ -247,7 +266,7 @@ def _solve_angle(pts: dict[str, Vec3], question: str, warnings: list[str]) -> So
     else:
         calc = calculate_line_line_angle(pts, (operands[1], operands[0]), (operands[1], operands[2]))
         calc["label"] = f"∠{''.join(operands)}"
-    return _result_from_calculation(question, calc)
+    return _result_from_calculation(question, calc, pts)
 
 
 def _solve_area(scene_dict: dict, pts: dict[str, Vec3], question: str, warnings: list[str]) -> SolverResult:
@@ -257,7 +276,7 @@ def _solve_area(scene_dict: dict, pts: dict[str, Vec3], question: str, warnings:
     if polygon is None or len(polygon) < 3:
         warnings.append("Không đủ thông tin để tính diện tích. Ví dụ: S(ABC) hoặc diện tích ABCD.")
         return SolverResult(question, "Không xác định", [], warnings)
-    return _result_from_calculation(question, calculate_polygon_area(pts, polygon))
+    return _result_from_calculation(question, calculate_polygon_area(pts, polygon), pts)
 
 
 def _solve_vector(pts: dict[str, Vec3], question: str, warnings: list[str]) -> SolverResult:
@@ -274,11 +293,11 @@ def _solve_vector(pts: dict[str, Vec3], question: str, warnings: list[str]) -> S
     is_2d = abs(vector[2]) <= 1e-12 and all(abs(pts[name][2]) <= 1e-12 for name in [a, b])
     value = f"({_fmt(vector[0], 6)}; {_fmt(vector[1], 6)})" if is_2d else f"({_fmt(vector[0], 6)}; {_fmt(vector[1], 6)}; {_fmt(vector[2], 6)})"
     steps = [
-        SolverStep(1, "Xác định vector", f"Vector cần tính là \\overrightarrow{{{a}{b}}}, lấy điểm đầu {a} và điểm cuối {b} từ hình.", None, None, [a, b], kind="input"),
-        SolverStep(2, "Trừ tọa độ", f"Tính theo công thức \\overrightarrow{{{a}{b}}} = ({b}_x - {a}_x; {b}_y - {a}_y" + ("; {b}_z - {a}_z" if not is_2d else "") + ").", None, None, [a, b], kind="vector"),
-        SolverStep(3, "Kết luận", f"Suy ra \\overrightarrow{{{a}{b}}} = {value}.", None, value, [a, b], kind="result", result_latex=value),
+        SolverStep(1, "Xác định vector", f"Vector cần tính là {a}{b}, lấy điểm đầu {a} và điểm cuối {b} từ hình.", None, None, [a, b], kind="input"),
+        SolverStep(2, "Trừ tọa độ", f"Tính theo công thức trừ tọa độ: vector {a}{b} = ({b}_x - {a}_x; {b}_y - {a}_y" + ("; {b}_z - {a}_z" if not is_2d else "") + ").", None, None, [a, b], kind="vector"),
+        SolverStep(3, "Kết luận", f"Suy ra vector {a}{b} = {value}.", None, value, [a, b], kind="result", result_latex=value),
     ]
-    return SolverResult(question, f"\\overrightarrow{{{a}{b}}} = {value}", steps, warnings)
+    return SolverResult(question, f"vector {a}{b} = {value}", steps, warnings)
 
 
 def _solve_volume(pts: dict[str, Vec3], question: str, warnings: list[str]) -> SolverResult:
@@ -286,14 +305,14 @@ def _solve_volume(pts: dict[str, Vec3], question: str, warnings: list[str]) -> S
     if solid and len(solid) == 2:
         apex_or_base, base = solid
         if len(apex_or_base) == 1 and len(base) >= 3:
-            return _result_from_calculation(question, calculate_pyramid_volume(pts, apex_or_base[0], base))
+            return _result_from_calculation(question, calculate_pyramid_volume(pts, apex_or_base[0], base), pts)
         names = [*apex_or_base, *base]
         if len(names) >= 4:
-            return _result_from_calculation(question, calculate_tetrahedron_volume(pts, names[:4]))
+            return _result_from_calculation(question, calculate_tetrahedron_volume(pts, names[:4]), pts)
 
     points = _parse_point_sequence(question)
     if points and len(points) >= 4:
-        return _result_from_calculation(question, calculate_tetrahedron_volume(pts, points[:4]))
+        return _result_from_calculation(question, calculate_tetrahedron_volume(pts, points[:4]), pts)
     warnings.append("Cần chỉ rõ điểm để tính thể tích. Ví dụ: V(S.ABCD) hoặc V(ABCD).")
     return SolverResult(question, "Không xác định", [], warnings)
 
@@ -305,14 +324,14 @@ def _solve_parallel(pts: dict[str, Vec3], question: str, warnings: list[str]) ->
         return SolverResult(question, "Không xác định", [], warnings)
     calc = calculate_line_line_angle(pts, edges[0], edges[1])
     if calc["status"] != "ok":
-        return _result_from_calculation(question, calc)
+        return _result_from_calculation(question, calc, pts)
     relation = _line_relation_status(pts, edges[0], edges[1])
     is_parallel = abs(calc["result_value"]) < 1e-6 and relation in {"parallel", "coincident"}
     warnings = [*calc["warnings"]]
     if abs(calc["result_value"]) < 1e-6 and relation == "skew":
         warnings.append("Hai đường có vector chỉ phương song song nhưng không đồng phẳng, nên là hai đường chéo nhau trong scene.")
     answer = f"{''.join(edges[0])} song song {''.join(edges[1])}: {'ĐÚNG' if is_parallel else 'SAI'}"
-    return SolverResult(question, answer, _steps_from_calculation(calc), warnings)
+    return SolverResult(question, answer, _steps_from_calculation(calc, pts), warnings)
 
 
 def _solve_perpendicular(pts: dict[str, Vec3], question: str, warnings: list[str]) -> SolverResult:
@@ -322,27 +341,68 @@ def _solve_perpendicular(pts: dict[str, Vec3], question: str, warnings: list[str
         return SolverResult(question, "Không xác định", [], warnings)
     calc = calculate_line_line_angle(pts, edges[0], edges[1])
     if calc["status"] != "ok":
-        return _result_from_calculation(question, calc)
+        return _result_from_calculation(question, calc, pts)
     relation = _line_relation_status(pts, edges[0], edges[1])
     is_perpendicular = abs(calc["result_value"] - 90) < 1e-6 and relation == "intersect"
     warnings = [*calc["warnings"]]
     if abs(calc["result_value"] - 90) < 1e-6 and relation == "skew":
         warnings.append("Hai đường có hướng vuông góc nhưng không cắt nhau, nên là hai đường chéo nhau trong scene.")
     answer = f"{''.join(edges[0])} vuông góc {''.join(edges[1])}: {'ĐÚNG' if is_perpendicular else 'SAI'}"
-    return SolverResult(question, answer, _steps_from_calculation(calc), warnings)
+    return SolverResult(question, answer, _steps_from_calculation(calc, pts), warnings)
 
 
-def _result_from_calculation(question: str, calc: dict[str, Any]) -> SolverResult:
+def _cross_check_warnings(calc: dict[str, Any], points: dict[str, Vec3] | None) -> list[str]:
+    if not points:
+        return []
+    kind = str(calc.get("kind", ""))
+    highlight = [str(name) for name in calc.get("highlight", []) if str(name) in points]
+    try:
+        if kind == "distance_point_plane" and len(highlight) >= 4:
+            point = points[highlight[0]]
+            plane_pts = [points[name] for name in highlight[1:4]]
+            res = _xc_point_plane_distance(list(point), [list(pt) for pt in plane_pts])
+            if not res.consistent:
+                return [
+                    f"Cross-check khoảng cách: chênh lệch giữa hai cách tính ({res.primary:.6g} vs {res.secondary:.6g}). {res.detail}".strip()
+                ]
+        elif kind == "area_polygon" and len(highlight) == 3:
+            pts3 = [list(points[name]) for name in highlight[:3]]
+            res = _xc_triangle_area(pts3)
+            if not res.consistent:
+                return [
+                    f"Cross-check diện tích: chênh lệch giữa cross product và Heron ({res.primary:.6g} vs {res.secondary:.6g}). {res.detail}".strip()
+                ]
+        elif kind == "volume_tetrahedron" and len(highlight) >= 4:
+            pts4 = [list(points[name]) for name in highlight[:4]]
+            res = _xc_tetra_volume(pts4)
+            if not res.consistent:
+                return [
+                    f"Cross-check thể tích: chênh lệch giữa định thức và (1/3)·S·h ({res.primary:.6g} vs {res.secondary:.6g}). {res.detail}".strip()
+                ]
+        elif kind == "volume_pyramid" and len(highlight) >= 4:
+            apex = points[highlight[0]]
+            base = [list(points[name]) for name in highlight[1:4]]
+            res = _xc_tetra_volume([list(apex), *base])
+            if not res.consistent:
+                return [
+                    f"Cross-check thể tích: chênh lệch giữa hai cách tính tứ diện đáy ({res.primary:.6g} vs {res.secondary:.6g}). {res.detail}".strip()
+                ]
+    except Exception:
+        return []
+    return []
+
+
+def _result_from_calculation(question: str, calc: dict[str, Any], points: dict[str, Vec3] | None = None) -> SolverResult:
     if calc["status"] != "ok":
         return SolverResult(question, "Không xác định", [], calc["warnings"])
     unit = "°" if calc.get("unit") == "degrees" else ""
-    warnings = [*calc["warnings"], *_pedagogical_warnings(calc)]
+    warnings = [*calc["warnings"], *_pedagogical_warnings(calc), *_cross_check_warnings(calc, points)]
     value = calc.get("result_value")
     if isinstance(value, int | float):
         answer = f"{calc['label']} = {_fmt(value, 6)}{unit}"
     else:
         answer = calc.get("answer") or f"{calc['label']} = {calc['result_latex']}"
-    return SolverResult(question, answer, _steps_from_calculation(calc), warnings)
+    return SolverResult(question, answer, _steps_from_calculation(calc, points), warnings)
 
 
 def _pedagogical_warnings(calc: dict[str, Any]) -> list[str]:
@@ -362,13 +422,74 @@ def _pedagogical_warnings(calc: dict[str, Any]) -> list[str]:
     return []
 
 
-def _steps_from_calculation(calc: dict[str, Any]) -> list[SolverStep]:
+def _point_text(name: str, points: dict[str, Vec3] | None) -> str:
+    if points is None or name not in points:
+        return name
+    x, y, z = points[name]
+    return f"{name}({_fmt(x, 6)}, {_fmt(y, 6)}, {_fmt(z, 6)})"
+
+
+def _build_step2_detail(calc: dict[str, Any], points: dict[str, Vec3] | None) -> str:
+    highlight = [str(value) for value in calc.get("highlight", [])]
+    if not highlight:
+        return ""
+
+    coords = ", ".join(_point_text(name, points) for name in highlight)
+    if points is None:
+        return f"Điểm liên quan: {', '.join(highlight)}."
+
+    kind = str(calc.get("kind", ""))
+
+    if kind == "distance_line_line" and len(highlight) >= 4 and all(name in points for name in highlight[:4]):
+        a, b, c, d = highlight[:4]
+        u = _sub(points[b], points[a])
+        v = _sub(points[d], points[c])
+        w = _sub(points[c], points[a])
+        n = _cross(u, v)
+        return (
+            f"Chọn gốc tại {a}. Từ tọa độ điểm: {coords}. "
+            f"Lập vector chỉ phương u=\\overrightarrow{{{a}{b}}}={_vec_latex(u)}, "
+            f"v=\\overrightarrow{{{c}{d}}}={_vec_latex(v)}, "
+            f"và vector nối hai đường w=\\overrightarrow{{{a}{c}}}={_vec_latex(w)}. "
+            f"Khi đó pháp tuyến chung n=u\\times v={_vec_latex(n)}."
+        )
+
+    if kind == "distance_point_line" and len(highlight) >= 3 and all(name in points for name in highlight[:3]):
+        p, a, b = highlight[:3]
+        ap = _sub(points[p], points[a])
+        ab = _sub(points[b], points[a])
+        return (
+            f"Chọn gốc tại {a}. Từ tọa độ điểm: {coords}. "
+            f"Lập \\overrightarrow{{{a}{p}}}={_vec_latex(ap)} và \\overrightarrow{{{a}{b}}}={_vec_latex(ab)} để thay vào công thức."
+        )
+
+    if kind == "distance_point_plane" and len(highlight) >= 4 and all(name in points for name in highlight[:4]):
+        p = highlight[0]
+        a, b, c = highlight[1], highlight[2], highlight[3]
+        ab = _sub(points[b], points[a])
+        ac = _sub(points[c], points[a])
+        ap = _sub(points[p], points[a])
+        n = _cross(ab, ac)
+        return (
+            f"Chọn gốc tại {a} trên mặt phẳng. Từ tọa độ điểm: {coords}. "
+            f"Lập \\overrightarrow{{{a}{b}}}={_vec_latex(ab)}, \\overrightarrow{{{a}{c}}}={_vec_latex(ac)}, "
+            f"suy ra pháp tuyến \\vec n=\\overrightarrow{{{a}{b}}}\\times\\overrightarrow{{{a}{c}}}={_vec_latex(n)}; "
+            f"đồng thời \\overrightarrow{{{a}{p}}}={_vec_latex(ap)}."
+        )
+
+    return f"Tọa độ các điểm liên quan: {coords}."
+
+
+def _steps_from_calculation(calc: dict[str, Any], points: dict[str, Vec3] | None = None) -> list[SolverStep]:
     highlight = calc["highlight"]
+    label_plain = _latex_to_plain_text(str(calc["label"]))
+    result_latex = str(calc["result_latex"])
+    result_plain = _latex_to_plain_text(result_latex)
     return [
         SolverStep(
             1,
             "Xác định dữ liệu đầu vào",
-            f"Bài toán cần tính {calc['label']} từ các đối tượng: {', '.join(highlight)}.",
+            _sanitize_explanation(f"Bài toán cần tính {label_plain} từ các đối tượng: {', '.join(highlight)}."),
             None,
             None,
             highlight,
@@ -377,7 +498,7 @@ def _steps_from_calculation(calc: dict[str, Any]) -> list[SolverStep]:
         SolverStep(
             2,
             "Chọn công thức và thay số",
-            "Dùng công thức hình học không gian deterministic, sau đó thay tọa độ từ scene.",
+            f"Dùng công thức hình học không gian deterministic, rồi thay số theo tọa độ. {_build_step2_detail(calc, points)}",
             calc["formula_latex"],
             None,
             highlight,
@@ -388,7 +509,7 @@ def _steps_from_calculation(calc: dict[str, Any]) -> list[SolverStep]:
         SolverStep(
             3,
             "Kết quả",
-            f"Suy ra {calc['label']} = {calc['result_latex']}.",
+            _sanitize_explanation(f"Suy ra {label_plain} = {result_plain}."),
             None,
             calc["result_latex"],
             highlight,
@@ -620,26 +741,10 @@ def _line_relation_status(pts: dict[str, Vec3], edge_1: tuple[str, str], edge_2:
     return "intersect" if distance <= 1e-6 else "skew"
 
 
-def _sub(a: Vec3, b: Vec3) -> Vec3:
-    return (a[0] - b[0], a[1] - b[1], a[2] - b[2])
-
-
-def _dot(a: Vec3, b: Vec3) -> float:
-    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
-
-
-def _cross(a: Vec3, b: Vec3) -> Vec3:
-    return (
-        a[1] * b[2] - a[2] * b[1],
-        a[2] * b[0] - a[0] * b[2],
-        a[0] * b[1] - a[1] * b[0],
-    )
-
-
-def _norm(v: Vec3) -> float:
-    return (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]) ** 0.5
-
-
 def _fmt(value: float, digits: int = 4) -> str:
     text = f"{value:.{digits}f}".rstrip("0").rstrip(".")
     return text or "0"
+
+
+def _vec_latex(value: Vec3) -> str:
+    return f"({_fmt(value[0])},{_fmt(value[1])},{_fmt(value[2])})"

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 import httpx
@@ -12,12 +13,22 @@ from app.services.router9_client import Router9Client, _extract_message_content 
 from app.services.solver_service import SolverResult, SolverStep
 
 SOLVER_EXPLAINER_SYSTEM_PROMPT = """
-Bạn là giáo viên hình học không gian tiếng Việt.
-Chỉ diễn giải lại lời giải từ dữ liệu deterministic đã cho; không tự tính lại đáp số, không đổi số cuối.
-Mỗi bước phải rõ: dữ kiện lấy từ hình, dữ kiện suy luận/nội suy, công thức, thế số, kết luận.
-Nếu có cảnh báo hoặc trường hợp suy biến/chéo nhau/không cắt nhau, giải thích vì sao kết luận hợp lệ hoặc không hợp lệ.
-Trả về JSON thuần dạng {"steps":[{"index":1,"title":"...","explanation":"..."}]}.
-Không markdown, không bọc code fence.
+Bạn là giáo viên hình học không gian tiếng Việt, đang giải thích step-by-step cho học sinh lớp 12.
+
+Quy tắc QUAN TRỌNG:
+1. Giữ nguyên đáp số và kết quả cuối cùng đã cho, KHÔNG tự tính lại.
+2. Mỗi bước explanation PHẢI là văn bản thuần, KHÔNG chứa LaTeX (\\frac, \\overrightarrow, v.v.) — công thức đã có trường riêng.
+3. Bước 1 (Dữ liệu): PHẢI liệt kê tọa độ từng điểm liên quan lấy từ scene_objects (ví dụ: "S(0, 0, 4), A(2, 0, 0), B(0, 3, 0)").
+4. Bước 2 (Công thức & vector): PHẢI nêu rõ:
+   - Chọn điểm gốc nào (ví dụ: "Chọn gốc tại S")
+   - Dựng những vector nào, tọa độ vector là bao nhiêu (ví dụ: "vector SA = (2, 0, -4), vector AB = (-2, 3, 0)")
+   - Nếu có tích có hướng/vô hướng, ghi kết quả trung gian
+   - Giải thích vì sao chọn công thức này (hai đường chéo nhau, điểm ngoài mặt phẳng, v.v.)
+5. Bước 3 (Kết luận): Ghi kết quả cuối bằng văn bản (ví dụ: "Vậy d(SD,AB) = 12/5").
+6. Nếu có cảnh báo (suy biến, chéo nhau, trùng), giải thích cho học sinh hiểu.
+
+Trả về JSON thuần: {"steps":[{"index":1,"title":"...","explanation":"..."},...]}.
+Không markdown, không code fence, không LaTeX trong explanation.
 """.strip()
 
 
@@ -52,13 +63,29 @@ async def explain_solver_result(result: SolverResult, scene: dict[str, Any], set
 
 def _payload(result: SolverResult, scene: dict[str, Any]) -> dict[str, Any]:
     objects = []
+    point_coords: dict[str, str] = {}
     for obj in scene.get("objects", []):
-        if obj.get("type") in {"point_3d", "line_3d", "plane", "face", "segment"}:
+        obj_type = obj.get("type")
+        if obj_type in {"point_3d", "line_3d", "plane", "face", "segment"}:
             objects.append(obj)
+        if obj_type == "point_3d":
+            point_coords[obj["name"]] = f"({obj['x']}, {obj['y']}, {obj['z']})"
+        elif obj_type == "point_2d":
+            point_coords[obj["name"]] = f"({obj['x']}, {obj['y']}, 0)"
+
+    highlight_names: list[str] = []
+    for step in result.steps:
+        for name in step.highlight:
+            if name not in highlight_names:
+                highlight_names.append(name)
+
+    relevant_coords = {name: point_coords[name] for name in highlight_names if name in point_coords}
+
     return {
         "question": result.question,
         "answer": result.answer,
         "warnings": result.warnings,
+        "point_coordinates": relevant_coords,
         "scene_objects": objects[:80],
         "steps": [step.to_dict() for step in result.steps],
     }
@@ -164,8 +191,18 @@ def _parse_steps(data: dict[str, Any]) -> dict[int, dict[str, str]]:
         title = row.get("title")
         explanation = row.get("explanation")
         if isinstance(index, int) and isinstance(title, str) and isinstance(explanation, str):
-            parsed[index] = {"title": title.strip(), "explanation": explanation.strip()}
+            parsed[index] = {"title": title.strip(), "explanation": _sanitize_explanation(explanation)}
     return parsed
+
+
+def _sanitize_explanation(text: str) -> str:
+    cleaned = text.strip()
+    cleaned = re.sub(r"\\overrightarrow\{([^{}]+)\}", r"vector \1", cleaned)
+    cleaned = re.sub(r"\\angle\(([^)]+)\)", r"góc(\1)", cleaned)
+    cleaned = re.sub(r"\\[a-zA-Z]+(?:\{[^{}]*\})*", " ", cleaned)
+    cleaned = cleaned.replace("{", " ").replace("}", " ")
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned
 
 
 def _strip_json_fences(content: str) -> str:

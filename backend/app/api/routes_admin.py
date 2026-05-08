@@ -173,7 +173,13 @@ async def admin_save_system_setting(
 ) -> SystemSettingResponse:
     await enforce_rate_limit(db, http_request, admin, "admin_system_settings", 30, 60)
     repo = AdminRepository(db)
-    value = validate_system_setting(request.key, request.value)
+    raw_value = request.value
+    if request.key == "ai_settings":
+        current_rows = await repo.list_system_settings()
+        current_ai = next((item for item in current_rows if item.key == "ai_settings"), None)
+        base_value = parse_setting_value(current_ai.value_json) if current_ai is not None else {}
+        raw_value = deep_merge_dict(base_value, request.value)
+    value = validate_system_setting(request.key, raw_value)
     setting = await repo.upsert_system_setting(request.key, value, admin.id)
     if request.key == "ai_settings":
         await sync_ai_settings_to_registry(db, value)
@@ -194,8 +200,12 @@ async def admin_check_provider(
 
     settings = await resolve_effective_settings(db, request.runtime_settings)
     test_problem = "Vẽ điểm A(0,0)."
+    provider_aliases = {
+        "ollama": "ollama_gpt_oss",
+    }
+    resolved_provider = provider_aliases.get(provider, provider)
     try:
-        await _extract_with_provider(provider, settings, test_problem, grade=None, reasoning_layer="off")
+        await _extract_with_provider(resolved_provider, settings, test_problem, grade=None, reasoning_layer="off")
         return {"status": "ok", "message": f"Kết nối tới {provider} thành công."}
     except Exception as error:
         return {"status": "error", "message": str(error)}
@@ -227,6 +237,17 @@ async def admin_audit_logs(
 def parse_setting_value(value: str) -> dict:
     parsed = json.loads(value)
     return parsed if isinstance(parsed, dict) else {}
+
+
+def deep_merge_dict(base: dict, patch: dict) -> dict:
+    merged = dict(base)
+    for key, patch_value in patch.items():
+        base_value = merged.get(key)
+        if isinstance(base_value, dict) and isinstance(patch_value, dict):
+            merged[key] = deep_merge_dict(base_value, patch_value)
+        else:
+            merged[key] = patch_value
+    return merged
 
 
 def validate_system_setting(key: str, value: dict) -> dict:

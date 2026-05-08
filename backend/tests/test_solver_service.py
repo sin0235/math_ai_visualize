@@ -27,6 +27,18 @@ def test_solve_point_point_distance(scene):
     assert result.steps[2].result_latex == "4"
 
 
+def test_solve_point_point_distance_exact_radical():
+    scene = {"objects": [
+        {"type": "point_3d", "name": "A", "x": 0, "y": 0, "z": 0},
+        {"type": "point_3d", "name": "B", "x": 1, "y": 1, "z": 1},
+    ]}
+
+    result = solve(scene, "d(A,B)")
+
+    assert result.answer == "d(A,B) = 1.732051"
+    assert result.steps[2].result_latex == "\\sqrt{3}"
+
+
 def test_solve_point_line_distance(scene):
     result = solve(scene, "d(A,BC)")
 

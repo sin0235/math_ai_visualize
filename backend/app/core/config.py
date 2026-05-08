@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     ]
     openrouter_api_key: str | None = None
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
-    openrouter_text_model: str = "openrouter/nvidia/nemotron-3-super-120b-a12b:free"
+    openrouter_text_model: str = "openai/gpt-oss-120b:free"
     openrouter_vision_model: str = "google/gemma-4-31b-it:free"
     openrouter_vision_fallback_model: str = "google/gemma-4-26b-a4b-it:free"
     openrouter_reasoning_enabled: bool = False
@@ -69,6 +69,9 @@ class Settings(BaseSettings):
     google_oauth_client_secret: str | None = None
     google_oauth_redirect_uri: str = "https://math-renderer-api.sin-studio.tech/api/auth/google/callback"
     allow_missing_origin_for_cookie_mutations: bool = True
+    cas_repair_enabled: bool = False
+    cas_repair_max_iterations: int = 2
+    cas_repair_min_severity: Literal["warning", "error"] = "warning"
 
     model_config = SettingsConfigDict(env_file=(".env", "backend/.env"), env_file_encoding="utf-8")
 

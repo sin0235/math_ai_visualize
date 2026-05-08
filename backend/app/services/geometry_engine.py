@@ -1,16 +1,30 @@
 import re
 from itertools import combinations
-from math import acos, asin, degrees, sqrt
+from math import acos, asin, degrees, isfinite, sqrt
 from typing import Any
 
+import sympy as sp
+from scipy.spatial import cKDTree
+
 from app.schemas.scene import AdvancedRenderSettings, Face, Line3D, MathScene, Plane, Point3D, Segment, Sphere, Vector3D
+from app.services.linalg import Vec3, add as _add, bbox_diagonal, centroid as linalg_centroid, cross as _cross, distance as _distance, dot as _dot, norm as _norm, normalize as _normalize, plane_from_points, raw_plane_from_named_points, scale as _scale, sub as _sub, to_tuple, vec3
 
 EPS = 1e-9
 DISPLAY_EPS = 1e-6
 MAX_COMPUTED_PAIRS = 100
-
-Vec3 = tuple[float, float, float]
-
+_SAFE_SYMPY_LOCALS = {
+    "sqrt": sp.sqrt,
+    "pi": sp.pi,
+    "E": sp.E,
+    "e": sp.E,
+    "sin": sp.sin,
+    "cos": sp.cos,
+    "tan": sp.tan,
+    "asin": sp.asin,
+    "acos": sp.acos,
+    "atan": sp.atan,
+    "abs": sp.Abs,
+}
 
 def normalize_scene(scene: MathScene, settings: AdvancedRenderSettings | None = None) -> MathScene:
     settings = settings or AdvancedRenderSettings()
@@ -71,13 +85,13 @@ def _normalize_segment_intersection_points(scene: MathScene, data: dict[str, Any
     if len(segments) < 2:
         return data
 
-    existing_points = {_point_tuple(point): point.name for point in points.values()}
+    existing_points = {_point_key(_point_tuple(point)): point.name for point in points.values()}
     point_names = set(points)
     objects = data.setdefault("objects", [])
     relations = data.setdefault("relations", [])
     added = 0
 
-    for first, second in combinations(segments, 2):
+    for first, second in _segment_candidate_pairs(segments, points):
         if set(first.points).intersection(second.points):
             continue
         intersection = _segment_segment_intersection(first, second, points)
@@ -87,7 +101,7 @@ def _normalize_segment_intersection_points(scene: MathScene, data: dict[str, Any
             continue
         name = _next_intersection_name(point_names, added)
         point_names.add(name)
-        existing_points[intersection] = name
+        existing_points[_point_key(intersection)] = name
         added += 1
         objects.append({
             "type": "point_3d",
@@ -104,6 +118,35 @@ def _normalize_segment_intersection_points(scene: MathScene, data: dict[str, Any
         })
 
     return data
+
+
+def _segment_candidate_pairs(segments: list[Segment], points: dict[str, Point3D]) -> list[tuple[Segment, Segment]]:
+    midpoint_data: list[tuple[Segment, Vec3, float]] = []
+    for segment in segments:
+        start = points.get(segment.points[0])
+        end = points.get(segment.points[1])
+        if start is None or end is None:
+            continue
+        start_point = _point_tuple(start)
+        end_point = _point_tuple(end)
+        midpoint = _scale(_add(start_point, end_point), 0.5)
+        half_length = _distance(start_point, end_point) / 2
+        midpoint_data.append((segment, midpoint, half_length))
+    if len(midpoint_data) < 2:
+        return []
+    max_radius = max(item[2] for item in midpoint_data)
+    coords = [item[1] for item in midpoint_data]
+    tree = cKDTree(coords)
+    raw_pairs = tree.query_pairs(2 * max_radius + DISPLAY_EPS)
+    candidates: list[tuple[Segment, Segment]] = []
+    for first_index, second_index in sorted(raw_pairs):
+        first, first_midpoint, first_half = midpoint_data[first_index]
+        second, second_midpoint, second_half = midpoint_data[second_index]
+        if _distance(first_midpoint, second_midpoint) > first_half + second_half + DISPLAY_EPS:
+            continue
+        candidates.append((first, second))
+    return candidates
+
 
 
 def _normalize_special_property_annotations(scene: MathScene, data: dict[str, Any]) -> dict[str, Any]:
@@ -243,18 +286,110 @@ def _normalize_origin_marker(scene: MathScene, settings: AdvancedRenderSettings)
     if settings.coordinate_assignment == "ai":
         return scene
     points = [obj for obj in scene.objects if isinstance(obj, Point3D)]
-    has_origin = any(_is_origin(point) for point in points)
-    has_o = any(point.name == "O" for point in points)
-    if has_origin or has_o:
+    if not points:
+        return scene
+
+    candidate = _origin_candidate(scene, settings, points)
+    if candidate is None:
+        if any(_is_origin(point) for point in points):
+            return scene
+        data = scene.model_dump()
+        data["objects"] = [
+            {"type": "point_3d", "name": "O", "x": 0, "y": 0, "z": 0, "x_expr": "0", "y_expr": "0", "z_expr": "0"},
+            *data["objects"],
+        ]
+        data["annotations"].append({"type": "coordinate_label", "target": "O", "metadata": {}})
+        return MathScene.model_validate(data)
+
+    origin_expr = _point_expr(candidate)
+    if all(sp.simplify(value) == 0 for value in origin_expr):
         return scene
 
     data = scene.model_dump()
-    data["objects"] = [
-        {"type": "point_3d", "name": "O", "x": 0, "y": 0, "z": 0},
-        *data["objects"],
-    ]
-    data["annotations"].append({"type": "coordinate_label", "target": "O", "metadata": {}})
+    for obj in data.get("objects", []):
+        if obj.get("type") != "point_3d":
+            continue
+        exprs = _point_dict_expr(obj)
+        shifted = tuple(sp.simplify(value - offset) for value, offset in zip(exprs, origin_expr, strict=True))
+        obj["x"], obj["y"], obj["z"] = (_expr_float(value) for value in shifted)
+        obj["x_expr"], obj["y_expr"], obj["z_expr"] = (_expr_text(value) for value in shifted)
     return MathScene.model_validate(data)
+
+
+def _origin_candidate(scene: MathScene, settings: AdvancedRenderSettings, points: list[Point3D]) -> Point3D | None:
+    if settings.coordinate_assignment == "prefer_o_origin":
+        point_o = next((point for point in points if point.name == "O"), None)
+        if point_o is not None:
+            return point_o
+    return max(points, key=lambda point: _origin_score(point, scene), default=None)
+
+
+def _origin_score(point: Point3D, scene: MathScene) -> tuple[int, int, int, int]:
+    if _is_origin(point):
+        origin_bonus = 1_000
+    else:
+        origin_bonus = 0
+    name_bonus = 200 if point.name == "O" else 0
+    simplicity = -sum(_expr_complexity(value) for value in _point_expr(point))
+    incidence = sum(_object_mentions_point(obj, point.name) for obj in scene.objects) + sum(_relation_mentions_point(rel, point.name) for rel in scene.relations)
+    return (origin_bonus + name_bonus, simplicity, incidence, -len(point.name))
+
+
+def _object_mentions_point(obj: Any, name: str) -> int:
+    data = obj.model_dump() if hasattr(obj, "model_dump") else {}
+    return str(data).count(name)
+
+
+def _relation_mentions_point(rel: Any, name: str) -> int:
+    data = rel.model_dump() if hasattr(rel, "model_dump") else {}
+    return str(data).count(name)
+
+
+def _point_expr(point: Point3D) -> tuple[sp.Expr, sp.Expr, sp.Expr]:
+    return (
+        _parse_expr(point.x_expr, point.x),
+        _parse_expr(point.y_expr, point.y),
+        _parse_expr(point.z_expr, point.z),
+    )
+
+
+def _point_dict_expr(point: dict[str, Any]) -> tuple[sp.Expr, sp.Expr, sp.Expr]:
+    return (
+        _parse_expr(point.get("x_expr"), float(point.get("x", 0))),
+        _parse_expr(point.get("y_expr"), float(point.get("y", 0))),
+        _parse_expr(point.get("z_expr"), float(point.get("z", 0))),
+    )
+
+
+def _parse_expr(expr: str | None, value: float) -> sp.Expr:
+    if expr:
+        try:
+            parsed = sp.sympify(expr.replace("^", "**"), locals=_SAFE_SYMPY_LOCALS)
+            if not parsed.free_symbols:
+                return sp.simplify(parsed)
+        except Exception:
+            pass
+    return sp.Rational(str(float(value))).limit_denominator(1_000_000)
+
+
+def _expr_float(expr: sp.Expr) -> float:
+    return float(sp.N(expr))
+
+
+def _expr_text(expr: sp.Expr) -> str:
+    simplified = sp.simplify(expr)
+    return str(simplified).replace("**", "^")
+
+
+def _expr_complexity(expr: sp.Expr) -> int:
+    simplified = sp.simplify(expr)
+    if simplified == 0:
+        return 0
+    if simplified.is_Integer:
+        return 1 + abs(int(simplified))
+    if simplified.is_Rational:
+        return 4 + abs(int(simplified.p)) + abs(int(simplified.q))
+    return 20 + len(str(simplified))
 
 
 def compute_three_geometry(scene: MathScene) -> dict[str, Any]:
@@ -336,13 +471,17 @@ def calculate_point_point_distance(points: dict[str, Vec3], a: str, b: str) -> d
         return _with_warning(result, f"Điểm {', '.join(missing)} không có trong scene.")
     delta = _sub(points[b], points[a])
     value = _norm(delta)
-    return _complete_result(
+    completed = _complete_result(
         result,
         value,
         f"d({a},{b})=\\sqrt{{(x_{b}-x_{a})^2+(y_{b}-y_{a})^2+(z_{b}-z_{a})^2}}",
         f"\\sqrt{{{_fmt(delta[0])}^2+{_fmt(delta[1])}^2+{_fmt(delta[2])}^2}}",
         "distance",
     )
+    exact = _exact_distance_latex(delta)
+    if exact is not None:
+        completed["result_latex"] = exact
+    return completed
 
 
 def calculate_point_line_distance(points: dict[str, Vec3], point_name: str, line_points: tuple[str, str]) -> dict[str, Any]:
@@ -514,13 +653,18 @@ def calculate_polygon_area(points: dict[str, Vec3], polygon_points: list[str]) -
         area += triangle_area
         details.append(_fmt(triangle_area))
     result["parts"] = details
-    return _complete_result(
+    completed = _complete_result(
         result,
         area,
         f"S({label})=\\sum \\frac12\\|\\vec u_i\\times\\vec v_i\\|",
         " + ".join(details) if details else "0",
         "area",
     )
+    if len(resolved) == 3:
+        exact = _exact_norm_over_latex(_cross(_sub(resolved[1], anchor), _sub(resolved[2], anchor)), 2)
+        if exact is not None:
+            completed["result_latex"] = exact
+    return completed
 
 
 def calculate_tetrahedron_volume(points: dict[str, Vec3], tetra_points: list[str]) -> dict[str, Any]:
@@ -534,13 +678,17 @@ def calculate_tetrahedron_volume(points: dict[str, Vec3], tetra_points: list[str
         return _with_warning(result, f"Điểm {', '.join(missing)} không có trong scene.")
     triple = _dot(_cross(_sub(points[b], points[a]), _sub(points[c], points[a])), _sub(points[d], points[a]))
     volume = abs(triple) / 6
-    return _complete_result(
+    completed = _complete_result(
         result,
         volume,
         f"V=\\frac16|[\\overrightarrow{{{a}{b}}},\\overrightarrow{{{a}{c}}},\\overrightarrow{{{a}{d}}}]|",
         f"\\frac16|{_fmt(triple)}|",
         "volume",
     )
+    exact = _exact_scalar_over_latex(abs(triple), 6)
+    if exact is not None:
+        completed["result_latex"] = exact
+    return completed
 
 
 def calculate_pyramid_volume(points: dict[str, Vec3], apex: str, base_points: list[str]) -> dict[str, Any]:
@@ -960,17 +1108,7 @@ def _line_data(line: Line3D, points: dict[str, Point3D]) -> tuple[Vec3, Vec3] | 
 
 def _plane_data(plane: Plane, points: dict[str, Point3D]) -> tuple[Vec3, Vec3] | None:
     resolved = [_point_tuple(points[name]) for name in plane.points if name in points]
-    if len(resolved) < 3:
-        return None
-    centroid = _centroid(resolved)
-    for i in range(len(resolved) - 2):
-        for j in range(i + 1, len(resolved) - 1):
-            for k in range(j + 1, len(resolved)):
-                normal = _cross(_sub(resolved[j], resolved[i]), _sub(resolved[k], resolved[i]))
-                normalized = _normalize(normal)
-                if _norm(normalized) > EPS:
-                    return centroid, normalized
-    return None
+    return plane_from_points(resolved, EPS)
 
 
 def _point_map(scene: MathScene) -> dict[str, Point3D]:
@@ -978,24 +1116,22 @@ def _point_map(scene: MathScene) -> dict[str, Point3D]:
 
 
 def _point_tuple(point: Point3D) -> Vec3:
-    return (point.x, point.y, point.z)
+    return vec3(point.x, point.y, point.z)
+
+
+def _point_key(point: Vec3) -> tuple[float, float, float]:
+    return to_tuple(point)
 
 
 def _centroid(points: list[Vec3]) -> Vec3:
-    return (
-        sum(point[0] for point in points) / len(points),
-        sum(point[1] for point in points) / len(points),
-        sum(point[2] for point in points) / len(points),
-    )
+    return linalg_centroid(points)
 
 
 def _normal_length(points: dict[str, Point3D]) -> float:
     values = [_point_tuple(point) for point in points.values()]
     if len(values) < 2:
         return 0.8
-    min_point = (min(p[0] for p in values), min(p[1] for p in values), min(p[2] for p in values))
-    max_point = (max(p[0] for p in values), max(p[1] for p in values), max(p[2] for p in values))
-    diagonal = _distance(min_point, max_point)
+    diagonal = bbox_diagonal(values)
     return min(max(diagonal * 0.18, 0.4), 1.2)
 
 
@@ -1018,15 +1154,100 @@ def _calculation_result(kind: str, label: str, highlight: list[str]) -> dict[str
 
 
 def _complete_result(result: dict[str, Any], value: float, formula: str, substitution: str, unit: str) -> dict[str, Any]:
+    if unit == "degrees":
+        latex = _nsimplify_angle_latex(value)
+    else:
+        latex = _nsimplify_latex(value) or _fmt(value, 6)
     result.update({
         "status": "ok",
         "formula_latex": formula,
         "substitution_latex": substitution,
-        "result_latex": f"{_fmt(value, 6)}^\\circ" if unit == "degrees" else _fmt(value, 6),
+        "result_latex": latex,
         "result_value": value,
         "unit": unit,
     })
     return result
+
+
+# Tập radical thường gặp trong toán phổ thông (3D solid geometry)
+_NSIMPLIFY_BASIS: tuple[sp.Expr, ...] = (
+    sp.pi,
+    sp.sqrt(2),
+    sp.sqrt(3),
+    sp.sqrt(5),
+    sp.sqrt(6),
+    sp.sqrt(7),
+    sp.sqrt(10),
+    sp.sqrt(11),
+    sp.sqrt(13),
+    sp.sqrt(14),
+    sp.sqrt(15),
+    sp.sqrt(21),
+)
+_NSIMPLIFY_TOLERANCE = 1e-9
+_NSIMPLIFY_FLOAT_RELTOL = 1e-7
+
+
+def _nsimplify_latex(value: float) -> str | None:
+    """Thử biểu diễn giá trị float dưới dạng đại số đẹp (a*sqrt(n)/b, pi, …).
+
+    Trả về LaTeX nếu tìm thấy biểu thức simple đủ tin cậy (sai số <1e-7 tương đối);
+    None nếu fallback float.
+
+    Thuật toán: ưu tiên radical/π (basis_value), nếu kết quả chỉ là Rational thì
+    so với ``Rational.limit_denominator(1000)`` để chọn mẫu nhỏ nhất hợp lý.
+    """
+    if not isfinite(value):
+        return None
+    abs_v = abs(value)
+    if abs_v < _NSIMPLIFY_TOLERANCE:
+        return "0"
+
+    relative_tol = max(abs_v, 1.0) * _NSIMPLIFY_FLOAT_RELTOL
+
+    # 1) Thử nsimplify với basis radical/π
+    radical_candidate: sp.Expr | None = None
+    try:
+        nsimp = sp.nsimplify(value, _NSIMPLIFY_BASIS, tolerance=_NSIMPLIFY_TOLERANCE, rational=False)
+        nsimp_simplified = sp.simplify(nsimp)
+        nsimp_value = float(nsimp_simplified.evalf())
+        if isfinite(nsimp_value) and abs(nsimp_value - value) <= relative_tol:
+            text = sp.srepr(nsimp_simplified)
+            if len(text) <= 200:
+                # Nếu chứa pi hoặc sqrt → đây là dạng "đẹp", return ngay
+                if any(symbol in text for symbol in ("pi", "sqrt", "Pow")):
+                    return sp.latex(nsimp_simplified)
+                radical_candidate = nsimp_simplified
+    except (TypeError, ValueError, sp.SympifyError):  # pragma: no cover
+        pass
+
+    # 2) Thử Rational đơn giản
+    try:
+        rational = sp.Rational(value).limit_denominator(1000)
+        if abs(float(rational) - value) <= relative_tol:
+            if rational.q == 1 and abs(rational.p) < 10**6:
+                return str(rational.p)
+            if rational.q != 1 and abs(rational.p) < 10**4 and rational.q <= 1000:
+                return sp.latex(rational)
+    except (TypeError, ValueError):
+        pass
+
+    # 3) Fallback radical_candidate (Rational mà nsimplify trả về với mẫu lớn)
+    if radical_candidate is not None:
+        return sp.latex(radical_candidate)
+    return None
+
+
+def _nsimplify_angle_latex(value_deg: float) -> str:
+    """LaTeX cho góc theo độ. Ưu tiên giá trị đặc biệt (30°, 45°, 60°, 90°…)."""
+    if not isfinite(value_deg):
+        return _fmt(value_deg, 6) + "^\\circ"
+    if abs(value_deg - round(value_deg)) <= 1e-9:
+        return f"{int(round(value_deg))}^\\circ"
+    rounded = round(value_deg, 4)
+    if abs(value_deg - rounded) <= 1e-9:
+        return f"{rounded}^\\circ"
+    return f"{_fmt(value_deg, 6)}^\\circ"
 
 
 def _complete_text_result(result: dict[str, Any], formula: str, substitution: str, result_latex: str, answer: str) -> dict[str, Any]:
@@ -1051,31 +1272,12 @@ def _missing_points(points: dict[str, Vec3], names: list[str]) -> list[str]:
 
 def _plane_data_from_names(points: dict[str, Vec3], names: list[str]) -> tuple[Vec3, Vec3] | None:
     resolved = [points[name] for name in names if name in points]
-    if len(resolved) < 3:
-        return None
-    centroid = _centroid(resolved)
-    for i in range(len(resolved) - 2):
-        for j in range(i + 1, len(resolved) - 1):
-            for k in range(j + 1, len(resolved)):
-                normal = _cross(_sub(resolved[j], resolved[i]), _sub(resolved[k], resolved[i]))
-                normalized = _normalize(normal)
-                if _norm(normalized) > EPS:
-                    return centroid, normalized
-    return None
+    return plane_from_points(resolved, EPS)
 
 
 def _raw_plane_data_from_names(points: dict[str, Vec3], names: list[str]) -> tuple[Vec3, Vec3, tuple[str, str, str]] | None:
-    available = [name for name in names if name in points]
-    if len(available) < 3:
-        return None
-    for i in range(len(available) - 2):
-        for j in range(i + 1, len(available) - 1):
-            for k in range(j + 1, len(available)):
-                a, b, c = available[i], available[j], available[k]
-                normal = _cross(_sub(points[b], points[a]), _sub(points[c], points[a]))
-                if _norm(normal) > EPS:
-                    return points[a], normal, (a, b, c)
-    return None
+    named_points = {name: points[name] for name in names if name in points}
+    return raw_plane_from_named_points(named_points, EPS)
 
 
 def _point_from_dict(point: dict[str, float]) -> Vec3:
@@ -1131,6 +1333,31 @@ def _fmt(value: float, digits: int = 4) -> str:
     return text or "0"
 
 
+def _exact_distance_latex(delta: Vec3) -> str | None:
+    return _exact_norm_over_latex(delta, 1)
+
+
+def _exact_norm_over_latex(vector: Vec3, divisor: int) -> str | None:
+    values = [float(component) for component in vector]
+    if not all(abs(value - round(value)) <= DISPLAY_EPS for value in values):
+        return None
+    squared = sum(int(round(value)) ** 2 for value in values)
+    root = int(sqrt(squared))
+    numerator = str(root) if root * root == squared else f"\\sqrt{{{squared}}}"
+    if divisor == 1:
+        return numerator
+    return f"\\frac{{{numerator}}}{{{divisor}}}"
+
+
+def _exact_scalar_over_latex(value: float, divisor: int) -> str | None:
+    if abs(value - round(value)) > DISPLAY_EPS:
+        return None
+    numerator = int(round(value))
+    if numerator % divisor == 0:
+        return str(numerator // divisor)
+    return f"\\frac{{{numerator}}}{{{divisor}}}"
+
+
 def _vec_latex(value: Vec3) -> str:
     return f"({_fmt(value[0])},{_fmt(value[1])},{_fmt(value[2])})"
 
@@ -1147,45 +1374,6 @@ def _intersection_warning(result: dict[str, Any]) -> str:
     if result["type"] == "line_line":
         return f"Line-line intersection {result['object_1']} and {result['object_2']}: {result['status']}."
     return f"Line-plane intersection {result['line']} and {result['plane']}: {result['status']}."
-
-
-def _add(a: Vec3, b: Vec3) -> Vec3:
-    return (a[0] + b[0], a[1] + b[1], a[2] + b[2])
-
-
-def _sub(a: Vec3, b: Vec3) -> Vec3:
-    return (a[0] - b[0], a[1] - b[1], a[2] - b[2])
-
-
-def _scale(v: Vec3, s: float) -> Vec3:
-    return (v[0] * s, v[1] * s, v[2] * s)
-
-
-def _dot(a: Vec3, b: Vec3) -> float:
-    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
-
-
-def _cross(a: Vec3, b: Vec3) -> Vec3:
-    return (
-        a[1] * b[2] - a[2] * b[1],
-        a[2] * b[0] - a[0] * b[2],
-        a[0] * b[1] - a[1] * b[0],
-    )
-
-
-def _norm(v: Vec3) -> float:
-    return sqrt(_dot(v, v))
-
-
-def _normalize(v: Vec3) -> Vec3:
-    size = _norm(v)
-    if size <= EPS:
-        return (0.0, 0.0, 0.0)
-    return _scale(v, 1 / size)
-
-
-def _distance(a: Vec3, b: Vec3) -> float:
-    return _norm(_sub(a, b))
 
 
 def _face_edges(points: list[str]) -> list[tuple[str, str]]:

@@ -1,6 +1,6 @@
 import re
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 
 from pydantic import ValidationError
 
@@ -9,7 +9,7 @@ from app.schemas.scene import AdvancedRenderSettings, MathScene, RuntimeSettings
 from app.db.session import DatabaseClient
 from app.services.ai_fallback import text_model_candidates
 from app.services.ai_prompt import get_system_prompts
-from app.services.expression_eval import try_safe_eval
+from app.services.expression_eval import try_safe_eval, try_safe_eval_exact
 from app.services.nvidia_client import NvidiaClient
 from app.services.ollama_client import OllamaClient
 from app.services.openai_compat_client import OpenAICompatClient
@@ -181,7 +181,13 @@ def normalize_scene_json(scene_json: dict) -> dict:
     return data
 
 
-def build_scene_with_cas_fix(scene_json: dict) -> tuple[MathScene, list[str]]:
+def build_scene_with_cas_fix(
+    scene_json: dict,
+    *,
+    repair_llm: Callable[[str], str] | None = None,
+    repair_max_iterations: int = 2,
+    repair_min_severity: str = "warning",
+) -> tuple[MathScene, list[str]]:
     """Validate scene từ JSON LLM rồi chạy validator + CAS verify + auto-fix.
 
     Pipeline:
@@ -194,11 +200,14 @@ def build_scene_with_cas_fix(scene_json: dict) -> tuple[MathScene, list[str]]:
       5. cas_verifier.auto_fix_scene: kiểm tra số học các quan hệ (midpoint,
          on_line, on_plane, perpendicular, parallel, ...) và auto-fix khi
          deterministic.
+      6. (Optional) cas_repair.repair_scene_iteratively: nếu ``repair_llm``
+         được cung cấp và còn issues sau bước 5, gọi LLM tối đa
+         ``repair_max_iterations`` lần để sửa các quan hệ phức tạp.
 
     Trả về (scene, warnings). Warnings là chuỗi human-readable gộp tất cả
     bất thường phát hiện ở mọi bước.
     """
-    from app.services.cas_verifier import auto_fix_scene  # local import tránh circular
+    from app.services.cas_verifier import auto_fix_scene, infer_point_coordinates  # local import tránh circular
     from app.services.scene_validator import pre_validate_raw, validate_and_repair
 
     cleaned, pre_warnings = pre_validate_raw(scene_json)
@@ -208,15 +217,37 @@ def build_scene_with_cas_fix(scene_json: dict) -> tuple[MathScene, list[str]]:
     report = validate_and_repair(scene)
     scene = report.scene
 
+    scene, inference_issues = infer_point_coordinates(scene)
     fixed_scene, issues = auto_fix_scene(scene)
 
     warnings: list[str] = []
     for msg in pre_warnings:
         warnings.append(f"[Validator] Pre-check: {msg}")
     warnings.extend(report.all_warnings)
-    for issue in issues:
+    for issue in [*inference_issues, *issues]:
         prefix = "Đã tự sửa" if issue.auto_fixed else "Cảnh báo CAS"
         warnings.append(f"[CAS] {prefix} ({issue.relation_type}): {issue.description}")
+
+    if repair_llm is not None:
+        from app.services.cas_repair import repair_scene_iteratively
+
+        unresolved = [i for i in issues if not i.auto_fixed]
+        if unresolved:
+            outcome = repair_scene_iteratively(
+                fixed_scene,
+                unresolved,
+                repair_llm,
+                max_iterations=repair_max_iterations,
+                min_severity=repair_min_severity,
+            )
+            fixed_scene = outcome.scene
+            for attempt in outcome.attempts:
+                if attempt.accepted:
+                    warnings.append(
+                        f"[CAS Repair] iteration {attempt.iteration}: "
+                        f"{len(attempt.issues_before)} → {len(attempt.issues_after)} issues."
+                    )
+            warnings.extend(outcome.warnings)
 
     return fixed_scene, warnings
 
@@ -290,7 +321,8 @@ def apply_parameters_to_scene(data: dict[str, Any]) -> None:
             expr = obj.get(f"{axis}_expr")
             if not isinstance(expr, str) or not expr.strip():
                 continue
-            value = try_safe_eval(expr, defaults)
+            exact = try_safe_eval_exact(expr, defaults)
+            value = exact[1] if exact is not None else try_safe_eval(expr, defaults)
             if value is not None:
                 obj[axis] = value
 

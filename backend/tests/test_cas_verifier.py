@@ -1,5 +1,5 @@
 from app.schemas.scene import MathScene
-from app.services.cas_verifier import auto_fix_scene, verify_scene
+from app.services.cas_verifier import auto_fix_scene, infer_point_coordinates, verify_scene
 
 
 def _make_scene(objects, relations=None) -> MathScene:
@@ -96,6 +96,68 @@ def test_equal_length_ok_and_violated():
         relations=[{"type": "equal_length", "object_1": "AB", "object_2": "AC"}],
     )
     assert any(i.relation_type == "equal_length" for i in verify_scene(scene_bad))
+
+
+def test_midpoint_inference_preserves_exact_expression():
+    scene = _make_scene(
+        objects=[
+            {"type": "point_3d", "name": "A", "x": 0, "y": 0, "z": 0, "x_expr": "0", "y_expr": "0", "z_expr": "0"},
+            {"type": "point_3d", "name": "B", "x": 3, "y": 0, "z": 0, "x_expr": "3", "y_expr": "0", "z_expr": "0"},
+            {"type": "point_3d", "name": "M", "x": 0, "y": 0, "z": 0},
+        ],
+        relations=[{"type": "midpoint", "object_1": "M", "object_2": "A-B"}],
+    )
+    fixed, issues = infer_point_coordinates(scene)
+    m = next(o for o in fixed.objects if getattr(o, "name", None) == "M")
+    assert any(i.auto_fixed and i.relation_type == "midpoint" for i in issues)
+    assert m.x == 1.5
+    assert m.x_expr == "3/2"
+
+
+def test_on_line_inference_with_parameter_t():
+    scene = _make_scene(
+        objects=[
+            {"type": "point_3d", "name": "A", "x": 0, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "B", "x": 4, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "P", "x": 0, "y": 0, "z": 0},
+        ],
+        relations=[{"type": "on_line", "object_1": "P", "object_2": "A-B", "metadata": {"t": "1/4"}}],
+    )
+    fixed, _ = infer_point_coordinates(scene)
+    p = next(o for o in fixed.objects if getattr(o, "name", None) == "P")
+    assert p.x == 1.0
+    assert p.x_expr == "1"
+
+
+def test_on_plane_inference_solves_one_axis():
+    scene = _make_scene(
+        objects=[
+            {"type": "point_3d", "name": "A", "x": 0, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "B", "x": 1, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "C", "x": 0, "y": 1, "z": 1},
+            {"type": "point_3d", "name": "P", "x": 0.5, "y": 0.5, "z": 9},
+        ],
+        relations=[{"type": "on_plane", "object_1": "P", "object_2": "plane(ABC)"}],
+    )
+    fixed, _ = infer_point_coordinates(scene)
+    p = next(o for o in fixed.objects if getattr(o, "name", None) == "P")
+    assert p.z == 0.5
+    assert p.z_expr == "1/2"
+
+
+def test_inference_does_not_guess_underdetermined_relation():
+    scene = _make_scene(
+        objects=[
+            {"type": "point_3d", "name": "A", "x": 0, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "B", "x": 4, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "P", "x": 1, "y": 1, "z": 0},
+        ],
+        relations=[{"type": "on_line", "object_1": "P", "object_2": "A-B"}],
+    )
+    fixed, issues = infer_point_coordinates(scene)
+    p = next(o for o in fixed.objects if getattr(o, "name", None) == "P")
+    assert issues == []
+    assert p.y == 1
 
 
 def test_midpoint_auto_fix():
@@ -357,6 +419,135 @@ def test_angle_value():
         ],
     )
     assert any(i.relation_type == "angle" for i in verify_scene(scene_bad))
+
+
+def test_optimizer_repairs_equal_length_when_enabled():
+    scene = _make_scene(
+        objects=[
+            {"type": "point_3d", "name": "A", "x": 0, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "B", "x": 2, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "C", "x": 0, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "D", "x": 1, "y": 0, "z": 0},
+        ],
+        relations=[{"type": "equal_length", "object_1": "A-B", "object_2": "C-D"}],
+    )
+
+    fixed, issues = auto_fix_scene(scene, use_optimizer=True)
+
+    assert any(issue.relation_type == "optimizer" and issue.auto_fixed for issue in issues)
+    assert verify_scene(fixed) == []
+
+
+def test_optimizer_repairs_angle_when_enabled():
+    scene = _make_scene(
+        objects=[
+            {"type": "point_3d", "name": "A", "x": 0, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "B", "x": 1, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "C", "x": 0, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "D", "x": 1, "y": 1, "z": 0},
+        ],
+        relations=[{"type": "angle", "object_1": "A-B", "object_2": "C-D", "metadata": {"value": 90}}],
+    )
+
+    fixed, issues = auto_fix_scene(scene, use_optimizer=True)
+
+    assert any(issue.relation_type == "optimizer" and issue.auto_fixed for issue in issues)
+    assert verify_scene(fixed) == []
+
+
+def test_optimizer_repairs_collinear_when_enabled():
+    scene = _make_scene(
+        objects=[
+            {"type": "point_3d", "name": "A", "x": 0, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "B", "x": 2, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "C", "x": 1, "y": 1, "z": 0},
+        ],
+        relations=[{"type": "collinear", "object_1": "A,B,C"}],
+    )
+
+    fixed, issues = auto_fix_scene(scene, use_optimizer=True)
+
+    assert any(issue.relation_type == "optimizer" and issue.auto_fixed for issue in issues)
+    assert verify_scene(fixed) == []
+
+
+def test_optimizer_disabled_explicitly_keeps_residual_issue():
+    """Khi caller pass use_optimizer=False, residual issue equal_length giữ nguyên."""
+    scene = _make_scene(
+        objects=[
+            {"type": "point_3d", "name": "A", "x": 0, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "B", "x": 2, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "C", "x": 0, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "D", "x": 1, "y": 0, "z": 0},
+        ],
+        relations=[{"type": "equal_length", "object_1": "A-B", "object_2": "C-D"}],
+    )
+
+    fixed, issues = auto_fix_scene(scene, use_optimizer=False)
+
+    assert any(issue.relation_type == "equal_length" for issue in issues)
+    assert verify_scene(fixed)
+
+
+def test_optimizer_runs_by_default_and_repairs_equal_length():
+    """v2: optimizer ON mặc định — equal_length được fix tự động."""
+    scene = _make_scene(
+        objects=[
+            {"type": "point_3d", "name": "A", "x": 0, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "B", "x": 2, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "C", "x": 0, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "D", "x": 1, "y": 0, "z": 0},
+        ],
+        relations=[{"type": "equal_length", "object_1": "A-B", "object_2": "C-D"}],
+    )
+    fixed, issues = auto_fix_scene(scene)
+    assert any(issue.relation_type == "optimizer" and issue.auto_fixed for issue in issues)
+    assert verify_scene(fixed) == []
+
+
+def test_face_planarity_violation_is_reported():
+    """4 điểm tạo Face nhưng không đồng phẳng → verify_scene phát hiện qua SVD."""
+    scene = _make_scene(
+        objects=[
+            {"type": "point_3d", "name": "A", "x": 0, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "B", "x": 4, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "C", "x": 4, "y": 4, "z": 0},
+            {"type": "point_3d", "name": "D", "x": 0, "y": 4, "z": 1.0},  # lệch khỏi mặt phẳng
+            {
+                "type": "face",
+                "name": "ABCD",
+                "points": ["A", "B", "C", "D"],
+                "color": "#5da9ff",
+                "fill_opacity": 0.4,
+            },
+        ],
+    )
+    issues = verify_scene(scene)
+    assert any(
+        i.relation_type == "planarity"
+        and "ABCD" in i.description
+        for i in issues
+    ), [(i.relation_type, i.description) for i in issues]
+
+
+def test_face_planarity_holds_when_coplanar():
+    scene = _make_scene(
+        objects=[
+            {"type": "point_3d", "name": "A", "x": 0, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "B", "x": 4, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "C", "x": 4, "y": 4, "z": 0},
+            {"type": "point_3d", "name": "D", "x": 0, "y": 4, "z": 0},
+            {
+                "type": "face",
+                "name": "ABCD",
+                "points": ["A", "B", "C", "D"],
+                "color": "#5da9ff",
+                "fill_opacity": 0.4,
+            },
+        ],
+    )
+    issues = verify_scene(scene)
+    assert not any(i.relation_type == "planarity" for i in issues)
 
 
 def test_priority_midpoint_over_on_line():

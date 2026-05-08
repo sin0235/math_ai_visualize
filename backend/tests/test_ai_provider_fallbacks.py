@@ -485,7 +485,7 @@ def test_solver_explainer_falls_back_when_openrouter_model_is_invalid(monkeypatc
 
     data = asyncio.run(_call_explainer(
         {"question": "q", "answer": "a", "warnings": [], "scene_objects": [], "steps": [{"index": 1}]},
-        Settings(_env_file=None, openrouter_api_key="secret"),
+        Settings(_env_file=None, openrouter_api_key="secret", openrouter_text_model="openrouter/nvidia/nemotron-3-super-120b-a12b:free"),
     ))
 
     assert calls == ["nvidia/nemotron-3-super-120b-a12b:free", "openai/gpt-oss-120b:free"]

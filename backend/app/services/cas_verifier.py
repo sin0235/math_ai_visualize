@@ -42,16 +42,36 @@ from dataclasses import dataclass, field
 from math import acos, degrees, isfinite, sqrt
 from typing import Any
 
+import numpy as np
+import sympy as sp
+from scipy.optimize import least_squares
+
 from app.schemas.scene import (
     Circle2D,
+    Face,
     MathScene,
+    Plane,
     Point2D,
     Point3D,
     Relation,
     Sphere,
 )
+from app.services.linalg import add as _vec_add, as_vec3, bbox_diagonal as _bbox_diag, cross as _cross3, dot as _dot, norm as _length, plane_from_points, scale as _vec_scale, sub as _vec_sub, to_tuple, vec3
 
 REL_EPS = 1e-6
+_SAFE_SYMPY_LOCALS = {
+    "sqrt": sp.sqrt,
+    "pi": sp.pi,
+    "E": sp.E,
+    "e": sp.E,
+    "sin": sp.sin,
+    "cos": sp.cos,
+    "tan": sp.tan,
+    "asin": sp.asin,
+    "acos": sp.acos,
+    "atan": sp.atan,
+    "abs": sp.Abs,
+}
 
 
 @dataclass
@@ -68,44 +88,52 @@ class CasIssue:
 # ---------------------------------------------------------------------------
 
 
-def _coords(point: Point2D | Point3D) -> tuple[float, ...]:
+def _coords(point: Point2D | Point3D):
     if isinstance(point, Point3D):
-        return (point.x, point.y, point.z)
+        return vec3(point.x, point.y, point.z)
     return (point.x, point.y)
 
 
-def _vec_sub(a: tuple[float, ...], b: tuple[float, ...]) -> tuple[float, ...]:
-    return tuple(ai - bi for ai, bi in zip(a, b, strict=False))
-
-
-def _vec_add(a: tuple[float, ...], b: tuple[float, ...]) -> tuple[float, ...]:
-    return tuple(ai + bi for ai, bi in zip(a, b, strict=False))
-
-
-def _vec_scale(v: tuple[float, ...], k: float) -> tuple[float, ...]:
-    return tuple(k * x for x in v)
-
-
-def _length(v: tuple[float, ...]) -> float:
-    return sqrt(sum(x * x for x in v))
-
-
-def _dot(a: tuple[float, ...], b: tuple[float, ...]) -> float:
-    return sum(ai * bi for ai, bi in zip(a, b, strict=False))
-
-
-def _cross3(a: tuple[float, float, float], b: tuple[float, float, float]) -> tuple[float, float, float]:
-    return (
-        a[1] * b[2] - a[2] * b[1],
-        a[2] * b[0] - a[0] * b[2],
-        a[0] * b[1] - a[1] * b[0],
-    )
-
-
-def _to_3d(v: tuple[float, ...]) -> tuple[float, float, float]:
+def _to_3d(v):
     if len(v) == 3:
-        return (v[0], v[1], v[2])
-    return (v[0], v[1], 0.0)
+        return vec3(v[0], v[1], v[2])
+    return vec3(v[0], v[1], 0.0)
+
+
+def _coord_expr(point: Point2D | Point3D) -> tuple[sp.Expr, ...]:
+    values = (point.x, point.y, point.z) if isinstance(point, Point3D) else (point.x, point.y)
+    exprs = (
+        (point.x_expr, point.y_expr, point.z_expr)
+        if isinstance(point, Point3D)
+        else (point.x_expr, point.y_expr)
+    )
+    return tuple(_parse_expr(expr, value) for expr, value in zip(exprs, values, strict=True))
+
+
+def _parse_expr(expr: str | None, value: float) -> sp.Expr:
+    if expr:
+        try:
+            parsed = sp.sympify(expr, locals=_SAFE_SYMPY_LOCALS)
+            if not parsed.free_symbols:
+                return sp.simplify(parsed)
+        except Exception:
+            pass
+    return sp.Rational(str(float(value))).limit_denominator(1_000_000)
+
+
+def _expr_float(expr: sp.Expr) -> float:
+    return float(sp.N(expr))
+
+
+def _expr_text(expr: sp.Expr) -> str | None:
+    simplified = sp.simplify(expr)
+    if simplified == 0:
+        return "0"
+    return str(simplified).replace("**", "^")
+
+
+def _expr_tuple_to_coords(exprs: tuple[sp.Expr, ...]) -> tuple[float, ...]:
+    return tuple(_expr_float(expr) for expr in exprs)
 
 
 # ---------------------------------------------------------------------------
@@ -187,18 +215,11 @@ def _plane_normal(
     points: dict[str, Point2D | Point3D], names: list[str]
 ) -> tuple[float, float, float] | None:
     """Tính pháp tuyến mặt phẳng từ >=3 điểm 3D không thẳng hàng."""
-    pts3d = [points[name] for name in names if isinstance(points.get(name), Point3D)]
-    if len(pts3d) < 3:
+    coords = [_coords(points[name]) for name in names if isinstance(points.get(name), Point3D)]
+    plane = plane_from_points(coords, REL_EPS)
+    if plane is None:
         return None
-    p0 = _coords(pts3d[0])
-    for i in range(1, len(pts3d) - 1):
-        for j in range(i + 1, len(pts3d)):
-            v1 = _vec_sub(_coords(pts3d[i]), p0)
-            v2 = _vec_sub(_coords(pts3d[j]), p0)
-            n = _cross3(v1, v2)  # type: ignore[arg-type]
-            if _length(n) > REL_EPS:
-                return n
-    return None
+    return to_tuple(plane[1])
 
 
 # ---------------------------------------------------------------------------
@@ -729,7 +750,11 @@ def _verify_angle(
 
 
 def verify_scene(scene: MathScene) -> list[CasIssue]:
-    """Kiểm tra mọi relation trong scene; trả issues nếu vi phạm số học."""
+    """Kiểm tra mọi relation trong scene; trả issues nếu vi phạm số học.
+
+    Bao gồm cả check planarity cho Face/Plane object có ≥4 điểm — phát hiện
+    LLM gán các đỉnh không đồng phẳng vào cùng một mặt.
+    """
     points = _build_point_index(scene)
     circles = _build_circle_index(scene)
     spheres = _build_sphere_index(scene)
@@ -741,7 +766,50 @@ def verify_scene(scene: MathScene) -> list[CasIssue]:
             issue = None
         if issue is not None:
             issues.append(issue)
+
+    # Pass thứ 2: kiểm tra planarity của Face/Plane (không gắn với relation)
+    for obj in scene.objects:
+        if isinstance(obj, (Face, Plane)) and len(obj.points) >= 4:
+            issue = _verify_face_planarity(obj, points)
+            if issue is not None:
+                issues.append(issue)
     return issues
+
+
+def _verify_face_planarity(
+    face: Face | Plane, points: dict[str, Point2D | Point3D]
+) -> CasIssue | None:
+    """SVD-based planarity: tính singular value thứ 3 (RMS distance đến mặt phẳng best-fit).
+
+    Chỉ chạy khi đủ 4 Point3D hợp lệ. Threshold = REL_EPS * bbox_diagonal.
+    """
+    coords: list[tuple[float, float, float]] = []
+    for name in face.points:
+        point = points.get(name)
+        if isinstance(point, Point3D):
+            coords.append(_coords(point))  # type: ignore[arg-type]
+    if len(coords) < 4:
+        return None
+    arr = np.asarray(coords, dtype=float)
+    centered = arr - arr.mean(axis=0)
+    try:
+        _, sv, _ = np.linalg.svd(centered, full_matrices=False)
+    except np.linalg.LinAlgError:
+        return None
+    if len(sv) < 3:
+        return None
+    diag = float(np.linalg.norm(arr.max(axis=0) - arr.min(axis=0)))
+    threshold = REL_EPS * max(diag, 1.0)
+    if sv[2] > threshold:
+        return CasIssue(
+            relation_type="planarity",
+            description=(
+                f"Face/Plane {face.name or '?'} ({','.join(face.points)}) không đồng phẳng "
+                f"(RMS lệch = {sv[2]:.4f}, ngưỡng {threshold:.4f})"
+            ),
+            metadata={"face": face.name, "points": list(face.points), "rms": sv[2]},
+        )
+    return None
 
 
 def _dispatch(
@@ -780,6 +848,148 @@ def _dispatch(
     return None
 
 
+def infer_point_coordinates(scene: MathScene) -> tuple[MathScene, list[CasIssue]]:
+    points = _build_point_index(scene)
+    updates: dict[str, tuple[sp.Expr, ...]] = {}
+    issues: list[CasIssue] = []
+
+    for rel in scene.relations:
+        rtype = rel.type.strip().lower()
+        if rtype == "midpoint":
+            _infer_midpoint(rel, points, updates, issues)
+        elif rtype == "on_line":
+            _infer_on_line(rel, points, updates, issues)
+        elif rtype == "on_plane":
+            _infer_on_plane(rel, points, updates, issues)
+
+    if not updates:
+        return scene, issues
+
+    data = scene.model_dump()
+    for obj in data.get("objects", []):
+        name = obj.get("name")
+        exprs = updates.get(name)
+        if exprs is None:
+            continue
+        _apply_expr_update(obj, exprs)
+
+    return MathScene.model_validate(data), issues
+
+
+def _infer_midpoint(
+    rel: Relation,
+    points: dict[str, Point2D | Point3D],
+    updates: dict[str, tuple[sp.Expr, ...]],
+    issues: list[CasIssue],
+) -> None:
+    m_name = (rel.object_1 or "").strip()
+    seg = _parse_segment_token(rel.object_2 or "")
+    if not (m_name and seg):
+        return
+    m = points.get(m_name)
+    a = points.get(seg[0])
+    b = points.get(seg[1])
+    if m is None or a is None or b is None or not (type(m) is type(a) is type(b)):
+        return
+    target = tuple(sp.simplify((ai + bi) / 2) for ai, bi in zip(_coord_expr(a), _coord_expr(b), strict=True))
+    if _expr_tuple_close(_coord_expr(m), target):
+        return
+    updates[m_name] = target
+    issues.append(CasIssue("midpoint", f"Nội suy exact {m_name} là trung điểm {seg[0]}{seg[1]}", auto_fixed=True, metadata={"point": m_name}))
+
+
+def _infer_on_line(
+    rel: Relation,
+    points: dict[str, Point2D | Point3D],
+    updates: dict[str, tuple[sp.Expr, ...]],
+    issues: list[CasIssue],
+) -> None:
+    p_name = (rel.object_1 or "").strip()
+    seg = _parse_segment_token(rel.object_2 or "")
+    t_raw = rel.metadata.get("t", rel.metadata.get("ratio")) if rel.metadata else None
+    if not (p_name and seg) or t_raw is None:
+        return
+    p = points.get(p_name)
+    a = points.get(seg[0])
+    b = points.get(seg[1])
+    if p is None or a is None or b is None or not (type(p) is type(a) is type(b)):
+        return
+    try:
+        t = sp.sympify(t_raw, locals=_SAFE_SYMPY_LOCALS)
+    except Exception:
+        return
+    a_expr = _coord_expr(a)
+    b_expr = _coord_expr(b)
+    target = tuple(sp.simplify(ai + t * (bi - ai)) for ai, bi in zip(a_expr, b_expr, strict=True))
+    if _expr_tuple_close(_coord_expr(p), target):
+        return
+    updates[p_name] = target
+    issues.append(CasIssue("on_line", f"Nội suy exact {p_name} trên {seg[0]}{seg[1]} với t={t}", auto_fixed=True, metadata={"point": p_name}))
+
+
+def _infer_on_plane(
+    rel: Relation,
+    points: dict[str, Point2D | Point3D],
+    updates: dict[str, tuple[sp.Expr, ...]],
+    issues: list[CasIssue],
+) -> None:
+    p_name = (rel.object_1 or "").strip()
+    plane = _parse_plane_token(rel.object_2 or "") or _parse_point_list(rel.object_2 or "")
+    p = points.get(p_name)
+    if not (p_name and plane and len(plane) >= 3) or not isinstance(p, Point3D):
+        return
+    anchors = [points.get(name) for name in plane[:3]]
+    if not all(isinstance(item, Point3D) for item in anchors):
+        return
+    a, b, c = anchors  # type: ignore[misc]
+    ax, ay, az = _coord_expr(a)
+    bx, by, bz = _coord_expr(b)
+    cx, cy, cz = _coord_expr(c)
+    normal = sp.Matrix([bx - ax, by - ay, bz - az]).cross(sp.Matrix([cx - ax, cy - ay, cz - az]))
+    if normal == sp.Matrix([0, 0, 0]):
+        return
+    px, py, pz = _coord_expr(p)
+    current = [px, py, pz]
+    candidates: list[tuple[float, str, tuple[sp.Expr, ...]]] = []
+    for index, axis in enumerate(("x", "y", "z")):
+        expr_field = getattr(p, f"{axis}_expr")
+        if expr_field is not None:
+            continue
+        symbol = sp.Symbol(f"{p_name}_{axis}")
+        candidate = list(current)
+        candidate[index] = symbol
+        equation = sp.simplify(normal.dot(sp.Matrix([candidate[0] - ax, candidate[1] - ay, candidate[2] - az])))
+        solved = sp.solve(equation, symbol)
+        if len(solved) != 1:
+            continue
+        target = tuple(candidate)
+        target = tuple(sp.simplify(solved[0]) if i == index else sp.simplify(value) for i, value in enumerate(target))
+        if _expr_tuple_close(_coord_expr(p), target):
+            continue
+        delta = abs(_expr_float(target[index] - current[index]))
+        candidates.append((delta, axis, target))
+    if not candidates:
+        return
+    _, axis, target = max(candidates, key=lambda item: (item[0], {"x": 0, "y": 1, "z": 2}[item[1]]))
+    updates[p_name] = target
+    issues.append(CasIssue("on_plane", f"Nội suy exact tọa độ {axis} của {p_name} trên plane({''.join(plane)})", auto_fixed=True, metadata={"point": p_name}))
+    return
+
+
+def _expr_tuple_close(actual: tuple[sp.Expr, ...], expected: tuple[sp.Expr, ...]) -> bool:
+    return len(actual) == len(expected) and all(sp.simplify(a - b) == 0 for a, b in zip(actual, expected, strict=True))
+
+
+def _apply_expr_update(obj: dict[str, Any], exprs: tuple[sp.Expr, ...]) -> None:
+    obj["x"] = _expr_float(exprs[0])
+    obj["y"] = _expr_float(exprs[1])
+    obj["x_expr"] = _expr_text(exprs[0])
+    obj["y_expr"] = _expr_text(exprs[1])
+    if obj.get("type") == "point_3d" and len(exprs) == 3:
+        obj["z"] = _expr_float(exprs[2])
+        obj["z_expr"] = _expr_text(exprs[2])
+
+
 # Khi một điểm bị nhiều issue ép về vị trí khác nhau, ưu tiên relation chặt
 # nhất trước. Số nhỏ hơn = ưu tiên cao hơn.
 _FIX_PRIORITY = {
@@ -791,12 +1001,13 @@ _FIX_PRIORITY = {
 }
 
 
-def auto_fix_scene(scene: MathScene) -> tuple[MathScene, list[CasIssue]]:
+def auto_fix_scene(scene: MathScene, *, use_optimizer: bool = True) -> tuple[MathScene, list[CasIssue]]:
     """Sửa deterministic: midpoint, on_line, on_plane, on_sphere, on_circle.
 
     Các quan hệ phức (perpendicular, parallel, equal_length, distance, angle,
-    collinear, coplanar, tangent) chỉ được report làm warning vì có nhiều
-    nghiệm khả dĩ — fix tự động dễ phá hỏng các ràng buộc khác.
+    collinear, coplanar, tangent, planarity) được optimizer SciPy least_squares
+    sửa khi vẫn còn issue sau pass deterministic. Mặc định ON từ v2; tắt bằng
+    ``use_optimizer=False`` cho test đơn lẻ pass deterministic.
     """
     issues = verify_scene(scene)
     if not issues:
@@ -812,15 +1023,21 @@ def auto_fix_scene(scene: MathScene) -> tuple[MathScene, list[CasIssue]]:
         meta = issue.metadata or {}
         m_name = meta.get("point")
         expected = meta.get("expected")
-        if not isinstance(m_name, str) or not isinstance(expected, tuple):
+        if not isinstance(m_name, str) or expected is None:
             continue
-        if not all(isinstance(v, (int, float)) and isfinite(v) for v in expected):
+        expected_tuple = tuple(float(v) for v in expected)
+        if not all(isfinite(v) for v in expected_tuple):
             continue
         prev = chosen.get(m_name)
         if prev is None or priority < prev[0]:
-            chosen[m_name] = (priority, tuple(expected), issue)
+            chosen[m_name] = (priority, expected_tuple, issue)
 
     if not chosen:
+        if use_optimizer:
+            optimized, optimizer_issues = _optimize_scene_constraints(scene, issues)
+            if optimized is not None:
+                return optimized, [*issues, *optimizer_issues]
+            return scene, [*issues, *optimizer_issues]
         return scene, issues
 
     updates: dict[str, tuple[float, ...]] = {name: data[1] for name, data in chosen.items()}
@@ -846,7 +1063,233 @@ def auto_fix_scene(scene: MathScene) -> tuple[MathScene, list[CasIssue]]:
             obj["z_expr"] = None
 
     fixed = MathScene.model_validate(data)
+    if use_optimizer:
+        optimized, optimizer_issues = _optimize_scene_constraints(fixed, verify_scene(fixed))
+        if optimized is not None:
+            return optimized, [*issues, *optimizer_issues]
+        return fixed, [*issues, *optimizer_issues]
     return fixed, issues
 
 
-__all__ = ["CasIssue", "auto_fix_scene", "verify_scene"]
+_OPTIMIZER_MIN_POINTS = 3
+_OPTIMIZER_MAX_POINTS = 24
+_DISPLACEMENT_RATIO_THRESHOLD = 0.5  # tối đa 50% bbox_diagonal
+_DISPLACEMENT_ABSOLUTE_FLOOR = 1e-3
+_REGULARIZATION_WEIGHT = 1e-3
+
+
+def _is_symbolic_anchor(point: Point3D) -> bool:
+    """Điểm có ít nhất một toạ độ symbolic (*_expr không rỗng) → coi là cố định.
+
+    Lý do: các điểm gốc thường được LLM gán biểu thức như "0", "a", "a*sqrt(3)/2",
+    chỉ điểm phụ thuộc (trung điểm, hình chiếu) bị float hoá. Pin các anchor giúp
+    optimizer không trôi toàn bộ scene khi chỉ vài điểm sai.
+    """
+    return any(getattr(point, f"{axis}_expr", None) for axis in ("x", "y", "z"))
+
+
+def _optimize_scene_constraints(scene: MathScene, base_issues: list[CasIssue]) -> tuple[MathScene | None, list[CasIssue]]:
+    point_index = _build_point_index(scene)
+    point_objects = [obj for obj in scene.objects if isinstance(obj, Point3D)]
+    if not (_OPTIMIZER_MIN_POINTS <= len(point_objects) <= _OPTIMIZER_MAX_POINTS):
+        return None, []
+
+    anchor_set = {p.name for p in point_objects if _is_symbolic_anchor(p)}
+    free_names = [p.name for p in point_objects if p.name not in anchor_set]
+    # Trường hợp mọi điểm đều symbolic: không có gì để chỉnh
+    if not free_names:
+        return None, []
+    # Trường hợp không anchor nào: pin centroid bằng cách thêm regularization
+    # (xử lý ở residuals)
+
+    name_to_index = {name: idx for idx, name in enumerate(free_names)}
+    base_vector = np.concatenate([as_vec3(_coords(point_index[name])) for name in free_names])
+    base_issue_count = len(base_issues)
+
+    all_coords = np.array([_coords(point_index[p.name]) for p in point_objects], dtype=float)
+    diag = float(_bbox_diag(all_coords)) if len(all_coords) >= 2 else 1.0
+    scene_scale = max(diag, 1.0)
+
+    def unpack(values: np.ndarray) -> dict[str, np.ndarray]:
+        pts: dict[str, np.ndarray] = {}
+        for name, idx in name_to_index.items():
+            pts[name] = values[idx * 3:idx * 3 + 3]
+        for name in anchor_set:
+            point = point_index.get(name)
+            if isinstance(point, Point3D):
+                pts[name] = as_vec3(_coords(point))
+        return pts
+
+    def relation_residuals(pts: dict[str, np.ndarray]) -> list[float]:
+        residual: list[float] = []
+        for rel in scene.relations:
+            rtype = rel.type.strip().lower()
+            if rtype in {"perpendicular", "parallel", "equal_length", "angle"}:
+                seg1 = _parse_segment_token(rel.object_1)
+                seg2 = _parse_segment_token(rel.object_2 or "")
+                if not (seg1 and seg2 and all(name in pts for name in [*seg1, *seg2])):
+                    continue
+                v1 = pts[seg1[1]] - pts[seg1[0]]
+                v2 = pts[seg2[1]] - pts[seg2[0]]
+                l1, l2 = _length(v1), _length(v2)
+                denom = max(l1 * l2, 1.0)
+                if rtype == "perpendicular":
+                    residual.append(_dot(v1, v2) / denom)
+                elif rtype == "parallel":
+                    residual.extend((_cross3(v1, v2) / denom).tolist())
+                elif rtype == "equal_length":
+                    residual.append((l1 - l2) / max(l1, l2, 1.0))
+                else:
+                    expected = rel.metadata.get("value") if rel.metadata else None
+                    if isinstance(expected, (int, float)) and l1 > REL_EPS and l2 > REL_EPS:
+                        expected_cos = np.cos(np.radians(float(expected)))
+                        residual.append((_dot(v1, v2) / denom) - expected_cos)
+            elif rtype == "distance":
+                seg = _parse_segment_token(rel.object_1 or "") or _parse_segment_token(rel.object_2 or "")
+                expected = rel.metadata.get("value") if rel.metadata else None
+                if seg and isinstance(expected, (int, float)) and all(name in pts for name in seg):
+                    residual.append((_length(pts[seg[1]] - pts[seg[0]]) - float(expected)) / max(float(expected), 1.0))
+            elif rtype == "on_line":
+                p_name = (rel.object_1 or "").strip()
+                seg = _parse_segment_token(rel.object_2 or "")
+                if p_name in pts and seg and all(name in pts for name in seg):
+                    base = pts[seg[1]] - pts[seg[0]]
+                    base_len = _length(base)
+                    if base_len > REL_EPS:
+                        residual.extend((_cross3(base, pts[p_name] - pts[seg[0]]) / max(base_len, 1.0)).tolist())
+            elif rtype == "on_plane":
+                p_name = (rel.object_1 or "").strip()
+                plane = _parse_plane_token(rel.object_2 or "") or _parse_point_list(rel.object_2 or "")
+                if p_name in pts and len(plane) >= 3 and all(name in pts for name in plane[:3]):
+                    normal = _cross3(pts[plane[1]] - pts[plane[0]], pts[plane[2]] - pts[plane[0]])
+                    n_len = _length(normal)
+                    if n_len > REL_EPS:
+                        residual.append(_dot(pts[p_name] - pts[plane[0]], normal) / max(n_len, 1.0))
+            elif rtype == "coplanar":
+                names = _parse_point_list(rel.object_1 or "") + _parse_point_list(rel.object_2 or "")
+                names = [name for name in names if name in pts]
+                if len(names) >= 4:
+                    normal = _cross3(pts[names[1]] - pts[names[0]], pts[names[2]] - pts[names[0]])
+                    n_len = _length(normal)
+                    if n_len > REL_EPS:
+                        for name in names[3:]:
+                            residual.append(_dot(pts[name] - pts[names[0]], normal) / max(n_len, 1.0))
+            elif rtype == "collinear":
+                names = _parse_point_list(rel.object_1 or "") + _parse_point_list(rel.object_2 or "")
+                names = [name for name in names if name in pts]
+                if len(names) >= 3:
+                    base = pts[names[1]] - pts[names[0]]
+                    base_len = _length(base)
+                    if base_len > REL_EPS:
+                        for name in names[2:]:
+                            residual.extend((_cross3(base, pts[name] - pts[names[0]]) / max(base_len, 1.0)).tolist())
+            elif rtype == "on_sphere":
+                # Caller phải đảm bảo sphere center là Point3D đã update qua deterministic
+                p_name = (rel.object_1 or "").strip()
+                sphere_name = (rel.object_2 or "").strip()
+                sphere = next((obj for obj in scene.objects if isinstance(obj, Sphere) and obj.name == sphere_name), None)
+                if sphere is None or sphere.radius is None or sphere.radius <= 0:
+                    continue
+                if p_name in pts and sphere.center in pts:
+                    diff = pts[p_name] - pts[sphere.center]
+                    residual.append((_length(diff) - float(sphere.radius)) / max(float(sphere.radius), 1.0))
+            elif rtype == "tangent":
+                seg = _parse_segment_token(rel.object_1 or "")
+                target_name = (rel.object_2 or "").strip()
+                sphere = next((obj for obj in scene.objects if isinstance(obj, Sphere) and obj.name == target_name), None)
+                if seg and sphere is not None and sphere.radius and sphere.center in pts and all(name in pts for name in seg):
+                    ab = pts[seg[1]] - pts[seg[0]]
+                    ac = pts[sphere.center] - pts[seg[0]]
+                    ab_len = _length(ab)
+                    if ab_len > REL_EPS:
+                        dist = _length(_cross3(ab, ac)) / ab_len
+                        residual.append((dist - float(sphere.radius)) / max(float(sphere.radius), 1.0))
+
+        # Planarity SVD cho Face/Plane: nếu Face có >=4 điểm, residual = singular value thứ 3
+        # (ý nghĩa: tổng bình phương distance từ điểm tới best-fit plane).
+        for obj in scene.objects:
+            if isinstance(obj, (Face, Plane)) and len(obj.points) >= 4:
+                pts_xyz = [pts[name] for name in obj.points if name in pts]
+                if len(pts_xyz) < 4:
+                    continue
+                arr = np.asarray(pts_xyz, dtype=float)
+                centered = arr - arr.mean(axis=0)
+                try:
+                    _, sv, _ = np.linalg.svd(centered, full_matrices=False)
+                except np.linalg.LinAlgError:
+                    continue
+                if len(sv) >= 3:
+                    residual.append(sv[2] / max(scene_scale, 1.0))
+        return residual
+
+    free_count_3 = len(free_names) * 3
+
+    def residuals(values: np.ndarray) -> np.ndarray:
+        relation_values = relation_residuals(unpack(values))
+        # Regularization: kéo về vị trí ban đầu (tránh nghiệm xa)
+        regularization = (values - base_vector) * _REGULARIZATION_WEIGHT
+        # Anchor centroid khi không có symbolic anchor: tránh trôi toàn bộ scene
+        if not anchor_set:
+            current_centroid = values.reshape(-1, 3).mean(axis=0)
+            base_centroid = base_vector.reshape(-1, 3).mean(axis=0)
+            centroid_residual = (current_centroid - base_centroid) * np.sqrt(free_count_3)
+        else:
+            centroid_residual = np.zeros(3)
+        return np.asarray([*relation_values, *regularization, *centroid_residual], dtype=float)
+
+    base_relation_residuals = relation_residuals(unpack(base_vector))
+    if not base_relation_residuals:
+        return None, []
+    base_norm = float(np.linalg.norm(base_relation_residuals))
+    try:
+        result = least_squares(residuals, base_vector, max_nfev=500, xtol=1e-10, ftol=1e-10, gtol=1e-10)
+    except Exception as exc:  # pragma: no cover - SciPy có thể raise nhiều loại
+        return None, [CasIssue("optimizer", f"SciPy least_squares lỗi: {exc}")]
+    if not result.success:
+        return None, [CasIssue("optimizer", f"SciPy least_squares không hội tụ: {result.message}")]
+    optimized_relation_residuals = relation_residuals(unpack(result.x))
+    optimized_norm = float(np.linalg.norm(optimized_relation_residuals)) if optimized_relation_residuals else 0.0
+    # Yêu cầu giảm 10x hoặc về dưới ngưỡng tuyệt đối
+    if optimized_norm > min(base_norm * 0.1, 1e-5):
+        return None, [CasIssue("optimizer", f"Bỏ nghiệm optimizer vì residual còn lớn ({optimized_norm:.3g})")]
+    displacement = float(np.max(np.abs(result.x - base_vector)))
+    displacement_cap = max(scene_scale * _DISPLACEMENT_RATIO_THRESHOLD, _DISPLACEMENT_ABSOLUTE_FLOOR)
+    if displacement > displacement_cap:
+        return None, [CasIssue("optimizer", f"Bỏ nghiệm optimizer vì dịch chuyển quá lớn ({displacement:.3f}, cap {displacement_cap:.3f})")]
+
+    optimized_scene = _scene_with_point_vector(scene, free_names, result.x)
+    optimized_issues = verify_scene(optimized_scene)
+    if len(optimized_issues) >= base_issue_count:
+        return None, [CasIssue("optimizer", "Bỏ nghiệm optimizer vì không giảm số lỗi CAS")]
+    fixed_issue = CasIssue(
+        "optimizer",
+        f"SciPy least_squares giảm lỗi CAS từ {base_issue_count} xuống {len(optimized_issues)}; "
+        f"residual {base_norm:.3g} → {optimized_norm:.3g}, dịch {displacement:.3f}/{scene_scale:.2f}",
+        auto_fixed=True,
+        metadata={
+            "anchored_points": sorted(anchor_set),
+            "free_points": list(free_names),
+            "displacement": displacement,
+            "scene_scale": scene_scale,
+        },
+    )
+    return optimized_scene, [fixed_issue]
+
+
+def _scene_with_point_vector(scene: MathScene, point_names: list[str], values: np.ndarray) -> MathScene:
+    updates = {name: values[index * 3:index * 3 + 3] for index, name in enumerate(point_names)}
+    data = scene.model_dump()
+    for obj in data.get("objects", []):
+        if obj.get("type") != "point_3d" or obj.get("name") not in updates:
+            continue
+        x, y, z = updates[obj["name"]]
+        obj["x"] = float(x)
+        obj["y"] = float(y)
+        obj["z"] = float(z)
+        obj["x_expr"] = None
+        obj["y_expr"] = None
+        obj["z_expr"] = None
+    return MathScene.model_validate(data)
+
+
+__all__ = ["CasIssue", "auto_fix_scene", "infer_point_coordinates", "verify_scene"]

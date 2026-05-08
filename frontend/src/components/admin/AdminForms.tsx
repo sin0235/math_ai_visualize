@@ -77,15 +77,15 @@ function getAdminOcrSettings(value: Record<string, unknown>) {
   };
 }
 
-function adminSettingsToRuntime(value: Record<string, unknown>): RuntimeSettings {
-  const router9 = getAdminProviderSettings(value, 'router9');
+function adminSettingsToRuntime(value: Record<string, unknown>, defaults?: SettingsDefaults | null): RuntimeSettings {
+  const router9 = getAdminProviderSettings(value, 'router9', defaults);
   return {
     ...defaultRuntimeSettings,
     default_provider: getStringValue(value.default_provider, 'auto'),
-    openrouter: { ...defaultRuntimeSettings.openrouter, ...getAdminProviderSettings(value, 'openrouter') },
-    nvidia: { ...defaultRuntimeSettings.nvidia, ...getAdminProviderSettings(value, 'nvidia') },
-    ollama: { ...defaultRuntimeSettings.ollama, ...getAdminProviderSettings(value, 'ollama') },
-    openai_compat: { ...defaultRuntimeSettings.openai_compat, ...getAdminProviderSettings(value, 'openai_compat') },
+    openrouter: { ...defaultRuntimeSettings.openrouter, ...getAdminProviderSettings(value, 'openrouter', defaults) },
+    nvidia: { ...defaultRuntimeSettings.nvidia, ...getAdminProviderSettings(value, 'nvidia', defaults) },
+    ollama: { ...defaultRuntimeSettings.ollama, ...getAdminProviderSettings(value, 'ollama', defaults) },
+    openai_compat: { ...defaultRuntimeSettings.openai_compat, ...getAdminProviderSettings(value, 'openai_compat', defaults) },
     router9: { ...defaultRuntimeSettings.router9, ...router9 },
     ocr: { ...defaultRuntimeSettings.ocr, ...getAdminOcrSettings(value), provider: getAdminOcrSettings(value).provider as OcrProvider },
     openrouter_http_referer: getStringValue(value.openrouter_http_referer, ''),
@@ -209,7 +209,6 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave }: { value
   const [scanning, setScanning] = useState<string | null>(null);
   const [checking, setChecking] = useState<string | null>(null);
   const [modelFilter, setModelFilter] = useState('');
-  const [manualModelInputs, setManualModelInputs] = useState<Record<string, string>>({});
   const [checkResults, setCheckResults] = useState<Record<string, { status: string; message: string }>>({});
 
   useEffect(() => {
@@ -254,7 +253,7 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave }: { value
   async function scanProvider(provider: (typeof providers)[number]) {
     setScanning(provider);
     try {
-      const runtime = adminSettingsToRuntime({ ...value, [provider]: draft[provider] });
+      const runtime = adminSettingsToRuntime({ ...value, [provider]: draft[provider] }, defaults);
       const models = provider === 'router9' ? await scanRouter9Models(runtime) : await scanProviderModels(provider as Exclude<typeof provider, 'router9'>, runtime);
       const next = { ...draft[provider], scanned_models: models, last_scanned_at: new Date().toISOString() };
       updateProvider(provider, next);
@@ -268,31 +267,10 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave }: { value
     return adminModelOptions(draft[provider], [draft[provider].model]);
   }
 
-  function addManualModel(provider: (typeof providers)[number], rawValue: string) {
-    const modelId = rawValue.trim();
-    if (!modelId) return;
-    const id = modelId.includes('/') ? modelId : `${provider}/${modelId}`;
-    const exists = draft[provider].scanned_models.some((modelItem: any) => (typeof modelItem === 'string' ? modelItem : modelItem.id) === id);
-    const scanned_models = exists ? draft[provider].scanned_models : [...draft[provider].scanned_models, { id, label: id, provider }];
-    updateProvider(provider, {
-      scanned_models,
-      allowed_model_ids: [...new Set([...draft[provider].allowed_model_ids, id])],
-      model: provider === 'router9' ? draft[provider].model || id : draft[provider].model,
-    });
-  }
-
-  function removeManualModel(provider: (typeof providers)[number], modelId: string) {
-    updateProvider(provider, {
-      scanned_models: draft[provider].scanned_models.filter((modelItem: any) => (typeof modelItem === 'string' ? modelItem : modelItem.id) !== modelId),
-      allowed_model_ids: draft[provider].allowed_model_ids.filter((id) => id !== modelId),
-      model: draft[provider].model === modelId ? '' : draft[provider].model,
-    });
-  }
-
   async function checkProvider(provider: (typeof providers)[number]) {
     setChecking(provider);
     try {
-      const runtime = adminSettingsToRuntime({ ...value, [provider]: draft[provider] });
+      const runtime = adminSettingsToRuntime({ ...value, [provider]: draft[provider] }, defaults);
       const result = await checkAdminProvider(provider, runtime);
       setCheckResults((current) => ({ ...current, [provider]: result }));
     } catch (error) {
@@ -327,7 +305,7 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave }: { value
     <div className="admin-ai-settings">
       <section className="admin-settings-section">
         <h4>Provider & model</h4>
-        <p className="field-hint">Các provider hỗ trợ endpoint /models có thể quét model. Nếu endpoint không có /models, thêm model thủ công dạng provider/model-id.</p>
+        <p className="field-hint">Các provider hỗ trợ endpoint /models có thể quét model và quản lý allowlist trực tiếp từ danh sách đã quét.</p>
         <label className="field-label">Tìm model<input type="search" value={modelFilter} onChange={(event) => setModelFilter(event.target.value)} placeholder="Nhập tên hoặc ID model" /></label>
         <div className="admin-provider-grid">
           {providers.map((provider) => {
@@ -341,7 +319,7 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave }: { value
             return (
               <article className="admin-provider-card" key={provider}>
                 <div className="admin-provider-card-head">
-                  <div><strong>{providerLabels[provider]}</strong><span>{provider === 'router9' ? `${providerValue.scanned_models.length} model quét` : `${providerValue.scanned_models.length} model thủ công`} · allowlist {providerValue.allowed_model_ids.length}</span></div>
+                  <div><strong>{providerLabels[provider]}</strong><span>{providerValue.scanned_models.length} model quét · allowlist {providerValue.allowed_model_ids.length}</span></div>
                   {provider === 'router9' ? (
                     <label className="checkbox-label"><input type="checkbox" checked={providerValue.only_mode} onChange={(event) => updateProvider(provider, { only_mode: event.target.checked })} /> Chỉ dùng 9router</label>
                   ) : (
@@ -369,17 +347,9 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave }: { value
                 </div>
                 <div className="admin-provider-models">
                   <div className="admin-provider-models-head">
-                    <strong>{provider === 'router9' ? 'Model inventory' : 'Model inventory / thủ công'}</strong>
+                    <strong>Model inventory</strong>
                     <span>{filteredAllowlistOptions.length}/{allowlistOptions.length}</span>
                   </div>
-                  {provider !== 'router9' && (
-                    <>
-                    <div className="admin-manual-model-row">
-                      <input value={manualModelInputs[provider] ?? ''} onChange={(event) => setManualModelInputs((current) => ({ ...current, [provider]: event.target.value }))} placeholder={`${provider}/model-id hoặc model-id`} />
-                      <button type="button" className="secondary-button" onClick={() => { addManualModel(provider, manualModelInputs[provider] ?? ''); setManualModelInputs((current) => ({ ...current, [provider]: '' })); }}>Thêm model</button>
-                    </div>
-                    </>
-                  )}
                   <div className="admin-model-checklist">
                     {filteredAllowlistOptions.map((modelItem) => (
                       <div key={modelItem.id} className="admin-model-checkbox">
@@ -387,10 +357,9 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave }: { value
                           <input type="checkbox" checked={providerValue.allowed_model_ids.includes(modelItem.id)} onChange={() => toggleModelId(provider, modelItem.id)} />
                           <span className="model-label"><strong>{modelItem.name}</strong>{modelItem.id !== modelItem.name && <small>{modelItem.id}</small>}</span>
                         </label>
-                        {provider !== 'router9' && <button type="button" className="history-delete" onClick={() => removeManualModel(provider, modelItem.id)} aria-label={`Xoá ${modelItem.id}`}>×</button>}
                       </div>
                     ))}
-                    {filteredAllowlistOptions.length === 0 && <p className="field-hint">{provider === 'router9' ? 'Chưa có model đã quét hoặc không khớp bộ lọc.' : 'Chưa có model thủ công hoặc không khớp bộ lọc.'}</p>}
+                    {filteredAllowlistOptions.length === 0 && <p className="field-hint">Chưa có model đã quét hoặc không khớp bộ lọc.</p>}
                   </div>
                 </div>
               </article>

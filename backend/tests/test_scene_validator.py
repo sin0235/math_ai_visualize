@@ -76,6 +76,17 @@ def test_pre_validate_drops_invalid_annotation_type():
 # ---------------------------------------------------------------------------
 
 
+def test_numeric_quality_warns_near_duplicate_points():
+    scene = MathScene.model_validate(_base_scene(
+        objects=[
+            {"type": "point_3d", "name": "A", "x": 0, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "B", "x": 1e-9, "y": 0, "z": 0},
+        ]
+    ))
+    report = validate_and_repair(scene)
+    assert any("gần trùng" in warning for warning in report.warnings)
+
+
 def test_dedupe_duplicate_point_names():
     scene = MathScene.model_validate(
         _base_scene(

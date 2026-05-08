@@ -10,6 +10,56 @@ interface SolverPanelProps {
   onHighlight: (names: string[]) => void;
 }
 
+function normalizeSolverLatex(input?: string | null): string {
+  if (!input) return '';
+  let tex = input.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+  if (!tex) return '';
+  tex = tex
+    .replace(/^\s*(Công thức|Thế số|Kết quả)\s*:\s*/i, '')
+    .replace(/−/g, '-')
+    .replace(/×/g, '\\times ')
+    .replace(/·/g, '\\cdot ');
+
+  // Convert unicode norm bars (∥v∥) into KaTeX-friendly form.
+  tex = tex.replace(/∥\s*([^∥]+?)\s*∥/g, '\\left\\|$1\\right\\|');
+
+  // Heuristic: convert malformed "a |b|" to \frac{|b|}{a}
+  // (often returned by model when backslashes are stripped).
+  const absFracMatch = tex.match(/^\s*([0-9]+(?:\.[0-9]+)?)\s*[|∣]\s*([^|∣]+)\s*[|∣]\s*$/);
+  if (absFracMatch && !tex.includes('\\frac')) {
+    const denominator = absFracMatch[1];
+    const numerator = absFracMatch[2].trim();
+    tex = `\\frac{\\left|${numerator}\\right|}{${denominator}}`;
+  }
+  return tex;
+}
+
+function normalizeComparableText(input?: string | null): string {
+  return (input ?? '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function normalizeExplanationText(
+  explanation: string,
+  hasFormula: boolean,
+  hasSubstitution: boolean,
+): string {
+  let text = explanation.trim();
+  if (!text) return text;
+  if ((hasFormula || hasSubstitution) && text.includes('\\')) {
+    // Remove inline latex-heavy expression from prose when formula blocks exist.
+    text = text.replace(/\b[A-Za-z][A-Za-z0-9(),.\s]*=\s*\\[a-zA-Z][^.]*(?:\.)?/g, '').trim();
+    // Remove any remaining standalone LaTeX fragments (e.g. "\frac{...}{...}").
+    text = text
+      .replace(/\\[a-zA-Z]+(?:\{[^{}]*\}|\[[^\]]*\]|\([^)]*\)|\s|[^\s.,;:!?])*/g, ' ')
+      .replace(/[{}]/g, ' ');
+    text = text.replace(/\s{2,}/g, ' ').replace(/\.\s*\./g, '.').trim();
+  }
+  return text;
+}
+
 function buildExamples(scene: MathScene) {
   const pointNames = scene.objects
     .filter((obj): obj is Extract<MathScene['objects'][number], { type: 'point_3d' | 'point_2d' }> => obj.type === 'point_3d' || obj.type === 'point_2d')
@@ -159,6 +209,15 @@ export function SolverPanel({ scene, runtimeSettings, onHighlight }: SolverPanel
               </div>
               {result.steps.map((step) => {
                 const isActive = activeStep === step.index;
+                const formulaLatex = normalizeSolverLatex(step.formula_latex);
+                const substitutionLatex = normalizeSolverLatex(step.substitution_latex);
+                const resultLatex = normalizeSolverLatex(step.result_latex);
+                const explanationComparable = normalizeComparableText(step.explanation);
+                const formulaComparable = normalizeComparableText(formulaLatex);
+                const substitutionComparable = normalizeComparableText(substitutionLatex);
+                const showFormula = Boolean(formulaLatex) && formulaComparable !== explanationComparable;
+                const showSubstitution = Boolean(substitutionLatex) && substitutionComparable !== explanationComparable && substitutionComparable !== formulaComparable;
+                const explanationText = normalizeExplanationText(step.explanation, showFormula, showSubstitution);
                 return (
                   <button
                     key={step.index}
@@ -184,28 +243,28 @@ export function SolverPanel({ scene, runtimeSettings, onHighlight }: SolverPanel
                           </span>
                         )}
                       </div>
-                      <p className="sp-step-text">{step.explanation}</p>
-                      {step.formula_latex && (
+                      <p className="sp-step-text">{explanationText}</p>
+                      {showFormula && (
                         <div className="sp-step-formula">
-                          <span>Công thức: </span>
-                          <KatexSpan tex={step.formula_latex} />
+                          <span className="sp-step-formula-label">Công thức:</span>
+                          <KatexSpan tex={formulaLatex} className="sp-step-formula-math" />
                         </div>
                       )}
-                      {step.substitution_latex && (
+                      {showSubstitution && (
                         <div className="sp-step-formula">
-                          <span>Thế số: </span>
-                          <KatexSpan tex={step.substitution_latex} />
+                          <span className="sp-step-formula-label">Thế số:</span>
+                          <KatexSpan tex={substitutionLatex} className="sp-step-formula-math" />
                         </div>
                       )}
-                      {step.result_latex && (
+                      {resultLatex && (
                         <div className="sp-step-result">
                           <span>Kết quả: </span>
-                          <KatexSpan tex={step.result_latex} />
+                          <KatexSpan tex={resultLatex} />
                         </div>
                       )}
                       {!step.formula_latex && step.expression && (
                         <div className="sp-step-formula">
-                          <KatexSpan tex={sympyToLatex(step.expression)} />
+                          <KatexSpan tex={sympyToLatex(step.expression)} className="sp-step-formula-math" />
                         </div>
                       )}
                       {!step.result_latex && step.result && (

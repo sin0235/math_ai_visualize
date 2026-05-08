@@ -25,6 +25,7 @@ app/db/session.py
 app/renderers/__init__.py
 app/renderers/geogebra_commands.py
 app/renderers/ggb_export.py
+app/renderers/katex_html_export.py
 app/renderers/pdf_export.py
 app/renderers/three_scene.py
 app/renderers/tikz_export.py
@@ -38,6 +39,7 @@ app/schemas/auth.py
 app/schemas/scene.py
 app/services/__init__.py
 app/services/admin_settings.py
+app/services/ai_fallback.py
 app/services/ai_prompt.py
 app/services/api_errors.py
 app/services/cas_verifier.py
@@ -50,6 +52,7 @@ app/services/function_analyzer.py
 app/services/function_graph_builder.py
 app/services/geometry_engine.py
 app/services/google_oauth.py
+app/services/linalg.py
 app/services/model_registry.py
 app/services/model_scan.py
 app/services/nvidia_client.py

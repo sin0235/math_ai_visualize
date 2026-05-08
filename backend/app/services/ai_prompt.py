@@ -71,9 +71,12 @@ Thiết lập min/max/default cho parameter:
 Quy tắc gán toạ độ (RẤT QUAN TRỌNG):
 - Không được làm sai dữ kiện để ép một điểm về gốc. Không tịnh tiến/đổi toạ độ nếu đề đã cho toạ độ cụ thể.
 - Ký hiệu O thường là gốc hệ trục O(0,0,0) hoặc tâm hình; nếu đề nói tâm O/trung điểm O/giao điểm O thì O phải đúng vai trò đó, không được coi O là đỉnh tuỳ ý.
-- Nếu bài là hình học thuần tuý không cho hệ trục, hãy tự chọn hệ trục đẹp ngay từ đầu: đặt một điểm phù hợp tại (0,0,0), thường là A với hình chóp/hình hộp/lăng trụ, hoặc O nếu O là tâm/gốc được nêu trong đề.
+- Nếu bài là hình học thuần tuý không cho hệ trục, hãy tự chọn hệ trục đẹp ngay từ đầu: đặt một điểm CÓ SẴN phù hợp tại (0,0,0), thường là A với hình chóp/hình hộp/lăng trụ, hoặc O nếu O là tâm/gốc được nêu trong đề.
+- Ưu tiên chọn origin sao cho các điểm còn lại có toạ độ nguyên/phân số/căn thức đơn giản nhất; không tạo thêm O trùng với một điểm đã ở (0,0,0).
+- Nếu toạ độ có phân số/căn/tham số, luôn điền `x_expr/y_expr/z_expr` dạng exact (ví dụ "a/2", "sqrt(3)/2", "a*sqrt(2)"); `x/y/z` chỉ là giá trị số để render, không được thay exact bằng số thập phân làm tròn.
+- Nếu dữ kiện không xác định tọa độ duy nhất, chỉ chọn hệ canonical khi bài có tự do tịnh tiến/quay; nếu đề đã cho tọa độ cụ thể thì không dịch/ép gốc.
 - Cạnh đáy nên dọc theo Ox (+x), chiều rộng đáy dọc theo Oz (+z), chiều cao dọc theo Oy (+y).
-- Dùng toạ độ nguyên hoặc số đẹp, làm tròn tối đa 2 chữ số nếu cần; tránh số thập phân dài.
+- Dùng toạ độ nguyên hoặc số đẹp; với căn/phân số phải dùng exact expr, tránh số thập phân dài.
 - Nếu đề có trung điểm/tâm/giao điểm hoặc cần điểm phụ để dựng hình đúng, phải tạo point_2d/point_3d có tên rõ ràng cho điểm đó trước khi dùng trong segment/face/line/plane/relation/annotation.
 - Mọi tên điểm được tham chiếu trong objects/relations/annotations phải tồn tại trong objects; không được dùng điểm ẩn danh hoặc chỉ nhắc trong metadata.
 - Nếu đề chưa đặt tên cho điểm cần thiết, tự đặt tên ngắn, quen thuộc như M cho trung điểm, H cho chân đường cao, O cho tâm/gốc, I/J/K cho giao điểm hoặc điểm phụ, rồi tính/chọn toạ độ phù hợp.
@@ -328,10 +331,11 @@ Quy tắc phân tích:
    - "hình chóp đều" → đáy là đa giác đều, đỉnh chiếu vuông góc xuống tâm đáy
    - "trung điểm M của AB" → M = ((Ax+Bx)/2, (Ay+By)/2, ...)
 3. Xác định hệ trục toạ độ phù hợp:
-   - Hình không gian: đặt A hoặc gốc O tại (0,0,0), đáy trên mặt xOz, chiều cao theo Oy
+   - Hình không gian: đặt một điểm có sẵn (ưu tiên O nếu là gốc/tâm, nếu không chọn điểm giúp tính dễ nhất) tại (0,0,0), đáy trên mặt xOz, chiều cao theo Oy
    - Hình phẳng: theo đề cho, hoặc chọn hệ trục đẹp
    - KHÔNG tịnh tiến nếu đề đã cho toạ độ cụ thể
-4. Tính toạ độ CHÍNH XÁC cho mỗi điểm, ghi rõ derivation (cách tính).
+   - Không tạo O synthetic trùng một điểm có sẵn ở gốc; dùng chính điểm đó làm origin.
+4. Tính toạ độ CHÍNH XÁC cho mỗi điểm, ghi rõ derivation (cách tính); nếu có căn/phân số/tham số thì giữ exact expression, không thay bằng số thập phân làm tròn.
 5. Xác định mọi cạnh/mặt cần vẽ. KHÔNG đánh dấu cạnh thật của khối 3D là hidden/dashed — frontend tự tính cạnh khuất theo góc xoay camera. Chỉ đặt style='dashed' cho đường phụ trợ ý nghĩa hình học (đường cao, hình chiếu, tiệm cận, đường chuẩn, cạnh phụ hình bình hành vector, ...) bất kể góc nhìn.
 6. Liệt kê mọi quan hệ hình học kèm reasoning.
 7. Liệt kê mọi annotation cần hiển thị trên hình.

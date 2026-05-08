@@ -1,6 +1,6 @@
 import pytest
 
-from app.schemas.scene import Line3D, MathScene, Plane, Point3D, Relation, SceneView, Segment, Sphere
+from app.schemas.scene import AdvancedRenderSettings, Line3D, MathScene, Plane, Point3D, Relation, SceneView, Segment, Sphere
 from app.services.geometry_engine import (
     calculate_line_equation,
     calculate_line_line_angle,
@@ -101,8 +101,19 @@ def test_calculate_area_and_volume():
     points = calc_points()
 
     assert calculate_polygon_area(points, ["B", "C", "E", "D"])["result_value"] == pytest.approx(16)
-    assert calculate_tetrahedron_volume(points, ["B", "C", "D", "A"])["result_value"] == pytest.approx(8)
+    tetra = calculate_tetrahedron_volume(points, ["B", "C", "D", "A"])
+    assert tetra["result_value"] == pytest.approx(8)
+    assert tetra["result_latex"] == "8"
     assert calculate_pyramid_volume(points, "S", ["B", "C", "E", "D"])["result_value"] == pytest.approx(32)
+
+
+def test_triangle_area_exact_radical():
+    points = {"A": (0.0, 0.0, 0.0), "B": (1.0, 0.0, 0.0), "C": (0.0, 1.0, 1.0)}
+
+    result = calculate_polygon_area(points, ["A", "B", "C"])
+
+    assert result["result_value"] == pytest.approx(2 ** 0.5 / 2)
+    assert result["result_latex"] == "\\frac{\\sqrt{2}}{2}"
 
 
 def test_calculate_degenerate_line_warning():
@@ -204,6 +215,22 @@ def test_perpendicular_relation_adds_right_angle():
     assert len(right_angles) == 1
     assert right_angles[0].target == "A"
     assert set(right_angles[0].metadata["arms"]) == {"B", "C"}
+
+
+def test_segment_intersections_use_spatial_prefilter_for_many_segments():
+    objects = [point("A", 0, 0, 0), point("B", 2, 2, 0), point("C", 0, 2, 0), point("D", 2, 0, 0)]
+    objects.extend([Segment(points=["A", "B"]), Segment(points=["C", "D"])])
+    for index in range(30):
+        p = f"P{index}"
+        q = f"Q{index}"
+        y = 10 + index
+        objects.extend([point(p, 0, y, 0), point(q, 1, y, 0), Segment(points=[p, q])])
+
+    normalized = normalize_scene(scene_with(objects))
+
+    intersection = next(obj for obj in normalized.objects if isinstance(obj, Point3D) and obj.name == "I")
+    assert intersection.x == pytest.approx(1)
+    assert intersection.y == pytest.approx(1)
 
 
 def test_normalize_scene_adds_segment_intersection_point():
@@ -370,6 +397,21 @@ def test_line_plane_degenerate_plane():
     assert result["point"] is None
 
 
+def test_svd_plane_normal_handles_four_coplanar_points():
+    computed = compute_three_geometry(scene_with([
+        point("A", 0, 0, 0),
+        point("B", 1, 0, 0),
+        point("C", 0, 1, 0),
+        point("D", 1, 1, 0),
+        Plane(name="alpha", points=["A", "B", "C", "D"]),
+    ]))
+
+    normal = computed["vectors"][0]
+    assert normal["kind"] == "normal"
+    assert normal["from"]["z"] == pytest.approx(0)
+    assert normal["to"]["z"] > 0
+
+
 def test_degenerate_plane_has_no_normal_overlay():
     computed = compute_three_geometry(scene_with([
         point("A", 0, 0, 0),
@@ -431,3 +473,62 @@ def test_sphere_plane_distance_intersect():
 
     assert result["status"] == "intersect"
     assert result["minimum_distance"] == pytest.approx(0)
+
+
+def test_prefer_o_origin_translates_existing_o():
+    scene = scene_with([
+        point("O", 2, 3, 4),
+        point("A", 5, 3, 4),
+    ])
+
+    normalized = normalize_scene(scene, AdvancedRenderSettings(coordinate_assignment="prefer_o_origin"))
+    points = {obj.name: obj for obj in normalized.objects if isinstance(obj, Point3D)}
+
+    assert points["O"].x == pytest.approx(0)
+    assert points["O"].y == pytest.approx(0)
+    assert points["O"].z == pytest.approx(0)
+    assert points["A"].x == pytest.approx(3)
+    assert points["A"].y == pytest.approx(0)
+    assert points["A"].z == pytest.approx(0)
+
+
+def test_auto_origin_chooses_nice_existing_point():
+    scene = scene_with([
+        point("A", 10, 0, 0),
+        point("B", 11, 0, 0),
+        point("C", 10, 2, 0),
+    ])
+
+    normalized = normalize_scene(scene, AdvancedRenderSettings(coordinate_assignment="auto_origin"))
+    points = {obj.name: obj for obj in normalized.objects if isinstance(obj, Point3D)}
+
+    assert points["A"].x == pytest.approx(0)
+    assert points["B"].x == pytest.approx(1)
+    assert points["C"].y == pytest.approx(2)
+
+
+def test_ai_coordinate_assignment_keeps_coordinates():
+    scene = scene_with([
+        point("A", 10, 0, 0),
+        point("B", 11, 0, 0),
+    ])
+
+    normalized = normalize_scene(scene, AdvancedRenderSettings(coordinate_assignment="ai"))
+    points = {obj.name: obj for obj in normalized.objects if isinstance(obj, Point3D)}
+
+    assert points["A"].x == pytest.approx(10)
+    assert points["B"].x == pytest.approx(11)
+
+
+def test_origin_rebase_preserves_exact_expressions():
+    scene = scene_with([
+        Point3D(name="A", x=2 ** 0.5, y=0.5, z=0, x_expr="sqrt(2)", y_expr="1/2", z_expr="0"),
+        Point3D(name="B", x=2 ** 0.5 + 1, y=0.5, z=0, x_expr="sqrt(2)+1", y_expr="1/2", z_expr="0"),
+    ])
+
+    normalized = normalize_scene(scene, AdvancedRenderSettings(coordinate_assignment="auto_origin"))
+    points = {obj.name: obj for obj in normalized.objects if isinstance(obj, Point3D)}
+
+    assert points["A"].x_expr == "0"
+    assert points["B"].x_expr == "1"
+    assert points["B"].y_expr == "0"

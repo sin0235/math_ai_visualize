@@ -38,6 +38,7 @@ from app.schemas.scene import (
     Point3D,
 )
 from app.services.expression_eval import _ALLOWED_CONSTS, _ALLOWED_FUNCS
+from app.services.linalg import bbox_diagonal, cross, distance, norm, plane_from_points, sub, vec3
 
 
 @dataclass
@@ -188,6 +189,9 @@ def validate_and_repair(scene: MathScene) -> ValidationReport:
 
     # 6. Parameter integrity
     scene = _enforce_parameters(scene, report)
+
+    # 7. Numeric quality warnings
+    _check_numeric_quality(scene, report)
 
     report.scene = scene
     return report
@@ -508,27 +512,59 @@ def _are_collinear(pts: list[Point2D | Point3D]) -> bool:
         coords = [(p.x, p.y, 0.0) for p in pts if isinstance(p, Point2D)]
     if len(coords) < 3:
         return False
-    p0c = coords[0]
-    base = (coords[1][0] - p0c[0], coords[1][1] - p0c[1], coords[1][2] - p0c[2])
-    base_len = math.sqrt(sum(x * x for x in base))
+    p0c = vec3(*coords[0])
+    base = sub(vec3(*coords[1]), p0c)
+    base_len = norm(base)
     if base_len < 1e-9:
         return True
     for c in coords[2:]:
-        v = (c[0] - p0c[0], c[1] - p0c[1], c[2] - p0c[2])
-        cross = (
-            base[1] * v[2] - base[2] * v[1],
-            base[2] * v[0] - base[0] * v[2],
-            base[0] * v[1] - base[1] * v[0],
-        )
-        cn = math.sqrt(sum(x * x for x in cross))
-        v_len = math.sqrt(sum(x * x for x in v))
+        v = sub(vec3(*c), p0c)
+        cross_value = cross(base, v)
+        cn = norm(cross_value)
+        v_len = norm(v)
         if cn > 1e-9 * max(base_len * v_len, 1.0):
             return False
     return True
 
 
 # ---------------------------------------------------------------------------
-# 5. Parameter integrity
+# 5. Numeric quality warnings
+# ---------------------------------------------------------------------------
+
+
+def _check_numeric_quality(scene: MathScene, report: ValidationReport) -> None:
+    points3d = {obj.name: vec3(obj.x, obj.y, obj.z) for obj in scene.objects if isinstance(obj, Point3D)}
+    names = list(points3d)
+    for i, first in enumerate(names):
+        for second in names[i + 1:]:
+            if distance(points3d[first], points3d[second]) <= 1e-7:
+                report.warnings.append(f"Điểm {first} và {second} gần trùng nhau — cấu hình có thể suy biến")
+
+    for obj in scene.objects:
+        if obj.type not in {"face", "plane"}:
+            continue
+        point_names = getattr(obj, "points", [])
+        coords = [points3d[name] for name in point_names if name in points3d]
+        if len(coords) < 3:
+            continue
+        try:
+            diagonal = bbox_diagonal(coords)
+        except ValueError:
+            continue
+        if diagonal <= 1e-9:
+            report.warnings.append(f"{obj.type} '{getattr(obj, 'name', None) or ''.join(point_names)}' gần suy biến vì các điểm quá gần nhau")
+            continue
+        plane = plane_from_points(coords, 1e-9)
+        if plane is None:
+            continue
+        center, normal = plane
+        max_offset = max(abs(float((coord - center).dot(normal))) for coord in coords)
+        if max_offset > 1e-6 * max(diagonal, 1.0):
+            report.warnings.append(f"{obj.type} '{getattr(obj, 'name', None) or ''.join(point_names)}' không gần đồng phẳng tuyệt đối (lệch {max_offset:.3g})")
+
+
+# ---------------------------------------------------------------------------
+# 6. Parameter integrity
 # ---------------------------------------------------------------------------
 
 

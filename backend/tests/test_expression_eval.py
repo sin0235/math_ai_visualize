@@ -2,7 +2,7 @@ import math
 
 import pytest
 
-from app.services.expression_eval import UnsafeExpressionError, safe_eval, try_safe_eval
+from app.services.expression_eval import UnsafeExpressionError, safe_eval, safe_eval_exact, safe_sympify, try_safe_eval, try_safe_eval_exact
 
 
 def test_basic_arithmetic():
@@ -65,6 +65,23 @@ def test_try_safe_eval_returns_none_on_error():
     assert try_safe_eval("a + 1", {}) is None
     assert try_safe_eval("a + 1", {"a": 4}) == 5.0
     assert try_safe_eval("garbage??", {}) is None
+
+
+def test_safe_sympify_exact_values():
+    expr, value = safe_eval_exact("sqrt(3)/2")
+    assert str(expr) == "sqrt(3)/2"
+    assert value == pytest.approx(math.sqrt(3) / 2)
+    assert str(safe_eval_exact("sin(pi/6)")[0]) == "1/2"
+    assert safe_eval_exact("sqrt(2)**2")[0] == 2
+    assert safe_eval_exact("a/2", {"a": 6}) == (3, 3.0)
+    assert str(safe_sympify("a/2", {"a": "sqrt(2)"})) == "sqrt(2)/2"
+    assert try_safe_eval_exact("a + 1", {}) is None
+
+
+def test_safe_sympify_rejects_unsafe_syntax():
+    for expr in ["__import__('os')", "(1).__class__", "[1, 2]", "{'x': 1}", "(lambda: 1)()"]:
+        with pytest.raises(UnsafeExpressionError):
+            safe_eval_exact(expr)
 
 
 def test_apply_parameters_to_scene_evaluates_expressions():
