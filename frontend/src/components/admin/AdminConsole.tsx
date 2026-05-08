@@ -10,7 +10,10 @@ import type {
   AdminUserFilters,
   AdminRenderJobFilters,
   AdminAuditLogFilters,
-  AdminDatabaseDiagnostics
+  AdminDatabaseDiagnostics,
+  AdminFeedbackFilters,
+  AdminFeedbackResponse,
+  FeedbackStatus
 } from '../../api/client';
 import { 
   getAdminSummary, 
@@ -25,6 +28,8 @@ import {
   getAdminSystemSettings, 
   updateAdminSystemSetting, 
   getAdminAuditLogs,
+  getAdminFeedback,
+  updateAdminFeedback,
   getSettingsDefaults,
   getAdminDatabaseDiagnostics
 } from '../../api/client';
@@ -69,12 +74,13 @@ function AdminToolbarRefreshButton({ loading, onClick }: { loading: boolean; onC
 }
 
 export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: AdminConsoleProps) {
-  const [activeSection, setActiveSection] = useState<'overview' | 'users' | 'renders' | 'models' | 'settings' | 'audit'>('overview');
+  const [activeSection, setActiveSection] = useState<'overview' | 'users' | 'renders' | 'models' | 'settings' | 'feedback' | 'audit'>('overview');
   const [summary, setSummary] = useState<AdminSummaryResponse | null>(null);
   const [users, setUsers] = useState<UserResponse[]>([]);
   const [renderJobs, setRenderJobs] = useState<AdminRenderHistoryItem[]>([]);
   const [settings, setSettings] = useState<SystemSettingResponse[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogResponse[]>([]);
+  const [feedbackItems, setFeedbackItems] = useState<AdminFeedbackResponse[]>([]);
   const [loading, setLoading] = useState(false);
 
   // User list state
@@ -95,6 +101,11 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
   const [databaseDiagnostics, setDatabaseDiagnostics] = useState<AdminDatabaseDiagnostics | null>(null);
   const [savingAiSettings, setSavingAiSettings] = useState(false);
 
+  // Feedback filters
+  const [localFeedbackFilters, setLocalFeedbackFilters] = useState<AdminFeedbackFilters>({});
+  const [filteringFeedback, setFilteringFeedback] = useState(false);
+  const [updatingFeedbackId, setUpdatingFeedbackId] = useState<string | null>(null);
+
   // Audit log filters
   const [localAuditLogFilters, setLocalAuditLogFilters] = useState<AdminAuditLogFilters>({});
   const [filteringAuditLogs, setFilteringAuditLogs] = useState(false);
@@ -102,12 +113,13 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
   const onRefresh = async () => {
     setLoading(true);
     try {
-      const [s, u, r, st, a, defaults, diagnostics] = await Promise.all([
+      const [s, u, r, st, a, f, defaults, diagnostics] = await Promise.all([
         getAdminSummary(),
         getAdminUsers({}),
         getAdminRenderJobs({}),
         getAdminSystemSettings(),
         getAdminAuditLogs({}),
+        getAdminFeedback({}),
         getSettingsDefaults(),
         getAdminDatabaseDiagnostics(),
       ]);
@@ -116,6 +128,7 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
       setRenderJobs(r);
       setSettings(st);
       setAuditLogs(a);
+      setFeedbackItems(f);
       setSettingsDefaults(defaults);
       setDatabaseDiagnostics(diagnostics);
 
@@ -210,6 +223,31 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
     void onRefresh();
   };
 
+  const onSearchFeedback = async (filters: AdminFeedbackFilters) => {
+    setFilteringFeedback(true);
+    try {
+      setFeedbackItems(await getAdminFeedback(filters));
+    } finally {
+      setFilteringFeedback(false);
+    }
+  };
+
+  const submitFeedbackFilters = (event: React.FormEvent) => {
+    event.preventDefault();
+    void onSearchFeedback(localFeedbackFilters);
+  };
+
+  const onUpdateFeedback = async (item: AdminFeedbackResponse, status: FeedbackStatus, adminNote?: string) => {
+    setUpdatingFeedbackId(item.id);
+    try {
+      await updateAdminFeedback(item.id, status, adminNote);
+      await onSearchFeedback(localFeedbackFilters);
+      setAuditLogs(await getAdminAuditLogs(localAuditLogFilters));
+    } finally {
+      setUpdatingFeedbackId(null);
+    }
+  };
+
   const onSearchAuditLogs = async (filters: AdminAuditLogFilters) => {
     setFilteringAuditLogs(true);
     try {
@@ -268,6 +306,7 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
           <AdminNavButton active={activeSection === 'renders'} onClick={() => setActiveSection('renders')} icon="renders" label="Lượt dựng hình" />
           <AdminNavButton active={activeSection === 'models'} onClick={() => setActiveSection('models')} icon="models" label="Model & AI" />
           <AdminNavButton active={activeSection === 'settings'} onClick={() => setActiveSection('settings')} icon="settings" label="Database" />
+          <AdminNavButton active={activeSection === 'feedback'} onClick={() => setActiveSection('feedback')} icon="audit" label="Góp ý" />
           <AdminNavButton active={activeSection === 'audit'} onClick={() => setActiveSection('audit')} icon="audit" label="Nhật ký kiểm toán" />
         </nav>
         <div className="admin-sidebar-footer"><small>{user.email}</small><button type="button" className="secondary-button admin-button-with-icon" onClick={onBackToApp}><AdminIcon name="back" />Trang người dùng</button></div>
@@ -441,6 +480,34 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
           </>
         )}
 
+        {activeSection === 'feedback' && (
+          <>
+            <header className="admin-page-header">
+              <h2>Quản lý góp ý</h2>
+              <AdminToolbarRefreshButton loading={loading} onClick={onRefresh} />
+            </header>
+            <section className="admin-panel admin-panel-full">
+              <form className="admin-toolbar admin-filter-grid" onSubmit={submitFeedbackFilters}>
+                <input value={localFeedbackFilters.q ?? ''} onChange={(event) => setLocalFeedbackFilters((current) => ({ ...current, q: event.target.value }))} placeholder="Tìm nội dung, email hoặc ID" />
+                <select value={localFeedbackFilters.status ?? ''} onChange={(event) => setLocalFeedbackFilters((current) => ({ ...current, status: event.target.value }))}>
+                  <option value="">Trạng thái</option>
+                  <option value="pending">pending</option>
+                  <option value="received">received</option>
+                  <option value="accepted">accepted</option>
+                </select>
+                <input list="admin-user-id-options" value={localFeedbackFilters.user_id ?? ''} onChange={(event) => setLocalFeedbackFilters((current) => ({ ...current, user_id: event.target.value }))} placeholder="ID người dùng" />
+                <button type="submit" className="secondary-button" disabled={filteringFeedback}>{filteringFeedback ? 'Đang lọc...' : 'Lọc góp ý'}</button>
+                <button type="button" className="secondary-button" onClick={() => { setLocalFeedbackFilters({}); void onSearchFeedback({}); }}>Xoá lọc</button>
+              </form>
+              <datalist id="admin-user-id-options">{users.map((item) => <option key={item.id} value={item.id}>{item.email}</option>)}</datalist>
+              <div className="admin-table">
+                {feedbackItems.map((item) => <AdminFeedbackRow key={item.id} item={item} updating={updatingFeedbackId === item.id} onUpdate={onUpdateFeedback} />)}
+                {feedbackItems.length === 0 && <p className="field-hint">Chưa có góp ý phù hợp.</p>}
+              </div>
+            </section>
+          </>
+        )}
+
         {activeSection === 'audit' && (
           <>
             <header className="admin-page-header">
@@ -470,6 +537,31 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail }: Admin
 }
 
 // --- Sub-components moved here for simplicity in this turn ---
+
+function AdminFeedbackRow({ item, updating, onUpdate }: { item: AdminFeedbackResponse; updating: boolean; onUpdate: (item: AdminFeedbackResponse, status: FeedbackStatus, adminNote?: string) => Promise<void> }) {
+  const [note, setNote] = useState(item.admin_note ?? '');
+
+  useEffect(() => {
+    setNote(item.admin_note ?? '');
+  }, [item.id, item.admin_note]);
+
+  const statusText = item.status === 'pending' ? 'Đang chờ' : item.status === 'received' ? 'Đã tiếp nhận' : 'Đã chấp nhận';
+
+  return (
+    <article className="admin-row admin-row-block admin-feedback-row">
+      <div>
+        <strong>{item.subject}</strong>
+        <span>{formatHistoryDate(item.created_at)} · {item.user_email || item.user_id} · {statusText}</span>
+        <p className="admin-problem-text">{item.message}</p>
+      </div>
+      <label className="field-label admin-feedback-note">Ghi chú admin<textarea value={note} rows={3} onChange={(event) => setNote(event.target.value)} placeholder="Ghi chú nội bộ hoặc phản hồi ngắn" /></label>
+      <div className="admin-row-actions">
+        <button type="button" className="secondary-button" onClick={() => void onUpdate(item, 'received', note)} disabled={updating || item.status !== 'pending'}>{updating ? 'Đang lưu...' : 'Đánh dấu đã nhận'}</button>
+        <button type="button" className="secondary-button" onClick={() => void onUpdate(item, 'accepted', note)} disabled={updating || item.status !== 'pending'}>Chấp nhận</button>
+      </div>
+    </article>
+  );
+}
 
 function AdminUserRow({ item, currentUserId, planOptions, onUpdate, onToggleStatus }: { item: UserResponse; currentUserId: string; planOptions: Array<{ id: string; label: string }>; onUpdate: (user: UserResponse, patch: any) => Promise<void>; onToggleStatus: (user: UserResponse) => Promise<void> }) {
   const [editing, setEditing] = useState(false);

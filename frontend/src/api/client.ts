@@ -102,6 +102,37 @@ export interface AdminAuditLogFilters {
   target_type?: string;
 }
 
+export type FeedbackStatus = 'pending' | 'received' | 'accepted';
+
+export interface FeedbackResponse {
+  id: string;
+  subject: string;
+  message: string;
+  status: FeedbackStatus;
+  admin_note?: string | null;
+  created_at: string;
+  updated_at: string;
+  resolved_at?: string | null;
+}
+
+export interface FeedbackStatusResponse {
+  can_submit: boolean;
+  pending_feedback?: FeedbackResponse | null;
+  latest_feedback?: FeedbackResponse | null;
+}
+
+export interface AdminFeedbackResponse extends FeedbackResponse {
+  user_id: string;
+  user_email?: string | null;
+  resolved_by?: string | null;
+}
+
+export interface AdminFeedbackFilters {
+  status?: string;
+  user_id?: string;
+  q?: string;
+}
+
 export interface AdminSessionResponse {
   id: string;
   created_at: string;
@@ -312,6 +343,23 @@ export async function deleteRenderHistory(id: string): Promise<void> {
   await requestVoid(`/api/history/${encodeURIComponent(id)}`, { method: 'DELETE', credentials: 'include' }, 'Không thể xoá lịch sử.');
 }
 
+export async function getFeedbackStatus(): Promise<FeedbackStatusResponse> {
+  return requestJson('/api/feedback/status', { credentials: 'include' }, 'Không thể tải trạng thái góp ý.');
+}
+
+export async function getMyFeedback(): Promise<FeedbackResponse[]> {
+  return requestJson('/api/feedback', { credentials: 'include' }, 'Không thể tải lịch sử góp ý.');
+}
+
+export async function submitFeedback(subject: string, message: string): Promise<FeedbackResponse> {
+  return requestJson('/api/feedback', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ subject: cleanText(subject), message: cleanText(message) }),
+  }, 'Không thể gửi góp ý.');
+}
+
 export async function getAdminSummary(): Promise<AdminSummaryResponse> {
   return requestJson('/api/admin/summary', { credentials: 'include' }, 'Không thể tải dashboard quản trị.');
 }
@@ -366,6 +414,19 @@ export async function checkAdminProvider(provider: string, runtimeSettings: Runt
     credentials: 'include',
     body: JSON.stringify({ runtime_settings: compactRuntimeSettings(runtimeSettings) }),
   }, 'Không thể kiểm tra kết nối provider.');
+}
+
+export async function getAdminFeedback(filters: AdminFeedbackFilters = {}): Promise<AdminFeedbackResponse[]> {
+  return requestJson(`/api/admin/feedback${queryString(filters)}`, { credentials: 'include' }, 'Không thể tải danh sách góp ý.');
+}
+
+export async function updateAdminFeedback(id: string, status: FeedbackStatus, adminNote?: string): Promise<AdminFeedbackResponse> {
+  return requestJson(`/api/admin/feedback/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ status, admin_note: adminNote ? cleanText(adminNote) : undefined }),
+  }, 'Không thể cập nhật góp ý.');
 }
 
 export async function getAdminAuditLogs(filters: AdminAuditLogFilters = {}): Promise<AuditLogResponse[]> {

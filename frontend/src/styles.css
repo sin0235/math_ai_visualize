@@ -1113,10 +1113,96 @@ select {
 }
 
 .guide-page,
-.about-page {
+.about-page,
+.feedback-page {
   display: grid;
   gap: clamp(22px, 4vw, 36px);
 }
+
+.feedback-form,
+.feedback-history-list {
+  display: grid;
+  gap: 14px;
+}
+
+.feedback-form input,
+.feedback-form textarea,
+.admin-feedback-note textarea {
+  width: 100%;
+  border: 1px solid #d4d4d4;
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: #ffffff;
+  color: #111827;
+  resize: vertical;
+}
+
+.feedback-actions,
+.feedback-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.feedback-pending-card,
+.feedback-history-item {
+  display: grid;
+  gap: 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 18px;
+  padding: 18px;
+  background: #ffffff;
+}
+
+.feedback-pending-card h3,
+.feedback-history-item h4,
+.feedback-pending-card p,
+.feedback-history-item p {
+  margin: 0;
+}
+
+.feedback-status-badge {
+  display: inline-flex;
+  width: fit-content;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.feedback-status-badge.pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.feedback-status-badge.received {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.feedback-status-badge.accepted {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.feedback-admin-note {
+  border-left: 3px solid #2563eb;
+  padding-left: 10px;
+  color: #1e3a8a;
+  font-weight: 650;
+}
+
+.admin-feedback-row {
+  gap: 12px;
+}
+
+.admin-feedback-note {
+  display: grid;
+  gap: 8px;
+}
+
 
 .guide-hero,
 .about-hero {
@@ -1151,19 +1237,18 @@ select {
 .guide-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 1px;
-  overflow: hidden;
-  border: 1px solid #e5e7eb;
-  border-radius: 28px;
-  background: #e5e7eb;
+  gap: 12px;
 }
 
 .guide-card {
   display: grid;
   align-content: start;
-  gap: 12px;
+  gap: 10px;
   padding: clamp(20px, 3vw, 30px);
   background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 22px;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.04);
 }
 
 .guide-card span {
@@ -1299,11 +1384,7 @@ select {
 .about-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1px;
-  overflow: hidden;
-  border: 1px solid #e5e7eb;
-  border-radius: 28px;
-  background: #e5e7eb;
+  gap: 12px;
 }
 
 .about-grid article {
@@ -1311,6 +1392,9 @@ select {
   gap: 12px;
   padding: clamp(22px, 3vw, 32px);
   background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 22px;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.04);
 }
 
 .about-grid h3,
@@ -2374,8 +2458,14 @@ select {
   gap: 8px;
   border: 1px solid #e5e7eb;
   border-radius: 14px;
-  padding: 10px;
+  padding: 12px;
   background: #ffffff;
+  transition: border-color 0.14s ease, background 0.14s ease;
+}
+
+.history-item:hover {
+  border-color: #cbd5e1;
+  background: #f8fafc;
 }
 
 .history-item button:first-child {
@@ -3586,11 +3676,11 @@ button:disabled {
 }
 
 .home-visual-card--3d .home-tetrahedron-wrap {
-  transition: transform 180ms ease;
+  transition: none;
 }
 
 .home-visual-card--3d:hover .home-tetrahedron-wrap {
-  transform: translateY(-4px);
+  transform: none;
 }
 
 .home-tetrahedron-wrap {
@@ -3656,11 +3746,7 @@ button:disabled {
 .feature-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 1px;
-  overflow: hidden;
-  border: 1px solid #e5e7eb;
-  border-radius: 28px;
-  background: #e5e7eb;
+  gap: 12px;
 }
 
 .feature-card {
@@ -3669,6 +3755,9 @@ button:disabled {
   gap: 10px;
   padding: clamp(14px, 2.2vw, 22px);
   background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 18px;
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.04);
 }
 
 .feature-index {

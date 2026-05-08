@@ -8,6 +8,7 @@ from app.api.routes_ai_models import router as ai_models_router
 from app.api.routes_auth import router as auth_router
 from app.api.routes_diagram import router as diagram_router
 from app.api.routes_export import router as export_router
+from app.api.routes_feedback import router as feedback_router
 from app.api.routes_health import router as health_router
 from app.api.routes_history import router as history_router
 from app.api.routes_ocr import router as ocr_router
@@ -52,6 +53,7 @@ app.include_router(ocr_router)
 app.include_router(render_router)
 app.include_router(export_router)
 app.include_router(diagram_router)
+app.include_router(feedback_router)
 app.include_router(settings_router)
 app.include_router(user_settings_router)
 app.include_router(solve_router)

@@ -132,3 +132,17 @@ class AuditLogRecord:
     target_id: str | None
     metadata_json: str
     created_at: str
+
+
+@dataclass(frozen=True)
+class FeedbackRecord:
+    id: str
+    user_id: str
+    subject: str
+    message: str
+    status: str
+    created_at: str
+    updated_at: str
+    admin_note: str | None = None
+    resolved_at: str | None = None
+    resolved_by: str | None = None

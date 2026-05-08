@@ -47,6 +47,13 @@ GENERIC_LOGIN_ERROR = "Email hoặc mật khẩu không đúng."
 GENERIC_RESET_MESSAGE = "Nếu tài khoản tồn tại, hướng dẫn đặt lại mật khẩu đã được gửi."
 MAX_FAILED_LOGINS = 5
 LOCK_MINUTES = 15
+EMAIL_SEND_IP_LIMIT = 5
+EMAIL_SEND_EMAIL_LIMIT = 2
+EMAIL_SEND_WINDOW_SECONDS = 3600
+EMAIL_SEND_COOLDOWN_SECONDS = 120
+VERIFY_EMAIL_IP_LIMIT = 20
+VERIFY_EMAIL_TOKEN_LIMIT = 10
+VERIFY_EMAIL_WINDOW_SECONDS = 3600
 
 
 @router.post("/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_trusted_origin)])
@@ -59,11 +66,13 @@ async def register(
 ) -> AuthResponse:
     await enforce_rate_limit(db, f"auth:register:ip:{client_ip(raw_request)}", 10, 3600)
     await enforce_rate_limit(db, f"auth:register:email:{normalize_email(str(request.email))}", 3, 3600)
+    email = normalize_email(str(request.email))
     users = UserRepository(db)
-    if await users.find_by_email(str(request.email)):
+    if await users.find_by_email(email):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email này đã được đăng ký.")
+    await enforce_email_send_limit(db, client_ip(raw_request), email, "register")
     try:
-        user = await users.create(str(request.email), request.password)
+        user = await users.create(email, request.password)
     except IntegrityError as error:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email này đã được đăng ký.") from error
     if request.display_name:
@@ -237,8 +246,9 @@ async def me(
 @router.post("/forgot-password", response_model=MessageResponse)
 async def forgot_password(request: ForgotPasswordRequest, raw_request: Request, db: DatabaseClient = Depends(get_database), settings: Settings = Depends(get_settings)) -> MessageResponse:
     email = normalize_email(str(request.email))
-    await enforce_rate_limit(db, f"auth:forgot:ip:{client_ip(raw_request)}", 10, 3600)
-    await enforce_rate_limit(db, f"auth:forgot:email:{email}", 3, 3600)
+    await enforce_rate_limit(db, f"auth:forgot:ip:{client_ip(raw_request)}", EMAIL_SEND_IP_LIMIT, EMAIL_SEND_WINDOW_SECONDS)
+    await enforce_rate_limit(db, f"auth:forgot:email:{email}", EMAIL_SEND_EMAIL_LIMIT, EMAIL_SEND_WINDOW_SECONDS)
+    await enforce_rate_limit(db, f"auth:forgot:cooldown:email:{email}", 1, EMAIL_SEND_COOLDOWN_SECONDS)
     user = await UserRepository(db).find_by_email(email)
     if user and user.status == "active":
         _, token = await AuthTokenRepository(db).create(user.id, TOKEN_PURPOSE_PASSWORD_RESET, 60, client_ip(raw_request), raw_request.headers.get("user-agent"))
@@ -271,6 +281,8 @@ async def verify_email(
     db: DatabaseClient = Depends(get_database),
     settings: Settings = Depends(get_settings),
 ) -> AuthResponse:
+    await enforce_rate_limit(db, f"auth:verify-email:ip:{client_ip(raw_request)}", VERIFY_EMAIL_IP_LIMIT, VERIFY_EMAIL_WINDOW_SECONDS)
+    await enforce_rate_limit(db, f"auth:verify-email:token:{email_hash(request.token)}", VERIFY_EMAIL_TOKEN_LIMIT, VERIFY_EMAIL_WINDOW_SECONDS)
     tokens = AuthTokenRepository(db)
     token = await tokens.find_valid_by_token_and_otp(request.token, request.otp, TOKEN_PURPOSE_EMAIL_VERIFICATION)
     if token is None:
@@ -294,8 +306,9 @@ async def resend_verification(
     settings: Settings = Depends(get_settings),
 ) -> MessageResponse:
     email = normalize_email(str(request.email))
-    await enforce_rate_limit(db, f"auth:verify:ip:{client_ip(raw_request)}", 10, 3600)
-    await enforce_rate_limit(db, f"auth:verify:email:{email}", 3, 3600)
+    await enforce_rate_limit(db, f"auth:verify:ip:{client_ip(raw_request)}", EMAIL_SEND_IP_LIMIT, EMAIL_SEND_WINDOW_SECONDS)
+    await enforce_rate_limit(db, f"auth:verify:email:{email}", EMAIL_SEND_EMAIL_LIMIT, EMAIL_SEND_WINDOW_SECONDS)
+    await enforce_rate_limit(db, f"auth:verify:cooldown:email:{email}", 1, EMAIL_SEND_COOLDOWN_SECONDS)
     user = await UserRepository(db).find_by_email(email)
     if user and user.status == "active" and user.email_verified_at is None:
         _, token, otp = await AuthTokenRepository(db).create(user.id, TOKEN_PURPOSE_EMAIL_VERIFICATION, 24 * 60, client_ip(raw_request), raw_request.headers.get("user-agent"), include_otp=True)
@@ -426,6 +439,12 @@ async def enforce_rate_limit(db: DatabaseClient, key: str, limit: int, window_se
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail={"message": "Quá nhiều yêu cầu. Hãy thử lại sau.", "retry_after_seconds": result.retry_after_seconds},
         )
+
+
+async def enforce_email_send_limit(db: DatabaseClient, ip: str, email: str, action: str) -> None:
+    await enforce_rate_limit(db, f"auth:email-send:{action}:ip:{ip}", EMAIL_SEND_IP_LIMIT, EMAIL_SEND_WINDOW_SECONDS)
+    await enforce_rate_limit(db, f"auth:email-send:{action}:email:{email}", EMAIL_SEND_EMAIL_LIMIT, EMAIL_SEND_WINDOW_SECONDS)
+    await enforce_rate_limit(db, f"auth:email-send:{action}:cooldown:email:{email}", 1, EMAIL_SEND_COOLDOWN_SECONDS)
 
 
 async def audit(

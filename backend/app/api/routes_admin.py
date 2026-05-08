@@ -8,6 +8,7 @@ from app.api.routes_history import parse_json_object
 from app.db.models import UserRecord
 from app.db.session import DatabaseClient, get_database
 from app.repositories.admin import AdminRepository
+from app.repositories.feedback import FeedbackRepository
 from app.schemas.auth import (
     AdminRenderHistoryDetail,
     AdminRenderHistoryItem,
@@ -24,6 +25,7 @@ from app.schemas.auth import (
     SystemSettingResponse,
     UserResponse,
 )
+from app.schemas.feedback import AdminFeedbackResponse, AdminFeedbackUpdateRequest
 from app.schemas.scene import MathScene, ModelScanRequest, RenderPayload
 from app.services.admin_settings import build_database_diagnostics, sync_ai_settings_to_registry
 from app.services.model_registry import resolve_effective_settings
@@ -152,6 +154,65 @@ async def admin_delete_render_job(job_id: str, admin: UserRecord = Depends(requi
     repo = AdminRepository(db)
     await repo.delete_render_job(job_id)
     await repo.audit(admin.id, "admin.render_job.delete", "render_job", job_id)
+
+
+@router.get("/feedback", response_model=list[AdminFeedbackResponse])
+async def admin_feedback(
+    status_filter: str | None = Query(default=None, alias="status", max_length=32),
+    user_id: str | None = Query(default=None, max_length=128),
+    q: str | None = Query(default=None, max_length=256),
+    _: UserRecord = Depends(require_admin_user),
+    db: DatabaseClient = Depends(get_database),
+) -> list[AdminFeedbackResponse]:
+    if status_filter and status_filter not in {"pending", "received", "accepted"}:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Trạng thái góp ý không hợp lệ.")
+    items = await FeedbackRepository(db).list_admin(status_filter, user_id, q)
+    return [
+        AdminFeedbackResponse(
+            id=item.id,
+            user_id=item.user_id,
+            user_email=user_email,
+            subject=item.subject,
+            message=item.message,
+            status=item.status,  # type: ignore[arg-type]
+            admin_note=item.admin_note,
+            created_at=item.created_at,
+            updated_at=item.updated_at,
+            resolved_at=item.resolved_at,
+            resolved_by=item.resolved_by,
+        )
+        for item, user_email in items
+    ]
+
+
+@router.patch("/feedback/{feedback_id}", response_model=AdminFeedbackResponse, dependencies=[Depends(require_trusted_origin)])
+async def admin_update_feedback(
+    feedback_id: str,
+    request: AdminFeedbackUpdateRequest,
+    http_request: Request,
+    admin: UserRecord = Depends(require_admin_user),
+    db: DatabaseClient = Depends(get_database),
+) -> AdminFeedbackResponse:
+    await enforce_rate_limit(db, http_request, admin, "admin_feedback_update", 60, 60)
+    repo = FeedbackRepository(db)
+    item = await repo.mark_status(feedback_id, request.status, admin.id, request.admin_note)
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy góp ý.")
+    await AdminRepository(db).audit(admin.id, f"admin.feedback.{request.status}", "feedback", feedback_id, {"status": request.status})
+    user = await AdminRepository(db).find_user(item.user_id)
+    return AdminFeedbackResponse(
+        id=item.id,
+        user_id=item.user_id,
+        user_email=user.email if user else None,
+        subject=item.subject,
+        message=item.message,
+        status=item.status,  # type: ignore[arg-type]
+        admin_note=item.admin_note,
+        created_at=item.created_at,
+        updated_at=item.updated_at,
+        resolved_at=item.resolved_at,
+        resolved_by=item.resolved_by,
+    )
 
 
 @router.get("/system-settings", response_model=list[SystemSettingResponse])
