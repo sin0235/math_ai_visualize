@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 from app.core.config import Settings, get_settings
 from app.db.migrations import apply_sqlite_migrations
+from app.api.deps import require_active_user
 from app.db.session import SQLiteClient, get_database
 from app.repositories.auth import SESSION_COOKIE_NAME, SessionRepository, UserRepository
 from app.main import app
@@ -20,12 +21,17 @@ def isolated_database(tmp_path):
     db = SQLiteClient(str(tmp_path / "ocr.db"))
     asyncio.run(apply_sqlite_migrations(db))
     settings = Settings(_env_file=None, sqlite_path=db.path)
+    user = asyncio.run(UserRepository(db).create("ocr@example.com", "StrongPass123"))
 
     async def override_db():
         return db
 
+    async def override_user():
+        return user
+
     app.dependency_overrides[get_database] = override_db
     app.dependency_overrides[get_settings] = lambda: settings
+    app.dependency_overrides[require_active_user] = override_user
     try:
         yield db
     finally:
@@ -214,7 +220,7 @@ def test_ocr_router9_only_rejects_openrouter_provider():
     )
 
     assert response.status_code == 400
-    assert "9router-only" in response.json()["detail"]
+    assert "9router-only" in response.json()["detail"]["message"]
 
 
 def test_ocr_openrouter_fallback_reports_actual_model(monkeypatch):
@@ -263,7 +269,7 @@ def test_ocr_explicit_model_does_not_try_fallback_model(monkeypatch):
     )
 
     assert response.status_code == 400
-    assert "vision/model" in response.json()["detail"]
+    assert "vision/model" in response.json()["detail"]["message"]
     assert calls == ["vision/model"]
 
 
@@ -272,17 +278,17 @@ def test_ocr_enforces_daily_plan_limit(isolated_database, monkeypatch):
         return "Đề từ OCR."
 
     async def seed_user_and_plan():
-        user = await UserRepository(isolated_database).create("quota@example.com", "StrongPass123")
-        session, token = await SessionRepository(isolated_database).create(user.id)
+        user_row = await isolated_database.fetch_one("SELECT * FROM users WHERE email = ?", ["ocr@example.com"])
+        assert user_row is not None
         await isolated_database.execute(
             "INSERT INTO system_settings (key, value_json) VALUES (?, ?)",
             ['plan_settings', '{"version":1,"plans":{"free":{"daily_render_limit":20,"daily_ocr_limit":1}}}'],
         )
         await isolated_database.execute(
             "INSERT INTO usage_events (id, user_id, event_type) VALUES (?, ?, ?)",
-            ["used-ocr", user.id, "ocr"],
+            ["used-ocr", user_row["id"], "ocr"],
         )
-        return token
+        return "unused-token"
 
     monkeypatch.setattr("app.services.openrouter_client.OpenRouterClient.ocr_image", fake_ocr_image)
     token = asyncio.run(seed_user_and_plan())
@@ -298,7 +304,10 @@ def test_ocr_enforces_daily_plan_limit(isolated_database, monkeypatch):
     )
 
     assert response.status_code == 429
-    assert "hạn mức OCR" in response.json()["detail"]
+    detail = response.json()["detail"]
+    assert detail["code"] == "QUOTA_EXCEEDED"
+    assert "hạn mức OCR" in detail["debug_message"]
+    assert detail["suggestions"]
 
 
 def test_openrouter_ocr_payload_uses_vision_message(monkeypatch):

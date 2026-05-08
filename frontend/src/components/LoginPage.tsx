@@ -8,7 +8,7 @@ interface LoginPageProps {
   logoUrl: string;
   user: UserResponse | null;
   authLoading: boolean;
-  onContinueAsGuest: () => void;
+  onOpenWorkspace: () => void;
   onToast: (title: string, message: string, kind?: ToastKind) => void;
   onLogin: (email: string, password: string) => Promise<void>;
   onGoogleLogin: () => void;
@@ -22,7 +22,7 @@ interface LoginPageProps {
 
 type AuthMode = 'login' | 'register' | 'forgot';
 
-export function LoginPage({ logoUrl, user, authLoading, onContinueAsGuest, onToast, onLogin, onGoogleLogin, onRegister, onForgotPassword, onLogout, onOpenAccount, onOpenPrivacyPolicy, onOpenTerms }: LoginPageProps) {
+export function LoginPage({ logoUrl, user, authLoading, onOpenWorkspace, onToast, onLogin, onGoogleLogin, onRegister, onForgotPassword, onLogout, onOpenAccount, onOpenPrivacyPolicy, onOpenTerms }: LoginPageProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -115,7 +115,7 @@ export function LoginPage({ logoUrl, user, authLoading, onContinueAsGuest, onToa
               <p className="field-hint">Bạn đang đăng nhập bằng <strong>{user.email}</strong>. {user.email_verified_at ? 'Email đã được xác minh.' : 'Email chưa được xác minh.'}</p>
               <div className="auth-actions">
                 <button type="button" onClick={onOpenAccount}>Quản lý tài khoản</button>
-                <button type="button" className="secondary-button" onClick={onContinueAsGuest}>Vào workspace</button>
+                <button type="button" className="secondary-button" onClick={onOpenWorkspace}>Vào workspace</button>
                 <button type="button" className="secondary-button" onClick={onLogout} disabled={authLoading}>Đăng xuất</button>
               </div>
             </>
@@ -182,7 +182,6 @@ export function LoginPage({ logoUrl, user, authLoading, onContinueAsGuest, onToa
                 </div>
               )}
               <button type="submit" className="auth-primary-button" disabled={authLoading}>{authLoading ? 'Đang xử lý...' : mode === 'login' ? 'Đăng nhập' : mode === 'register' ? 'Tạo tài khoản' : 'Gửi hướng dẫn'}</button>
-              <button type="button" className="auth-guest-button" onClick={onContinueAsGuest}>Tiếp tục không cần đăng nhập</button>
               <div className="auth-secondary-links">
                 {mode === 'login' && (
                   <span>Chưa có tài khoản? <button type="button" onClick={() => switchMode('register')}>Tạo tài khoản</button></span>

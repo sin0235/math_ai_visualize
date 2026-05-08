@@ -9,45 +9,39 @@ export interface HomeBackendStatus {
 interface HomePageProps {
   logoUrl: string;
   backendStatus: HomeBackendStatus;
-  onStartRender: () => void;
-  onOpenSettings: () => void;
   onOpenLogin: () => void;
 }
 
 const features = [
-  { title: 'Nhập đề tự nhiên', text: 'Viết đề bài toán như cách học sinh đọc đề, hệ thống sẽ chuyển thành scene hình học có cấu trúc.' },
-  { title: 'OCR ảnh đề bài', text: 'Tải ảnh, kéo thả hoặc dán ảnh từ clipboard để trích xuất nội dung đề nhanh hơn.' },
-  { title: 'Render 2D/3D', text: 'Dùng GeoGebra cho Oxy, đồ thị hàm số và Three.js cho hình học không gian sinh động.' },
-  { title: 'PDF → Word', text: 'Chuyển PDF sang Word theo cấu trúc đề trắc nghiệm. Thầy cô liên hệ support@sin-studio.tech để được hỗ trợ cài đặt miễn phí.' },
+  { title: 'Nhận diện đề bài thông minh', text: 'Trích xuất tự động giả thiết hình học và toán học từ văn bản tự nhiên, hình ảnh hoặc tài liệu bằng AI đa mô hình.' },
+  { title: 'Mô phỏng trực quan 2D/3D', text: 'Hiển thị sinh động qua GeoGebra và Three.js. Hỗ trợ toàn diện hình học phẳng, không gian Oxyz và đồ thị hàm số.' },
+  { title: 'Phân tích & Giải toán', text: 'Hệ thống tích hợp công cụ CAS và bộ máy suy luận hình học giúp phân tích từng bước và cung cấp lời giải chính xác.' },
+  { title: 'Xuất bản chuẩn học thuật', text: 'Hỗ trợ trích xuất hình vẽ chất lượng cao sang định dạng mã TikZ (LaTeX), nhúng GeoGebra hoặc kết xuất PDF.' },
 ];
 
-const trustSignals = ['Dành cho giáo viên và học sinh THPT', 'Hỗ trợ Oxy/Oxyz', 'Xuất GeoGebra/Three.js'];
+const trustSignals = ['Tích hợp AI Đa mô hình', 'Hệ thống Giải toán Tự động', 'Đồ họa tương tác Oxyz'];
 
 const learningOutcomes = [
-  { value: '1 phút', label: 'từ đề bài sang hình minh họa' },
-  { value: '2D/3D', label: 'GeoGebra và Three.js trong cùng luồng' },
-  { value: 'OCR', label: 'dán ảnh đề và dựng lại ngay' },
+  { value: 'Nhanh chóng', label: 'Tự động hóa phân tích đề và dựng hình.' },
+  { value: 'Trực quan', label: 'Tương tác linh hoạt với không gian 2D, 3D.' },
+  { value: 'Chuẩn học thuật', label: 'Tối ưu quy trình biên soạn tài liệu giảng dạy.' },
 ];
 
-export function HomePage({ onStartRender, onOpenSettings, onOpenLogin }: HomePageProps) {
+export function HomePage({ onOpenLogin }: HomePageProps) {
   return (
     <section className="home-page">
       <div className="home-hero">
         <div className="home-hero-copy">
-          <h2>Dựng hình toán học đẹp, nhanh và dễ kiểm soát.</h2>
+          <h2>Giải pháp AI toàn diện cho số hóa hình học và toán học.</h2>
           <p>
-            Biến đề bài tiếng Việt, ảnh chụp hoặc dữ liệu tọa độ thành hình vẽ GeoGebra và Three.js.
-            Phù hợp để học hình học 10-12, kiểm tra mô hình Oxy/Oxyz và tinh chỉnh trực quan.
+            Chuyển đổi bài toán từ văn bản và hình ảnh thành mô hình đồ họa tương tác.
+            Nền tảng đột phá giúp đơn giản hóa việc dựng hình, khảo sát hàm số và biên soạn tài liệu sư phạm chuyên sâu.
           </p>
-          <div className="home-actions">
-            <button type="button" onClick={onStartRender}>Dùng thử miễn phí — không cần tài khoản</button>
-            <button type="button" className="secondary-button" onClick={onOpenSettings}>Tùy chỉnh trải nghiệm</button>
-          </div>
           <div className="home-trust-strip" aria-label="Điểm nổi bật">
             {trustSignals.map((item) => <span key={item}>{item}</span>)}
           </div>
-          <button type="button" className="home-login-link" onClick={onOpenLogin}>Đã có tài khoản? Đăng nhập để đồng bộ lịch sử.</button>
-          <div className="home-outcome-strip" aria-label="Kết quả học tập">
+          <button type="button" className="home-login-link" onClick={onOpenLogin}>Đăng nhập để đồng bộ dữ liệu và trải nghiệm đầy đủ tính năng.</button>
+          <div className="home-outcome-strip" aria-label="Giá trị cốt lõi">
             {learningOutcomes.map((item) => (
               <div key={item.value}>
                 <strong>{item.value}</strong>

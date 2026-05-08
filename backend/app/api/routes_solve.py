@@ -7,10 +7,10 @@ API routes for:
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from app.api.deps import require_trusted_origin
+from app.api.deps import enforce_rate_limit, require_active_user, require_trusted_origin
 from app.core.config import get_settings, merge_runtime_settings
 from app.schemas.scene import MAX_IMAGE_DATA_URL_CHARS, MAX_PROBLEM_TEXT_CHARS, RuntimeSettings
 from app.services.function_analyzer import analyze_function
@@ -18,7 +18,9 @@ from app.services.function_graph_builder import build_function_graph
 from app.services.ocr import extract_text_from_image
 from app.services.openrouter_client import _build_headers as _build_openrouter_headers, _extract_message as _extract_openrouter_message
 from app.services.router9_client import Router9Client, _extract_message_content as _extract_router9_message_content
+from app.db.models import UserRecord
 from app.db.session import DatabaseClient, get_database
+from app.services.api_errors import api_error, bad_request_from_error
 from app.services.model_registry import resolve_effective_settings
 from app.services.solver_explainer import explain_solver_result
 from app.services.solver_service import solve
@@ -122,14 +124,20 @@ class AnalyzeResponse(BaseModel):
 
 
 @router.post("/solve", response_model=SolveResponse, dependencies=[Depends(require_trusted_origin)])
-async def solve_problem(request: SolveRequest, db: DatabaseClient = Depends(get_database)) -> SolveResponse:
+async def solve_problem(
+    request: SolveRequest,
+    http_request: Request,
+    user: UserRecord = Depends(require_active_user),
+    db: DatabaseClient = Depends(get_database),
+) -> SolveResponse:
+    await enforce_rate_limit(db, http_request, user, "solve", 30 if user else 10, 60)
     try:
         result = solve(request.scene, request.question)
         settings = await resolve_effective_settings(db, request.runtime_settings)
         if settings.router9_api_key or settings.openrouter_api_key:
             result = await explain_solver_result(result, request.scene, settings)
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Lỗi khi giải toán: {e}") from e
+        raise bad_request_from_error(e, "solve_failed") from e
 
     return SolveResponse(
         question=result.question,
@@ -161,7 +169,7 @@ async def analyze_function_endpoint(request: AnalyzeRequest) -> AnalyzeResponse:
             scene, data["geogebra_commands"], data["graph_points"] = build_function_graph(data)
             data["graph_scene"] = scene.model_dump(mode="json")
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Lỗi khi phân tích hàm số: {e}") from e
+        raise api_error(400, f"Lỗi khi phân tích hàm số: {e}", "ANALYZE_FAILED") from e
 
     return _analysis_response(request.expression, data)
 
@@ -182,7 +190,7 @@ async def analyze_from_ocr(request: AnalyzeOcrRequest) -> AnalyzeResponse:
         data["ocr_expression"] = expression
         data["warnings"] = [*data.get("warnings", []), *ocr_result.warnings]
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Lỗi khi phân tích ảnh: {e}") from e
+        raise api_error(400, f"Lỗi khi phân tích ảnh: {e}", "ANALYZE_OCR_FAILED") from e
 
     return _analysis_response(expression, data)
 

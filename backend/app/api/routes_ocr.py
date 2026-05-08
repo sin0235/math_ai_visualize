@@ -1,13 +1,14 @@
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
-from app.api.deps import get_optional_current_user, require_trusted_origin
+from app.api.deps import enforce_rate_limit, require_active_user, require_trusted_origin
 from app.db.models import UserRecord
 from app.db.session import DatabaseClient, get_database
 from app.repositories.admin import AdminRepository
 from app.schemas.auth import SystemFeatureFlags
 from app.schemas.scene import OcrRequest, OcrResponse
+from app.services.api_errors import api_error, bad_request_from_error
 from app.services.model_registry import resolve_effective_settings
 from app.services.ocr import extract_text_from_image
 from app.services.system_settings import load_feature_flags, load_plan_settings
@@ -18,9 +19,11 @@ router = APIRouter(prefix="/api", tags=["ocr"])
 @router.post("/ocr", response_model=OcrResponse, dependencies=[Depends(require_trusted_origin)])
 async def ocr_image(
     request: OcrRequest,
-    user: UserRecord | None = Depends(get_optional_current_user),
+    http_request: Request,
+    user: UserRecord = Depends(require_active_user),
     db: DatabaseClient = Depends(get_database),
 ) -> OcrResponse:
+    await enforce_rate_limit(db, http_request, user, "ocr", 12 if user else 4, 60)
     await enforce_ocr_access(db, user)
     settings = await resolve_effective_settings(db, request.runtime_settings)
     try:
@@ -31,7 +34,7 @@ async def ocr_image(
             request.ocr_model,
         )
     except (RuntimeError, ValueError) as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
+        raise bad_request_from_error(error, "ocr_failed") from error
     if user is not None:
         await AdminRepository(db).record_user_usage_event(user.id, "ocr", {"provider": result.provider, "model": result.model})
     return OcrResponse(text=result.text, provider=result.provider, model=result.model, warnings=result.warnings)
@@ -49,14 +52,14 @@ async def enforce_ocr_access(db: DatabaseClient, user: UserRecord | None) -> Non
     since = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
     used = await AdminRepository(db).count_user_usage_events_since(user.id, "ocr", since)
     if used >= quota.daily_ocr_limit:
-        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Bạn đã dùng hết hạn mức OCR hôm nay.")
+        raise api_error(status.HTTP_429_TOO_MANY_REQUESTS, "Bạn đã dùng hết hạn mức OCR hôm nay.", "QUOTA_EXCEEDED")
 
 
 def enforce_enabled(flags: SystemFeatureFlags) -> None:
     if flags.maintenance_mode:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=flags.maintenance_message)
+        raise api_error(status.HTTP_503_SERVICE_UNAVAILABLE, flags.maintenance_message, "PROVIDER_UNAVAILABLE")
     if not flags.ocr_enabled:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Tính năng OCR đang tạm tắt.")
+        raise api_error(status.HTTP_403_FORBIDDEN, "Tính năng OCR đang tạm tắt.", "OCR_DISABLED")
 
 
 def sanitize_public_runtime_settings(runtime_settings: object):

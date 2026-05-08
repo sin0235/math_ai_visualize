@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AdminConsole } from './components/admin/AdminConsole';
 import { ApiError, changePassword, deleteRenderHistory, forgotPassword, getCurrentUser, getGoogleOAuthStartUrl, getHealth, getRenderHistory, getRenderHistoryDetail, getSessions, getSettingsDefaults, getUserSettings, login, logout, ocrImage, register, renderEditedScene, renderProblem, resendVerification, resetPassword, revokeOtherSessions, revokeSession, saveUserSettings, updateProfile, verifyEmail, type AdminRenderHistoryDetail, type RenderHistoryItem, type SessionResponse, type UserResponse } from './api/client';
 import { defaultAdvancedSettings, ProblemInput, type ModelOption } from './components/ProblemInput';
@@ -14,6 +14,10 @@ import { PrivacyPolicyPage, TermsPage } from './components/LegalPages';
 import { SolverPanel } from './components/SolverPanel';
 import { FunctionAnalyzerPanel } from './components/FunctionAnalyzerPanel';
 import { KatexSpan } from './components/KatexSpan';
+import { ParameterSliders } from './components/ParameterSliders';
+import { ExportMenu } from './components/ExportMenu';
+import { DiagramTools } from './components/DiagramTools';
+import { getDefaultParamValues, patchGeogebraCommandsForScene, recomputeSceneWithParameters, recomputeThreeScene } from './utils/sceneParameters';
 import type { AdvancedRenderSettings, MathScene, RenderResponse, Renderer } from './types/scene';
 import { defaultRuntimeSettings, SETTINGS_STORAGE_VERSION, type OcrProvider, type RuntimeSettings, type SettingsDefaults, type UserBasicSettings } from './types/settings';
 import logoUrl from '../img.svg';
@@ -34,6 +38,11 @@ type Notification = {
   title: string;
   message: string;
   details: string[];
+  action?: {
+    label: string;
+    href?: string;
+    onClick?: () => void;
+  };
 };
 type BackendStatus = {
   state: 'checking' | 'online' | 'offline';
@@ -103,6 +112,7 @@ function FooterNavMailLink({
 export default function App() {
   const [activeView, setActiveView] = useState<AppView>(() => pathToView(window.location.pathname));
   const [result, setResult] = useState<RenderResponse | null>(null);
+  const [paramValues, setParamValues] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(false);
   const [editorSaving, setEditorSaving] = useState(false);
   const [ocrLoading, setOcrLoading] = useState(false);
@@ -115,7 +125,7 @@ export default function App() {
   const [runtimeSettings, setRuntimeSettings] = useState<RuntimeSettings>(defaultRuntimeSettings);
   const [settingsDefaults, setSettingsDefaults] = useState<SettingsDefaults | null>(null);
   const [backendStatus, setBackendStatus] = useState<BackendStatus>({ state: 'checking' });
-  const [notification, setNotification] = useState<Notification | null>(null);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [mobileWarningDismissed, setMobileWarningDismissed] = useState(readMobileWarningDismissed);
   const [sceneEditorOpen, setSceneEditorOpen] = useState(false);
   const [sidebarTool, setSidebarTool] = useState<'input' | 'solver'>('input');
@@ -130,7 +140,6 @@ export default function App() {
   const [remoteSettingsHydrated, setRemoteSettingsHydrated] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [toolsMenuOpen, setToolsMenuOpen] = useState(false);
-  const [pdfWordPopupOpen, setPdfWordPopupOpen] = useState(false);
   const resultAnchorRef = useRef<HTMLDivElement | null>(null);
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
   const toolsMenuRef = useRef<HTMLDivElement | null>(null);
@@ -268,10 +277,10 @@ export default function App() {
   }, [runtimeSettings, user, remoteSettingsHydrated]);
 
   useEffect(() => {
-    if (!notification) return;
-    const timer = window.setTimeout(() => setNotification(null), 5000);
-    return () => window.clearTimeout(timer);
-  }, [notification]);
+    if (notifications.length === 0) return;
+    const timers = notifications.map((item) => window.setTimeout(() => dismissNotification(item.id), 10000));
+    return () => timers.forEach(window.clearTimeout);
+  }, [notifications]);
 
   useEffect(() => {
     setEditorButtonTop(clamp(window.innerHeight * 0.55, 84, window.innerHeight - 88));
@@ -281,8 +290,29 @@ export default function App() {
     if (sidebarTool !== 'solver') setHighlightedObjects([]);
   }, [sidebarTool]);
 
+  // Reset slider values khi scene mới được dựng
+  useEffect(() => {
+    setParamValues(getDefaultParamValues(result?.scene.parameters));
+  }, [result?.scene]);
+
+  // Tạo result đã được recompute theo paramValues. Khi không có parameters, trả result gốc.
+  const effectiveResult = useMemo<RenderResponse | null>(() => {
+    if (!result) return null;
+    const params = result.scene.parameters;
+    if (!params || params.length === 0) return result;
+    const recomputedScene = recomputeSceneWithParameters(result.scene, paramValues);
+    let payload = result.payload;
+    if (payload.three_scene) {
+      payload = { ...payload, three_scene: recomputeThreeScene(payload.three_scene, recomputedScene) };
+    }
+    if (payload.geogebra_commands && payload.geogebra_commands.length > 0) {
+      payload = { ...payload, geogebra_commands: patchGeogebraCommandsForScene(payload.geogebra_commands, recomputedScene) };
+    }
+    return { ...result, scene: recomputedScene, payload };
+  }, [result, paramValues]);
+
   const modelOptions = buildModelOptions(runtimeSettings, settingsDefaults);
-  const threeInteraction = result?.scene.renderer === 'threejs_3d'
+  const threeInteraction = effectiveResult?.scene.renderer === 'threejs_3d'
     ? {
         mode: editTool,
         selectedPoint: pointToSegmentSource,
@@ -320,6 +350,11 @@ export default function App() {
   }
 
   async function handleOcrImage(file: File) {
+    if (!user) {
+      showNotification('Cần đăng nhập', 'Vui lòng đăng nhập trước khi dùng OCR.', [], 'warning');
+      navigateTo('login');
+      return;
+    }
     if (settingsDefaults?.router9.only_mode && settingsDefaults.router9.allowed_model_ids.length === 0 && !settingsDefaults.router9.model) {
       const message = '9router-only đang bật nhưng admin chưa cấu hình model OCR khả dụng.';
       showNotification('OCR thất bại', message);
@@ -357,6 +392,11 @@ export default function App() {
     advancedSettings?: AdvancedRenderSettings,
     preferredRenderer?: Renderer,
   ) {
+    if (!user) {
+      showNotification('Cần đăng nhập', 'Vui lòng đăng nhập trước khi dựng hình.', [], 'warning');
+      navigateTo('login');
+      return;
+    }
     setLoading(true);
     setPointToSegmentSource(null);
     setEditTool('move');
@@ -579,10 +619,12 @@ export default function App() {
       ...result.scene,
       objects: result.scene.objects.map((obj) => {
         if ((obj.type === 'point_2d' || obj.type === 'point_3d') && obj.name === name) {
+          // Khi user tự kéo điểm, xoá biểu thức tham số (nếu có) cho điểm đó
+          // vì giá trị mới do user đặt thủ công, không còn phụ thuộc tham số.
           if (obj.type === 'point_3d') {
-            return { ...obj, x: round(point.x), y: round(point.y), z: round(point.z) };
+            return { ...obj, x: round(point.x), y: round(point.y), z: round(point.z), x_expr: null, y_expr: null, z_expr: null };
           }
-          return { ...obj, x: round(point.x), y: round(point.y) };
+          return { ...obj, x: round(point.x), y: round(point.y), x_expr: null, y_expr: null };
         }
         return obj;
       }),
@@ -590,8 +632,13 @@ export default function App() {
     await handleSceneEdit(editedScene);
   }
 
-  function showNotification(title: string, message: string, details: string[] = [], kind: Notification['kind'] = 'error') {
-    setNotification({ id: Date.now(), kind, title, message: friendlyMessage(message), details: friendlyDetails(details) });
+  function showNotification(title: string, message: string, details: string[] = [], kind: Notification['kind'] = 'error', action?: Notification['action']) {
+    const id = Date.now() + Math.floor(Math.random() * 1000);
+    setNotifications((current) => [...current.slice(-2), { id, kind, title, message: friendlyMessage(message), details: friendlyDetails(details), action }]);
+  }
+
+  function dismissNotification(id: number) {
+    setNotifications((current) => current.filter((item) => item.id !== id));
   }
 
   function showApiError(title: string, error: ApiError, fallbackSuggestion: string) {
@@ -705,7 +752,7 @@ export default function App() {
     if (user?.role === 'admin') {
       return (
         <>
-          <NotificationBanner notification={notification} onDismiss={() => setNotification(null)} />
+          <NotificationStack notifications={notifications} onDismiss={dismissNotification} />
           <AdminConsole
             user={user}
             onBackToApp={() => navigateTo('home')}
@@ -717,7 +764,7 @@ export default function App() {
 
     return (
       <>
-        <NotificationBanner notification={notification} onDismiss={() => setNotification(null)} />
+        <NotificationStack notifications={notifications} onDismiss={dismissNotification} />
         <AccessDeniedPage user={user} onHome={() => navigateTo('home')} onLogin={() => navigateTo('login')} />
       </>
     );
@@ -769,7 +816,13 @@ export default function App() {
                 </button>
                 <button type="button" role="menuitem" onClick={() => {
                   setToolsMenuOpen(false);
-                  setPdfWordPopupOpen(true);
+                  showNotification(
+                    'PDF → Word chuẩn đề trắc nghiệm',
+                    'Chức năng này cần GPU nên tạm chưa deploy trực tiếp. Hãy gửi mail để được hỗ trợ cài đặt miễn phí.',
+                    ['Khuyến khích để lại Zalo, email hoặc Facebook để em hỗ trợ nhanh hơn.', CONTACT_EMAIL],
+                    'info',
+                    { label: 'Chuyển tới Mail', href: `mailto:${CONTACT_EMAIL}?subject=Hỗ trợ cài đặt PDF sang Word&body=Em/chào bạn,%0D%0A%0D%0AMình cần hỗ trợ cài đặt chức năng PDF sang Word chuẩn cấu trúc đề trắc nghiệm.%0D%0A%0D%0AThông tin liên hệ:%0D%0A- Zalo:%0D%0A- Email/Facebook:%0D%0A%0D%0AXin cảm ơn.` },
+                  );
                 }}>
                   <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path><path d="M8 13h8"></path><path d="M8 17h5"></path></svg>
                   <span><strong>PDF → Word</strong><small>Chuẩn cấu trúc đề trắc nghiệm</small></span>
@@ -840,26 +893,7 @@ export default function App() {
         </nav>
       </header>
 
-      <NotificationBanner notification={notification} onDismiss={() => setNotification(null)} />
-      {pdfWordPopupOpen && (
-        <div className="pdf-word-modal-backdrop" role="presentation" onClick={() => setPdfWordPopupOpen(false)}>
-          <div className="pdf-word-modal" role="dialog" aria-modal="true" aria-labelledby="pdf-word-modal-title" onClick={(event) => event.stopPropagation()}>
-            <h2 id="pdf-word-modal-title">PDF → Word chuẩn đề trắc nghiệm</h2>
-            <p>
-              Do chức năng này cần sử dụng GPU mới chạy ổn nên tạm chưa thể deploy để thầy cô sử dụng trực tiếp.
-              Quý thầy cô vui lòng bấm nút Chuyển để được tự động chuyển đến Mail/Outlook, sau đó gửi mail đến địa chỉ bên dưới và để lại liên hệ.
-            </p>
-            <p>
-              Khuyến khích để lại Zalo, hoặc mail/Facebook để em hỗ trợ cài đặt hoàn toàn miễn phí.
-            </p>
-            <div className="pdf-word-modal-email">{CONTACT_EMAIL}</div>
-            <div className="pdf-word-modal-actions">
-              <a className="pdf-word-modal-primary" href={`mailto:${CONTACT_EMAIL}?subject=Hỗ trợ cài đặt PDF sang Word&body=Em/chào bạn,%0D%0A%0D%0AMình cần hỗ trợ cài đặt chức năng PDF sang Word chuẩn cấu trúc đề trắc nghiệm.%0D%0A%0D%0AThông tin liên hệ:%0D%0A- Zalo:%0D%0A- Email/Facebook:%0D%0A%0D%0AXin cảm ơn.`}>Chuyển</a>
-              <button type="button" onClick={() => setPdfWordPopupOpen(false)}>Để sau</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <NotificationStack notifications={notifications} onDismiss={dismissNotification} />
       {activeView === 'render' && <MobileRendererWarning dismissed={mobileWarningDismissed} onDismiss={dismissMobileWarning} />}
 
       <main className="app-shell">
@@ -867,8 +901,6 @@ export default function App() {
           <HomePage
             logoUrl={logoUrl}
             backendStatus={{ ...backendStatus, settingsDefaults }}
-            onStartRender={() => navigateTo('render')}
-            onOpenSettings={() => navigateTo('settings')}
             onOpenLogin={() => navigateTo('login')}
           />
         )}
@@ -879,7 +911,18 @@ export default function App() {
                 <button type="button" className={sidebarTool === 'input' ? 'active' : ''} onClick={() => setSidebarTool('input')} role="tab" aria-selected={sidebarTool === 'input'}>
                   Mô tả hình
                 </button>
-                <button type="button" className={sidebarTool === 'solver' ? 'active' : ''} onClick={() => setSidebarTool('solver')} role="tab" aria-selected={sidebarTool === 'solver'} disabled={!result?.scene}>
+                <button
+                  type="button"
+                  className={sidebarTool === 'solver' ? 'active' : ''}
+                  onClick={() => {
+                    if (!result?.scene) return;
+                    setSidebarTool('solver');
+                  }}
+                  role="tab"
+                  aria-selected={sidebarTool === 'solver'}
+                  aria-disabled={!result?.scene}
+                  title={!result?.scene ? 'Hãy dựng hình trước' : undefined}
+                >
                   Giải từng bước
                 </button>
               </div>
@@ -907,19 +950,46 @@ export default function App() {
                     </div>
                   )}
                 </>
-              ) : result?.scene && result.scene.renderer === 'threejs_3d' ? (
-                <SolverPanel scene={result.scene} runtimeSettings={runtimeSettings} onHighlight={setHighlightedObjects} />
+              ) : effectiveResult?.scene && user ? (
+                <SolverPanel scene={effectiveResult.scene} runtimeSettings={runtimeSettings} onHighlight={setHighlightedObjects} />
               ) : (
                 <div className="solver-disabled-state">
                   <strong>Chưa thể giải từng bước</strong>
-                  <p>{result?.scene ? 'Giải hình không gian từng bước chỉ bật cho hình 3D.' : 'Hãy dựng hình xong trước, sau đó mở tab Giải từng bước.'}</p>
+                  <p>{!user ? 'Vui lòng đăng nhập để dùng giải từng bước.' : 'Hãy dựng hình xong trước, sau đó mở tab Giải từng bước.'}</p>
                 </div>
               )}
             </div>
             {result && <button type="button" className="mobile-scroll-notice" onClick={scrollToResult}>↓ Xem hình vừa dựng</button>}
             <div className="result-area" ref={resultAnchorRef}>
+              {effectiveResult?.scene && (
+                <div className="result-area-toolbar">
+                  <ExportMenu
+                    scene={effectiveResult.scene}
+                    advancedSettings={lastAdvancedSettings}
+                    onError={(msg) => showNotification('Xuất hình thất bại', msg, [], 'error')}
+                  />
+                </div>
+              )}
+              <DiagramTools
+                scene={effectiveResult?.scene ?? null}
+                originalProblem={problemText}
+                runtimeSettings={runtimeSettings}
+                onDiagramRecognized={(description) => {
+                  setProblemText(description);
+                  showNotification('Đã quét hình', 'AI đã mô tả hình; bấm "Dựng hình" để render.', [], 'info');
+                }}
+                onError={(msg) => showNotification('Công cụ hình', msg, [], 'info')}
+              />
+              {result?.scene.parameters && result.scene.parameters.length > 0 && (
+                <ParameterSliders
+                  parameters={result.scene.parameters}
+                  values={paramValues}
+                  onChange={setParamValues}
+                  onReset={() => setParamValues(getDefaultParamValues(result.scene.parameters))}
+                />
+              )}
               <div className="render-stage">
-                <RendererPanel result={result} threeInteraction={threeInteraction} onGeoGebraPointChange={handlePointDragEnd} highlightedObjects={highlightedObjects} />
+                <RendererPanel result={effectiveResult} threeInteraction={threeInteraction} onGeoGebraPointChange={handlePointDragEnd} highlightedObjects={highlightedObjects} />
                 {result?.scene && (
                   <button
                     type="button"
@@ -965,12 +1035,12 @@ export default function App() {
               </div>
             </div>
             {/* Lựa chọn 1: Khảo sát hàm số (chỉ khi có function_graph) */}
-            {result?.scene && result.scene.topic === 'function_graph' && (
+            {effectiveResult?.scene && effectiveResult.scene.topic === 'function_graph' && (
               <div className="result-area">
                 <FunctionAnalyzerPanel
                   initialExpression={
                     (() => {
-                      const fg = result.scene.objects.find((o: { type: string }) => o.type === 'function_graph') as { expression?: string } | undefined;
+                      const fg = effectiveResult.scene.objects.find((o: { type: string }) => o.type === 'function_graph') as { expression?: string } | undefined;
                       return fg?.expression ?? '';
                     })()
                   }
@@ -1006,7 +1076,7 @@ export default function App() {
             logoUrl={logoUrl}
             user={user}
             authLoading={authLoading}
-            onContinueAsGuest={() => navigateTo('render')}
+            onOpenWorkspace={() => navigateTo('render')}
             onToast={(title, message, kind = 'info') => showNotification(title, message, [], kind)}
             onLogin={handleLogin}
             onGoogleLogin={handleGoogleLogin}
@@ -1066,7 +1136,7 @@ export default function App() {
                   </FooterNavIcon>
                 }
               >
-                Workspace
+                Không gian làm việc
               </FooterNavButton>
               <FooterNavButton
                 onClick={() => navigateTo('guide')}
@@ -1090,7 +1160,7 @@ export default function App() {
                   </FooterNavIcon>
                 }
               >
-                About
+                Giới thiệu
               </FooterNavButton>
             </div>
             <div>
@@ -1103,10 +1173,10 @@ export default function App() {
                   </FooterNavIcon>
                 }
               >
-                Feedback
+                Góp ý
               </FooterNavButton>
               <FooterNavButton
-                onClick={() => setNotification({ id: Date.now(), kind: 'info', title: 'Báo lỗi', message: 'Kênh GitHub issue sẽ được bổ sung khi repository public.', details: [] })}
+                onClick={() => showNotification('Báo lỗi', 'Kênh GitHub issue sẽ được bổ sung khi repository public.', [], 'info')}
                 icon={
                   <svg className="footer-nav-icon footer-nav-icon--github" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
                     <path
@@ -1345,19 +1415,20 @@ function AnalyzerGuidePage({ onOpenGeneralGuide }: { onOpenGeneralGuide: () => v
 
 function AboutPage({ onStart, onGuide }: { onStart: () => void; onGuide: () => void }) {
   const features = [
-    { title: 'Dựng hình có kiểm tra ngữ cảnh', text: 'Hệ thống đọc đề bài, nhận diện điểm/đường/mặt phẳng và dựng hình theo quan hệ toán học thay vì tạo ảnh tĩnh.' },
-    { title: 'Đọc ảnh & giữ tọa độ', text: 'Hỗ trợ đọc đề bài từ ảnh chụp, clipboard và giữ nguyên các tọa độ người dùng nhập vào.' },
-    { title: 'Tinh chỉnh trực quan', text: 'Bạn có thể kéo điểm, thêm chi tiết hình học và sửa lại scene ngay trên giao diện khi cần.' },
+    { title: 'Kiến trúc Phân tích & Suy luận', text: 'Quy trình xử lý đa tầng: Hệ thống phân tích giả thiết (Reasoning) trước khi thực thi lệnh vẽ, giúp tối ưu hóa độ chính xác và giảm thiểu sai sót hình học.' },
+    { title: 'Tương tác Đồ họa Đa nền tảng', text: 'Kết hợp sức mạnh của GeoGebra cho toán học phẳng và Three.js cho mô phỏng không gian 3D, mang lại trải nghiệm tương tác mượt mà và trực quan.' },
+    { title: 'Cấu trúc Scene JSON Linh hoạt', text: 'Hình vẽ không chỉ là ảnh tĩnh mà là một thực thể có cấu trúc (Scene-as-Code), cho phép người dùng can thiệp, kéo thả và tinh chỉnh từng đối tượng.' },
   ];
 
   return (
     <section className="about-page">
       <div className="about-hero">
-        <h2>AI hỗ trợ dựng hình toán học nhanh và dễ kiểm soát.</h2>
-        <p>AI Math Renderer giúp giáo viên và học sinh biến đề bài tiếng Việt, ảnh chụp hoặc dữ liệu tọa độ thành hình GeoGebra/Three.js để kiểm tra trực quan.</p>
+        <span className="home-eyebrow">Về dự án</span>
+        <h2>Số hóa hình học với độ chính xác tuyệt đối.</h2>
+        <p>AI Math Renderer là một nền tảng tiên phong kết hợp giữa Trí tuệ nhân tạo và các công cụ tính toán hình học (CAS). Chúng tôi hướng tới việc đơn giản hóa quy trình xây dựng học liệu toán học, giúp giáo viên và học sinh tiết kiệm hàng giờ làm việc thủ công.</p>
         <div className="home-actions">
-          <button type="button" onClick={onStart}>Mở workspace</button>
-          <button type="button" className="secondary-button" onClick={onGuide}>Xem hướng dẫn</button>
+          <button type="button" onClick={onStart}>Truy cập Workspace</button>
+          <button type="button" className="secondary-button" onClick={onGuide}>Tài liệu hướng dẫn</button>
         </div>
       </div>
 
@@ -1372,10 +1443,10 @@ function AboutPage({ onStart, onGuide }: { onStart: () => void; onGuide: () => v
 
       <section className="about-section">
         <div>
-          <span>Định hướng sản phẩm</span>
-          <h3>Không thay thế việc học toán, mà giúp bạn nhìn hình và kiểm tra mô hình nhanh hơn.</h3>
+          <span>Triết lý phát triển</span>
+          <h3>Trợ lý kỹ thuật đắc lực, không chỉ là công cụ vẽ hình.</h3>
         </div>
-        <p>Lời giải vẫn là phần quan trọng nhất. AI Math Renderer đóng vai trò trợ lý dựng hình: hiển thị hệ tọa độ 3D, khảo sát đồ thị hoặc kiểm tra quan hệ hình học để bạn tập trung vào tư duy toán học.</p>
+        <p>Áp dụng tư duy <strong>"Infrastructure as Code"</strong> vào toán học, chúng tôi biến các đề bài trừu tượng thành dữ liệu có cấu trúc. AI đóng vai trò là một cộng tác viên thông minh, giúp bạn hiện thực hóa các ý tưởng hình học, khảo sát đồ thị phức tạp và kiểm chứng các giả thiết toán học một cách khoa học nhất.</p>
       </section>
     </section>
   );
@@ -1398,7 +1469,7 @@ function HistoryPage({ user, items, loading, onOpen, onDelete, onLogin, onWorksp
     <section className="product-page-card">
       <div className="page-title-row">
         <div>
-          <span className="home-eyebrow">Workspace history</span>
+          <span className="home-eyebrow">Lịch sử workspace</span>
           <h2>Lịch sử dựng hình của bạn</h2>
           <p>Mở lại đề bài, scene và renderer đã lưu từ các lần render trước.</p>
         </div>
@@ -1427,7 +1498,7 @@ function HistoryPanel({ items, loading, onOpen, onDelete }: { items: RenderHisto
         <span>{loading ? 'Đang tải...' : `${items.length} mục`}</span>
       </div>
       {items.length === 0 ? (
-        <p>Render mới sau khi đăng nhập sẽ được lưu vào database.</p>
+        <p>Các lượt render mới sau khi đăng nhập sẽ được lưu vào hệ thống.</p>
       ) : (
         <div className="history-list">
           {items.map((item) => (
@@ -1460,36 +1531,42 @@ function historySourceLabel(sourceType: string) {
 function MobileRendererWarning({ dismissed, onDismiss }: { dismissed: boolean; onDismiss: () => void }) {
   if (dismissed) return null;
   return (
-    <div className="mobile-renderer-warning" role="dialog" aria-modal="true" aria-labelledby="mobile-renderer-warning-title">
-      <section className="mobile-renderer-warning-card">
-        <h2 id="mobile-renderer-warning-title">Lưu ý khi dùng điện thoại</h2>
-        <p>Math renderer chỉ hiển thị tốt trên các thiết bị desktop. Trên di động, màn hình render nằm bên dưới phần nhập đề.</p>
-        <p>Hãy lướt xuống sau khi dựng hình để xem kết quả.</p>
-        <button type="button" className="primary-button" onClick={onDismiss}>Bỏ qua và tiếp tục</button>
-      </section>
-    </div>
+    <aside className="mobile-renderer-warning" role="status" aria-live="polite">
+      <strong>Lưu ý khi dùng điện thoại</strong>
+      <span>Math renderer hiển thị tốt nhất trên desktop. Trên di động, hãy lướt xuống sau khi dựng hình để xem kết quả.</span>
+      <button type="button" onClick={onDismiss}>Bỏ qua</button>
+    </aside>
   );
 }
 
-function NotificationBanner({ notification, onDismiss }: { notification: Notification | null; onDismiss: () => void }) {
-  if (!notification) return null;
+function NotificationStack({ notifications, onDismiss }: { notifications: Notification[]; onDismiss: (id: number) => void }) {
+  if (notifications.length === 0) return null;
   return (
-    <div className="notification-stack" role="alert" aria-live="assertive">
-      <section className={`notification-card ${notification.kind}`}>
-        <div className="notification-header">
-          <strong>{notification.title}</strong>
-          <button type="button" className="notification-close" onClick={onDismiss} aria-label="Đóng thông báo">×</button>
-        </div>
-        <p>{notification.message}</p>
-        {notification.details.length > 0 && (
-          <details className="notification-details">
-            <summary>Chi tiết fallback</summary>
-            <ul>
-              {notification.details.map((detail) => <li key={detail}>{detail}</li>)}
-            </ul>
-          </details>
-        )}
-      </section>
+    <div className="notification-stack" role="region" aria-label="Thông báo" aria-live="polite">
+      {notifications.map((notification) => (
+        <section className={`notification-card ${notification.kind}`} key={notification.id} role="status">
+          <div className="notification-header">
+            <strong>{notification.title}</strong>
+            <button type="button" className="notification-close" onClick={() => onDismiss(notification.id)} aria-label="Đóng thông báo">×</button>
+          </div>
+          <p>{notification.message}</p>
+          {notification.action && (
+            notification.action.href ? (
+              <a className="notification-action" href={notification.action.href}>{notification.action.label}</a>
+            ) : (
+              <button type="button" className="notification-action" onClick={notification.action.onClick}>{notification.action.label}</button>
+            )
+          )}
+          {notification.details.length > 0 && (
+            <details className="notification-details">
+              <summary>Chi tiết và hướng dẫn</summary>
+              <ul>
+                {notification.details.map((detail) => <li key={detail}>{detail}</li>)}
+              </ul>
+            </details>
+          )}
+        </section>
+      ))}
     </div>
   );
 }

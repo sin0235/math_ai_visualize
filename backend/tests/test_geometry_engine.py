@@ -2,17 +2,26 @@ import pytest
 
 from app.schemas.scene import Line3D, MathScene, Plane, Point3D, Relation, SceneView, Segment, Sphere
 from app.services.geometry_engine import (
+    calculate_line_equation,
     calculate_line_line_angle,
     calculate_line_plane_angle,
+    calculate_plane_equation,
     calculate_plane_plane_angle,
     calculate_point_line_distance,
+    calculate_point_line_projection,
     calculate_point_plane_distance,
+    calculate_point_plane_projection,
+    calculate_point_plane_reflection,
     calculate_point_point_distance,
     calculate_polygon_area,
     calculate_pyramid_volume,
     calculate_tetrahedron_volume,
+    calculate_vector_cross,
+    calculate_vector_dot,
     compute_three_geometry,
     normalize_scene,
+    prove_collinear,
+    prove_coplanar,
 )
 
 
@@ -103,6 +112,56 @@ def test_calculate_degenerate_line_warning():
 
     assert result["status"] == "degenerate"
     assert result["warnings"]
+
+
+def test_calculate_vector_dot_and_cross():
+    points = {"A": (0.0, 0.0, 0.0), "B": (1.0, 2.0, 3.0), "C": (0.0, 0.0, 0.0), "D": (4.0, 5.0, 6.0), "E": (0.0, 1.0, 0.0)}
+
+    dot = calculate_vector_dot(points, ("A", "B"), ("C", "D"))
+    cross = calculate_vector_cross(points, ("A", "B"), ("A", "E"))
+
+    assert dot["status"] == "ok"
+    assert dot["result_value"] == pytest.approx(32)
+    assert cross["status"] == "ok"
+    assert cross["result_vector"] == {"x": pytest.approx(-3), "y": pytest.approx(0), "z": pytest.approx(1)}
+
+
+def test_calculate_line_and_plane_equations():
+    points = calc_points()
+
+    line = calculate_line_equation(points, ("A", "C"))
+    plane = calculate_plane_equation(points, ["B", "C", "D"])
+
+    assert line["status"] == "ok"
+    assert line["kind"] == "equation_line"
+    assert "x=0+4t" in line["result_latex"]
+    assert plane["status"] == "ok"
+    assert plane["coefficients"]["c"] == pytest.approx(16)
+    assert plane["coefficients"]["d"] == pytest.approx(0)
+
+
+def test_calculate_projection_and_reflection_point_plane():
+    points = calc_points()
+
+    projection = calculate_point_plane_projection(points, "A", ["B", "C", "D"])
+    reflection = calculate_point_plane_reflection(points, "A", ["B", "C", "D"])
+    line_projection = calculate_point_line_projection(points, "A", ("B", "C"))
+
+    assert projection["status"] == "ok"
+    assert_point_close(projection["point"], (0, 0, 0))
+    assert reflection["status"] == "ok"
+    assert_point_close(reflection["point"], (0, 0, -3))
+    assert line_projection["status"] == "ok"
+    assert_point_close(line_projection["point"], (0, 0, 0))
+
+
+def test_prove_collinear_and_coplanar():
+    points = {"A": (0.0, 0.0, 0.0), "B": (1.0, 1.0, 1.0), "C": (2.0, 2.0, 2.0), "D": (0.0, 0.0, 1.0), "E": (1.0, 0.0, 0.0), "F": (0.0, 1.0, 0.0)}
+
+    assert prove_collinear(points, ["A", "B", "C"])["answer"].endswith("ĐÚNG")
+    assert prove_collinear(points, ["A", "B", "D"])["answer"].endswith("SAI")
+    assert prove_coplanar(points, ["A", "E", "F", "C"])["answer"].endswith("SAI")
+    assert prove_coplanar(points, ["A", "E", "F"])["answer"].endswith("ĐÚNG")
 
 
 def test_midpoint_relation_adds_equal_marks():

@@ -31,6 +31,10 @@ class Point2D(BaseModel):
     name: str
     x: float
     y: float
+    # Tham số động: nếu set, frontend sẽ tự eval lại khi slider thay đổi.
+    # x/y vẫn lưu giá trị đã eval với defaults để backward compatible.
+    x_expr: str | None = None
+    y_expr: str | None = None
 
 
 class Point3D(BaseModel):
@@ -39,6 +43,9 @@ class Point3D(BaseModel):
     x: float
     y: float
     z: float
+    x_expr: str | None = None
+    y_expr: str | None = None
+    z_expr: str | None = None
 
 
 class Segment(BaseModel):
@@ -85,6 +92,7 @@ class Circle2D(BaseModel):
     center: str
     through: str | None = None
     radius: float | None = None
+    radius_expr: str | None = None
 
 
 class FunctionGraph(BaseModel):
@@ -106,6 +114,7 @@ class Sphere(BaseModel):
     name: str | None = None
     center: str
     radius: float
+    radius_expr: str | None = None
     color: str = "#5da9ff"
     opacity: float = 0.18
 
@@ -150,6 +159,21 @@ class SceneView(BaseModel):
     show_coordinates: bool = False  # show coords next to points
 
 
+class Parameter(BaseModel):
+    """Tham số động để học sinh tương tác (slider) tổng quát hoá bài toán.
+
+    Khi parameter thay đổi, frontend sẽ eval lại các *_expr trong objects
+    và recompute toạ độ điểm tương ứng. Backend không tự re-render; trách nhiệm
+    chính là cung cấp scene runtime ban đầu với giá trị default đã eval sẵn.
+    """
+    name: str  # ví dụ: a, h, alpha
+    label: str | None = None  # nhãn hiển thị ("a", "Cạnh đáy a", "α (độ)")
+    min: float
+    max: float
+    default: float
+    step: float = 0.1
+
+
 SceneObject = Point2D | Point3D | Segment | Line2D | Vector2D | Vector3D | Line3D | Circle2D | FunctionGraph | Face | Sphere | Plane
 
 
@@ -161,6 +185,7 @@ class MathScene(BaseModel):
     objects: list[SceneObject] = Field(default_factory=list)
     relations: list[Relation] = Field(default_factory=list)
     annotations: list[Annotation] = Field(default_factory=list)
+    parameters: list[Parameter] = Field(default_factory=list)
     view: SceneView
 
 
@@ -237,6 +262,32 @@ class OcrResponse(BaseModel):
     provider: OcrProvider
     model: str
     warnings: list[str] = Field(default_factory=list)
+
+
+class DiagramOcrRequest(BaseModel):
+    image_data_url: str = Field(min_length=1, max_length=MAX_IMAGE_DATA_URL_CHARS)
+    preferred_ai_model: str | None = Field(default=None, max_length=MAX_MODEL_ID_CHARS)
+    runtime_settings: RuntimeSettings | None = None
+
+
+class DiagramOcrResponse(BaseModel):
+    description: str
+    provider: str
+    model: str
+
+
+class ProblemVariantsRequest(BaseModel):
+    scene: MathScene
+    count: int = Field(default=3, ge=1, le=10)
+    original_problem: str | None = Field(default=None, max_length=MAX_PROBLEM_TEXT_CHARS)
+    preferred_ai_model: str | None = Field(default=None, max_length=MAX_MODEL_ID_CHARS)
+    runtime_settings: RuntimeSettings | None = None
+
+
+class ProblemVariantsResponse(BaseModel):
+    variants: list[str]
+    provider: str
+    model: str
 
 
 class ProviderSettingsDefaults(BaseModel):

@@ -5,16 +5,26 @@ from typing import Any
 
 from app.services.geometry_engine import (
     Vec3,
+    calculate_line_equation,
     calculate_line_line_angle,
     calculate_line_line_distance,
     calculate_line_plane_angle,
+    calculate_plane_equation,
     calculate_plane_plane_angle,
     calculate_point_line_distance,
+    calculate_point_line_projection,
+    calculate_point_line_reflection,
     calculate_point_plane_distance,
+    calculate_point_plane_projection,
+    calculate_point_plane_reflection,
     calculate_point_point_distance,
     calculate_polygon_area,
     calculate_pyramid_volume,
     calculate_tetrahedron_volume,
+    calculate_vector_cross,
+    calculate_vector_dot,
+    prove_collinear,
+    prove_coplanar,
 )
 
 
@@ -77,9 +87,17 @@ class SolverResult:
 _DISTANCE_RE = re.compile(r"kho[aả]ng\s*c[áa]ch|distance|\bd\s*\(", re.IGNORECASE)
 _ANGLE_RE = re.compile(r"g[oó]c|angle|cos\s*\(|sin\s*\(", re.IGNORECASE)
 _AREA_RE = re.compile(r"di[eệ]n\s*t[íi]ch|area|\bS\s*\(", re.IGNORECASE)
+_VECTOR_RE = re.compile(r"vector|vect[ơo]|v[ée]c\s*t[ơo]|tọa\s*độ\s*vector|to[aọ]\s*do\s*vector", re.IGNORECASE)
 _VOLUME_RE = re.compile(r"th[eể]\s*t[íi]ch|volume|\bV\s*\(", re.IGNORECASE)
 _PARALLEL_RE = re.compile(r"song\s*song|parallel", re.IGNORECASE)
 _PERP_RE = re.compile(r"vu[oô]ng\s*g[oó]c|perpendicular", re.IGNORECASE)
+_EQUATION_RE = re.compile(r"phương\s*trình|\bpt\b|equation", re.IGNORECASE)
+_DOT_RE = re.compile(r"dot\s*\(|tích\s*vô\s*hướng|\.\s*|·", re.IGNORECASE)
+_CROSS_RE = re.compile(r"cross\s*\(|tích\s*có\s*hướng|×", re.IGNORECASE)
+_PROJECTION_RE = re.compile(r"hình\s*chiếu|projection|project", re.IGNORECASE)
+_REFLECTION_RE = re.compile(r"đối\s*xứng|reflection|reflect", re.IGNORECASE)
+_COLLINEAR_RE = re.compile(r"thẳng\s*hàng|collinear", re.IGNORECASE)
+_COPLANAR_RE = re.compile(r"đồng\s*phẳng|coplanar", re.IGNORECASE)
 _POINT_RE = r"[A-Z](?:[0-9]+|')?"
 
 
@@ -88,6 +106,16 @@ def solve(scene_dict: dict, question: str) -> SolverResult:
     warnings: list[str] = []
     q = question.strip()
 
+    if _EQUATION_RE.search(q):
+        return _solve_equation(pts, q, warnings)
+    if _PROJECTION_RE.search(q):
+        return _solve_projection(pts, q, warnings)
+    if _REFLECTION_RE.search(q):
+        return _solve_reflection(pts, q, warnings)
+    if _COLLINEAR_RE.search(q):
+        return _solve_collinear(pts, q, warnings)
+    if _COPLANAR_RE.search(q):
+        return _solve_coplanar(pts, q, warnings)
     if _DISTANCE_RE.search(q):
         return _solve_distance(pts, q, warnings)
     if _PARALLEL_RE.search(q):
@@ -100,8 +128,14 @@ def solve(scene_dict: dict, question: str) -> SolverResult:
         return _solve_area(scene_dict, pts, q, warnings)
     if _VOLUME_RE.search(q):
         return _solve_volume(pts, q, warnings)
+    if _is_vector_dot_question(q):
+        return _solve_vector_operation(pts, q, warnings, "dot")
+    if _is_vector_cross_question(q):
+        return _solve_vector_operation(pts, q, warnings, "cross")
+    if _VECTOR_RE.search(q):
+        return _solve_vector(pts, q, warnings)
 
-    warnings.append("Chưa nhận diện được dạng bài. Hãy thử hỏi cụ thể hơn: d(A,B), d(A,BC), d(A,(BCD)), góc giữa AB và CD, S(ABC), V(S.ABCD).")
+    warnings.append("Chưa nhận diện được dạng bài. Hãy thử hỏi cụ thể hơn: d(A,B), d(A,BC), d(A,(BCD)), góc giữa AB và CD, S(ABC), V(S.ABCD), phương trình AB, AB . AC, hình chiếu A lên (BCD).")
     return SolverResult(q, "Không xác định", [], warnings)
 
 
@@ -110,7 +144,72 @@ def _point_map(scene_dict: dict) -> dict[str, Vec3]:
     for obj in scene_dict.get("objects", []):
         if obj.get("type") == "point_3d":
             points[obj["name"]] = (float(obj["x"]), float(obj["y"]), float(obj["z"]))
+        elif obj.get("type") == "point_2d":
+            points[obj["name"]] = (float(obj["x"]), float(obj["y"]), 0.0)
     return points
+
+
+def _solve_equation(pts: dict[str, Vec3], question: str, warnings: list[str]) -> SolverResult:
+    plane_refs = _parse_plane_refs(question)
+    if plane_refs:
+        return _result_from_calculation(question, calculate_plane_equation(pts, plane_refs[0]))
+    edges = _parse_edges(question)
+    if edges:
+        return _result_from_calculation(question, calculate_line_equation(pts, edges[0]))
+    warnings.append("Cần chỉ rõ đường thẳng hoặc mặt phẳng. Ví dụ: phương trình đường thẳng AB, phương trình mặt phẳng (ABC).")
+    return SolverResult(question, "Không xác định", [], warnings)
+
+
+def _solve_projection(pts: dict[str, Vec3], question: str, warnings: list[str]) -> SolverResult:
+    parsed = _parse_point_target(question)
+    if parsed is None:
+        warnings.append("Cần chỉ rõ điểm và đường/mặt phẳng chiếu. Ví dụ: hình chiếu của A lên BC hoặc lên (BCD).")
+        return SolverResult(question, "Không xác định", [], warnings)
+    point, kind, target = parsed
+    if kind == "plane":
+        calc = calculate_point_plane_projection(pts, point, list(target))
+    else:
+        calc = calculate_point_line_projection(pts, point, (target[0], target[1]))
+    return _result_from_calculation(question, calc)
+
+
+def _solve_reflection(pts: dict[str, Vec3], question: str, warnings: list[str]) -> SolverResult:
+    parsed = _parse_point_target(question)
+    if parsed is None:
+        warnings.append("Cần chỉ rõ điểm và đường/mặt phẳng đối xứng. Ví dụ: đối xứng A qua BC hoặc qua (BCD).")
+        return SolverResult(question, "Không xác định", [], warnings)
+    point, kind, target = parsed
+    if kind == "plane":
+        calc = calculate_point_plane_reflection(pts, point, list(target))
+    else:
+        calc = calculate_point_line_reflection(pts, point, (target[0], target[1]))
+    return _result_from_calculation(question, calc)
+
+
+def _solve_collinear(pts: dict[str, Vec3], question: str, warnings: list[str]) -> SolverResult:
+    points = _parse_point_sequence(question) or _parse_points(question)
+    if len(points) < 3:
+        warnings.append("Cần ít nhất 3 điểm để chứng minh thẳng hàng.")
+        return SolverResult(question, "Không xác định", [], warnings)
+    return _result_from_calculation(question, prove_collinear(pts, points))
+
+
+def _solve_coplanar(pts: dict[str, Vec3], question: str, warnings: list[str]) -> SolverResult:
+    points = _parse_point_sequence(question) or _parse_points(question)
+    if len(points) < 3:
+        warnings.append("Cần ít nhất 3 điểm để xét đồng phẳng.")
+        return SolverResult(question, "Không xác định", [], warnings)
+    return _result_from_calculation(question, prove_coplanar(pts, points))
+
+
+def _solve_vector_operation(pts: dict[str, Vec3], question: str, warnings: list[str], operation: str) -> SolverResult:
+    parsed = _parse_vector_operands(question, operation)
+    if parsed is None:
+        warnings.append("Cần chỉ rõ hai vector. Ví dụ: AB . AC, dot(AB,AC), AB × AC hoặc cross(AB,AC).")
+        return SolverResult(question, "Không xác định", [], warnings)
+    first, second = parsed
+    calc = calculate_vector_dot(pts, first, second) if operation == "dot" else calculate_vector_cross(pts, first, second)
+    return _result_from_calculation(question, calc)
 
 
 def _solve_distance(pts: dict[str, Vec3], question: str, warnings: list[str]) -> SolverResult:
@@ -159,6 +258,27 @@ def _solve_area(scene_dict: dict, pts: dict[str, Vec3], question: str, warnings:
         warnings.append("Không đủ thông tin để tính diện tích. Ví dụ: S(ABC) hoặc diện tích ABCD.")
         return SolverResult(question, "Không xác định", [], warnings)
     return _result_from_calculation(question, calculate_polygon_area(pts, polygon))
+
+
+def _solve_vector(pts: dict[str, Vec3], question: str, warnings: list[str]) -> SolverResult:
+    edges = _parse_edges(question)
+    if not edges:
+        warnings.append("Cần chỉ rõ vector. Ví dụ: vector AB hoặc tọa độ vector AB.")
+        return SolverResult(question, "Không xác định", [], warnings)
+    a, b = edges[0]
+    missing = [name for name in [a, b] if name not in pts]
+    if missing:
+        warnings.append(f"Điểm {', '.join(missing)} không có trong scene.")
+        return SolverResult(question, "Không xác định", [], warnings)
+    vector = _sub(pts[b], pts[a])
+    is_2d = abs(vector[2]) <= 1e-12 and all(abs(pts[name][2]) <= 1e-12 for name in [a, b])
+    value = f"({_fmt(vector[0], 6)}; {_fmt(vector[1], 6)})" if is_2d else f"({_fmt(vector[0], 6)}; {_fmt(vector[1], 6)}; {_fmt(vector[2], 6)})"
+    steps = [
+        SolverStep(1, "Xác định vector", f"Vector cần tính là \\overrightarrow{{{a}{b}}}, lấy điểm đầu {a} và điểm cuối {b} từ hình.", None, None, [a, b], kind="input"),
+        SolverStep(2, "Trừ tọa độ", f"Tính theo công thức \\overrightarrow{{{a}{b}}} = ({b}_x - {a}_x; {b}_y - {a}_y" + ("; {b}_z - {a}_z" if not is_2d else "") + ").", None, None, [a, b], kind="vector"),
+        SolverStep(3, "Kết luận", f"Suy ra \\overrightarrow{{{a}{b}}} = {value}.", None, value, [a, b], kind="result", result_latex=value),
+    ]
+    return SolverResult(question, f"\\overrightarrow{{{a}{b}}} = {value}", steps, warnings)
 
 
 def _solve_volume(pts: dict[str, Vec3], question: str, warnings: list[str]) -> SolverResult:
@@ -217,7 +337,11 @@ def _result_from_calculation(question: str, calc: dict[str, Any]) -> SolverResul
         return SolverResult(question, "Không xác định", [], calc["warnings"])
     unit = "°" if calc.get("unit") == "degrees" else ""
     warnings = [*calc["warnings"], *_pedagogical_warnings(calc)]
-    answer = f"{calc['label']} = {_fmt(calc['result_value'], 6)}{unit}"
+    value = calc.get("result_value")
+    if isinstance(value, int | float):
+        answer = f"{calc['label']} = {_fmt(value, 6)}{unit}"
+    else:
+        answer = calc.get("answer") or f"{calc['label']} = {calc['result_latex']}"
     return SolverResult(question, answer, _steps_from_calculation(calc), warnings)
 
 
@@ -272,6 +396,46 @@ def _steps_from_calculation(calc: dict[str, Any]) -> list[SolverStep]:
             result_latex=calc["result_latex"],
         ),
     ]
+
+
+def _is_vector_dot_question(question: str) -> bool:
+    return bool(_DOT_RE.search(question) and _parse_vector_operands(question, "dot"))
+
+
+def _is_vector_cross_question(question: str) -> bool:
+    return bool(_CROSS_RE.search(question) and _parse_vector_operands(question, "cross"))
+
+
+def _parse_vector_operands(question: str, operation: str) -> tuple[tuple[str, str], tuple[str, str]] | None:
+    function_name = "dot" if operation == "dot" else "cross"
+    inside = _inside_function(question, function_name)
+    if inside:
+        left, right = _split_two_operands(inside)
+        first = _parse_edge_token(left)
+        second = _parse_edge_token(right)
+        return (first, second) if first and second else None
+    operator = r"(?:\.|·)" if operation == "dot" else r"(?:×|x)"
+    match = re.search(rf"\b({_POINT_RE}{_POINT_RE})\s*{operator}\s*({_POINT_RE}{_POINT_RE})\b", question)
+    if not match:
+        return None
+    first = _parse_edge_token(match.group(1))
+    second = _parse_edge_token(match.group(2))
+    return (first, second) if first and second else None
+
+
+def _parse_point_target(question: str) -> tuple[str, str, tuple[str, ...]] | None:
+    plane_refs = _parse_plane_refs(question)
+    points = _parse_points(question)
+    if plane_refs and points:
+        point = next((name for name in points if name not in plane_refs[0]), None)
+        if point:
+            return point, "plane", tuple(plane_refs[0])
+    edges = _parse_edges(question)
+    if edges and points:
+        point = next((name for name in points if name not in edges[0]), None)
+        if point:
+            return point, "line", edges[0]
+    return None
 
 
 def _parse_distance(question: str) -> tuple[str, list[str]] | None:
@@ -346,7 +510,7 @@ def _parse_plane_refs(question: str) -> list[list[str]]:
     refs: list[list[str]] = []
     for raw in re.findall(r"\(([A-Z0-9']{3,})\)", question):
         refs.append(_split_point_sequence(raw))
-    for raw in re.findall(r"mặt\s+([A-Z0-9']{3,})", question, flags=re.IGNORECASE):
+    for raw in re.findall(r"mặt(?:\s+phẳng)?\s+([A-Z0-9']{3,})", question, flags=re.IGNORECASE):
         refs.append(_split_point_sequence(raw))
     return refs
 

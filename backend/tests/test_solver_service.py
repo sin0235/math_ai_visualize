@@ -99,6 +99,65 @@ def test_perpendicular_check_rejects_skew_orthogonal_lines():
     assert "chéo nhau" in result.warnings[0]
 
 
+def test_solve_line_equation(scene):
+    result = solve(scene, "viết phương trình đường thẳng AC")
+
+    assert result.answer.startswith("d_{AC}:")
+    assert result.steps[1].kind == "equation_line"
+    assert "x=0+4t" in result.steps[2].result_latex
+
+
+def test_solve_plane_equation(scene):
+    result = solve(scene, "pt mặt phẳng (BCD)")
+
+    assert result.answer.startswith("(BCD):")
+    assert result.steps[1].kind == "equation_plane"
+    assert result.steps[2].result_latex.endswith("=0")
+
+
+def test_solve_dot_product(scene):
+    result = solve(scene, "BA . BC")
+
+    assert result.answer == "\\overrightarrow{BA}\\cdot\\overrightarrow{BC} = 0"
+    assert result.steps[1].kind == "vector_dot"
+
+
+def test_solve_cross_product(scene):
+    result = solve(scene, "BC × BD")
+
+    assert result.answer.startswith("\\overrightarrow{BC}\\times\\overrightarrow{BD}")
+    assert result.steps[1].kind == "vector_cross"
+    assert result.steps[2].result_latex
+
+
+def test_solve_projection_point_plane(scene):
+    result = solve(scene, "hình chiếu của A lên (BCD)")
+
+    assert result.answer == "H(0,0,0)"
+    assert result.steps[1].kind == "projection_point_plane"
+
+
+def test_solve_reflection_point_plane(scene):
+    result = solve(scene, "đối xứng A qua (BCD)")
+
+    assert result.answer == "A'(0,0,-3)"
+    assert result.steps[1].kind == "reflection_point_plane"
+
+
+def test_solve_collinear_false(scene):
+    result = solve(scene, "A B C thẳng hàng?")
+
+    assert result.answer == "ABC thẳng hàng: SAI"
+    assert result.steps[1].kind == "proof_collinear"
+
+
+def test_solve_coplanar_true(scene):
+    result = solve(scene, "B C D E đồng phẳng?")
+
+    assert result.answer == "BCDE đồng phẳng: ĐÚNG"
+    assert result.steps[1].kind == "proof_coplanar"
+
+
 def test_solve_unsupported_returns_warning(scene):
     result = solve(scene, "tính gì đó")
 

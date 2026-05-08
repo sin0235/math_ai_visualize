@@ -27,7 +27,17 @@ Schema rút gọn:
   "relations": [
     {"type":"perpendicular","object_1":"SA","object_2":"plane(ABCD)","metadata":{}},
     {"type":"equal_length","object_1":"AB","object_2":"BC","metadata":{"value":3}},
-    {"type":"parallel","object_1":"AB","object_2":"CD","metadata":{}}
+    {"type":"parallel","object_1":"AB","object_2":"CD","metadata":{}},
+    {"type":"midpoint","object_1":"M","object_2":"A-B","metadata":{}},
+    {"type":"on_plane","object_1":"H","object_2":"plane(ABC)","metadata":{}},
+    {"type":"on_line","object_1":"H","object_2":"A-B","metadata":{}},
+    {"type":"on_sphere","object_1":"P","object_2":"S","metadata":{}},
+    {"type":"on_circle","object_1":"P","object_2":"C","metadata":{}},
+    {"type":"collinear","object_1":"A,B,C","object_2":"","metadata":{}},
+    {"type":"coplanar","object_1":"A,B,C,D","object_2":"","metadata":{}},
+    {"type":"tangent","object_1":"AT","object_2":"C","metadata":{}},
+    {"type":"distance","object_1":"AB","object_2":"","metadata":{"value":3}},
+    {"type":"angle","object_1":"AB","object_2":"AC","metadata":{"value":60}}
   ],
   "annotations": [
     {"type":"right_angle","target":"A","metadata":{"arms":["S","B"]}},
@@ -35,8 +45,28 @@ Schema rút gọn:
     {"type":"length","target":"A-B","label":"a = 3","metadata":{}},
     {"type":"angle","target":"B","label":"60°","metadata":{"arms":["A","C"]}}
   ],
+  "parameters": [
+    {"name":"a","label":"Cạnh đáy a","min":1,"max":8,"default":3,"step":0.5}
+  ],
   "view": {"dimension":"2d" | "3d", "show_axes": true, "show_grid": true, "show_coordinates": false}
 }
+
+Tham số động (parameters) — chỉ tạo khi đề thật sự cần:
+- Đề có BIẾN TỔNG QUÁT chưa cho giá trị cụ thể (ví dụ "cạnh đáy a", "SA = h", "góc giữa hai mặt phẳng là α"): tạo parameters và dùng *_expr.
+- Đề CHO GIÁ TRỊ CỤ THỂ (ví dụ "cạnh đáy bằng 4", "SA = 3"): KHÔNG tạo parameters, để parameters = [] hoặc bỏ trường này. Toạ độ giữ nguyên float.
+- Đề khảo sát hàm số / conic / phép biến hình tổng quát: nên tạo parameters cho hệ số (a, b, c, m, k...) để học sinh kéo slider khám phá.
+
+Cú pháp expression cho toạ độ động:
+- Mỗi point có thể có thêm trường `x_expr`, `y_expr`, `z_expr` là chuỗi biểu thức tham chiếu tham số. Tương tự `radius_expr` cho sphere/circle_2d.
+- Vẫn phải điền x/y/z (và radius) là số thực = giá trị eval với defaults — đây là toạ độ ban đầu.
+- Cú pháp cho phép: + - * / % ** //, ngoặc, hằng pi/e, hàm sqrt sin cos tan asin acos atan atan2 log log2 log10 exp abs min max floor ceil round pow deg rad. KHÔNG dùng tên Python khác, không attribute, không lambda.
+- Ví dụ: `"x_expr":"a/2"`, `"y_expr":"h*sin(alpha)"`, `"z_expr":"a*sqrt(3)/2"`, `"radius_expr":"a/2"`.
+- Tham số góc: nếu đề ghi "α" (alpha), parameter "alpha" lưu BẰNG ĐỘ; trong expression dùng `sin(rad(alpha))` để chuyển sang radian.
+
+Thiết lập min/max/default cho parameter:
+- default = giá trị "đẹp" để hình hiển thị rõ (a default 3, h default 3, alpha default 60).
+- min/max bao quanh default rộng vừa đủ để hình không quá nhỏ/quá to khi kéo (a thường min 1, max 8; alpha min 10, max 170).
+- step nhỏ (0.1 hoặc 0.5) cho độ dài; 1 (hoặc 5) cho độ.
 
 Quy tắc gán toạ độ (RẤT QUAN TRỌNG):
 - Không được làm sai dữ kiện để ép một điểm về gốc. Không tịnh tiến/đổi toạ độ nếu đề đã cho toạ độ cụ thể.
@@ -47,8 +77,11 @@ Quy tắc gán toạ độ (RẤT QUAN TRỌNG):
 - Nếu đề có trung điểm/tâm/giao điểm hoặc cần điểm phụ để dựng hình đúng, phải tạo point_2d/point_3d có tên rõ ràng cho điểm đó trước khi dùng trong segment/face/line/plane/relation/annotation.
 - Mọi tên điểm được tham chiếu trong objects/relations/annotations phải tồn tại trong objects; không được dùng điểm ẩn danh hoặc chỉ nhắc trong metadata.
 - Nếu đề chưa đặt tên cho điểm cần thiết, tự đặt tên ngắn, quen thuộc như M cho trung điểm, H cho chân đường cao, O cho tâm/gốc, I/J/K cho giao điểm hoặc điểm phụ, rồi tính/chọn toạ độ phù hợp.
-- Nếu đề cho cạnh cụ thể, dùng đúng giá trị đó; nếu không, mặc định a=3.
-- Ví dụ đúng: Hình chóp S.ABCD đáy vuông cạnh a, SA⊥đáy → A(0,0,0), B(a,0,0), C(a,0,a), D(0,0,a), S(0,h,0).
+- Nếu đề cho cạnh cụ thể, dùng đúng giá trị đó (KHÔNG tạo parameters, hình tĩnh). Nếu đề chỉ ghi biến tổng quát (a, h, alpha...), tạo parameters tương ứng và đặt *_expr; toạ độ x/y/z phải là giá trị eval với defaults (mặc định a=3, h=3, alpha=60).
+- Ví dụ đúng (đề có biến): Hình chóp S.ABCD đáy vuông cạnh a, SA⊥đáy = h →
+  parameters=[{name:"a",default:3,min:1,max:8,step:0.5},{name:"h",default:3,min:1,max:8,step:0.5}];
+  A(0,0,0); B với x_expr="a" (x=3,y=0,z=0); C x_expr="a" z_expr="a"; D z_expr="a"; S y_expr="h" (x=0,y=3,z=0).
+- Ví dụ đúng (đề có số): "Hình chóp S.ABCD đáy vuông cạnh 4, SA = 3" → KHÔNG tạo parameters; A(0,0,0), B(4,0,0), C(4,0,4), D(0,0,4), S(0,3,0).
 - Ví dụ đúng: Mặt cầu tâm O bán kính r → O(0,0,0), sphere center O radius r; không thêm điểm khác trùng O.
 - Ví dụ đúng: Nếu O là trung điểm AB với A(-1,0,0), B(1,0,0) thì O(0,0,0). Nếu A(0,0,0), B(2,0,0) thì trung điểm O(1,0,0), không ép O về (0,0,0).
 - Ví dụ sai: Đề đã có O là trung điểm AB nhưng lại dịch toàn bộ hình để O về gốc làm A/B sai dữ kiện đã cho.
@@ -82,7 +115,9 @@ Quy tắc màu/style để hình dễ phân biệt:
 - Luôn dùng màu hex #rrggbb, không dùng tên màu như red/blue/green.
 - Palette khuyến nghị: cạnh chính #1d3557, cạnh khuất #8b95a7, đoạn/đối tượng cần nhấn mạnh #f97316, điểm/đánh dấu quan trọng #e63946, vector pháp tuyến #7c3aed, cung góc/nhãn góc #b45309.
 - Mặt phẳng/mặt khối dùng các màu trong suốt, khác nhau rõ: #5da9ff, #ffb86b, #ffd166, #c9a0dc, #7fcdbb; tránh dùng các màu quá giống nhau cho hai mặt kề nhau.
-- Segment có thể có color, line_width, style = "solid" | "dashed" | "dotted". Dùng style dashed cho cạnh khuất/phụ, solid cho cạnh chính.
+- Segment có thể có color, line_width, style = "solid" | "dashed" | "dotted".
+- Với renderer threejs_3d (hình không gian có thể xoay): KHÔNG đặt hidden=true hoặc style='dashed' cho cạnh thật của khối (cạnh hình chóp, lăng trụ, hộp...). Frontend sẽ tự tính cạnh khuất theo góc nhìn camera. Mọi cạnh khối để hidden=false, style='solid'. Chỉ đặt style='dashed' cho đường PHỤ TRỢ giữ nét đứt bất kể góc nhìn: đường cao, hình chiếu vuông góc, đường nối điểm phụ trong chứng minh, đường tiệm cận, đường chuẩn parabol, đường kính/đường sinh tham chiếu, cạnh phụ hình bình hành vector...
+- Với renderer geogebra_2d (hình phẳng): có thể dùng style='dashed' cho cạnh phụ theo ý đồ trình bày (đường tiệm cận, đường chuẩn, cạnh phụ hình bình hành vector, ...). 2D không xoay nên đặt cố định.
 - Nếu có nhiều annotation dễ nhầm, đặt annotation.color theo palette để phân biệt.
 
 Quy tắc annotations hiển thị sản phẩm:
@@ -147,12 +182,47 @@ Quy tắc chống lỗi thường gặp (QUAN TRỌNG):
 - KHÔNG bỏ trống trường bắt buộc: mọi point phải có name, x, y (và z nếu 3d); mọi segment phải có points; mọi face phải có points, color, opacity.
 - Segment.points phải là mảng đúng 2 phần tử [string, string], không phải 3 hay nhiều hơn.
 - Face.points phải có ít nhất 3 phần tử.
-- Relation.type phải là một trong: perpendicular, equal_length, parallel, midpoint, intersection, tangent.
+- Relation.type phải là một trong: perpendicular, equal_length, parallel, midpoint, intersection, tangent, collinear, coplanar, on_line, on_plane, on_sphere, on_circle, distance, angle.
 - Với equal_marks: target phải có dạng "X-Y" (hai tên điểm cách nhau bằng dấu gạch ngang), ví dụ "A-B". Không viết "AB" không có dấu gạch.
 - Với right_angle/angle: target phải là tên một điểm (đỉnh góc), KHÔNG phải cạnh. metadata.arms phải là mảng 2 tên điểm.
 - Với length: target phải có dạng "X-Y", label ngắn gọn như "a", "3", "r = 3", "AB = 3"; không dùng câu mô tả hoặc text kỹ thuật.
 - Mọi giá trị opacity phải trong khoảng 0.05 đến 0.5. Face opacity khuyến nghị 0.10-0.20.
 - grade phải là 10, 11, 12 hoặc null. Không dùng giá trị khác.
+
+Quy tắc relation type (RẤT QUAN TRỌNG — backend sẽ verify số học):
+- midpoint: object_1 = TÊN ĐIỂM (M), object_2 = "A-B" hoặc "AB". Backend sẽ kiểm M = (A+B)/2 và auto-fix nếu sai.
+- on_line: object_1 = tên điểm, object_2 = "A-B". Backend sẽ kiểm điểm thuộc đường AB; nếu lệch sẽ project về chân đường vuông góc.
+- on_plane: object_1 = tên điểm, object_2 = "plane(ABC)". Backend sẽ kiểm điểm thuộc mặt phẳng; nếu lệch sẽ project về chân vuông góc.
+- on_sphere: object_1 = tên điểm, object_2 = TÊN MẶT CẦU (không phải tâm). Backend kiểm |P - center| = radius.
+- on_circle: object_1 = tên điểm, object_2 = TÊN ĐƯỜNG TRÒN. Tương tự on_sphere nhưng 2D.
+- collinear: object_1 = "A,B,C" hoặc "ABC" (>=3 điểm). Backend kiểm thẳng hàng bằng cross product.
+- coplanar: object_1 = "A,B,C,D" hoặc "ABCD" (>=4 điểm 3D). Backend kiểm đồng phẳng bằng pháp tuyến.
+- tangent: object_1 = "A-B" (đường), object_2 = TÊN đường tròn / mặt cầu. Backend kiểm khoảng cách = bán kính.
+- distance: object_1 = "A-B" hoặc "AB", metadata.value = số dương. Backend kiểm |AB| = value.
+- angle: object_1 = "A-B", object_2 = "C-D", metadata.value = số đo (đơn vị độ). Backend kiểm góc hai vector.
+- perpendicular/parallel/equal_length: như trước.
+
+Reference Integrity (BẮT BUỘC — bất kỳ tham chiếu sai nào sẽ bị backend drop):
+- TRƯỚC khi viết bất cứ segment/face/plane/relation/annotation nào, hãy xác nhận MỌI tên điểm tham chiếu đã có point_2d/point_3d tương ứng trong mảng objects.
+- Nếu cần điểm phụ (trung điểm, chân đường cao, giao điểm, tâm…) thì TẠO point trước, đặt tên ngắn (M, H, O, I, J, K, …) rồi mới dùng.
+- KHÔNG bao giờ tham chiếu một điểm chỉ qua tên trong metadata mà không có object point tương ứng.
+- KHÔNG đặt 2 object cùng tên (ví dụ 2 point đều tên "A"): tên phải duy nhất giữa các point; tên circle/sphere/face cũng nên duy nhất.
+- Đối với annotation right_angle/angle: target phải LÀ ĐÚNG MỘT đỉnh đã tồn tại; metadata.arms phải là 2 tên điểm cũng đã tồn tại.
+- Đối với annotation length/equal_marks: target phải đúng dạng "X-Y" với cả X và Y đã có point tương ứng.
+
+Expression Integrity (cho *_expr — khi dùng parameters):
+- Mọi biến trong x_expr/y_expr/z_expr/radius_expr phải có trong mảng parameters; nếu không sẽ bị backend xoá expression và chuyển về float.
+- KHÔNG dùng tên trùng với hàm/hằng built-in cho parameter: pi, e, sin, cos, tan, sqrt, ... — đặt tên khác (ví dụ thay "e" bằng "ecc").
+- parameter.default phải nằm trong [min, max]; min < max; step > 0.
+- Đặt giá trị x/y/z/radius là kết quả eval expression với defaults — tránh để chúng mâu thuẫn với expression.
+
+Self-check trước khi xuất JSON (BẮT BUỘC tự kiểm trong nội bộ, KHÔNG xuất ra):
+1. Tất cả tên điểm xuất hiện trong segment.points/face.points/plane.points/circle.center/circle.through/sphere.center/vector.from_point/vector.to_point/line.through đều có point_2d hoặc point_3d cùng tên.
+2. Tất cả tên xuất hiện trong relation.object_1/object_2 và annotation.target/metadata.arms đều tham chiếu point/object đã khai báo.
+3. Mọi point có tên duy nhất; nếu đề lặp tên (ví dụ "M" vừa là trung điểm AB vừa là trung điểm CD) thì đổi tên một trong hai (M_AB, M_CD) để không trùng.
+4. renderer khớp với loại điểm: geogebra_2d → toàn point_2d; threejs_3d → toàn point_3d.
+5. Mọi *_expr biên dịch được và biến đều có trong parameters.
+6. Mọi quan hệ midpoint/on_plane/on_line đều có toạ độ điểm thoả mãn (M là trung điểm thì M phải = (A+B)/2; nếu không khớp, hãy tự sửa toạ độ điểm thay vì để backend phải fix).
 
 Ví dụ đầy đủ 1 — Hình chóp S.ABCD đáy vuông cạnh 4, SA⊥(ABCD), SA=3:
 {"problem_text":"Cho hình chóp S.ABCD có đáy ABCD là hình vuông cạnh 4, SA vuông góc với mặt phẳng đáy, SA = 3.","grade":11,"topic":"solid_geometry","renderer":"threejs_3d","objects":[{"type":"point_3d","name":"A","x":0,"y":0,"z":0},{"type":"point_3d","name":"B","x":4,"y":0,"z":0},{"type":"point_3d","name":"C","x":4,"y":0,"z":4},{"type":"point_3d","name":"D","x":0,"y":0,"z":4},{"type":"point_3d","name":"S","x":0,"y":3,"z":0},{"type":"face","name":"ABCD","points":["A","B","C","D"],"color":"#5da9ff","opacity":0.15},{"type":"face","name":"SAB","points":["S","A","B"],"color":"#ffb86b","opacity":0.14},{"type":"face","name":"SBC","points":["S","B","C"],"color":"#ffd166","opacity":0.14},{"type":"face","name":"SCD","points":["S","C","D"],"color":"#c9a0dc","opacity":0.14},{"type":"face","name":"SDA","points":["S","D","A"],"color":"#7fcdbb","opacity":0.14}],"relations":[{"type":"perpendicular","object_1":"SA","object_2":"plane(ABCD)","metadata":{}},{"type":"equal_length","object_1":"AB","object_2":"BC","metadata":{"value":4}},{"type":"equal_length","object_1":"BC","object_2":"CD","metadata":{"value":4}},{"type":"equal_length","object_1":"CD","object_2":"DA","metadata":{"value":4}}],"annotations":[{"type":"right_angle","target":"A","metadata":{"arms":["S","B"]}},{"type":"right_angle","target":"A","metadata":{"arms":["S","D"]}},{"type":"right_angle","target":"A","metadata":{"arms":["B","D"]}},{"type":"equal_marks","target":"A-B","metadata":{"group":1}},{"type":"equal_marks","target":"B-C","metadata":{"group":1}},{"type":"equal_marks","target":"C-D","metadata":{"group":1}},{"type":"equal_marks","target":"D-A","metadata":{"group":1}},{"type":"length","target":"A-B","label":"a = 4","metadata":{}},{"type":"length","target":"S-A","label":"SA = 3","metadata":{}}],"view":{"dimension":"3d","show_axes":true,"show_grid":true,"show_coordinates":true}}
@@ -214,13 +284,13 @@ Schema kế hoạch dựng hình:
     {
       "type": "segment" | "face" | "line" | "circle" | "function_graph" | "sphere" | "plane" | "vector",
       "points": [string],
-      "properties": {"hidden": boolean, "style": "solid" | "dashed", "color_hint": string},
+      "properties": {"style": "solid" | "dashed", "color_hint": string, "is_auxiliary": boolean},
       "notes": string
     }
   ],
   "relations": [
     {
-      "type": "perpendicular" | "equal_length" | "parallel" | "midpoint" | "tangent" | "intersection",
+      "type": "perpendicular" | "equal_length" | "parallel" | "midpoint" | "tangent" | "intersection" | "collinear" | "coplanar" | "on_line" | "on_plane" | "on_sphere" | "on_circle" | "distance" | "angle",
       "objects": [string],
       "value": number | null,
       "reasoning": string
@@ -232,6 +302,17 @@ Schema kế hoạch dựng hình:
       "target": string,
       "label": string | null,
       "details": string
+    }
+  ],
+  "parameters": [
+    {
+      "name": string,
+      "label": string | null,
+      "min": number,
+      "max": number,
+      "default": number,
+      "step": number,
+      "expr_for_points": {"PointName.axis": "expression"}
     }
   ],
   "warnings": [string]
@@ -251,12 +332,19 @@ Quy tắc phân tích:
    - Hình phẳng: theo đề cho, hoặc chọn hệ trục đẹp
    - KHÔNG tịnh tiến nếu đề đã cho toạ độ cụ thể
 4. Tính toạ độ CHÍNH XÁC cho mỗi điểm, ghi rõ derivation (cách tính).
-5. Xác định mọi cạnh/mặt cần vẽ, đánh dấu cạnh khuất (hidden=true, dashed).
+5. Xác định mọi cạnh/mặt cần vẽ. KHÔNG đánh dấu cạnh thật của khối 3D là hidden/dashed — frontend tự tính cạnh khuất theo góc xoay camera. Chỉ đặt style='dashed' cho đường phụ trợ ý nghĩa hình học (đường cao, hình chiếu, tiệm cận, đường chuẩn, cạnh phụ hình bình hành vector, ...) bất kể góc nhìn.
 6. Liệt kê mọi quan hệ hình học kèm reasoning.
 7. Liệt kê mọi annotation cần hiển thị trên hình.
 8. Với toán ứng dụng/thực tế: chuyển mô hình đời thực thành hình học trước.
-9. Nếu đề thiếu số liệu, dùng giá trị mặc định a=3.
+9. Nếu đề có biến tổng quát chưa cho giá trị (a, h, alpha, m, k...), liệt kê vào parameters với min/max/default/step hợp lý; ghi chú trong expr_for_points các toạ độ phụ thuộc tham số (ví dụ "B.x":"a", "S.y":"h"). Toạ độ trong points vẫn ghi giá trị eval với defaults (mặc định a=3, h=3, alpha=60). Nếu đề có giá trị cụ thể (cạnh = 4) thì để parameters = [], hình tĩnh.
 10. Thêm warnings nếu phát hiện mâu thuẫn hoặc thiếu dữ kiện.
+
+Self-check kế hoạch (BẮT BUỘC tự kiểm trong nội bộ trước khi xuất):
+- Mọi tên điểm trong edges_and_faces/relations/annotations_needed phải có entry trong points.
+- Mọi tên điểm trong points phải duy nhất; nếu cần dùng "M" cho 2 vai trò khác nhau, đổi thành M1/M2 hoặc M_AB/M_CD.
+- Mọi quan hệ midpoint/on_plane/on_line/on_sphere/on_circle phải có toạ độ thoả mãn ở points (kiểm bằng số học, không chỉ ý niệm).
+- Mọi expr_for_points dùng biến phải có entry tương ứng trong parameters.
+- renderer phù hợp với dimension: geogebra_2d ↔ "2d", threejs_3d ↔ "3d".
 """.strip()
 
 

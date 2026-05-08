@@ -8,6 +8,7 @@ from app.core.config import Settings
 from app.schemas.scene import AdvancedRenderSettings, MathScene, RuntimeSettings, SceneView
 from app.db.session import DatabaseClient
 from app.services.ai_prompt import get_system_prompts
+from app.services.expression_eval import try_safe_eval
 from app.services.nvidia_client import NvidiaClient
 from app.services.ollama_client import OllamaClient
 from app.services.openai_compat_client import OpenAICompatClient
@@ -113,7 +114,9 @@ async def extract_scene(
                         preferred_ai_model=model,
                     )
                 warnings.extend(_render_attempt_warnings(attempts))
-                return MathScene.model_validate(normalize_scene_json(scene_json)), warnings
+                scene, cas_warnings = build_scene_with_cas_fix(scene_json)
+                warnings.extend(cas_warnings)
+                return scene, warnings
             except (RuntimeError, ValidationError, ValueError, KeyError) as error:
                 attempts.append(RenderAttempt(provider, model or _provider_model(provider, settings), str(error)))
                 if settings.router9_only:
@@ -170,7 +173,125 @@ def normalize_scene_json(scene_json: dict) -> dict:
     data = dict(scene_json)
     data["objects"] = [_normalize_object(dict(obj)) for obj in data.get("objects", []) if isinstance(obj, dict)]
     data["annotations"] = [_normalize_annotation(dict(ann)) for ann in data.get("annotations", []) if isinstance(ann, dict)]
+    if isinstance(data.get("parameters"), list):
+        data["parameters"] = [_normalize_parameter(dict(p)) for p in data["parameters"] if isinstance(p, dict)]
+        data["parameters"] = [p for p in data["parameters"] if p is not None]
+    apply_parameters_to_scene(data)
     return data
+
+
+def build_scene_with_cas_fix(scene_json: dict) -> tuple[MathScene, list[str]]:
+    """Validate scene từ JSON LLM rồi chạy validator + CAS verify + auto-fix.
+
+    Pipeline:
+      1. Pre-validate raw dict: drop object/relation/annotation có type không hợp lệ.
+      2. normalize_scene_json: chuẩn hoá colors, parameter defaults, eval *_expr.
+      3. Pydantic validate (MathScene.model_validate): bắt lỗi schema cứng.
+      4. scene_validator.validate_and_repair: ngữ nghĩa (reference integrity,
+         naming uniqueness, dimension consistency, geometry sanity, parameters,
+         annotation shape).
+      5. cas_verifier.auto_fix_scene: kiểm tra số học các quan hệ (midpoint,
+         on_line, on_plane, perpendicular, parallel, ...) và auto-fix khi
+         deterministic.
+
+    Trả về (scene, warnings). Warnings là chuỗi human-readable gộp tất cả
+    bất thường phát hiện ở mọi bước.
+    """
+    from app.services.cas_verifier import auto_fix_scene  # local import tránh circular
+    from app.services.scene_validator import pre_validate_raw, validate_and_repair
+
+    cleaned, pre_warnings = pre_validate_raw(scene_json)
+    normalized = normalize_scene_json(cleaned)
+    scene = MathScene.model_validate(normalized)
+
+    report = validate_and_repair(scene)
+    scene = report.scene
+
+    fixed_scene, issues = auto_fix_scene(scene)
+
+    warnings: list[str] = []
+    for msg in pre_warnings:
+        warnings.append(f"[Validator] Pre-check: {msg}")
+    warnings.extend(report.all_warnings)
+    for issue in issues:
+        prefix = "Đã tự sửa" if issue.auto_fixed else "Cảnh báo CAS"
+        warnings.append(f"[CAS] {prefix} ({issue.relation_type}): {issue.description}")
+
+    return fixed_scene, warnings
+
+
+def _normalize_parameter(param: dict[str, Any]) -> dict[str, Any] | None:
+    """Chuẩn hoá Parameter; trả None nếu thiếu trường bắt buộc."""
+    name = param.get("name")
+    if not isinstance(name, str) or not name.strip():
+        return None
+    try:
+        default = float(param.get("default"))  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    try:
+        lo = float(param.get("min", default - 5))
+        hi = float(param.get("max", default + 5))
+    except (TypeError, ValueError):
+        lo, hi = default - 5, default + 5
+    if hi <= lo:
+        hi = lo + 1.0
+    if not (lo <= default <= hi):
+        default = max(lo, min(hi, default))
+    try:
+        step = float(param.get("step", 0.1))
+    except (TypeError, ValueError):
+        step = 0.1
+    if step <= 0:
+        step = 0.1
+    return {
+        "name": name.strip(),
+        "label": param.get("label") if isinstance(param.get("label"), str) else None,
+        "min": lo,
+        "max": hi,
+        "default": default,
+        "step": step,
+    }
+
+
+def apply_parameters_to_scene(data: dict[str, Any]) -> None:
+    """Eval các *_expr với giá trị default của parameter rồi gán vào x/y/z/radius.
+
+    Mục đích: scene khi render lần đầu phải có toạ độ float hợp lệ. LLM có thể
+    chỉ trả expression mà quên tính raw float, hoặc raw float không khớp với
+    expression — pass này đảm bảo nhất quán ở giá trị default.
+    Frontend sẽ tự eval lại khi user kéo slider.
+    """
+    parameters = data.get("parameters") or []
+    if not isinstance(parameters, list) or not parameters:
+        return
+    defaults: dict[str, float] = {}
+    for p in parameters:
+        if not isinstance(p, dict):
+            continue
+        name = p.get("name")
+        try:
+            default = float(p.get("default"))  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            continue
+        if isinstance(name, str) and name.strip():
+            defaults[name.strip()] = default
+    if not defaults:
+        return
+
+    objects = data.get("objects")
+    if not isinstance(objects, list):
+        return
+    for obj in objects:
+        if not isinstance(obj, dict):
+            continue
+        for axis in ("x", "y", "z", "radius"):
+            expr = obj.get(f"{axis}_expr")
+            if not isinstance(expr, str) or not expr.strip():
+                continue
+            value = try_safe_eval(expr, defaults)
+            if value is not None:
+                obj[axis] = value
 
 
 def _normalize_object(obj: dict[str, Any]) -> dict[str, Any]:

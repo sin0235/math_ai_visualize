@@ -1,19 +1,19 @@
 function AboutPage({ onStart, onGuide }: { onStart: () => void; onGuide: () => void }) {
   const features = [
-    { title: 'Xuất hình phân tích (Reasoning Model)', text: 'Luồng xử lý AI 2 tầng độc lập: Phân tích suy luận (Task 1) trước khi vẽ (Task 2) giảm thiểu hallucination, giúp tọa độ và quan hệ hình học luôn vững chắc.' },
-    { title: 'Công nhận tọa độ & OCR', text: 'Hỗ trợ đọc đề bài từ ảnh (kéo thả hoặc clipboard) và giữ nguyên tọa độ người dùng nhập vào, tham chiếu dưới gốc tọa độ.' },
-    { title: 'Kiểm soát & Tinh chỉnh', text: 'Không chỉ là vẽ ảnh tĩnh, AI Math Renderer sinh ra Scene JSON có cấu trúc, cho phép bạn kéo thả điểm, thêm chân đường cao và chỉnh sửa trực tiếp trên giao diện.' },
+    { title: 'Kiến trúc Phân tích & Suy luận', text: 'Quy trình xử lý đa tầng: Hệ thống phân tích giả thiết (Reasoning) trước khi thực thi lệnh vẽ, giúp tối ưu hóa độ chính xác và giảm thiểu sai sót hình học.' },
+    { title: 'Tương tác Đồ họa Đa nền tảng', text: 'Kết hợp sức mạnh của GeoGebra cho toán học phẳng và Three.js cho mô phỏng không gian 3D, mang lại trải nghiệm tương tác mượt mà và trực quan.' },
+    { title: 'Cấu trúc Scene JSON Linh hoạt', text: 'Hình vẽ không chỉ là ảnh tĩnh mà là một thực thể có cấu trúc (Scene-as-Code), cho phép người dùng can thiệp, kéo thả và tinh chỉnh từng đối tượng.' },
   ];
 
   return (
     <section className="about-page">
       <div className="about-hero">
-        <span className="home-eyebrow">Về chúng tôi (About)</span>
-        <h2>AI tạo hình toán học với sự kiểm soát tuyệt đối.</h2>
-        <p>AI Math Renderer được xây dựng nhằm giải quyết một nỗi đau lớn trong giáo dục: <strong>Việc vẽ hình học không gian hay đồ thị quá mất thời gian</strong>. Chúng tôi tinh lọc quá trình này bằng cách kết hợp LLM, OCR và các renderer mạnh mẽ như GeoGebra, Three.js.</p>
+        <span className="home-eyebrow">Về dự án</span>
+        <h2>Số hóa hình học với độ chính xác tuyệt đối.</h2>
+        <p>AI Math Renderer là một nền tảng tiên phong kết hợp giữa Trí tuệ nhân tạo và các công cụ tính toán hình học (CAS). Chúng tôi hướng tới việc đơn giản hóa quy trình xây dựng học liệu toán học, giúp giáo viên và học sinh tiết kiệm hàng giờ làm việc thủ công.</p>
         <div className="home-actions">
-          <button type="button" onClick={onStart}>Mở workspace</button>
-          <button type="button" className="secondary-button" onClick={onGuide}>Xem hướng dẫn</button>
+          <button type="button" onClick={onStart}>Truy cập Workspace</button>
+          <button type="button" className="secondary-button" onClick={onGuide}>Tài liệu hướng dẫn</button>
         </div>
       </div>
 
@@ -28,10 +28,10 @@ function AboutPage({ onStart, onGuide }: { onStart: () => void; onGuide: () => v
 
       <section className="about-section">
         <div>
-          <span>Định hướng sản phẩm</span>
-          <h3>Không thay thế việc học toán, mà giúp quá trình nhìn hình và kiểm tra mô hình trở nên dễ dàng hơn.</h3>
+          <span>Triết lý phát triển</span>
+          <h3>Trợ lý kỹ thuật đắc lực, không chỉ là công cụ vẽ hình.</h3>
         </div>
-        <p>Áp dụng phương pháp <strong>"Infrastructure as Code"</strong> cho hình học. Lời giải của bạn là chân lý, AI chỉ đóng vai trò là "trợ lý vẽ kỹ thuật". Nó giúp bạn <em>Hiển thị hệ tọa độ 3D</em> hoặc <em>Khảo sát đồ thị quỹ tích</em> một cách dễ dàng thay vì phải đánh vật với bút và giấy thước đo độ.</p>
+        <p>Áp dụng tư duy <strong>"Infrastructure as Code"</strong> vào toán học, chúng tôi biến các đề bài trừu tượng thành dữ liệu có cấu trúc. AI đóng vai trò là một cộng tác viên thông minh, giúp bạn hiện thực hóa các ý tưởng hình học, khảo sát đồ thị phức tạp và kiểm chứng các giả thiết toán học một cách khoa học nhất.</p>
       </section>
     </section>
   );

@@ -12,7 +12,7 @@ interface SolverPanelProps {
 
 function buildExamples(scene: MathScene) {
   const pointNames = scene.objects
-    .filter((obj): obj is Extract<MathScene['objects'][number], { type: 'point_3d' }> => obj.type === 'point_3d')
+    .filter((obj): obj is Extract<MathScene['objects'][number], { type: 'point_3d' | 'point_2d' }> => obj.type === 'point_3d' || obj.type === 'point_2d')
     .map((point) => point.name);
   const face = scene.objects.find((obj): obj is Extract<MathScene['objects'][number], { type: 'face' }> => obj.type === 'face' && obj.points.length >= 3);
   const base = face?.points ?? pointNames.slice(0, 4);
@@ -80,7 +80,7 @@ export function SolverPanel({ scene, runtimeSettings, onHighlight }: SolverPanel
         </div>
         <div>
           <div className="sp-header-title">Giải toán từng bước</div>
-          <div className="sp-header-sub">Click vào bước → highlight trên hình 3D</div>
+          <div className="sp-header-sub">Click vào bước để highlight trên hình</div>
         </div>
       </div>
 

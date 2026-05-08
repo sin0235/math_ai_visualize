@@ -1,16 +1,17 @@
 import json
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import ValidationError
 
-from app.api.deps import get_optional_current_user, require_trusted_origin
+from app.api.deps import enforce_rate_limit, require_active_user, require_trusted_origin
 from app.db.models import UserRecord
 from app.db.session import DatabaseClient, get_database
 from app.repositories.admin import AdminRepository
 from app.repositories.history import RenderHistoryRepository
 from app.schemas.auth import SystemFeatureFlags
 from app.schemas.scene import RenderRequest, RenderResponse, SceneRenderRequest
+from app.services.api_errors import api_error, bad_request_from_error
 from app.services.system_settings import load_feature_flags, load_plan_settings
 from app.services.extractor import extract_scene
 from app.services.geometry_engine import normalize_scene
@@ -22,9 +23,11 @@ router = APIRouter(prefix="/api", tags=["render"])
 @router.post("/render", response_model=RenderResponse, dependencies=[Depends(require_trusted_origin)])
 async def render_problem(
     request: RenderRequest,
-    user: UserRecord | None = Depends(get_optional_current_user),
+    http_request: Request,
+    user: UserRecord = Depends(require_active_user),
     db: DatabaseClient = Depends(get_database),
 ) -> RenderResponse:
+    await enforce_rate_limit(db, http_request, user, "render", 20 if user else 8, 60)
     await enforce_render_access(db, user)
     try:
         scene, warnings = await extract_scene(
@@ -37,7 +40,7 @@ async def render_problem(
             db=db,
         )
     except (RuntimeError, ValidationError, ValueError, KeyError) as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
+        raise bad_request_from_error(error, "render_failed") from error
     if request.preferred_renderer is not None:
         scene.renderer = request.preferred_renderer
     scene_data = scene.model_dump()
@@ -72,9 +75,11 @@ async def render_problem(
 @router.post("/render/scene", response_model=RenderResponse, dependencies=[Depends(require_trusted_origin)])
 async def render_scene(
     request: SceneRenderRequest,
-    user: UserRecord | None = Depends(get_optional_current_user),
+    http_request: Request,
+    user: UserRecord = Depends(require_active_user),
     db: DatabaseClient = Depends(get_database),
 ) -> RenderResponse:
+    await enforce_rate_limit(db, http_request, user, "render_scene", 40 if user else 12, 60)
     await enforce_render_access(db, user)
     scene = normalize_scene(request.scene, request.advanced_settings)
     payload = build_render_payload(scene, request.advanced_settings)
@@ -111,14 +116,14 @@ async def enforce_render_access(db: DatabaseClient, user: UserRecord | None) -> 
     since = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
     used = await AdminRepository(db).count_user_render_jobs_since(user.id, since)
     if used >= quota.daily_render_limit:
-        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Bạn đã dùng hết hạn mức render hôm nay.")
+        raise api_error(status.HTTP_429_TOO_MANY_REQUESTS, "Bạn đã dùng hết hạn mức render hôm nay.", "QUOTA_EXCEEDED")
 
 
 def enforce_enabled(flags: SystemFeatureFlags) -> None:
     if flags.maintenance_mode:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=flags.maintenance_message)
+        raise api_error(status.HTTP_503_SERVICE_UNAVAILABLE, flags.maintenance_message, "PROVIDER_UNAVAILABLE")
     if not flags.render_enabled:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Tính năng render đang tạm tắt.")
+        raise api_error(status.HTTP_403_FORBIDDEN, "Tính năng render đang tạm tắt.", "RENDER_DISABLED")
 
 
 def sanitize_request_dump(request: RenderRequest | SceneRenderRequest) -> dict:

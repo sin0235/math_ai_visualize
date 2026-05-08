@@ -9,6 +9,7 @@ passlib[bcrypt]>=1.7.4
 bcrypt<5
 resend>=2.4.0
 sympy>=1.13.0
+matplotlib>=3.9.0
 
 [dev]
 pytest>=8.3.0

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Billboard, Line, OrbitControls, Text } from '@react-three/drei';
-import { Canvas, ThreeEvent, useThree } from '@react-three/fiber';
+import { Canvas, ThreeEvent, useFrame, useThree } from '@react-three/fiber';
 import type { ComponentProps, ReactNode } from 'react';
 
 import * as THREE from 'three';
@@ -391,8 +391,121 @@ function Lines3D({ scene }: ThreeGeometryViewProps) {
   );
 }
 
+function edgeKey(a: string, b: string): string {
+  return a < b ? `${a}|${b}` : `${b}|${a}`;
+}
+
+function useHiddenEdgeKeys(scene: ThreeScene, frame: SceneFrame): Set<string> {
+  const camera = useThree((state) => state.camera);
+  const [hiddenSet, setHiddenSet] = useState<Set<string>>(() => new Set());
+
+  // Tính trước centroid và normal cho từng face, gắn cờ "ra ngoài" dựa trên centroid khối
+  const faceData = useMemo(() => {
+    const rawFaces = (scene.faces ?? [])
+      .map((face) => {
+        const verts = face.points.map((name) => scene.points[name]).filter(Boolean) as Vec3[];
+        if (verts.length < 3) return null;
+        const centroid: Vec3 = {
+          x: verts.reduce((s, v) => s + v.x, 0) / verts.length,
+          y: verts.reduce((s, v) => s + v.y, 0) / verts.length,
+          z: verts.reduce((s, v) => s + v.z, 0) / verts.length,
+        };
+        // Newell's method: chống biến dạng với đa giác không đồng phẳng tuyệt đối
+        let nx = 0, ny = 0, nz = 0;
+        for (let i = 0; i < verts.length; i++) {
+          const a = verts[i];
+          const b = verts[(i + 1) % verts.length];
+          nx += (a.y - b.y) * (a.z + b.z);
+          ny += (a.z - b.z) * (a.x + b.x);
+          nz += (a.x - b.x) * (a.y + b.y);
+        }
+        const len = Math.hypot(nx, ny, nz);
+        if (len < 1e-9) return null;
+        return {
+          points: face.points,
+          centroid,
+          normal: { x: nx / len, y: ny / len, z: nz / len } as Vec3,
+        };
+      })
+      .filter(Boolean) as Array<{ points: string[]; centroid: Vec3; normal: Vec3 }>;
+
+    if (rawFaces.length === 0) return null;
+
+    const body: Vec3 = {
+      x: rawFaces.reduce((s, f) => s + f.centroid.x, 0) / rawFaces.length,
+      y: rawFaces.reduce((s, f) => s + f.centroid.y, 0) / rawFaces.length,
+      z: rawFaces.reduce((s, f) => s + f.centroid.z, 0) / rawFaces.length,
+    };
+
+    // Lật normal về phía ngoài khối: dot(normal, centroidFace - centroidBody) phải >= 0
+    rawFaces.forEach((f) => {
+      const dx = f.centroid.x - body.x;
+      const dy = f.centroid.y - body.y;
+      const dz = f.centroid.z - body.z;
+      const d = f.normal.x * dx + f.normal.y * dy + f.normal.z * dz;
+      if (d < 0) {
+        f.normal = { x: -f.normal.x, y: -f.normal.y, z: -f.normal.z };
+      }
+    });
+
+    const edgeFaces = new Map<string, number[]>();
+    rawFaces.forEach((f, fi) => {
+      for (let i = 0; i < f.points.length; i++) {
+        const a = f.points[i];
+        const b = f.points[(i + 1) % f.points.length];
+        const key = edgeKey(a, b);
+        const list = edgeFaces.get(key);
+        if (list) list.push(fi);
+        else edgeFaces.set(key, [fi]);
+      }
+    });
+
+    return { faces: rawFaces, edgeFaces };
+  }, [scene]);
+
+  useFrame(() => {
+    if (!faceData) {
+      setHiddenSet((prev) => (prev.size === 0 ? prev : new Set()));
+      return;
+    }
+    // Camera ở world space; group dựng theo công thức world = (scene - center) * scale
+    // → scene = world / scale + center
+    const camScene: Vec3 = {
+      x: camera.position.x / frame.scale + frame.center.x,
+      y: camera.position.y / frame.scale + frame.center.y,
+      z: camera.position.z / frame.scale + frame.center.z,
+    };
+
+    const next = new Set<string>();
+    scene.segments.forEach((segment) => {
+      const [a, b] = segment.points;
+      const key = edgeKey(a, b);
+      const adj = faceData.edgeFaces.get(key);
+      if (!adj || adj.length === 0) return; // cạnh phụ trợ, không thuộc khối → không override
+      const allBack = adj.every((fi) => {
+        const f = faceData.faces[fi];
+        const vx = camScene.x - f.centroid.x;
+        const vy = camScene.y - f.centroid.y;
+        const vz = camScene.z - f.centroid.z;
+        return f.normal.x * vx + f.normal.y * vy + f.normal.z * vz < 0;
+      });
+      if (allBack) next.add(key);
+    });
+
+    // Chỉ setState khi tập thay đổi để tránh re-render mỗi frame khi xoay đứng yên
+    setHiddenSet((prev) => {
+      if (prev.size !== next.size) return next;
+      for (const k of next) if (!prev.has(k)) return next;
+      return prev;
+    });
+  });
+
+  return hiddenSet;
+}
+
 function Segments({ scene, frame, interaction }: ThreeGeometryViewProps & { frame: SceneFrame; interaction?: ThreeSceneInteraction }) {
   const highlighted = React.useContext(HighlightContext);
+  const hiddenEdges = useHiddenEdgeKeys(scene, frame);
   return (
     <>
       {scene.segments.map((segment, index) => {
@@ -400,9 +513,12 @@ function Segments({ scene, frame, interaction }: ThreeGeometryViewProps & { fram
         const start = scene.points[startName];
         const end = scene.points[endName];
         if (!start || !end) return null;
-        const dashed = segment.hidden || segment.style === 'dashed' || segment.style === 'dotted';
+        const dynamicHidden = hiddenEdges.has(edgeKey(startName, endName));
+        // Cạnh thuộc khối → quyết định bằng góc nhìn; cạnh phụ trợ → tôn trọng style của LLM
+        const styleDashed = segment.style === 'dashed' || segment.style === 'dotted';
+        const dashed = dynamicHidden || styleDashed;
         const isHighlighted = highlighted.includes(startName) && highlighted.includes(endName);
-        const baseColor = segment.color ?? (segment.hidden ? '#8b95a7' : '#1d3557');
+        const baseColor = segment.color ?? (dynamicHidden ? '#8b95a7' : '#1d3557');
         const color = isHighlighted ? '#f97316' : baseColor;
         const lineWidth = isHighlighted
           ? Math.max(segment.line_width ?? 3, 6)

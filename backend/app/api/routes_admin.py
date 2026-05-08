@@ -1,12 +1,11 @@
 import json
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import ValidationError
 
-from app.api.deps import require_admin_user, require_trusted_origin
+from app.api.deps import enforce_rate_limit, require_admin_user, require_trusted_origin
 from app.api.routes_history import parse_json_object
 from app.db.models import UserRecord
-from app.core.config import get_settings
 from app.db.session import DatabaseClient, get_database
 from app.repositories.admin import AdminRepository
 from app.schemas.auth import (
@@ -25,8 +24,8 @@ from app.schemas.auth import (
     SystemSettingResponse,
     UserResponse,
 )
-from app.schemas.scene import AiModelInfo, MathScene, RenderPayload
-from app.services.model_registry import load_model_registry, save_provider_config, save_task_profile, set_allowed_models, set_model_setting, upsert_scanned_models
+from app.schemas.scene import MathScene, RenderPayload
+from app.services.admin_settings import build_database_diagnostics, sync_ai_settings_to_registry
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -161,80 +160,17 @@ async def admin_system_settings(_: UserRecord = Depends(require_admin_user), db:
 
 @router.get("/database/diagnostics")
 async def admin_database_diagnostics(_: UserRecord = Depends(require_admin_user), db: DatabaseClient = Depends(get_database)) -> dict:
-    settings = get_settings()
-    tables = [
-        "users",
-        "sessions",
-        "render_jobs",
-        "user_settings",
-        "system_settings",
-        "audit_logs",
-        "auth_tokens",
-        "rate_limit_events",
-        "legal_acceptances",
-        "oauth_identities",
-        "oauth_states",
-        "usage_events",
-        "ai_providers",
-        "ai_models",
-        "ai_task_profiles",
-        "ai_model_settings",
-        "schema_migrations",
-    ]
-    counts: dict[str, int | str] = {}
-    for table in tables:
-        try:
-            row = await db.fetch_one(f"SELECT COUNT(*) AS count FROM {table}")
-            counts[table] = int(row["count"]) if row is not None else 0
-        except Exception as error:
-            counts[table] = str(error)
-
-    migrations = await db.fetch_all("SELECT filename, applied_at FROM schema_migrations ORDER BY filename")
-    setting_rows = await AdminRepository(db).list_system_settings()
-    settings_summary = {item.key: {"updated_at": item.updated_at, "updated_by": item.updated_by} for item in setting_rows}
-    ai_settings_row = next((item for item in setting_rows if item.key == "ai_settings"), None)
-    ai_settings = parse_setting_value(ai_settings_row.value_json) if ai_settings_row else {}
-    router9 = ai_settings.get("router9") if isinstance(ai_settings.get("router9"), dict) else {}
-    registry = await load_model_registry(db, settings)
-    stale_allowed = sum(
-        1
-        for models in registry.models.values()
-        for model in models
-        if model.allowed and not model.last_seen_at and model.source == "manual"
-    )
-
-    return {
-        "backend": getattr(db, "backend", "unknown"),
-        "sqlite_path": getattr(db, "path", None),
-        "configured_sqlite_path": settings.sqlite_path,
-        "migrations": migrations,
-        "counts": counts,
-        "system_settings": settings_summary,
-        "ai_settings": {
-            "exists": ai_settings_row is not None,
-            "default_provider": ai_settings.get("default_provider"),
-            "router9_model": router9.get("model"),
-            "router9_only_mode": router9.get("only_mode"),
-            "router9_allowed_model_count": len(router9.get("allowed_model_ids") or []),
-            "router9_scanned_model_count": len(router9.get("scanned_models") or []),
-        },
-        "model_registry": {
-            "provider_count": len(registry.providers),
-            "model_count": sum(len(models) for models in registry.models.values()),
-            "allowed_model_count": sum(1 for models in registry.models.values() for model in models if model.allowed),
-            "stale_allowed_model_count": stale_allowed,
-            "task_profiles": {task: profile.__dict__ for task, profile in registry.task_profiles.items()},
-            "legacy_ai_settings_present": registry.legacy_used,
-        },
-    }
+    return await build_database_diagnostics(db)
 
 
 @router.put("/system-settings", response_model=SystemSettingResponse, dependencies=[Depends(require_trusted_origin)])
 async def admin_save_system_setting(
     request: SystemSettingRequest,
+    http_request: Request,
     admin: UserRecord = Depends(require_admin_user),
     db: DatabaseClient = Depends(get_database),
 ) -> SystemSettingResponse:
+    await enforce_rate_limit(db, http_request, admin, "admin_system_settings", 30, 60)
     repo = AdminRepository(db)
     value = validate_system_setting(request.key, request.value)
     setting = await repo.upsert_system_setting(request.key, value, admin.id)
@@ -247,9 +183,11 @@ async def admin_save_system_setting(
 @router.post("/providers/{provider}/check")
 async def admin_check_provider(
     provider: str,
-    _: UserRecord = Depends(require_admin_user),
+    http_request: Request,
+    admin: UserRecord = Depends(require_admin_user),
     db: DatabaseClient = Depends(get_database),
 ) -> dict:
+    await enforce_rate_limit(db, http_request, admin, "admin_provider_check", 20, 60)
     from app.services.extractor import _extract_with_provider
     from app.core.config import get_settings
 
@@ -307,29 +245,6 @@ def validate_system_setting(key: str, value: dict) -> dict:
         return schema.model_validate(value).model_dump(mode="json")
     except ValidationError as error:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=error.errors()) from error
-
-
-async def sync_ai_settings_to_registry(db: DatabaseClient, value: dict) -> None:
-    ai_settings = SystemAiSettings.model_validate(value)
-    providers = {
-        "openrouter": ai_settings.openrouter,
-        "nvidia": ai_settings.nvidia,
-        "ollama": ai_settings.ollama,
-        "openai_compat": ai_settings.openai_compat,
-        "router9": ai_settings.router9,
-    }
-    for provider_id, provider in providers.items():
-        await save_provider_config(db, provider_id, provider.base_url, provider.model)
-        await upsert_scanned_models(db, provider_id, [AiModelInfo.model_validate(model.model_dump() | {"provider": provider_id}) for model in provider.scanned_models])
-        await set_allowed_models(db, provider_id, provider.allowed_model_ids)
-    await set_model_setting(db, "default_provider", ai_settings.default_provider)
-    await set_model_setting(db, "router9_only", ai_settings.router9.only_mode)
-    await set_model_setting(db, "openrouter_reasoning_enabled", ai_settings.openrouter_reasoning_enabled)
-    await set_model_setting(db, "ocr_max_image_mb", ai_settings.ocr.max_image_mb)
-    await save_task_profile(db, "render", ai_settings.default_provider, "", [])
-    await save_task_profile(db, "reasoning", ai_settings.default_provider, "", [])
-    await save_task_profile(db, "solver_explanation", ai_settings.default_provider, "", [])
-    await save_task_profile(db, "ocr", ai_settings.ocr.provider, ai_settings.ocr.model, [])
 
 
 def user_response(user: UserRecord) -> UserResponse:

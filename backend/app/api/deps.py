@@ -5,7 +5,7 @@ from fastapi import Cookie, Depends, HTTPException, Request, status
 from app.core.config import Settings, get_settings
 from app.db.models import UserRecord
 from app.db.session import DatabaseClient, get_database
-from app.repositories.auth import SESSION_COOKIE_NAME, SessionRepository, UserRepository
+from app.repositories.auth import SESSION_COOKIE_NAME, RateLimitRepository, SessionRepository, UserRepository
 
 
 async def get_current_user(
@@ -72,6 +72,25 @@ async def require_trusted_origin(
     if origin_allowed(source, settings.cors_origins):
         return
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Nguồn yêu cầu không được phép dùng phiên đăng nhập này.")
+
+
+async def enforce_rate_limit(
+    db: DatabaseClient,
+    request: Request,
+    user: UserRecord | None,
+    name: str,
+    limit: int,
+    window_seconds: int,
+) -> None:
+    subject = f"user:{user.id}" if user is not None else f"ip:{request.client.host if request.client else 'unknown'}"
+    result = await RateLimitRepository(db).hit(f"endpoint:{name}:{subject}", limit, window_seconds)
+    if result.allowed:
+        return
+    raise HTTPException(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        detail="Bạn thao tác quá nhanh. Hãy thử lại sau.",
+        headers={"Retry-After": str(result.retry_after_seconds)},
+    )
 
 
 def origin_allowed(source: str, allowed_origins: list[str]) -> bool:

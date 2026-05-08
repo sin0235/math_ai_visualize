@@ -6,59 +6,50 @@ export function PrivacyPolicyPage() {
       <div className="legal-hero-row">
         <div>
           <h2>Chính Sách Bảo Mật</h2>
-          <p className="legal-update-date">Cập nhật lần cuối: 02 tháng 05, 2026</p>
-          <p>AI Math Renderer ("chúng tôi", "dịch vụ") cam kết bảo vệ quyền riêng tư và dữ liệu cá nhân của người dùng. Chính sách này được thiết lập nhằm tuân thủ các quy định pháp luật hiện hành về bảo vệ dữ liệu cá nhân, bao gồm Nghị định 13/2023/NĐ-CP.</p>
+          <p className="legal-update-date">Cập nhật lần cuối: 08 tháng 05, 2026</p>
+          <p>AI Math Renderer ("chúng tôi", "nền tảng") cam kết bảo vệ tối đa quyền riêng tư và dữ liệu kỹ thuật của người dùng. Chính sách này được thiết lập nhằm tuân thủ các quy định pháp luật hiện hành, bao gồm Nghị định 13/2023/NĐ-CP về bảo vệ dữ liệu cá nhân.</p>
         </div>
       </div>
 
       <div className="legal-content">
         <section className="legal-section">
-          <h3>1. Thu thập dữ liệu cá nhân</h3>
-          <p>Chúng tôi thu thập các thông tin cần thiết để cung cấp và cải thiện dịch vụ, bao gồm:</p>
+          <h3>1. Thu thập và Xử lý dữ liệu</h3>
+          <p>Chúng tôi thu thập các thông tin cần thiết để vận hành kiến trúc phân tích và dựng hình, bao gồm:</p>
           <ul>
-            <li><strong>Thông tin định danh:</strong> Địa chỉ email, tên hiển thị được cung cấp khi đăng ký tài khoản hoặc thông qua dịch vụ xác thực bên thứ ba (Google OAuth).</li>
-            <li><strong>Dữ liệu kỹ thuật:</strong> Địa chỉ IP, loại trình duyệt (User Agent), cookies phiên hoạt động nhằm mục đích bảo mật và duy trì trạng thái đăng nhập.</li>
-            <li><strong>Dữ liệu nội dung:</strong> Các yêu cầu dựng hình (prompt), hình ảnh tải lên cho mục đích OCR, và cấu hình thông số hình học mà người dùng tạo ra.</li>
+            <li><strong>Thông tin định danh:</strong> Địa chỉ email, tên hiển thị và dữ liệu xác thực từ các đối tác tin cậy (Google OAuth).</li>
+            <li><strong>Dữ liệu toán học & Biểu thức:</strong> Các yêu cầu dựng hình, biểu thức hàm số, và hình ảnh đề bài (OCR) được người dùng nhập vào hệ thống.</li>
+            <li><strong>Dữ liệu Kỹ thuật Scene:</strong> Thông tin về cấu trúc hình học (Scene JSON), tọa độ điểm và các tham số tùy chỉnh do người dùng thiết lập.</li>
+            <li><strong>Thông tin thiết bị:</strong> Địa chỉ IP, loại trình duyệt và cookies phiên hoạt động nhằm đảm bảo an ninh hệ thống.</li>
           </ul>
         </section>
 
         <section className="legal-section">
-          <h3>2. Mục đích và phạm vi xử lý dữ liệu</h3>
-          <p>Dữ liệu của bạn được xử lý cho các mục đích cụ thể sau:</p>
+          <h3>2. Mục đích xử lý dữ liệu</h3>
+          <p>Dữ liệu của bạn được xử lý thông qua hệ thống phân tích đa tầng cho các mục đích:</p>
           <ul>
-            <li><strong>Cung cấp dịch vụ cốt lõi:</strong> Đồng bộ hóa lịch sử dựng hình, lưu trữ cấu hình cá nhân và quản lý phiên làm việc trên nhiều thiết bị.</li>
-            <li><strong>Giao tiếp hệ thống:</strong> Gửi thông báo xác thực tài khoản (OTP), liên kết khôi phục mật khẩu và các cập nhật quan trọng về dịch vụ.</li>
-            <li><strong>An toàn và bảo mật:</strong> Giám sát các hoạt động bất thường, ngăn chặn hành vi tấn công từ chối dịch vụ (DoS) và bảo vệ tính toàn vẹn của hệ thống.</li>
+            <li><strong>Tối ưu hóa Phân tích & Dựng hình:</strong> Đồng bộ hóa lịch sử làm việc, lưu trữ các mẫu hình học và khảo sát hàm số cá nhân hóa.</li>
+            <li><strong>Phát triển Hệ thống Suy luận:</strong> Cải thiện độ chính xác của bộ máy giải toán và nhận diện hình ảnh dựa trên các mẫu dữ liệu ẩn danh.</li>
+            <li><strong>Duy trì An ninh Hạ tầng:</strong> Ngăn chặn các hành vi xâm nhập, lạm dụng tài nguyên GPU và bảo vệ quyền lợi chung của cộng đồng người dùng.</li>
           </ul>
         </section>
 
         <section className="legal-section">
-          <h3>3. Xử lý dữ liệu qua bên thứ ba (AI Providers)</h3>
-          <p>Dịch vụ này sử dụng các mô hình trí tuệ nhân tạo (LLM) từ các nhà cung cấp bên thứ ba (như OpenAI, Anthropic, Google, NVIDIA, 9Router). Khi bạn thực hiện yêu cầu render:</p>
+          <h3>3. Tương tác với Hệ sinh thái AI bên thứ ba</h3>
+          <p>Nền tảng tích hợp các mô hình ngôn ngữ lớn (LLM) và dịch vụ xử lý từ các nhà cung cấp hàng đầu (OpenAI, Anthropic, Google, NVIDIA, Router9). Khi sử dụng dịch vụ:</p>
           <ul>
-            <li>Nội dung đề bài và dữ liệu hình ảnh sẽ được gửi đến máy chủ của nhà cung cấp AI để xử lý.</li>
-            <li>Chúng tôi không kiểm soát cách các bên thứ ba này lưu trữ hoặc đào tạo mô hình dựa trên dữ liệu đó. Người dùng được khuyến cáo <strong>không nhập thông tin cá nhân nhạy cảm</strong> vào các yêu cầu dựng hình.</li>
-            <li>Đối với các API Key cá nhân do người dùng cung cấp trong phần cài đặt, dữ liệu này chỉ được lưu trữ cục bộ tại trình duyệt hoặc truyền tải mã hóa đến backend để thực hiện yêu cầu, tuyệt đối không được sử dụng cho mục đích khác.</li>
+            <li>Dữ liệu toán học và hình ảnh sẽ được truyền tải mã hóa đến các API Provider để thực hiện quy trình suy luận và phân tích logic.</li>
+            <li>Chúng tôi cam kết không chia sẻ thông tin định danh cá nhân trực tiếp cho các bên này trong quá trình xử lý yêu cầu toán học.</li>
+            <li>Người dùng chịu trách nhiệm về nội dung nhập vào và được khuyến cáo không đưa các thông tin cá nhân nhạy cảm vào các mô tả bài toán.</li>
           </ul>
         </section>
 
         <section className="legal-section">
-          <h3>4. Thời gian lưu trữ và bảo vệ dữ liệu</h3>
+          <h3>4. Cam kết Bảo mật & Lưu trữ</h3>
           <ul>
-            <li><strong>Lưu trữ:</strong> Dữ liệu được lưu trữ cho đến khi người dùng yêu cầu xóa tài khoản hoặc khi dịch vụ ngừng cung cấp.</li>
-            <li><strong>Biện pháp bảo vệ:</strong> Chúng tôi áp dụng các tiêu chuẩn bảo mật ngành, bao gồm mã hóa HTTPS/TLS, cơ chế băm (hashing) mật khẩu một chiều và quản lý phiên đăng nhập an toàn (HttpOnly Cookies).</li>
+            <li><strong>Mã hóa Toàn diện:</strong> Mọi dữ liệu truyền tải giữa máy khách và máy chủ đều được bảo vệ bởi tiêu chuẩn HTTPS/TLS mạnh mẽ.</li>
+            <li><strong>Quyền kiểm soát:</strong> Người dùng hoàn toàn có quyền truy cập, chỉnh sửa hoặc yêu cầu xóa vĩnh viễn dữ liệu cá nhân và lịch sử dựng hình bất cứ lúc nào thông qua bảng điều khiển.</li>
+            <li><strong>Lưu trữ an toàn:</strong> Mật khẩu và thông tin quan trọng được bảo vệ bằng các thuật toán băm (hashing) hiện đại, đảm bảo ngay cả quản trị viên cũng không thể truy cập trực tiếp.</li>
           </ul>
-        </section>
-
-        <section className="legal-section">
-          <h3>5. Quyền của chủ thể dữ liệu</h3>
-          <p>Theo quy định của pháp luật Việt Nam, bạn có các quyền sau đối với dữ liệu cá nhân của mình:</p>
-          <ul>
-            <li>Quyền được biết, truy cập, chỉnh sửa hoặc yêu cầu xóa dữ liệu cá nhân.</li>
-            <li>Quyền rút lại sự đồng ý xử lý dữ liệu (có thể dẫn đến việc ngừng cung cấp một số tính năng của dịch vụ).</li>
-            <li>Quyền yêu cầu cung cấp dữ liệu cá nhân của mình dưới dạng cấu trúc thông dụng.</li>
-          </ul>
-          <p>Để thực hiện các quyền này, bạn có thể sử dụng các công cụ trong mục "Quản lý tài khoản" hoặc liên hệ với chúng tôi qua kênh hỗ trợ.</p>
         </section>
       </div>
     </section>
@@ -71,50 +62,72 @@ export function TermsPage() {
       <div className="legal-hero-row">
         <div>
           <h2>Điều Khoản Sử Dụng</h2>
-          <p className="legal-update-date">Cập nhật lần cuối: 02 tháng 05, 2026</p>
-          <p>Chào mừng bạn đến với AI Math Renderer. Bằng việc truy cập hoặc sử dụng dịch vụ, bạn xác nhận đã đọc, hiểu và đồng ý tuân thủ các điều khoản dưới đây.</p>
+          <p className="legal-update-date">Cập nhật lần cuối: 08 tháng 05, 2026</p>
+          <p>Bằng việc sử dụng AI Math Renderer, bạn đồng ý với các điều khoản vận hành dưới đây nhằm đảm bảo một môi trường học thuật sáng tạo và minh bạch.</p>
         </div>
       </div>
 
       <div className="legal-content">
         <section className="legal-section">
-          <h3>1. Quyền và trách nhiệm của người dùng</h3>
+          <h3>1. Quy ước sử dụng dịch vụ</h3>
           <ul>
-            <li><strong>Đăng ký tài khoản:</strong> Bạn có trách nhiệm cung cấp thông tin email chính xác và bảo mật thông tin đăng nhập. Mọi hoạt động phát sinh dưới tài khoản của bạn sẽ thuộc trách nhiệm của bạn.</li>
-            <li><strong>Sử dụng hợp lệ:</strong> Bạn đồng ý sử dụng dịch vụ cho mục đích học tập, giảng dạy hoặc nghiên cứu hợp pháp. Nghiêm cấm mọi hành vi lạm dụng, tấn công hạ tầng, hoặc sử dụng dịch vụ để phát tán nội dung vi phạm pháp luật.</li>
-            <li><strong>Nội dung người dùng:</strong> Bạn giữ quyền sở hữu đối với các đề bài và dữ liệu do bạn nhập vào, nhưng bạn cấp cho chúng tôi quyền hạn chế để xử lý các dữ liệu này nhằm mục đích hiển thị và cung cấp dịch vụ cho chính bạn.</li>
+            <li><strong>Tài khoản cá nhân:</strong> Người dùng tự chịu trách nhiệm bảo mật thông tin đăng nhập và mọi hoạt động phát sinh từ tài khoản của mình.</li>
+            <li><strong>Sử dụng đúng mục đích:</strong> Dịch vụ được thiết kế cho mục đích giáo dục, nghiên cứu và biên soạn tài liệu toán học. Nghiêm cấm mọi hành vi tấn công kỹ thuật, khai thác lỗ hổng hoặc sử dụng tự động hóa (bot) gây quá tải hệ thống.</li>
+            <li><strong>Tôn trọng hạ tầng:</strong> Các tài nguyên tính toán (AI/GPU) được phân bổ theo định mức, người dùng cần tuân thủ các giới hạn về tần suất yêu cầu để đảm bảo tính ổn định chung.</li>
           </ul>
         </section>
 
         <section className="legal-section">
-          <h3>2. Sở hữu trí tuệ</h3>
+          <h3>2. Gói dịch vụ và Thanh toán</h3>
           <ul>
-            <li><strong>Phần mềm và Giao diện:</strong> Toàn bộ mã nguồn, thiết kế giao diện, logo và thuật toán của AI Math Renderer là tài sản trí tuệ của chúng tôi hoặc các đối tác liên quan.</li>
-            <li><strong>Kết quả dựng hình (Output):</strong> Các Scene JSON, mã GeoGebra hoặc mô hình Three.js được tạo ra bởi AI có thể được bạn sử dụng tự do cho mục đích cá nhân và giáo dục. Tuy nhiên, chúng tôi không đảm bảo tính duy nhất của các kết quả này.</li>
+            <li><strong>Mô hình dịch vụ:</strong> Nền tảng cung cấp cả gói miễn phí (với hạn mức sử dụng) và các gói trả phí (Premium) với tài nguyên AI ưu tiên.</li>
+            <li><strong>Thay đổi mức phí:</strong> Chúng tôi có quyền điều chỉnh chính sách giá và cấu trúc gói dịch vụ. Các thay đổi sẽ được thông báo trước trên giao diện chính hoặc qua email.</li>
+            <li><strong>Hoàn tiền:</strong> Việc hoàn phí cho các gói dịch vụ trả phí sẽ được xem xét theo từng trường hợp cụ thể dựa trên tính sẵn sàng của hệ thống và quy định thanh toán của bên thứ ba.</li>
           </ul>
         </section>
 
         <section className="legal-section">
-          <h3>3. Giới hạn trách nhiệm và Miễn trừ bảo đảm</h3>
-          <p><strong>Dịch vụ được cung cấp trên cơ sở "nguyên trạng" (As-Is) và "có sẵn" (As-Available):</strong></p>
+          <h3>3. Sở hữu trí tuệ và "Scene-as-Code"</h3>
           <ul>
-            <li><strong>Độ chính xác của AI:</strong> Bạn hiểu và thừa nhận rằng kết quả dựng hình từ AI có thể chứa sai sót về toán học, tọa độ hoặc logic hình học. Chúng tôi <strong>không chịu trách nhiệm</strong> đối với bất kỳ thiệt hại nào (trực tiếp hoặc gián tiếp) phát sinh từ việc sử dụng các kết quả này trong thi cử, xuất bản hoặc các quyết định quan trọng khác.</li>
-            <li><strong>Kiểm chứng dữ liệu:</strong> Người dùng có trách nhiệm tự kiểm tra và xác nhận lại tính đúng đắn của hình ảnh trước khi sử dụng.</li>
-            <li><strong>Sự cố kỹ thuật:</strong> Chúng tôi không bảo đảm dịch vụ sẽ luôn hoạt động liên tục, không có lỗi hoặc không bị gián đoạn do sự cố từ phía nhà cung cấp hạ tầng hoặc các dịch vụ AI bên thứ ba.</li>
+            <li><strong>Quyền sở hữu công nghệ:</strong> Mọi thuật toán, kiến trúc backend, mã nguồn giao diện và thương hiệu AI Math Renderer thuộc sở hữu độc quyền của Sin Studio.</li>
+            <li><strong>Quyền sở hữu nội dung:</strong> Người dùng giữ toàn quyền sở hữu đối với các đề bài và các "Dữ liệu Scene có cấu trúc" do mình tạo ra. Bạn có thể tự do xuất bản, nhúng hoặc sử dụng kết quả (GeoGebra, TikZ, Three.js) cho các mục đích cá nhân và thương mại hợp pháp.</li>
+            <li><strong>Đóng góp ý kiến (Feedback):</strong> Bằng việc gửi góp ý, bạn cấp cho chúng tôi quyền sử dụng các ý kiến đó để cải thiện sản phẩm mà không kèm theo nghĩa vụ tài chính.</li>
           </ul>
         </section>
 
         <section className="legal-section">
-          <h3>4. Chấm dứt và Thay đổi dịch vụ</h3>
+          <h3>4. Liên kết và Dịch vụ bên thứ ba</h3>
+          <p>Dịch vụ có tích hợp hoặc liên kết tới các công cụ toán học bên ngoài như GeoGebra, MathJax, và các AI Providers:</p>
           <ul>
-            <li>Chúng tôi có quyền tạm ngừng hoặc chấm dứt cung cấp dịch vụ đối với các tài khoản vi phạm điều khoản sử dụng hoặc có dấu hiệu lạm dụng gây ảnh hưởng đến hệ thống mà không cần thông báo trước.</li>
-            <li>Các điều khoản này có thể được cập nhật định kỳ. Việc bạn tiếp tục sử dụng dịch vụ sau khi có thay đổi đồng nghĩa với việc bạn chấp nhận các điều khoản mới.</li>
+            <li>Việc sử dụng các công cụ này cũng đồng thời chịu sự điều chỉnh bởi các điều khoản riêng của từng nhà cung cấp đó.</li>
+            <li>Chúng tôi không chịu trách nhiệm về nội dung, chính sách bảo mật hoặc sự cố kỹ thuật phát sinh từ phía các dịch vụ bên thứ ba này.</li>
           </ul>
         </section>
 
         <section className="legal-section">
-          <h3>5. Luật áp dụng và Giải quyết tranh chấp</h3>
-          <p>Các điều khoản này được điều chỉnh và giải thích theo pháp luật Cộng hòa Xã hội Chủ nghĩa Việt Nam. Mọi tranh chấp phát sinh từ hoặc liên quan đến việc sử dụng dịch vụ sẽ được ưu tiên giải quyết thông qua thương lượng, trường hợp không đạt được thỏa thuận sẽ được đưa ra cơ quan tài phán có thẩm quyền tại Việt Nam.</p>
+          <h3>5. Tuyên bố Miễn trừ và Giới hạn Trách nhiệm</h3>
+          <p><strong>Người dùng cần lưu ý các đặc thù của công nghệ AI trong toán học:</strong></p>
+          <ul>
+            <li><strong>Độ chính xác của AI:</strong> Mặc dù áp dụng các mô hình suy luận tiên tiến, kết quả đầu ra có thể vẫn chứa sai sót về logic hoặc tọa độ do tính chất của LLM. Chúng tôi <strong>không chịu trách nhiệm</strong> cho bất kỳ sai sót nào trong kết quả học tập, thi cử hoặc xuất bản dựa trên dữ liệu từ nền tảng.</li>
+            <li><strong>Trách nhiệm kiểm chứng:</strong> Nền tảng đóng vai trò là "Trợ lý kỹ thuật". Người dùng có trách nhiệm cuối cùng trong việc kiểm tra tính đúng đắn về mặt chuyên môn trước khi đưa vào sử dụng thực tế.</li>
+            <li><strong>Tính sẵn sàng:</strong> Dịch vụ phụ thuộc vào các nhà cung cấp hạ tầng AI bên thứ ba. Chúng tôi không đảm bảo dịch vụ luôn hoạt động 100% thời gian hoặc không có gián đoạn kỹ thuật.</li>
+          </ul>
+        </section>
+
+        <section className="legal-section">
+          <h3>6. Thay đổi và Chấm dứt dịch vụ</h3>
+          <ul>
+            <li>Chúng tôi có quyền điều chỉnh tính năng, tạm ngừng hoặc chấm dứt một phần dịch vụ để bảo trì hoặc nâng cấp.</li>
+            <li>Trường hợp người dùng vi phạm nghiêm trọng các quy định về an ninh hoặc lạm dụng tài nguyên, chúng tôi có quyền khóa tài khoản vĩnh viễn mà không cần thông báo trước.</li>
+          </ul>
+        </section>
+
+        <section className="legal-section">
+          <h3>7. Điều khoản chung</h3>
+          <ul>
+            <li><strong>Tính tách biệt:</strong> Nếu bất kỳ điều khoản nào bị coi là vô hiệu bởi cơ quan có thẩm quyền, các điều khoản còn lại vẫn giữ nguyên giá trị pháp lý.</li>
+            <li><strong>Luật áp dụng:</strong> Các điều khoản này được điều chỉnh bởi pháp luật Việt Nam. Mọi tranh chấp sẽ được ưu tiên giải quyết qua thương lượng trước khi đưa ra cơ quan tài phán.</li>
+          </ul>
         </section>
       </div>
     </section>

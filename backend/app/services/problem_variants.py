@@ -1,0 +1,137 @@
+"""Reverse: sinh N đề bài biến thể từ một MathScene cho trước.
+
+Use case: giáo viên có một hình hình học (đã dựng), muốn sinh ra nhiều đề bài
+"tương đương cấu trúc nhưng khác số liệu/biến số" để tránh học sinh chép bài
+nhau.
+
+Cách làm: serialise MathScene → JSON, gửi cho LLM với system prompt yêu cầu giữ
+nguyên *cấu trúc hình học* (cùng dạng hình chóp, cùng quan hệ vuông góc/song
+song) nhưng thay đổi:
+- Tên điểm (S.ABCD ↔ M.NPQR ↔ A.BCDE).
+- Số liệu (cạnh, góc, bán kính) trong khoảng hợp lý.
+- Câu hỏi (tính thể tích, khoảng cách, góc, chứng minh…).
+
+LLM trả về một danh sách các chuỗi đề bài tiếng Việt.
+"""
+
+from __future__ import annotations
+
+import json
+import time
+from dataclasses import dataclass
+
+import httpx
+
+from app.core.config import Settings
+from app.schemas.scene import MathScene
+from app.services.openrouter_client import _build_headers, _extract_message, _format_openrouter_error, _normalize_model_id, _strip_json_fences
+from app.services.provider_logging import log_provider_request, log_provider_response
+
+VARIANTS_SYSTEM_PROMPT = """
+Bạn là giáo viên Toán THPT chuyên ra đề.
+Cho trước một MathScene JSON mô tả hình hình học. Hãy sinh ra N đề toán
+TƯƠNG ĐƯƠNG VỀ CẤU TRÚC nhưng khác nhau để mỗi học sinh nhận một đề khác.
+
+Quy tắc:
+1. Giữ nguyên cấu hình hình (cùng loại đa diện, cùng các quan hệ vuông
+   góc/song song/đối xứng).
+2. Có thể đổi:
+   - Tên điểm (S.ABCD → M.NPQR → P.ABCD…).
+   - Số liệu (cạnh đáy, chiều cao, bán kính, góc) trong khoảng số nguyên/đơn
+     giản (ví dụ: 2..10, hoặc các giá trị đặc biệt như sqrt(2), sqrt(3)).
+   - Câu hỏi cuối: tính thể tích / diện tích / khoảng cách / góc / chứng minh.
+3. KHÔNG đổi: dạng đa diện, cấu hình đáy (vuông/đều/cân/thường), quan hệ
+   "SA vuông góc đáy" hay "S.ABCD đều".
+4. Mỗi đề là một đoạn văn hoàn chỉnh, kết thúc bằng câu hỏi rõ ràng.
+5. Không suy luận, không giải, không markdown, không bullet trong từng đề.
+
+Định dạng output bắt buộc: JSON object với khoá "variants" là mảng N chuỗi:
+{
+  "variants": ["Đề 1...", "Đề 2...", ...]
+}
+""".strip()
+
+
+@dataclass(frozen=True)
+class VariantsResult:
+    variants: list[str]
+    provider: str
+    model: str
+
+
+def _build_user_prompt(scene: MathScene, original_problem: str | None, count: int) -> str:
+    scene_brief = scene.model_dump(mode="json", exclude_none=True, exclude_defaults=False)
+    parts = [
+        f"Số đề cần sinh: {count}.",
+        "MathScene gốc (JSON):",
+        json.dumps(scene_brief, ensure_ascii=False, indent=2),
+    ]
+    if original_problem:
+        parts.extend(["", "Đề bài gốc (tham khảo phong cách):", original_problem.strip()])
+    parts.append('\nHãy trả về JSON đúng định dạng {"variants": [...]} với đúng ' + str(count) + " đề.")
+    return "\n".join(parts)
+
+
+async def generate_variants(
+    scene: MathScene,
+    settings: Settings,
+    count: int = 3,
+    original_problem: str | None = None,
+    explicit_model: str | None = None,
+) -> VariantsResult:
+    if count < 1 or count > 10:
+        raise ValueError("Số biến thể phải từ 1 đến 10.")
+    if not settings.openrouter_api_key:
+        raise RuntimeError("OPENROUTER_API_KEY chưa được cấu hình để sinh đề biến thể.")
+
+    model = explicit_model or settings.openrouter_text_model
+    user_prompt = _build_user_prompt(scene, original_problem, count)
+
+    payload = {
+        "model": _normalize_model_id(model),
+        "messages": [
+            {"role": "system", "content": VARIANTS_SYSTEM_PROMPT},
+            {"role": "user", "content": user_prompt},
+        ],
+        "temperature": 0.6,
+    }
+
+    url = f"{settings.openrouter_base_url.rstrip('/')}/chat/completions"
+    started_at = time.perf_counter()
+    log_provider_request("openrouter", "variants", url, payload["model"], problem_chars=len(user_prompt))
+    async with httpx.AsyncClient(timeout=90) as client:
+        response = await client.post(url, headers=_build_headers(settings), json=payload)
+        elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+        log_provider_response("openrouter", "variants", response.status_code, elapsed_ms, len(response.text))
+        if response.status_code >= 400:
+            raise RuntimeError(_format_openrouter_error(response))
+
+    message = _extract_message(response)
+    content = message.get("content")
+    if not isinstance(content, str) or not content.strip():
+        raise RuntimeError("Provider không trả về nội dung biến thể.")
+
+    try:
+        parsed = json.loads(_strip_json_fences(content))
+    except json.JSONDecodeError as error:
+        raise RuntimeError(f"Provider trả JSON biến thể không hợp lệ: {error.msg}") from error
+
+    raw_variants = parsed.get("variants")
+    if not isinstance(raw_variants, list):
+        raise RuntimeError("Provider không trả về trường 'variants' hợp lệ.")
+
+    cleaned: list[str] = []
+    for item in raw_variants:
+        if isinstance(item, str):
+            text = item.strip()
+            if len(text) >= 20:
+                cleaned.append(text)
+    if not cleaned:
+        raise RuntimeError("Không có biến thể đủ dài (tối thiểu 20 ký tự).")
+    if len(cleaned) > count:
+        cleaned = cleaned[:count]
+
+    return VariantsResult(variants=cleaned, provider="openrouter", model=model)
+
+
+__all__ = ["VariantsResult", "generate_variants", "VARIANTS_SYSTEM_PROMPT"]

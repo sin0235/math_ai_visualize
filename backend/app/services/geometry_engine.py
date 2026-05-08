@@ -567,6 +567,192 @@ def calculate_pyramid_volume(points: dict[str, Vec3], apex: str, base_points: li
     )
 
 
+def calculate_vector_dot(points: dict[str, Vec3], edge_1: tuple[str, str], edge_2: tuple[str, str]) -> dict[str, Any]:
+    a, b = edge_1
+    c, d = edge_2
+    result = _calculation_result("vector_dot", f"\\overrightarrow{{{a}{b}}}\\cdot\\overrightarrow{{{c}{d}}}", [a, b, c, d])
+    missing = _missing_points(points, [a, b, c, d])
+    if missing:
+        return _with_warning(result, f"Điểm {', '.join(missing)} không có trong scene.")
+    u = _sub(points[b], points[a])
+    v = _sub(points[d], points[c])
+    value = _dot(u, v)
+    return _complete_result(
+        result,
+        value,
+        f"\\overrightarrow{{{a}{b}}}\\cdot\\overrightarrow{{{c}{d}}}=u_xv_x+u_yv_y+u_zv_z",
+        f"{_vec_latex(u)}\\cdot{_vec_latex(v)}={_fmt(u[0])}\\cdot{_fmt(v[0])}+{_fmt(u[1])}\\cdot{_fmt(v[1])}+{_fmt(u[2])}\\cdot{_fmt(v[2])}",
+        "scalar",
+    )
+
+
+def calculate_vector_cross(points: dict[str, Vec3], edge_1: tuple[str, str], edge_2: tuple[str, str]) -> dict[str, Any]:
+    a, b = edge_1
+    c, d = edge_2
+    result = _calculation_result("vector_cross", f"\\overrightarrow{{{a}{b}}}\\times\\overrightarrow{{{c}{d}}}", [a, b, c, d])
+    missing = _missing_points(points, [a, b, c, d])
+    if missing:
+        return _with_warning(result, f"Điểm {', '.join(missing)} không có trong scene.")
+    u = _sub(points[b], points[a])
+    v = _sub(points[d], points[c])
+    value = _cross(u, v)
+    result["result_vector"] = _as_point(value)
+    return _complete_text_result(
+        result,
+        f"\\overrightarrow{{{a}{b}}}\\times\\overrightarrow{{{c}{d}}}=\\begin{{vmatrix}}\\vec i&\\vec j&\\vec k\\\\u_x&u_y&u_z\\\\v_x&v_y&v_z\\end{{vmatrix}}",
+        f"{_vec_latex(u)}\\times{_vec_latex(v)}",
+        _vec_latex(value),
+        f"{result['label']} = {_vec_latex(value)}",
+    )
+
+
+def calculate_line_equation(points: dict[str, Vec3], edge: tuple[str, str]) -> dict[str, Any]:
+    a, b = edge
+    result = _calculation_result("equation_line", f"d_{{{a}{b}}}", [a, b])
+    missing = _missing_points(points, [a, b])
+    if missing:
+        return _with_warning(result, f"Điểm {', '.join(missing)} không có trong scene.")
+    p = points[a]
+    u = _sub(points[b], points[a])
+    if _norm(u) <= EPS:
+        return _with_warning(result, f"Đường thẳng {a}{b} suy biến vì {a} và {b} trùng nhau.")
+    result["point"] = _as_point(p)
+    result["direction"] = _as_point(u)
+    equation = f"\\begin{{cases}}x={_fmt(p[0])}+{_fmt(u[0])}t\\\\y={_fmt(p[1])}+{_fmt(u[1])}t\\\\z={_fmt(p[2])}+{_fmt(u[2])}t\\end{{cases}}"
+    return _complete_text_result(
+        result,
+        f"d_{{{a}{b}}}: M={a}+t\\overrightarrow{{{a}{b}}}",
+        f"{a}{_vec_latex(p)},\\;\\overrightarrow{{{a}{b}}}={_vec_latex(u)}",
+        equation,
+        f"d_{{{a}{b}}}: {equation}",
+    )
+
+
+def calculate_plane_equation(points: dict[str, Vec3], plane_points: list[str]) -> dict[str, Any]:
+    label = "".join(plane_points)
+    result = _calculation_result("equation_plane", f"({label})", plane_points)
+    missing = _missing_points(points, plane_points)
+    if missing:
+        return _with_warning(result, f"Điểm {', '.join(missing)} không có trong scene.")
+    plane_data = _raw_plane_data_from_names(points, plane_points)
+    if plane_data is None:
+        return _with_warning(result, f"Mặt phẳng {label} suy biến vì các điểm thẳng hàng hoặc trùng nhau.")
+    anchor, normal, basis = plane_data
+    d_value = -_dot(normal, anchor)
+    result["coefficients"] = {"a": normal[0], "b": normal[1], "c": normal[2], "d": d_value}
+    equation = _plane_equation_latex(normal, d_value)
+    return _complete_text_result(
+        result,
+        f"({label}): a(x-x_0)+b(y-y_0)+c(z-z_0)=0",
+        f"\\vec n=\\overrightarrow{{{basis[0]}{basis[1]}}}\\times\\overrightarrow{{{basis[0]}{basis[2]}}}={_vec_latex(normal)}",
+        equation,
+        f"({label}): {equation}",
+    )
+
+
+def calculate_point_line_projection(points: dict[str, Vec3], point_name: str, line_points: tuple[str, str]) -> dict[str, Any]:
+    a, b = line_points
+    result = _calculation_result("projection_point_line", f"H=\\operatorname{{proj}}_{{{a}{b}}}({point_name})", [point_name, a, b])
+    missing = _missing_points(points, [point_name, a, b])
+    if missing:
+        return _with_warning(result, f"Điểm {', '.join(missing)} không có trong scene.")
+    p = points[point_name]
+    line_a = points[a]
+    direction = _sub(points[b], line_a)
+    if _norm(direction) <= EPS:
+        return _with_warning(result, f"Đường thẳng {a}{b} suy biến vì {a} và {b} trùng nhau.")
+    foot = _project_point_to_line(p, line_a, direction)
+    result["point"] = _as_point(foot)
+    return _complete_text_result(
+        result,
+        f"H={a}+\\frac{{\\overrightarrow{{{a}{point_name}}}\\cdot\\overrightarrow{{{a}{b}}}}}{{\\overrightarrow{{{a}{b}}}\\cdot\\overrightarrow{{{a}{b}}}}}\\overrightarrow{{{a}{b}}}",
+        f"H={_vec_latex(line_a)}+\\frac{{{_fmt(_dot(_sub(p, line_a), direction))}}}{{{_fmt(_dot(direction, direction))}}}{_vec_latex(direction)}",
+        f"H{_vec_latex(foot)}",
+        f"H{_vec_latex(foot)}",
+    )
+
+
+def calculate_point_plane_projection(points: dict[str, Vec3], point_name: str, plane_points: list[str]) -> dict[str, Any]:
+    label = "".join(plane_points)
+    result = _calculation_result("projection_point_plane", f"H=\\operatorname{{proj}}_{{({label})}}({point_name})", [point_name, *plane_points])
+    missing = _missing_points(points, [point_name, *plane_points])
+    if missing:
+        return _with_warning(result, f"Điểm {', '.join(missing)} không có trong scene.")
+    plane_data = _plane_data_from_names(points, plane_points)
+    if plane_data is None:
+        return _with_warning(result, f"Mặt phẳng {label} suy biến vì không xác định được vector pháp tuyến.")
+    plane_point, normal = plane_data
+    p = points[point_name]
+    signed_distance = _dot(normal, _sub(p, plane_point))
+    foot = _sub(p, _scale(normal, signed_distance))
+    result["point"] = _as_point(foot)
+    return _complete_text_result(
+        result,
+        "H=P-(\\vec n\\cdot\\overrightarrow{AP_0})\\vec n",
+        f"H={_vec_latex(p)}-{_fmt(signed_distance)}{_vec_latex(normal)}",
+        f"H{_vec_latex(foot)}",
+        f"H{_vec_latex(foot)}",
+    )
+
+
+def calculate_point_line_reflection(points: dict[str, Vec3], point_name: str, line_points: tuple[str, str]) -> dict[str, Any]:
+    projection = calculate_point_line_projection(points, point_name, line_points)
+    projection["kind"] = "reflection_point_line"
+    projection["label"] = f"{point_name}'"
+    if projection["status"] != "ok":
+        return projection
+    foot = _point_from_dict(projection["point"])
+    reflected = _sub(_scale(foot, 2), points[point_name])
+    projection["point"] = _as_point(reflected)
+    return _complete_text_result(projection, "P'=2H-P", f"{point_name}'=2{_vec_latex(foot)}-{_vec_latex(points[point_name])}", f"{point_name}'{_vec_latex(reflected)}", f"{point_name}'{_vec_latex(reflected)}")
+
+
+def calculate_point_plane_reflection(points: dict[str, Vec3], point_name: str, plane_points: list[str]) -> dict[str, Any]:
+    projection = calculate_point_plane_projection(points, point_name, plane_points)
+    projection["kind"] = "reflection_point_plane"
+    projection["label"] = f"{point_name}'"
+    if projection["status"] != "ok":
+        return projection
+    foot = _point_from_dict(projection["point"])
+    reflected = _sub(_scale(foot, 2), points[point_name])
+    projection["point"] = _as_point(reflected)
+    return _complete_text_result(projection, "P'=2H-P", f"{point_name}'=2{_vec_latex(foot)}-{_vec_latex(points[point_name])}", f"{point_name}'{_vec_latex(reflected)}", f"{point_name}'{_vec_latex(reflected)}")
+
+
+def prove_collinear(points: dict[str, Vec3], names: list[str]) -> dict[str, Any]:
+    result = _calculation_result("proof_collinear", f"{''.join(names)} thẳng hàng", names)
+    if len(names) < 3:
+        return _with_warning(result, "Cần ít nhất 3 điểm để chứng minh thẳng hàng.")
+    missing = _missing_points(points, names)
+    if missing:
+        return _with_warning(result, f"Điểm {', '.join(missing)} không có trong scene.")
+    a, b = names[0], names[1]
+    base = _sub(points[b], points[a])
+    if _norm(base) <= EPS:
+        return _with_warning(result, f"Không xác định được đường chuẩn vì {a} và {b} trùng nhau.")
+    values = [_cross(base, _sub(points[name], points[a])) for name in names[2:]]
+    ok = all(_norm(value) <= DISPLAY_EPS for value in values)
+    return _complete_text_result(result, f"\\overrightarrow{{{a}{b}}}\\times\\overrightarrow{{{a}X}}=\\vec 0", "; ".join(_vec_latex(value) for value in values), "\\text{ĐÚNG}" if ok else "\\text{SAI}", f"{''.join(names)} thẳng hàng: {'ĐÚNG' if ok else 'SAI'}")
+
+
+def prove_coplanar(points: dict[str, Vec3], names: list[str]) -> dict[str, Any]:
+    result = _calculation_result("proof_coplanar", f"{''.join(names)} đồng phẳng", names)
+    if len(names) < 3:
+        return _with_warning(result, "Cần ít nhất 3 điểm để xét đồng phẳng.")
+    missing = _missing_points(points, names)
+    if missing:
+        return _with_warning(result, f"Điểm {', '.join(missing)} không có trong scene.")
+    if len(names) == 3:
+        return _complete_text_result(result, "Ba điểm luôn đồng phẳng", "", "\\text{ĐÚNG}", f"{''.join(names)} đồng phẳng: ĐÚNG")
+    plane_data = _raw_plane_data_from_names(points, names[:3])
+    if plane_data is None:
+        return _complete_text_result(result, "Các điểm đầu thẳng hàng nên tồn tại vô số mặt phẳng chứa chúng", "", "\\text{ĐÚNG}", f"{''.join(names)} đồng phẳng: ĐÚNG")
+    anchor, normal, basis = plane_data
+    values = [_dot(normal, _sub(points[name], anchor)) for name in names[3:]]
+    ok = all(abs(value) <= DISPLAY_EPS for value in values)
+    return _complete_text_result(result, f"[\\overrightarrow{{{basis[0]}{basis[1]}}},\\overrightarrow{{{basis[0]}{basis[2]}}},\\overrightarrow{{{basis[0]}X}}]=0", "; ".join(_fmt(value) for value in values), "\\text{ĐÚNG}" if ok else "\\text{SAI}", f"{''.join(names)} đồng phẳng: {'ĐÚNG' if ok else 'SAI'}")
+
+
 def _is_origin(point: Point3D) -> bool:
     return abs(point.x) < EPS and abs(point.y) < EPS and abs(point.z) < EPS
 
@@ -843,6 +1029,17 @@ def _complete_result(result: dict[str, Any], value: float, formula: str, substit
     return result
 
 
+def _complete_text_result(result: dict[str, Any], formula: str, substitution: str, result_latex: str, answer: str) -> dict[str, Any]:
+    result.update({
+        "status": "ok",
+        "formula_latex": formula,
+        "substitution_latex": substitution,
+        "result_latex": result_latex,
+        "answer": answer,
+    })
+    return result
+
+
 def _with_warning(result: dict[str, Any], warning: str) -> dict[str, Any]:
     result["warnings"].append(warning)
     return result
@@ -865,6 +1062,50 @@ def _plane_data_from_names(points: dict[str, Vec3], names: list[str]) -> tuple[V
                 if _norm(normalized) > EPS:
                     return centroid, normalized
     return None
+
+
+def _raw_plane_data_from_names(points: dict[str, Vec3], names: list[str]) -> tuple[Vec3, Vec3, tuple[str, str, str]] | None:
+    available = [name for name in names if name in points]
+    if len(available) < 3:
+        return None
+    for i in range(len(available) - 2):
+        for j in range(i + 1, len(available) - 1):
+            for k in range(j + 1, len(available)):
+                a, b, c = available[i], available[j], available[k]
+                normal = _cross(_sub(points[b], points[a]), _sub(points[c], points[a]))
+                if _norm(normal) > EPS:
+                    return points[a], normal, (a, b, c)
+    return None
+
+
+def _point_from_dict(point: dict[str, float]) -> Vec3:
+    return (float(point["x"]), float(point["y"]), float(point["z"]))
+
+
+def _plane_equation_latex(normal: Vec3, d_value: float) -> str:
+    terms = [
+        _signed_term(normal[0], "x", first=True),
+        _signed_term(normal[1], "y"),
+        _signed_term(normal[2], "z"),
+        _signed_constant(d_value),
+    ]
+    body = "".join(term for term in terms if term)
+    return f"{body or '0'}=0"
+
+
+def _signed_term(value: float, variable: str, first: bool = False) -> str:
+    if abs(value) <= DISPLAY_EPS:
+        return ""
+    sign = "-" if value < 0 else ("" if first else "+")
+    size = abs(value)
+    coefficient = "" if abs(size - 1) <= DISPLAY_EPS else _fmt(size)
+    return f"{sign}{coefficient}{variable}"
+
+
+def _signed_constant(value: float) -> str:
+    if abs(value) <= DISPLAY_EPS:
+        return ""
+    return f"{'-' if value < 0 else '+'}{_fmt(abs(value))}"
 
 
 def _project_point_to_line(point: Vec3, line_point: Vec3, direction: Vec3) -> Vec3:

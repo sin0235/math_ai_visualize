@@ -452,6 +452,98 @@ export async function renderEditedScene(scene: MathScene, advancedSettings: Adva
 }
 
 // ---------------------------------------------------------------------------
+// Export scene → TikZ / PDF / GGB (binary download)
+// ---------------------------------------------------------------------------
+
+export type ExportFormat = 'tikz' | 'ggb' | 'pdf';
+
+const EXPORT_META: Record<ExportFormat, { path: string; filename: string; errorMessage: string }> = {
+  tikz: { path: '/api/export/tikz', filename: 'hinh.tex', errorMessage: 'Không thể xuất TikZ.' },
+  ggb: { path: '/api/export/ggb', filename: 'hinh.ggb', errorMessage: 'Không thể xuất GeoGebra.' },
+  pdf: { path: '/api/export/pdf', filename: 'hinh.pdf', errorMessage: 'Không thể xuất PDF.' },
+};
+
+export interface DiagramOcrResponse {
+  description: string;
+  provider: string;
+  model: string;
+}
+
+export interface ProblemVariantsResponse {
+  variants: string[];
+  provider: string;
+  model: string;
+}
+
+export async function diagramOcr(
+  imageDataUrl: string,
+  runtimeSettings?: RuntimeSettings,
+  preferredAiModel?: string,
+): Promise<DiagramOcrResponse> {
+  return requestJson<DiagramOcrResponse>(
+    '/api/diagram/ocr',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        image_data_url: imageDataUrl,
+        preferred_ai_model: preferredAiModel,
+        runtime_settings: compactRuntimeSettings(runtimeSettings),
+      }),
+    },
+    'Không thể nhận diện hình.',
+  );
+}
+
+export async function generateProblemVariants(
+  scene: MathScene,
+  count: number,
+  originalProblem?: string,
+  runtimeSettings?: RuntimeSettings,
+  preferredAiModel?: string,
+): Promise<ProblemVariantsResponse> {
+  return requestJson<ProblemVariantsResponse>(
+    '/api/problem/variants',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        scene,
+        count,
+        original_problem: originalProblem,
+        preferred_ai_model: preferredAiModel,
+        runtime_settings: compactRuntimeSettings(runtimeSettings),
+      }),
+    },
+    'Không thể sinh đề biến thể.',
+  );
+}
+
+export async function exportScene(
+  format: ExportFormat,
+  scene: MathScene,
+  advancedSettings: AdvancedRenderSettings,
+): Promise<{ blob: Blob; filename: string }> {
+  const meta = EXPORT_META[format];
+  try {
+    const response = await fetch(apiUrl(meta.path), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ scene, advanced_settings: advancedSettings }),
+    });
+    if (!response.ok) throw await parseApiError(response, `${meta.errorMessage} HTTP ${response.status}`);
+    const blob = await response.blob();
+    return { blob, filename: meta.filename };
+  } catch (caught) {
+    if (caught instanceof ApiError) throw caught;
+    throw networkApiError(caught, meta.errorMessage);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Solver (Lựa chọn 2) & Function Analyzer (Lựa chọn 1)
 // ---------------------------------------------------------------------------
 
@@ -639,9 +731,10 @@ function parseDetail(detail: unknown): ApiError | null {
     }).join('\n'));
   }
   if (detail && typeof detail === 'object') {
-    const data = detail as { message?: unknown; attempts?: unknown; suggestions?: unknown };
-    const message = typeof data.message === 'string' ? data.message : JSON.stringify(detail);
-    const details = [data.attempts, data.suggestions].flatMap((value) => {
+    const data = detail as { code?: unknown; message?: unknown; hint?: unknown; attempts?: unknown; suggestions?: unknown; debug_message?: unknown };
+    const code = typeof data.code === 'string' ? `[${data.code}] ` : '';
+    const message = typeof data.message === 'string' ? `${code}${data.message}` : JSON.stringify(detail);
+    const details = [data.hint, data.suggestions, data.attempts, data.debug_message].flatMap((value) => {
       if (Array.isArray(value)) return value.map(String);
       if (typeof value === 'string') return [value];
       return [];

@@ -20,7 +20,17 @@ export interface MathScene {
   objects: SceneObject[];
   relations: Relation[];
   annotations: Annotation[];
+  parameters?: Parameter[];
   view: SceneView;
+}
+
+export interface Parameter {
+  name: string;
+  label?: string | null;
+  min: number;
+  max: number;
+  default: number;
+  step: number;
 }
 
 export type SceneObject =
@@ -42,6 +52,8 @@ export interface Point2D {
   name: string;
   x: number;
   y: number;
+  x_expr?: string | null;
+  y_expr?: string | null;
 }
 
 export interface Point3D {
@@ -50,6 +62,9 @@ export interface Point3D {
   x: number;
   y: number;
   z: number;
+  x_expr?: string | null;
+  y_expr?: string | null;
+  z_expr?: string | null;
 }
 
 export interface Segment {
@@ -96,6 +111,7 @@ export interface Circle2D {
   center: string;
   through?: string | null;
   radius?: number | null;
+  radius_expr?: string | null;
 }
 
 export interface FunctionGraph {
@@ -117,6 +133,7 @@ export interface Sphere {
   name?: string | null;
   center: string;
   radius: number;
+  radius_expr?: string | null;
   color: string;
   opacity: number;
 }
