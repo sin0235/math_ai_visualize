@@ -148,6 +148,8 @@ def provider_default(registry: Any, provider_id: str, field: str, fallback: str 
     """If raw ai_settings includes the provider field, use merged fallback instead of ai_providers registry."""
     fb = fallback or ""
     if raw is not None and field in ("base_url", "model") and has_provider_key(raw, provider_id, field):
+        if field == "model":
+            return allowed_provider_default(registry, provider_id, fb)
         return fb
     provider = registry.providers.get(provider_id)
     if provider is None:
@@ -155,8 +157,15 @@ def provider_default(registry: Any, provider_id: str, field: str, fallback: str 
     if field == "base_url":
         return (provider.base_url or "") or fb
     if field == "model":
-        return (provider.default_model_id or "") or fb
+        return allowed_provider_default(registry, provider_id, (provider.default_model_id or "") or fb)
     return fb
+
+
+def allowed_provider_default(registry: Any, provider_id: str, default_model_id: str) -> str:
+    allowed_model_ids = registry.allowed_model_ids(provider_id) if hasattr(registry, "allowed_model_ids") else []
+    if allowed_model_ids and default_model_id not in allowed_model_ids:
+        return allowed_model_ids[0]
+    return default_model_id
 
 
 def dump_scanned_models(models: list[Any]) -> list[dict[str, Any]]:

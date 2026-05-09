@@ -243,7 +243,7 @@ async def admin_save_system_setting(
     value = validate_system_setting(request.key, raw_value)
     setting = await repo.upsert_system_setting(request.key, value, admin.id)
     if request.key == "ai_settings":
-        await sync_ai_settings_to_registry(db, value)
+        await sync_ai_settings_to_registry(db, value, request.value)
     await repo.audit(admin.id, "admin.system_settings.update", "system_setting", request.key, {"key": request.key})
     return SystemSettingResponse(key=setting.key, value=parse_setting_value(setting.value_json), updated_by=setting.updated_by, updated_at=setting.updated_at)
 

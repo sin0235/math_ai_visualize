@@ -41,14 +41,15 @@ export function KatexSpan({ tex, display = false, className }: KatexSpanProps) {
 
 /** Convert a SymPy-style string to a rough LaTeX string for display */
 export function sympyToLatex(expr: string): string {
-  return expr
+  let s = expr
     .replace(/\*\*/g, '^')
     .replace(/\bsqrt\(([^)]+)\)/g, '\\sqrt{$1}')
     .replace(/\blog\(([^)]+)\)/g, '\\ln($1)')
     .replace(/\bsin\(([^)]+)\)/g, '\\sin($1)')
     .replace(/\bcos\(([^)]+)\)/g, '\\cos($1)')
     .replace(/\btan\(([^)]+)\)/g, '\\tan($1)')
-    .replace(/\*/g, ' \\cdot ')
-    .replace(/oo/g, '\\infty')
-    .replace(/-oo/g, '-\\infty');
+    .replace(/\*/g, ' \\cdot ');
+  // oo vô cực SymPy — chỉ token độc lập (\b), không đụng floor, root, zoo…
+  s = s.replace(/-?\boo\b/g, (m) => (m.startsWith('-') ? '-\\infty' : '\\infty'));
+  return s;
 }

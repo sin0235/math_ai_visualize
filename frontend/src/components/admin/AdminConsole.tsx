@@ -232,20 +232,14 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
   const saveAiSettingsPatch = async (patch: Record<string, unknown>) => {
     setSavingAiSettings(true);
     try {
-      const next = { ...aiSettings, ...patch };
-      const updated = await updateAdminSystemSetting('ai_settings', next);
+      const updated = await updateAdminSystemSetting('ai_settings', patch);
       setAiSettings(updated.value);
       setSettings((prev) =>
         prev.some((item) => item.key === 'ai_settings')
           ? prev.map((item) => (item.key === 'ai_settings' ? updated : item))
           : [...prev, updated]
       );
-      const [defaults, diagnostics] = await Promise.all([
-        getSettingsDefaults(),
-        getAdminDatabaseDiagnostics(),
-      ]);
-      setSettingsDefaults(defaults);
-      setDatabaseDiagnostics(diagnostics);
+      setSettingsDefaults(await getSettingsDefaults());
     } catch {
       throw new Error('Không thể lưu cấu hình AI.');
     } finally {

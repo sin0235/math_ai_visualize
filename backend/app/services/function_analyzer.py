@@ -20,6 +20,8 @@ from sympy import (
     S, Symbol, oo, simplify, diff, solve, limit,
     Rational, zoo, nan, latex,
     sympify, SympifyError, fraction, cancel,
+    sin, cos, tan, cot, asin, acos, atan, log, exp, pi, E,
+    solveset, Interval, Poly, discriminant, Eq, solve_univariate_inequality,
 )
 from sympy.calculus.util import continuous_domain, function_range
 from sympy.calculus.singularities import singularities
@@ -33,15 +35,28 @@ _CLEAN_RE = re.compile(r"\s+")
 
 
 def _parse_expr(expression: str):
-    cleaned = (
-        expression
-        .replace("^", "**")
-        .replace("ln", "log")
-        .replace("tg", "tan")
-        .replace("ctg", "cot")
-    )
+    cleaned = _preprocess_expression(expression)
+    locals_map = {
+        "x": x,
+        "m": m,
+        "sin": sin,
+        "cos": cos,
+        "tan": tan,
+        "cot": cot,
+        "asin": asin,
+        "acos": acos,
+        "atan": atan,
+        "arcsin": asin,
+        "arccos": acos,
+        "arctan": atan,
+        "log": log,
+        "ln": log,
+        "exp": exp,
+        "pi": pi,
+        "E": E,
+    }
     try:
-        expr = sympify(cleaned, locals={"x": x, "m": m})
+        expr = sympify(cleaned, locals=locals_map)
     except (SympifyError, SyntaxError, TypeError) as e:
         raise ValueError(f"Không thể phân tích biểu thức: {expression!r}. Lỗi: {e}") from e
 
@@ -50,6 +65,15 @@ def _parse_expr(expression: str):
         names = ", ".join(sorted(str(symbol) for symbol in unsupported))
         raise ValueError(f"Chỉ hỗ trợ biến x và tham số m trong phiên bản này. Ký hiệu chưa hỗ trợ: {names}.")
     return expr
+
+
+def _preprocess_expression(expression: str) -> str:
+    cleaned = expression.replace("^", "**")
+    cleaned = re.sub(r"\bln\s*\(", "log(", cleaned)
+    cleaned = re.sub(r"\btg\s*\(", "tan(", cleaned)
+    cleaned = re.sub(r"\bctg\s*\(", "cot(", cleaned)
+    cleaned = re.sub(r"\blog_([0-9]+(?:\.[0-9]+)?)\s*\(([^()]+)\)", r"log(\2, \1)", cleaned)
+    return cleaned
 
 
 def _fmt_sym(expr) -> str:
@@ -80,7 +104,15 @@ def _parameter_value(parameters: Mapping[str, float] | None, name: str) -> float
     return min(max(value, config["min"]), config["max"])
 
 
-def analyze_function(expression: str, parameters: Mapping[str, float] | None = None) -> dict[str, Any]:
+def analyze_function(
+    expression: str,
+    parameters: Mapping[str, float] | None = None,
+    *,
+    interval: Mapping[str, float] | None = None,
+    line: Mapping[str, float] | None = None,
+    parameter_conditions: Mapping[str, Any] | None = None,
+    transform: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
     warnings: list[str] = []
 
     try:
@@ -201,13 +233,6 @@ def analyze_function(expression: str, parameters: Mapping[str, float] | None = N
 
     result["critical_points"] = critical_points
 
-    if fp_simplified is not None and critical_points:
-        cp_x_vals = sorted([float(cp["x"]) for cp in critical_points if _is_numeric(cp["x"])])
-        result["intervals_increasing"], result["intervals_decreasing"] = _sign_intervals(fp_simplified, cp_x_vals)
-    else:
-        result["intervals_increasing"] = []
-        result["intervals_decreasing"] = []
-
     inflection_pts: list[dict[str, str]] = []
     concavity_breakpoints: list[float] = []
     if fpp_simplified is not None:
@@ -270,8 +295,11 @@ def analyze_function(expression: str, parameters: Mapping[str, float] | None = N
     if fp_simplified is not None:
         mono_breakpoints = [float(cp["x"]) for cp in critical_points if _is_numeric(cp.get("x", ""))]
         mono_breakpoints.extend(float(item["x"]) for item in va if _is_numeric(item.get("x", "")))
-        if mono_breakpoints:
-            result["intervals_increasing"], result["intervals_decreasing"] = _sign_intervals(fp_simplified, sorted(set(mono_breakpoints)))
+        bps = sorted(set(mono_breakpoints))
+        result["intervals_increasing"], result["intervals_decreasing"] = _sign_intervals(fp_simplified, bps)
+    else:
+        result["intervals_increasing"] = []
+        result["intervals_decreasing"] = []
 
     oblique = None
     try:
@@ -303,10 +331,239 @@ def analyze_function(expression: str, parameters: Mapping[str, float] | None = N
         pass
     result["y_intercept"] = y_intercept
 
+    if interval:
+        try:
+            result["interval_analysis"] = _analyze_interval(f, fp_simplified, interval)
+        except ValueError as e:
+            warnings.append(str(e))
+        except Exception as e:
+            warnings.append(f"Không tính được GTLN/GTNN trên đoạn: {e}")
+
+    if line:
+        try:
+            result["line_analysis"] = _analyze_line_position(f, line)
+        except ValueError as e:
+            warnings.append(str(e))
+        except Exception as e:
+            warnings.append(f"Không xét được tương giao với đường thẳng: {e}")
+
+    if parameter_conditions:
+        result["parameter_conditions"] = _solve_parameter_conditions(parsed, parameter_conditions)
+
+    if transform:
+        try:
+            result["transform_preview"] = _build_transform_preview(f, transform)
+        except ValueError as e:
+            warnings.append(str(e))
+        except Exception as e:
+            warnings.append(f"Không dựng được biến đổi đồ thị: {e}")
+
     result["variation_table"] = _build_variation_table(result, critical_points)
+    result["capabilities"] = {"trig_periodic": True, "exact_solving": True, "numeric_fallback": True}
     result["warnings"] = warnings
 
     return result
+
+
+def _analyze_interval(f_expr, fp_expr, interval: Mapping[str, float]) -> dict[str, Any]:
+    a = _finite_float(interval.get("a"), "a")
+    b = _finite_float(interval.get("b"), "b")
+    if a >= b:
+        raise ValueError("Đoạn [a, b] không hợp lệ: cần a < b.")
+
+    candidates = [
+        {"x": a, "x_exact": _fmt_num(a), "y": _eval_float(f_expr, a), "kind": "endpoint", "label": "f(a)"},
+        {"x": b, "x_exact": _fmt_num(b), "y": _eval_float(f_expr, b), "kind": "endpoint", "label": "f(b)"},
+    ]
+    extrema_inside: list[dict[str, Any]] = []
+    if fp_expr is not None:
+        for cp in _collect_stationary_candidates(f_expr, fp_expr):
+            try:
+                cp_float = float(cp.evalf())
+            except Exception:
+                continue
+            if not a < cp_float < b:
+                continue
+            y_val = _eval_float(f_expr, cp_float)
+            point = {"x": _fmt_num(cp_float), "x_exact": _fmt_sym(cp), "y": _fmt_num(y_val), "kind": "critical", "label": "Cực trị trong đoạn"}
+            extrema_inside.append(point)
+            candidates.append({"x": cp_float, "x_exact": _fmt_sym(cp), "y": y_val, "kind": "critical", "label": "Cực trị"})
+
+    finite = [item for item in candidates if item["y"] is not None and isfinite(item["y"])]
+    if not finite:
+        raise ValueError("Không tính được giá trị hữu hạn trên đoạn [a, b].")
+    max_item = max(finite, key=lambda item: item["y"])
+    min_item = min(finite, key=lambda item: item["y"])
+    return {
+        "a": _fmt_num(a),
+        "b": _fmt_num(b),
+        "fa": _fmt_num(candidates[0]["y"]),
+        "fb": _fmt_num(candidates[1]["y"]),
+        "extrema_inside": extrema_inside,
+        "max_point": _point_result(max_item),
+        "min_point": _point_result(min_item),
+        "conclusion": f"GTLN = {_fmt_num(max_item['y'])} tại x = {_fmt_num(max_item['x'])}; GTNN = {_fmt_num(min_item['y'])} tại x = {_fmt_num(min_item['x'])}.",
+    }
+
+
+def _analyze_line_position(f_expr, line: Mapping[str, float]) -> dict[str, Any]:
+    k = _finite_float(line.get("k"), "k")
+    b_val = _finite_float(line.get("b"), "b")
+    line_expr = k * x + b_val
+    diff_expr = simplify(f_expr - line_expr)
+    intersections: list[dict[str, str]] = []
+    roots = []
+    try:
+        roots = list(solve(diff_expr, x))[:12]
+    except Exception:
+        roots = []
+    if not roots:
+        roots = _numeric_roots(diff_expr)
+    for root in roots:
+        try:
+            root_f = float(root.evalf() if hasattr(root, "evalf") else root)
+            if not isfinite(root_f):
+                continue
+            y_val = k * root_f + b_val
+            intersections.append({"x": _fmt_num(root_f), "y": _fmt_num(y_val), "x_exact": _fmt_sym(root)})
+        except Exception:
+            continue
+    split = sorted({float(item["x"]) for item in intersections if _is_numeric(item["x"])})
+    above, below = _sign_intervals(diff_expr, split)
+    return {
+        "k": _fmt_num(k),
+        "b": _fmt_num(b_val),
+        "equation": f"y = {_fmt_num(k)}x + {_fmt_num(b_val)}",
+        "intersection_count": len(intersections),
+        "intersections": intersections,
+        "relative_intervals": {"above": above, "below": below},
+    }
+
+
+def _solve_parameter_conditions(parsed, options: Mapping[str, Any]) -> list[dict[str, Any]]:
+    targets = options.get("targets") or []
+    results: list[dict[str, Any]] = []
+    if m not in parsed.free_symbols:
+        return [{"label": "Tham số m", "solution": "Biểu thức không chứa m.", "solution_latex": "\\varnothing", "warnings": []}]
+    try:
+        fp = simplify(diff(parsed, x))
+        poly = Poly(fp, x)
+    except Exception:
+        return [{"label": "Điều kiện tham số", "solution": "Chỉ hỗ trợ đạo hàm đa thức theo x trong phiên bản này.", "solution_latex": "", "warnings": ["Không đưa được f'(x) về đa thức theo x."]}]
+
+    for target in targets:
+        if target == "increasing_r":
+            solution = _solve_polynomial_nonnegative(poly)
+            results.append({"label": "Đồng biến trên R", "condition_latex": latex(fp) + r" \ge 0,\ \forall x\in\mathbb{R}", "solution": str(solution), "solution_latex": latex(solution), "warnings": []})
+        elif target == "decreasing_r":
+            solution = _solve_polynomial_nonnegative(Poly(-fp, x))
+            results.append({"label": "Nghịch biến trên R", "condition_latex": latex(fp) + r" \le 0,\ \forall x\in\mathbb{R}", "solution": str(solution), "solution_latex": latex(solution), "warnings": []})
+        elif target == "extrema_count":
+            expected = int(options.get("extrema_count", 1))
+            result = _solve_extrema_count(poly, expected)
+            results.append(result)
+    return results
+
+
+def _build_transform_preview(f_expr, transform: Mapping[str, Any]) -> dict[str, Any]:
+    transform_type = str(transform.get("type", "vertical_shift"))
+    value = _finite_float(transform.get("value", 0), "giá trị biến đổi")
+    if transform_type == "vertical_shift":
+        transformed = f_expr + value
+        label = f"f(x) + {_fmt_num(value)}"
+    elif transform_type == "horizontal_shift":
+        transformed = f_expr.subs(x, x + value)
+        label = f"f(x + {_fmt_num(value)})"
+    elif transform_type == "vertical_scale":
+        transformed = value * f_expr
+        label = f"{_fmt_num(value)}f(x)"
+    elif transform_type == "horizontal_scale":
+        transformed = f_expr.subs(x, value * x)
+        label = f"f({_fmt_num(value)}x)"
+    elif transform_type == "reflect_x":
+        transformed = -f_expr
+        label = "-f(x)"
+    elif transform_type == "reflect_y":
+        transformed = f_expr.subs(x, -x)
+        label = "f(-x)"
+    else:
+        raise ValueError("Kiểu biến đổi đồ thị không hỗ trợ.")
+    transformed = simplify(transformed)
+    return {"type": transform_type, "value": _fmt_num(value), "label": label, "expression": _fmt_sym(transformed), "expression_latex": latex(transformed)}
+
+
+def _solve_polynomial_nonnegative(poly) -> Any:
+    expr = poly.as_expr()
+    degree = poly.degree()
+    if degree == 0:
+        return solve_univariate_inequality(expr >= 0, m, relational=False)
+    if degree == 1:
+        slope_zero = solve_univariate_inequality(Eq(poly.nth(1), 0), m, relational=False)
+        intercept_ok = solve_univariate_inequality(poly.nth(0) >= 0, m, relational=False)
+        return slope_zero.intersect(intercept_ok)
+    if degree == 2:
+        a = poly.nth(2)
+        delta = discriminant(expr, x)
+        return solve_univariate_inequality(a > 0, m, relational=False).intersect(solve_univariate_inequality(delta <= 0, m, relational=False))
+    return "Chỉ hỗ trợ bậc 0, 1, 2 cho điều kiện mọi x."
+
+
+def _solve_extrema_count(poly, expected: int) -> dict[str, Any]:
+    expr = poly.as_expr()
+    degree = poly.degree()
+    warnings: list[str] = []
+    if degree == 2:
+        delta = discriminant(expr, x)
+        if expected == 2:
+            solution = solve_univariate_inequality(delta > 0, m, relational=False)
+        elif expected == 1:
+            solution = solve_univariate_inequality(delta == 0, m, relational=False)
+        else:
+            solution = solve_univariate_inequality(delta < 0, m, relational=False)
+        return {"label": f"Có {expected} cực trị", "condition_latex": latex(delta) + (r" > 0" if expected == 2 else r" = 0" if expected == 1 else r" < 0"), "solution": str(solution), "solution_latex": latex(solution), "warnings": warnings}
+    warnings.append("Đếm cực trị hiện hỗ trợ tốt nhất khi f'(x) là tam thức bậc hai.")
+    return {"label": f"Có {expected} cực trị", "solution": "Chưa hỗ trợ dạng này.", "solution_latex": "", "warnings": warnings}
+
+
+def _numeric_roots(expr) -> list[float]:
+    roots: list[float] = []
+    last_x = -20.0
+    last_y = _eval_float(expr, last_x)
+    for i in range(1, 801):
+        cur_x = -20.0 + i * 0.05
+        cur_y = _eval_float(expr, cur_x)
+        if last_y is not None and cur_y is not None and last_y * cur_y <= 0:
+            roots.append((last_x + cur_x) / 2)
+        last_x, last_y = cur_x, cur_y
+    unique: list[float] = []
+    for root in roots:
+        if all(abs(root - existing) > 0.1 for existing in unique):
+            unique.append(root)
+    return unique[:12]
+
+
+def _finite_float(value, name: str) -> float:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError) as e:
+        raise ValueError(f"{name} phải là số hữu hạn.") from e
+    if not isfinite(parsed):
+        raise ValueError(f"{name} phải là số hữu hạn.")
+    return parsed
+
+
+def _eval_float(expr, x_value: float) -> float | None:
+    try:
+        val = float(expr.subs(x, x_value).evalf())
+    except Exception:
+        return None
+    if not isfinite(val):
+        return None
+    return val
+
+
+def _point_result(item: Mapping[str, Any]) -> dict[str, str]:
+    return {"x": _fmt_num(item["x"]), "y": _fmt_num(item["y"]), "label": str(item.get("label", ""))}
 
 
 def _sign_intervals(expr, breakpoints: list[float]) -> tuple[list[str], list[str]]:

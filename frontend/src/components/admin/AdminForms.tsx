@@ -142,6 +142,17 @@ function adminModelOptions(providerValue: ReturnType<typeof defaultAdminProvider
   return [...byId.values()];
 }
 
+function normalizeDefaultModel(providerValue: ReturnType<typeof defaultAdminProviderSettings>) {
+  if (providerValue.allowed_model_ids.length > 0 && !providerValue.allowed_model_ids.includes(providerValue.model)) {
+    return { ...providerValue, model: providerValue.allowed_model_ids[0] ?? '' };
+  }
+  return providerValue;
+}
+
+function sameJson(left: unknown, right: unknown) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
 /** Thứ tự cố định theo lần quét; tránh reorder DOM khi tick checkbox làm danh sách nhảy. */
 function orderedAllowlistModelOptions(
   providerValue: ReturnType<typeof defaultAdminProviderSettings>,
@@ -233,24 +244,38 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave, onToast }
   }, [value]);
 
   function updateProvider(provider: (typeof providers)[number], patch: Partial<ReturnType<typeof getAdminProviderSettings>>) {
-    setDraft((current) => ({ ...current, [provider]: { ...current[provider], ...patch } }));
+    setDraft((current) => ({ ...current, [provider]: normalizeDefaultModel({ ...current[provider], ...patch }) }));
   }
 
   async function saveProvider(provider: (typeof providers)[number]) {
     const current = getAdminProviderSettings(value, provider, defaults);
     const providerDraft = draft[provider] as ReturnType<typeof getAdminProviderSettings> & { api_key?: string };
-    const nextProvider = {
+    const nextProvider = normalizeDefaultModel({
       ...current,
       ...providerDraft,
       base_url: providerDraft.base_url.trim(),
       model: providerDraft.model.trim(),
-    };
+    });
     if (!providerDraft.api_key?.trim()) {
       delete (nextProvider as { api_key?: string }).api_key;
     }
+    if (provider !== 'router9') {
+      delete (nextProvider as { only_mode?: boolean }).only_mode;
+    }
+    const providerPatch: Record<string, unknown> = {
+      base_url: nextProvider.base_url,
+      model: nextProvider.model,
+      allowed_model_ids: nextProvider.allowed_model_ids,
+    };
+    if (provider === 'router9') providerPatch.only_mode = nextProvider.only_mode;
+    if ((nextProvider as { api_key?: string }).api_key?.trim()) providerPatch.api_key = (nextProvider as { api_key?: string }).api_key;
+    if (!sameJson(current.scanned_models, nextProvider.scanned_models)) {
+      providerPatch.scanned_models = nextProvider.scanned_models;
+      providerPatch.last_scanned_at = nextProvider.last_scanned_at;
+    }
     try {
       await onSave({
-        [provider]: nextProvider,
+        [provider]: providerPatch,
       });
       onToast?.('Cấu hình AI', `Đã lưu provider ${providerLabels[provider]}.`, 'info');
     } catch (error) {
@@ -278,7 +303,7 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave, onToast }
     try {
       const runtime = adminSettingsToRuntime({ ...value, [provider]: draft[provider] }, defaults);
       const models = provider === 'router9' ? await scanRouter9Models(runtime) : await scanProviderModels(provider as 'openrouter' | 'openai_compat', runtime);
-      const next = { ...draft[provider], scanned_models: models, last_scanned_at: new Date().toISOString() };
+      const next = normalizeDefaultModel({ ...draft[provider], scanned_models: models, last_scanned_at: new Date().toISOString() });
       updateProvider(provider, next);
       await onSave({ [provider]: next });
       onToast?.('Quét model', `Đã quét ${models.length} model từ ${providerLabels[provider]}.`, 'info');
@@ -328,6 +353,7 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave, onToast }
       allowed_model_ids: providerValue.allowed_model_ids.includes(modelId)
         ? providerValue.allowed_model_ids
         : [...providerValue.allowed_model_ids, modelId],
+      model: providerValue.model || modelId,
     });
     setManualModelInputs((current) => ({ ...current, [provider]: '' }));
   }
@@ -387,7 +413,7 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave, onToast }
                 <div className={`admin-field-grid ${provider === 'router9' ? 'admin-field-grid-router9' : ''}`}>
                   <label className="field-label">Base URL<input type="url" value={providerValue.base_url} onChange={(event) => updateProvider(provider, { base_url: event.target.value })} placeholder="https://..." /></label>
                   <label className="field-label">API key<input type="password" value={(providerValue as any).api_key ?? ''} onChange={(event) => updateProvider(provider, { ...( { api_key: event.target.value } as any) })} placeholder={defaults?.[provider]?.api_key_configured ? 'Đã cấu hình, nhập để thay' : 'Nhập API key'} /></label>
-                  {provider === 'router9' && <label className="field-label">Model mặc định hệ thống<select value={providerValue.model} onChange={(event) => updateProvider(provider, { model: event.target.value })}><option value="">Chọn model</option>{modelOptions.map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.name}</option>)}</select></label>}
+                  <label className="field-label">Model mặc định hệ thống<select value={providerValue.model} onChange={(event) => updateProvider(provider, { model: event.target.value })}><option value="">Chọn model</option>{modelOptions.map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.name}</option>)}</select></label>
                 </div>
                 {result && <div className={`admin-status-box ${result.status}`}><strong>{result.status === 'ok' ? 'Thành công' : 'Lỗi'}</strong><p>{result.message}</p></div>}
                 {provider === 'router9' && (

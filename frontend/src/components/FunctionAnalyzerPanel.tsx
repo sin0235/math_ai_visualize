@@ -1,5 +1,5 @@
-import { Fragment, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { analyzeFunction, analyzeFunctionImage, type AnalyzeResponse } from '../api/client';
+import { Fragment, useEffect, useId, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { analyzeFunction, analyzeFunctionImage, type AnalyzeOptions, type AnalyzeResponse } from '../api/client';
 import { GeoGebraView } from './GeoGebraView';
 import { KatexSpan, sympyToLatex } from './KatexSpan';
 import type { MathScene } from '../types/scene';
@@ -9,64 +9,153 @@ interface FunctionAnalyzerPanelProps {
   onOpenGuide?: () => void;
 }
 
-const EXAMPLES = [
-  { label: 'Bậc 3', value: 'x^3 - 3*x + 2' },
-  { label: 'Phân thức', value: '(x^2 - 1)/(x - 2)' },
-  { label: 'Bậc 4', value: 'x^4 - 8*x^2' },
-  { label: 'Căn', value: 'sqrt(x^2 + 1)' },
-  { label: 'Mũ', value: 'exp(x)' },
-  { label: 'Tham số', value: 'x^2 + m*x + 1' },
+const EXAMPLE_GROUPS = [
+  {
+    label: 'Đa thức',
+    items: [
+      { label: 'Bậc 2', value: 'x^2 - 4*x + 3' },
+      { label: 'Bậc 3', value: 'x^3 - 3*x + 2' },
+      { label: 'Bậc 4', value: 'x^4 - 8*x^2' },
+    ],
+  },
+  {
+    label: 'Hàm đặc biệt',
+    items: [
+      { label: 'Phân thức', value: '(x^2 - 1)/(x - 2)' },
+      { label: 'Căn', value: 'sqrt(x^2 + 1)' },
+      { label: 'Mũ', value: 'exp(x)' },
+      { label: 'Logarit', value: 'log(x)' },
+    ],
+  },
 ];
 
-const DEFAULT_M_RANGE = { min: -10, max: 10, step: 0.1 };
+const TRANSFORMS = [
+  { value: 'vertical_shift', label: 'f(x) + a' },
+  { value: 'horizontal_shift', label: 'f(x + a)' },
+  { value: 'vertical_scale', label: 'a·f(x)' },
+  { value: 'horizontal_scale', label: 'f(a·x)' },
+  { value: 'reflect_x', label: '-f(x)' },
+  { value: 'reflect_y', label: 'f(-x)' },
+];
+
+const TRANSFORM_LABEL_TEX: Record<string, string> = {
+  vertical_shift: 'g(x)=f(x)+a',
+  horizontal_shift: 'g(x)=f(x+a)',
+  vertical_scale: 'g(x)=a f(x)',
+  horizontal_scale: 'g(x)=f(a x)',
+  reflect_x: 'g(x)=-f(x)',
+  reflect_y: 'g(x)=f(-x)',
+};
 
 export function FunctionAnalyzerPanel({ initialExpression = '', onOpenGuide }: FunctionAnalyzerPanelProps) {
   const [expression, setExpression] = useState(initialExpression);
   const [loading, setLoading] = useState(false);
   const [ocrLoading, setOcrLoading] = useState(false);
-  const [sliderLoading, setSliderLoading] = useState(false);
-  const [mValue, setMValue] = useState(1);
+  const [intervalA, setIntervalA] = useState(-2);
+  const [intervalB, setIntervalB] = useState(2);
+  const [enableInterval, setEnableInterval] = useState(false);
+  const [lineK, setLineK] = useState(1);
+  const [lineB, setLineB] = useState(0);
+  const [enableLine, setEnableLine] = useState(false);
+  const [enableTransform, setEnableTransform] = useState(false);
+  const [transformType, setTransformType] = useState('vertical_shift');
+  const [transformValue, setTransformValue] = useState(1);
+  const [isAnimatingTransform, setIsAnimatingTransform] = useState(false);
+  const [showAdvancedControls, setShowAdvancedControls] = useState(true);
+  const [isDraggingImage, setIsDraggingImage] = useState(false);
   const [result, setResult] = useState<AnalyzeResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const analyzeRequestRef = useRef(0);
   const sliderDebounceRef = useRef<number | null>(null);
+  const animationRef = useRef<number | null>(null);
 
   useEffect(() => {
     return () => {
       if (sliderDebounceRef.current !== null) window.clearTimeout(sliderDebounceRef.current);
+      if (animationRef.current !== null) window.clearInterval(animationRef.current);
     };
   }, []);
 
-  const hasParameterM = !!result?.parameters?.detected.includes('m');
-  const mRange = result?.parameters?.ranges.m ?? DEFAULT_M_RANGE;
-  const activeMValue = result?.parameters?.active.m ?? mValue;
+  useEffect(() => {
+    if (!isAnimatingTransform) {
+      if (animationRef.current !== null) window.clearInterval(animationRef.current);
+      animationRef.current = null;
+      return;
+    }
+    animationRef.current = window.setInterval(() => {
+      setTransformValue((current) => {
+        const next = current >= 3 ? -3 : Number((current + 0.1).toFixed(2));
+        scheduleToolAnalyze({ transformValue: next, enableTransform: true });
+        return next;
+      });
+    }, 160);
+    return () => {
+      if (animationRef.current !== null) window.clearInterval(animationRef.current);
+      animationRef.current = null;
+    };
+  }, [isAnimatingTransform, expression, enableInterval, intervalA, intervalB, enableLine, lineK, lineB, transformType]);
 
-  async function runAnalyze(expr: string, nextMValue: number, options?: { slider?: boolean; clearResult?: boolean }) {
+
+  function buildAnalyzeOptions(overrides?: Partial<AnalyzeOptions & {
+    intervalA: number;
+    intervalB: number;
+    enableInterval: boolean;
+    lineK: number;
+    lineB: number;
+    enableLine: boolean;
+    transformType: string;
+    transformValue: number;
+    enableTransform: boolean;
+  }>): AnalyzeOptions {
+    const nextEnableInterval = overrides?.enableInterval ?? enableInterval;
+    const nextIntervalA = overrides?.intervalA ?? intervalA;
+    const nextIntervalB = overrides?.intervalB ?? intervalB;
+    const nextEnableLine = overrides?.enableLine ?? enableLine;
+    const nextLineK = overrides?.lineK ?? lineK;
+    const nextLineB = overrides?.lineB ?? lineB;
+    const nextEnableTransform = overrides?.enableTransform ?? enableTransform;
+    const nextTransformType = overrides?.transformType ?? transformType;
+    const nextTransformValue = overrides?.transformValue ?? transformValue;
+    return {
+      ...(nextEnableInterval ? { interval: { a: nextIntervalA, b: nextIntervalB } } : {}),
+      ...(nextEnableLine ? { line: { k: nextLineK, b: nextLineB } } : {}),
+      ...(nextEnableTransform ? { transform: { type: nextTransformType, value: nextTransformValue } } : {}),
+    };
+  }
+
+  function scheduleToolAnalyze(overrides?: Parameters<typeof buildAnalyzeOptions>[0]) {
+    const expr = expression.trim();
+    if (!expr || !result) return;
+    if (sliderDebounceRef.current !== null) window.clearTimeout(sliderDebounceRef.current);
+    sliderDebounceRef.current = window.setTimeout(() => {
+      void runAnalyze(expr, { slider: true, requestOptions: buildAnalyzeOptions(overrides) });
+    }, 220);
+  }
+
+  async function runAnalyze(expr: string, options?: { slider?: boolean; clearResult?: boolean; requestOptions?: AnalyzeOptions }) {
     const requestId = ++analyzeRequestRef.current;
-    if (options?.slider) setSliderLoading(true);
-    else setLoading(true);
+    if (!options?.slider) setLoading(true);
     setError(null);
     if (options?.clearResult) setResult(null);
     try {
-      const res = await analyzeFunction(expr, { m: nextMValue });
+      const res = await analyzeFunction(expr, options?.requestOptions ?? {});
       if (requestId !== analyzeRequestRef.current) return;
       if (res.error) setError(res.error);
-      else setResult(res);
+      else {
+        setResult(res);
+      }
     } catch (e: unknown) {
       if (requestId === analyzeRequestRef.current) setError(e instanceof Error ? e.message : 'Lỗi không xác định.');
     } finally {
-      if (requestId === analyzeRequestRef.current) {
-        if (options?.slider) setSliderLoading(false);
-        else setLoading(false);
-      }
+      if (requestId === analyzeRequestRef.current && !options?.slider) setLoading(false);
     }
   }
 
   async function handleAnalyze() {
     const expr = expression.trim();
     if (!expr) return;
-    await runAnalyze(expr, mValue, { clearResult: true });
+    await runAnalyze(expr, { clearResult: true, requestOptions: buildAnalyzeOptions() });
   }
 
   async function handleImageChange(file?: File) {
@@ -79,9 +168,10 @@ export function FunctionAnalyzerPanel({ initialExpression = '', onOpenGuide }: F
       const res = await analyzeFunctionImage(await readFileAsDataUrl(file));
       if (requestId !== analyzeRequestRef.current) return;
       if (res.ocr_expression) setExpression(res.ocr_expression);
-      if (res.parameters?.active.m !== undefined) setMValue(res.parameters.active.m);
       if (res.error) setError(res.error);
-      else setResult(res);
+      else {
+        setResult(res);
+      }
     } catch (e: unknown) {
       if (requestId === analyzeRequestRef.current) setError(e instanceof Error ? e.message : 'Lỗi OCR không xác định.');
     } finally {
@@ -90,15 +180,18 @@ export function FunctionAnalyzerPanel({ initialExpression = '', onOpenGuide }: F
     }
   }
 
-  function handleParameterChange(value: number) {
-    const nextValue = clampToRange(value, mRange.min, mRange.max);
-    setMValue(nextValue);
-    const expr = expression.trim();
-    if (!expr || !hasParameterM) return;
-    if (sliderDebounceRef.current !== null) window.clearTimeout(sliderDebounceRef.current);
-    sliderDebounceRef.current = window.setTimeout(() => {
-      void runAnalyze(expr, nextValue, { slider: true });
-    }, 180);
+  function updateToolEnabled(key: 'interval' | 'line' | 'transform', enabled: boolean) {
+    if (key === 'interval') setEnableInterval(enabled);
+    if (key === 'line') setEnableLine(enabled);
+    if (key === 'transform') {
+      setEnableTransform(enabled);
+      if (!enabled) setIsAnimatingTransform(false);
+    }
+    scheduleToolAnalyze({
+      enableInterval: key === 'interval' ? enabled : enableInterval,
+      enableLine: key === 'line' ? enabled : enableLine,
+      enableTransform: key === 'transform' ? enabled : enableTransform,
+    });
   }
 
   async function handleImageButtonClick() {
@@ -124,96 +217,208 @@ export function FunctionAnalyzerPanel({ initialExpression = '', onOpenGuide }: F
     }
   }
 
+  function imageFileFromDataTransfer(dataTransfer: DataTransfer) {
+    return Array.from(dataTransfer.files).find((file) => file.type.startsWith('image/'));
+  }
+
+  function handleImageDragOver(event: React.DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    if (!loading && !ocrLoading) setIsDraggingImage(true);
+  }
+
+  function handleImageDragLeave(event: React.DragEvent<HTMLDivElement>) {
+    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setIsDraggingImage(false);
+  }
+
+  function handleImageDrop(event: React.DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    setIsDraggingImage(false);
+    if (loading || ocrLoading) return;
+    void handleImageChange(imageFileFromDataTransfer(event.dataTransfer));
+  }
+
   return (
     <div className="fa2-panel">
-      <div className="fa2-header">
-        <div className="fa2-header-icon" aria-hidden="true"><SvgIcon name="wave" /></div>
-        <div>
-          <div className="fa2-header-title">Khảo sát hàm số</div>
-          <div className="fa2-header-sub">Nhập hàm, xem đồ thị, đạo hàm, cực trị và tiệm cận</div>
-        </div>
-      </div>
+      <div className="fa2-workspace">
+        <aside className="fa2-control-panel">
+          <div className="fa2-sticky-controls">
+            <div className="fa2-header">
+              <div className="fa2-header-icon" aria-hidden="true"><SvgIcon name="wave" /></div>
+              <div>
+                <div className="fa2-header-title">Khảo sát hàm số</div>
+                <div className="fa2-header-sub">Nhập hàm, xem đồ thị, đạo hàm, cực trị và tiệm cận</div>
+              </div>
+            </div>
 
-      <div className="fa2-input-wrap">
-        <button
-          type="button"
-          className="fa2-guide-btn fa2-guide-btn-link"
-          aria-label="Hướng dẫn nhập hàm"
-          data-guide-hover="Xem chi tiết cách gõ công thức"
-          onClick={() => onOpenGuide?.()}
-          disabled={loading || ocrLoading}
-        >
-          <SvgIcon name="hint" />
-        </button>
-        <span className="fa2-prefix">y =</span>
-        <input
-          id="fa-expression-input"
-          className="fa2-input"
-          type="text"
-          placeholder="x^3 - 3*x + 2"
-          value={expression}
-          onChange={(e) => setExpression(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') void handleAnalyze(); }}
-          onMouseDown={(e) => {
-            if (e.button === 2) e.preventDefault();
-          }}
-          onContextMenu={(e) => {
-            if (loading || ocrLoading) return;
-            e.preventDefault();
-            e.currentTarget.blur();
-            void handleImageButtonClick();
-          }}
-          disabled={loading || ocrLoading}
-          autoComplete="off"
-          spellCheck={false}
-        />
-        <input ref={fileInputRef} type="file" accept="image/*" capture="environment" hidden onChange={(e) => void handleImageChange(e.target.files?.[0])} />
-        <button type="button" className="sp-btn-secondary" onClick={() => fileInputRef.current?.click()} disabled={loading || ocrLoading} aria-label="Chọn tệp ảnh">
-          {ocrLoading ? <span className="sp-spinner" aria-hidden="true" /> : <SvgIcon name="attach" />}
-        </button>
-        <button id="fa-submit-btn" type="button" className="sp-btn-primary" onClick={() => void handleAnalyze()} disabled={loading || ocrLoading || !expression.trim()}>
-          {loading ? <span className="sp-spinner" aria-hidden="true" /> : 'Phân tích'}
-        </button>
-      </div>
-
-      <div className="sp-chips">
-        {EXAMPLES.map((ex) => <button key={ex.value} type="button" className="sp-chip" onClick={() => setExpression(ex.value)}>{ex.label}</button>)}
-      </div>
-
-      {hasParameterM && (
-        <div className="fa2-parameter-panel">
-          <div className="fa2-parameter-head">
-            <span>Bài toán tham số</span>
-            <strong>m = {formatSliderValue(mValue)}</strong>
+            <div className="fa2-control-card fa2-formula-card">
+            <div className="fa2-control-card-head">
+              <span>Nhập công thức</span>
+              <button
+                type="button"
+                className="fa2-guide-btn fa2-guide-btn-link"
+                aria-label="Hướng dẫn nhập hàm"
+                data-guide-hover="Xem chi tiết cách gõ công thức"
+                onClick={() => onOpenGuide?.()}
+                disabled={loading || ocrLoading}
+              >
+                <SvgIcon name="hint" />
+              </button>
+            </div>
+            <div className="fa2-formula-row-control">
+              <div className="fa2-input-wrap">
+                <span className="fa2-prefix">y =</span>
+                <input
+                  id="fa-expression-input"
+                  className="fa2-input"
+                  type="text"
+                  placeholder="x^3 - 3*x + 2"
+                  value={expression}
+                  onChange={(e) => setExpression(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') void handleAnalyze(); }}
+                  onMouseDown={(e) => {
+                    if (e.button === 2) e.preventDefault();
+                  }}
+                  onContextMenu={(e) => {
+                    if (loading || ocrLoading) return;
+                    e.preventDefault();
+                    e.currentTarget.blur();
+                    void handleImageButtonClick();
+                  }}
+                  disabled={loading || ocrLoading}
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+              </div>
+              <button id="fa-submit-btn" type="button" className="sp-btn-primary" onClick={() => void handleAnalyze()} disabled={loading || ocrLoading || !expression.trim()}>
+                {loading ? <span className="sp-spinner" aria-hidden="true" /> : 'Phân tích'}
+              </button>
+            </div>
+              <button type="button" className="fa2-advanced-toggle" onClick={() => setShowAdvancedControls((value) => !value)} aria-expanded={showAdvancedControls}>
+                {showAdvancedControls ? 'Ẩn tùy chọn' : 'Hiện tùy chọn'}
+                <SvgIcon name="chevron" />
+              </button>
+            </div>
           </div>
-          <div className="fa2-parameter-control">
-            <input
-              type="range"
-              min={mRange.min}
-              max={mRange.max}
-              step={mRange.step}
-              value={mValue}
-              onChange={(event) => handleParameterChange(Number(event.target.value))}
-              disabled={loading || ocrLoading}
-              aria-label="Giá trị tham số m"
-            />
-            <input
-              type="number"
-              min={mRange.min}
-              max={mRange.max}
-              step={mRange.step}
-              value={mValue}
-              onChange={(event) => handleParameterChange(Number(event.target.value))}
-              disabled={loading || ocrLoading}
-              aria-label="Nhập giá trị tham số m"
-            />
-          </div>
-          <div className="fa2-parameter-note">{sliderLoading ? 'Đang cập nhật đồ thị...' : `Kéo slider để khảo sát tại m từ ${mRange.min} đến ${mRange.max}.`}</div>
-        </div>
-      )}
 
-      {error && <div className="sp-error" role="alert">{error}</div>}
-      {result && <AnalysisResult result={result} />}
+          {showAdvancedControls && <div className="fa2-advanced-panel">
+          <div className="fa2-control-card">
+            <div className="fa2-control-card-head"><span>Ví dụ nhanh</span></div>
+            <div className="fa2-chip-groups">
+              {EXAMPLE_GROUPS.map((group) => (
+                <div key={group.label} className="fa2-chip-group">
+                  <div className="fa2-chip-group-title">{group.label}</div>
+                  <div className="sp-chips">
+                    {group.items.map((ex) => <button key={ex.value} type="button" className="sp-chip" onClick={() => setExpression(ex.value)}>{ex.label}</button>)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="fa2-control-card fa2-upload-card">
+            <div className="fa2-control-card-head"><span>Nhập bằng ảnh</span></div>
+            <input ref={fileInputRef} type="file" accept="image/*" capture="environment" hidden onChange={(e) => void handleImageChange(e.target.files?.[0])} />
+            <div
+              className={`fa2-ocr-dropzone ${isDraggingImage ? 'is-dragging' : ''}`}
+              onDragOver={handleImageDragOver}
+              onDragLeave={handleImageDragLeave}
+              onDrop={handleImageDrop}
+            >
+              <div className="fa2-ocr-dropzone-icon" aria-hidden="true"><SvgIcon name="upload" /></div>
+              <strong>{ocrLoading ? 'Đang đọc ảnh...' : 'Kéo thả ảnh vào đây'}</strong>
+              <span>Hoặc chọn tệp / dán ảnh từ clipboard để OCR công thức.</span>
+              <div className="fa2-upload-actions">
+                <button type="button" className="sp-btn-secondary" onClick={() => fileInputRef.current?.click()} disabled={loading || ocrLoading}>
+                  {ocrLoading ? <span className="sp-spinner" aria-hidden="true" /> : <SvgIcon name="attach" />} Chọn ảnh
+                </button>
+                <button type="button" className="sp-btn-secondary" onClick={() => void handleImageButtonClick()} disabled={loading || ocrLoading}>Dán ảnh clipboard</button>
+              </div>
+            </div>
+          </div>
+
+          <div className="fa2-control-card">
+            <div className="fa2-control-card-head"><span>Công cụ khảo sát</span></div>
+            <div className="fa2-tool-strip">
+              <button type="button" className={`fa2-tool-pill ${enableInterval ? 'is-active' : ''}`} onClick={() => updateToolEnabled('interval', !enableInterval)}>GTLN/GTNN</button>
+              <button type="button" className={`fa2-tool-pill ${enableLine ? 'is-active' : ''}`} onClick={() => updateToolEnabled('line', !enableLine)}>Đường thẳng</button>
+              <button type="button" className={`fa2-tool-pill ${enableTransform ? 'is-active' : ''}`} onClick={() => updateToolEnabled('transform', !enableTransform)}>Biến đổi</button>
+            </div>
+
+            {(enableInterval || enableLine || enableTransform) && (
+              <div className="fa2-tool-panel">
+                {enableInterval && (
+                  <div className="fa2-tool-row">
+                    <span className="fa2-tool-label">Đoạn [a,b]</span>
+                    <input className="fa2-mini-input" type="number" value={intervalA} onChange={(e) => { setIntervalA(Number(e.target.value)); scheduleToolAnalyze({ intervalA: Number(e.target.value), enableInterval: true }); }} />
+                    <input className="fa2-mini-input" type="number" value={intervalB} onChange={(e) => { setIntervalB(Number(e.target.value)); scheduleToolAnalyze({ intervalB: Number(e.target.value), enableInterval: true }); }} />
+                  </div>
+                )}
+
+                {enableLine && (
+                  <div className="fa2-tool-stack">
+                    <div className="fa2-tool-label">Đường thẳng y = kx + b</div>
+                    <SliderNumber label="k" value={lineK} min={-5} max={5} step={0.1} onChange={(value) => { setLineK(value); scheduleToolAnalyze({ lineK: value, enableLine: true }); }} />
+                    <SliderNumber label="b" value={lineB} min={-10} max={10} step={0.1} onChange={(value) => { setLineB(value); scheduleToolAnalyze({ lineB: value, enableLine: true }); }} />
+                  </div>
+                )}
+
+                {enableTransform && (
+                  <div className="fa2-tool-stack">
+                    <div className="fa2-tool-row">
+                      <span className="fa2-tool-label">Biến đổi</span>
+                      <select className="fa2-mini-input" value={transformType} onChange={(e) => { setTransformType(e.target.value); scheduleToolAnalyze({ transformType: e.target.value, enableTransform: true }); }}>
+                        {TRANSFORMS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+                      </select>
+                      <button type="button" className="sp-btn-secondary" onClick={() => setIsAnimatingTransform((value) => !value)}>{isAnimatingTransform ? 'Dừng' : 'Animation'}</button>
+                    </div>
+                    <SliderNumber label="a" value={transformValue} min={-3} max={3} step={0.1} onChange={(value) => { setTransformValue(value); scheduleToolAnalyze({ transformValue: value, enableTransform: true }); }} />
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+          </div>}
+
+          {error && <div className="sp-error" role="alert">{error}</div>}
+        </aside>
+
+        <section className="fa2-results-panel">
+          {loading ? <AnalyzerLoadingResult /> : result ? <AnalysisResult result={result} /> : <EmptyAnalyzerResult />}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function EmptyAnalyzerResult() {
+  return (
+    <div className="fa2-empty-result">
+      <div className="fa2-empty-icon" aria-hidden="true"><SvgIcon name="graph" /></div>
+      <strong>Đồ thị và kết quả sẽ hiện ở đây</strong>
+      <span>Nhập công thức ở cột trái rồi bấm Phân tích để xem đồ thị, bảng biến thiên và các điểm đặc biệt.</span>
+    </div>
+  );
+}
+
+function AnalyzerLoadingResult() {
+  return (
+    <div className="fa2-loading-result" aria-live="polite" aria-busy="true">
+      <div className="fa2-skeleton fa2-skeleton-graph" />
+      <div className="fa2-skeleton-stack">
+        <div className="fa2-skeleton fa2-skeleton-card" />
+        <div className="fa2-skeleton fa2-skeleton-card" />
+        <div className="fa2-skeleton fa2-skeleton-card" />
+      </div>
+    </div>
+  );
+}
+
+function SliderNumber({ label, value, min, max, step, onChange }: { label: string; value: number; min: number; max: number; step: number; onChange: (value: number) => void }) {
+  return (
+    <div className="fa2-slider-row">
+      <span>{label} = {formatSliderValue(value)}</span>
+      <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(Number(e.target.value))} />
+      <input className="fa2-mini-input" type="number" min={min} max={max} step={step} value={value} onChange={(e) => onChange(Number(e.target.value))} />
     </div>
   );
 }
@@ -228,50 +433,106 @@ function formatSliderValue(value: number) {
 }
 
 function AnalysisResult({ result }: { result: AnalyzeResponse }) {
+  const hasSpecialPoints = result.critical_points.length > 0 || result.inflection_points.length > 0 || result.y_intercept !== null || result.x_intercepts.length > 0;
+  const hasShapeDetails = result.concave_up_intervals.length > 0 || result.concave_down_intervals.length > 0 || result.horizontal_asymptotes.length > 0 || result.vertical_asymptotes.length > 0 || !!result.oblique_asymptote;
+
   return (
     <div className="fa2-result">
-      <Section title="Đồ thị hàm số" icon="graph">
-        {result.analysis_mode === 'numeric_substituted' && result.parameters?.active.m !== undefined && (
-          <div className="fa2-parameter-result-note">Kết quả khảo sát tại m = {formatSliderValue(result.parameters.active.m)}.</div>
-        )}
-        <FunctionGraphSvg result={result} />
-      </Section>
+      <div className="fa2-result-shell">
+        <div className="fa2-graph-column">
+          <Section title="Đồ thị hàm số" icon="graph" className="fa2-graph-section">
+            <FunctionGraphSvg result={result} />
+          </Section>
+        </div>
 
-      <div className="fa2-summary-grid">
+        <div className="fa2-analysis-column">
+          <div className="fa2-result-sticky-head">
+            <span>Đang xem</span>
+            <KatexSpan tex={`y=${result.evaluated_expression_latex || result.expression_latex || sympyToLatex(result.evaluated_expression || result.expression)}`} />
+          </div>
+
+          <QuickSummary result={result} />
+
+          {hasSpecialPoints && (
+            <Section title="Điểm đặc biệt" icon="points">
+              <div className="fa2-extrema">
+                {result.critical_points.map((pt, i) => pt.y !== null && <PointBadge key={`cp-${i}`} label={pt.kind_label || 'Cực trị'} tex={`(${sympyToLatex(pt.x_exact)},\\; ${sympyToLatex(pt.y)})`} kind={pt.kind} />)}
+                {result.inflection_points.map((pt, i) => <PointBadge key={`ip-${i}`} label="Điểm uốn" tex={`(${sympyToLatex(pt.x_exact)},\\; ${sympyToLatex(pt.y)})`} kind="inflection" />)}
+                {result.y_intercept !== null && <PointBadge label="Giao Oy" tex={`(0,\\; ${sympyToLatex(result.y_intercept)})`} kind="axis-y" />}
+                {result.x_intercepts.map((xv, i) => <PointBadge key={`ox-${i}`} label="Giao Ox" tex={`(${sympyToLatex(xv)},\\; 0)`} kind="axis-x" />)}
+              </div>
+            </Section>
+          )}
+
+          <Section title="Đạo hàm và biến thiên" icon="derivative">
+            <div className="fa2-formula-row"><KatexSpan tex="f'(x)=" className="fa2-label-mono fa2-label-katex" /><KatexSpan tex={result.derivative_latex || sympyToLatex(result.derivative || '')} className="fa2-katex" /></div>
+            {result.second_derivative && <div className="fa2-formula-row"><KatexSpan tex="f''(x)=" className="fa2-label-mono fa2-label-katex" /><KatexSpan tex={result.second_derivative_latex || sympyToLatex(result.second_derivative)} className="fa2-katex" /></div>}
+            <VariationTable rows={result.variation_table} />
+          </Section>
+
+          {hasShapeDetails && (
+            <Section title="Lồi lõm và tiệm cận" icon="asymptote">
+              <div className="fa2-compact-list">
+                {result.concave_up_intervals.length > 0 && <IntervalLine label="Lồi" value={result.concave_up_intervals.join(', ')} className="fa2-mono-inc" />}
+                {result.concave_down_intervals.length > 0 && <IntervalLine label="Lõm" value={result.concave_down_intervals.join(', ')} className="fa2-mono-dec" />}
+                {result.horizontal_asymptotes.map((ha, i) => <Asymptote key={`ha-${i}`} label="Ngang" tex={`y = ${sympyToLatex(ha.value)}`} />)}
+                {result.vertical_asymptotes.map((va, i) => <Asymptote key={`va-${i}`} label="Đứng" tex={`x = ${sympyToLatex(va.x)}`} />)}
+                {result.oblique_asymptote && <Asymptote label="Xiên" tex={sympyToLatex(result.oblique_asymptote)} />}
+              </div>
+            </Section>
+          )}
+
+          <div className="fa2-detail-grid">
+            {result.interval_analysis && (
+              <Section title="GTLN/GTNN trên đoạn" icon="points">
+                <IntervalExtremaAnalysis interval={result.interval_analysis} />
+              </Section>
+            )}
+
+            {result.line_analysis && (
+              <Section title="Tương giao với đường thẳng" icon="graph">
+                <div className="fa2-compact-list">
+                  <IntervalLine label="Đường thẳng" value={result.line_analysis.equation} className="fa2-mono-inc" />
+                  <IntervalLine label="Số giao điểm" value={String(result.line_analysis.intersection_count)} className="fa2-mono-inc" />
+                  {result.line_analysis.intersections.map((pt, index) => <PointBadge key={`line-${index}`} label="Giao điểm" tex={`(${sympyToLatex(pt.x)},\\; ${sympyToLatex(pt.y)})`} kind="axis" />)}
+                  {result.line_analysis.relative_intervals.above.length > 0 && <IntervalLine label="f(x) > d" value={result.line_analysis.relative_intervals.above.join(', ')} className="fa2-mono-inc" />}
+                  {result.line_analysis.relative_intervals.below.length > 0 && <IntervalLine label="f(x) < d" value={result.line_analysis.relative_intervals.below.join(', ')} className="fa2-mono-dec" />}
+                </div>
+              </Section>
+            )}
+
+            {result.transform_preview && (
+              <Section title="Biến đổi đồ thị" icon="graph">
+                <div className="fa2-transform-formula">
+                  <KatexSpan tex={TRANSFORM_LABEL_TEX[result.transform_preview.type] ?? sympyToLatex(result.transform_preview.label)} className="fa2-transform-rule" />
+                  <KatexSpan tex={`g(x)=${result.transform_preview.expression_latex || sympyToLatex(result.transform_preview.expression)}`} className="fa2-katex" />
+                </div>
+              </Section>
+            )}
+          </div>
+
+          {result.ocr_text && <div className="sp-info">OCR: {result.ocr_text}</div>}
+          {result.warnings.length > 0 && <div className="sp-warnings">{result.warnings.map((w, i) => <div key={i} className="sp-warning">{w}</div>)}</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function QuickSummary({ result }: { result: AnalyzeResponse }) {
+  const expressionTex = result.evaluated_expression_latex || result.expression_latex || sympyToLatex(result.evaluated_expression || result.expression);
+
+  return (
+    <div className="fa2-quick-card">
+      <div className="fa2-quick-head">
+        <span className="fa2-quick-eyebrow">Kết quả nhanh</span>
+        <KatexSpan tex={`y=${expressionTex}`} className="fa2-quick-expression" />
+      </div>
+      <div className="fa2-quick-rows">
         {result.domain_latex && <SummaryCard label="Tập xác định" tex={result.domain_latex} />}
         {result.range_latex && <SummaryCard label="Tập giá trị" tex={result.range_latex} />}
+        {(result.derivative_latex || result.derivative) && <SummaryCard label="Đạo hàm" tex={result.derivative_latex || sympyToLatex(result.derivative || '')} />}
       </div>
-
-      <Section title="Đạo hàm và biến thiên" icon="derivative">
-        <div className="fa2-formula-row"><KatexSpan tex="f'(x)=" className="fa2-label-mono fa2-label-katex" /><KatexSpan tex={result.derivative_latex || sympyToLatex(result.derivative || '')} className="fa2-katex" /></div>
-        {result.second_derivative && <div className="fa2-formula-row"><KatexSpan tex="f''(x)=" className="fa2-label-mono fa2-label-katex" /><KatexSpan tex={result.second_derivative_latex || sympyToLatex(result.second_derivative)} className="fa2-katex" /></div>}
-        <VariationTable rows={result.variation_table} />
-      </Section>
-
-      {(result.critical_points.length > 0 || result.inflection_points.length > 0) && (
-        <Section title="Điểm đặc biệt" icon="points">
-          <div className="fa2-extrema">
-            {result.inflection_points.map((pt, i) => <PointBadge key={`ip-${i}`} label="Điểm uốn" tex={`(${sympyToLatex(pt.x_exact)},\\; ${sympyToLatex(pt.y)})`} kind="inflection" />)}
-            {result.y_intercept !== null && <PointBadge label="Giao Oy" tex={`(0,\\; ${sympyToLatex(result.y_intercept)})`} kind="axis" />}
-            {result.x_intercepts.map((xv, i) => <PointBadge key={`ox-${i}`} label="Giao Ox" tex={`(${sympyToLatex(xv)},\\; 0)`} kind="axis" />)}
-          </div>
-        </Section>
-      )}
-
-      {(result.concave_up_intervals.length > 0 || result.concave_down_intervals.length > 0 || result.horizontal_asymptotes.length > 0 || result.vertical_asymptotes.length > 0 || result.oblique_asymptote) && (
-        <Section title="Lồi lõm và tiệm cận" icon="asymptote">
-          <div className="fa2-compact-list">
-            {result.concave_up_intervals.length > 0 && <IntervalLine label="Lồi" value={result.concave_up_intervals.join(', ')} className="fa2-mono-inc" />}
-            {result.concave_down_intervals.length > 0 && <IntervalLine label="Lõm" value={result.concave_down_intervals.join(', ')} className="fa2-mono-dec" />}
-            {result.horizontal_asymptotes.map((ha, i) => <Asymptote key={`ha-${i}`} label="Ngang" tex={`y = ${sympyToLatex(ha.value)}`} />)}
-            {result.vertical_asymptotes.map((va, i) => <Asymptote key={`va-${i}`} label="Đứng" tex={`x = ${sympyToLatex(va.x)}`} />)}
-            {result.oblique_asymptote && <Asymptote label="Xiên" tex={sympyToLatex(result.oblique_asymptote)} />}
-          </div>
-        </Section>
-      )}
-
-      {result.ocr_text && <div className="sp-info">OCR: {result.ocr_text}</div>}
-      {result.warnings.length > 0 && <div className="sp-warnings">{result.warnings.map((w, i) => <div key={i} className="sp-warning">{w}</div>)}</div>}
     </div>
   );
 }
@@ -604,7 +865,8 @@ function SummaryCard({ label, tex }: { label: string; tex: string }) {
 }
 
 function PointBadge({ label, tex, kind }: { label: string; tex: string; kind: string }) {
-  return <div className={`fa2-ext fa2-ext-${kind}`}><div className="fa2-ext-body"><span className="fa2-ext-kind">{label}</span><KatexSpan tex={tex} className="fa2-ext-coords" /></div></div>;
+  const icon = kind === 'max' ? 'triangleUp' : kind === 'min' ? 'triangleDown' : kind === 'inflection' ? 'trend' : 'target';
+  return <div className={`fa2-ext fa2-ext-${kind}`}><span className="fa2-ext-icon" aria-hidden="true"><SvgIcon name={icon} /></span><div className="fa2-ext-body"><span className="fa2-ext-kind">{label}</span><KatexSpan tex={tex} className="fa2-ext-coords" /></div></div>;
 }
 
 function Asymptote({ label, tex }: { label: string; tex: string }) {
@@ -612,10 +874,51 @@ function Asymptote({ label, tex }: { label: string; tex: string }) {
 }
 
 function VariationTable({ rows }: { rows: AnalyzeResponse['variation_table'] }) {
+  const [isExpanded, setIsExpanded] = useState(false);
   if (!rows || rows.length === 0) return null;
   const dynamicCols = rows.length * 2 - 1;
+  const forceTimeline = rows.length > 4;
+  const gridStyle = { '--bbt-cols': dynamicCols } as CSSProperties;
+
   return (
-    <div className="bbt-wrap" style={{ '--bbt-cols': dynamicCols } as Record<string, number>}>
+    <div className={`bbt-layout ${forceTimeline ? 'bbt-layout-force-timeline' : ''}`}>
+      <div className="bbt-actions">
+        <button type="button" className="bbt-zoom-btn" onClick={() => setIsExpanded(true)} aria-label="Ấn để phóng to">
+          <span aria-hidden="true"><SvgIcon name="magnify" /></span>
+        </button>
+      </div>
+      <VariationGrid rows={rows} style={gridStyle} />
+      <div className="bbt-timeline">
+        {rows.slice(0, -1).map((row, index) => {
+          const next = rows[index + 1];
+          const direction = normalizeDirection(row.arrow_to_next);
+          return (
+            <div key={`tl-${index}`} className={`bbt-timeline-item ${direction === 'up' ? 'bbt-timeline-up' : direction === 'down' ? 'bbt-timeline-down' : ''}`}>
+              <div className="bbt-timeline-range"><KatexSpan tex={`${sympyToLatex(row.x)} \\to ${sympyToLatex(next.x)}`} /></div>
+              <div className="bbt-timeline-trend">{renderArrowLatex(row.arrow_to_next)}</div>
+              <div className="bbt-timeline-values"><KatexSpan tex={`${nodeValueTex(rows, index)} \\to ${nodeValueTex(rows, index + 1)}`} /></div>
+            </div>
+          );
+        })}
+      </div>
+      {isExpanded && (
+        <div className="bbt-modal" role="dialog" aria-modal="true" aria-label="Bảng biến thiên phóng to" onClick={() => setIsExpanded(false)}>
+          <div className="bbt-modal-card" onClick={(event) => event.stopPropagation()}>
+            <div className="bbt-modal-head">
+              <span>Bảng biến thiên phóng to</span>
+              <button type="button" className="bbt-modal-close" onClick={() => setIsExpanded(false)} aria-label="Đóng bảng biến thiên phóng to">Đóng</button>
+            </div>
+            <VariationGrid rows={rows} style={gridStyle} className="bbt-wrap-expanded" />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function VariationGrid({ rows, style, className = '' }: { rows: AnalyzeResponse['variation_table']; style: CSSProperties; className?: string }) {
+  return (
+    <div className={`bbt-wrap ${className}`.trim()} style={style}>
       <div className="bbt-row bbt-row-x">
         <div className="bbt-cell bbt-label"><KatexSpan tex="x" className="bbt-label-tex" /></div>
         {rows.map((row, index) => (
@@ -762,30 +1065,80 @@ function valueLevelClass(rows: AnalyzeResponse['variation_table'], index: number
 }
 
 function VariationStroke({ direction }: { direction: 'up' | 'down' | null }) {
+  const markerId = `${useId()}bbt-arrow`;
   const path = direction === 'up' ? 'M 8 34 L 92 8' : direction === 'down' ? 'M 8 8 L 92 34' : 'M 8 21 L 92 21';
   return (
     <svg viewBox="0 0 100 42" className={`bbt-stroke ${direction === 'up' ? 'bbt-up' : direction === 'down' ? 'bbt-down' : ''}`} aria-hidden="true">
       <defs>
-        <marker id="bbt-arrow-head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <marker id={markerId} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
           <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor" />
         </marker>
       </defs>
-      <path d={path} fill="none" stroke="currentColor" strokeWidth="1.75" markerEnd="url(#bbt-arrow-head)" />
+      <path d={path} fill="none" stroke="currentColor" strokeWidth="1.75" markerEnd={`url(#${markerId})`} />
     </svg>
   );
 }
 
+type IntervalAnalysis = NonNullable<AnalyzeResponse['interval_analysis']>;
+
+type IntervalCandidate = { label: string; x: string; y: string };
+
+function intervalExtremaConclusionTex(kind: 'max' | 'min', data: IntervalAnalysis): string {
+  const a = sympyToLatex(data.a);
+  const b = sympyToLatex(data.b);
+  const pt = kind === 'max' ? data.max_point : data.min_point;
+  const op = kind === 'max' ? '\\max' : '\\min';
+  const xv = sympyToLatex(pt.x);
+  const yv = sympyToLatex(pt.y);
+  return `\\displaystyle ${op}_{x\\in\\left[${a},\\,${b}\\right]} f(x)=f\\left(${xv}\\right)=${yv}`;
+}
+
+function IntervalExtremaAnalysis({ interval }: { interval: IntervalAnalysis }) {
+  const candidates: IntervalCandidate[] = [
+    { label: 'Cận trái', x: interval.a, y: interval.fa },
+    { label: 'Cận phải', x: interval.b, y: interval.fb },
+    ...interval.extrema_inside.map((point) => ({ label: point.label, x: point.x_exact || point.x, y: point.y })),
+  ];
+
+  return (
+    <div className="fa2-interval-analysis">
+      <div className="fa2-interval-note">
+        <KatexSpan tex={`x\\in[${sympyToLatex(interval.a)},${sympyToLatex(interval.b)}]`} />
+        <span>Xét giá trị tại hai cận và các điểm cực trị nằm trong đoạn.</span>
+      </div>
+      <table className="fa2-result-table fa2-interval-table"><thead><tr><th>Điểm xét</th><th><KatexSpan tex="x" /></th><th><KatexSpan tex="f(x)" /></th></tr></thead><tbody>
+        {candidates.map((candidate) => (
+          <tr key={`${candidate.label}-${candidate.x}-${candidate.y}`}>
+            <th>{candidate.label}</th>
+            <td><KatexSpan tex={sympyToLatex(candidate.x)} /></td>
+            <td><KatexSpan tex={sympyToLatex(candidate.y)} /></td>
+          </tr>
+        ))}
+      </tbody></table>
+      <div className="fa2-extrema-conclusion">
+        <div className="fa2-extrema-formula">
+          <KatexSpan display tex={intervalExtremaConclusionTex('max', interval)} />
+        </div>
+        <div className="fa2-extrema-formula">
+          <KatexSpan display tex={intervalExtremaConclusionTex('min', interval)} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function IntervalLine({ label, value, className }: { label: string; value: string; className: string }) {
-  return <div className={`fa2-mono ${className}`}><span className="fa2-mono-label">{label}:</span><span className="fa2-mono-val">{value}</span></div>;
+  return <div className={`fa2-mono ${className}`}><span className="fa2-mono-label">{label}:</span><span className="fa2-mono-val"><KatexSpan tex={sympyToLatex(value)} /></span></div>;
 }
 
-function Section({ title, icon, children }: { title: string; icon: IconName; children: React.ReactNode }) {
-  return <div className="fa2-section"><div className="fa2-section-head"><span className="fa2-section-icon" aria-hidden="true"><SvgIcon name={icon} /></span><span className="fa2-section-title">{title}</span></div><div className="fa2-section-body">{children}</div></div>;
+function Section({ title, icon, children, className = '' }: { title: string; icon: IconName; children: React.ReactNode; className?: string }) {
+  return <div className={`fa2-section ${className}`.trim()}><div className="fa2-section-head"><span className="fa2-section-icon" aria-hidden="true"><SvgIcon name={icon} /></span><span className="fa2-section-title">{title}</span></div><div className="fa2-section-body">{children}</div></div>;
 }
 
-type IconName = 'wave' | 'camera' | 'graph' | 'derivative' | 'points' | 'asymptote' | 'hint' | 'attach';
+type IconName = 'wave' | 'camera' | 'graph' | 'derivative' | 'points' | 'asymptote' | 'hint' | 'attach' | 'upload' | 'chevron' | 'trend' | 'target' | 'triangleUp' | 'triangleDown' | 'magnify';
 
 function SvgIcon({ name }: { name: IconName }) {
+  if (name === 'magnify') return <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}><circle cx="11" cy="11" r="7" /><path d="m20 20-4.35-4.35" /></svg>;
   if (name === 'camera') return <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 8h4l2-3h4l2 3h4v11H4z" /><circle cx="12" cy="13" r="4" /></svg>;
   if (name === 'attach') return <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" /></svg>;
   if (name === 'hint') return <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}><circle cx="12" cy="12" r="9.5" /><path d="M12 11v5" /><circle cx="12" cy="7.5" r="0.5" fill="currentColor" stroke="none" /></svg>;
@@ -793,6 +1146,12 @@ function SvgIcon({ name }: { name: IconName }) {
   if (name === 'derivative') return <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 18c4-1 4-11 8-12" /><path d="M9 12h8" /><path d="M15 8l4 4-4 4" /></svg>;
   if (name === 'points') return <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="7" cy="16" r="2" /><circle cx="12" cy="8" r="2" /><circle cx="17" cy="16" r="2" /><path d="M7 16l5-8 5 8" /></svg>;
   if (name === 'asymptote') return <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M4 18c4-10 12-10 16 0" /><path d="M4 6h16" strokeDasharray="3 3" /></svg>;
+  if (name === 'upload') return <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 16V4" /><path d="M7 9l5-5 5 5" /><path d="M5 16v3h14v-3" /></svg>;
+  if (name === 'chevron') return <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>;
+  if (name === 'trend') return <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 17l6-6 4 4 6-8" /><path d="M15 7h5v5" /></svg>;
+  if (name === 'target') return <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="3" /><path d="M12 2v4M12 18v4M2 12h4M18 12h4" /></svg>;
+  if (name === 'triangleUp') return <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"><path d="M12 5 20 19H4Z" /></svg>;
+  if (name === 'triangleDown') return <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"><path d="M4 5h16l-8 14Z" /></svg>;
   return <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg>;
 }
 

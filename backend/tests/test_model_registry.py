@@ -75,6 +75,69 @@ async def test_registry_preserves_allowed_models_after_scan(db):
 
 
 @pytest.mark.anyio
+async def test_registry_uses_allowed_default_for_openrouter_when_saved_default_is_disallowed(db, monkeypatch):
+    settings = Settings(_env_file=None, openrouter_text_model="env/openrouter")
+    monkeypatch.setattr("app.services.model_registry.get_settings", lambda: settings)
+    await load_model_registry(db, settings)
+    await save_provider_config(db, "openrouter", "https://openrouter.example/v1", "stale/model")
+    await set_allowed_models(db, "openrouter", ["allowed/model"])
+
+    effective = await resolve_effective_settings(db, None)
+
+    assert effective.openrouter_text_model == "allowed/model"
+
+
+@pytest.mark.anyio
+async def test_sync_ai_settings_normalizes_nvidia_default_to_allowlist(db):
+    await load_model_registry(db, Settings(_env_file=None))
+
+    await sync_ai_settings_to_registry(db, {
+        "version": 1,
+        "default_provider": "nvidia",
+        "nvidia": {
+            "base_url": "https://integrate.api.nvidia.com/v1",
+            "model": "stale-nvidia-model",
+            "scanned_models": [{"id": "allowed-nvidia-model", "label": "Allowed NVIDIA", "provider": "nvidia"}],
+            "allowed_model_ids": ["allowed-nvidia-model"],
+        },
+    })
+
+    effective = await resolve_effective_settings(db, None)
+    registry = await load_model_registry(db, Settings(_env_file=None))
+
+    assert registry.providers["nvidia"].default_model_id == "allowed-nvidia-model"
+    assert effective.nvidia_text_model == "allowed-nvidia-model"
+
+
+@pytest.mark.anyio
+async def test_sync_ai_settings_patch_only_updates_touched_provider(db):
+    await load_model_registry(db, Settings(_env_file=None))
+    await save_provider_config(db, "openrouter", "https://old-openrouter.example/v1", "old/openrouter")
+    await save_provider_config(db, "nvidia", "https://old-nvidia.example/v1", "old-nvidia")
+
+    await sync_ai_settings_to_registry(db, {
+        "version": 1,
+        "openrouter": {
+            "base_url": "https://new-openrouter.example/v1",
+            "model": "new/openrouter",
+            "scanned_models": [{"id": "new/openrouter", "label": "New OpenRouter", "provider": "openrouter"}],
+            "allowed_model_ids": ["new/openrouter"],
+        },
+        "nvidia": {
+            "base_url": "https://new-nvidia.example/v1",
+            "model": "new-nvidia",
+            "scanned_models": [{"id": "new-nvidia", "label": "New NVIDIA", "provider": "nvidia"}],
+            "allowed_model_ids": ["new-nvidia"],
+        },
+    }, {"openrouter": {"model": "new/openrouter"}})
+
+    registry = await load_model_registry(db, Settings(_env_file=None))
+
+    assert registry.providers["openrouter"].default_model_id == "new/openrouter"
+    assert registry.providers["nvidia"].default_model_id == "old-nvidia"
+
+
+@pytest.mark.anyio
 async def test_registry_ocr_profile_updates_openrouter_vision_model(db):
     await load_model_registry(db, Settings(_env_file=None, openrouter_vision_model="env/vision"))
     await save_task_profile(db, "ocr", "openrouter", "registry/vision", [])

@@ -32,6 +32,10 @@ interface GeoGebraApi {
   getYcoord?: (name: string) => number;
   getZcoord?: (name: string) => number;
   setCoordSystem?: (xmin: number, xmax: number, ymin: number, ymax: number) => void;
+  setPerspective?: (perspective: string) => void;
+  setWidth?: (width: number) => void;
+  setHeight?: (height: number) => void;
+  setSize?: (width: number, height: number) => void;
   registerObjectClickListener?: (callbackName: string) => void;
   unregisterObjectClickListener?: (callbackName: string) => void;
   registerUpdateListener?: (callbackName: string) => void;
@@ -129,10 +133,15 @@ export function GeoGebraView({ commands, renderer, scene, view, onPointChange, e
           showToolBar: false,
           showAlgebraInput: false,
           showMenuBar: false,
+          showResetIcon: false,
+          enableShiftDragZoom: true,
+          perspective: renderer === 'geogebra_2d' ? 'G' : undefined,
           appletOnLoad: (api: GeoGebraApi) => {
             if (cancelled) return;
             apiRef.current = api;
             api.setErrorDialogsActive?.(false);
+            if (renderer === 'geogebra_2d') api.setPerspective?.('G');
+            requestAnimationFrame(() => resizeAppletToContainer(api, containerRef.current));
             window[clickCallbackName] = (name: string) => setSelectedObject(name);
             window[updateCallbackName] = (name?: string) => {
               setUpdateCount((count) => count + 1);
@@ -171,12 +180,27 @@ export function GeoGebraView({ commands, renderer, scene, view, onPointChange, e
     const api = apiRef.current;
     applyingCommandsRef.current = true;
     const failures = applyCommands(api, commands, view, scene, renderer === 'geogebra_3d');
+    requestAnimationFrame(() => resizeAppletToContainer(api, containerRef.current));
     window.setTimeout(() => {
       applyingCommandsRef.current = false;
     }, 0);
     setCommandErrors(failures);
     setStatus(failures.length > 0 ? 'error' : 'ready');
   }, [apiReady, commandSignature, commands, renderer, scene, view.show_axes, view.show_grid]);
+
+  useEffect(() => {
+    if (!apiReady || !apiRef.current || !containerRef.current || typeof ResizeObserver === 'undefined') return;
+    let frame = 0;
+    const observer = new ResizeObserver(() => {
+      if (frame) cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => resizeAppletToContainer(apiRef.current, containerRef.current));
+    });
+    observer.observe(containerRef.current);
+    return () => {
+      observer.disconnect();
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, [apiReady]);
 
   function schedulePointSync(name: string) {
     if (!onPointChange || applyingCommandsRef.current || !editablePointNames.has(name)) return;
@@ -242,6 +266,15 @@ export function GeoGebraView({ commands, renderer, scene, view, onPointChange, e
       {content}
     </div>
   );
+}
+
+function resizeAppletToContainer(api: GeoGebraApi | null, container: HTMLDivElement | null) {
+  if (!api || !container) return;
+  const width = Math.max(container.clientWidth, 320);
+  const height = Math.max(container.clientHeight, 420);
+  api.setSize?.(width, height);
+  api.setWidth?.(width);
+  api.setHeight?.(height);
 }
 
 function applyCommands(api: GeoGebraApi, commands: string[], view: SceneView, scene: MathScene, is3d: boolean) {

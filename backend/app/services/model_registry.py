@@ -221,9 +221,10 @@ def settings_from_registry(settings: Settings, registry: ModelRegistry) -> Setti
     for provider_id, provider in registry.providers.items():
         if provider.base_url:
             data[f"{provider_id}_base_url"] = provider.base_url
-        if provider.default_model_id:
+        default_model_id = _effective_provider_default_model(registry, provider_id, provider.default_model_id)
+        if default_model_id:
             key = "router9_text_model" if provider_id == "router9" else f"{provider_id}_text_model"
-            data[key] = provider.default_model_id
+            data[key] = default_model_id
     data["router9_only"] = bool(registry.settings.get("router9_only", settings.router9_only))
     data["openrouter_reasoning_enabled"] = bool(registry.settings.get("openrouter_reasoning_enabled", settings.openrouter_reasoning_enabled))
     router9_allowed = registry.allowed_model_ids("router9")
@@ -426,6 +427,15 @@ def _dedupe_models(models: list[AiModelInfo]) -> list[AiModelInfo]:
         seen.add(model.id)
         output.append(model)
     return output
+
+
+def _effective_provider_default_model(registry: ModelRegistry, provider_id: str, default_model_id: str) -> str:
+    allowed_model_ids = registry.allowed_model_ids(provider_id)
+    if not allowed_model_ids:
+        return default_model_id
+    if default_model_id in allowed_model_ids:
+        return default_model_id
+    return allowed_model_ids[0]
 
 
 def _json_value(value: Any) -> Any:

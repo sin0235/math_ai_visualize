@@ -1,4 +1,4 @@
-from sympy import Symbol, lambdify, sympify
+from sympy import E, Symbol, cos, cot, exp, lambdify, log, pi, sin, sympify, tan
 
 from app.renderers.geogebra_commands import build_geogebra_commands
 from app.schemas.scene import Annotation, FunctionGraph, MathScene, Point2D, SceneView, Segment
@@ -94,6 +94,18 @@ def build_function_graph(analysis: dict) -> tuple[MathScene, list[str], list[dic
         view=SceneView(dimension="2d", show_axes=True, show_grid=True),
     )
     commands = build_geogebra_commands(scene)
+    line_analysis = analysis.get("line_analysis")
+    if line_analysis:
+        commands.append(f'g(x)={line_analysis["k"]}*x+{line_analysis["b"]}')
+        commands.append('SetColor(g, "#2563eb")')
+        commands.append('SetLineThickness(g, 4)')
+    transform_preview = analysis.get("transform_preview")
+    if transform_preview:
+        commands.append(f'h(x)={_geogebra_expression(transform_preview["expression"])}')
+        commands.append('SetColor(f, "#94a3b8")')
+        commands.append('SetLineThickness(f, 2)')
+        commands.append('SetColor(h, "#111827")')
+        commands.append('SetLineThickness(h, 5)')
 
     for i, cp in enumerate(analysis.get("critical_points", [])):
         name = f"E{i + 1}"
@@ -113,7 +125,7 @@ def build_function_graph(analysis: dict) -> tuple[MathScene, list[str], list[dic
 
 def _sample_graph_points(expression: str) -> list[dict[str, float]]:
     try:
-        expr = sympify(expression.replace("^", "**"), locals={"x": x, "m": m})
+        expr = sympify(expression.replace("^", "**"), locals={"x": x, "m": m, "sin": sin, "cos": cos, "tan": tan, "cot": cot, "log": log, "ln": log, "exp": exp, "pi": pi, "E": E})
         fn = lambdify(x, expr, "math")
     except Exception:
         return []

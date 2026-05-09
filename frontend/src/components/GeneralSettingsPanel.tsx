@@ -1,5 +1,5 @@
 import type { OcrProvider, RuntimeSettings, SettingsDefaults } from '../types/settings';
-import { buildOcrProviderOptions, buildProviderOptions } from '../utils/settingsOptions';
+import { buildModelOptionsFromDefaults, buildOcrProviderOptions, buildProviderOptions } from '../utils/settingsOptions';
 import type { Option } from '../utils/settingsOptions';
 
 interface GeneralSettingsPanelProps {
@@ -129,7 +129,7 @@ function currentProviderModel(value: RuntimeSettings) {
 
 function buildProviderModelOptions(defaults: SettingsDefaults | null, provider: string, currentModel: string) {
   if (!defaults || !(provider === 'openrouter' || provider === 'nvidia' || provider === 'ollama' || provider === 'router9')) return currentModel ? [{ id: currentModel, label: currentModel }] : [];
-  return buildUserModelOptionsFromDefaults(defaults[provider], currentModel);
+  return buildModelOptionsFromDefaults(defaults[provider], currentModel, [], defaults, provider);
 }
 
 function buildUserModelOptionsFromDefaults(providerDefaults: SettingsDefaults['openrouter'] | SettingsDefaults['nvidia'] | SettingsDefaults['ollama'] | SettingsDefaults['router9'] | undefined, currentModel = '', extraModelIds: string[] = []): Option[] {
@@ -141,9 +141,11 @@ function buildUserModelOptionsFromDefaults(providerDefaults: SettingsDefaults['o
     const scanned = providerDefaults.scanned_models.find((model) => model.id === id);
     return { id, label: scanned?.label ?? id };
   });
-  [currentModel, ...extraModelIds].filter(Boolean).forEach((id) => {
-    if (!options.some((option) => option.id === id)) options.unshift({ id, label: id });
-  });
+  if (providerDefaults.allowed_model_ids.length === 0) {
+    [currentModel, ...extraModelIds].filter(Boolean).forEach((id) => {
+      if (!options.some((option) => option.id === id)) options.unshift({ id, label: id });
+    });
+  }
   return options;
 }
 

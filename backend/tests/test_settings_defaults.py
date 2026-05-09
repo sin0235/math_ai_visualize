@@ -125,3 +125,50 @@ def test_settings_defaults_reports_database_api_key_without_leaking(settings_def
     payload = response.json()
     assert payload["ollama"]["api_key_configured"] is True
     assert "db-ollama-secret" not in response.text
+
+
+def test_settings_defaults_reports_allowed_openrouter_default(settings_defaults_client):
+    asyncio.run(settings_defaults_client.db.execute(
+        """
+        INSERT INTO ai_providers (id, label, default_model_id)
+        VALUES (?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET default_model_id = excluded.default_model_id
+        """,
+        ["openrouter", "OpenRouter", "stale/model"],
+    ))
+    asyncio.run(settings_defaults_client.db.execute(
+        "INSERT INTO ai_models (provider_id, id, label, enabled, allowed, source) VALUES (?, ?, ?, 1, 1, 'manual')",
+        ["openrouter", "allowed/model", "Allowed model"],
+    ))
+
+    response = settings_defaults_client.get("/api/settings/defaults")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["openrouter"]["model"] == "allowed/model"
+    assert payload["openrouter"]["allowed_model_ids"] == ["allowed/model"]
+
+
+def test_settings_defaults_normalizes_raw_openrouter_model_to_allowlist(settings_defaults_client):
+    asyncio.run(settings_defaults_client.db.execute(
+        """
+        INSERT INTO ai_providers (id, label, default_model_id)
+        VALUES (?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET default_model_id = excluded.default_model_id
+        """,
+        ["openrouter", "OpenRouter", "stale/model"],
+    ))
+    asyncio.run(settings_defaults_client.db.execute(
+        "INSERT INTO ai_models (provider_id, id, label, enabled, allowed, source) VALUES (?, ?, ?, 1, 1, 'manual')",
+        ["openrouter", "allowed/model", "Allowed model"],
+    ))
+    asyncio.run(settings_defaults_client.db.execute(
+        "INSERT INTO system_settings (key, value_json) VALUES (?, ?)",
+        ["ai_settings", json.dumps({"version": 1, "openrouter": {"model": "stale/model", "allowed_model_ids": ["allowed/model"]}})],
+    ))
+
+    response = settings_defaults_client.get("/api/settings/defaults")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["openrouter"]["model"] == "allowed/model"

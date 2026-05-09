@@ -65,6 +65,10 @@ class SolveResponse(BaseModel):
 class AnalyzeRequest(BaseModel):
     expression: str = Field(min_length=1, max_length=1000)
     parameters: dict[str, float] | None = None
+    interval: dict[str, float] | None = None
+    line: dict[str, float] | None = None
+    parameter_conditions: dict[str, Any] | None = None
+    transform: dict[str, Any] | None = None
 
 
 class AnalyzeOcrRequest(BaseModel):
@@ -120,6 +124,11 @@ class AnalyzeResponse(BaseModel):
     graph_points: list[dict[str, float]] = []
     ocr_text: str | None = None
     ocr_expression: str | None = None
+    interval_analysis: dict[str, Any] | None = None
+    line_analysis: dict[str, Any] | None = None
+    parameter_conditions: list[dict[str, Any]] = []
+    transform_preview: dict[str, Any] | None = None
+    capabilities: dict[str, Any] | None = None
     warnings: list[str] = []
     error: str | None = None
 
@@ -165,7 +174,14 @@ async def solve_problem(
 @router.post("/analyze", response_model=AnalyzeResponse, dependencies=[Depends(require_trusted_origin)])
 async def analyze_function_endpoint(request: AnalyzeRequest) -> AnalyzeResponse:
     try:
-        data = analyze_function(request.expression, request.parameters)
+        data = analyze_function(
+            request.expression,
+            request.parameters,
+            interval=request.interval,
+            line=request.line,
+            parameter_conditions=request.parameter_conditions,
+            transform=request.transform,
+        )
         if "error" not in data:
             scene, data["geogebra_commands"], data["graph_points"] = build_function_graph(data)
             data["graph_scene"] = scene.model_dump(mode="json")
@@ -233,6 +249,11 @@ def _analysis_response(expression: str, data: dict[str, Any]) -> AnalyzeResponse
         graph_points=data.get("graph_points", []),
         ocr_text=data.get("ocr_text"),
         ocr_expression=data.get("ocr_expression"),
+        interval_analysis=data.get("interval_analysis"),
+        line_analysis=data.get("line_analysis"),
+        parameter_conditions=data.get("parameter_conditions", []),
+        transform_preview=data.get("transform_preview"),
+        capabilities=data.get("capabilities"),
         warnings=data.get("warnings", []),
     )
 

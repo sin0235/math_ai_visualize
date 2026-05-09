@@ -56,11 +56,14 @@ export function buildOcrProviderOptions(defaults: SettingsDefaults | null): Opti
 export function buildRegistryModelOptions(defaults: SettingsDefaults | null, providerId: string, currentModel = '', extraModelIds: string[] = []): Option[] {
   const registryModels = defaults?.registry_models?.filter((model) => model.provider_id === providerId && model.enabled) ?? [];
   if (registryModels.length === 0) return [];
-  const visibleModels = registryModels.some((model) => model.allowed) ? registryModels.filter((model) => model.allowed) : registryModels;
+  const hasAllowlist = registryModels.some((model) => model.allowed);
+  const visibleModels = hasAllowlist ? registryModels.filter((model) => model.allowed) : registryModels;
   const options = visibleModels.map((model) => ({ id: model.id, label: model.label || model.id }));
-  [currentModel, ...extraModelIds].filter(Boolean).forEach((id) => {
-    if (!options.some((option) => option.id === id)) options.unshift({ id, label: id });
-  });
+  if (!hasAllowlist) {
+    [currentModel, ...extraModelIds].filter(Boolean).forEach((id) => {
+      if (!options.some((option) => option.id === id)) options.unshift({ id, label: id });
+    });
+  }
   return options;
 }
 
@@ -79,9 +82,11 @@ export function buildModelOptionsFromDefaults(providerDefaults: ProviderSettings
     const scanned = providerDefaults.scanned_models.find((model) => model.id === id);
     return { id, label: scanned?.label ?? id };
   });
-  [currentModel, ...extraModelIds].filter(Boolean).forEach((id) => {
-    if (!options.some((option) => option.id === id)) options.unshift({ id, label: id });
-  });
+  if (providerDefaults.allowed_model_ids.length === 0) {
+    [currentModel, ...extraModelIds].filter(Boolean).forEach((id) => {
+      if (!options.some((option) => option.id === id)) options.unshift({ id, label: id });
+    });
+  }
   return options;
 }
 

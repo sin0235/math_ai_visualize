@@ -634,6 +634,14 @@ export interface AnalyzeParameters {
   ranges: Record<string, AnalyzeParameterRange>;
 }
 
+export interface AnalyzeOptions {
+  parameters?: { m?: number };
+  interval?: { a: number; b: number };
+  line?: { k: number; b: number };
+  parameter_conditions?: { targets: string[]; extrema_count?: number };
+  transform?: { type: string; value: number };
+}
+
 export interface AnalyzeResponse {
   expression: string;
   expression_latex: string | null;
@@ -667,6 +675,25 @@ export interface AnalyzeResponse {
   graph_points: Array<{ x: number; y: number }>;
   ocr_text: string | null;
   ocr_expression: string | null;
+  interval_analysis?: {
+    a: string;
+    b: string;
+    fa: string;
+    fb: string;
+    extrema_inside: Array<{ x: string; x_exact: string; y: string; label: string }>;
+    max_point: { x: string; y: string; label: string };
+    min_point: { x: string; y: string; label: string };
+    conclusion: string;
+  } | null;
+  line_analysis?: {
+    equation: string;
+    intersection_count: number;
+    intersections: Array<{ x: string; y: string; x_exact: string }>;
+    relative_intervals: { above: string[]; below: string[] };
+  } | null;
+  parameter_conditions?: Array<{ label: string; condition_latex?: string; solution: string; solution_latex?: string; warnings?: string[] }>;
+  transform_preview?: { type: string; value: string; label: string; expression: string; expression_latex: string } | null;
+  capabilities?: Record<string, unknown> | null;
   warnings: string[];
   error?: string | null;
 }
@@ -684,12 +711,14 @@ export async function solveProblem(
   }, 'Không thể giải toán từ scene này.');
 }
 
-export async function analyzeFunction(expression: string, parameters?: { m?: number }): Promise<AnalyzeResponse> {
+export async function analyzeFunction(expression: string, options?: AnalyzeOptions | { m?: number }): Promise<AnalyzeResponse> {
+  const hasAnalyzeOptions = !!options && ('parameters' in options || 'interval' in options || 'line' in options || 'parameter_conditions' in options || 'transform' in options);
+  const payloadOptions = hasAnalyzeOptions ? options as AnalyzeOptions : { parameters: options as { m?: number } | undefined };
   return requestJson('/api/analyze', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ expression, parameters }),
+    body: JSON.stringify({ expression, ...payloadOptions }),
   }, 'Không thể phân tích hàm số.');
 }
 

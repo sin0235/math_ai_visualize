@@ -242,6 +242,11 @@ export default function App() {
   }, [runtimeSettings]);
 
   useEffect(() => {
+    if (!settingsDefaults || !remoteSettingsHydrated) return;
+    setRuntimeSettings((current) => mergeBackendDefaults(current, settingsDefaults));
+  }, [settingsDefaults, remoteSettingsHydrated]);
+
+  useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const action = params.get('auth');
     const authError = params.get('auth_error');
@@ -273,10 +278,9 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
     getCurrentUser()
-      .then(async ({ user }) => {
+      .then(({ user }) => {
         if (cancelled) return;
-        setUser(user);
-        await loadRemoteWorkspace(user);
+        applyAuthenticatedUserInBackground(user);
         if (user.role === 'admin' && pathToView(window.location.pathname) === 'home') {
           navigateTo('admin', true);
         }
@@ -841,7 +845,7 @@ export default function App() {
         </div>
         <nav className="header-nav">
           <div className="tools-menu" ref={toolsMenuRef}>
-            <button type="button" className={`nav-item ${activeView === 'render' || activeView === 'analyzer' ? 'active' : ''}`} aria-haspopup="menu" aria-expanded={toolsMenuOpen} onClick={() => setToolsMenuOpen((open) => !open)}>
+            <button type="button" className={`nav-item ${activeView === 'render' || activeView === 'analyzer' || activeView === 'analyzer-guide' ? 'active' : ''}`} aria-haspopup="menu" aria-expanded={toolsMenuOpen} onClick={() => setToolsMenuOpen((open) => !open)}>
               <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3v18"></path><path d="M3 12h18"></path><path d="M5 5l14 14"></path><path d="M19 5L5 19"></path></svg>
               Công cụ
               <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
@@ -855,7 +859,7 @@ export default function App() {
                   <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="4" y1="6" x2="20" y2="6"></line><line x1="4" y1="12" x2="14" y2="12"></line><line x1="4" y1="18" x2="18" y2="18"></line></svg>
                   <span><strong>Dựng hình</strong><small>Vẽ hình học từ đề bài</small></span>
                 </button>
-                <button type="button" role="menuitem" className={activeView === 'analyzer' ? 'active' : ''} onClick={() => {
+                <button type="button" role="menuitem" className={activeView === 'analyzer' || activeView === 'analyzer-guide' ? 'active' : ''} onClick={() => {
                   setToolsMenuOpen(false);
                   navigateTo('analyzer');
                 }}>
@@ -1760,9 +1764,12 @@ function mergeProviderDefaults<Provider extends 'openrouter' | 'nvidia' | 'ollam
 ): RuntimeSettings[Provider] {
   const allowlist = defaults.allowed_model_ids.length > 0 ? defaults.allowed_model_ids : [defaults.model ?? ''].filter(Boolean);
   const allowed_model_ids = allowlist;
-  const model = defaults.model && (!allowed_model_ids.length || allowed_model_ids.includes(defaults.model))
+  const defaultModel = defaults.model && (!allowed_model_ids.length || allowed_model_ids.includes(defaults.model))
     ? defaults.model
     : allowed_model_ids[0] || '';
+  const model = current.model && (!allowed_model_ids.length || allowed_model_ids.includes(current.model))
+    ? current.model
+    : defaultModel;
   const scanned_models = mergeScannedModels(
     defaults.scanned_models.filter((item) => !allowed_model_ids.length || allowed_model_ids.includes(item.id)),
     allowed_model_ids.map((id) => ({ id, label: id, provider }))

@@ -87,8 +87,10 @@ async def build_database_diagnostics(db: DatabaseClient) -> dict[str, Any]:
     }
 
 
-async def sync_ai_settings_to_registry(db: DatabaseClient, value: dict) -> None:
+async def sync_ai_settings_to_registry(db: DatabaseClient, value: dict, patch: dict | None = None) -> None:
     ai_settings = SystemAiSettings.model_validate(value)
+    patch_data = patch or value
+    patch_keys = set(patch_data)
     providers = {
         "openrouter": ai_settings.openrouter,
         "nvidia": ai_settings.nvidia,
@@ -97,17 +99,29 @@ async def sync_ai_settings_to_registry(db: DatabaseClient, value: dict) -> None:
         "router9": ai_settings.router9,
     }
     for provider_id, provider in providers.items():
-        await save_provider_config(db, provider_id, provider.base_url, provider.model)
-        await upsert_scanned_models(db, provider_id, [AiModelInfo.model_validate(model.model_dump() | {"provider": provider_id}) for model in provider.scanned_models])
-        await set_allowed_models(db, provider_id, provider.allowed_model_ids)
-    await set_model_setting(db, "default_provider", ai_settings.default_provider)
-    await set_model_setting(db, "router9_only", ai_settings.router9.only_mode)
-    await set_model_setting(db, "openrouter_reasoning_enabled", ai_settings.openrouter_reasoning_enabled)
-    await set_model_setting(db, "ocr_max_image_mb", ai_settings.ocr.max_image_mb)
-    await save_task_profile(db, "render", ai_settings.default_provider, "", [])
-    await save_task_profile(db, "reasoning", ai_settings.default_provider, "", [])
-    await save_task_profile(db, "solver_explanation", ai_settings.default_provider, "", [])
-    await save_task_profile(db, "ocr", ai_settings.ocr.provider, ai_settings.ocr.model, [])
+        if provider_id not in patch_keys:
+            continue
+        default_model_id = provider.model
+        if provider.allowed_model_ids and default_model_id not in provider.allowed_model_ids:
+            default_model_id = provider.allowed_model_ids[0]
+        provider_patch = patch_data.get(provider_id) if isinstance(patch_data.get(provider_id), dict) else {}
+        await save_provider_config(db, provider_id, provider.base_url, default_model_id)
+        if "scanned_models" in provider_patch:
+            await upsert_scanned_models(db, provider_id, [AiModelInfo.model_validate(model.model_dump() | {"provider": provider_id}) for model in provider.scanned_models])
+        if "allowed_model_ids" in provider_patch:
+            await set_allowed_models(db, provider_id, provider.allowed_model_ids)
+    if "default_provider" in patch_keys:
+        await set_model_setting(db, "default_provider", ai_settings.default_provider)
+        await save_task_profile(db, "render", ai_settings.default_provider, "", [])
+        await save_task_profile(db, "reasoning", ai_settings.default_provider, "", [])
+        await save_task_profile(db, "solver_explanation", ai_settings.default_provider, "", [])
+    if "router9" in patch_keys:
+        await set_model_setting(db, "router9_only", ai_settings.router9.only_mode)
+    if "openrouter_reasoning_enabled" in patch_keys:
+        await set_model_setting(db, "openrouter_reasoning_enabled", ai_settings.openrouter_reasoning_enabled)
+    if "ocr" in patch_keys:
+        await set_model_setting(db, "ocr_max_image_mb", ai_settings.ocr.max_image_mb)
+        await save_task_profile(db, "ocr", ai_settings.ocr.provider, ai_settings.ocr.model, [])
 
 
 def _parse_setting_value(value: str) -> dict:
