@@ -30,7 +30,7 @@ async def get_settings_defaults(db: DatabaseClient = Depends(get_database)) -> S
         app_name=settings.app_name,
         default_provider=merge_text(ai_settings.default_provider, settings.ai_provider, loaded.raw, "default_provider"),
         openrouter=OpenRouterSettingsDefaults(
-            api_key_configured=bool(settings.openrouter_api_key),
+            api_key_configured=provider_api_key_configured(ai_settings.openrouter.api_key, settings.openrouter_api_key),
             base_url=provider_default(registry, "openrouter", "base_url", merge_provider_text(ai_settings.openrouter.base_url, settings.openrouter_base_url, loaded.raw, "openrouter", "base_url")),
             model=provider_default(registry, "openrouter", "model", merge_provider_text(ai_settings.openrouter.model, settings.openrouter_text_model, loaded.raw, "openrouter", "model")),
             vision_model=settings.openrouter_vision_model,
@@ -41,28 +41,28 @@ async def get_settings_defaults(db: DatabaseClient = Depends(get_database)) -> S
             allowed_model_ids=registry.allowed_model_ids("openrouter") or merge_provider_list(ai_settings.openrouter.allowed_model_ids, [], loaded.raw, "openrouter", "allowed_model_ids"),
         ),
         nvidia=ProviderSettingsDefaults(
-            api_key_configured=bool(settings.nvidia_api_key),
+            api_key_configured=provider_api_key_configured(ai_settings.nvidia.api_key, settings.nvidia_api_key),
             base_url=provider_default(registry, "nvidia", "base_url", merge_provider_text(ai_settings.nvidia.base_url, settings.nvidia_base_url, loaded.raw, "nvidia", "base_url")),
             model=provider_default(registry, "nvidia", "model", merge_provider_text(ai_settings.nvidia.model, settings.nvidia_text_model, loaded.raw, "nvidia", "model")),
             scanned_models=registry.scanned_model_infos("nvidia") or dump_scanned_models(ai_settings.nvidia.scanned_models),
             allowed_model_ids=registry.allowed_model_ids("nvidia") or merge_provider_list(ai_settings.nvidia.allowed_model_ids, [], loaded.raw, "nvidia", "allowed_model_ids"),
         ),
         ollama=ProviderSettingsDefaults(
-            api_key_configured=bool(settings.ollama_api_key),
+            api_key_configured=provider_api_key_configured(ai_settings.ollama.api_key, settings.ollama_api_key),
             base_url=provider_default(registry, "ollama", "base_url", merge_provider_text(ai_settings.ollama.base_url, settings.ollama_base_url, loaded.raw, "ollama", "base_url")),
             model=provider_default(registry, "ollama", "model", merge_provider_text(ai_settings.ollama.model, settings.ollama_text_model, loaded.raw, "ollama", "model")),
             scanned_models=registry.scanned_model_infos("ollama") or dump_scanned_models(ai_settings.ollama.scanned_models),
             allowed_model_ids=registry.allowed_model_ids("ollama") or merge_provider_list(ai_settings.ollama.allowed_model_ids, [], loaded.raw, "ollama", "allowed_model_ids"),
         ),
         openai_compat=ProviderSettingsDefaults(
-            api_key_configured=bool(settings.openai_compat_api_key),
+            api_key_configured=provider_api_key_configured(ai_settings.openai_compat.api_key, settings.openai_compat_api_key),
             base_url=provider_default(registry, "openai_compat", "base_url", merge_provider_text(ai_settings.openai_compat.base_url, settings.openai_compat_base_url, loaded.raw, "openai_compat", "base_url")),
             model=provider_default(registry, "openai_compat", "model", merge_provider_text(ai_settings.openai_compat.model, settings.openai_compat_text_model, loaded.raw, "openai_compat", "model")),
             scanned_models=registry.scanned_model_infos("openai_compat") or dump_scanned_models(ai_settings.openai_compat.scanned_models),
             allowed_model_ids=registry.allowed_model_ids("openai_compat") or merge_provider_list(ai_settings.openai_compat.allowed_model_ids, [], loaded.raw, "openai_compat", "allowed_model_ids"),
         ),
         router9=Router9SettingsDefaults(
-            api_key_configured=bool(settings.router9_api_key),
+            api_key_configured=provider_api_key_configured(ai_settings.router9.api_key, settings.router9_api_key),
             base_url=provider_default(registry, "router9", "base_url", merge_provider_text(ai_settings.router9.base_url, settings.router9_base_url, loaded.raw, "router9", "base_url")),
             model=provider_default(registry, "router9", "model", merge_provider_text(ai_settings.router9.model, settings.router9_text_model, loaded.raw, "router9", "model")),
             only_mode=bool(registry.settings.get("router9_only", merge_provider_bool(ai_settings.router9.only_mode, settings.router9_only, loaded.raw, "router9", "only_mode"))),
@@ -107,6 +107,11 @@ def has_key(raw: dict[str, Any], key: str) -> bool:
 def has_provider_key(raw: dict[str, Any], provider: str, key: str) -> bool:
     value = raw.get(provider)
     return isinstance(value, dict) and key in value
+
+
+def provider_api_key_configured(db_value: str | None, env_value: str | None) -> bool:
+    return bool((db_value or "").strip() or (env_value or "").strip())
+
 
 
 def merge_text(db_value: str | None, env_value: str | None, raw: dict[str, Any], key: str) -> str:

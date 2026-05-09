@@ -1023,7 +1023,7 @@ export default function App() {
             {result && <button type="button" className="mobile-scroll-notice" onClick={scrollToResult}>↓ Xem hình vừa dựng</button>}
             <div className="result-area" ref={resultAnchorRef}>
               <div className="render-stage">
-                <RendererPanel result={effectiveResult} threeInteraction={threeInteraction} onGeoGebraPointChange={handlePointDragEnd} highlightedObjects={highlightedObjects} saving={editorSaving} onThreeImageCaptureReady={setThreeImageCapture} />
+                <RendererPanel result={effectiveResult} threeInteraction={threeInteraction} onGeoGebraPointChange={handlePointDragEnd} highlightedObjects={highlightedObjects} saving={editorSaving} onThreeImageCaptureReady={(capture) => setThreeImageCapture(() => capture)} />
                 {effectiveResult?.scene && (
                   <div ref={renderToolsMenuRef} className="render-tools-floating" style={{ top: editorButtonTop }}>
                     <button
@@ -1074,7 +1074,7 @@ export default function App() {
                           aria-expanded={renderToolsPanel === 'export'}
                         >
                           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h7l4 4v14H7z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /><path d="M14 3v5h5M9 15h6M9 18h4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
-                          <span><strong>Xuất hình</strong><small>PNG, JPG, SVG, PDF, TikZ, GeoGebra.</small></span>
+                          <span><strong>Xuất hình</strong><small>PNG, JPG, SVG, HTML KaTeX, TikZ.</small></span>
                         </button>
                         {renderToolsPanel === 'export' && (
                           <div className="render-tools-submenu render-tools-export-submenu">

@@ -176,11 +176,10 @@ async def load_legacy_ai_settings(db: DatabaseClient) -> SystemAiSettings | None
 
 async def resolve_effective_settings(db: DatabaseClient | None, runtime_settings: RuntimeSettings | None = None) -> Settings:
     settings = get_settings()
-    if _has_runtime_secret_override(runtime_settings):
-        return merge_runtime_settings(settings, runtime_settings)
     if db is not None:
         registry = await load_model_registry(db, settings)
         settings = settings_from_registry(settings, registry)
+        settings = settings_from_admin_ai_settings(settings, await load_legacy_ai_settings(db), registry)
     return merge_runtime_settings(settings, runtime_settings)
 
 
@@ -191,6 +190,27 @@ def _has_runtime_secret_override(runtime_settings: RuntimeSettings | None) -> bo
         provider is not None and bool((provider.api_key or "").strip())
         for provider in (runtime_settings.openrouter, runtime_settings.nvidia, runtime_settings.ollama, runtime_settings.openai_compat, runtime_settings.router9)
     )
+
+
+def settings_from_admin_ai_settings(settings: Settings, admin_settings: SystemAiSettings | None, registry: ModelRegistry) -> Settings:
+    if admin_settings is None:
+        return settings
+    data = settings.model_dump()
+    for provider_id in ("openrouter", "nvidia", "ollama", "openai_compat", "router9"):
+        provider_settings = getattr(admin_settings, provider_id)
+        registry_provider = registry.providers.get(provider_id)
+        db_base_url = (provider_settings.base_url or "").strip()
+        db_model = (provider_settings.model or "").strip()
+        db_api_key = (getattr(provider_settings, "api_key", "") or "").strip()
+        if db_base_url and not (registry_provider and registry_provider.base_url):
+            data[f"{provider_id}_base_url"] = db_base_url
+        if db_model and not (registry_provider and registry_provider.default_model_id):
+            key = "router9_text_model" if provider_id == "router9" else f"{provider_id}_text_model"
+            data[key] = db_model
+        if db_api_key:
+            data[f"{provider_id}_api_key"] = db_api_key
+    return Settings.model_validate(data)
+
 
 
 def settings_from_registry(settings: Settings, registry: ModelRegistry) -> Settings:

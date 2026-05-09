@@ -47,6 +47,18 @@ async def test_registry_db_overrides_env(db):
 
 
 @pytest.mark.anyio
+async def test_ollama_registry_db_overrides_env(db):
+    settings = Settings(_env_file=None, ollama_base_url="http://env-ollama.local", ollama_text_model="env-ollama")
+    await load_model_registry(db, settings)
+    await save_provider_config(db, "ollama", "http://db-ollama.local", "db-ollama")
+
+    effective = await resolve_effective_settings(db, None)
+
+    assert effective.ollama_base_url == "http://db-ollama.local"
+    assert effective.ollama_text_model == "db-ollama"
+
+
+@pytest.mark.anyio
 async def test_registry_preserves_allowed_models_after_scan(db):
     settings = Settings(_env_file=None)
     await load_model_registry(db, settings)
@@ -80,6 +92,33 @@ async def test_registry_ocr_profile_updates_router9_ocr_model(db):
     effective = await resolve_effective_settings(db, None)
 
     assert effective.router9_ocr_model == "registry/ocr"
+
+
+@pytest.mark.anyio
+async def test_admin_ai_settings_api_key_overrides_env(db):
+    await db.execute(
+        "INSERT INTO system_settings (key, value_json) VALUES (?, ?)",
+        ["ai_settings", json.dumps({"version": 1, "ollama": {"api_key": "db-ollama-key"}})],
+    )
+
+    effective = await resolve_effective_settings(db, None)
+
+    assert effective.ollama_api_key == "db-ollama-key"
+
+
+@pytest.mark.anyio
+async def test_empty_admin_ai_settings_fall_back_to_env(db, monkeypatch):
+    settings = Settings(_env_file=None, ollama_base_url="http://env-ollama.local", ollama_text_model="env-ollama")
+    monkeypatch.setattr("app.services.model_registry.get_settings", lambda: settings)
+    await db.execute(
+        "INSERT INTO system_settings (key, value_json) VALUES (?, ?)",
+        ["ai_settings", json.dumps({"version": 1, "ollama": {"api_key": "", "base_url": "", "model": ""}})],
+    )
+
+    effective = await resolve_effective_settings(db, None)
+
+    assert effective.ollama_base_url == "http://env-ollama.local"
+    assert effective.ollama_text_model == "env-ollama"
 
 
 @pytest.mark.anyio

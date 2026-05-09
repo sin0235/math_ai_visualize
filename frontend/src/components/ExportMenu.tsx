@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { exportScene, type ExportFormat } from '../api/client';
+import { buildExportFilename } from '../utils/exportFilename';
 import type { ThreeSceneImageCapture } from './ThreeGeometryView';
 import type { AdvancedRenderSettings, MathScene } from '../types/scene';
 
@@ -16,27 +17,51 @@ interface ExportMenuItemsProps extends ExportMenuProps {
   onAfterDownload?: () => void;
 }
 
-const FORMAT_LABELS: Record<ExportFormat, { label: string; hint: string }> = {
-  png: { label: 'Xuất PNG (.png)', hint: 'Ảnh raster, dùng nhanh trong tài liệu' },
-  jpg: { label: 'Xuất JPG (.jpg)', hint: 'Ảnh nền trắng, dung lượng nhẹ' },
-  svg: { label: 'Xuất SVG (.svg)', hint: 'Vector, phóng to không vỡ' },
-  pdf: { label: 'Xuất PDF (A4)', hint: 'Một trang in được, gồm đề bài và hình' },
-  'katex-html': { label: 'Xuất HTML KaTeX (.html)', hint: 'File HTML hiển thị công thức bằng KaTeX' },
-  tikz: { label: 'Xuất TikZ (.tex)', hint: 'Chèn vào Word/Overleaf, dùng \\usepackage{tikz}' },
-  ggb: { label: 'Xuất GeoGebra (.ggb)', hint: 'Mở bằng GeoGebra Classic để chỉnh sửa' },
-};
+const EXPORT_FORMATS: ExportFormat[] = ['png', 'jpg', 'svg', 'katex-html', 'tikz'];
 
-const EXPORT_FORMATS: ExportFormat[] = ['png', 'jpg', 'svg', 'pdf', 'katex-html', 'tikz', 'ggb'];
+function formatLabelsForContext(preferThreeView: boolean): Record<ExportFormat, { label: string; hint: string }> {
+  const base = {
+    png: { label: 'Xuất PNG (.png)', hint: 'Ảnh raster, dùng nhanh trong tài liệu' },
+    jpg: { label: 'Xuất JPG (.jpg)', hint: 'Ảnh nền trắng, dung lượng nhẹ' },
+    svg: { label: 'Xuất SVG (.svg)', hint: 'Vector, phóng to không vỡ' },
+    'katex-html': { label: 'Xuất HTML KaTeX (.html)', hint: 'File HTML hiển thị công thức bằng KaTeX' },
+    tikz: { label: 'Xuất TikZ (.tex)', hint: 'Chèn vào Word/Overleaf, dùng \\usepackage{tikz}' },
+  } satisfies Record<ExportFormat, { label: string; hint: string }>;
+  if (!preferThreeView) return base;
+  return {
+    ...base,
+    png: { ...base.png, hint: 'Chụp đúng góc nhìn khung Three.js hiện tại.' },
+    jpg: { ...base.jpg, hint: 'Chụp đúng góc nhìn khung Three.js hiện tại.' },
+    svg: {
+      ...base.svg,
+      hint: 'Vector từ máy chủ (chiếu xéo cố định), không trùng góc nhìn 3D trên màn hình — ưu tiên PNG để khớp góc nhìn.',
+    },
+  };
+}
 
-const DISABLED_FORMATS: ReadonlySet<ExportFormat> = new Set<ExportFormat>(['png', 'jpg', 'pdf']);
-const DISABLED_REASON = 'Tạm khoá do lỗi';
+function exportLock(
+  format: ExportFormat,
+  captureCurrentView: ThreeSceneImageCapture | null | undefined,
+  preferCurrentViewCapture: boolean,
+): { locked: boolean; reason?: string } {
+  if (format === 'png' || format === 'jpg') {
+    const ready = typeof captureCurrentView === 'function';
+    if (preferCurrentViewCapture && !ready) {
+      return { locked: true, reason: 'Chưa sẵn sàng chụp góc nhìn — đợi hình Three.js hiển thị xong rồi thử lại.' };
+    }
+    return { locked: false };
+  }
+  return { locked: false };
+}
 
 export function ExportMenuItems({ scene, advancedSettings, onError, captureCurrentView, preferCurrentViewCapture = false, itemClassName = 'export-menu-item', onAfterDownload }: ExportMenuItemsProps): JSX.Element {
   const [busy, setBusy] = useState<ExportFormat | null>(null);
+  const labels = formatLabelsForContext(preferCurrentViewCapture);
 
   async function handleDownload(format: ExportFormat) {
     if (busy) return;
-    if (DISABLED_FORMATS.has(format)) return;
+    const lock = exportLock(format, captureCurrentView, preferCurrentViewCapture);
+    if (lock.locked) return;
     setBusy(format);
     try {
       const { blob, filename } = await getExportBlob(format, scene, advancedSettings, captureCurrentView, preferCurrentViewCapture);
@@ -60,8 +85,9 @@ export function ExportMenuItems({ scene, advancedSettings, onError, captureCurre
   return (
     <>
       {EXPORT_FORMATS.map((fmt) => {
-        const isLocked = DISABLED_FORMATS.has(fmt);
-        const tooltip = isLocked ? DISABLED_REASON : undefined;
+        const { locked: isLocked, reason: lockReason } = exportLock(fmt, captureCurrentView, preferCurrentViewCapture);
+        const tooltip = isLocked ? lockReason : undefined;
+        const fmtLabels = labels[fmt];
         return (
           <button
             key={fmt}
@@ -76,10 +102,10 @@ export function ExportMenuItems({ scene, advancedSettings, onError, captureCurre
             <ExportFormatIcon format={fmt} />
             <span>
               <strong>
-                {busy === fmt ? 'Đang tải…' : FORMAT_LABELS[fmt].label}
-                {isLocked && <em className="export-menu-locked-tag"> ({DISABLED_REASON})</em>}
+                {busy === fmt ? 'Đang tải…' : fmtLabels.label}
+                {isLocked && lockReason && <em className="export-menu-locked-tag"> ({lockReason})</em>}
               </strong>
-              <small>{isLocked ? DISABLED_REASON : FORMAT_LABELS[fmt].hint}</small>
+              <small>{isLocked && lockReason ? lockReason : fmtLabels.hint}</small>
             </span>
           </button>
         );
@@ -90,10 +116,10 @@ export function ExportMenuItems({ scene, advancedSettings, onError, captureCurre
 
 async function getExportBlob(format: ExportFormat, scene: MathScene, advancedSettings: AdvancedRenderSettings, captureCurrentView?: ThreeSceneImageCapture | null, preferCurrentViewCapture = false) {
   if (format === 'png' || format === 'jpg') {
-    if (captureCurrentView) {
+    if (typeof captureCurrentView === 'function') {
       return {
         blob: await captureCurrentView(format === 'png' ? 'image/png' : 'image/jpeg'),
-        filename: format === 'png' ? 'hinh.png' : 'hinh.jpg',
+        filename: buildExportFilename(scene, format),
       };
     }
     if (preferCurrentViewCapture) throw new Error('Chưa thể chụp góc nhìn hiện tại. Vui lòng chờ hình tải xong rồi thử lại.');
@@ -131,9 +157,6 @@ function ExportFormatIcon({ format }: { format: ExportFormat }) {
   }
   if (format === 'tikz') {
     return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 7 4 12l4 5M16 7l4 5-4 5M10 19l4-14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>;
-  }
-  if (format === 'ggb') {
-    return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" strokeWidth="1.8" /><circle cx="8" cy="9" r="1.4" fill="currentColor" /><circle cx="15" cy="8" r="1.4" fill="currentColor" /><circle cx="16" cy="15" r="1.4" fill="currentColor" /><circle cx="9" cy="16" r="1.4" fill="currentColor" /></svg>;
   }
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h7l4 4v14H7z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /><path d="M14 3v5h5M9 15h6M9 18h4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>;
 }

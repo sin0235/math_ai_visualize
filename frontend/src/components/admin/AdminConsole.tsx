@@ -240,6 +240,12 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
           ? prev.map((item) => (item.key === 'ai_settings' ? updated : item))
           : [...prev, updated]
       );
+      const [defaults, diagnostics] = await Promise.all([
+        getSettingsDefaults(),
+        getAdminDatabaseDiagnostics(),
+      ]);
+      setSettingsDefaults(defaults);
+      setDatabaseDiagnostics(diagnostics);
     } catch {
       throw new Error('Không thể lưu cấu hình AI.');
     } finally {

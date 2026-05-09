@@ -199,6 +199,7 @@ class UserBasicSettings(BaseModel):
 class AdminProviderModelSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    api_key: str = Field(default="", max_length=4096)
     base_url: str = Field(default="", max_length=MAX_BASE_URL_CHARS)
     model: str = Field(default="", max_length=MAX_MODEL_ID_CHARS)
     scanned_models: list[StoredModelInfo] = Field(default_factory=list, max_length=MAX_STORED_MODELS)

@@ -1,7 +1,40 @@
+import asyncio
+import json
+
+import pytest
 from fastapi.testclient import TestClient
 
-from app.core.config import Settings
+from app.core.config import Settings, get_settings
+from app.db.migrations import apply_sqlite_migrations
+from app.db.session import SQLiteClient, get_database
 from app.main import app
+
+
+@pytest.fixture()
+def settings_defaults_client(tmp_path):
+    db = SQLiteClient(str(tmp_path / "settings.db"))
+    asyncio.run(apply_sqlite_migrations(db))
+    settings = Settings(_env_file=None, sqlite_path=db.path, ollama_base_url="http://env-ollama.local", ollama_api_key="", ollama_text_model="env-ollama")
+
+    async def override_db():
+        return db
+
+    app.dependency_overrides[get_database] = override_db
+    app.dependency_overrides[get_settings] = lambda: settings
+    import app.api.routes_settings as routes_settings
+    import app.services.model_registry as model_registry
+
+    original_routes_get_settings = routes_settings.get_settings
+    original_registry_get_settings = model_registry.get_settings
+    routes_settings.get_settings = lambda: settings
+    model_registry.get_settings = lambda: settings
+    with TestClient(app) as test_client:
+        test_client.db = db
+        yield test_client
+    routes_settings.get_settings = original_routes_get_settings
+    model_registry.get_settings = original_registry_get_settings
+    app.dependency_overrides.clear()
+
 
 
 def test_cors_defaults_target_local_dev_origins():
@@ -40,3 +73,43 @@ def test_settings_defaults_route_hides_api_keys(monkeypatch):
     assert payload["router9"]["api_key_configured"] is True
     assert payload["router9"]["model"] == "router/model"
     assert payload["router9"]["allowed_model_ids"] == ["router/model"]
+
+
+
+def test_settings_defaults_loads_ollama_base_url_from_database(settings_defaults_client):
+    asyncio.run(settings_defaults_client.db.execute(
+        "INSERT INTO system_settings (key, value_json) VALUES (?, ?)",
+        ["ai_settings", json.dumps({"version": 1, "ollama": {"base_url": "http://db-ollama.local", "model": "db-ollama"}})],
+    ))
+
+    response = settings_defaults_client.get("/api/settings/defaults")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ollama"]["base_url"] == "http://db-ollama.local"
+    assert payload["ollama"]["model"] == "db-ollama"
+
+
+
+def test_settings_defaults_falls_back_to_env_when_database_lacks_ollama(settings_defaults_client):
+    response = settings_defaults_client.get("/api/settings/defaults")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ollama"]["base_url"] == "http://env-ollama.local"
+    assert payload["ollama"]["model"] == "env-ollama"
+
+
+
+def test_settings_defaults_reports_database_api_key_without_leaking(settings_defaults_client):
+    asyncio.run(settings_defaults_client.db.execute(
+        "INSERT INTO system_settings (key, value_json) VALUES (?, ?)",
+        ["ai_settings", json.dumps({"version": 1, "ollama": {"api_key": "db-ollama-secret"}})],
+    ))
+
+    response = settings_defaults_client.get("/api/settings/defaults")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ollama"]["api_key_configured"] is True
+    assert "db-ollama-secret" not in response.text

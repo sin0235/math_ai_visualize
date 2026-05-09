@@ -217,6 +217,7 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave, onToast }
   const [scanning, setScanning] = useState<string | null>(null);
   const [checking, setChecking] = useState<string | null>(null);
   const [modelFilter, setModelFilter] = useState('');
+  const [manualModelInputs, setManualModelInputs] = useState<Record<string, string>>({});
   const [checkResults, setCheckResults] = useState<Record<string, { status: string; message: string }>>({});
 
   useEffect(() => {
@@ -237,15 +238,19 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave, onToast }
 
   async function saveProvider(provider: (typeof providers)[number]) {
     const current = getAdminProviderSettings(value, provider, defaults);
-    const { api_key: _apiKey, ...providerDraft } = draft[provider] as ReturnType<typeof getAdminProviderSettings> & { api_key?: string };
+    const providerDraft = draft[provider] as ReturnType<typeof getAdminProviderSettings> & { api_key?: string };
+    const nextProvider = {
+      ...current,
+      ...providerDraft,
+      base_url: providerDraft.base_url.trim(),
+      model: providerDraft.model.trim(),
+    };
+    if (!providerDraft.api_key?.trim()) {
+      delete (nextProvider as { api_key?: string }).api_key;
+    }
     try {
       await onSave({
-        [provider]: {
-          ...current,
-          ...providerDraft,
-          base_url: providerDraft.base_url.trim(),
-          model: providerDraft.model.trim(),
-        },
+        [provider]: nextProvider,
       });
       onToast?.('Cấu hình AI', `Đã lưu provider ${providerLabels[provider]}.`, 'info');
     } catch (error) {
@@ -312,6 +317,29 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave, onToast }
     });
   }
 
+  function addManualModel(provider: (typeof providers)[number]) {
+    const modelId = (manualModelInputs[provider] ?? '').trim();
+    if (!modelId) return;
+    const providerValue = draft[provider];
+    updateProvider(provider, {
+      scanned_models: providerValue.scanned_models.some((modelItem: any) => modelItem.id === modelId)
+        ? providerValue.scanned_models
+        : [...providerValue.scanned_models, { id: modelId, label: modelId, provider }],
+      allowed_model_ids: providerValue.allowed_model_ids.includes(modelId)
+        ? providerValue.allowed_model_ids
+        : [...providerValue.allowed_model_ids, modelId],
+    });
+    setManualModelInputs((current) => ({ ...current, [provider]: '' }));
+  }
+
+  function removeManualModel(provider: (typeof providers)[number], modelId: string) {
+    updateProvider(provider, {
+      scanned_models: draft[provider].scanned_models.filter((modelItem: any) => modelItem.id !== modelId),
+      allowed_model_ids: draft[provider].allowed_model_ids.filter((id) => id !== modelId),
+      model: draft[provider].model === modelId ? '' : draft[provider].model,
+    });
+  }
+
   function selectOcrProvider(nextProvider: string) {
     const nextSettings = draft[nextProvider as (typeof providers)[number]] ?? getAdminProviderSettings(value, nextProvider, defaults);
     const firstScannedModel = nextSettings.scanned_models
@@ -340,6 +368,7 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave, onToast }
               ? allowlistOptions.filter((modelItem) => modelItem.id.toLowerCase().includes(normalizedModelFilter) || modelItem.name.toLowerCase().includes(normalizedModelFilter))
               : allowlistOptions;
             const result = checkResults[provider];
+            const isManualProvider = provider === 'openrouter' || provider === 'nvidia' || provider === 'ollama';
             return (
               <article className="admin-provider-card" key={provider}>
                 <div className="admin-provider-card-head">
@@ -371,9 +400,20 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave, onToast }
                 </div>
                 <div className="admin-provider-models">
                   <div className="admin-provider-models-head">
-                    <strong>Model inventory</strong>
+                    <strong>{isManualProvider ? 'Model inventory / thủ công' : 'Model inventory'}</strong>
                     <span>{filteredAllowlistOptions.length}/{allowlistOptions.length}</span>
                   </div>
+                  {isManualProvider && (
+                    <div className="admin-manual-model-row">
+                      <input
+                        placeholder={`${provider}/model-id hoặc model-id`}
+                        value={manualModelInputs[provider] ?? ''}
+                        onChange={(event) => setManualModelInputs((current) => ({ ...current, [provider]: event.target.value }))}
+                        onKeyDown={(event) => { if (event.key === 'Enter') addManualModel(provider); }}
+                      />
+                      <button type="button" className="secondary-button" onClick={() => addManualModel(provider)}>Thêm model</button>
+                    </div>
+                  )}
                   <div className="admin-model-checklist">
                     {filteredAllowlistOptions.map((modelItem) => (
                       <div key={modelItem.id} className="admin-model-checkbox">
@@ -381,9 +421,10 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave, onToast }
                           <input type="checkbox" checked={providerValue.allowed_model_ids.includes(modelItem.id)} onChange={() => toggleModelId(provider, modelItem.id)} />
                           <span className="model-label"><strong>{modelItem.name}</strong>{modelItem.id !== modelItem.name && <small>{modelItem.id}</small>}</span>
                         </label>
+                        {isManualProvider && <button type="button" className="history-delete" onClick={() => removeManualModel(provider, modelItem.id)} aria-label={`Xoá ${modelItem.id}`}>×</button>}
                       </div>
                     ))}
-                    {filteredAllowlistOptions.length === 0 && <p className="field-hint">Chưa có model đã quét hoặc không khớp bộ lọc.</p>}
+                    {filteredAllowlistOptions.length === 0 && <p className="field-hint">Chưa có model thủ công hoặc không khớp bộ lọc.</p>}
                   </div>
                 </div>
               </article>

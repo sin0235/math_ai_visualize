@@ -1,5 +1,6 @@
 import type { AdvancedRenderSettings, MathScene, RenderResponse, Renderer } from '../types/scene';
 import type { RuntimeSettings, ScannedModelInfo, SettingsDefaults, UserBasicSettings } from '../types/settings';
+import { buildExportFilename, type ExportFormatKey } from '../utils/exportFilename';
 
 export interface OcrResponse {
   text: string;
@@ -516,19 +517,17 @@ export async function renderEditedScene(scene: MathScene, advancedSettings: Adva
 }
 
 // ---------------------------------------------------------------------------
-// Export scene → image / SVG / PDF / TikZ / GGB / KaTeX HTML
+// Export scene → image / SVG / TikZ / KaTeX HTML
 // ---------------------------------------------------------------------------
 
-export type ExportFormat = 'png' | 'jpg' | 'svg' | 'pdf' | 'katex-html' | 'tikz' | 'ggb';
+export type ExportFormat = ExportFormatKey;
 
-const EXPORT_META: Record<ExportFormat, { path: string; filename: string; errorMessage: string }> = {
-  png: { path: '/api/export/png', filename: 'hinh.png', errorMessage: 'Không thể xuất PNG.' },
-  jpg: { path: '/api/export/jpg', filename: 'hinh.jpg', errorMessage: 'Không thể xuất JPG.' },
-  svg: { path: '/api/export/svg', filename: 'hinh.svg', errorMessage: 'Không thể xuất SVG.' },
-  pdf: { path: '/api/export/pdf', filename: 'hinh.pdf', errorMessage: 'Không thể xuất PDF.' },
-  'katex-html': { path: '/api/export/katex-html', filename: 'hinh-katex.html', errorMessage: 'Không thể xuất HTML KaTeX.' },
-  tikz: { path: '/api/export/tikz', filename: 'hinh.tex', errorMessage: 'Không thể xuất TikZ.' },
-  ggb: { path: '/api/export/ggb', filename: 'hinh.ggb', errorMessage: 'Không thể xuất GeoGebra.' },
+const EXPORT_META: Record<ExportFormat, { path: string; errorMessage: string }> = {
+  png: { path: '/api/export/png', errorMessage: 'Không thể xuất PNG.' },
+  jpg: { path: '/api/export/jpg', errorMessage: 'Không thể xuất JPG.' },
+  svg: { path: '/api/export/svg', errorMessage: 'Không thể xuất SVG.' },
+  'katex-html': { path: '/api/export/katex-html', errorMessage: 'Không thể xuất HTML KaTeX.' },
+  tikz: { path: '/api/export/tikz', errorMessage: 'Không thể xuất TikZ.' },
 };
 
 export interface ProblemVariantsResponse {
@@ -577,7 +576,7 @@ export async function exportScene(
     });
     if (!response.ok) throw await parseApiError(response, `${meta.errorMessage} HTTP ${response.status}`);
     const blob = await response.blob();
-    return { blob, filename: meta.filename };
+    return { blob, filename: buildExportFilename(scene, format) };
   } catch (caught) {
     if (caught instanceof ApiError) throw caught;
     throw networkApiError(caught, meta.errorMessage);

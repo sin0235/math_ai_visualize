@@ -220,21 +220,78 @@ function LabelText({ position, children, ...props }: LabelTextProps) {
 }
 
 function SceneImageCaptureBridge({ onReady }: { onReady?: (capture: ThreeSceneImageCapture | null) => void }) {
-  const { gl, scene, camera } = useThree();
+  const gl = useThree((s) => s.gl);
+  const scene = useThree((s) => s.scene);
+  const camera = useThree((s) => s.camera);
+  const controls = useThree((s) => (s as { controls?: { update?: () => void } }).controls);
 
   useEffect(() => {
     if (!onReady) return;
-    onReady((mimeType) => new Promise((resolve, reject) => {
-      requestAnimationFrame(() => {
-        gl.render(scene, camera);
-        gl.domElement.toBlob((blob) => {
-          if (blob) resolve(blob);
-          else reject(new Error('Không thể chụp hình hiện tại.'));
-        }, mimeType, mimeType === 'image/jpeg' ? 0.95 : undefined);
-      });
-    }));
+    onReady((mimeType) =>
+      new Promise((resolve, reject) => {
+        const el = gl.domElement;
+        const schedule = () =>
+          requestAnimationFrame(() => {
+            const cssW = el.clientWidth;
+            const cssH = el.clientHeight;
+            if (cssW < 8 || cssH < 8) {
+              reject(new Error('Không thể chụp: khung vẽ quá nhỏ.'));
+              return;
+            }
+
+            const prevPr = gl.getPixelRatio();
+            const prevBuf = new THREE.Vector2();
+            gl.getSize(prevBuf);
+
+            const exportPr = Math.min(3, Math.max(2, window.devicePixelRatio || 1));
+
+            const persp = camera as THREE.PerspectiveCamera;
+            const isPersp = Boolean(persp?.isPerspectiveCamera);
+            const prevAspect = isPersp ? persp.aspect : 1;
+
+            try {
+              if (isPersp) {
+                persp.aspect = cssW / cssH;
+                persp.updateProjectionMatrix();
+              }
+              controls?.update?.();
+
+              gl.setPixelRatio(exportPr);
+              gl.setSize(cssW, cssH, false);
+              gl.render(scene, camera);
+
+              el.toBlob(
+                (blob) => {
+                  if (isPersp) {
+                    persp.aspect = prevAspect;
+                    persp.updateProjectionMatrix();
+                  }
+                  gl.setPixelRatio(prevPr);
+                  gl.setSize(prevBuf.x, prevBuf.y, false);
+                  gl.render(scene, camera);
+
+                  if (blob) resolve(blob);
+                  else reject(new Error('Không thể chụp hình hiện tại.'));
+                },
+                mimeType,
+                mimeType === 'image/jpeg' ? 0.95 : undefined,
+              );
+            } catch (err) {
+              if (isPersp) {
+                persp.aspect = prevAspect;
+                persp.updateProjectionMatrix();
+              }
+              gl.setPixelRatio(prevPr);
+              gl.setSize(prevBuf.x, prevBuf.y, false);
+              reject(err instanceof Error ? err : new Error('Chụp hình thất bại.'));
+            }
+          });
+
+        requestAnimationFrame(schedule);
+      }),
+    );
     return () => onReady(null);
-  }, [camera, gl, onReady, scene]);
+  }, [camera, controls, gl, onReady, scene]);
 
   return null;
 }
