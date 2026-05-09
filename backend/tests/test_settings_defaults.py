@@ -4,10 +4,13 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
+from app.api.routes_settings import LoadedAiSettings
 from app.core.config import Settings, get_settings
 from app.db.migrations import apply_sqlite_migrations
 from app.db.session import SQLiteClient, get_database
 from app.main import app
+from app.schemas.auth import SystemAiSettings
+from app.services.model_registry import registry_from_settings
 
 
 @pytest.fixture()
@@ -58,6 +61,15 @@ def test_settings_defaults_route_hides_api_keys(monkeypatch):
         router9_allowed_models=["router/model"],
     )
     monkeypatch.setattr("app.api.routes_settings.get_settings", lambda: settings)
+
+    async def fake_load_system_ai_settings(_db):
+        return LoadedAiSettings(SystemAiSettings(), {})
+
+    async def fake_load_model_registry(_db, s=None):
+        return registry_from_settings(s if s is not None else settings)
+
+    monkeypatch.setattr("app.api.routes_settings.load_system_ai_settings", fake_load_system_ai_settings)
+    monkeypatch.setattr("app.api.routes_settings.load_model_registry", fake_load_model_registry)
 
     response = TestClient(app).get("/api/settings/defaults")
 

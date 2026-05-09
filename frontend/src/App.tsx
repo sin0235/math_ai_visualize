@@ -487,11 +487,17 @@ export default function App() {
     await loadRemoteWorkspace(nextUser);
   }
 
+  function applyAuthenticatedUserInBackground(nextUser: UserResponse) {
+    setRemoteSettingsHydrated(false);
+    setUser(nextUser);
+    void loadRemoteWorkspace(nextUser);
+  }
+
   async function handleLogin(email: string, password: string) {
     setAuthLoading(true);
     try {
       const response = await login(email, password);
-      await applyAuthenticatedUser(response.user);
+      applyAuthenticatedUserInBackground(response.user);
       navigateTo(response.user.role === 'admin' ? 'admin' : 'render');
     } finally {
       setAuthLoading(false);

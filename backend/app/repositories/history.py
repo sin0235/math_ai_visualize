@@ -56,7 +56,13 @@ class RenderHistoryRepository:
 
     async def list_for_user(self, user_id: str, limit: int = 30) -> list[RenderJobRecord]:
         rows = await self.db.fetch_all(
-            "SELECT * FROM render_jobs WHERE user_id = ? ORDER BY created_at DESC LIMIT ?",
+            """
+            SELECT id, user_id, problem_text, provider, model, warnings_json, created_at, source_type, renderer
+            FROM render_jobs
+            WHERE user_id = ?
+            ORDER BY created_at DESC
+            LIMIT ?
+            """,
             [user_id, limit],
         )
         return [render_job_from_row(row) for row in rows]
@@ -76,8 +82,8 @@ def render_job_from_row(row: DbRow) -> RenderJobRecord:
         problem_text=str(row["problem_text"]),
         provider=str(row["provider"]) if row.get("provider") is not None else None,
         model=str(row["model"]) if row.get("model") is not None else None,
-        scene_json=str(row["scene_json"]),
-        payload_json=str(row["payload_json"]),
+        scene_json=str(row.get("scene_json") or ""),
+        payload_json=str(row.get("payload_json") or ""),
         warnings_json=str(row["warnings_json"]),
         created_at=str(row["created_at"]),
         render_request_json=str(row["render_request_json"]) if row.get("render_request_json") is not None else None,
