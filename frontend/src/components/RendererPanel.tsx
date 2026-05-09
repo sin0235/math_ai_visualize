@@ -2,7 +2,7 @@ import type { RenderResponse } from '../types/scene';
 
 type Vec3 = { x: number; y: number; z: number };
 import { GeoGebraView } from './GeoGebraView';
-import { ThreeGeometryView, type ThreeSceneInteraction } from './ThreeGeometryView';
+import { ThreeGeometryView, type ThreeSceneImageCapture, type ThreeSceneInteraction } from './ThreeGeometryView';
 
 interface RendererPanelProps {
   result: RenderResponse | null;
@@ -10,9 +10,10 @@ interface RendererPanelProps {
   onGeoGebraPointChange?: (name: string, point: Vec3) => void | Promise<void>;
   highlightedObjects?: string[];
   saving?: boolean;
+  onThreeImageCaptureReady?: (capture: ThreeSceneImageCapture | null) => void;
 }
 
-export function RendererPanel({ result, threeInteraction, onGeoGebraPointChange, highlightedObjects, saving }: RendererPanelProps) {
+export function RendererPanel({ result, threeInteraction, onGeoGebraPointChange, highlightedObjects, saving, onThreeImageCaptureReady }: RendererPanelProps) {
   if (!result) {
     return <EmptyState />;
   }
@@ -29,7 +30,7 @@ export function RendererPanel({ result, threeInteraction, onGeoGebraPointChange,
   if (result.payload.three_scene) {
     return (
       <div className="renderer-frame">
-        <ThreeGeometryView scene={result.payload.three_scene} interaction={threeInteraction} highlightedObjects={highlightedObjects} />
+        <ThreeGeometryView scene={result.payload.three_scene} interaction={threeInteraction} highlightedObjects={highlightedObjects} onImageCaptureReady={onThreeImageCaptureReady} />
         {saving && <div className="renderer-saving-overlay">Đang dựng lại hình...</div>}
       </div>
     );

@@ -26,8 +26,8 @@ const providerHints: Record<ProviderKey, string> = {
 };
 
 export function SettingsPanel({ value, defaults, onChange, onReset, onForgetApiKeys }: SettingsPanelProps) {
-  const [scanningProvider, setScanningProvider] = useState<ProviderKey | null>(null);
-  const [scanErrors, setScanErrors] = useState<Partial<Record<ProviderKey, string>>>({});
+  const [scanningProvider, setScanningProvider] = useState<'openai_compat' | null>(null);
+  const [scanErrors, setScanErrors] = useState<Partial<Record<'openai_compat', string>>>({});
 
   function updateProvider(provider: ProviderKey, field: 'api_key' | 'base_url' | 'model', nextValue: string) {
     onChange({
@@ -39,7 +39,8 @@ export function SettingsPanel({ value, defaults, onChange, onReset, onForgetApiK
     });
   }
 
-  async function scanModels(provider: ProviderKey) {
+  async function scanModels() {
+    const provider = 'openai_compat';
     setScanningProvider(provider);
     setScanErrors((current) => ({ ...current, [provider]: undefined }));
     try {
@@ -70,7 +71,7 @@ export function SettingsPanel({ value, defaults, onChange, onReset, onForgetApiK
         <div className="panel-title">Setting</div>
         <p className="field-hint">
           Cấu hình từ cơ bản đến nâng cao cho provider AI. 9router có trang riêng để quét và quản lý model khả dụng.
-          Base URL, model và danh sách quét được lưu trong trình duyệt; API key override chỉ giữ trong phiên hiện tại.
+          Base URL và model được lưu trong trình duyệt; API key override chỉ giữ trong phiên hiện tại.
         </p>
       </div>
 
@@ -107,7 +108,7 @@ export function SettingsPanel({ value, defaults, onChange, onReset, onForgetApiK
 
               <label className="field-label">
                 Model override
-                {value[provider].scanned_models.length > 0 ? (
+                {provider === 'openai_compat' && value[provider].scanned_models.length > 0 ? (
                   <select value={value[provider].model} onChange={(event) => updateProvider(provider, 'model', event.target.value)}>
                     <option value="">Backend default: {providerDefaults?.model || 'not set'}</option>
                     {value[provider].scanned_models.map((model) => <option key={model.id} value={model.id}>{model.label}</option>)}
@@ -122,12 +123,14 @@ export function SettingsPanel({ value, defaults, onChange, onReset, onForgetApiK
                 )}
               </label>
 
-              <button type="button" className="secondary-button" onClick={() => scanModels(provider)} disabled={scanningProvider === provider}>
-                {scanningProvider === provider ? 'Đang quét...' : 'Quét model provider'}
-              </button>
+              {provider === 'openai_compat' && (
+                <button type="button" className="secondary-button" onClick={() => scanModels()} disabled={scanningProvider === provider}>
+                  {scanningProvider === provider ? 'Đang quét...' : 'Quét model provider'}
+                </button>
+              )}
               <p className="field-hint">API key override chỉ giữ trong state của tab hiện tại và sẽ mất khi refresh. Để trống field override để backend dùng `.env`/default.</p>
-              {scanErrors[provider] && <div className="error-box">{scanErrors[provider]}</div>}
-              {value[provider].last_scanned_at && <p className="field-hint">Lần quét gần nhất: {new Date(value[provider].last_scanned_at).toLocaleString()}</p>}
+              {provider === 'openai_compat' && scanErrors.openai_compat && <div className="error-box">{scanErrors.openai_compat}</div>}
+              {provider === 'openai_compat' && value[provider].last_scanned_at && <p className="field-hint">Lần quét gần nhất: {new Date(value[provider].last_scanned_at).toLocaleString()}</p>}
             </section>
           );
         })}
@@ -138,7 +141,7 @@ export function SettingsPanel({ value, defaults, onChange, onReset, onForgetApiK
         <ul className="settings-notes">
           <li>`OpenRouter` hỗ trợ nhập `base URL` để đổi endpoint mặc định.</li>
           <li>`NVIDIA`, `Ollama` và trang riêng `9router` có thể trỏ sang proxy hoặc gateway tương thích OpenAI.</li>
-          <li>Base URL, model và danh sách quét được lưu trong `localStorage`; API key override không được lưu sau khi refresh.</li>
+          <li>Base URL và model được lưu trong `localStorage`; API key override không được lưu sau khi refresh.</li>
           <li>Muốn cấu hình API key lâu dài, hãy đặt key trong backend `.env`.</li>
         </ul>
         <button type="button" className="secondary-button settings-reset" onClick={onForgetApiKeys}>Quên tất cả API key override</button>

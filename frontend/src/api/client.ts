@@ -1,5 +1,5 @@
 import type { AdvancedRenderSettings, MathScene, RenderResponse, Renderer } from '../types/scene';
-import type { ProviderKey, RuntimeSettings, ScannedModelInfo, SettingsDefaults, UserBasicSettings } from '../types/settings';
+import type { RuntimeSettings, ScannedModelInfo, SettingsDefaults, UserBasicSettings } from '../types/settings';
 
 export interface OcrResponse {
   text: string;
@@ -483,7 +483,7 @@ export async function ocrImage(imageDataUrl: string, runtimeSettings: RuntimeSet
   }, 'Không thể OCR ảnh đề bài.');
 }
 
-export async function scanProviderModels(provider: ProviderKey, runtimeSettings: RuntimeSettings): Promise<ScannedModelInfo[]> {
+export async function scanProviderModels(provider: 'openai_compat', runtimeSettings: RuntimeSettings): Promise<ScannedModelInfo[]> {
   const payload = await requestJson<{ models: ScannedModelInfo[] }>('/api/ai/models/scan', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

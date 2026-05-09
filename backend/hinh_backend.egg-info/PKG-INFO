@@ -13,6 +13,8 @@ Requires-Dist: aiosqlite>=0.20.0
 Requires-Dist: passlib[bcrypt]>=1.7.4
 Requires-Dist: bcrypt<5
 Requires-Dist: resend>=2.4.0
+Requires-Dist: numpy>=2.0.0
+Requires-Dist: scipy>=1.14.0
 Requires-Dist: sympy>=1.13.0
 Requires-Dist: matplotlib>=3.9.0
 Provides-Extra: dev

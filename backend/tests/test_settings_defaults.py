@@ -10,6 +10,7 @@ def test_cors_defaults_target_local_dev_origins():
     assert "*" not in settings.cors_origins
     assert "http://localhost:5173" in settings.cors_origins
     assert "http://127.0.0.1:5173" in settings.cors_origins
+    assert settings.require_email_verification is True
 
 
 

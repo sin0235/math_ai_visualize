@@ -147,7 +147,7 @@ async def seed_model_registry(db: DatabaseClient, settings: Settings) -> None:
             await upsert_model(db, provider_id, model, allowed=model.id in data["allowed_model_ids"], source="legacy" if legacy else "env")
     router9_only = legacy.router9.only_mode if legacy else settings.router9_only
     openrouter_reasoning = legacy.openrouter_reasoning_enabled if legacy else settings.openrouter_reasoning_enabled
-    ocr_max = legacy.ocr.max_image_mb if legacy else 8
+    ocr_max = legacy.ocr.max_image_mb if legacy else 5
     default_provider = legacy.default_provider if legacy else settings.ai_provider
     await set_model_setting(db, "router9_only", router9_only)
     await set_model_setting(db, "openrouter_reasoning_enabled", openrouter_reasoning)
@@ -391,7 +391,7 @@ def registry_from_settings(settings: Settings) -> ModelRegistry:
         settings={
             "router9_only": settings.router9_only,
             "openrouter_reasoning_enabled": settings.openrouter_reasoning_enabled,
-            "ocr_max_image_mb": 8,
+            "ocr_max_image_mb": 5,
             "default_provider": settings.ai_provider,
         },
     )

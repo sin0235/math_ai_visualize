@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { solveProblem, type SolveResponse, type SolveStep } from '../api/client';
 import type { RuntimeSettings } from '../types/settings';
 import type { MathScene } from '../types/scene';
@@ -90,16 +90,26 @@ export function SolverPanel({ scene, runtimeSettings, onHighlight }: SolverPanel
   const [error, setError] = useState<string | null>(null);
   const [activeStep, setActiveStep] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const cacheRef = useRef<Map<string, SolveResponse>>(new Map());
+  const sceneCacheKey = useMemo(() => JSON.stringify(scene), [scene]);
 
   async function handleSolve() {
-    if (!question.trim()) return;
+    const trimmedQuestion = question.trim();
+    if (!trimmedQuestion) return;
+    const cacheKey = `${sceneCacheKey}\n${trimmedQuestion}`;
     setLoading(true);
     setError(null);
     setResult(null);
     setActiveStep(null);
     onHighlight([]);
     try {
-      const res = await solveProblem(scene, question.trim(), runtimeSettings);
+      const cached = cacheRef.current.get(cacheKey);
+      if (cached) {
+        setResult(cached);
+        return;
+      }
+      const res = await solveProblem(scene, trimmedQuestion, runtimeSettings);
+      cacheRef.current.set(cacheKey, res);
       setResult(res);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Lỗi không xác định.');

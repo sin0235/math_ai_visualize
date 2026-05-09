@@ -64,7 +64,7 @@ class Settings(BaseSettings):
     resend_api_key: str | None = None
     resend_from_email: str | None = None
     auth_email_dev_mode: bool = True
-    require_email_verification: bool = False
+    require_email_verification: bool = True
     google_oauth_client_id: str | None = None
     google_oauth_client_secret: str | None = None
     google_oauth_redirect_uri: str = "https://math-renderer-api.sin-studio.tech/api/auth/google/callback"

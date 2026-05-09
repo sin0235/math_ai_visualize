@@ -7,11 +7,14 @@ import * as THREE from 'three';
 
 import type { Annotation, ThreeScene } from '../types/scene';
 
+export type ThreeSceneImageCapture = (mimeType: 'image/png' | 'image/jpeg') => Promise<Blob>;
+
 interface ThreeGeometryViewProps {
   scene: ThreeScene;
   interaction?: ThreeSceneInteraction;
   embedded?: boolean;
   highlightedObjects?: string[];
+  onImageCaptureReady?: (capture: ThreeSceneImageCapture | null) => void;
 }
 
 // Context to pass highlighted object names deep without prop drilling
@@ -36,7 +39,7 @@ export interface ThreeSceneInteraction {
 type Vec3 = { x: number; y: number; z: number };
 type SceneFrame = ReturnType<typeof getSceneFrame>;
 
-export function ThreeGeometryView({ scene, interaction, embedded = false, highlightedObjects = [] }: ThreeGeometryViewProps) {
+export function ThreeGeometryView({ scene, interaction, embedded = false, highlightedObjects = [], onImageCaptureReady }: ThreeGeometryViewProps) {
   const [workingScene, setWorkingScene] = useState(scene);
   const [draggingPoint, setDraggingPoint] = useState<string | null>(null);
   const [hoveredPoint, setHoveredPoint] = useState<string | null>(null);
@@ -95,7 +98,8 @@ export function ThreeGeometryView({ scene, interaction, embedded = false, highli
   const content = (
     <HighlightContext.Provider value={highlightedObjects}>
     <div className="three-view">
-      <Canvas camera={{ position: [5, 4, 6], fov: 48 }} className="three-canvas" style={{ display: 'block' }}>
+      <Canvas gl={{ preserveDrawingBuffer: true }} camera={{ position: [5, 4, 6], fov: 48 }} className="three-canvas" style={{ display: 'block' }}>
+        <SceneImageCaptureBridge onReady={onImageCaptureReady} />
         <color attach="background" args={["#f8fbff"]} />
         <ambientLight intensity={0.7} />
         <directionalLight position={[6, 10, 6]} intensity={0.85} />
@@ -213,6 +217,26 @@ function LabelText({ position, children, ...props }: LabelTextProps) {
       </Text>
     </Billboard>
   );
+}
+
+function SceneImageCaptureBridge({ onReady }: { onReady?: (capture: ThreeSceneImageCapture | null) => void }) {
+  const { gl, scene, camera } = useThree();
+
+  useEffect(() => {
+    if (!onReady) return;
+    onReady((mimeType) => new Promise((resolve, reject) => {
+      requestAnimationFrame(() => {
+        gl.render(scene, camera);
+        gl.domElement.toBlob((blob) => {
+          if (blob) resolve(blob);
+          else reject(new Error('Không thể chụp hình hiện tại.'));
+        }, mimeType, mimeType === 'image/jpeg' ? 0.95 : undefined);
+      });
+    }));
+    return () => onReady(null);
+  }, [camera, gl, onReady, scene]);
+
+  return null;
 }
 
 function OxyzAxes({ hideOriginLabel = false }: { hideOriginLabel?: boolean }) {

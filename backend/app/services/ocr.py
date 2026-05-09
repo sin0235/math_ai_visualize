@@ -11,7 +11,7 @@ from app.services.router9_client import Router9Client
 from app.services.provider_logging import redact_sensitive
 
 _IMAGE_DATA_URL_RE = re.compile(r"^data:image/(png|jpeg|jpg|webp|gif);base64,([A-Za-z0-9+/=\s]+)$", re.IGNORECASE)
-_MAX_IMAGE_BYTES = 8 * 1024 * 1024
+_MAX_IMAGE_BYTES = 5 * 1024 * 1024
 DIAGRAM_OCR_SYSTEM_PROMPT = """
 Bạn là bộ mô tả hình vẽ toán học tiếng Việt.
 Nhìn ảnh hình vẽ tay/in và chuyển thành đề bài hình học có thể dựng lại.
@@ -51,7 +51,7 @@ def validate_image_data_url(image_data_url: str) -> None:
     except ValueError as error:
         raise ValueError("Dữ liệu ảnh OCR không phải base64 hợp lệ.") from error
     if len(image_bytes) > _MAX_IMAGE_BYTES:
-        raise ValueError("Ảnh OCR vượt quá giới hạn 8MB.")
+        raise ValueError("Ảnh OCR vượt quá giới hạn 5MB.")
 
 
 async def extract_text_from_image(

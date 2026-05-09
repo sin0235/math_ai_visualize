@@ -10,6 +10,7 @@ import { LoginPage } from './components/LoginPage';
 import { ResetPasswordPage } from './components/ResetPasswordPage';
 import { VerifyEmailPage } from './components/VerifyEmailPage';
 import { RendererPanel } from './components/RendererPanel';
+import type { ThreeSceneImageCapture } from './components/ThreeGeometryView';
 import { SceneEditorPanel, type PointPlacementPlane } from './components/SceneEditorPanel';
 import { PrivacyPolicyPage, TermsPage } from './components/LegalPages';
 import { SolverPanel } from './components/SolverPanel';
@@ -145,6 +146,7 @@ export default function App() {
   const [renderToolsPanel, setRenderToolsPanel] = useState<'export' | 'variants' | null>(null);
   const [sidebarTool, setSidebarTool] = useState<'input' | 'solver'>('input');
   const [highlightedObjects, setHighlightedObjects] = useState<string[]>([]);
+  const [threeImageCapture, setThreeImageCapture] = useState<ThreeSceneImageCapture | null>(null);
   const [editorButtonTop, setEditorButtonTop] = useState(220);
   const [user, setUser] = useState<UserResponse | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
@@ -796,6 +798,7 @@ export default function App() {
             user={user}
             onBackToApp={() => navigateTo('home')}
             onOpenRenderJobDetail={openAdminRenderJobDetail}
+            onToast={(title, message, kind = 'info') => showNotification(title, message, [], kind)}
           />
         </>
       );
@@ -1020,7 +1023,7 @@ export default function App() {
             {result && <button type="button" className="mobile-scroll-notice" onClick={scrollToResult}>↓ Xem hình vừa dựng</button>}
             <div className="result-area" ref={resultAnchorRef}>
               <div className="render-stage">
-                <RendererPanel result={effectiveResult} threeInteraction={threeInteraction} onGeoGebraPointChange={handlePointDragEnd} highlightedObjects={highlightedObjects} saving={editorSaving} />
+                <RendererPanel result={effectiveResult} threeInteraction={threeInteraction} onGeoGebraPointChange={handlePointDragEnd} highlightedObjects={highlightedObjects} saving={editorSaving} onThreeImageCaptureReady={setThreeImageCapture} />
                 {effectiveResult?.scene && (
                   <div ref={renderToolsMenuRef} className="render-tools-floating" style={{ top: editorButtonTop }}>
                     <button
@@ -1078,6 +1081,8 @@ export default function App() {
                             <ExportMenuItems
                               scene={effectiveResult.scene}
                               advancedSettings={lastAdvancedSettings}
+                              captureCurrentView={threeImageCapture}
+                              preferCurrentViewCapture={Boolean(effectiveResult.payload.three_scene)}
                               onError={(msg) => showNotification('Xuất hình thất bại', msg, [], 'error')}
                               onAfterDownload={() => {
                                 setRenderToolsOpen(false);
@@ -1277,7 +1282,7 @@ export default function App() {
             <div>
               <strong>Hỗ trợ</strong>
               <FooterNavButton
-                onClick={() => navigateTo(user ? 'feedback' : 'login')}
+                onClick={() => navigateTo('feedback')}
                 icon={
                   <FooterNavIcon>
                     <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />

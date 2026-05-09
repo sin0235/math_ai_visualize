@@ -186,7 +186,7 @@ export const defaultRuntimeSettings: RuntimeSettings = {
   ocr: {
     provider: 'openrouter',
     model: '',
-    max_image_mb: 8,
+    max_image_mb: 5,
   },
   openrouter_http_referer: '',
   openrouter_x_title: '',

@@ -15,6 +15,13 @@ import type { ProviderSettingsDefaults, SettingsDefaults } from '../../types/set
 
 // --- Utility Functions ---
 
+type AdminToastKind = 'error' | 'warning' | 'info';
+type AdminToast = (title: string, message: string, kind?: AdminToastKind) => void;
+
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
 function getStringValue(value: unknown, fallback: string) {
   return typeof value === 'string' ? value : fallback;
 }
@@ -34,7 +41,7 @@ const defaultRuntimeSettings: RuntimeSettings = {
   ollama: { api_key: '', base_url: '', model: '', scanned_models: [], allowed_model_ids: [], last_scanned_at: '' },
   openai_compat: { api_key: '', base_url: 'http://localhost:8080/v1', model: '', scanned_models: [], allowed_model_ids: [], last_scanned_at: '' },
   router9: { api_key: '', base_url: '', model: '', scanned_models: [], last_scanned_at: '', only_mode: false, allowed_model_ids: [] },
-  ocr: { provider: 'openrouter', model: '', max_image_mb: 8 },
+  ocr: { provider: 'openrouter', model: '', max_image_mb: 5 },
   openrouter_http_referer: '',
   openrouter_x_title: '',
   openrouter_reasoning_enabled: false,
@@ -69,7 +76,7 @@ function providerDefaultsFor(defaults: SettingsDefaults | null | undefined, prov
 function getAdminOcrSettings(value: Record<string, unknown>) {
   const item = value.ocr;
   const data = item && typeof item === 'object' ? item as Record<string, unknown> : {};
-  const maxImageMb = typeof data.max_image_mb === 'number' ? data.max_image_mb : 8;
+  const maxImageMb = typeof data.max_image_mb === 'number' ? data.max_image_mb : 5;
   return {
     provider: getStringValue(data.provider, 'openrouter'),
     model: getStringValue(data.model, ''),
@@ -199,8 +206,9 @@ function getAiTaskProfile(value: unknown) {
 
 // --- Form Components ---
 
-export function AdminAiSettingsForm({ value, defaults, saving, onSave }: { value: Record<string, unknown>; defaults: SettingsDefaults | null; saving: boolean; onSave: (patch: Record<string, unknown>) => Promise<void> }) {
+export function AdminAiSettingsForm({ value, defaults, saving, onSave, onToast }: { value: Record<string, unknown>; defaults: SettingsDefaults | null; saving: boolean; onSave: (patch: Record<string, unknown>) => Promise<void>; onToast?: AdminToast }) {
   const providers = ['openrouter', 'nvidia', 'ollama', 'openai_compat', 'router9'] as const;
+  const scannableProviders = new Set<(typeof providers)[number]>(['openai_compat', 'router9']);
   const ocrValue = getAdminOcrSettings(value);
   const [draft, setDraft] = useState(() => Object.fromEntries(providers.map((provider) => [provider, getAdminProviderSettings(value, provider, defaults)])) as Record<(typeof providers)[number], ReturnType<typeof getAdminProviderSettings>>);
   const [ocrProvider, setOcrProvider] = useState(ocrValue.provider);
@@ -230,34 +238,47 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave }: { value
   async function saveProvider(provider: (typeof providers)[number]) {
     const current = getAdminProviderSettings(value, provider, defaults);
     const { api_key: _apiKey, ...providerDraft } = draft[provider] as ReturnType<typeof getAdminProviderSettings> & { api_key?: string };
-    await onSave({
-      [provider]: {
-        ...current,
-        ...providerDraft,
-        base_url: providerDraft.base_url.trim(),
-        model: providerDraft.model.trim(),
-      },
-    });
+    try {
+      await onSave({
+        [provider]: {
+          ...current,
+          ...providerDraft,
+          base_url: providerDraft.base_url.trim(),
+          model: providerDraft.model.trim(),
+        },
+      });
+      onToast?.('Cấu hình AI', `Đã lưu provider ${providerLabels[provider]}.`, 'info');
+    } catch (error) {
+      onToast?.('Cấu hình AI', getErrorMessage(error, `Không thể lưu provider ${providerLabels[provider]}.`), 'error');
+    }
   }
 
   async function saveOcr() {
-    await onSave({
-      ocr: {
-        provider: ocrProvider,
-        model: ocrModel.trim(),
-        max_image_mb: clamp(Number(ocrMaxImageMb) || 8, 1, 32),
-      },
-    });
+    try {
+      await onSave({
+        ocr: {
+          provider: ocrProvider,
+          model: ocrModel.trim(),
+          max_image_mb: clamp(Number(ocrMaxImageMb) || 5, 1, 32),
+        },
+      });
+      onToast?.('OCR', 'Đã lưu cấu hình OCR.', 'info');
+    } catch (error) {
+      onToast?.('OCR', getErrorMessage(error, 'Không thể lưu cấu hình OCR.'), 'error');
+    }
   }
 
   async function scanProvider(provider: (typeof providers)[number]) {
     setScanning(provider);
     try {
       const runtime = adminSettingsToRuntime({ ...value, [provider]: draft[provider] }, defaults);
-      const models = provider === 'router9' ? await scanRouter9Models(runtime) : await scanProviderModels(provider as Exclude<typeof provider, 'router9'>, runtime);
+      const models = provider === 'router9' ? await scanRouter9Models(runtime) : await scanProviderModels('openai_compat', runtime);
       const next = { ...draft[provider], scanned_models: models, last_scanned_at: new Date().toISOString() };
       updateProvider(provider, next);
       await onSave({ [provider]: next });
+      onToast?.('Quét model', `Đã quét ${models.length} model từ ${providerLabels[provider]}.`, 'info');
+    } catch (error) {
+      onToast?.('Quét model', getErrorMessage(error, `Không thể quét model cho ${providerLabels[provider]}.`), 'error');
     } finally {
       setScanning(null);
     }
@@ -273,8 +294,11 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave }: { value
       const runtime = adminSettingsToRuntime({ ...value, [provider]: draft[provider] }, defaults);
       const result = await checkAdminProvider(provider, runtime);
       setCheckResults((current) => ({ ...current, [provider]: result }));
+      onToast?.('Kiểm tra provider', result.message, result.status === 'ok' ? 'info' : 'error');
     } catch (error) {
-      setCheckResults((current) => ({ ...current, [provider]: { status: 'error', message: String(error) } }));
+      const message = getErrorMessage(error, `Không thể kiểm tra ${providerLabels[provider]}.`);
+      setCheckResults((current) => ({ ...current, [provider]: { status: 'error', message } }));
+      onToast?.('Kiểm tra provider', message, 'error');
     } finally {
       setChecking(null);
     }
@@ -305,7 +329,7 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave }: { value
     <div className="admin-ai-settings">
       <section className="admin-settings-section">
         <h4>Provider & model</h4>
-        <p className="field-hint">Các provider hỗ trợ endpoint /models có thể quét model và quản lý allowlist trực tiếp từ danh sách đã quét.</p>
+        <p className="field-hint">OpenRouter, NVIDIA và Ollama quản lý model thủ công. OpenAI-compatible và 9router có thể quét endpoint /models.</p>
         <label className="field-label">Tìm model<input type="search" value={modelFilter} onChange={(event) => setModelFilter(event.target.value)} placeholder="Nhập tên hoặc ID model" /></label>
         <div className="admin-provider-grid">
           {providers.map((provider) => {
@@ -325,7 +349,7 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave }: { value
                   ) : (
                     <div className="admin-row-actions admin-provider-card-head-actions">
                       <button type="button" className="secondary-button" onClick={() => void checkProvider(provider)} disabled={saving || checking === provider}>{checking === provider ? 'Đang kiểm tra...' : 'Kiểm tra'}</button>
-                      <button type="button" className="secondary-button" onClick={() => void scanProvider(provider)} disabled={saving || scanning === provider}>{scanning === provider ? 'Đang quét...' : 'Quét model'}</button>
+                      {scannableProviders.has(provider) && <button type="button" className="secondary-button" onClick={() => void scanProvider(provider)} disabled={saving || scanning === provider}>{scanning === provider ? 'Đang quét...' : 'Quét model'}</button>}
                       <button type="button" className="secondary-button" onClick={() => void saveProvider(provider)} disabled={saving}>{saving ? 'Đang lưu...' : 'Lưu provider'}</button>
                     </div>
                   )}
@@ -428,7 +452,7 @@ export function AdminFeatureFlagsForm({ value, onSave }: { value: Record<string,
   );
 }
 
-export function AdminAiProfilesForm({ value, aiSettings, onSave }: { value: Record<string, unknown>; aiSettings: Record<string, unknown>; onSave: (value: Record<string, unknown>) => Promise<void> }) {
+export function AdminAiProfilesForm({ value, aiSettings, onSave, onToast }: { value: Record<string, unknown>; aiSettings: Record<string, unknown>; onSave: (value: Record<string, unknown>) => Promise<void>; onToast?: AdminToast }) {
   const geometry = getAiTaskProfile(value.geometry_reasoning);
   const solver = getAiTaskProfile(value.solver_explanation);
   const [geometryProvider, setGeometryProvider] = useState(geometry.provider);
@@ -454,6 +478,15 @@ export function AdminAiProfilesForm({ value, aiSettings, onSave }: { value: Reco
     setter((current) => checked ? [...new Set([...current, modelId])] : current.filter((item) => item !== modelId));
   }
 
+  async function saveProfiles() {
+    try {
+      await onSave({ version: 1, geometry_reasoning: { provider: geometryProvider, model: geometryModel, fallbacks: geometryFallbacks }, solver_explanation: { provider: solverProvider, model: solverModel, fallbacks: solverFallbacks } });
+      onToast?.('Hồ sơ AI', 'Đã lưu hồ sơ AI.', 'info');
+    } catch (error) {
+      onToast?.('Hồ sơ AI', getErrorMessage(error, 'Không thể lưu hồ sơ AI.'), 'error');
+    }
+  }
+
   return (
     <section className="admin-settings-section"><h4>Hồ sơ AI</h4><div className="admin-field-grid">
       <label className="field-label">Provider hình học<select value={geometryProvider} onChange={(event) => setGeometryProvider(event.target.value)}><option value="auto">auto</option>{providerOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
@@ -465,7 +498,7 @@ export function AdminAiProfilesForm({ value, aiSettings, onSave }: { value: Reco
       <ModelFallbackChecklist title="Model dự phòng hình học" options={modelOptions(geometryProvider, geometryModel, geometryFallbacks)} selected={geometryFallbacks} onToggle={(modelId, checked) => updateFallbacks('geometry', modelId, checked)} />
       <ModelFallbackChecklist title="Model dự phòng diễn giải lời giải" options={modelOptions(solverProvider, solverModel, solverFallbacks)} selected={solverFallbacks} onToggle={(modelId, checked) => updateFallbacks('solver', modelId, checked)} />
     </div>
-    <button type="button" className="secondary-button" onClick={() => void onSave({ version: 1, geometry_reasoning: { provider: geometryProvider, model: geometryModel, fallbacks: geometryFallbacks }, solver_explanation: { provider: solverProvider, model: solverModel, fallbacks: solverFallbacks } })}>Lưu hồ sơ AI</button></section>
+    <button type="button" className="secondary-button" onClick={() => void saveProfiles()}>Lưu hồ sơ AI</button></section>
   );
 }
 
@@ -490,7 +523,7 @@ function ModelFallbackChecklist({ title, options, selected, onToggle }: { title:
   );
 }
 
-export function AdminAiPromptsForm({ value, onSave }: { value: Record<string, unknown>; onSave: (value: Record<string, unknown>) => Promise<void> }) {
+export function AdminAiPromptsForm({ value, onSave, onToast }: { value: Record<string, unknown>; onSave: (value: Record<string, unknown>) => Promise<void>; onToast?: AdminToast }) {
   const [sceneExtraction, setSceneExtraction] = useState(getStringValue(value.scene_extraction, ''));
   const [reasoning, setReasoning] = useState(getStringValue(value.reasoning, ''));
 
@@ -499,13 +532,22 @@ export function AdminAiPromptsForm({ value, onSave }: { value: Record<string, un
     setReasoning(getStringValue(value.reasoning, ''));
   }, [value]);
 
+  async function savePrompts() {
+    try {
+      await onSave({ version: 1, scene_extraction: sceneExtraction.trim(), reasoning: reasoning.trim() });
+      onToast?.('Prompt hệ thống', 'Đã lưu prompt hệ thống.', 'info');
+    } catch (error) {
+      onToast?.('Prompt hệ thống', getErrorMessage(error, 'Không thể lưu prompt hệ thống.'), 'error');
+    }
+  }
+
   return (
     <section className="admin-settings-section">
       <h4>Prompt hệ thống AI</h4>
       <p className="field-hint">Nếu để trống, hệ thống sẽ dùng prompt mặc định trong backend.</p>
       <label className="field-label">Prompt dựng scene<textarea rows={10} value={sceneExtraction} onChange={(event) => setSceneExtraction(event.target.value)} placeholder="Prompt cho việc chuyển đề bài thành JSON..." /></label>
       <label className="field-label">Prompt phân tích suy luận<textarea rows={10} value={reasoning} onChange={(event) => setReasoning(event.target.value)} placeholder="Prompt cho việc phân tích suy luận bài toán..." /></label>
-      <button type="button" className="secondary-button" onClick={() => void onSave({ version: 1, scene_extraction: sceneExtraction.trim(), reasoning: reasoning.trim() })}>Lưu prompt</button>
+      <button type="button" className="secondary-button" onClick={() => void savePrompts()}>Lưu prompt</button>
     </section>
   );
 }

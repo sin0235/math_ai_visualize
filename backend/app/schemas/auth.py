@@ -168,7 +168,7 @@ class StoredOcrSettings(BaseModel):
 
     provider: Literal["openrouter", "router9"] = "openrouter"
     model: str = Field(default="", max_length=MAX_MODEL_ID_CHARS)
-    max_image_mb: int = Field(default=8, ge=1, le=32)
+    max_image_mb: int = Field(default=5, ge=1, le=32)
 
 
 class StoredRuntimeSettings(BaseModel):
@@ -220,7 +220,7 @@ class AdminOcrModelSettings(BaseModel):
 
     provider: Literal["openrouter", "router9"] = "openrouter"
     model: str = Field(default="", max_length=MAX_MODEL_ID_CHARS)
-    max_image_mb: int = Field(default=8, ge=1, le=32)
+    max_image_mb: int = Field(default=5, ge=1, le=32)
 
 
 class SystemAiSettings(BaseModel):

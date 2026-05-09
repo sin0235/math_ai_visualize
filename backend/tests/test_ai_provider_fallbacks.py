@@ -1,6 +1,7 @@
 import asyncio
 
 import httpx
+import pytest
 from fastapi.testclient import TestClient
 
 from app.core.config import Settings, merge_runtime_settings
@@ -271,6 +272,17 @@ def test_bootstrap_router9_models_adds_codex_defaults(monkeypatch):
     ]
     assert settings.router9_text_model == "cc/codex-5.5"
     assert settings.router9_ocr_model == "cc/codex-5.5-image"
+
+
+def test_model_scan_provider_rejects_manual_provider_ids():
+    from pydantic import ValidationError
+
+    from app.schemas.scene import ProviderModelScanRequest
+
+    for provider in ["openrouter", "nvidia", "ollama"]:
+        with pytest.raises(ValidationError):
+            ProviderModelScanRequest(provider=provider)
+
 
 
 def test_openai_compat_scan_models_uses_models_endpoint_without_api_key(monkeypatch):

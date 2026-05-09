@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
 import { exportScene, type ExportFormat } from '../api/client';
+import type { ThreeSceneImageCapture } from './ThreeGeometryView';
 import type { AdvancedRenderSettings, MathScene } from '../types/scene';
 
 export interface ExportMenuProps {
   scene: MathScene;
   advancedSettings: AdvancedRenderSettings;
   onError?: (message: string) => void;
+  captureCurrentView?: ThreeSceneImageCapture | null;
+  preferCurrentViewCapture?: boolean;
 }
 
 interface ExportMenuItemsProps extends ExportMenuProps {
@@ -25,14 +28,18 @@ const FORMAT_LABELS: Record<ExportFormat, { label: string; hint: string }> = {
 
 const EXPORT_FORMATS: ExportFormat[] = ['png', 'jpg', 'svg', 'pdf', 'katex-html', 'tikz', 'ggb'];
 
-export function ExportMenuItems({ scene, advancedSettings, onError, itemClassName = 'export-menu-item', onAfterDownload }: ExportMenuItemsProps): JSX.Element {
+const DISABLED_FORMATS: ReadonlySet<ExportFormat> = new Set<ExportFormat>(['png', 'jpg', 'pdf']);
+const DISABLED_REASON = 'Tạm khoá do lỗi';
+
+export function ExportMenuItems({ scene, advancedSettings, onError, captureCurrentView, preferCurrentViewCapture = false, itemClassName = 'export-menu-item', onAfterDownload }: ExportMenuItemsProps): JSX.Element {
   const [busy, setBusy] = useState<ExportFormat | null>(null);
 
   async function handleDownload(format: ExportFormat) {
     if (busy) return;
+    if (DISABLED_FORMATS.has(format)) return;
     setBusy(format);
     try {
-      const { blob, filename } = await exportScene(format, scene, advancedSettings);
+      const { blob, filename } = await getExportBlob(format, scene, advancedSettings, captureCurrentView, preferCurrentViewCapture);
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -52,20 +59,50 @@ export function ExportMenuItems({ scene, advancedSettings, onError, itemClassNam
 
   return (
     <>
-      {EXPORT_FORMATS.map((fmt) => (
-        <button key={fmt} type="button" role="menuitem" className={itemClassName} disabled={busy !== null} onClick={() => handleDownload(fmt)}>
-          <ExportFormatIcon format={fmt} />
-          <span>
-            <strong>{busy === fmt ? 'Đang tải…' : FORMAT_LABELS[fmt].label}</strong>
-            <small>{FORMAT_LABELS[fmt].hint}</small>
-          </span>
-        </button>
-      ))}
+      {EXPORT_FORMATS.map((fmt) => {
+        const isLocked = DISABLED_FORMATS.has(fmt);
+        const tooltip = isLocked ? DISABLED_REASON : undefined;
+        return (
+          <button
+            key={fmt}
+            type="button"
+            role="menuitem"
+            className={itemClassName}
+            disabled={busy !== null || isLocked}
+            aria-disabled={isLocked || undefined}
+            title={tooltip}
+            onClick={() => handleDownload(fmt)}
+          >
+            <ExportFormatIcon format={fmt} />
+            <span>
+              <strong>
+                {busy === fmt ? 'Đang tải…' : FORMAT_LABELS[fmt].label}
+                {isLocked && <em className="export-menu-locked-tag"> ({DISABLED_REASON})</em>}
+              </strong>
+              <small>{isLocked ? DISABLED_REASON : FORMAT_LABELS[fmt].hint}</small>
+            </span>
+          </button>
+        );
+      })}
     </>
   );
 }
 
-export function ExportMenu({ scene, advancedSettings, onError }: ExportMenuProps): JSX.Element {
+async function getExportBlob(format: ExportFormat, scene: MathScene, advancedSettings: AdvancedRenderSettings, captureCurrentView?: ThreeSceneImageCapture | null, preferCurrentViewCapture = false) {
+  if (format === 'png' || format === 'jpg') {
+    if (captureCurrentView) {
+      return {
+        blob: await captureCurrentView(format === 'png' ? 'image/png' : 'image/jpeg'),
+        filename: format === 'png' ? 'hinh.png' : 'hinh.jpg',
+      };
+    }
+    if (preferCurrentViewCapture) throw new Error('Chưa thể chụp góc nhìn hiện tại. Vui lòng chờ hình tải xong rồi thử lại.');
+  }
+
+  return exportScene(format, scene, advancedSettings);
+}
+
+export function ExportMenu({ scene, advancedSettings, onError, captureCurrentView, preferCurrentViewCapture }: ExportMenuProps): JSX.Element {
   const [open, setOpen] = useState(false);
 
   return (
@@ -75,7 +112,7 @@ export function ExportMenu({ scene, advancedSettings, onError }: ExportMenuProps
       </button>
       {open && (
         <div className="export-menu-dropdown" role="menu">
-          <ExportMenuItems scene={scene} advancedSettings={advancedSettings} onError={onError} onAfterDownload={() => setOpen(false)} />
+          <ExportMenuItems scene={scene} advancedSettings={advancedSettings} onError={onError} captureCurrentView={captureCurrentView} preferCurrentViewCapture={preferCurrentViewCapture} onAfterDownload={() => setOpen(false)} />
         </div>
       )}
     </div>

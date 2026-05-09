@@ -7,22 +7,9 @@ from app.schemas.scene import AiModelInfo, ModelScanProvider
 
 
 async def list_provider_models(settings: Settings, provider: ModelScanProvider) -> list[AiModelInfo]:
-    if provider == "openrouter":
-        api_key = settings.openrouter_api_key
-        base_url = settings.openrouter_base_url
-        headers = _headers(api_key)
-    elif provider == "nvidia":
-        api_key = settings.nvidia_api_key
-        base_url = settings.nvidia_base_url
-        headers = _headers(api_key)
-    elif provider == "openai_compat":
-        api_key = settings.openai_compat_api_key
-        base_url = settings.openai_compat_base_url
-        headers = _headers(api_key) if api_key else {}
-    else:
-        api_key = settings.ollama_api_key
-        base_url = settings.ollama_base_url
-        headers = _headers(api_key) if api_key else {}
+    api_key = settings.openai_compat_api_key
+    base_url = settings.openai_compat_base_url
+    headers = _headers(api_key) if api_key else {}
 
     url = f"{base_url.rstrip('/')}/models"
     try:
