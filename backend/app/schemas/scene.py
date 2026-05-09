@@ -231,7 +231,7 @@ class AiModelInfo(BaseModel):
     context_length: int | None = None
 
 
-ModelScanProvider = Literal["openai_compat"]
+ModelScanProvider = Literal["openrouter", "openai_compat"]
 
 
 class ModelScanRequest(BaseModel):

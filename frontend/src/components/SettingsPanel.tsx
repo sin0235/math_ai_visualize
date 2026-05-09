@@ -26,8 +26,9 @@ const providerHints: Record<ProviderKey, string> = {
 };
 
 export function SettingsPanel({ value, defaults, onChange, onReset, onForgetApiKeys }: SettingsPanelProps) {
-  const [scanningProvider, setScanningProvider] = useState<'openai_compat' | null>(null);
-  const [scanErrors, setScanErrors] = useState<Partial<Record<'openai_compat', string>>>({});
+  const scannableProviders = new Set<ProviderKey>(['openrouter', 'openai_compat']);
+  const [scanningProvider, setScanningProvider] = useState<ProviderKey | null>(null);
+  const [scanErrors, setScanErrors] = useState<Partial<Record<ProviderKey, string>>>({});
 
   function updateProvider(provider: ProviderKey, field: 'api_key' | 'base_url' | 'model', nextValue: string) {
     onChange({
@@ -39,8 +40,7 @@ export function SettingsPanel({ value, defaults, onChange, onReset, onForgetApiK
     });
   }
 
-  async function scanModels() {
-    const provider = 'openai_compat';
+  async function scanModels(provider: 'openrouter' | 'openai_compat') {
     setScanningProvider(provider);
     setScanErrors((current) => ({ ...current, [provider]: undefined }));
     try {
@@ -108,7 +108,7 @@ export function SettingsPanel({ value, defaults, onChange, onReset, onForgetApiK
 
               <label className="field-label">
                 Model override
-                {provider === 'openai_compat' && value[provider].scanned_models.length > 0 ? (
+                {scannableProviders.has(provider) && value[provider].scanned_models.length > 0 ? (
                   <select value={value[provider].model} onChange={(event) => updateProvider(provider, 'model', event.target.value)}>
                     <option value="">Backend default: {providerDefaults?.model || 'not set'}</option>
                     {value[provider].scanned_models.map((model) => <option key={model.id} value={model.id}>{model.label}</option>)}
@@ -123,14 +123,14 @@ export function SettingsPanel({ value, defaults, onChange, onReset, onForgetApiK
                 )}
               </label>
 
-              {provider === 'openai_compat' && (
-                <button type="button" className="secondary-button" onClick={() => scanModels()} disabled={scanningProvider === provider}>
+              {scannableProviders.has(provider) && (
+                <button type="button" className="secondary-button" onClick={() => scanModels(provider as 'openrouter' | 'openai_compat')} disabled={scanningProvider === provider}>
                   {scanningProvider === provider ? 'Đang quét...' : 'Quét model provider'}
                 </button>
               )}
               <p className="field-hint">API key override chỉ giữ trong state của tab hiện tại và sẽ mất khi refresh. Để trống field override để backend dùng `.env`/default.</p>
-              {provider === 'openai_compat' && scanErrors.openai_compat && <div className="error-box">{scanErrors.openai_compat}</div>}
-              {provider === 'openai_compat' && value[provider].last_scanned_at && <p className="field-hint">Lần quét gần nhất: {new Date(value[provider].last_scanned_at).toLocaleString()}</p>}
+              {scanErrors[provider] && <div className="error-box">{scanErrors[provider]}</div>}
+              {value[provider].last_scanned_at && <p className="field-hint">Lần quét gần nhất: {new Date(value[provider].last_scanned_at).toLocaleString()}</p>}
             </section>
           );
         })}

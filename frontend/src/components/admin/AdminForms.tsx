@@ -208,7 +208,7 @@ function getAiTaskProfile(value: unknown) {
 
 export function AdminAiSettingsForm({ value, defaults, saving, onSave, onToast }: { value: Record<string, unknown>; defaults: SettingsDefaults | null; saving: boolean; onSave: (patch: Record<string, unknown>) => Promise<void>; onToast?: AdminToast }) {
   const providers = ['openrouter', 'nvidia', 'ollama', 'openai_compat', 'router9'] as const;
-  const scannableProviders = new Set<(typeof providers)[number]>(['openai_compat', 'router9']);
+  const scannableProviders = new Set<(typeof providers)[number]>(['openrouter', 'openai_compat', 'router9']);
   const ocrValue = getAdminOcrSettings(value);
   const [draft, setDraft] = useState(() => Object.fromEntries(providers.map((provider) => [provider, getAdminProviderSettings(value, provider, defaults)])) as Record<(typeof providers)[number], ReturnType<typeof getAdminProviderSettings>>);
   const [ocrProvider, setOcrProvider] = useState(ocrValue.provider);
@@ -277,7 +277,7 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave, onToast }
     setScanning(provider);
     try {
       const runtime = adminSettingsToRuntime({ ...value, [provider]: draft[provider] }, defaults);
-      const models = provider === 'router9' ? await scanRouter9Models(runtime) : await scanProviderModels('openai_compat', runtime);
+      const models = provider === 'router9' ? await scanRouter9Models(runtime) : await scanProviderModels(provider as 'openrouter' | 'openai_compat', runtime);
       const next = { ...draft[provider], scanned_models: models, last_scanned_at: new Date().toISOString() };
       updateProvider(provider, next);
       await onSave({ [provider]: next });
@@ -357,7 +357,7 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave, onToast }
     <div className="admin-ai-settings">
       <section className="admin-settings-section">
         <h4>Provider & model</h4>
-        <p className="field-hint">OpenRouter, NVIDIA và Ollama quản lý model thủ công. OpenAI-compatible và 9router có thể quét endpoint /models.</p>
+        <p className="field-hint">OpenRouter, OpenAI-compatible và 9router có thể quét endpoint /models. NVIDIA và Ollama quản lý model thủ công.</p>
         <label className="field-label">Tìm model<input type="search" value={modelFilter} onChange={(event) => setModelFilter(event.target.value)} placeholder="Nhập tên hoặc ID model" /></label>
         <div className="admin-provider-grid">
           {providers.map((provider) => {
@@ -368,7 +368,7 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave, onToast }
               ? allowlistOptions.filter((modelItem) => modelItem.id.toLowerCase().includes(normalizedModelFilter) || modelItem.name.toLowerCase().includes(normalizedModelFilter))
               : allowlistOptions;
             const result = checkResults[provider];
-            const isManualProvider = provider === 'openrouter' || provider === 'nvidia' || provider === 'ollama';
+            const isManualProvider = provider === 'nvidia' || provider === 'ollama';
             return (
               <article className="admin-provider-card" key={provider}>
                 <div className="admin-provider-card-head">

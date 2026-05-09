@@ -7,8 +7,7 @@ from app.schemas.scene import AiModelInfo, ModelScanProvider
 
 
 async def list_provider_models(settings: Settings, provider: ModelScanProvider) -> list[AiModelInfo]:
-    api_key = settings.openai_compat_api_key
-    base_url = settings.openai_compat_base_url
+    api_key, base_url = _provider_connection(settings, provider)
     headers = _headers(api_key) if api_key else {}
 
     url = f"{base_url.rstrip('/')}/models"
@@ -22,6 +21,12 @@ async def list_provider_models(settings: Settings, provider: ModelScanProvider) 
         raise RuntimeError(f"{provider} models request lỗi: {message}") from error
 
     return _parse_models(provider, response)
+
+
+def _provider_connection(settings: Settings, provider: ModelScanProvider) -> tuple[str | None, str]:
+    if provider == "openrouter":
+        return settings.openrouter_api_key, settings.openrouter_base_url
+    return settings.openai_compat_api_key, settings.openai_compat_base_url
 
 
 def _headers(api_key: str | None) -> dict[str, str]:

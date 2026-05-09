@@ -484,7 +484,7 @@ export async function ocrImage(imageDataUrl: string, runtimeSettings: RuntimeSet
   }, 'Không thể OCR ảnh đề bài.');
 }
 
-export async function scanProviderModels(provider: 'openai_compat', runtimeSettings: RuntimeSettings): Promise<ScannedModelInfo[]> {
+export async function scanProviderModels(provider: 'openrouter' | 'openai_compat', runtimeSettings: RuntimeSettings): Promise<ScannedModelInfo[]> {
   const payload = await requestJson<{ models: ScannedModelInfo[] }>('/api/ai/models/scan', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
