@@ -13,9 +13,13 @@ export function VerifyEmailPage({ token, onVerifyEmail, onBackWorkspace, onBackL
   const [loading, setLoading] = useState(false);
   const [verified, setVerified] = useState(false);
 
+  function cleanOtpInput(value: string) {
+    return value.replace(/\D/g, '').slice(0, 6);
+  }
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const cleanOtp = otp.replace(/\s/g, '');
+    const cleanOtp = cleanOtpInput(otp);
     if (!token) {
       setMessage('Liên kết xác minh không hợp lệ hoặc thiếu token.');
       return;
@@ -57,7 +61,11 @@ export function VerifyEmailPage({ token, onVerifyEmail, onBackWorkspace, onBackL
               type="text"
               pattern="\d{6}"
               value={otp}
-              onChange={(event) => setOtp(event.target.value.replace(/\D/g, '').slice(0, 6))}
+              onChange={(event) => setOtp(cleanOtpInput(event.target.value))}
+              onPaste={(event) => {
+                event.preventDefault();
+                setOtp(cleanOtpInput(event.clipboardData.getData('text')));
+              }}
               placeholder="123456"
               inputMode="numeric"
               autoComplete="one-time-code"

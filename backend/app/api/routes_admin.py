@@ -10,6 +10,10 @@ from app.db.session import DatabaseClient, get_database
 from app.repositories.admin import AdminRepository
 from app.repositories.feedback import FeedbackRepository
 from app.schemas.auth import (
+    ADMIN_DEFAULT_PROVIDERS,
+    ADMIN_OCR_PROVIDERS,
+    AdminPlanResponse,
+    AdminPlanUpdateRequest,
     AdminRenderHistoryDetail,
     AdminRenderHistoryItem,
     AdminSessionResponse,
@@ -27,7 +31,7 @@ from app.schemas.auth import (
 )
 from app.schemas.feedback import AdminFeedbackResponse, AdminFeedbackUpdateRequest
 from app.schemas.scene import MathScene, ModelScanRequest, RenderPayload
-from app.services.admin_settings import build_database_diagnostics, sync_ai_settings_to_registry
+from app.services.admin_settings import build_database_diagnostics, sync_ai_profiles_to_registry, sync_ai_settings_to_registry
 from app.services.model_registry import resolve_effective_settings
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -36,6 +40,37 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 @router.get("/summary", response_model=AdminSummaryResponse)
 async def admin_summary(_: UserRecord = Depends(require_admin_user), db: DatabaseClient = Depends(get_database)) -> AdminSummaryResponse:
     return AdminSummaryResponse(**await AdminRepository(db).summary())
+
+
+@router.get("/plans", response_model=list[AdminPlanResponse])
+async def admin_plans(_: UserRecord = Depends(require_admin_user), db: DatabaseClient = Depends(get_database)) -> list[AdminPlanResponse]:
+    return [plan_response(plan) for plan in await AdminRepository(db).list_plans()]
+
+
+@router.patch("/plans/{plan_id}", response_model=AdminPlanResponse, dependencies=[Depends(require_trusted_origin)])
+async def admin_update_plan(
+    plan_id: str,
+    request: AdminPlanUpdateRequest,
+    http_request: Request,
+    admin: UserRecord = Depends(require_admin_user),
+    db: DatabaseClient = Depends(get_database),
+) -> AdminPlanResponse:
+    await enforce_rate_limit(db, http_request, admin, "admin_plan_update", 20, 60)
+    repo = AdminRepository(db)
+    patch = request.model_dump(exclude_unset=True)
+    if not patch:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Không có thay đổi để cập nhật.")
+    current = await repo.find_plan(plan_id)
+    if current is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy gói người dùng.")
+    no_op_fields = [field for field, value in patch.items() if getattr(current, field) == value]
+    if len(no_op_fields) == len(patch):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Không có thay đổi để cập nhật.")
+    updated = await repo.update_plan(plan_id, patch)
+    if updated is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy gói người dùng.")
+    await repo.audit(admin.id, "admin.plan.update", "plan", plan_id, {"fields": sorted(patch)})
+    return plan_response(updated)
 
 
 @router.get("/users", response_model=list[UserResponse])
@@ -47,7 +82,10 @@ async def admin_users(
     _: UserRecord = Depends(require_admin_user),
     db: DatabaseClient = Depends(get_database),
 ) -> list[UserResponse]:
-    users = await AdminRepository(db).list_users(q, role, status, plan)
+    repo = AdminRepository(db)
+    if plan:
+        await validate_known_plan(repo, plan)
+    users = await repo.list_users(q, role, status, plan)
     return [user_response(user) for user in users]
 
 
@@ -58,7 +96,14 @@ async def admin_user_sessions(user_id: str, _: UserRecord = Depends(require_admi
 
 
 @router.delete("/users/{user_id}/sessions/{session_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_trusted_origin)])
-async def admin_revoke_user_session(user_id: str, session_id: str, admin: UserRecord = Depends(require_admin_user), db: DatabaseClient = Depends(get_database)) -> None:
+async def admin_revoke_user_session(
+    user_id: str,
+    session_id: str,
+    http_request: Request,
+    admin: UserRecord = Depends(require_admin_user),
+    db: DatabaseClient = Depends(get_database),
+) -> None:
+    await enforce_rate_limit(db, http_request, admin, "admin_session_revoke", 30, 60)
     repo = AdminRepository(db)
     revoked = await repo.revoke_user_session(user_id, session_id)
     if not revoked:
@@ -67,7 +112,13 @@ async def admin_revoke_user_session(user_id: str, session_id: str, admin: UserRe
 
 
 @router.post("/users/{user_id}/sessions/revoke-all", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_trusted_origin)])
-async def admin_revoke_user_sessions(user_id: str, admin: UserRecord = Depends(require_admin_user), db: DatabaseClient = Depends(get_database)) -> None:
+async def admin_revoke_user_sessions(
+    user_id: str,
+    http_request: Request,
+    admin: UserRecord = Depends(require_admin_user),
+    db: DatabaseClient = Depends(get_database),
+) -> None:
+    await enforce_rate_limit(db, http_request, admin, "admin_sessions_revoke_all", 30, 60)
     repo = AdminRepository(db)
     count = await repo.revoke_user_sessions(user_id)
     await repo.audit(admin.id, "admin.sessions.revoke_all", "user", user_id, {"count": count})
@@ -77,25 +128,40 @@ async def admin_revoke_user_sessions(user_id: str, admin: UserRecord = Depends(r
 async def admin_update_user(
     user_id: str,
     request: AdminUserUpdateRequest,
+    http_request: Request,
     admin: UserRecord = Depends(require_admin_user),
     db: DatabaseClient = Depends(get_database),
 ) -> UserResponse:
+    await enforce_rate_limit(db, http_request, admin, "admin_user_update", 20, 60)
     repo = AdminRepository(db)
     patch = request.model_dump(exclude_unset=True)
+    if not patch:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Không có thay đổi để cập nhật.")
     if user_id == admin.id and ("role" in patch or "status" in patch):
+        await repo.audit(admin.id, "admin.user.update.blocked", "user", user_id, {"reason": "self_role_status_change", "fields": sorted(patch)})
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Không thể tự thay đổi role hoặc trạng thái của chính mình.")
     current = await repo.find_user(user_id)
     if current is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy người dùng.")
-    removing_active_admin = current.role == "admin" and current.status == "active" and (patch.get("role") == "user" or patch.get("status") == "disabled")
+    if "plan" in patch:
+        patch["plan"] = await validate_known_plan(repo, str(patch["plan"]))
+    effective_role = patch.get("role", current.role)
+    effective_status = patch.get("status", current.status)
+    removing_active_admin = current.role == "admin" and current.status == "active" and (effective_role != "admin" or effective_status != "active")
     if removing_active_admin and await repo.count_active_admins() <= 1:
+        await repo.audit(admin.id, "admin.user.update.blocked", "user", user_id, {"reason": "last_active_admin", "fields": sorted(patch)})
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Không thể xoá hoặc vô hiệu hoá admin hoạt động cuối cùng.")
+    no_op_fields = [field for field, value in patch.items() if getattr(current, field) == value]
+    if len(no_op_fields) == len(patch):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Không có thay đổi để cập nhật.")
+    audit_metadata = build_user_update_audit_metadata(current, patch)
     updated = await repo.update_user(user_id, patch)
     if updated is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy người dùng.")
     if patch.get("status") == "disabled":
-        await repo.revoke_user_sessions(user_id)
-    await repo.audit(admin.id, "admin.user.update", "user", user_id, patch)
+        revoked_count = await repo.revoke_user_sessions(user_id)
+        audit_metadata["revoked_sessions"] = revoked_count
+    await repo.audit(admin.id, "admin.user.update", "user", user_id, audit_metadata)
     return user_response(updated)
 
 
@@ -150,7 +216,13 @@ async def admin_render_job(job_id: str, _: UserRecord = Depends(require_admin_us
 
 
 @router.delete("/render-jobs/{job_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_trusted_origin)])
-async def admin_delete_render_job(job_id: str, admin: UserRecord = Depends(require_admin_user), db: DatabaseClient = Depends(get_database)) -> None:
+async def admin_delete_render_job(
+    job_id: str,
+    http_request: Request,
+    admin: UserRecord = Depends(require_admin_user),
+    db: DatabaseClient = Depends(get_database),
+) -> None:
+    await enforce_rate_limit(db, http_request, admin, "admin_render_delete", 30, 60)
     repo = AdminRepository(db)
     await repo.delete_render_job(job_id)
     await repo.audit(admin.id, "admin.render_job.delete", "render_job", job_id)
@@ -244,6 +316,8 @@ async def admin_save_system_setting(
     setting = await repo.upsert_system_setting(request.key, value, admin.id)
     if request.key == "ai_settings":
         await sync_ai_settings_to_registry(db, value, request.value)
+    if request.key == "ai_profiles":
+        await sync_ai_profiles_to_registry(db, value, request.value)
     await repo.audit(admin.id, "admin.system_settings.update", "system_setting", request.key, {"key": request.key})
     return SystemSettingResponse(key=setting.key, value=parse_setting_value(setting.value_json), updated_by=setting.updated_by, updated_at=setting.updated_at)
 
@@ -314,18 +388,67 @@ def deep_merge_dict(base: dict, patch: dict) -> dict:
 def validate_system_setting(key: str, value: dict) -> dict:
     schemas = {
         "ai_settings": SystemAiSettings,
-        "plan_settings": SystemPlanSettings,
         "feature_flags": SystemFeatureFlags,
         "ai_profiles": SystemAiProfiles,
         "ai_prompts": SystemAiPrompts,
     }
     schema = schemas.get(key)
     if schema is None:
-        return value
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Cài đặt hệ thống không hợp lệ.")
     try:
-        return schema.model_validate(value).model_dump(mode="json")
+        validated = schema.model_validate(value).model_dump(mode="json")
     except ValidationError as error:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=error.errors()) from error
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=json.loads(error.json())) from error
+    if key == "ai_settings":
+        validate_ai_settings_rules(SystemAiSettings.model_validate(validated))
+    if key == "ai_profiles":
+        validate_ai_profiles_rules(SystemAiProfiles.model_validate(validated))
+    return validated
+
+
+def validate_ai_settings_rules(settings: SystemAiSettings) -> None:
+    if settings.default_provider not in ADMIN_DEFAULT_PROVIDERS:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Nhà cung cấp mặc định không hợp lệ.")
+    if settings.ocr.provider not in ADMIN_OCR_PROVIDERS:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Nhà cung cấp OCR không hợp lệ.")
+    if settings.router9.only_mode and not settings.router9.model and not settings.router9.allowed_model_ids:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Router9 only mode cần ít nhất một model Router9.")
+
+
+def validate_ai_profiles_rules(profiles: SystemAiProfiles) -> None:
+    for profile in [profiles.geometry_reasoning, profiles.solver_explanation, profiles.ocr]:
+        if profile.provider not in ADMIN_DEFAULT_PROVIDERS:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Nhà cung cấp AI không hợp lệ.")
+
+
+def build_user_update_audit_metadata(current: UserRecord, patch: dict) -> dict:
+    metadata: dict[str, object] = {"fields": sorted(patch)}
+    for field in ["role", "status", "plan"]:
+        if field in patch:
+            metadata[field] = {"from": getattr(current, field), "to": patch[field]}
+    if "display_name" in patch:
+        metadata["display_name"] = {"changed": current.display_name != patch["display_name"], "cleared": patch["display_name"] is None}
+    return metadata
+
+
+async def validate_known_plan(repo: AdminRepository, plan: str) -> str:
+    record = await repo.find_plan(plan)
+    if record is None or not record.is_active:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Gói người dùng không hợp lệ.")
+    return plan
+
+
+def plan_response(plan) -> AdminPlanResponse:
+    return AdminPlanResponse(
+        id=plan.id,
+        name=plan.name,
+        daily_render_limit=plan.daily_render_limit,
+        daily_ocr_limit=plan.daily_ocr_limit,
+        sort_order=plan.sort_order,
+        is_active=plan.is_active,
+        created_at=plan.created_at,
+        updated_at=plan.updated_at,
+    )
 
 
 def user_response(user: UserRecord) -> UserResponse:

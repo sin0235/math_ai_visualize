@@ -102,8 +102,12 @@ function uniqueOptions(ids: string[]) {
 export function buildPlanOptions(settingsValue: Record<string, unknown> | undefined): Option[] {
   const plansValue = settingsValue?.plans && typeof settingsValue.plans === 'object' ? settingsValue.plans as Record<string, unknown> : {};
   const ids = Object.keys(plansValue);
-  const normalized = ids.length > 0 ? ids : ['free', 'pro'];
-  return normalized.map((id) => ({ id, label: id }));
+  const normalized = ids.length > 0 ? ids : ['free', 'pro', 'pro_plus'];
+  return normalized.map((id) => ({ id, label: planLabel(id) }));
+}
+
+export function planLabel(id: string) {
+  return id === 'pro_plus' ? 'pro+' : id;
 }
 
 export function distinctOptions(values: Array<string | null | undefined>, base: Option[] = []): Option[] {

@@ -6,7 +6,7 @@ from app.core.config import Settings
 from app.db.migrations import apply_sqlite_migrations
 from app.db.session import SQLiteClient
 from app.schemas.scene import AiModelInfo
-from app.services.admin_settings import sync_ai_settings_to_registry
+from app.services.admin_settings import sync_ai_profiles_to_registry, sync_ai_settings_to_registry
 from app.services.model_registry import (
     load_model_registry,
     resolve_effective_settings,
@@ -209,6 +209,28 @@ async def test_sync_ai_settings_persists_openai_compat_provider_config(db):
     assert effective.openai_compat_text_model == "deepseek-chat"
     assert registry.allowed_model_ids("openai_compat") == ["deepseek-chat"]
     assert registry.scanned_model_infos("openai_compat")[0].id == "deepseek-chat"
+
+
+@pytest.mark.anyio
+async def test_ai_profiles_sync_to_registry_task_profiles(db):
+    await load_model_registry(db, Settings(_env_file=None))
+
+    await sync_ai_profiles_to_registry(db, {
+        "version": 1,
+        "geometry_reasoning": {"provider": "openrouter", "model": "openrouter/geometry", "fallbacks": ["openrouter/fallback"]},
+        "solver_explanation": {"provider": "router9", "model": "router9/solver", "fallbacks": ["router9/fallback"]},
+    }, {
+        "geometry_reasoning": {"provider": "openrouter", "model": "openrouter/geometry", "fallbacks": ["openrouter/fallback"]},
+        "solver_explanation": {"provider": "router9", "model": "router9/solver", "fallbacks": ["router9/fallback"]},
+    })
+
+    registry = await load_model_registry(db, Settings(_env_file=None))
+
+    assert registry.task_profiles["render"].provider_id == "openrouter"
+    assert registry.task_profiles["render"].model_id == "openrouter/geometry"
+    assert registry.task_profiles["reasoning"].fallbacks == ["openrouter/fallback"]
+    assert registry.task_profiles["solver_explanation"].provider_id == "router9"
+    assert registry.task_profiles["solver_explanation"].model_id == "router9/solver"
 
 
 @pytest.mark.anyio

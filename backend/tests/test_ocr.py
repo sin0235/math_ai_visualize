@@ -281,8 +281,8 @@ def test_ocr_enforces_daily_plan_limit(isolated_database, monkeypatch):
         user_row = await isolated_database.fetch_one("SELECT * FROM users WHERE email = ?", ["ocr@example.com"])
         assert user_row is not None
         await isolated_database.execute(
-            "INSERT INTO system_settings (key, value_json) VALUES (?, ?)",
-            ['plan_settings', '{"version":1,"plans":{"free":{"daily_render_limit":20,"daily_ocr_limit":1}}}'],
+            "UPDATE plans SET daily_ocr_limit = ? WHERE id = ?",
+            [1, "free"],
         )
         await isolated_database.execute(
             "INSERT INTO usage_events (id, user_id, event_type) VALUES (?, ?, ?)",

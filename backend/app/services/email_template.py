@@ -33,6 +33,7 @@ def auth_email_html(
 
     otp_block = ""
     if otp:
+        escaped_otp = escape(otp)
         otp_digits = "".join(
             f'<td align="center" style="padding:0 4px;"><span style="display:inline-block;width:42px;padding:12px 0;border:2px solid #d4d4d4;border-radius:10px;background:#ffffff;color:#171717;font-size:26px;font-weight:700;line-height:1;text-align:center;font-family:Arial,sans-serif;">{escape(digit)}</span></td>'
             for digit in otp
@@ -42,6 +43,7 @@ def auth_email_html(
             <tr>
               <td style="padding:22px 20px;">
                 <p style="margin:0 0 12px 0;color:#737373;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;font-family:Arial,sans-serif;">Mã xác minh</p>
+                <p style="margin:0 0 12px 0;color:#171717;font-size:18px;font-weight:700;line-height:1.4;font-family:Arial,sans-serif;">Mã OTP: <span style="font-family:Consolas,'Liberation Mono',monospace;letter-spacing:.08em;">{escaped_otp}</span></p>
                 <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 0 12px 0;">
                   <tr>{otp_digits}</tr>
                 </table>

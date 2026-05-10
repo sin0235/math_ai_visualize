@@ -11,7 +11,7 @@ from app.schemas.scene import OcrRequest, OcrResponse
 from app.services.api_errors import api_error, bad_request_from_error
 from app.services.model_registry import load_model_registry, resolve_effective_settings, resolve_task_profile
 from app.services.ocr import extract_text_from_image
-from app.services.system_settings import load_feature_flags, load_plan_settings
+from app.services.system_settings import load_feature_flags
 
 router = APIRouter(prefix="/api", tags=["ocr"])
 
@@ -50,13 +50,13 @@ async def enforce_ocr_access(db: DatabaseClient, user: UserRecord | None) -> Non
     enforce_enabled(flags)
     if user is None:
         return
-    plan_settings = await load_plan_settings(db)
-    quota = plan_settings.plans.get(user.plan) or plan_settings.plans.get("free")
-    if quota is None or quota.daily_ocr_limit is None:
+    repo = AdminRepository(db)
+    plan = await repo.find_plan(user.plan) or await repo.find_plan("free")
+    if plan is None or plan.daily_ocr_limit is None:
         return
     since = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
     used = await AdminRepository(db).count_user_usage_events_since(user.id, "ocr", since)
-    if used >= quota.daily_ocr_limit:
+    if used >= plan.daily_ocr_limit:
         raise api_error(status.HTTP_429_TOO_MANY_REQUESTS, "Bạn đã dùng hết hạn mức OCR hôm nay.", "QUOTA_EXCEEDED")
 
 

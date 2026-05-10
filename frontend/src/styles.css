@@ -2351,6 +2351,18 @@ select {
   font-weight: 800;
 }
 
+.admin-model-bulk-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.admin-model-bulk-actions .secondary-button {
+  padding: 7px 10px;
+  font-size: 12px;
+}
+
 .admin-manual-model-row {
   display: grid;
   grid-template-columns: minmax(220px, 1fr) auto;

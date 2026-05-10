@@ -1,16 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  AdminProviderModelSettings, 
-  AdminRouter9ModelSettings, 
+import type { AdminPlanResponse } from '../../api/client';
+import {
+  AdminProviderModelSettings,
+  AdminRouter9ModelSettings,
   RuntimeSettings,
-  OcrProvider 
+  OcrProvider
 } from '../../types/settings';
 import { 
   scanProviderModels,
   scanRouter9Models,
   checkAdminProvider,
 } from '../../api/client';
-import { buildModelOptionsFromDefaults, buildProviderOptions, providerLabels } from '../../utils/settingsOptions';
+import { buildModelOptionsFromDefaults, buildProviderOptions, planLabel, providerLabels } from '../../utils/settingsOptions';
 import type { ProviderSettingsDefaults, SettingsDefaults } from '../../types/settings';
 
 // --- Utility Functions ---
@@ -342,6 +343,22 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave, onToast }
     });
   }
 
+  function bulkSetModelIds(provider: (typeof providers)[number], modelIds: string[], allowed: boolean) {
+    const ids = modelIds.filter(Boolean);
+    updateProvider(provider, {
+      allowed_model_ids: allowed
+        ? [...new Set([...draft[provider].allowed_model_ids, ...ids])]
+        : draft[provider].allowed_model_ids.filter((id) => !ids.includes(id)),
+    });
+  }
+
+  function bulkSelectByKeyword(provider: (typeof providers)[number], modelItems: Array<{ id: string; name: string }>, keywords: string[]) {
+    const ids = modelItems
+      .filter((modelItem) => keywords.some((keyword) => `${modelItem.id} ${modelItem.name}`.toLowerCase().includes(keyword)))
+      .map((modelItem) => modelItem.id);
+    bulkSetModelIds(provider, ids, true);
+  }
+
   function addManualModel(provider: (typeof providers)[number]) {
     const modelId = (manualModelInputs[provider] ?? '').trim();
     if (!modelId) return;
@@ -429,6 +446,14 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave, onToast }
                     <strong>{isManualProvider ? 'Model inventory / thủ công' : 'Model inventory'}</strong>
                     <span>{filteredAllowlistOptions.length}/{allowlistOptions.length}</span>
                   </div>
+                  <div className="admin-model-bulk-actions">
+                    <button type="button" className="secondary-button" onClick={() => bulkSetModelIds(provider, filteredAllowlistOptions.map((modelItem) => modelItem.id), true)} disabled={filteredAllowlistOptions.length === 0}>Chọn tất cả đang lọc</button>
+                    <button type="button" className="secondary-button" onClick={() => bulkSetModelIds(provider, filteredAllowlistOptions.map((modelItem) => modelItem.id), false)} disabled={filteredAllowlistOptions.length === 0}>Bỏ chọn đang lọc</button>
+                    <button type="button" className="secondary-button" onClick={() => bulkSetModelIds(provider, allowlistOptions.map((modelItem) => modelItem.id), false)} disabled={allowlistOptions.length === 0}>Bỏ chọn tất cả</button>
+                    <button type="button" className="secondary-button" onClick={() => bulkSelectByKeyword(provider, filteredAllowlistOptions, ['image', 'vision', 'vl', 'ocr'])} disabled={filteredAllowlistOptions.length === 0}>Chọn image/OCR</button>
+                    <button type="button" className="secondary-button" onClick={() => bulkSelectByKeyword(provider, filteredAllowlistOptions, ['free'])} disabled={filteredAllowlistOptions.length === 0}>Chọn free</button>
+                    <button type="button" className="secondary-button" onClick={() => bulkSelectByKeyword(provider, filteredAllowlistOptions, ['gpt', 'codex'])} disabled={filteredAllowlistOptions.length === 0}>Chọn GPT/Codex</button>
+                  </div>
                   {isManualProvider && (
                     <div className="admin-manual-model-row">
                       <input
@@ -472,35 +497,64 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave, onToast }
   );
 }
 
-export function AdminPlanSettingsForm({ value, onSave }: { value: Record<string, unknown>; onSave: (value: Record<string, unknown>) => Promise<void> }) {
-  const plansValue = value.plans && typeof value.plans === 'object' ? value.plans as Record<string, unknown> : { free: {}, pro: {} };
-  const planIds = Object.keys(plansValue).length > 0 ? Object.keys(plansValue) : ['free', 'pro'];
-  const [quotas, setQuotas] = useState(() => Object.fromEntries(planIds.map((planId) => {
-    const quota = getPlanQuota(plansValue[planId]);
-    return [planId, { render: String(quota.daily_render_limit ?? ''), ocr: String(quota.daily_ocr_limit ?? '') }];
-  })) as Record<string, { render: string; ocr: string }>);
+export function AdminPlanSettingsForm({ plans, onSavePlan }: { plans: AdminPlanResponse[]; onSavePlan: (planId: string, patch: Partial<Pick<AdminPlanResponse, 'name' | 'daily_render_limit' | 'daily_ocr_limit' | 'sort_order' | 'is_active'>>) => Promise<AdminPlanResponse> }) {
+  const orderedPlans = plans.length > 0 ? [...plans].sort((left, right) => left.sort_order - right.sort_order || left.id.localeCompare(right.id)) : [];
+  const [drafts, setDrafts] = useState(() => buildPlanDrafts(orderedPlans));
+  const [savingPlan, setSavingPlan] = useState<string | null>(null);
 
   useEffect(() => {
-    setQuotas(Object.fromEntries(planIds.map((planId) => {
-      const quota = getPlanQuota(plansValue[planId]);
-      return [planId, { render: String(quota.daily_render_limit ?? ''), ocr: String(quota.daily_ocr_limit ?? '') }];
-    })) as Record<string, { render: string; ocr: string }>);
-  }, [value]);
+    setDrafts(buildPlanDrafts(orderedPlans));
+  }, [plans]);
 
-  function updateQuota(planId: string, field: 'render' | 'ocr', nextValue: string) {
-    setQuotas((current) => ({ ...current, [planId]: { ...current[planId], [field]: nextValue } }));
+  function updateDraft(planId: string, patch: Partial<{ name: string; render: string; ocr: string; active: boolean }>) {
+    setDrafts((current) => ({ ...current, [planId]: { ...current[planId], ...patch } }));
+  }
+
+  async function savePlan(plan: AdminPlanResponse) {
+    const draft = drafts[plan.id];
+    if (!draft) return;
+    setSavingPlan(plan.id);
+    try {
+      await onSavePlan(plan.id, {
+        name: draft.name.trim(),
+        daily_render_limit: optionalNumber(draft.render),
+        daily_ocr_limit: optionalNumber(draft.ocr),
+        is_active: draft.active,
+      });
+    } finally {
+      setSavingPlan(null);
+    }
   }
 
   return (
-    <section className="admin-settings-section"><h4>Giới hạn theo gói</h4><div className="admin-field-grid">
-      {planIds.map((planId) => (
-        <React.Fragment key={planId}>
-          <label className="field-label">{planId} render/ngày<input type="number" min="0" value={quotas[planId]?.render ?? ''} onChange={(event) => updateQuota(planId, 'render', event.target.value)} /></label>
-          <label className="field-label">{planId} OCR/ngày<input type="number" min="0" value={quotas[planId]?.ocr ?? ''} onChange={(event) => updateQuota(planId, 'ocr', event.target.value)} /></label>
-        </React.Fragment>
-      ))}
-    </div><button type="button" className="secondary-button" onClick={() => void onSave({ version: 1, plans: Object.fromEntries(planIds.map((planId) => [planId, { daily_render_limit: optionalNumber(quotas[planId]?.render ?? ''), daily_ocr_limit: optionalNumber(quotas[planId]?.ocr ?? '') }])) })}>Lưu giới hạn</button></section>
+    <section className="admin-settings-section"><h4>Giới hạn theo gói</h4><p className="field-hint">Để trống nghĩa là không giới hạn theo ngày. Dữ liệu lưu trong bảng plans.</p><div className="admin-table">
+      {orderedPlans.map((plan) => {
+        const draft = drafts[plan.id] ?? { name: plan.name, render: '', ocr: '', active: plan.is_active };
+        return (
+          <article className="admin-row admin-row-block" key={plan.id}>
+            <div><strong>{planLabel(plan.id)}</strong><span>{plan.id} · {plan.is_active ? 'active' : 'inactive'}</span></div>
+            <div className="admin-field-grid">
+              <label className="field-label">Tên gói<input value={draft.name} onChange={(event) => updateDraft(plan.id, { name: event.target.value })} /></label>
+              <label className="field-label">Render/ngày<input type="number" min="0" value={draft.render} onChange={(event) => updateDraft(plan.id, { render: event.target.value })} /></label>
+              <label className="field-label">OCR/ngày<input type="number" min="0" value={draft.ocr} onChange={(event) => updateDraft(plan.id, { ocr: event.target.value })} /></label>
+              <label className="checkbox-label"><input type="checkbox" checked={draft.active} onChange={(event) => updateDraft(plan.id, { active: event.target.checked })} /> Đang hoạt động</label>
+            </div>
+            <button type="button" className="secondary-button" onClick={() => void savePlan(plan)} disabled={savingPlan === plan.id}>{savingPlan === plan.id ? 'Đang lưu...' : 'Lưu gói'}</button>
+          </article>
+        );
+      })}
+      {orderedPlans.length === 0 && <p className="field-hint">Chưa có bảng plans hoặc migration chưa chạy.</p>}
+    </div></section>
   );
+}
+
+function buildPlanDrafts(plans: AdminPlanResponse[]) {
+  return Object.fromEntries(plans.map((plan) => [plan.id, {
+    name: plan.name,
+    render: String(plan.daily_render_limit ?? ''),
+    ocr: String(plan.daily_ocr_limit ?? ''),
+    active: plan.is_active,
+  }])) as Record<string, { name: string; render: string; ocr: string; active: boolean }>;
 }
 
 export function AdminFeatureFlagsForm({ value, onSave }: { value: Record<string, unknown>; onSave: (value: Record<string, unknown>) => Promise<void> }) {

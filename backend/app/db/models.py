@@ -124,6 +124,18 @@ class SystemSettingsRecord:
 
 
 @dataclass(frozen=True)
+class PlanRecord:
+    id: str
+    name: str
+    daily_render_limit: int | None
+    daily_ocr_limit: int | None
+    sort_order: int
+    is_active: bool
+    created_at: str
+    updated_at: str
+
+
+@dataclass(frozen=True)
 class AuditLogRecord:
     id: str
     actor_user_id: str | None

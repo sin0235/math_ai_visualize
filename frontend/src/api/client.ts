@@ -168,6 +168,17 @@ export interface SystemSettingResponse {
   updated_at: string;
 }
 
+export interface AdminPlanResponse {
+  id: string;
+  name: string;
+  daily_render_limit?: number | null;
+  daily_ocr_limit?: number | null;
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface AdminDatabaseDiagnostics {
   backend: string;
   sqlite_path?: string | null;
@@ -368,6 +379,19 @@ export async function getAdminSummary(): Promise<AdminSummaryResponse> {
 export async function getAdminUsers(filters: AdminUserFilters | string = {}): Promise<UserResponse[]> {
   const normalized = typeof filters === 'string' ? { q: filters } : filters;
   return requestJson(`/api/admin/users${queryString(normalized)}`, { credentials: 'include' }, 'Không thể tải danh sách người dùng.');
+}
+
+export async function getAdminPlans(): Promise<AdminPlanResponse[]> {
+  return requestJson('/api/admin/plans', { credentials: 'include' }, 'Không thể tải danh sách gói người dùng.');
+}
+
+export async function updateAdminPlan(id: string, patch: Partial<Pick<AdminPlanResponse, 'name' | 'daily_render_limit' | 'daily_ocr_limit' | 'sort_order' | 'is_active'>>): Promise<AdminPlanResponse> {
+  return requestJson(`/api/admin/plans/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(patch),
+  }, 'Không thể cập nhật gói người dùng.');
 }
 
 export async function updateAdminUser(id: string, patch: Partial<Pick<UserResponse, 'role' | 'status' | 'display_name' | 'plan'>>): Promise<UserResponse> {

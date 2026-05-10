@@ -12,7 +12,7 @@ from app.repositories.history import RenderHistoryRepository
 from app.schemas.auth import SystemFeatureFlags
 from app.schemas.scene import RenderRequest, RenderResponse, SceneRenderRequest
 from app.services.api_errors import api_error, bad_request_from_error
-from app.services.system_settings import load_feature_flags, load_plan_settings
+from app.services.system_settings import load_feature_flags
 from app.services.extractor import extract_scene
 from app.services.geometry_engine import normalize_scene
 from app.services.renderer_router import build_render_payload
@@ -109,13 +109,13 @@ async def enforce_render_access(db: DatabaseClient, user: UserRecord | None) -> 
     enforce_enabled(flags)
     if user is None:
         return
-    plan_settings = await load_plan_settings(db)
-    quota = plan_settings.plans.get(user.plan) or plan_settings.plans.get("free")
-    if quota is None or quota.daily_render_limit is None:
+    repo = AdminRepository(db)
+    plan = await repo.find_plan(user.plan) or await repo.find_plan("free")
+    if plan is None or plan.daily_render_limit is None:
         return
     since = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
     used = await AdminRepository(db).count_user_render_jobs_since(user.id, since)
-    if used >= quota.daily_render_limit:
+    if used >= plan.daily_render_limit:
         raise api_error(status.HTTP_429_TOO_MANY_REQUESTS, "Bạn đã dùng hết hạn mức render hôm nay.", "QUOTA_EXCEEDED")
 
 

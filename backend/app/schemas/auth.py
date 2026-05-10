@@ -1,11 +1,17 @@
+import re
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 from app.schemas.scene import MAX_BASE_URL_CHARS, MAX_MODEL_ID_CHARS, MathScene, RenderPayload
 
 MAX_STORED_MODELS = 1000
 MAX_SETTINGS_JSON_CHARS = 80_000
+PLAN_ID_PATTERN = re.compile(r"^[a-z][a-z0-9_+-]{0,63}$")
+ADMIN_AI_PROVIDERS = {"openrouter", "nvidia", "ollama", "openai_compat", "router9"}
+ADMIN_DEFAULT_PROVIDERS = ADMIN_AI_PROVIDERS | {"auto"}
+ADMIN_OCR_PROVIDERS = {"openrouter", "router9"}
+SYSTEM_SETTING_KEYS = {"ai_settings", "plan_settings", "feature_flags", "ai_profiles", "ai_prompts"}
 
 
 WEAK_PASSWORDS = {"password", "password123", "12345678", "123456789", "qwerty123", "admin12345"}
@@ -206,10 +212,24 @@ class AdminProviderModelSettings(BaseModel):
     allowed_model_ids: list[str] = Field(default_factory=list, max_length=MAX_STORED_MODELS)
     last_scanned_at: str = Field(default="", max_length=64)
 
+    @field_validator("model")
+    @classmethod
+    def clean_model(cls, value: str) -> str:
+        return value.strip()
+
     @field_validator("allowed_model_ids")
     @classmethod
     def validate_allowed_models(cls, values: list[str]) -> list[str]:
-        return [value[:MAX_MODEL_ID_CHARS] for value in values]
+        cleaned = [value.strip() for value in values]
+        if any(not value for value in cleaned):
+            raise ValueError("Danh sách model cho phép không được chứa giá trị trống.")
+        return cleaned
+
+    @model_validator(mode="after")
+    def validate_allowed_default_model(self) -> "AdminProviderModelSettings":
+        if self.model and self.allowed_model_ids and self.model not in self.allowed_model_ids:
+            raise ValueError("Model mặc định phải nằm trong danh sách model cho phép.")
+        return self
 
 
 class AdminRouter9ModelSettings(AdminProviderModelSettings):
@@ -238,6 +258,20 @@ class SystemAiSettings(BaseModel):
     openrouter_http_referer: str = Field(default="", max_length=MAX_BASE_URL_CHARS)
     openrouter_x_title: str = Field(default="", max_length=256)
     openrouter_reasoning_enabled: bool = False
+
+    @field_validator("default_provider")
+    @classmethod
+    def validate_default_provider(cls, value: str) -> str:
+        provider = value.strip()
+        if provider not in ADMIN_DEFAULT_PROVIDERS:
+            raise ValueError("Nhà cung cấp mặc định không hợp lệ.")
+        return provider
+
+    @model_validator(mode="after")
+    def validate_router9_only_mode(self) -> "SystemAiSettings":
+        if self.router9.only_mode and not self.router9.model and not self.router9.allowed_model_ids:
+            raise ValueError("Router9 only mode cần ít nhất một model Router9.")
+        return self
 
 
 class RenderHistoryItem(BaseModel):
@@ -279,7 +313,23 @@ class SystemPlanSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     version: int = 1
-    plans: dict[str, PlanQuotaSettings] = Field(default_factory=lambda: {"free": PlanQuotaSettings(daily_render_limit=20, daily_ocr_limit=20), "pro": PlanQuotaSettings()})
+    plans: dict[str, PlanQuotaSettings] = Field(default_factory=lambda: {
+        "free": PlanQuotaSettings(daily_render_limit=20, daily_ocr_limit=20),
+        "pro": PlanQuotaSettings(daily_render_limit=200, daily_ocr_limit=200),
+        "pro_plus": PlanQuotaSettings(),
+    })
+
+    @field_validator("plans")
+    @classmethod
+    def validate_plans(cls, value: dict[str, PlanQuotaSettings]) -> dict[str, PlanQuotaSettings]:
+        if not value:
+            raise ValueError("Cần cấu hình ít nhất một gói người dùng.")
+        if "free" not in value:
+            raise ValueError("Cấu hình gói cần có free.")
+        invalid = [plan_id for plan_id in value if not PLAN_ID_PATTERN.fullmatch(plan_id)]
+        if invalid:
+            raise ValueError("Mã gói không hợp lệ.")
+        return value
 
 
 class SystemFeatureFlags(BaseModel):
@@ -299,6 +349,27 @@ class AiTaskProfile(BaseModel):
     provider: str = Field(default="auto", max_length=64)
     model: str = Field(default="", max_length=MAX_MODEL_ID_CHARS)
     fallbacks: list[str] = Field(default_factory=list, max_length=MAX_STORED_MODELS)
+
+    @field_validator("provider")
+    @classmethod
+    def validate_provider(cls, value: str) -> str:
+        provider = value.strip()
+        if provider not in ADMIN_DEFAULT_PROVIDERS:
+            raise ValueError("Nhà cung cấp AI không hợp lệ.")
+        return provider
+
+    @field_validator("model")
+    @classmethod
+    def clean_model(cls, value: str) -> str:
+        return value.strip()
+
+    @field_validator("fallbacks")
+    @classmethod
+    def validate_fallbacks(cls, values: list[str]) -> list[str]:
+        cleaned = [value.strip() for value in values]
+        if any(not value for value in cleaned):
+            raise ValueError("Danh sách fallback không được chứa giá trị trống.")
+        return cleaned
 
 
 class SystemAiPrompts(BaseModel):
@@ -337,6 +408,53 @@ class AdminUserUpdateRequest(BaseModel):
     display_name: str | None = Field(default=None, max_length=256)
     plan: str | None = Field(default=None, max_length=64)
 
+    @field_validator("display_name")
+    @classmethod
+    def clean_display_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        text = value.strip()
+        return text or None
+
+    @field_validator("plan")
+    @classmethod
+    def validate_plan(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        plan = value.strip()
+        if not plan or not PLAN_ID_PATTERN.fullmatch(plan):
+            raise ValueError("Mã gói không hợp lệ.")
+        return plan
+
+
+class AdminPlanResponse(BaseModel):
+    id: str
+    name: str
+    daily_render_limit: int | None = None
+    daily_ocr_limit: int | None = None
+    sort_order: int = 0
+    is_active: bool = True
+    created_at: str
+    updated_at: str
+
+
+class AdminPlanUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=128)
+    daily_render_limit: int | None = Field(default=None, ge=0, le=100_000)
+    daily_ocr_limit: int | None = Field(default=None, ge=0, le=100_000)
+    sort_order: int | None = Field(default=None, ge=0, le=100_000)
+    is_active: bool | None = None
+
+    @field_validator("name")
+    @classmethod
+    def clean_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        text = value.strip()
+        if not text:
+            raise ValueError("Tên gói không được để trống.")
+        return text
+
 
 class SystemSettingResponse(BaseModel):
     key: str
@@ -346,7 +464,7 @@ class SystemSettingResponse(BaseModel):
 
 
 class SystemSettingRequest(BaseModel):
-    key: str = Field(min_length=1, max_length=128)
+    key: Literal["ai_settings", "plan_settings", "feature_flags", "ai_profiles", "ai_prompts"]
     value: dict = Field(default_factory=dict)
 
 

@@ -1,7 +1,7 @@
 import json
 from uuid import uuid4
 
-from app.db.models import AuditLogRecord, DbRow, RenderJobRecord, SessionRecord, SystemSettingsRecord, UserRecord
+from app.db.models import AuditLogRecord, DbRow, PlanRecord, RenderJobRecord, SessionRecord, SystemSettingsRecord, UserRecord
 from app.db.session import DatabaseClient
 from app.repositories.auth import SessionRepository, session_from_row, user_from_row
 from app.repositories.history import render_job_from_row
@@ -149,6 +149,31 @@ class AdminRepository:
     async def delete_render_job(self, job_id: str) -> None:
         await self.db.execute("DELETE FROM render_jobs WHERE id = ?", [job_id])
 
+    async def list_plans(self, active_only: bool = False) -> list[PlanRecord]:
+        where = " WHERE is_active = 1" if active_only else ""
+        rows = await self.db.fetch_all(f"SELECT * FROM plans{where} ORDER BY sort_order ASC, id ASC")
+        return [plan_from_row(row) for row in rows]
+
+    async def find_plan(self, plan_id: str) -> PlanRecord | None:
+        row = await self.db.fetch_one("SELECT * FROM plans WHERE id = ?", [plan_id])
+        return plan_from_row(row) if row else None
+
+    async def update_plan(self, plan_id: str, patch: dict[str, object]) -> PlanRecord | None:
+        current = await self.db.fetch_one("SELECT * FROM plans WHERE id = ?", [plan_id])
+        if current is None:
+            return None
+        allowed_fields = ["name", "daily_render_limit", "daily_ocr_limit", "sort_order", "is_active"]
+        assignments = [f"{field} = ?" for field in allowed_fields if field in patch]
+        if assignments:
+            params = [int(patch[field]) if field == "is_active" else patch[field] for field in allowed_fields if field in patch]
+            params.append(plan_id)
+            await self.db.execute(
+                f"UPDATE plans SET {', '.join(assignments)}, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                params,
+            )
+        row = await self.db.fetch_one("SELECT * FROM plans WHERE id = ?", [plan_id])
+        return plan_from_row(row) if row else None
+
     async def list_system_settings(self) -> list[SystemSettingsRecord]:
         rows = await self.db.fetch_all("SELECT * FROM system_settings ORDER BY key ASC")
         return [system_settings_from_row(row) for row in rows]
@@ -212,6 +237,19 @@ class AdminRepository:
         params.append(min(max(limit, 1), 200))
         rows = await self.db.fetch_all(f"SELECT * FROM audit_logs{where} ORDER BY created_at DESC LIMIT ?", params)
         return [audit_log_from_row(row) for row in rows]
+
+
+def plan_from_row(row: DbRow) -> PlanRecord:
+    return PlanRecord(
+        id=str(row["id"]),
+        name=str(row["name"]),
+        daily_render_limit=int(row["daily_render_limit"]) if row.get("daily_render_limit") is not None else None,
+        daily_ocr_limit=int(row["daily_ocr_limit"]) if row.get("daily_ocr_limit") is not None else None,
+        sort_order=int(row["sort_order"]),
+        is_active=bool(row["is_active"]),
+        created_at=str(row["created_at"]),
+        updated_at=str(row["updated_at"]),
+    )
 
 
 def system_settings_from_row(row: DbRow) -> SystemSettingsRecord:

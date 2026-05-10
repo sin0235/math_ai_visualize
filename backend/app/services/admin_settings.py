@@ -5,7 +5,7 @@ from typing import Any
 from app.core.config import get_settings
 from app.db.session import DatabaseClient
 from app.repositories.admin import AdminRepository
-from app.schemas.auth import SystemAiSettings
+from app.schemas.auth import SystemAiProfiles, SystemAiSettings
 from app.schemas.scene import AiModelInfo
 from app.services.model_registry import (
     load_model_registry,
@@ -85,6 +85,18 @@ async def build_database_diagnostics(db: DatabaseClient) -> dict[str, Any]:
             "legacy_ai_settings_present": registry.legacy_used,
         },
     }
+
+
+async def sync_ai_profiles_to_registry(db: DatabaseClient, value: dict, patch: dict | None = None) -> None:
+    profiles = SystemAiProfiles.model_validate(value)
+    patch_keys = set(patch or value)
+    if "geometry_reasoning" in patch_keys:
+        await save_task_profile(db, "reasoning", profiles.geometry_reasoning.provider, profiles.geometry_reasoning.model, profiles.geometry_reasoning.fallbacks)
+        await save_task_profile(db, "render", profiles.geometry_reasoning.provider, profiles.geometry_reasoning.model, profiles.geometry_reasoning.fallbacks)
+    if "solver_explanation" in patch_keys:
+        await save_task_profile(db, "solver_explanation", profiles.solver_explanation.provider, profiles.solver_explanation.model, profiles.solver_explanation.fallbacks)
+    if "ocr" in patch_keys:
+        await save_task_profile(db, "ocr", profiles.ocr.provider, profiles.ocr.model, profiles.ocr.fallbacks)
 
 
 async def sync_ai_settings_to_registry(db: DatabaseClient, value: dict, patch: dict | None = None) -> None:

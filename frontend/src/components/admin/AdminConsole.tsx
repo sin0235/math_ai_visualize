@@ -13,12 +13,15 @@ import type {
   AdminDatabaseDiagnostics,
   AdminFeedbackFilters,
   AdminFeedbackResponse,
+  AdminPlanResponse,
   FeedbackStatus
 } from '../../api/client';
 import { 
   getAdminSummary, 
-  getAdminUsers, 
-  updateAdminUser, 
+  getAdminUsers,
+  getAdminPlans,
+  updateAdminPlan,
+  updateAdminUser,
   getAdminUserSessions, 
   revokeAdminUserSession, 
   revokeAllAdminUserSessions, 
@@ -48,7 +51,7 @@ import {
   AdminAiProfilesForm,
   AdminAiPromptsForm,
 } from './AdminForms';
-import { buildPlanOptions, distinctOptions, providerLabels, rendererOptions, renderSourceOptions } from '../../utils/settingsOptions';
+import { distinctOptions, planLabel, providerLabels, rendererOptions, renderSourceOptions } from '../../utils/settingsOptions';
 import type { SettingsDefaults } from '../../types/settings';
 import adminLogoUrl from '../../../logo.svg';
 
@@ -79,11 +82,12 @@ function AdminToolbarRefreshButton({ loading, onClick }: { loading: boolean; onC
 }
 
 export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast }: AdminConsoleProps) {
-  const [activeSection, setActiveSection] = useState<'overview' | 'users' | 'renders' | 'models' | 'settings' | 'feedback' | 'audit'>('overview');
+  const [activeSection, setActiveSection] = useState<'overview' | 'users' | 'renders' | 'models' | 'plans' | 'settings' | 'feedback' | 'audit'>('overview');
   const [summary, setSummary] = useState<AdminSummaryResponse | null>(null);
   const [users, setUsers] = useState<UserResponse[]>([]);
   const [renderJobs, setRenderJobs] = useState<AdminRenderHistoryItem[]>([]);
   const [settings, setSettings] = useState<SystemSettingResponse[]>([]);
+  const [plans, setPlans] = useState<AdminPlanResponse[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogResponse[]>([]);
   const [feedbackItems, setFeedbackItems] = useState<AdminFeedbackResponse[]>([]);
   const [loading, setLoading] = useState(false);
@@ -118,11 +122,12 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
   const onRefresh = async (showSuccess = false) => {
     setLoading(true);
     try {
-      const [s, u, r, st, a, f, defaults, diagnostics] = await Promise.all([
+      const [s, u, r, st, p, a, f, defaults, diagnostics] = await Promise.all([
         getAdminSummary(),
         getAdminUsers({}),
         getAdminRenderJobs({}),
         getAdminSystemSettings(),
+        getAdminPlans(),
         getAdminAuditLogs({}),
         getAdminFeedback({}),
         getSettingsDefaults(),
@@ -132,6 +137,7 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
       setUsers(u);
       setRenderJobs(r);
       setSettings(st);
+      setPlans(p);
       setAuditLogs(a);
       setFeedbackItems(f);
       setSettingsDefaults(defaults);
@@ -303,8 +309,7 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
   };
 
   const providerStats = summarizeRenderJobs(renderJobs);
-  const planSettings = settings.find((item) => item.key === 'plan_settings')?.value as Record<string, unknown> | undefined;
-  const planOptions = buildPlanOptions(planSettings);
+  const planOptions = plans.filter((plan) => plan.is_active).map((plan) => ({ id: plan.id, label: planLabel(plan.id) }));
   const renderProviderOptions = distinctOptions(renderJobs.map((job) => job.provider), [
     { id: 'auto', label: providerLabels.auto },
     { id: 'openrouter', label: providerLabels.openrouter },
@@ -345,6 +350,7 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
           <AdminNavButton active={activeSection === 'users'} onClick={() => setActiveSection('users')} icon="users" label="Người dùng" />
           <AdminNavButton active={activeSection === 'renders'} onClick={() => setActiveSection('renders')} icon="renders" label="Lượt dựng hình" />
           <AdminNavButton active={activeSection === 'models'} onClick={() => setActiveSection('models')} icon="models" label="Model & AI" />
+          <AdminNavButton active={activeSection === 'plans'} onClick={() => setActiveSection('plans')} icon="users" label="Gói người dùng" />
           <AdminNavButton active={activeSection === 'settings'} onClick={() => setActiveSection('settings')} icon="settings" label="Database" />
           <AdminNavButton active={activeSection === 'feedback'} onClick={() => setActiveSection('feedback')} icon="audit" label="Góp ý" />
           <AdminNavButton active={activeSection === 'audit'} onClick={() => setActiveSection('audit')} icon="audit" label="Nhật ký kiểm toán" />
@@ -499,10 +505,23 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
               <AdminToolbarRefreshButton loading={loading} onClick={() => void onRefresh(true)} />
             </header>
             <section className="admin-panel admin-panel-full">
-            <AdminAiSettingsForm value={aiSettings} defaults={settingsDefaults} saving={savingAiSettings} onSave={saveAiSettingsPatch} onToast={onToast} />
-            <AdminAiProfilesForm value={settings.find((item) => item.key === 'ai_profiles')?.value ?? {}} aiSettings={aiSettings} onSave={(value) => saveAdminSystemSetting('ai_profiles', value)} onToast={onToast} />
+            <AdminAiSettingsForm value={adminAiSettingsValue(aiSettings, settingsDefaults)} defaults={settingsDefaults} saving={savingAiSettings} onSave={saveAiSettingsPatch} onToast={onToast} />
+            <AdminAiProfilesForm value={adminAiProfilesValue(settings.find((item) => item.key === 'ai_profiles')?.value, settingsDefaults)} aiSettings={aiSettings} onSave={(value) => saveAdminSystemSetting('ai_profiles', value)} onToast={onToast} />
             <AdminAiPromptsForm value={settings.find((item) => item.key === 'ai_prompts')?.value ?? {}} onSave={(value) => saveAdminSystemSetting('ai_prompts', value)} onToast={onToast} />
           </section>
+          </>
+        )}
+
+        {activeSection === 'plans' && (
+          <>
+            <header className="admin-page-header">
+              <h2>Gói người dùng</h2>
+              <AdminToolbarRefreshButton loading={loading} onClick={() => void onRefresh(true)} />
+            </header>
+            <section className="admin-panel admin-panel-full">
+              <AdminPlanSettingsForm plans={plans} onSavePlan={(planId, patch) => updateAdminPlan(planId, patch)} />
+              <AdminFeatureFlagsForm value={settings.find((item) => item.key === 'feature_flags')?.value ?? {}} onSave={(value) => saveAdminSystemSetting('feature_flags', value)} />
+            </section>
           </>
         )}
 
@@ -805,6 +824,40 @@ function AdminAuditLogRow({ log }: { log: AuditLogResponse }) {
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback;
+}
+
+function adminAiSettingsValue(value: Record<string, unknown>, defaults: SettingsDefaults | null) {
+  if (!defaults) return value;
+  const next: Record<string, unknown> = { ...value, default_provider: defaults.default_provider, ocr: defaults.ocr };
+  (['openrouter', 'nvidia', 'ollama', 'openai_compat', 'router9'] as const).forEach((provider) => {
+    const current = value[provider] && typeof value[provider] === 'object' ? value[provider] as Record<string, unknown> : {};
+    const providerDefaults = defaults[provider];
+    next[provider] = {
+      ...current,
+      base_url: providerDefaults.base_url,
+      model: providerDefaults.model ?? '',
+      scanned_models: providerDefaults.scanned_models,
+      allowed_model_ids: providerDefaults.allowed_model_ids,
+      ...(provider === 'router9' ? { only_mode: defaults.router9.only_mode } : {}),
+    };
+  });
+  return next;
+}
+
+function adminAiProfilesValue(value: unknown, defaults: SettingsDefaults | null) {
+  const data = value && typeof value === 'object' ? value as Record<string, unknown> : {};
+  const profiles = defaults?.registry_task_profiles ?? [];
+  if (Object.keys(data).length > 0 || profiles.length === 0) return data;
+  const byTask = Object.fromEntries(profiles.map((profile) => [profile.task, profile]));
+  const geometry = byTask.reasoning ?? byTask.render;
+  const solver = byTask.solver_explanation;
+  const ocr = byTask.ocr;
+  return {
+    version: 1,
+    ...(geometry ? { geometry_reasoning: { provider: geometry.provider_id, model: geometry.model_id, fallbacks: geometry.fallbacks } } : {}),
+    ...(solver ? { solver_explanation: { provider: solver.provider_id, model: solver.model_id, fallbacks: solver.fallbacks } } : {}),
+    ...(ocr ? { ocr: { provider: ocr.provider_id, model: ocr.model_id, fallbacks: ocr.fallbacks } } : {}),
+  };
 }
 
 function collectAdminModelIds(aiSettings: Record<string, unknown>) {
