@@ -7,6 +7,8 @@ from app.schemas.scene import OcrMode, OcrProvider
 from app.services.ai_fallback import openrouter_vision_candidates, router9_ocr_candidates
 from app.services.model_provider import normalize_model_for_provider, resolve_ocr_provider
 from app.services.nvidia_client import NvidiaClient
+from app.services.ollama_client import OllamaClient
+from app.services.openai_compat_client import OpenAICompatClient
 from app.services.openrouter_client import OpenRouterClient
 from app.services.router9_client import Router9Client
 from app.services.provider_logging import redact_sensitive
@@ -85,23 +87,22 @@ async def extract_text_from_image(
         if result is not None:
             return result
 
-    if selected_provider == "openrouter" or selected_provider == "router9":
-        result = await _try_openrouter_ocr(image_data_url, settings, selected_model, attempts, system_prompt, user_text)
+    provider_order = _ocr_provider_order(settings, selected_provider, provider is None and model is None)
+    for fallback_provider in provider_order:
+        if fallback_provider == "openrouter":
+            result = await _try_openrouter_ocr(image_data_url, settings, selected_model if selected_provider == fallback_provider else None, attempts, system_prompt, user_text)
+        elif fallback_provider == "nvidia":
+            result = await _try_nvidia_ocr(image_data_url, settings, selected_model if selected_provider == fallback_provider else None, attempts, system_prompt, user_text)
+        elif fallback_provider == "ollama":
+            result = await _try_ollama_ocr(image_data_url, settings, selected_model if selected_provider == fallback_provider else None, attempts, system_prompt, user_text)
+        elif fallback_provider == "openai_compat":
+            result = await _try_openai_compat_ocr(image_data_url, settings, selected_model if selected_provider == fallback_provider else None, attempts, system_prompt, user_text)
+        else:
+            continue
         if result is not None:
             return result
-        if explicit_model:
-            raise RuntimeError(_format_ocr_failure("OCR OpenRouter thất bại với model đã chọn.", attempts, settings.router9_only))
-
-    for nvidia_model in ("google/gemma-3n-e2b-it", "mistralai/mistral-large-3-675b-instruct-2512"):
-        try:
-            client = NvidiaClient(settings, model=nvidia_model)
-            if system_prompt is None and user_text == PROBLEM_OCR_USER_TEXT:
-                text = await client.ocr_image(image_data_url, nvidia_model)
-            else:
-                text = await client.ocr_image(image_data_url, nvidia_model, system_prompt=system_prompt, user_text=user_text)
-            return OcrResult(text=text, provider="openrouter", model=f"nvidia:{nvidia_model}", warnings=_attempt_warnings(attempts))
-        except RuntimeError as error:
-            attempts.append(OcrAttempt("nvidia", nvidia_model, str(error)))
+        if explicit_model and fallback_provider == selected_provider:
+            raise RuntimeError(_format_ocr_failure(f"OCR {fallback_provider} thất bại với model đã chọn.", attempts, settings.router9_only))
 
     raise RuntimeError(_format_ocr_failure("OCR thất bại qua tất cả provider fallback.", attempts, settings.router9_only))
 
@@ -152,6 +153,82 @@ async def _try_openrouter_ocr(
         except RuntimeError as error:
             attempts.append(OcrAttempt("openrouter", selected_model, str(error)))
     return None
+
+
+async def _try_nvidia_ocr(
+    image_data_url: str,
+    settings: Settings,
+    explicit_model: str | None,
+    attempts: list[OcrAttempt],
+    system_prompt: str | None,
+    user_text: str,
+) -> OcrResult | None:
+    models = _dedupe([explicit_model or "", settings.nvidia_text_model, "google/gemma-3n-e2b-it", "mistralai/mistral-large-3-675b-instruct-2512"])
+    for selected_model in models:
+        try:
+            client = NvidiaClient(settings, model=selected_model)
+            if system_prompt is None and user_text == PROBLEM_OCR_USER_TEXT:
+                text = await client.ocr_image(image_data_url, selected_model)
+            else:
+                text = await client.ocr_image(image_data_url, selected_model, system_prompt=system_prompt, user_text=user_text)
+            return OcrResult(text=text, provider="nvidia", model=selected_model, warnings=_attempt_warnings(attempts))
+        except RuntimeError as error:
+            attempts.append(OcrAttempt("nvidia", selected_model, str(error)))
+    return None
+
+
+async def _try_ollama_ocr(
+    image_data_url: str,
+    settings: Settings,
+    explicit_model: str | None,
+    attempts: list[OcrAttempt],
+    system_prompt: str | None,
+    user_text: str,
+) -> OcrResult | None:
+    models = _dedupe([explicit_model or "", settings.ollama_text_model])
+    for selected_model in models:
+        try:
+            client = OllamaClient(settings, model=selected_model)
+            text = await client.ocr_image(image_data_url, selected_model, system_prompt=system_prompt, user_text=user_text)
+            return OcrResult(text=text, provider="ollama", model=selected_model, warnings=_attempt_warnings(attempts))
+        except RuntimeError as error:
+            attempts.append(OcrAttempt("ollama", selected_model, str(error)))
+    return None
+
+
+async def _try_openai_compat_ocr(
+    image_data_url: str,
+    settings: Settings,
+    explicit_model: str | None,
+    attempts: list[OcrAttempt],
+    system_prompt: str | None,
+    user_text: str,
+) -> OcrResult | None:
+    models = _dedupe([explicit_model or "", settings.openai_compat_text_model])
+    for selected_model in models:
+        try:
+            client = OpenAICompatClient(settings, model=selected_model)
+            text = await client.ocr_image(image_data_url, selected_model, system_prompt=system_prompt, user_text=user_text)
+            return OcrResult(text=text, provider="openai_compat", model=selected_model, warnings=_attempt_warnings(attempts))
+        except RuntimeError as error:
+            attempts.append(OcrAttempt("openai_compat", selected_model, str(error)))
+    return None
+
+
+def _ocr_provider_order(settings: Settings, selected_provider: str, include_router9_auto: bool) -> list[str]:
+    providers: list[str] = []
+    if include_router9_auto and settings.router9_api_key:
+        providers.append("router9")
+    providers.append(selected_provider)
+    if settings.openrouter_api_key:
+        providers.append("openrouter")
+    if settings.nvidia_api_key:
+        providers.append("nvidia")
+    if settings.ollama_text_model:
+        providers.append("ollama")
+    if settings.openai_compat_api_key and settings.openai_compat_text_model:
+        providers.append("openai_compat")
+    return _dedupe(providers)
 
 
 def _attempt_warnings(attempts: list[OcrAttempt]) -> list[str]:

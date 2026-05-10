@@ -264,7 +264,7 @@ class ModelScanJobStatusResponse(BaseModel):
     error: dict[str, Any] | None = None
 
 
-OcrProvider = Literal["openrouter", "router9"]
+OcrProvider = Literal["openrouter", "router9", "nvidia", "ollama", "openai_compat"]
 OcrMode = Literal["problem", "diagram"]
 
 

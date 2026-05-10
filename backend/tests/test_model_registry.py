@@ -35,6 +35,16 @@ async def test_registry_seeds_from_env(db):
 
 
 @pytest.mark.anyio
+async def test_registry_seeds_router9_ocr_profile_from_env(db):
+    settings = Settings(_env_file=None, router9_ocr_model="cx/gpt-5.2")
+
+    registry = await load_model_registry(db, settings)
+
+    assert registry.task_profiles["ocr"].provider_id == "router9"
+    assert registry.task_profiles["ocr"].model_id == "cx/gpt-5.2"
+
+
+@pytest.mark.anyio
 async def test_registry_db_overrides_env(db, monkeypatch):
     settings = Settings(_env_file=None, router9_text_model="env/model")
     monkeypatch.setattr("app.services.model_registry.get_settings", lambda: settings)
@@ -162,6 +172,20 @@ async def test_registry_ocr_profile_updates_openrouter_vision_model(db):
     effective = await resolve_effective_settings(db, None)
 
     assert effective.openrouter_vision_model == "registry/vision"
+
+
+@pytest.mark.anyio
+async def test_empty_ocr_profile_keeps_vision_defaults(db, monkeypatch):
+    settings = Settings(_env_file=None, openrouter_text_model="admin/text", openrouter_vision_model="env/vision")
+    monkeypatch.setattr("app.services.model_registry.get_settings", lambda: settings)
+    await load_model_registry(db, settings)
+    await save_provider_config(db, "openrouter", "https://openrouter.example/v1", "admin/text")
+    await save_task_profile(db, "ocr", "openrouter", "", [])
+
+    effective = await resolve_effective_settings(db, None)
+
+    assert effective.openrouter_text_model == "admin/text"
+    assert effective.openrouter_vision_model == "env/vision"
 
 
 @pytest.mark.anyio

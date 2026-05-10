@@ -44,12 +44,17 @@ export function buildProviderOptions(defaults: SettingsDefaults | null, includeM
 
 export function buildOcrProviderOptions(defaults: SettingsDefaults | null): Option[] {
   const options: Option[] = [];
-  if (!defaults || defaults.openrouter.api_key_configured || defaults.openrouter.vision_model || defaults.openrouter.scanned_models.length > 0) {
-    options.push({ id: 'openrouter', label: 'OpenRouter vision' });
-  }
-  if (!defaults || defaults.router9.api_key_configured || defaults.router9.model || defaults.router9.scanned_models.length > 0) {
-    options.push({ id: 'router9', label: '9router vision' });
-  }
+  const providers = ['openrouter', 'router9', 'nvidia', 'ollama', 'openai_compat'] as const;
+  providers.forEach((provider) => {
+    if (!defaults) {
+      options.push({ id: provider, label: providerLabels[provider] || provider });
+      return;
+    }
+    const item = defaults[provider];
+    if (item.api_key_configured || item.model || item.scanned_models.length > 0 || item.allowed_model_ids.length > 0) {
+      options.push({ id: provider, label: providerLabels[provider] || provider });
+    }
+  });
   return options;
 }
 

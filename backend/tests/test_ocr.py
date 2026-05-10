@@ -10,6 +10,7 @@ from app.api.deps import require_active_user
 from app.db.session import SQLiteClient, get_database
 from app.repositories.auth import SESSION_COOKIE_NAME, SessionRepository, UserRepository
 from app.main import app
+from app.services.model_provider import resolve_ocr_provider
 from app.services.ocr import validate_image_data_url
 from app.services.openrouter_client import OpenRouterClient
 
@@ -49,6 +50,30 @@ def test_validate_image_data_url_rejects_non_images():
         assert "data URL" in str(error)
     else:
         raise AssertionError("Expected non-image data URL to be rejected")
+
+
+def test_resolve_ocr_provider_treats_9router_namespaces_as_router9():
+    for model in [
+        "gh/gpt-5.2",
+        "cc/codex-5.5-image",
+        "cx/gpt-5.2",
+        "oc/nemotron-3-super-free",
+        "kr/claude-sonnet-4.5",
+        "cf/@cf/meta/llama-3.2-1b-instruct",
+        "claude-ds/deepseek-v4-vision",
+        "openAI-ds/deepseek-v4-vision",
+        "kc/anthropic/claude-sonnet-4-20250514",
+    ]:
+        assert resolve_ocr_provider(None, model) == "router9"
+
+
+def test_resolve_ocr_provider_supports_all_admin_providers():
+    assert resolve_ocr_provider("nvidia", None) == "nvidia"
+    assert resolve_ocr_provider("ollama", None) == "ollama"
+    assert resolve_ocr_provider("openai_compat", None) == "openai_compat"
+    assert resolve_ocr_provider(None, "nvidia/model") == "nvidia"
+    assert resolve_ocr_provider(None, "ollama/llava") == "ollama"
+    assert resolve_ocr_provider(None, "openai_compat/vision") == "openai_compat"
 
 
 def test_ocr_route_returns_openrouter_text(monkeypatch):
@@ -130,13 +155,65 @@ def test_ocr_falls_back_to_nvidia_when_openrouter_fails(monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["text"] == "Đề từ NVIDIA."
-    assert response.json()["model"] == "nvidia:google/gemma-3n-e2b-it"
+    assert response.json()["provider"] == "nvidia"
+    assert response.json()["model"] == "qwen/qwen3-coder-480b-a35b-instruct"
     assert "OpenRouter" in response.json()["warnings"][0] or "openrouter" in response.json()["warnings"][0]
     assert calls == [
         ("openrouter", "google/gemma-4-31b-it:free"),
         ("openrouter", "google/gemma-4-26b-a4b-it:free"),
-        ("nvidia", "google/gemma-3n-e2b-it"),
+        ("nvidia", "qwen/qwen3-coder-480b-a35b-instruct"),
     ]
+
+
+def test_ocr_uses_selected_ollama_provider(monkeypatch):
+    calls = []
+
+    async def fake_ollama(self, image_data_url: str, model: str | None = None, system_prompt=None, user_text="Trích xuất nguyên văn đề toán trong ảnh."):
+        calls.append(("ollama", model))
+        return "Đề từ Ollama."
+
+    monkeypatch.setattr("app.services.ollama_client.OllamaClient.ocr_image", fake_ollama)
+
+    response = TestClient(app).post(
+        "/api/ocr",
+        json={
+            "image_data_url": _IMAGE_DATA_URL,
+            "ocr_provider": "ollama",
+            "ocr_model": "llava:latest",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["provider"] == "ollama"
+    assert response.json()["model"] == "llava:latest"
+    assert response.json()["text"] == "Đề từ Ollama."
+    assert calls == [("ollama", "llava:latest")]
+
+
+def test_ocr_uses_selected_openai_compat_provider(monkeypatch):
+    calls = []
+
+    async def fake_openai_compat(self, image_data_url: str, model: str | None = None, system_prompt=None, user_text="Trích xuất nguyên văn đề toán trong ảnh."):
+        calls.append(("openai_compat", model))
+        return "Đề từ OpenAI-compatible."
+
+    monkeypatch.setattr("app.services.openai_compat_client.OpenAICompatClient.ocr_image", fake_openai_compat)
+
+    response = TestClient(app).post(
+        "/api/ocr",
+        json={
+            "image_data_url": _IMAGE_DATA_URL,
+            "ocr_provider": "openai_compat",
+            "ocr_model": "vision-model",
+            "runtime_settings": {"openai_compat": {"api_key": "secret", "model": "vision-model"}},
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["provider"] == "openai_compat"
+    assert response.json()["model"] == "vision-model"
+    assert response.json()["text"] == "Đề từ OpenAI-compatible."
+    assert calls == [("openai_compat", "vision-model")]
 
 
 def test_ocr_router9_tries_image_models_then_github_gpt52(monkeypatch):
@@ -336,6 +413,40 @@ def test_ocr_route_uses_env_openrouter_key_with_registry_ocr_profile(monkeypatch
     assert response.json()["model"] == "gh/gpt-5.2"
     assert payloads[0][1]["Authorization"] == "Bearer env-openrouter-key"
     assert payloads[0][2]["model"] == "gh/gpt-5.2"
+
+
+def test_ocr_route_ignores_empty_registry_ocr_profile(monkeypatch, isolated_database):
+    from app.services.model_registry import load_model_registry, save_provider_config, save_task_profile
+
+    settings = Settings(
+        _env_file=None,
+        sqlite_path=isolated_database.path,
+        openrouter_api_key="env-openrouter-key",
+        openrouter_text_model="admin/text",
+        openrouter_vision_model="env/vision",
+    )
+    app.dependency_overrides[get_settings] = lambda: settings
+    monkeypatch.setattr("app.api.routes_ocr.get_settings", lambda: settings)
+    monkeypatch.setattr("app.services.model_registry.get_settings", lambda: settings)
+    asyncio.run(load_model_registry(isolated_database, settings))
+    asyncio.run(save_provider_config(isolated_database, "openrouter", "https://openrouter.ai/api/v1", "admin/text"))
+    asyncio.run(save_task_profile(isolated_database, "ocr", "openrouter", "", []))
+    payloads = []
+
+    class FakeAsyncClient:
+        is_closed = False
+
+        async def post(self, url: str, headers: dict[str, str], json: dict, timeout=None):
+            payloads.append(json)
+            return httpx.Response(200, json={"choices": [{"message": {"content": "Đề OCR."}}]})
+
+    monkeypatch.setattr("app.services.http_pool.get_client", lambda *args, **kwargs: FakeAsyncClient())
+
+    response = TestClient(app).post("/api/ocr", json={"image_data_url": _IMAGE_DATA_URL})
+
+    assert response.status_code == 200
+    assert response.json()["model"] == "env/vision"
+    assert payloads[0]["model"] == "env/vision"
 
 
 def test_ocr_route_uses_router9_for_router9_github_profile(monkeypatch, isolated_database):

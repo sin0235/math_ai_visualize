@@ -28,9 +28,11 @@ async def ocr_image(
     await enforce_ocr_access(db, user)
     settings = await resolve_effective_settings(db, request.runtime_settings)
     registry = await load_model_registry(db, settings)
+    raw_ocr_profile = registry.task_profiles.get("ocr")
     ocr_profile = resolve_task_profile(registry, "ocr", request.ocr_provider, request.ocr_model)
-    profile_provider = ocr_profile.provider_id if should_apply_ocr_profile(settings, ocr_profile, request.ocr_provider, request.ocr_model) else request.ocr_provider
-    profile_model = ocr_profile.model_id if should_apply_ocr_profile(settings, ocr_profile, request.ocr_provider, request.ocr_model) else request.ocr_model
+    apply_profile = should_apply_ocr_profile(settings, raw_ocr_profile, ocr_profile, request.ocr_provider, request.ocr_model)
+    profile_provider = ocr_profile.provider_id if apply_profile else request.ocr_provider
+    profile_model = ocr_profile.model_id if apply_profile else request.ocr_model
     try:
         result = await extract_text_from_image(
             request.image_data_url,
@@ -73,13 +75,21 @@ def enforce_enabled(flags: SystemFeatureFlags) -> None:
         raise api_error(status.HTTP_403_FORBIDDEN, "Tính năng OCR đang tạm tắt.", "OCR_DISABLED")
 
 
-def should_apply_ocr_profile(settings, profile, requested_provider, requested_model) -> bool:
-    if profile is None or requested_provider or requested_model:
+def should_apply_ocr_profile(settings, raw_profile, profile, requested_provider, requested_model) -> bool:
+    if raw_profile is None or profile is None or requested_provider or requested_model:
+        return False
+    if not raw_profile.model_id:
         return False
     env_settings = get_settings()
     if profile.provider_id == "openrouter" and profile.model_id == env_settings.openrouter_vision_model:
         return False
     if profile.provider_id == "router9" and profile.model_id in {env_settings.router9_ocr_model, env_settings.router9_text_model}:
+        return False
+    if profile.provider_id == "nvidia" and profile.model_id == env_settings.nvidia_text_model:
+        return False
+    if profile.provider_id == "ollama" and profile.model_id == env_settings.ollama_text_model:
+        return False
+    if profile.provider_id == "openai_compat" and profile.model_id == env_settings.openai_compat_text_model:
         return False
     return bool(profile.provider_id and profile.provider_id != "auto")
 

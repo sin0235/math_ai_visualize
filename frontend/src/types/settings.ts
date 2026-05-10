@@ -1,5 +1,5 @@
 export type ProviderKey = 'openrouter' | 'nvidia' | 'ollama' | 'openai_compat';
-export type OcrProvider = 'openrouter' | 'router9';
+export type OcrProvider = 'openrouter' | 'router9' | 'nvidia' | 'ollama' | 'openai_compat';
 
 export interface ScannedModelInfo {
   id: string;

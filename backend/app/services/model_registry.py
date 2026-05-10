@@ -158,7 +158,7 @@ async def seed_model_registry(db: DatabaseClient, settings: Settings) -> None:
     await set_model_setting(db, "openrouter_reasoning_enabled", openrouter_reasoning)
     await set_model_setting(db, "ocr_max_image_mb", ocr_max)
     await set_model_setting(db, "default_provider", default_provider)
-    ocr_provider = legacy.ocr.provider if legacy else "openrouter"
+    ocr_provider = legacy.ocr.provider if legacy else ("router9" if settings.router9_ocr_model else "openrouter")
     ocr_model = legacy.ocr.model if legacy else (settings.router9_ocr_model or settings.openrouter_vision_model)
     await save_task_profile(db, "render", default_provider, "", [])
     await save_task_profile(db, "reasoning", default_provider, "", [])
@@ -238,12 +238,16 @@ def settings_from_registry(settings: Settings, registry: ModelRegistry) -> Setti
     router9_allowed = registry.allowed_model_ids("router9")
     if router9_allowed:
         data["router9_allowed_models"] = router9_allowed
-    ocr_profile = resolve_task_profile(registry, "ocr")
+    ocr_profile = registry.task_profiles.get("ocr")
     if ocr_profile and ocr_profile.model_id:
-        if ocr_profile.provider_id == "router9":
-            data["router9_ocr_model"] = ocr_profile.model_id
-        elif ocr_profile.provider_id == "openrouter":
-            data["openrouter_vision_model"] = ocr_profile.model_id
+        provider_id = ocr_profile.provider_id
+        model_id = normalize_model_for_provider(provider_id, ocr_profile.model_id) or ""
+        if provider_id == "router9" and model_id and model_is_allowed(registry, provider_id, model_id):
+            data["router9_ocr_model"] = model_id
+        elif provider_id == "openrouter" and model_id and model_is_allowed(registry, provider_id, model_id):
+            data["openrouter_vision_model"] = model_id
+        elif provider_id in {"nvidia", "ollama", "openai_compat"} and model_id and model_is_allowed(registry, provider_id, model_id):
+            data[f"{provider_id}_text_model"] = model_id
     return Settings.model_validate(data)
 
 
