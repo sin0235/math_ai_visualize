@@ -333,7 +333,7 @@ def test_ocr_route_uses_env_openrouter_key_with_registry_ocr_profile(monkeypatch
     response = TestClient(app).post("/api/ocr", json={"image_data_url": _IMAGE_DATA_URL})
 
     assert response.status_code == 200
-    assert response.json()["model"] == "openrouter/gh/gpt-5.2"
+    assert response.json()["model"] == "gh/gpt-5.2"
     assert payloads[0][1]["Authorization"] == "Bearer env-openrouter-key"
     assert payloads[0][2]["model"] == "gh/gpt-5.2"
 

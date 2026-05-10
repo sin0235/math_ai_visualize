@@ -7,7 +7,7 @@ from pydantic import ValidationError
 from app.core.config import Settings
 from app.schemas.scene import AdvancedRenderSettings, MathScene, RuntimeSettings, SceneView
 from app.db.session import DatabaseClient
-from app.services.ai_fallback import text_model_candidates
+from app.services.ai_fallback import explicit_model_for_provider, text_model_candidates
 from app.services.ai_prompt import get_system_prompts
 from app.services.expression_eval import try_safe_eval, try_safe_eval_exact
 from app.services.nvidia_client import NvidiaClient
@@ -644,7 +644,7 @@ def _dedupe(providers: list[str]) -> list[str]:
 
 
 def _router9_model(settings: Settings, preferred_ai_model: str | None) -> str:
-    model = preferred_ai_model or settings.router9_text_model
+    model = explicit_model_for_provider("router9", preferred_ai_model) or settings.router9_text_model
     if not model:
         raise RuntimeError("Chưa chọn model 9router.")
     if settings.router9_allowed_models and model not in settings.router9_allowed_models:
@@ -653,8 +653,9 @@ def _router9_model(settings: Settings, preferred_ai_model: str | None) -> str:
 
 
 def _router9_model_candidates(settings: Settings, preferred_ai_model: str | None) -> list[str]:
-    if preferred_ai_model is not None:
-        return [_router9_model(settings, preferred_ai_model)]
+    explicit_model = explicit_model_for_provider("router9", preferred_ai_model)
+    if explicit_model is not None:
+        return [_router9_model(settings, explicit_model)]
 
     if settings.router9_allowed_models:
         candidates = _dedupe([

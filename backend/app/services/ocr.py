@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from app.core.config import Settings
 from app.schemas.scene import OcrMode, OcrProvider
 from app.services.ai_fallback import openrouter_vision_candidates, router9_ocr_candidates
+from app.services.model_provider import normalize_model_for_provider, resolve_ocr_provider
 from app.services.nvidia_client import NvidiaClient
 from app.services.openrouter_client import OpenRouterClient
 from app.services.router9_client import Router9Client
@@ -63,8 +64,8 @@ async def extract_text_from_image(
 ) -> OcrResult:
     validate_image_data_url(image_data_url)
     attempts: list[OcrAttempt] = []
-    selected_provider = _resolve_ocr_provider(provider, model)
-    selected_model = _normalize_ocr_model_for_provider(selected_provider, model)
+    selected_provider = resolve_ocr_provider(provider, model)
+    selected_model = normalize_model_for_provider(selected_provider, model)
     explicit_model = model is not None
     system_prompt = DIAGRAM_OCR_SYSTEM_PROMPT if mode == "diagram" else None
     user_text = DIAGRAM_OCR_USER_TEXT if mode == "diagram" else PROBLEM_OCR_USER_TEXT
@@ -79,7 +80,7 @@ async def extract_text_from_image(
         if settings.router9_only or explicit_model:
             raise RuntimeError(_format_ocr_failure("OCR 9router thất bại.", attempts, settings.router9_only))
 
-    elif provider is None and model is None and settings.router9_api_key:
+    if provider is None and model is None and settings.router9_api_key:
         result = await _try_router9_ocr(image_data_url, settings, None, attempts, system_prompt, user_text)
         if result is not None:
             return result
@@ -155,24 +156,6 @@ async def _try_openrouter_ocr(
 
 def _attempt_warnings(attempts: list[OcrAttempt]) -> list[str]:
     return [f"OCR fallback: {attempt.warning()}" for attempt in attempts]
-
-
-def _resolve_ocr_provider(provider: OcrProvider | None, model: str | None) -> OcrProvider:
-    if provider is not None:
-        return provider
-    if model and _looks_like_router9_model(model):
-        return "router9"
-    return "openrouter"
-
-
-def _normalize_ocr_model_for_provider(provider: OcrProvider, model: str | None) -> str | None:
-    if provider == "router9" and model:
-        return model.removeprefix("router9/")
-    return model
-
-
-def _looks_like_router9_model(model: str) -> bool:
-    return model.startswith(("router9/", "gh/", "cc/", "github/", "codex-"))
 
 
 def _router9_ocr_model_candidates(settings: Settings, explicit_model: str | None) -> list[str]:

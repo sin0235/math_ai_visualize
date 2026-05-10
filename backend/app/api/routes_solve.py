@@ -283,6 +283,7 @@ async def _extract_function_from_text(text: str, settings) -> str:
 
 async def _chat_text(prompt: str, settings) -> str:
     from app.services.ai_fallback import Attempt, format_attempts, text_model_candidates, text_provider_order
+    from app.services.model_provider import normalize_model_for_provider
     from app.services.openrouter_client import _build_headers as _build_openrouter_headers, _extract_message as _extract_openrouter_message
     from app.services.router9_client import Router9Client, _extract_message_content as _extract_router9_message_content
 
@@ -304,7 +305,7 @@ async def _chat_text(prompt: str, settings) -> str:
                     from app.services.http_pool import TIMEOUT_FAST, get_client
 
                     payload = {
-                        "model": selected_model.removeprefix("openrouter/"),
+                        "model": normalize_model_for_provider("openrouter", selected_model),
                         "messages": [{"role": "user", "content": prompt}],
                         "temperature": 0.1,
                     }

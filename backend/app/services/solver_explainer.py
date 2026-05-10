@@ -9,6 +9,7 @@ import httpx
 from app.core.config import Settings
 from app.services.model_registry import TaskProfile
 from app.services.ai_fallback import Attempt, dedupe, format_attempts, text_model_candidates, text_provider_order
+from app.services.model_provider import normalize_model_for_provider
 from app.services.openrouter_client import _build_headers as _build_openrouter_headers, _extract_message as _extract_openrouter_message, openrouter_api_base_url
 from app.services.chat_response import extract_chat_message_content
 from app.services.router9_client import Router9Client, _extract_message_content as _extract_router9_message_content
@@ -171,7 +172,7 @@ async def _call_openrouter_model(prompt: str, settings: Settings, model: str, re
     from app.services.http_pool import TIMEOUT_FAST, get_client
 
     payload = {
-        "model": model.removeprefix("openrouter/"),
+        "model": normalize_model_for_provider("openrouter", model),
         "messages": [
             {"role": "system", "content": SOLVER_EXPLAINER_SYSTEM_PROMPT},
             {"role": "user", "content": prompt},

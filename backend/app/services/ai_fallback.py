@@ -4,6 +4,7 @@ import re
 from dataclasses import dataclass
 
 from app.core.config import Settings
+from app.services.model_provider import infer_provider_from_model, normalize_model_for_provider
 from app.services.provider_logging import redact_sensitive
 from app.services.router9_bootstrap import select_router9_ocr_model_ids_from_ids, select_router9_render_model_ids_from_ids
 
@@ -48,6 +49,7 @@ def text_provider_order(settings: Settings, preferred_provider: str | None = Non
 
 
 def text_model_candidates(provider: str, settings: Settings, explicit_model: str | None = None) -> list[str | None]:
+    explicit_model = explicit_model_for_provider(provider, explicit_model)
     if provider == "router9":
         if explicit_model:
             return [explicit_model]
@@ -65,6 +67,13 @@ def text_model_candidates(provider: str, settings: Settings, explicit_model: str
     if provider == "ollama_gpt_oss":
         return [explicit_model or settings.ollama_text_model]
     return [explicit_model]
+
+
+def explicit_model_for_provider(provider: str, model: str | None) -> str | None:
+    inferred = infer_provider_from_model(model)
+    if inferred and inferred != provider:
+        return None
+    return normalize_model_for_provider(provider, model)
 
 
 def router9_text_candidates(settings: Settings) -> list[str]:

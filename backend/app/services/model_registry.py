@@ -10,6 +10,7 @@ from app.core.config import Settings, get_settings, merge_runtime_settings
 from app.db.session import DatabaseClient
 from app.schemas.auth import SystemAiSettings
 from app.schemas.scene import AiModelInfo, RuntimeSettings
+from app.services.model_provider import infer_provider_from_model, normalize_model_for_provider
 
 PROVIDER_LABELS = {
     "openrouter": "OpenRouter",
@@ -504,19 +505,29 @@ def effective_provider_default_model(registry: ModelRegistry, provider_id: str, 
 
 def resolve_task_profile(registry: ModelRegistry, task: str, preferred_provider: str | None = None, preferred_model: str | None = None) -> TaskProfile | None:
     profile = registry.task_profiles.get(task)
-    provider_id = preferred_provider or profile.provider_id if profile else preferred_provider or "auto"
+    raw_model_id = preferred_model or profile.model_id if profile else preferred_model or ""
+    inferred_provider = infer_provider_from_model(raw_model_id)
+    if preferred_provider:
+        provider_id = preferred_provider
+    elif inferred_provider and profile and profile.provider_id in {"auto", inferred_provider}:
+        provider_id = inferred_provider
+    elif inferred_provider and (profile is None or not profile.provider_id):
+        provider_id = inferred_provider
+    else:
+        provider_id = profile.provider_id if profile else "auto"
     if provider_id == "auto":
         default_provider = registry.settings.get("default_provider")
         provider_id = default_provider if isinstance(default_provider, str) and provider_is_enabled(registry, default_provider) else "auto"
     if provider_id == "auto" or not provider_is_enabled(registry, provider_id):
         return None
-    model_id = preferred_model or profile.model_id if profile else preferred_model or ""
+    model_id = normalize_model_for_provider(provider_id, raw_model_id) or ""
     if not model_id:
         provider = registry.providers.get(provider_id)
         model_id = effective_provider_default_model(registry, provider_id, provider.default_model_id if provider else "")
     if model_id and not model_is_allowed(registry, provider_id, model_id):
         model_id = effective_provider_default_model(registry, provider_id, "")
-    fallbacks = [model for model in (profile.fallbacks if profile else []) if model_is_allowed(registry, provider_id, model)]
+    fallbacks = [normalize_model_for_provider(provider_id, model) or "" for model in (profile.fallbacks if profile else [])]
+    fallbacks = [model for model in fallbacks if model_is_allowed(registry, provider_id, model)]
     return TaskProfile(task, provider_id, model_id, fallbacks)
 
 

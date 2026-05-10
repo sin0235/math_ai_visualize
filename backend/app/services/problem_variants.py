@@ -23,7 +23,8 @@ from dataclasses import dataclass
 from app.core.config import Settings
 from app.schemas.scene import MathScene
 from app.services.ai_fallback import Attempt, format_attempts, text_model_candidates, text_provider_order
-from app.services.openrouter_client import _build_headers, _extract_message, _format_openrouter_error, _normalize_model_id, _strip_json_fences, openrouter_api_base_url
+from app.services.model_provider import normalize_model_for_provider
+from app.services.openrouter_client import _build_headers, _extract_message, _format_openrouter_error, _strip_json_fences, openrouter_api_base_url
 from app.services.provider_logging import log_provider_request, log_provider_response
 from app.services.chat_response import extract_chat_message_content
 from app.services.router9_client import Router9Client, _extract_message_content as _extract_router9_message_content
@@ -100,7 +101,7 @@ async def _call_openrouter_variants(model: str, user_prompt: str, settings: Sett
     if not settings.openrouter_api_key:
         raise RuntimeError("OPENROUTER_API_KEY chưa được cấu hình để sinh đề biến thể.")
     payload = {
-        "model": _normalize_model_id(model),
+        "model": normalize_model_for_provider("openrouter", model),
         "messages": [
             {"role": "system", "content": VARIANTS_SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt},
