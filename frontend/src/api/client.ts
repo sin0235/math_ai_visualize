@@ -812,17 +812,8 @@ function isTransientNetworkError(caught: unknown) {
 }
 
 function networkApiError(caught: unknown, fallbackMessage: string) {
-  if (caught instanceof DOMException && caught.name === 'AbortError') return new ApiError(`${fallbackMessage} Request quá lâu, đã tự hủy sau 30 giây.`);
-  if (caught instanceof TypeError) {
-    return new ApiError('Không kết nối được backend.', [
-      `Frontend đang gọi API tại ${API_BASE_URL || 'cùng domain hiện tại'}.`,
-      'Nếu deploy khác domain, hãy build frontend với VITE_API_BASE_URL trỏ tới backend.',
-      'Nếu dùng đăng nhập khác domain, backend phải bật CORS credentials và frontend gọi API qua HTTPS.',
-      'Nếu backend đã nhận OPTIONS nhưng trả 400, hãy thêm domain frontend vào CORS_ORIGINS và restart backend.',
-      'Nếu Chrome báo ERR_QUIC_PROTOCOL_ERROR, kiểm tra HTTP/3/QUIC ở CDN/proxy hoặc thử tắt HTTP/3 cho domain API.',
-      'Kiểm tra backend còn chạy và HTTPS/domain API truy cập được từ trình duyệt.',
-    ]);
-  }
+  if (caught instanceof DOMException && caught.name === 'AbortError') return new ApiError('Hệ thống đang quá tải do lượng người dùng tăng cao. Vui lòng thử lại sau ít phút.');
+  if (caught instanceof TypeError) return new ApiError('Hệ thống đang quá tải do lượng người dùng tăng cao. Vui lòng thử lại sau ít phút.');
   if (caught instanceof Error) return new ApiError(caught.message || fallbackMessage);
   return new ApiError(fallbackMessage);
 }

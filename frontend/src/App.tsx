@@ -1725,10 +1725,10 @@ function friendlyMessage(message: string) {
   if (!text) return 'Có lỗi xảy ra. Hãy thử lại hoặc đổi cấu hình model.';
   if (/MAINTENANCE_MODE|bảo trì/i.test(text)) return text.replace(/^\[MAINTENANCE_MODE\]\s*/, '') || 'Hệ thống đang bảo trì. Vui lòng quay lại sau.';
   if (/PLAN_QUOTA_EXCEEDED|hạn mức.*gói/i.test(text)) return text.replace(/^\[PLAN_QUOTA_EXCEEDED\]\s*/, '') || 'Bạn đã hết hạn mức sử dụng hôm nay của gói hiện tại.';
-  if (/quota|rate limit|429/i.test(text)) return 'Model hoặc tài khoản provider đang bị giới hạn lượt gọi. Hãy chờ một lúc hoặc chọn model/provider khác.';
-  if (/api key|unauthorized|401|403|forbidden/i.test(text)) return 'Provider chưa được cấu hình đúng hoặc API key không có quyền dùng model này.';
-  if (/model.*not found|not found.*model/i.test(text)) return 'Model đã chọn không khả dụng. Hãy quét lại danh sách model hoặc chọn model khác.';
-  if (/timeout|timed out/i.test(text)) return 'Provider phản hồi quá lâu. Hãy thử lại hoặc đổi model nhẹ hơn.';
+  if (/Không kết nối được backend|Failed to fetch|NetworkError|ERR_|ECONNREFUSED|Load failed|fetch failed|timeout|timed out|Request quá lâu|quá tải/i.test(text)) return 'Hệ thống đang quá tải do lượng người dùng tăng cao. Vui lòng thử lại sau ít phút.';
+  if (/quota|rate limit|429/i.test(text)) return 'Hệ thống đang nhận quá nhiều yêu cầu. Vui lòng thử lại sau ít phút.';
+  if (/api key|unauthorized|401|403|forbidden/i.test(text)) return 'Hệ thống chưa sẵn sàng xử lý yêu cầu này. Vui lòng thử lại sau hoặc liên hệ quản trị viên.';
+  if (/model.*not found|not found.*model/i.test(text)) return 'Dịch vụ tạo hình hiện chưa sẵn sàng. Vui lòng thử lại sau ít phút.';
   if (/validation|field required|Input should/i.test(text)) return 'Dữ liệu hình chưa hợp lệ. Hãy thử dựng lại hoặc chỉnh hình đơn giản hơn.';
   return text.length > 220 ? `${text.slice(0, 217)}...` : text;
 }
@@ -1736,6 +1736,7 @@ function friendlyMessage(message: string) {
 function errorTitle(fallback: string, message: string) {
   if (/MAINTENANCE_MODE|bảo trì/i.test(message)) return 'Hệ thống đang bảo trì';
   if (/PLAN_QUOTA_EXCEEDED|hạn mức.*gói/i.test(message)) return 'Bạn đã hết hạn mức gói';
+  if (/Không kết nối được backend|Failed to fetch|NetworkError|ERR_|ECONNREFUSED|Load failed|fetch failed|timeout|timed out|Request quá lâu|quá tải/i.test(message)) return 'Hệ thống đang quá tải';
   return fallback;
 }
 
@@ -1748,12 +1749,13 @@ function friendlyDetail(detail: string) {
   const text = detail.trim();
   if (!text) return '';
   if (/mock extractor/i.test(text)) return 'AI provider hiện không sẵn sàng nên hệ thống dùng hình mẫu dự phòng.';
-  if (/Đã thử:|provider|router9|openrouter|nvidia|ollama/i.test(text)) return text.replace(/RuntimeError:|Error:/g, '').slice(0, 240);
-  if (/api key|unauthorized|401|403|forbidden/i.test(text)) return 'Kiểm tra API key hoặc quyền truy cập model trong phần Settings.';
+  if (/Không kết nối được backend|Failed to fetch|NetworkError|ERR_|ECONNREFUSED|Load failed|fetch failed|timeout|timed out|Request quá lâu|quá tải/i.test(text)) return '';
+  if (/Đã thử:|provider|router9|openrouter|nvidia|ollama/i.test(text)) return 'Dịch vụ AI hiện chưa sẵn sàng, hệ thống sẽ thử lại khi bạn gửi yêu cầu mới.';
+  if (/api key|unauthorized|401|403|forbidden/i.test(text)) return 'Hệ thống cần quản trị viên kiểm tra lại cấu hình dịch vụ.';
   if (/PLAN_QUOTA_EXCEEDED|hạn mức.*gói/i.test(text)) return text.replace(/^\[PLAN_QUOTA_EXCEEDED\]\s*/, '') || 'Chờ sang ngày mới hoặc nâng cấp gói để có thêm lượt sử dụng.';
   if (/MAINTENANCE_MODE|bảo trì/i.test(text)) return text.replace(/^\[MAINTENANCE_MODE\]\s*/, '') || 'Hệ thống đang tạm bảo trì, vui lòng quay lại sau.';
-  if (/quota|rate limit|429/i.test(text)) return 'Provider đang giới hạn lượt gọi; thử model/provider khác hoặc chờ quota hồi lại.';
-  if (/not found|404/i.test(text)) return 'Model không còn khả dụng; hãy quét lại danh sách model.';
+  if (/quota|rate limit|429/i.test(text)) return 'Hệ thống đang nhận quá nhiều yêu cầu. Vui lòng thử lại sau ít phút.';
+  if (/not found|404/i.test(text)) return 'Dịch vụ tạo hình hiện chưa sẵn sàng. Vui lòng thử lại sau ít phút.';
   return text.length > 240 ? `${text.slice(0, 237)}...` : text;
 }
 
