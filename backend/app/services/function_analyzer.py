@@ -313,12 +313,29 @@ def analyze_function(
     result["oblique_asymptote"] = oblique
 
     x_intercepts: list[str] = []
+    seen_intercepts: set[str] = set()
+    seen_roots_float: list[float] = []
+    root_eps = 1e-5
     try:
         for z in solve(f, x)[:6]:
             try:
-                x_intercepts.append(_fmt_num(float(z.evalf())))
+                val = float(z.evalf())
             except Exception:
-                x_intercepts.append(_fmt_sym(z))
+                item = _fmt_sym(z)
+                if item in seen_intercepts:
+                    continue
+                seen_intercepts.add(item)
+                x_intercepts.append(item)
+                continue
+            scale = max(1.0, abs(val))
+            if any(abs(val - prev) <= root_eps * scale for prev in seen_roots_float):
+                continue
+            seen_roots_float.append(val)
+            item = _fmt_num(val)
+            if item in seen_intercepts:
+                continue
+            seen_intercepts.add(item)
+            x_intercepts.append(item)
     except Exception:
         pass
     result["x_intercepts"] = x_intercepts

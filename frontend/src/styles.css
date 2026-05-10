@@ -6159,7 +6159,7 @@ pre {
   font-weight: 900;
   line-height: 1;
   transform: translate(-50%, -50%);
-  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.18);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.14);
   cursor: pointer;
   pointer-events: auto;
 }

@@ -551,6 +551,8 @@ function FunctionGraphSvg({ result }: { result: AnalyzeResponse }) {
   const selectedPoint = visibleSpecialPoints.find((point) => point.key === selectedPointKey) ?? null;
   if (result.geogebra_commands.length > 0) {
     const scene = result.graph_scene ?? createFallbackGraphScene(result.expression);
+    const overlayPoints = visibleSpecialPoints.filter((point) => point.kind !== 'axis-x' && point.kind !== 'axis-y');
+    const overlaySelected = overlayPoints.find((point) => point.key === selectedPointKey) ?? null;
     return (
       <div className="fa2-graph-card fa2-geogebra-graph-card">
         <GeoGebraView
@@ -560,7 +562,7 @@ function FunctionGraphSvg({ result }: { result: AnalyzeResponse }) {
           view={scene.view}
           embedded
         />
-        <GraphPointOverlay points={visibleSpecialPoints} selectedPoint={selectedPoint} onSelectPoint={setSelectedPointKey} />
+        <GraphPointOverlay points={overlayPoints} selectedPoint={overlaySelected} onSelectPoint={setSelectedPointKey} />
       </div>
     );
   }
@@ -908,6 +910,11 @@ function plotSpecialPoints(
     ...(result.y_intercept !== null ? [{ key: 'oy', kind: 'axis-y', label: 'Oy', raw: { x: 0, y: Number(result.y_intercept) }, coordsText: `(0; ${result.y_intercept})` }] : []),
     ...result.x_intercepts.map((xv, i) => ({ key: `ox-${i}`, kind: 'axis-x', label: 'Ox', raw: { x: Number(xv), y: 0 }, coordsText: `(${xv}; 0)` })),
   ].filter((p) => Number.isFinite(p.raw.x) && Number.isFinite(p.raw.y)).map((p) => ({ ...p, ...project(p.raw) }));
+  const minSepPx = 20;
+  const uniqueScreen: typeof points = [];
+  for (const p of points) {
+    if (uniqueScreen.every((k) => Math.hypot(k.x - p.x, k.y - p.y) >= minSepPx)) uniqueScreen.push(p);
+  }
   const occupied: Array<{ x: number; y: number }> = [];
   const candidates: Array<{ dx: number; dy: number; anchor: 'start' | 'middle' | 'end' }> = [
     { dx: 12, dy: -10, anchor: 'start' },
@@ -917,7 +924,7 @@ function plotSpecialPoints(
     { dx: 0, dy: -14, anchor: 'middle' },
     { dx: 0, dy: 20, anchor: 'middle' },
   ];
-  return points.map((point) => {
+  return uniqueScreen.map((point) => {
     const selected = candidates.find((option) => {
       const x = point.x + option.dx;
       const y = point.y + option.dy;

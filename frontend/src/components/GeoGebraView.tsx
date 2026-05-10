@@ -171,6 +171,8 @@ export function GeoGebraView({ commands, renderer, scene, view, onPointChange, e
       delete window[updateCallbackName];
       if (syncTimerRef.current !== null) window.clearTimeout(syncTimerRef.current);
       apiRef.current = null;
+      const host = containerRef.current;
+      if (host) host.innerHTML = '';
       setApiReady(false);
     };
   }, [appletId, appName, retryCount]);
