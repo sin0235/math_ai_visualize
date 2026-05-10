@@ -426,6 +426,8 @@ def test_render_router9_tries_preferred_model_chain(monkeypatch):
     assert calls == [
         ("router9", "cc/codex-5.5"),
         ("router9", "cc/codex-5.4"),
+        ("router9", "cc/codex-5.3"),
+        ("router9", "gh/gpt-5.2"),
     ]
     assert len(warnings) == 3
 

@@ -31,8 +31,6 @@ _COLOR_NAMES = {
     "grey": "#8b95a7",
     "yellow": "#ffd166",
 }
-_MAX_RENDER_ATTEMPTS = 2
-
 _DEFAULT_COLORS = {
     "segment": "#1d3557",
     "face": "#5da9ff",
@@ -136,10 +134,6 @@ async def extract_scene(
                 attempts.append(RenderAttempt(provider, model or _provider_model(provider, settings), message))
                 if settings.router9_only:
                     raise RuntimeError(_format_render_failure("9router-only đang bật nên không fallback sang provider khác.", attempts, True)) from error
-            if len(attempts) >= _MAX_RENDER_ATTEMPTS:
-                break
-        if len(attempts) >= _MAX_RENDER_ATTEMPTS:
-            break
 
     warnings.extend(_render_attempt_warnings(attempts))
     if attempts:
@@ -663,7 +657,6 @@ def _router9_model_candidates(settings: Settings, preferred_ai_model: str | None
             *select_router9_render_model_ids_from_ids(settings.router9_allowed_models),
         ])
         candidates = [model for model in candidates if model and model in settings.router9_allowed_models]
-        candidates = candidates[:2]
     else:
         candidates = _dedupe(settings.router9_text_fallback_models)
 

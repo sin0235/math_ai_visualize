@@ -698,7 +698,13 @@ export default function App() {
 
   function showWarnings(warnings: string[]) {
     if (warnings.length === 0) return;
-    showNotification('Đã dựng hình với lưu ý', 'Hình đã được tạo, nhưng hệ thống phải dùng phương án dự phòng.', warnings, 'warning');
+    const usedMock = warnings.some((warning) => warning.includes('đang dùng mock extractor'));
+    showNotification(
+      'Đã dựng hình với lưu ý',
+      usedMock ? 'Hình đã được tạo, nhưng hệ thống phải dùng phương án dự phòng.' : 'Hình đã được tạo, nhưng một số lần gọi model trước đó bị lỗi.',
+      warnings,
+      'warning',
+    );
   }
 
   async function handleConnectPoints(start: string, end: string) {
