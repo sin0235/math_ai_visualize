@@ -5389,7 +5389,9 @@ pre {
 }
 .sp-step-formula {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
   gap: 6px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -5402,6 +5404,7 @@ pre {
   color: var(--ink);
   overflow-x: auto;
   overflow-y: hidden;
+  text-align: center;
 }
 .sp-step-formula-label {
   flex: 0 0 auto;
@@ -5461,11 +5464,10 @@ pre {
   top: 70px;
   display: grid;
   gap: 12px;
+  align-content: start;
 }
 
 .fa2-sticky-controls {
-  position: sticky;
-  top: 0;
   z-index: 5;
   display: grid;
   gap: 12px;
@@ -5507,6 +5509,10 @@ pre {
 .fa2-results-panel {
   display: grid;
   gap: 14px;
+  max-height: calc(100vh - 86px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 4px;
 }
 
 .fa2-control-card,
@@ -5902,7 +5908,7 @@ pre {
 
 .fa2-graph-column {
   position: sticky;
-  top: 70px;
+  top: 0;
 }
 
 .fa2-analysis-column {
@@ -5911,7 +5917,7 @@ pre {
 
 .fa2-result-sticky-head {
   position: sticky;
-  top: 70px;
+  top: 0;
   z-index: 4;
   display: grid;
   gap: 4px;
@@ -6009,6 +6015,12 @@ pre {
 }
 
 @media (max-width: 1100px) {
+  .fa2-results-panel {
+    max-height: none;
+    overflow-y: visible;
+    padding-right: 0;
+  }
+
   .fa2-workspace {
     height: auto;
     max-height: none;
@@ -6036,8 +6048,7 @@ pre {
   }
   .fa2-control-panel,
   .fa2-graph-column,
-  .fa2-result-sticky-head,
-  .fa2-sticky-controls {
+  .fa2-result-sticky-head {
     position: static;
   }
 }
@@ -6071,6 +6082,69 @@ pre {
   border-radius: 14px;
   overflow: hidden;
   background: #fff;
+}
+
+.fa2-geogebra-graph-card {
+  position: relative;
+}
+
+.fa2-geogebra-point-overlay {
+  position: absolute;
+  inset: 42px 0 0;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.fa2-geogebra-point {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--paper);
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 9px;
+  font-weight: 900;
+  line-height: 1;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.18);
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.fa2-geogebra-point-max { background: var(--max-ink); }
+.fa2-geogebra-point-min { background: var(--min-ink); }
+.fa2-geogebra-point-inflection { background: #b45309; }
+.fa2-geogebra-point-axis-x,
+.fa2-geogebra-point-axis-y { background: var(--ink-3); }
+
+.fa2-geogebra-point-popover {
+  position: absolute;
+  display: grid;
+  gap: 2px;
+  min-width: 94px;
+  border: 1px solid var(--line-2);
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.96);
+  color: var(--ink);
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.16);
+  transform: translate(-50%, -110%);
+  pointer-events: none;
+  z-index: 3;
+}
+
+.fa2-geogebra-point-popover span {
+  color: var(--ink-4);
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.fa2-geogebra-point-popover strong {
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  font-weight: 900;
 }
 
 .sp-btn-secondary {
@@ -6151,6 +6225,17 @@ pre {
   stroke-linejoin: round;
 }
 
+.fa2-graph-special-point {
+  cursor: pointer;
+  outline: none;
+}
+
+.fa2-graph-special-point:hover .fa2-graph-point,
+.fa2-graph-special-point:focus .fa2-graph-point {
+  stroke: var(--ink);
+  stroke-width: 3;
+}
+
 .fa2-graph-point {
   stroke: var(--paper);
   stroke-width: 2;
@@ -6159,6 +6244,28 @@ pre {
 .fa2-graph-point-max { fill: var(--max-ink); }
 .fa2-graph-point-min { fill: var(--min-ink); }
 .fa2-graph-point-inflection { fill: #b45309; }
+.fa2-graph-point-axis-x,
+.fa2-graph-point-axis-y { fill: var(--ink-3); }
+
+.fa2-graph-point-popover rect {
+  fill: rgba(255, 255, 255, 0.96);
+  stroke: var(--line-2);
+  filter: drop-shadow(0 10px 18px rgba(15, 23, 42, 0.14));
+}
+
+.fa2-graph-popover-label {
+  fill: var(--ink-4);
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.fa2-graph-popover-coords {
+  fill: var(--ink);
+  font-size: 12px;
+  font-weight: 900;
+  font-family: 'Courier New', monospace;
+}
 
 .fa2-graph-label {
   fill: var(--ink-3);
@@ -6231,6 +6338,12 @@ pre {
   text-transform: uppercase;
   letter-spacing: 0.07em;
   color: var(--ink-3);
+}
+.fa2-section-trailing {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
 }
 .fa2-section-body {
   padding: 14px;
@@ -6418,6 +6531,17 @@ pre {
 
 .bbt-zoom-btn {
   padding: 8px;
+}
+
+.bbt-zoom-btn-borderless {
+  border: none;
+  background: transparent;
+  color: var(--ink-3);
+  border-radius: 10px;
+}
+.bbt-zoom-btn-borderless:hover {
+  background: var(--paper);
+  color: var(--ink-2);
 }
 
 .bbt-timeline {

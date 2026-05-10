@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useId, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { Fragment, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { analyzeFunction, analyzeFunctionImage, type AnalyzeOptions, type AnalyzeResponse } from '../api/client';
 import { GeoGebraView } from './GeoGebraView';
 import { KatexSpan, sympyToLatex } from './KatexSpan';
@@ -433,8 +433,9 @@ function formatSliderValue(value: number) {
 }
 
 function AnalysisResult({ result }: { result: AnalyzeResponse }) {
-  const hasSpecialPoints = result.critical_points.length > 0 || result.inflection_points.length > 0 || result.y_intercept !== null || result.x_intercepts.length > 0;
   const hasShapeDetails = result.concave_up_intervals.length > 0 || result.concave_down_intervals.length > 0 || result.horizontal_asymptotes.length > 0 || result.vertical_asymptotes.length > 0 || !!result.oblique_asymptote;
+  const [variationBbtOpen, setVariationBbtOpen] = useState(false);
+  const hasVariationTable = !!result.variation_table && result.variation_table.length > 0;
 
   return (
     <div className="fa2-result">
@@ -453,21 +454,21 @@ function AnalysisResult({ result }: { result: AnalyzeResponse }) {
 
           <QuickSummary result={result} />
 
-          {hasSpecialPoints && (
-            <Section title="Điểm đặc biệt" icon="points">
-              <div className="fa2-extrema">
-                {result.critical_points.map((pt, i) => pt.y !== null && <PointBadge key={`cp-${i}`} label={pt.kind_label || 'Cực trị'} tex={`(${sympyToLatex(pt.x_exact)},\\; ${sympyToLatex(pt.y)})`} kind={pt.kind} />)}
-                {result.inflection_points.map((pt, i) => <PointBadge key={`ip-${i}`} label="Điểm uốn" tex={`(${sympyToLatex(pt.x_exact)},\\; ${sympyToLatex(pt.y)})`} kind="inflection" />)}
-                {result.y_intercept !== null && <PointBadge label="Giao Oy" tex={`(0,\\; ${sympyToLatex(result.y_intercept)})`} kind="axis-y" />}
-                {result.x_intercepts.map((xv, i) => <PointBadge key={`ox-${i}`} label="Giao Ox" tex={`(${sympyToLatex(xv)},\\; 0)`} kind="axis-x" />)}
-              </div>
-            </Section>
-          )}
 
-          <Section title="Đạo hàm và biến thiên" icon="derivative">
+          <Section
+            title="Đạo hàm và biến thiên"
+            icon="derivative"
+            headTrailing={
+              hasVariationTable ? (
+                <button type="button" className="bbt-zoom-btn bbt-zoom-btn-borderless" onClick={() => setVariationBbtOpen(true)} aria-label="Ấn để phóng to">
+                  <span aria-hidden="true"><SvgIcon name="magnify" /></span>
+                </button>
+              ) : null
+            }
+          >
             <div className="fa2-formula-row"><KatexSpan tex="f'(x)=" className="fa2-label-mono fa2-label-katex" /><KatexSpan tex={result.derivative_latex || sympyToLatex(result.derivative || '')} className="fa2-katex" /></div>
             {result.second_derivative && <div className="fa2-formula-row"><KatexSpan tex="f''(x)=" className="fa2-label-mono fa2-label-katex" /><KatexSpan tex={result.second_derivative_latex || sympyToLatex(result.second_derivative)} className="fa2-katex" /></div>}
-            <VariationTable rows={result.variation_table} />
+            <VariationTable rows={result.variation_table} expanded={variationBbtOpen} onExpandedChange={setVariationBbtOpen} hideZoomButton />
           </Section>
 
           {hasShapeDetails && (
@@ -538,10 +539,20 @@ function QuickSummary({ result }: { result: AnalyzeResponse }) {
 }
 
 function FunctionGraphSvg({ result }: { result: AnalyzeResponse }) {
+  const data = result.graph_points || [];
+  const graph = useMemo(() => buildSvgGraph(data, result), [data, result]);
+  const svgId = useId();
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const dragRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
+  const [view, setView] = useState({ scale: 1, tx: 0, ty: 0 });
+  const [selectedPointKey, setSelectedPointKey] = useState<string | null>(null);
+  const specialPoints = data.length >= 2 ? plotSpecialPoints(result, graph.project, SVG_WIDTH, SVG_HEIGHT, 28) : plotSpecialPoints(result, projectFallbackPoint, SVG_WIDTH, SVG_HEIGHT, 28);
+  const visibleSpecialPoints = specialPoints.filter((point) => point.x >= 0 && point.x <= SVG_WIDTH && point.y >= 0 && point.y <= SVG_HEIGHT);
+  const selectedPoint = visibleSpecialPoints.find((point) => point.key === selectedPointKey) ?? null;
   if (result.geogebra_commands.length > 0) {
     const scene = result.graph_scene ?? createFallbackGraphScene(result.expression);
     return (
-      <div className="fa2-graph-card">
+      <div className="fa2-graph-card fa2-geogebra-graph-card">
         <GeoGebraView
           commands={result.geogebra_commands}
           renderer="geogebra_2d"
@@ -549,15 +560,10 @@ function FunctionGraphSvg({ result }: { result: AnalyzeResponse }) {
           view={scene.view}
           embedded
         />
+        <GraphPointOverlay points={visibleSpecialPoints} selectedPoint={selectedPoint} onSelectPoint={setSelectedPointKey} />
       </div>
     );
   }
-  const data = result.graph_points || [];
-  const graph = useMemo(() => buildSvgGraph(data, result), [data, result]);
-  const svgId = useId();
-  const svgRef = useRef<SVGSVGElement | null>(null);
-  const dragRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
-  const [view, setView] = useState({ scale: 1, tx: 0, ty: 0 });
   if (data.length < 2) return <div className="info-box">Chưa đủ dữ liệu để vẽ đồ thị.</div>;
 
   const clipId = `${svgId}-clip`;
@@ -655,9 +661,26 @@ function FunctionGraphSvg({ result }: { result: AnalyzeResponse }) {
           <line x1={graph.xAxis.x1} y1={graph.xAxis.y1} x2={graph.xAxis.x2} y2={graph.xAxis.y2} className="fa2-graph-axis" />
           <line x1={graph.yAxis.x1} y1={graph.yAxis.y1} x2={graph.yAxis.x2} y2={graph.yAxis.y2} className="fa2-graph-axis" />
           {graph.paths.map((path, i) => <path key={`path-${i}`} d={path} className="fa2-graph-path" />)}
-          {plotSpecialPoints(result, graph.project, SVG_WIDTH, SVG_HEIGHT, 28).map((point) => (
-            <g key={point.key}>
-              <circle cx={point.x} cy={point.y} r="5" className={`fa2-graph-point fa2-graph-point-${point.kind}`} />
+          {visibleSpecialPoints.map((point) => (
+            <g
+              key={point.key}
+              className="fa2-graph-special-point"
+              role="button"
+              tabIndex={0}
+              aria-label={`${point.label} ${point.coordsText}`}
+              onClick={(event) => {
+                event.stopPropagation();
+                setSelectedPointKey(point.key);
+              }}
+              onPointerDown={(event) => event.stopPropagation()}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  setSelectedPointKey(point.key);
+                }
+              }}
+            >
+              <circle cx={point.x} cy={point.y} r="6" className={`fa2-graph-point fa2-graph-point-${point.kind}`} />
               <text
                 x={point.labelX}
                 y={point.labelY}
@@ -668,6 +691,13 @@ function FunctionGraphSvg({ result }: { result: AnalyzeResponse }) {
               </text>
             </g>
           ))}
+          {selectedPoint && (
+            <g className="fa2-graph-point-popover" transform={`translate(${selectedPoint.popoverX} ${selectedPoint.popoverY})`}>
+              <rect x="0" y="0" width={selectedPoint.popoverWidth} height="46" rx="10" />
+              <text x="10" y="18" className="fa2-graph-popover-label">{selectedPoint.label}</text>
+              <text x="10" y="36" className="fa2-graph-popover-coords">{selectedPoint.coordsText}</text>
+            </g>
+          )}
         </g>
         {graph.xTicks.map((tick, idx) => (
           <text key={`xt-${idx}`} x={tick.x} y={SVG_HEIGHT - 6} className="fa2-graph-tick">{tick.label}</text>
@@ -676,6 +706,39 @@ function FunctionGraphSvg({ result }: { result: AnalyzeResponse }) {
           <text key={`yt-${idx}`} x={6} y={tick.y + 4} className="fa2-graph-tick">{tick.label}</text>
         ))}
       </svg>
+    </div>
+  );
+}
+
+function GraphPointOverlay({ points, selectedPoint, onSelectPoint }: {
+  points: ReturnType<typeof plotSpecialPoints>;
+  selectedPoint: ReturnType<typeof plotSpecialPoints>[number] | null;
+  onSelectPoint: (key: string) => void;
+}) {
+  if (points.length === 0) return null;
+  return (
+    <div className="fa2-geogebra-point-overlay">
+      {points.map((point) => (
+        <button
+          key={point.key}
+          type="button"
+          className={`fa2-geogebra-point fa2-geogebra-point-${point.kind}`}
+          style={{ left: `${(point.x / SVG_WIDTH) * 100}%`, top: `${(point.y / SVG_HEIGHT) * 100}%` }}
+          aria-label={`${point.label} ${point.coordsText}`}
+          onClick={() => onSelectPoint(point.key)}
+        >
+          <span>{point.label}</span>
+        </button>
+      ))}
+      {selectedPoint && (
+        <div
+          className="fa2-geogebra-point-popover"
+          style={{ left: `${(selectedPoint.popoverX / SVG_WIDTH) * 100}%`, top: `${(selectedPoint.popoverY / SVG_HEIGHT) * 100}%` }}
+        >
+          <span>{selectedPoint.label}</span>
+          <strong>{selectedPoint.coordsText}</strong>
+        </div>
+      )}
     </div>
   );
 }
@@ -700,6 +763,13 @@ function createFallbackGraphScene(expression: string): MathScene {
 
 const SVG_WIDTH = 720;
 const SVG_HEIGHT = 300;
+
+function projectFallbackPoint(point: { x: number; y: number }) {
+  return {
+    x: SVG_WIDTH / 2 + point.x * 42,
+    y: SVG_HEIGHT / 2 - point.y * 42,
+  };
+}
 
 function buildSvgGraph(points: Array<{ x: number; y: number }>, result: AnalyzeResponse) {
   const width = SVG_WIDTH;
@@ -833,8 +903,10 @@ function plotSpecialPoints(
   pad: number,
 ) {
   const points = [
-    ...result.critical_points.map((cp, i) => ({ key: `cp-${i}`, kind: cp.kind, label: cp.kind === 'max' ? 'CĐ' : cp.kind === 'min' ? 'CT' : 'T', raw: { x: Number(cp.x), y: Number(cp.y) } })),
-    ...result.inflection_points.map((pt, i) => ({ key: `ip-${i}`, kind: 'inflection', label: 'U', raw: { x: Number(pt.x), y: Number(pt.y) } })),
+    ...result.critical_points.map((cp, i) => ({ key: `cp-${i}`, kind: cp.kind, label: cp.kind === 'max' ? 'CĐ' : cp.kind === 'min' ? 'CT' : 'T', raw: { x: Number(cp.x), y: Number(cp.y) }, coordsText: `(${cp.x_exact || cp.x}; ${cp.y})` })),
+    ...result.inflection_points.map((pt, i) => ({ key: `ip-${i}`, kind: 'inflection', label: 'U', raw: { x: Number(pt.x), y: Number(pt.y) }, coordsText: `(${pt.x_exact || pt.x}; ${pt.y})` })),
+    ...(result.y_intercept !== null ? [{ key: 'oy', kind: 'axis-y', label: 'Oy', raw: { x: 0, y: Number(result.y_intercept) }, coordsText: `(0; ${result.y_intercept})` }] : []),
+    ...result.x_intercepts.map((xv, i) => ({ key: `ox-${i}`, kind: 'axis-x', label: 'Ox', raw: { x: Number(xv), y: 0 }, coordsText: `(${xv}; 0)` })),
   ].filter((p) => Number.isFinite(p.raw.x) && Number.isFinite(p.raw.y)).map((p) => ({ ...p, ...project(p.raw) }));
   const occupied: Array<{ x: number; y: number }> = [];
   const candidates: Array<{ dx: number; dy: number; anchor: 'start' | 'middle' | 'end' }> = [
@@ -856,7 +928,10 @@ function plotSpecialPoints(
     const labelX = point.x + selected.dx;
     const labelY = point.y + selected.dy;
     occupied.push({ x: labelX, y: labelY });
-    return { ...point, labelX, labelY, anchor: selected.anchor };
+    const popoverWidth = Math.min(Math.max(point.coordsText.length * 8 + 20, 92), 180);
+    const popoverX = Math.min(Math.max(point.x + 10, pad), width - popoverWidth - pad);
+    const popoverY = Math.min(Math.max(point.y - 56, pad), height - 52 - pad);
+    return { ...point, labelX, labelY, anchor: selected.anchor, popoverX, popoverY, popoverWidth };
   });
 }
 
@@ -873,8 +948,24 @@ function Asymptote({ label, tex }: { label: string; tex: string }) {
   return <div className="fa2-asym"><span className="fa2-asym-tag">{label}</span><KatexSpan tex={tex} /></div>;
 }
 
-function VariationTable({ rows }: { rows: AnalyzeResponse['variation_table'] }) {
-  const [isExpanded, setIsExpanded] = useState(false);
+function VariationTable({
+  rows,
+  expanded: expandedProp,
+  onExpandedChange,
+  hideZoomButton = false,
+}: {
+  rows: AnalyzeResponse['variation_table'];
+  expanded?: boolean;
+  onExpandedChange?: (open: boolean) => void;
+  hideZoomButton?: boolean;
+}) {
+  const [internalExpanded, setInternalExpanded] = useState(false);
+  const controlled = expandedProp !== undefined && onExpandedChange !== undefined;
+  const isExpanded = controlled ? expandedProp : internalExpanded;
+  const setIsExpanded = (open: boolean) => {
+    if (controlled) onExpandedChange(open);
+    else setInternalExpanded(open);
+  };
   if (!rows || rows.length === 0) return null;
   const dynamicCols = rows.length * 2 - 1;
   const forceTimeline = rows.length > 4;
@@ -882,11 +973,13 @@ function VariationTable({ rows }: { rows: AnalyzeResponse['variation_table'] }) 
 
   return (
     <div className={`bbt-layout ${forceTimeline ? 'bbt-layout-force-timeline' : ''}`}>
-      <div className="bbt-actions">
-        <button type="button" className="bbt-zoom-btn" onClick={() => setIsExpanded(true)} aria-label="Ấn để phóng to">
-          <span aria-hidden="true"><SvgIcon name="magnify" /></span>
-        </button>
-      </div>
+      {!hideZoomButton && (
+        <div className="bbt-actions">
+          <button type="button" className="bbt-zoom-btn" onClick={() => setIsExpanded(true)} aria-label="Ấn để phóng to">
+            <span aria-hidden="true"><SvgIcon name="magnify" /></span>
+          </button>
+        </div>
+      )}
       <VariationGrid rows={rows} style={gridStyle} />
       <div className="bbt-timeline">
         {rows.slice(0, -1).map((row, index) => {
@@ -1131,14 +1224,35 @@ function IntervalLine({ label, value, className }: { label: string; value: strin
   return <div className={`fa2-mono ${className}`}><span className="fa2-mono-label">{label}:</span><span className="fa2-mono-val"><KatexSpan tex={sympyToLatex(value)} /></span></div>;
 }
 
-function Section({ title, icon, children, className = '' }: { title: string; icon: IconName; children: React.ReactNode; className?: string }) {
-  return <div className={`fa2-section ${className}`.trim()}><div className="fa2-section-head"><span className="fa2-section-icon" aria-hidden="true"><SvgIcon name={icon} /></span><span className="fa2-section-title">{title}</span></div><div className="fa2-section-body">{children}</div></div>;
+function Section({
+  title,
+  icon,
+  children,
+  className = '',
+  headTrailing,
+}: {
+  title: string;
+  icon: IconName;
+  children: ReactNode;
+  className?: string;
+  headTrailing?: ReactNode;
+}) {
+  return (
+    <div className={`fa2-section ${className}`.trim()}>
+      <div className="fa2-section-head">
+        <span className="fa2-section-icon" aria-hidden="true"><SvgIcon name={icon} /></span>
+        <span className="fa2-section-title">{title}</span>
+        {headTrailing != null && headTrailing !== false && <div className="fa2-section-trailing">{headTrailing}</div>}
+      </div>
+      <div className="fa2-section-body">{children}</div>
+    </div>
+  );
 }
 
 type IconName = 'wave' | 'camera' | 'graph' | 'derivative' | 'points' | 'asymptote' | 'hint' | 'attach' | 'upload' | 'chevron' | 'trend' | 'target' | 'triangleUp' | 'triangleDown' | 'magnify';
 
 function SvgIcon({ name }: { name: IconName }) {
-  if (name === 'magnify') return <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}><circle cx="11" cy="11" r="7" /><path d="m20 20-4.35-4.35" /></svg>;
+  if (name === 'magnify') return <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}><circle cx="11" cy="11" r="7" /><path d="M9 11h4M11 9v4" /><path d="m20 20-4.35-4.35" /></svg>;
   if (name === 'camera') return <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 8h4l2-3h4l2 3h4v11H4z" /><circle cx="12" cy="13" r="4" /></svg>;
   if (name === 'attach') return <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" /></svg>;
   if (name === 'hint') return <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}><circle cx="12" cy="12" r="9.5" /><path d="M12 11v5" /><circle cx="12" cy="7.5" r="0.5" fill="currentColor" stroke="none" /></svg>;

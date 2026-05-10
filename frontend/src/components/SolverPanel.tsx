@@ -256,7 +256,6 @@ export function SolverPanel({ scene, runtimeSettings, onHighlight }: SolverPanel
                       <p className="sp-step-text">{explanationText}</p>
                       {showFormula && (
                         <div className="sp-step-formula">
-                          <span className="sp-step-formula-label">Công thức:</span>
                           <KatexSpan tex={formulaLatex} className="sp-step-formula-math" />
                         </div>
                       )}
