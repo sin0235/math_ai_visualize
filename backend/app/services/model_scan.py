@@ -4,6 +4,7 @@ import httpx
 
 from app.core.config import Settings
 from app.schemas.scene import AiModelInfo, ModelScanProvider
+from app.services.openrouter_client import openrouter_api_base_url
 
 
 async def list_provider_models(settings: Settings, provider: ModelScanProvider) -> list[AiModelInfo]:
@@ -13,6 +14,9 @@ async def list_provider_models(settings: Settings, provider: ModelScanProvider) 
         raise RuntimeError(f"{provider} chưa có base URL hợp lệ.")
 
     if provider == "ollama":
+        if _uses_openai_style_ollama(base):
+            headers = _bearer_headers(api_key)
+            return await _fetch_openai_style_models("ollama", headers, _normalize_openai_base_url(base).rstrip("/"))
         return await _fetch_ollama_models(settings, api_key, base)
 
     _require_api_key_if_needed(provider, api_key)
@@ -20,9 +24,25 @@ async def list_provider_models(settings: Settings, provider: ModelScanProvider) 
     if provider == "openrouter":
         headers = {**headers, **_openrouter_optional_headers(settings)}
 
+    normalized_base = openrouter_api_base_url(settings) if provider == "openrouter" else _normalize_openai_base_url(base).rstrip("/")
+    return await _fetch_openai_style_models(provider, headers, normalized_base)
+
+
+def _provider_connection(settings: Settings, provider: ModelScanProvider) -> tuple[str | None, str]:
+    if provider == "openrouter":
+        return settings.openrouter_api_key, settings.openrouter_base_url
+    if provider == "openai_compat":
+        return settings.openai_compat_api_key, settings.openai_compat_base_url
+    if provider == "nvidia":
+        return settings.nvidia_api_key, settings.nvidia_base_url
+    if provider == "ollama":
+        return settings.ollama_api_key, settings.ollama_base_url
+    raise AssertionError(f"unknown scan provider: {provider}")
+
+
+async def _fetch_openai_style_models(provider: str, headers: dict[str, str], normalized_base: str) -> list[AiModelInfo]:
     from app.services.http_pool import TIMEOUT_MODELS, get_client
 
-    normalized_base = _normalize_openai_base_url(base).rstrip("/")
     url = f"{normalized_base}/models"
     try:
         client = get_client(normalized_base, TIMEOUT_MODELS)
@@ -38,18 +58,6 @@ async def list_provider_models(settings: Settings, provider: ModelScanProvider) 
     return _parse_openai_style_models(provider, response)
 
 
-def _provider_connection(settings: Settings, provider: ModelScanProvider) -> tuple[str | None, str]:
-    if provider == "openrouter":
-        return settings.openrouter_api_key, settings.openrouter_base_url
-    if provider == "openai_compat":
-        return settings.openai_compat_api_key, settings.openai_compat_base_url
-    if provider == "nvidia":
-        return settings.nvidia_api_key, settings.nvidia_base_url
-    if provider == "ollama":
-        return settings.ollama_api_key, settings.ollama_base_url
-    raise AssertionError(f"unknown scan provider: {provider}")
-
-
 def _normalize_openai_base_url(base_url: str) -> str:
     base = base_url.strip().rstrip("/")
     if base.endswith("/chat/completions"):
@@ -57,6 +65,11 @@ def _normalize_openai_base_url(base_url: str) -> str:
     if base.endswith("/completions"):
         return base.removesuffix("/completions")
     return base
+
+
+def _uses_openai_style_ollama(base_url: str) -> bool:
+    base = base_url.strip().rstrip("/").lower()
+    return base.endswith("/v1") or "ollama.com" in base
 
 
 def _require_api_key_if_needed(provider: ModelScanProvider, api_key: str | None) -> None:

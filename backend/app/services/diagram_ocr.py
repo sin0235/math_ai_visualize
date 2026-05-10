@@ -21,7 +21,7 @@ from app.core.config import Settings
 from app.services.ai_fallback import Attempt, format_attempts, openrouter_vision_candidates, router9_ocr_candidates
 from app.services.ocr import validate_image_data_url
 from app.services.chat_response import extract_chat_message_content
-from app.services.openrouter_client import _build_headers, _extract_message, _format_openrouter_error, _normalize_model_id, _strip_text_fences
+from app.services.openrouter_client import _build_headers, _extract_message, _format_openrouter_error, _normalize_model_id, _strip_text_fences, openrouter_api_base_url
 from app.services.provider_logging import log_provider_request, log_provider_response
 from app.services.router9_client import Router9Client
 
@@ -97,7 +97,7 @@ async def _call_openrouter_vision(image_data_url: str, settings: Settings, model
     }
     from app.services.http_pool import TIMEOUT_OCR, get_client
 
-    base_url = settings.openrouter_base_url.rstrip("/")
+    base_url = openrouter_api_base_url(settings)
     url = f"{base_url}/chat/completions"
     started_at = time.perf_counter()
     log_provider_request("openrouter", "diagram_ocr", url, payload["model"], image_chars=len(image_data_url))

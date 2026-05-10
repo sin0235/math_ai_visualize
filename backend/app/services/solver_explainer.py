@@ -8,8 +8,8 @@ import httpx
 
 from app.core.config import Settings
 from app.services.model_registry import TaskProfile
-from app.services.ai_fallback import Attempt, format_attempts, text_model_candidates, text_provider_order
-from app.services.openrouter_client import _build_headers as _build_openrouter_headers, _extract_message as _extract_openrouter_message
+from app.services.ai_fallback import Attempt, dedupe, format_attempts, text_model_candidates, text_provider_order
+from app.services.openrouter_client import _build_headers as _build_openrouter_headers, _extract_message as _extract_openrouter_message, openrouter_api_base_url
 from app.services.chat_response import extract_chat_message_content
 from app.services.router9_client import Router9Client, _extract_message_content as _extract_router9_message_content
 from app.services.solver_service import SolverResult, SolverStep
@@ -100,7 +100,10 @@ async def _call_explainer(payload: dict[str, Any], settings: Settings, selection
     preferred_model = selection.model_id if selection else None
 
     for provider in text_provider_order(settings, preferred_provider):
-        for model in text_model_candidates(provider, settings, preferred_model if provider == preferred_provider else None):
+        candidates = text_model_candidates(provider, settings, preferred_model if provider == preferred_provider else None)
+        if selection and provider == selection.provider_id:
+            candidates = dedupe([*(model or "" for model in candidates), *selection.fallbacks])
+        for model in candidates:
             selected_model = model or "<none>"
             try:
                 if provider == "router9":
@@ -177,7 +180,7 @@ async def _call_openrouter_model(prompt: str, settings: Settings, model: str, re
     }
     if reasoning_enabled:
         payload["reasoning"] = {"enabled": True}
-    base_url = settings.openrouter_base_url.rstrip("/")
+    base_url = openrouter_api_base_url(settings)
     client = get_client(base_url, TIMEOUT_FAST)
     response = await client.post(f"{base_url}/chat/completions", headers=_build_openrouter_headers(settings), json=payload, timeout=TIMEOUT_FAST)
     if response.status_code >= 400:

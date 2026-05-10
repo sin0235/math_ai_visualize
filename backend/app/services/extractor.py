@@ -103,7 +103,8 @@ async def extract_scene(
     requested_provider = render_provider or settings.ai_provider
     for provider in _fast_provider_order(settings, render_provider):
         explicit_model = render_model if provider == requested_provider else None
-        for model in _provider_model_candidates(provider, settings, explicit_model):
+        models = _profile_model_candidates(render_profile, provider, settings, explicit_model)
+        for model in models:
             try:
                 try:
                     scene_json = await _extract_with_provider(
@@ -610,6 +611,13 @@ def _provider_model_candidates(provider: str, settings: Settings, preferred_ai_m
     return [None]
 
 
+def _profile_model_candidates(profile: Any, provider: str, settings: Settings, preferred_ai_model: str | None = None) -> list[str | None]:
+    candidates = _provider_model_candidates(provider, settings, preferred_ai_model)
+    if profile is None or provider != profile.provider_id:
+        return candidates
+    return _dedupe([*(model or "" for model in candidates), *profile.fallbacks])
+
+
 def _render_attempt_warnings(attempts: list[RenderAttempt]) -> list[str]:
     return [f"AI fallback: {attempt.warning()}" for attempt in attempts]
 
@@ -655,6 +663,7 @@ def _router9_model_candidates(settings: Settings, preferred_ai_model: str | None
         candidates = _dedupe([
             settings.router9_text_model or "",
             *select_router9_render_model_ids_from_ids(settings.router9_allowed_models),
+            *settings.router9_allowed_models,
         ])
         candidates = [model for model in candidates if model and model in settings.router9_allowed_models]
     else:

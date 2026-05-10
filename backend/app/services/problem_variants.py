@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from app.core.config import Settings
 from app.schemas.scene import MathScene
 from app.services.ai_fallback import Attempt, format_attempts, text_model_candidates, text_provider_order
-from app.services.openrouter_client import _build_headers, _extract_message, _format_openrouter_error, _normalize_model_id, _strip_json_fences
+from app.services.openrouter_client import _build_headers, _extract_message, _format_openrouter_error, _normalize_model_id, _strip_json_fences, openrouter_api_base_url
 from app.services.provider_logging import log_provider_request, log_provider_response
 from app.services.chat_response import extract_chat_message_content
 from app.services.router9_client import Router9Client, _extract_message_content as _extract_router9_message_content
@@ -109,7 +109,7 @@ async def _call_openrouter_variants(model: str, user_prompt: str, settings: Sett
     }
     from app.services.http_pool import TIMEOUT_SCENE, get_client
 
-    base_url = settings.openrouter_base_url.rstrip("/")
+    base_url = openrouter_api_base_url(settings)
     url = f"{base_url}/chat/completions"
     started_at = time.perf_counter()
     log_provider_request("openrouter", "variants", url, payload["model"], problem_chars=len(user_prompt))

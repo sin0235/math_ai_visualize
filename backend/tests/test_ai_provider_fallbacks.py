@@ -410,6 +410,43 @@ def test_render_fallback_success_returns_prior_failures_as_warnings(monkeypatch)
     assert any("AI fallback: nvidia/" in warning and "quota exceeded" in warning for warning in warnings)
 
 
+def test_render_uses_profile_fallback_models(monkeypatch):
+    from app.services.model_registry import TaskProfile
+    from app.services.extractor import _profile_model_candidates
+
+    profile = TaskProfile("render", "router9", "cx/gpt-5.5", ["gh/gemini-3.1-pro-preview"])
+    settings = Settings(_env_file=None, router9_api_key="secret", router9_allowed_models=["cx/gpt-5.5", "gh/gemini-3.1-pro-preview"])
+
+    assert _profile_model_candidates(profile, "router9", settings, "cx/gpt-5.5") == ["cx/gpt-5.5", "gh/gemini-3.1-pro-preview"]
+
+
+def test_openrouter_base_url_normalizes_missing_api_segment():
+    from app.services.openrouter_client import openrouter_api_base_url
+
+    assert openrouter_api_base_url(Settings(_env_file=None, openrouter_base_url="https://openrouter.ai/v1")) == "https://openrouter.ai/api/v1"
+
+
+def test_ollama_cloud_scan_uses_openai_models_endpoint(monkeypatch):
+    from app.services.model_scan import list_provider_models
+
+    calls = []
+
+    class FakeClient:
+        is_closed = False
+
+        async def get(self, url: str, headers: dict[str, str], timeout=None):
+            calls.append((url, headers))
+            return httpx.Response(200, json={"data": [{"id": "gpt-oss:120b"}]})
+
+    monkeypatch.setattr("app.services.model_scan.get_client", lambda *args, **kwargs: FakeClient(), raising=False)
+    monkeypatch.setattr("app.services.http_pool.get_client", lambda *args, **kwargs: FakeClient())
+
+    models = asyncio.run(list_provider_models(Settings(_env_file=None, ollama_base_url="https://ollama.com/v1", ollama_api_key="secret"), "ollama"))
+
+    assert calls[0][0] == "https://ollama.com/v1/models"
+    assert models[0].id == "gpt-oss:120b"
+
+
 def test_render_router9_tries_preferred_model_chain(monkeypatch):
     calls = []
 

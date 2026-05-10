@@ -51,7 +51,7 @@ class OpenRouterClient:
 
         from app.services.http_pool import TIMEOUT_SCENE, get_client
 
-        base_url = self.settings.openrouter_base_url.rstrip("/")
+        base_url = openrouter_api_base_url(self.settings)
         url = f"{base_url}/chat/completions"
         started_at = time.perf_counter()
         log_provider_request("openrouter", "scene", url, payload["model"], problem_chars=len(problem_text), reasoning=self.reasoning_enabled)
@@ -94,7 +94,7 @@ class OpenRouterClient:
 
         from app.services.http_pool import TIMEOUT_REASONING, get_client
 
-        base_url = self.settings.openrouter_base_url.rstrip("/")
+        base_url = openrouter_api_base_url(self.settings)
         url = f"{base_url}/chat/completions"
         started_at = time.perf_counter()
         log_provider_request("openrouter", "reasoning", url, payload["model"], problem_chars=len(problem_text), reasoning=self.reasoning_enabled)
@@ -143,7 +143,7 @@ class OpenRouterClient:
             try:
                 from app.services.http_pool import TIMEOUT_OCR, get_client
 
-                base_url = self.settings.openrouter_base_url.rstrip("/")
+                base_url = openrouter_api_base_url(self.settings)
                 url = f"{base_url}/chat/completions"
                 started_at = time.perf_counter()
                 log_provider_request("openrouter", "ocr", url, payload["model"], image_chars=len(image_data_url))
@@ -165,6 +165,13 @@ class OpenRouterClient:
                 errors.append(f"{selected_model}: {error}")
 
         raise RuntimeError("OCR OpenRouter thất bại qua tất cả model: " + " | ".join(errors))
+
+
+def openrouter_api_base_url(settings: Settings) -> str:
+    base_url = settings.openrouter_base_url.rstrip("/")
+    if base_url == "https://openrouter.ai/v1":
+        return "https://openrouter.ai/api/v1"
+    return base_url
 
 
 def _build_headers(settings: Settings) -> dict[str, str]:

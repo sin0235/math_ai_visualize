@@ -100,6 +100,8 @@ async def sync_ai_profiles_to_registry(db: DatabaseClient, value: dict, patch: d
 
 
 async def sync_ai_settings_to_registry(db: DatabaseClient, value: dict, patch: dict | None = None) -> None:
+    value = normalize_provider_defaults(value)
+    patch = normalize_provider_defaults(patch) if patch is not None else None
     ai_settings = SystemAiSettings.model_validate(value)
     patch_data = patch or value
     patch_keys = set(patch_data)
@@ -134,6 +136,23 @@ async def sync_ai_settings_to_registry(db: DatabaseClient, value: dict, patch: d
     if "ocr" in patch_keys:
         await set_model_setting(db, "ocr_max_image_mb", ai_settings.ocr.max_image_mb)
         await save_task_profile(db, "ocr", ai_settings.ocr.provider, ai_settings.ocr.model, [])
+
+
+def normalize_provider_defaults(value: dict | None) -> dict | None:
+    if value is None:
+        return None
+    normalized = dict(value)
+    for provider_id in ("openrouter", "nvidia", "ollama", "openai_compat", "router9"):
+        provider = normalized.get(provider_id)
+        if not isinstance(provider, dict):
+            continue
+        provider_normalized = dict(provider)
+        allowed = provider_normalized.get("allowed_model_ids")
+        model = provider_normalized.get("model")
+        if isinstance(allowed, list) and allowed and isinstance(model, str) and model and model not in allowed:
+            provider_normalized["model"] = str(allowed[0])
+        normalized[provider_id] = provider_normalized
+    return normalized
 
 
 def _parse_setting_value(value: str) -> dict:
