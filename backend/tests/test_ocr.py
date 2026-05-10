@@ -310,6 +310,34 @@ def test_ocr_enforces_daily_plan_limit(isolated_database, monkeypatch):
     assert detail["suggestions"]
 
 
+def test_ocr_route_uses_env_openrouter_key_with_registry_ocr_profile(monkeypatch, isolated_database):
+    from app.services.model_registry import load_model_registry, save_task_profile
+
+    settings = Settings(_env_file=None, sqlite_path=isolated_database.path, openrouter_api_key="env-openrouter-key")
+    app.dependency_overrides[get_settings] = lambda: settings
+    monkeypatch.setattr("app.api.routes_ocr.get_settings", lambda: settings)
+    monkeypatch.setattr("app.services.model_registry.get_settings", lambda: settings)
+    asyncio.run(load_model_registry(isolated_database, settings))
+    asyncio.run(save_task_profile(isolated_database, "ocr", "openrouter", "openrouter/gh/gpt-5.2", []))
+    payloads = []
+
+    class FakeAsyncClient:
+        is_closed = False
+
+        async def post(self, url: str, headers: dict[str, str], json: dict, timeout=None):
+            payloads.append((url, headers, json))
+            return httpx.Response(200, json={"choices": [{"message": {"content": "Đề OCR."}}]})
+
+    monkeypatch.setattr("app.services.http_pool.get_client", lambda *args, **kwargs: FakeAsyncClient())
+
+    response = TestClient(app).post("/api/ocr", json={"image_data_url": _IMAGE_DATA_URL})
+
+    assert response.status_code == 200
+    assert response.json()["model"] == "openrouter/gh/gpt-5.2"
+    assert payloads[0][1]["Authorization"] == "Bearer env-openrouter-key"
+    assert payloads[0][2]["model"] == "gh/gpt-5.2"
+
+
 def test_openrouter_ocr_payload_uses_vision_message(monkeypatch):
     payloads = []
 
@@ -323,11 +351,11 @@ def test_openrouter_ocr_payload_uses_vision_message(monkeypatch):
         async def __aexit__(self, exc_type, exc, tb):
             return None
 
-        async def post(self, url: str, headers: dict[str, str], json: dict):
+        async def post(self, url: str, headers: dict[str, str], json: dict, timeout=None):
             payloads.append((url, headers, json))
             return httpx.Response(200, json={"choices": [{"message": {"content": "Cho A(0,0)."}}]})
 
-    monkeypatch.setattr("app.services.openrouter_client.httpx.AsyncClient", FakeAsyncClient)
+    monkeypatch.setattr("app.services.http_pool.get_client", lambda *args, **kwargs: FakeAsyncClient(kwargs.get("timeout") or args[1] if len(args) > 1 else 20))
 
     text = __import__("asyncio").run(
         OpenRouterClient(Settings(openrouter_api_key="secret")).ocr_image(_IMAGE_DATA_URL, "openrouter/vision-model")

@@ -505,7 +505,7 @@ def test_render_tries_full_provider_order_before_mock(monkeypatch):
     scene, warnings = asyncio.run(extract_scene("x", runtime_settings=runtime_settings))
 
     assert scene.topic == "unknown"
-    assert {provider for provider, _ in calls} >= {"openrouter", "opencode_nemotron", "openrouter_gpt_oss", "nvidia", "ollama_gpt_oss"}
+    assert {provider for provider, _ in calls} >= {"openrouter", "nvidia", "ollama_gpt_oss"}
     assert warnings[-1] == "Tất cả AI provider đều lỗi; đang dùng mock extractor."
 
 

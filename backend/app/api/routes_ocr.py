@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from app.api.deps import enforce_rate_limit, require_active_user, require_trusted_origin
+from app.core.config import get_settings
 from app.db.models import UserRecord
 from app.db.session import DatabaseClient, get_database
 from app.repositories.admin import AdminRepository
@@ -75,9 +76,10 @@ def enforce_enabled(flags: SystemFeatureFlags) -> None:
 def should_apply_ocr_profile(settings, profile, requested_provider, requested_model) -> bool:
     if profile is None or requested_provider or requested_model:
         return False
-    if profile.provider_id == "openrouter" and profile.model_id == settings.openrouter_vision_model:
+    env_settings = get_settings()
+    if profile.provider_id == "openrouter" and profile.model_id == env_settings.openrouter_vision_model:
         return False
-    if profile.provider_id == "router9" and profile.model_id in {settings.router9_ocr_model, settings.router9_text_model}:
+    if profile.provider_id == "router9" and profile.model_id in {env_settings.router9_ocr_model, env_settings.router9_text_model}:
         return False
     return bool(profile.provider_id and profile.provider_id != "auto")
 
