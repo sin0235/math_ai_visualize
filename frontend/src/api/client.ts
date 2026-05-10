@@ -562,23 +562,35 @@ export async function scanProviderModels(
   provider: 'openrouter' | 'openai_compat' | 'nvidia' | 'ollama',
   runtimeSettings: RuntimeSettings,
 ): Promise<ScannedModelInfo[]> {
-  const payload = await requestJson<{ models: ScannedModelInfo[] }>('/api/ai/models/scan', {
+  const job = await requestJson<{ scan_id: string; status: string }>('/api/ai/models/scan', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
     body: JSON.stringify({ provider, runtime_settings: compactRuntimeSettings(runtimeSettings) }),
-  }, 'Không thể quét model provider.');
-  return payload.models;
+  }, 'Không thể tạo model scan job.');
+  return pollModelScanJob(job.scan_id);
 }
 
 export async function scanRouter9Models(runtimeSettings: RuntimeSettings): Promise<ScannedModelInfo[]> {
-  const payload = await requestJson<{ models: ScannedModelInfo[] }>('/api/ai/router9/models/scan', {
+  const job = await requestJson<{ scan_id: string; status: string }>('/api/ai/router9/models/scan', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
     body: JSON.stringify({ runtime_settings: compactRuntimeSettings(runtimeSettings) }),
-  }, 'Không thể quét model 9router.');
-  return payload.models;
+  }, 'Không thể tạo model scan job 9router.');
+  return pollModelScanJob(job.scan_id);
+}
+
+async function pollModelScanJob(scanId: string): Promise<ScannedModelInfo[]> {
+  const startedAt = Date.now();
+  const timeoutMs = 180_000;
+  while (Date.now() - startedAt < timeoutMs) {
+    await delay(1500);
+    const job = await requestJson<{ status: string; models?: ScannedModelInfo[]; error?: { message?: string } | null }>(`/api/ai/models/scan/${encodeURIComponent(scanId)}`, { credentials: 'include' }, 'Không thể tải trạng thái model scan.');
+    if (job.status === 'completed') return job.models ?? [];
+    if (job.status === 'failed') throw new ApiError(job.error?.message || 'Không thể quét model provider.');
+  }
+  throw new ApiError('Quét model lâu hơn dự kiến.', ['Model scan job vẫn đang chạy. Hãy thử lại sau.']);
 }
 
 export async function renderEditedScene(scene: MathScene, advancedSettings: AdvancedRenderSettings): Promise<RenderResponse> {

@@ -248,6 +248,22 @@ class ModelScanResponse(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+ModelScanJobStatus = Literal["queued", "running", "completed", "failed"]
+
+
+class ModelScanJobCreateResponse(BaseModel):
+    scan_id: str
+    status: ModelScanJobStatus
+
+
+class ModelScanJobStatusResponse(BaseModel):
+    scan_id: str
+    provider: str
+    status: ModelScanJobStatus
+    models: list[AiModelInfo] = Field(default_factory=list)
+    error: dict[str, Any] | None = None
+
+
 OcrProvider = Literal["openrouter", "router9"]
 OcrMode = Literal["problem", "diagram"]
 
