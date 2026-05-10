@@ -33,7 +33,7 @@ export function GeneralSettingsPanel({ value, defaults, onChange, onReset }: Gen
 
   function updateDefaultModel(modelId: string) {
     const provider = value.default_provider;
-    if (provider === 'openrouter' || provider === 'nvidia' || provider === 'ollama' || provider === 'router9') {
+    if (provider === 'openrouter' || provider === 'nvidia' || provider === 'ollama' || provider === 'openai_compat' || provider === 'router9') {
       onChange({
         ...value,
         [provider]: { ...value[provider], model: modelId },
@@ -123,30 +123,18 @@ export function GeneralSettingsPanel({ value, defaults, onChange, onReset }: Gen
 
 function currentProviderModel(value: RuntimeSettings) {
   const provider = value.default_provider;
-  if (provider === 'openrouter' || provider === 'nvidia' || provider === 'ollama' || provider === 'router9') return value[provider].model;
+  if (provider === 'openrouter' || provider === 'nvidia' || provider === 'ollama' || provider === 'openai_compat' || provider === 'router9') return value[provider].model;
   return '';
 }
 
 function buildProviderModelOptions(defaults: SettingsDefaults | null, provider: string, currentModel: string) {
-  if (!defaults || !(provider === 'openrouter' || provider === 'nvidia' || provider === 'ollama' || provider === 'router9')) return currentModel ? [{ id: currentModel, label: currentModel }] : [];
+  if (!defaults || !(provider === 'openrouter' || provider === 'nvidia' || provider === 'ollama' || provider === 'openai_compat' || provider === 'router9')) return currentModel ? [{ id: currentModel, label: currentModel }] : [];
   return buildModelOptionsFromDefaults(defaults[provider], currentModel, [], defaults, provider);
 }
 
-function buildUserModelOptionsFromDefaults(providerDefaults: SettingsDefaults['openrouter'] | SettingsDefaults['nvidia'] | SettingsDefaults['ollama'] | SettingsDefaults['router9'] | undefined, currentModel = '', extraModelIds: string[] = []): Option[] {
+function buildUserModelOptionsFromDefaults(providerDefaults: SettingsDefaults['openrouter'] | SettingsDefaults['nvidia'] | SettingsDefaults['ollama'] | SettingsDefaults['openai_compat'] | SettingsDefaults['router9'] | undefined, currentModel = '', extraModelIds: string[] = []): Option[] {
   if (!providerDefaults) return uniqueOptions([currentModel, ...extraModelIds]);
-  const ids = providerDefaults.allowed_model_ids.length > 0
-    ? providerDefaults.allowed_model_ids
-    : [providerDefaults.model ?? '', ...extraModelIds].filter(Boolean);
-  const options = ids.map((id) => {
-    const scanned = providerDefaults.scanned_models.find((model) => model.id === id);
-    return { id, label: scanned?.label ?? id };
-  });
-  if (providerDefaults.allowed_model_ids.length === 0) {
-    [currentModel, ...extraModelIds].filter(Boolean).forEach((id) => {
-      if (!options.some((option) => option.id === id)) options.unshift({ id, label: id });
-    });
-  }
-  return options;
+  return buildModelOptionsFromDefaults(providerDefaults, currentModel, extraModelIds);
 }
 
 function uniqueOptions(ids: string[]): Option[] {

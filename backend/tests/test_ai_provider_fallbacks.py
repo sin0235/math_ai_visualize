@@ -464,7 +464,7 @@ def test_render_router9_only_failure_includes_attempted_model(monkeypatch):
         raise AssertionError("Expected router9-only render failure")
 
 
-def test_render_route_enqueues_and_failed_job_can_be_polled(monkeypatch, tmp_path):
+def test_render_route_returns_failure_directly(monkeypatch, tmp_path):
     db = SQLiteClient(str(tmp_path / "render-route.db"))
     asyncio.run(apply_sqlite_migrations(db))
     settings = Settings(_env_file=None, sqlite_path=db.path)
@@ -480,84 +480,23 @@ def test_render_route_enqueues_and_failed_job_can_be_polled(monkeypatch, tmp_pat
     async def noop(*args, **kwargs):
         return None
 
-    async def fail_extract_scene(*args, **kwargs):
+    async def fail_response(*args, **kwargs):
         raise RuntimeError("9router-only đang bật nên không fallback sang provider khác.")
 
     app.dependency_overrides[get_database] = override_db
     app.dependency_overrides[get_settings] = lambda: settings
     app.dependency_overrides[require_active_user] = override_user
-    created_tasks = []
-
-    def capture_task(coro):
-        created_tasks.append(coro)
-        return None
-
     monkeypatch.setattr("app.api.routes_render.enforce_rate_limit", noop)
     monkeypatch.setattr("app.api.routes_render.enforce_render_access", noop)
-    monkeypatch.setattr("app.api.routes_render.extract_scene", fail_extract_scene)
-    monkeypatch.setattr("app.api.routes_render.asyncio.create_task", capture_task)
+    monkeypatch.setattr("app.api.routes_render.build_problem_render_response", fail_response)
     try:
         client = TestClient(app)
         response = client.post("/api/render", json={"problem_text": "x"})
-        assert response.status_code == 202
-        job_id = response.json()["job_id"]
-        assert created_tasks
-        asyncio.run(created_tasks[0])
-        status_response = client.get(f"/api/render/jobs/{job_id}")
     finally:
         app.dependency_overrides.clear()
 
-    assert status_response.status_code == 200
-    assert status_response.json()["status"] == "failed"
-    assert status_response.json()["error"]["debug_message"] == "9router-only đang bật nên không fallback sang provider khác."
-
-
-def test_render_job_timeout_marks_failed(monkeypatch, tmp_path):
-    db = SQLiteClient(str(tmp_path / "render-timeout.db"))
-    asyncio.run(apply_sqlite_migrations(db))
-    settings = Settings(_env_file=None, sqlite_path=db.path)
-    user = UserRecord("u1", "u@example.com", "hash", "now", "now")
-    asyncio.run(db.execute("INSERT INTO users (id, email, password_hash) VALUES (?, ?, ?)", [user.id, user.email, user.password_hash]))
-
-    async def override_db():
-        return db
-
-    async def override_user():
-        return user
-
-    async def noop(*args, **kwargs):
-        return None
-
-    async def slow_response(*args, **kwargs):
-        await asyncio.sleep(0.05)
-
-    app.dependency_overrides[get_database] = override_db
-    app.dependency_overrides[get_settings] = lambda: settings
-    app.dependency_overrides[require_active_user] = override_user
-    created_tasks = []
-
-    def capture_task(coro):
-        created_tasks.append(coro)
-        return None
-
-    monkeypatch.setattr("app.api.routes_render.RENDER_JOB_TIMEOUT_SECONDS", 0.01)
-    monkeypatch.setattr("app.api.routes_render.enforce_rate_limit", noop)
-    monkeypatch.setattr("app.api.routes_render.enforce_render_access", noop)
-    monkeypatch.setattr("app.api.routes_render.build_problem_render_response", slow_response)
-    monkeypatch.setattr("app.api.routes_render.asyncio.create_task", capture_task)
-    try:
-        client = TestClient(app)
-        response = client.post("/api/render", json={"problem_text": "x"})
-        assert response.status_code == 202
-        job_id = response.json()["job_id"]
-        asyncio.run(created_tasks[0])
-        status_response = client.get(f"/api/render/jobs/{job_id}")
-    finally:
-        app.dependency_overrides.clear()
-
-    assert status_response.status_code == 200
-    assert status_response.json()["status"] == "failed"
-    assert "quá thời gian" in status_response.json()["error"]["debug_message"]
+    assert response.status_code == 400
+    assert response.json()["detail"]["debug_message"] == "9router-only đang bật nên không fallback sang provider khác."
 
 
 def test_solver_explainer_falls_back_when_openrouter_model_is_invalid(monkeypatch):

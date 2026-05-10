@@ -11,18 +11,10 @@ from pydantic import BaseModel, Field
 
 from app.api.deps import enforce_rate_limit, require_active_user, require_trusted_origin
 from app.schemas.scene import MAX_IMAGE_DATA_URL_CHARS, MAX_PROBLEM_TEXT_CHARS, RuntimeSettings
-from app.services.ai_fallback import Attempt, format_attempts, text_model_candidates, text_provider_order
-from app.services.function_analyzer import analyze_function
-from app.services.function_graph_builder import build_function_graph
-from app.services.ocr import extract_text_from_image
-from app.services.openrouter_client import _build_headers as _build_openrouter_headers, _extract_message as _extract_openrouter_message
-from app.services.router9_client import Router9Client, _extract_message_content as _extract_router9_message_content
 from app.db.models import UserRecord
 from app.db.session import DatabaseClient, get_database
 from app.services.api_errors import api_error, bad_request_from_error
 from app.services.model_registry import load_model_registry, resolve_effective_settings, resolve_task_profile
-from app.services.solver_explainer import explain_solver_result
-from app.services.solver_service import solve
 
 router = APIRouter(prefix="/api", tags=["solver"])
 
@@ -138,6 +130,8 @@ async def solve_problem(
     user: UserRecord = Depends(require_active_user),
     db: DatabaseClient = Depends(get_database),
 ) -> SolveResponse:
+    from app.services.solver_service import solve
+
     await enforce_rate_limit(db, http_request, user, "solve", 30 if user else 10, 60)
     try:
         result = solve(request.scene, request.question)
@@ -145,6 +139,8 @@ async def solve_problem(
         registry = await load_model_registry(db, settings)
         solver_profile = resolve_task_profile(registry, "solver_explanation")
         if settings.router9_api_key or settings.openrouter_api_key:
+            from app.services.solver_explainer import explain_solver_result
+
             result = await explain_solver_result(result, request.scene, settings, solver_profile)
     except Exception as e:
         raise bad_request_from_error(e, "solve_failed") from e
@@ -173,6 +169,9 @@ async def solve_problem(
 
 @router.post("/analyze", response_model=AnalyzeResponse, dependencies=[Depends(require_trusted_origin)])
 async def analyze_function_endpoint(request: AnalyzeRequest) -> AnalyzeResponse:
+    from app.services.function_analyzer import analyze_function
+    from app.services.function_graph_builder import build_function_graph
+
     try:
         data = analyze_function(
             request.expression,
@@ -196,6 +195,10 @@ async def analyze_from_ocr(
     request: AnalyzeOcrRequest,
     db: DatabaseClient = Depends(get_database),
 ) -> AnalyzeResponse:
+    from app.services.function_analyzer import analyze_function
+    from app.services.function_graph_builder import build_function_graph
+    from app.services.ocr import extract_text_from_image
+
     settings = await resolve_effective_settings(db, request.runtime_settings)
     registry = await load_model_registry(db, settings)
     ocr_profile = resolve_task_profile(registry, "ocr")
@@ -279,6 +282,10 @@ async def _extract_function_from_text(text: str, settings) -> str:
 
 
 async def _chat_text(prompt: str, settings) -> str:
+    from app.services.ai_fallback import Attempt, format_attempts, text_model_candidates, text_provider_order
+    from app.services.openrouter_client import _build_headers as _build_openrouter_headers, _extract_message as _extract_openrouter_message
+    from app.services.router9_client import Router9Client, _extract_message_content as _extract_router9_message_content
+
     attempts: list[Attempt] = []
     for provider in text_provider_order(settings, "router9" if settings.router9_api_key else None):
         for model in text_model_candidates(provider, settings):

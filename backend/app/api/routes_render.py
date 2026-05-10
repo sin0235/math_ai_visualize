@@ -1,94 +1,56 @@
-import asyncio
 import json
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import ValidationError
+from fastapi import APIRouter, Depends, Request, status
 
 from app.api.deps import enforce_rate_limit, require_active_user, require_trusted_origin
 from app.db.models import UserRecord
-from app.core.config import Settings, get_settings
-from app.db.session import DatabaseClient, create_database_client, get_database
+from app.db.session import DatabaseClient, get_database
 from app.repositories.admin import AdminRepository
 from app.repositories.history import RenderHistoryRepository
 from app.schemas.auth import SystemFeatureFlags
-from app.schemas.scene import MathScene, RenderJobCreateResponse, RenderJobStatusResponse, RenderPayload, RenderRequest, RenderResponse, SceneRenderRequest
+from app.schemas.scene import RenderRequest, RenderResponse, SceneRenderRequest
 from app.services.api_errors import api_error
 from app.services.system_settings import load_feature_flags
-from app.services.extractor import extract_scene
-from app.services.geometry_engine import normalize_scene
-from app.services.renderer_router import build_render_payload
 
 router = APIRouter(prefix="/api", tags=["render"])
-RENDER_JOB_TIMEOUT_SECONDS = 110
 
 
-@router.post("/render", response_model=RenderJobCreateResponse, status_code=status.HTTP_202_ACCEPTED, dependencies=[Depends(require_trusted_origin)])
+@router.post("/render", response_model=RenderResponse, dependencies=[Depends(require_trusted_origin)])
 async def render_problem(
     request: RenderRequest,
     http_request: Request,
     user: UserRecord = Depends(require_active_user),
     db: DatabaseClient = Depends(get_database),
-    settings: Settings = Depends(get_settings),
-) -> RenderJobCreateResponse:
+) -> RenderResponse:
     await enforce_rate_limit(db, http_request, user, "render", 20 if user else 8, 60)
     await enforce_render_access(db, user)
-    repo = RenderHistoryRepository(db)
-    job = await repo.create_pending(
-        user.id,
-        request.problem_text,
-        request.preferred_ai_provider,
-        request.preferred_ai_model,
-        render_request_json=json.dumps(sanitize_request_dump(request), ensure_ascii=False),
-        advanced_settings_json=request.advanced_settings.model_dump_json(),
-        runtime_settings_json=json.dumps(sanitize_runtime_settings(request.runtime_settings), ensure_ascii=False),
-        source_type="problem",
-        renderer=request.preferred_renderer,
-    )
-    asyncio.create_task(process_render_job(job.id, request, settings))
-    return RenderJobCreateResponse(job_id=job.id, status="queued")
-
-
-@router.get("/render/jobs/{job_id}", response_model=RenderJobStatusResponse)
-async def get_render_job(
-    job_id: str,
-    user: UserRecord = Depends(require_active_user),
-    db: DatabaseClient = Depends(get_database),
-) -> RenderJobStatusResponse:
-    job = await RenderHistoryRepository(db).find_for_user(user.id, job_id)
-    if job is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy render job.")
-    if job.status == "completed":
-        return RenderJobStatusResponse(
-            job_id=job.id,
-            status="completed",
-            response=RenderResponse(
-                scene=MathScene.model_validate_json(job.scene_json),
-                payload=RenderPayload.model_validate_json(job.payload_json),
-                warnings=json.loads(job.warnings_json),
-            ),
-        )
-    if job.status == "failed":
-        return RenderJobStatusResponse(job_id=job.id, status="failed", error=parse_json_object(job.error_json) or {})
-    return RenderJobStatusResponse(job_id=job.id, status=job.status)  # type: ignore[arg-type]
-
-
-async def process_render_job(job_id: str, request: RenderRequest, settings: Settings) -> None:
-    db = create_database_client(settings)
-    repo = RenderHistoryRepository(db)
-    await repo.mark_running(job_id)
     try:
-        response = await asyncio.wait_for(build_problem_render_response(request, db), timeout=RENDER_JOB_TIMEOUT_SECONDS)
-        await repo.mark_completed(job_id, response, response.scene.renderer)
-    except asyncio.TimeoutError as error:
-        await repo.mark_failed(job_id, render_error_payload(RuntimeError("Render job quá thời gian xử lý. Hãy thử model nhanh hơn hoặc tắt reasoning layer.")))
-    except (RuntimeError, ValidationError, ValueError, KeyError) as error:
-        await repo.mark_failed(job_id, render_error_payload(error))
-    except Exception as error:
-        await repo.mark_failed(job_id, render_error_payload(error))
+        response = await build_problem_render_response(request, db)
+    except (RuntimeError, ValueError, KeyError) as error:
+        payload = render_error_payload(error)
+        raise api_error(status.HTTP_400_BAD_REQUEST, payload["debug_message"], payload["code"], payload["suggestions"]) from error
+    if user is not None:
+        await RenderHistoryRepository(db).create(
+            user.id,
+            request.problem_text,
+            request.preferred_ai_provider,
+            request.preferred_ai_model,
+            response,
+            render_request_json=json.dumps(sanitize_request_dump(request), ensure_ascii=False),
+            advanced_settings_json=request.advanced_settings.model_dump_json(),
+            runtime_settings_json=json.dumps(sanitize_runtime_settings(request.runtime_settings), ensure_ascii=False),
+            source_type="problem",
+            renderer=response.scene.renderer,
+        )
+    return response
 
 
 async def build_problem_render_response(request: RenderRequest, db: DatabaseClient) -> RenderResponse:
+    from app.services.extractor import extract_scene
+    from app.services.geometry_engine import normalize_scene
+    from app.services.renderer_router import build_render_payload
+
     scene, warnings = await extract_scene(
         request.problem_text,
         request.grade,
@@ -122,6 +84,9 @@ async def render_scene(
     user: UserRecord = Depends(require_active_user),
     db: DatabaseClient = Depends(get_database),
 ) -> RenderResponse:
+    from app.services.geometry_engine import normalize_scene
+    from app.services.renderer_router import build_render_payload
+
     await enforce_rate_limit(db, http_request, user, "render_scene", 40 if user else 12, 60)
     await enforce_render_access(db, user)
     scene = normalize_scene(request.scene, request.advanced_settings)
@@ -182,13 +147,6 @@ def render_error_payload(error: Exception) -> dict:
         "debug_message": message,
         "suggestions": ["Kiểm tra đề bài và model dựng hình đã chọn.", "Thử provider/model khác hoặc viết đề bài rõ hơn."],
     }
-
-
-def parse_json_object(value: str | None) -> dict | None:
-    if not value:
-        return None
-    parsed = json.loads(value)
-    return parsed if isinstance(parsed, dict) else None
 
 
 def sanitize_request_dump(request: RenderRequest | SceneRenderRequest) -> dict:

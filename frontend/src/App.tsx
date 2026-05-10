@@ -1840,7 +1840,7 @@ function loadStoredSettings(saved: string): RuntimeSettings {
 function loadRemoteSettings(settings: UserBasicSettings, current: RuntimeSettings): RuntimeSettings {
   const next = { ...current, default_provider: settings.default_provider, ocr: { ...current.ocr, ...settings.ocr } };
   const provider = settings.default_provider;
-  if (provider === 'openrouter' || provider === 'nvidia' || provider === 'ollama' || provider === 'router9') {
+  if (provider === 'openrouter' || provider === 'nvidia' || provider === 'ollama' || provider === 'openai_compat' || provider === 'router9') {
     return dropApiKeys({ ...next, [provider]: { ...next[provider], model: settings.default_model } });
   }
   return dropApiKeys(next);
@@ -1857,7 +1857,7 @@ function toUserBasicSettings(settings: RuntimeSettings): UserBasicSettings {
 
 function currentProviderModel(settings: RuntimeSettings) {
   const provider = settings.default_provider;
-  if (provider === 'openrouter' || provider === 'nvidia' || provider === 'ollama' || provider === 'router9') return settings[provider].model;
+  if (provider === 'openrouter' || provider === 'nvidia' || provider === 'ollama' || provider === 'openai_compat' || provider === 'router9') return settings[provider].model;
   return '';
 }
 
@@ -1880,6 +1880,7 @@ function sanitizeSettingsForStorage(settings: RuntimeSettings): RuntimeSettings 
     openrouter: { ...defaultRuntimeSettings.openrouter, model: settings.openrouter.model, allowed_model_ids: settings.openrouter.allowed_model_ids },
     nvidia: { ...defaultRuntimeSettings.nvidia, model: settings.nvidia.model, allowed_model_ids: settings.nvidia.allowed_model_ids },
     ollama: { ...defaultRuntimeSettings.ollama, model: settings.ollama.model, allowed_model_ids: settings.ollama.allowed_model_ids },
+    openai_compat: { ...defaultRuntimeSettings.openai_compat, model: settings.openai_compat.model, allowed_model_ids: settings.openai_compat.allowed_model_ids },
     router9: { ...defaultRuntimeSettings.router9, model: settings.router9.model, allowed_model_ids: settings.router9.allowed_model_ids },
     ocr: settings.ocr,
   };

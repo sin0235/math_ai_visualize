@@ -11,12 +11,7 @@ from fastapi import APIRouter, Depends, Request, Response
 from app.api.deps import enforce_rate_limit, require_active_user, require_trusted_origin
 from app.db.models import UserRecord
 from app.db.session import DatabaseClient, get_database
-from app.renderers.ggb_export import build_ggb
-from app.renderers.katex_html_export import build_katex_html
-from app.renderers.pdf_export import build_jpg, build_pdf, build_png, build_svg
-from app.renderers.tikz_export import build_tikz_document
 from app.schemas.scene import SceneRenderRequest
-from app.services.geometry_engine import normalize_scene
 from app.api.routes_render import enforce_render_access
 
 router = APIRouter(prefix="/api/export", tags=["export"])
@@ -31,6 +26,9 @@ async def export_tikz(
 ) -> Response:
     await enforce_rate_limit(db, http_request, user, "export_tikz", 30 if user else 8, 60)
     await enforce_render_access(db, user)
+    from app.renderers.tikz_export import build_tikz_document
+    from app.services.geometry_engine import normalize_scene
+
     scene = normalize_scene(request.scene, request.advanced_settings)
     body = build_tikz_document(scene)
     return Response(
@@ -49,6 +47,9 @@ async def export_ggb(
 ) -> Response:
     await enforce_rate_limit(db, http_request, user, "export_ggb", 30 if user else 8, 60)
     await enforce_render_access(db, user)
+    from app.renderers.ggb_export import build_ggb
+    from app.services.geometry_engine import normalize_scene
+
     scene = normalize_scene(request.scene, request.advanced_settings)
     body = build_ggb(scene, request.advanced_settings)
     return Response(
@@ -67,6 +68,9 @@ async def export_pdf(
 ) -> Response:
     await enforce_rate_limit(db, http_request, user, "export_pdf", 30 if user else 8, 60)
     await enforce_render_access(db, user)
+    from app.renderers.pdf_export import build_pdf
+    from app.services.geometry_engine import normalize_scene
+
     scene = normalize_scene(request.scene, request.advanced_settings)
     body = build_pdf(scene)
     return Response(
@@ -85,6 +89,9 @@ async def export_png(
 ) -> Response:
     await enforce_rate_limit(db, http_request, user, "export_png", 30 if user else 8, 60)
     await enforce_render_access(db, user)
+    from app.renderers.pdf_export import build_png
+    from app.services.geometry_engine import normalize_scene
+
     scene = normalize_scene(request.scene, request.advanced_settings)
     body = build_png(scene)
     return Response(
@@ -103,6 +110,9 @@ async def export_jpg(
 ) -> Response:
     await enforce_rate_limit(db, http_request, user, "export_jpg", 30 if user else 8, 60)
     await enforce_render_access(db, user)
+    from app.renderers.pdf_export import build_jpg
+    from app.services.geometry_engine import normalize_scene
+
     scene = normalize_scene(request.scene, request.advanced_settings)
     body = build_jpg(scene)
     return Response(
@@ -121,6 +131,9 @@ async def export_svg(
 ) -> Response:
     await enforce_rate_limit(db, http_request, user, "export_svg", 30 if user else 8, 60)
     await enforce_render_access(db, user)
+    from app.renderers.pdf_export import build_svg
+    from app.services.geometry_engine import normalize_scene
+
     scene = normalize_scene(request.scene, request.advanced_settings)
     body = build_svg(scene)
     return Response(
@@ -139,6 +152,9 @@ async def export_katex_html(
 ) -> Response:
     await enforce_rate_limit(db, http_request, user, "export_katex_html", 30 if user else 8, 60)
     await enforce_render_access(db, user)
+    from app.renderers.katex_html_export import build_katex_html
+    from app.services.geometry_engine import normalize_scene
+
     scene = normalize_scene(request.scene, request.advanced_settings)
     body = build_katex_html(scene)
     return Response(
