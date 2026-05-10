@@ -58,6 +58,7 @@ import adminLogoUrl from '../../../logo.svg';
 type AdminToastKind = 'error' | 'warning' | 'info';
 
 type AdminToast = (title: string, message: string, kind?: AdminToastKind) => void;
+type AdminSection = 'overview' | 'users' | 'renders' | 'models' | 'plans' | 'settings' | 'feedback' | 'audit';
 
 interface AdminConsoleProps {
   user: UserResponse;
@@ -82,7 +83,7 @@ function AdminToolbarRefreshButton({ loading, onClick }: { loading: boolean; onC
 }
 
 export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast }: AdminConsoleProps) {
-  const [activeSection, setActiveSection] = useState<'overview' | 'users' | 'renders' | 'models' | 'plans' | 'settings' | 'feedback' | 'audit'>('overview');
+  const [activeSection, setActiveSection] = useState<AdminSection>('overview');
   const [summary, setSummary] = useState<AdminSummaryResponse | null>(null);
   const [users, setUsers] = useState<UserResponse[]>([]);
   const [renderJobs, setRenderJobs] = useState<AdminRenderHistoryItem[]>([]);
@@ -91,6 +92,16 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
   const [auditLogs, setAuditLogs] = useState<AuditLogResponse[]>([]);
   const [feedbackItems, setFeedbackItems] = useState<AdminFeedbackResponse[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadedSections, setLoadedSections] = useState<Record<AdminSection, boolean>>({
+    overview: false,
+    users: false,
+    renders: false,
+    models: false,
+    plans: false,
+    settings: false,
+    feedback: false,
+    audit: false,
+  });
 
   // User list state
   const [userQuery, setUserQuery] = useState('');
@@ -119,43 +130,97 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
   const [localAuditLogFilters, setLocalAuditLogFilters] = useState<AdminAuditLogFilters>({});
   const [filteringAuditLogs, setFilteringAuditLogs] = useState(false);
 
-  const onRefresh = async (showSuccess = false) => {
+  async function withLoading(section: AdminSection, label: string, loader: () => Promise<void>, showSuccess = false) {
     setLoading(true);
     try {
-      const [s, u, r, st, a, f, defaults, diagnostics] = await Promise.all([
-        getAdminSummary(),
-        getAdminUsers({}),
-        getAdminRenderJobs({}),
-        getAdminSystemSettings(),
-        getAdminAuditLogs({}),
-        getAdminFeedback({}),
-        getSettingsDefaults(),
-        getAdminDatabaseDiagnostics(),
-      ]);
-      const p = await loadAdminPlans(st);
-      setSummary(s);
-      setUsers(u);
-      setRenderJobs(r);
-      setSettings(st);
-      setPlans(p);
-      setAuditLogs(a);
-      setFeedbackItems(f);
-      setSettingsDefaults(defaults);
-      setDatabaseDiagnostics(diagnostics);
-
-      const ai = st.find((item) => item.key === 'ai_settings');
-      if (ai) setAiSettings(ai.value);
-      if (showSuccess) onToast('Admin dashboard', 'Đã làm mới dữ liệu admin.', 'info');
+      await loader();
+      setLoadedSections((current) => ({ ...current, [section]: true }));
+      if (showSuccess) onToast(label, 'Đã làm mới dữ liệu.', 'info');
     } catch (error) {
-      onToast('Admin dashboard', getErrorMessage(error, 'Không thể tải dữ liệu admin.'), 'error');
+      onToast(label, getErrorMessage(error, 'Không thể tải dữ liệu.'), 'error');
     } finally {
       setLoading(false);
     }
+  }
+
+  const loadOverview = (showSuccess = false) => withLoading('overview', 'Tổng quan', async () => {
+    const [s, r, diagnostics, a] = await Promise.all([
+      getAdminSummary(),
+      getAdminRenderJobs({}),
+      getAdminDatabaseDiagnostics(),
+      getAdminAuditLogs({}),
+    ]);
+    setSummary(s);
+    setRenderJobs(r);
+    setDatabaseDiagnostics(diagnostics);
+    setAuditLogs(a);
+  }, showSuccess);
+
+  const loadUsers = (showSuccess = false) => withLoading('users', 'Người dùng', async () => {
+    const [u, st] = await Promise.all([getAdminUsers({}), getAdminSystemSettings()]);
+    setUsers(u);
+    setSettings(st);
+    setPlans(await loadAdminPlans(st));
+  }, showSuccess);
+
+  const loadRenders = (showSuccess = false) => withLoading('renders', 'Render jobs', async () => {
+    const [r, u, st] = await Promise.all([getAdminRenderJobs({}), getAdminUsers({}), getAdminSystemSettings()]);
+    setRenderJobs(r);
+    setUsers(u);
+    setSettings(st);
+    const ai = st.find((item) => item.key === 'ai_settings');
+    if (ai) setAiSettings(ai.value);
+  }, showSuccess);
+
+  const loadModels = (showSuccess = false) => withLoading('models', 'Model & AI', async () => {
+    const [st, defaults] = await Promise.all([getAdminSystemSettings(), getSettingsDefaults()]);
+    setSettings(st);
+    setSettingsDefaults(defaults);
+    const ai = st.find((item) => item.key === 'ai_settings');
+    if (ai) setAiSettings(ai.value);
+  }, showSuccess);
+
+  const loadPlans = (showSuccess = false) => withLoading('plans', 'Gói người dùng', async () => {
+    const st = await getAdminSystemSettings();
+    setSettings(st);
+    setPlans(await loadAdminPlans(st));
+  }, showSuccess);
+
+  const loadDatabase = (showSuccess = false) => withLoading('settings', 'Database', async () => {
+    const [diagnostics, st] = await Promise.all([getAdminDatabaseDiagnostics(), getAdminSystemSettings()]);
+    setDatabaseDiagnostics(diagnostics);
+    setSettings(st);
+  }, showSuccess);
+
+  const loadFeedback = (showSuccess = false) => withLoading('feedback', 'Góp ý', async () => {
+    const [f, u] = await Promise.all([getAdminFeedback({}), getAdminUsers({})]);
+    setFeedbackItems(f);
+    setUsers(u);
+  }, showSuccess);
+
+  const loadAudit = (showSuccess = false) => withLoading('audit', 'Nhật ký kiểm toán', async () => {
+    const [a, u] = await Promise.all([getAdminAuditLogs({}), getAdminUsers({})]);
+    setAuditLogs(a);
+    setUsers(u);
+  }, showSuccess);
+
+  const refreshActiveSection = (showSuccess = false) => {
+    const loaders: Record<AdminSection, (showSuccess?: boolean) => Promise<void>> = {
+      overview: loadOverview,
+      users: loadUsers,
+      renders: loadRenders,
+      models: loadModels,
+      plans: loadPlans,
+      settings: loadDatabase,
+      feedback: loadFeedback,
+      audit: loadAudit,
+    };
+    return loaders[activeSection](showSuccess);
   };
 
   useEffect(() => {
-    void onRefresh();
-  }, []);
+    if (!loadedSections[activeSection]) void refreshActiveSection(false);
+  }, [activeSection]);
 
   const onSearchUsers = async (q: string, filters: AdminUserFilters) => {
     setSearchingUsers(true);
@@ -175,8 +240,9 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
 
   const onUpdateUser = async (u: UserResponse, patch: any) => {
     try {
-      await updateAdminUser(u.id, patch);
-      await onRefresh();
+      const updated = await updateAdminUser(u.id, patch);
+      setUsers((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+      setLoadedSections((current) => ({ ...current, overview: false }));
       onToast('Người dùng', 'Đã cập nhật người dùng.', 'info');
     } catch (error) {
       onToast('Người dùng', getErrorMessage(error, 'Không thể cập nhật người dùng.'), 'error');
@@ -186,8 +252,9 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
   const onToggleUserStatus = async (u: UserResponse) => {
     const nextStatus = u.status === 'active' ? 'disabled' : 'active';
     try {
-      await updateAdminUser(u.id, { status: nextStatus });
-      await onRefresh();
+      const updated = await updateAdminUser(u.id, { status: nextStatus });
+      setUsers((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+      setLoadedSections((current) => ({ ...current, overview: false }));
       onToast('Người dùng', nextStatus === 'active' ? 'Đã kích hoạt người dùng.' : 'Đã vô hiệu hoá người dùng.', 'info');
     } catch (error) {
       onToast('Người dùng', getErrorMessage(error, 'Không thể đổi trạng thái người dùng.'), 'error');
@@ -255,11 +322,24 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
 
   const saveAdminSystemSetting = async (key: string, value: any) => {
     try {
-      await updateAdminSystemSetting(key, value);
-      await onRefresh();
+      const updated = await updateAdminSystemSetting(key, value);
+      setSettings((prev) =>
+        prev.some((item) => item.key === key)
+          ? prev.map((item) => (item.key === key ? updated : item))
+          : [...prev, updated]
+      );
+      if (key === 'ai_settings') setAiSettings(updated.value);
+      if (key === 'ai_settings' || key === 'ai_profiles') setSettingsDefaults(await getSettingsDefaults());
     } catch (error) {
       throw error;
     }
+  };
+
+  const saveAdminPlan = async (planId: string, patch: Parameters<typeof updateAdminPlan>[1]) => {
+    const updated = await updateAdminPlan(planId, patch);
+    setPlans((current) => current.map((plan) => (plan.id === updated.id ? updated : plan)));
+    setLoadedSections((current) => ({ ...current, users: false }));
+    return updated;
   };
 
   const onSearchFeedback = async (filters: AdminFeedbackFilters) => {
@@ -363,7 +443,7 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
           <>
             <header className="admin-topbar">
               <div><span className="home-eyebrow">Admin Dashboard</span><h2>Quản lý dự án AI Math Renderer</h2><p>Khu vực vận hành, phân tích, quản lý người dùng, model, cài đặt và nhật ký.</p></div>
-              <AdminToolbarRefreshButton loading={loading} onClick={() => void onRefresh(true)} />
+              <AdminToolbarRefreshButton loading={loading} onClick={() => void refreshActiveSection(true)} />
             </header>
             <div className="admin-section-stack">
               <div className="admin-metric-groups">
@@ -445,7 +525,7 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
           <>
             <header className="admin-page-header">
               <h2>Quản lý người dùng</h2>
-              <AdminToolbarRefreshButton loading={loading} onClick={() => void onRefresh(true)} />
+              <AdminToolbarRefreshButton loading={loading} onClick={() => void refreshActiveSection(true)} />
             </header>
             <section className="admin-panel admin-panel-full">
             <form className="admin-toolbar" onSubmit={submitUserSearch}>
@@ -468,7 +548,7 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
           <>
             <header className="admin-page-header">
               <h2>Quản lý render jobs</h2>
-              <AdminToolbarRefreshButton loading={loading} onClick={() => void onRefresh(true)} />
+              <AdminToolbarRefreshButton loading={loading} onClick={() => void refreshActiveSection(true)} />
             </header>
             <section className="admin-panel admin-panel-full">
             <form className="admin-toolbar admin-filter-grid" onSubmit={submitRenderJobFilters}>
@@ -502,7 +582,7 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
           <>
             <header className="admin-page-header">
               <h2>Quản lý model & AI</h2>
-              <AdminToolbarRefreshButton loading={loading} onClick={() => void onRefresh(true)} />
+              <AdminToolbarRefreshButton loading={loading} onClick={() => void refreshActiveSection(true)} />
             </header>
             <section className="admin-panel admin-panel-full">
             <AdminAiSettingsForm value={adminAiSettingsValue(aiSettings, settingsDefaults)} defaults={settingsDefaults} saving={savingAiSettings} onSave={saveAiSettingsPatch} onToast={onToast} />
@@ -516,11 +596,11 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
           <>
             <header className="admin-page-header">
               <h2>Gói người dùng</h2>
-              <AdminToolbarRefreshButton loading={loading} onClick={() => void onRefresh(true)} />
+              <AdminToolbarRefreshButton loading={loading} onClick={() => void refreshActiveSection(true)} />
             </header>
             <section className="admin-panel admin-panel-full">
-              <AdminPlanSettingsForm plans={plans} onSavePlan={(planId, patch) => updateAdminPlan(planId, patch)} />
-              <AdminFeatureFlagsForm value={settings.find((item) => item.key === 'feature_flags')?.value ?? {}} onSave={(value) => saveAdminSystemSetting('feature_flags', value)} />
+              <AdminPlanSettingsForm plans={plans} onSavePlan={saveAdminPlan} />
+              <AdminFeatureFlagsForm value={settings.find((item) => item.key === 'feature_flags')?.value ?? {}} onSave={(value) => saveAdminSystemSetting('feature_flags', value)} onToast={onToast} />
             </section>
           </>
         )}
@@ -529,7 +609,7 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
           <>
             <header className="admin-page-header">
               <h2>Database</h2>
-              <AdminToolbarRefreshButton loading={loading} onClick={() => void onRefresh(true)} />
+              <AdminToolbarRefreshButton loading={loading} onClick={() => void refreshActiveSection(true)} />
             </header>
             <section className="admin-panel admin-panel-full">
             {databaseDiagnostics && <AdminDatabaseDiagnosticsPanel diagnostics={databaseDiagnostics} />}
@@ -543,7 +623,7 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
           <>
             <header className="admin-page-header">
               <h2>Quản lý góp ý</h2>
-              <AdminToolbarRefreshButton loading={loading} onClick={() => void onRefresh(true)} />
+              <AdminToolbarRefreshButton loading={loading} onClick={() => void refreshActiveSection(true)} />
             </header>
             <section className="admin-panel admin-panel-full">
               <form className="admin-toolbar admin-filter-grid" onSubmit={submitFeedbackFilters}>
@@ -571,7 +651,7 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
           <>
             <header className="admin-page-header">
               <h2>Nhật ký kiểm toán</h2>
-              <AdminToolbarRefreshButton loading={loading} onClick={() => void onRefresh(true)} />
+              <AdminToolbarRefreshButton loading={loading} onClick={() => void refreshActiveSection(true)} />
             </header>
             <section className="admin-panel admin-panel-full">
             <form className="admin-toolbar admin-filter-grid" onSubmit={submitAuditLogFilters}>

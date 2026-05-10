@@ -583,19 +583,32 @@ function buildPlanDrafts(plans: AdminPlanResponse[]) {
   }])) as Record<string, { name: string; render: string; ocr: string; active: boolean }>;
 }
 
-export function AdminFeatureFlagsForm({ value, onSave }: { value: Record<string, unknown>; onSave: (value: Record<string, unknown>) => Promise<void> }) {
+export function AdminFeatureFlagsForm({ value, onSave, onToast }: { value: Record<string, unknown>; onSave: (value: Record<string, unknown>) => Promise<void>; onToast?: AdminToast }) {
   const [maintenanceMode, setMaintenanceMode] = useState(value.maintenance_mode === true);
   const [message, setMessage] = useState(getStringValue(value.maintenance_message, 'Hệ thống đang bảo trì. Vui lòng thử lại sau.'));
   const [googleOAuth, setGoogleOAuth] = useState(value.google_oauth_enabled !== false);
   const [ocr, setOcr] = useState(value.ocr_enabled !== false);
   const [render, setRender] = useState(value.render_enabled !== false);
+  const [saving, setSaving] = useState(false);
+
+  async function saveFlags() {
+    setSaving(true);
+    try {
+      await onSave({ version: 1, maintenance_mode: maintenanceMode, maintenance_message: message, google_oauth_enabled: googleOAuth, ocr_enabled: ocr, render_enabled: render });
+    } catch (error) {
+      onToast?.('Cờ tính năng', getErrorMessage(error, 'Không thể lưu cờ tính năng.'), 'error');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <section className="admin-settings-section"><h4>Cờ tính năng</h4><div className="admin-field-grid">
-      <label className="checkbox-label"><input type="checkbox" checked={maintenanceMode} onChange={(event) => setMaintenanceMode(event.target.checked)} /> Chế độ bảo trì</label>
-      <label className="checkbox-label"><input type="checkbox" checked={render} onChange={(event) => setRender(event.target.checked)} /> Cho phép dựng hình</label>
-      <label className="checkbox-label"><input type="checkbox" checked={ocr} onChange={(event) => setOcr(event.target.checked)} /> Cho phép OCR</label>
-      <label className="checkbox-label"><input type="checkbox" checked={googleOAuth} onChange={(event) => setGoogleOAuth(event.target.checked)} /> Cho phép đăng nhập Google</label>
-    </div><label className="field-label">Thông báo bảo trì<textarea rows={3} value={message} onChange={(event) => setMessage(event.target.value)} /></label><button type="button" className="secondary-button" onClick={() => void onSave({ version: 1, maintenance_mode: maintenanceMode, maintenance_message: message, google_oauth_enabled: googleOAuth, ocr_enabled: ocr, render_enabled: render })}>Lưu cờ tính năng</button></section>
+      <label className="checkbox-label"><input type="checkbox" checked={maintenanceMode} onChange={(event) => setMaintenanceMode(event.target.checked)} disabled={saving} /> Chế độ bảo trì</label>
+      <label className="checkbox-label"><input type="checkbox" checked={render} onChange={(event) => setRender(event.target.checked)} disabled={saving} /> Cho phép dựng hình</label>
+      <label className="checkbox-label"><input type="checkbox" checked={ocr} onChange={(event) => setOcr(event.target.checked)} disabled={saving} /> Cho phép OCR</label>
+      <label className="checkbox-label"><input type="checkbox" checked={googleOAuth} onChange={(event) => setGoogleOAuth(event.target.checked)} disabled={saving} /> Cho phép đăng nhập Google</label>
+    </div><label className="field-label">Thông báo bảo trì<textarea rows={3} value={message} onChange={(event) => setMessage(event.target.value)} disabled={saving} /></label><button type="button" className="secondary-button" onClick={() => void saveFlags()} disabled={saving} aria-busy={saving}>{saving ? 'Đang lưu...' : 'Lưu cờ tính năng'}</button></section>
   );
 }
 
@@ -608,6 +621,7 @@ export function AdminAiProfilesForm({ value, aiSettings, onSave, onToast }: { va
   const [solverProvider, setSolverProvider] = useState(solver.provider);
   const [solverModel, setSolverModel] = useState(solver.model);
   const [solverFallbacks, setSolverFallbacks] = useState<string[]>(solver.fallbacks);
+  const [saving, setSaving] = useState(false);
   const settingsDefaults = adminSettingsToDefaults(aiSettings);
   const providerOptions = buildProviderOptions(settingsDefaults, false);
 
@@ -637,30 +651,33 @@ export function AdminAiProfilesForm({ value, aiSettings, onSave, onToast }: { va
   }
 
   async function saveProfiles() {
+    setSaving(true);
     try {
       await onSave({ version: 1, geometry_reasoning: { provider: geometryProvider, model: geometryModel, fallbacks: geometryFallbacks }, solver_explanation: { provider: solverProvider, model: solverModel, fallbacks: solverFallbacks } });
       onToast?.('Hồ sơ AI', 'Đã lưu hồ sơ AI.', 'info');
     } catch (error) {
       onToast?.('Hồ sơ AI', getErrorMessage(error, 'Không thể lưu hồ sơ AI.'), 'error');
+    } finally {
+      setSaving(false);
     }
   }
 
   return (
     <section className="admin-settings-section"><h4>Hồ sơ AI</h4><div className="admin-field-grid">
-      <label className="field-label">Provider hình học<select value={geometryProvider} onChange={(event) => setGeometryProvider(event.target.value)}><option value="auto">auto</option>{providerOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
-      <label className="field-label">Model hình học<select value={geometryModel} onChange={(event) => setGeometryModel(event.target.value)}><option value="">Chọn model</option>{modelOptions(geometryProvider, geometryModel, geometryFallbacks).map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.label}</option>)}</select></label>
-      <label className="field-label">Provider diễn giải lời giải<select value={solverProvider} onChange={(event) => setSolverProvider(event.target.value)}><option value="auto">auto</option>{providerOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
-      <label className="field-label">Model diễn giải lời giải<select value={solverModel} onChange={(event) => setSolverModel(event.target.value)}><option value="">Chọn model</option>{modelOptions(solverProvider, solverModel, solverFallbacks).map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.label}</option>)}</select></label>
+      <label className="field-label">Provider hình học<select value={geometryProvider} onChange={(event) => setGeometryProvider(event.target.value)} disabled={saving}><option value="auto">auto</option>{providerOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
+      <label className="field-label">Model hình học<select value={geometryModel} onChange={(event) => setGeometryModel(event.target.value)} disabled={saving}><option value="">Chọn model</option>{modelOptions(geometryProvider, geometryModel, geometryFallbacks).map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.label}</option>)}</select></label>
+      <label className="field-label">Provider diễn giải lời giải<select value={solverProvider} onChange={(event) => setSolverProvider(event.target.value)} disabled={saving}><option value="auto">auto</option>{providerOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
+      <label className="field-label">Model diễn giải lời giải<select value={solverModel} onChange={(event) => setSolverModel(event.target.value)} disabled={saving}><option value="">Chọn model</option>{modelOptions(solverProvider, solverModel, solverFallbacks).map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.label}</option>)}</select></label>
     </div>
     <div className="admin-model-fallback-grid">
-      <ModelFallbackChecklist title="Model dự phòng hình học" options={modelOptions(geometryProvider, geometryModel, geometryFallbacks)} selected={geometryFallbacks} onToggle={(modelId, checked) => updateFallbacks('geometry', modelId, checked)} />
-      <ModelFallbackChecklist title="Model dự phòng diễn giải lời giải" options={modelOptions(solverProvider, solverModel, solverFallbacks)} selected={solverFallbacks} onToggle={(modelId, checked) => updateFallbacks('solver', modelId, checked)} />
+      <ModelFallbackChecklist title="Model dự phòng hình học" options={modelOptions(geometryProvider, geometryModel, geometryFallbacks)} selected={geometryFallbacks} onToggle={(modelId, checked) => updateFallbacks('geometry', modelId, checked)} disabled={saving} />
+      <ModelFallbackChecklist title="Model dự phòng diễn giải lời giải" options={modelOptions(solverProvider, solverModel, solverFallbacks)} selected={solverFallbacks} onToggle={(modelId, checked) => updateFallbacks('solver', modelId, checked)} disabled={saving} />
     </div>
-    <button type="button" className="secondary-button" onClick={() => void saveProfiles()}>Lưu hồ sơ AI</button></section>
+    <button type="button" className="secondary-button" onClick={() => void saveProfiles()} disabled={saving} aria-busy={saving}>{saving ? 'Đang lưu...' : 'Lưu hồ sơ AI'}</button></section>
   );
 }
 
-function ModelFallbackChecklist({ title, options, selected, onToggle }: { title: string; options: Array<{ id: string; label: string }>; selected: string[]; onToggle: (modelId: string, checked: boolean) => void }) {
+function ModelFallbackChecklist({ title, options, selected, onToggle, disabled }: { title: string; options: Array<{ id: string; label: string }>; selected: string[]; onToggle: (modelId: string, checked: boolean) => void; disabled?: boolean }) {
   return (
     <section className="admin-model-fallback-list">
       <div className="admin-provider-models-head">
@@ -671,7 +688,7 @@ function ModelFallbackChecklist({ title, options, selected, onToggle }: { title:
         {options.length > 0 ? options.map((option) => (
           <div key={option.id} className="admin-model-checkbox">
             <label>
-              <input type="checkbox" checked={selected.includes(option.id)} onChange={(event) => onToggle(option.id, event.target.checked)} />
+              <input type="checkbox" checked={selected.includes(option.id)} onChange={(event) => onToggle(option.id, event.target.checked)} disabled={disabled} />
               <span className="model-label"><strong>{option.id}</strong></span>
             </label>
           </div>

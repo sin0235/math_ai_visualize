@@ -2010,12 +2010,13 @@ select {
 .admin-plan-grid-head,
 .admin-plan-row {
   display: grid;
-  grid-template-columns: minmax(120px, 0.9fr) minmax(150px, 1.1fr) minmax(110px, 0.8fr) minmax(110px, 0.8fr) minmax(110px, 0.7fr) 80px;
+  grid-template-columns: minmax(120px, 0.9fr) minmax(150px, 1.1fr) minmax(110px, 0.8fr) minmax(110px, 0.8fr) minmax(110px, 0.7fr) minmax(56px, auto);
   gap: 12px;
-  align-items: center;
+  align-items: start;
 }
 
 .admin-plan-grid-head {
+  align-items: center;
   padding: 10px 12px;
   background: #f5f5f5;
   color: #737373;
@@ -2072,6 +2073,7 @@ select {
 .admin-plan-toggle {
   display: inline-flex;
   align-items: center;
+  align-self: end;
   gap: 8px;
   min-height: 36px;
   margin: 0;
@@ -2083,13 +2085,23 @@ select {
 .admin-plan-toggle input {
   width: 16px;
   height: 16px;
-  accent-color: #2563eb;
+  accent-color: #171717;
+  color-scheme: light;
 }
 
 .admin-plan-save {
-  width: 100%;
-  height: 36px;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  max-width: 100%;
+  height: 30px;
+  padding: 0 10px;
   justify-content: center;
+  align-self: end;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 10px;
 }
 
 .admin-plan-warning {
@@ -2386,7 +2398,8 @@ select {
   .admin-plan-save {
     width: auto;
     justify-self: start;
-    padding-inline: 18px;
+    padding-inline: 10px;
+    height: 30px;
   }
 }
 
