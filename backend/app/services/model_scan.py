@@ -20,12 +20,14 @@ async def list_provider_models(settings: Settings, provider: ModelScanProvider) 
     if provider == "openrouter":
         headers = {**headers, **_openrouter_optional_headers(settings)}
 
-    url = f"{base.rstrip('/')}/models"
+    url = f"{_normalize_openai_base_url(base).rstrip('/')}/models"
     try:
-        async with httpx.AsyncClient(timeout=60) as client:
+        async with httpx.AsyncClient(timeout=20) as client:
             response = await client.get(url, headers=headers)
             if response.status_code >= 400:
                 raise RuntimeError(_format_scan_error(provider, response))
+    except httpx.TimeoutException as error:
+        raise RuntimeError(f"{provider} models request quá chậm; gateway không trả trong 20 giây.") from error
     except httpx.HTTPError as error:
         message = str(error) or error.__class__.__name__
         raise RuntimeError(f"{provider} models request lỗi: {message}") from error
@@ -43,6 +45,15 @@ def _provider_connection(settings: Settings, provider: ModelScanProvider) -> tup
     if provider == "ollama":
         return settings.ollama_api_key, settings.ollama_base_url
     raise AssertionError(f"unknown scan provider: {provider}")
+
+
+def _normalize_openai_base_url(base_url: str) -> str:
+    base = base_url.strip().rstrip("/")
+    if base.endswith("/chat/completions"):
+        return base.removesuffix("/chat/completions")
+    if base.endswith("/completions"):
+        return base.removesuffix("/completions")
+    return base
 
 
 def _require_api_key_if_needed(provider: ModelScanProvider, api_key: str | None) -> None:
@@ -70,10 +81,12 @@ async def _fetch_ollama_models(settings: Settings, api_key: str | None, base_url
     headers = _bearer_headers(api_key)
     url = f"{base_url.rstrip('/')}/api/tags"
     try:
-        async with httpx.AsyncClient(timeout=60) as client:
+        async with httpx.AsyncClient(timeout=20) as client:
             response = await client.get(url, headers=headers)
             if response.status_code >= 400:
                 raise RuntimeError(_format_scan_error("ollama", response))
+    except httpx.TimeoutException as error:
+        raise RuntimeError("ollama models request quá chậm; gateway không trả trong 20 giây.") from error
     except httpx.HTTPError as error:
         message = str(error) or error.__class__.__name__
         raise RuntimeError(f"ollama models request lỗi: {message}") from error

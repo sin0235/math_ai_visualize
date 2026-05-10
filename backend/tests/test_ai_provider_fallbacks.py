@@ -305,15 +305,15 @@ def test_openai_compat_scan_models_uses_models_endpoint_without_api_key(monkeypa
             return None
 
         async def get(self, url: str, headers: dict[str, str]):
-            calls.append((url, headers))
+            calls.append((url, headers, self.timeout))
             return httpx.Response(200, json={"data": [{"id": "deepseek-chat", "owned_by": "deepseek"}]})
 
     monkeypatch.setattr("app.services.model_scan.httpx.AsyncClient", FakeAsyncClient)
 
-    settings = Settings(_env_file=None, openai_compat_base_url="https://deepseek-reverse-api.sin-studio.tech/v1")
+    settings = Settings(_env_file=None, openai_compat_base_url="https://deepseek-reverse-api.sin-studio.tech/v1/chat/completions")
     models = asyncio.run(list_provider_models(settings, "openai_compat"))
 
-    assert calls[0] == ("https://deepseek-reverse-api.sin-studio.tech/v1/models", {})
+    assert calls[0] == ("https://deepseek-reverse-api.sin-studio.tech/v1/models", {}, 20)
     assert models[0].id == "deepseek-chat"
     assert models[0].provider == "openai_compat"
 
