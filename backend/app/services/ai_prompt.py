@@ -137,7 +137,7 @@ Quy tắc annotations hiển thị sản phẩm:
 - Nếu view.show_coordinates = true thì frontend sẽ tự hiện toạ độ; chỉ bật khi đề toán toạ độ cần thấy toạ độ.
 - Với mặt cầu, dùng object type sphere, opacity khoảng 0.12-0.2 để mặt cầu trong suốt.
 - Với hình 3D, dùng face cho mặt hữu hạn của khối; dùng plane cho mặt phẳng toán học cần vector pháp tuyến hoặc tính tương giao.
-- Với plane, ưu tiên khai báo 3 điểm thật thuộc mặt phẳng; frontend sẽ tự mở rộng thành tứ giác đủ rộng. Nếu tự tạo 4 đỉnh phụ cho mặt phẳng minh hoạ, đặt chúng cân quanh hình chính và rộng hơn hình liên quan khoảng 20-40%, không để hình nằm sát mép, tuột xuống dưới hoặc chót vót phía trên mặt.
+- Với plane, ưu tiên khai báo 3 điểm thật thuộc mặt phẳng; frontend sẽ tự mở rộng thành tứ giác đủ rộng. Nếu tự tạo 4 đỉnh phụ cho mặt phẳng minh hoạ, đặt chúng cân quanh hình chính và rộng hơn khối/hình liên quan ít nhất 50-60%; với mặt phẳng cắt (bài thiết diện/lát cắt), xem Quy tắc mặt cắt/thiết diện bên dưới để có kích thước đúng.
 - Với line_3d/plane, không tự bịa điểm giao duy nhất nếu đường thẳng song song, trùng, chéo nhau, hoặc nằm trong mặt phẳng; backend sẽ phân loại và tính giao điểm thật.
 
 Quy tắc renderer:
@@ -159,6 +159,54 @@ Quy tắc khối tròn xoay (hình nón, hình trụ, khối cầu cắt):
 - Hình nón cụt: tương tự hình nón nhưng có hai đáy tròn kích thước khác nhau.
 - Khi vẽ khối tròn xoay bằng đa giác xấp xỉ, dùng ít nhất 12 đỉnh cho đáy tròn, đặt tên P1, P2,..., P12 (hoặc Q1,...). Chỉ tạo face cho đáy, không tạo face cho toàn bộ mặt xung quanh (quá nhiều tam giác).
 - Thêm segment dashed cho đường kính và chiều cao. Chỉ thêm length annotation cho bán kính/chiều cao nếu đề cho trực tiếp giá trị đó.
+
+Quy tắc mặt cắt / thiết diện (BẮT BUỘC khi đề có "mặt phẳng cắt", "thiết diện", "lát cắt", "cắt bởi"):
+- Mọi bài mặt phẳng cắt qua khối 3D PHẢI vẽ ĐẦY ĐỦ 4 thành phần, MỖI thành phần một màu riêng biệt:
+  1. KHỐI CHÍNH (sphere/face của chóp/trụ/nón): màu nhạt trong suốt, opacity 0.10-0.16, ví dụ #5da9ff.
+  2. MẶT PHẲNG CẮT (face với 4 đỉnh phụ lớn): màu phân biệt rõ với khối, ví dụ #a8edea (xanh ngọc nhạt) opacity 0.22-0.30. Đỉnh phụ PHẢI cách tâm hình chiếu ít nhất 1.6× bán kính/nửa đường chéo lớn nhất của khối, đảm bảo mặt phẳng bao phủ hoàn toàn và khối KHÔNG nhô ra ngoài mặt phẳng.
+  3. THIẾT DIỆN / LÁT CẮT (face xấp xỉ hình giao): màu RỰC RỠ, nổi bật nhất, ví dụ #f97316 (cam đậm) opacity 0.55-0.70. Đây là phần quan trọng nhất — phải thấy rõ trên hình.
+  4. VIỀN THIẾT DIỆN (các segment bao quanh thiết diện): màu đậm riêng, ví dụ #e63946 (đỏ) line_width 3-4, style='solid'. Vẽ TẤT CẢ cạnh/đường biên của thiết diện.
+- Thêm segment dashed màu #7c3aed từ tâm O đến chân đường vuông góc H trên mặt phẳng cắt (nếu đề đề cập khoảng cách từ tâm đến mặt phẳng).
+- BẢNG MÀU bắt buộc cho mặt cắt:
+  * Khối chính: #5da9ff opacity 0.12-0.16
+  * Mặt phẳng cắt: #a8edea opacity 0.24-0.28
+  * Thiết diện/lát cắt: #f97316 opacity 0.58-0.68
+  * Viền thiết diện: #e63946 line_width 3
+  * Đường vuông góc O→H: #7c3aed line_width 2 style='dashed'
+- Công thức thiết diện theo từng loại khối:
+  * MẶT CẦU tâm O bán kính r, cắt mặt phẳng P cách O khoảng d (d < r):
+    - Thiết diện = ĐƯỜNG TRÒN bán kính ρ = sqrt(r²−d²), tâm H = chân vuông góc từ O đến P.
+    - Xấp xỉ bằng 16 điểm đều trên đường tròn đó: nếu P là y=d thì Ci = (ρ·cos(i·22.5°), d, ρ·sin(i·22.5°)).
+    - Mặt phẳng cắt 4 đỉnh: (±1.6r, d, ±1.6r).
+    - Ví dụ: r=4, d=3 → ρ=sqrt(7)≈2.646, mặt phẳng y=3, đỉnh (±6.4, 3, ±6.4).
+  * MẶT TRỤ bán kính r chiều cao h, cắt ngang (mặt phẳng // đáy ở độ cao y=k):
+    - Thiết diện = hình tròn bán kính r tại y=k; xấp xỉ 16 điểm trên đường tròn.
+    - Mặt phẳng cắt 4 đỉnh: (±1.6r, k, ±1.6r).
+  * MẶT TRỤ cắt xiên:
+    - Thiết diện là elip; xấp xỉ bằng đa giác 16+ điểm (tính giao của mặt phẳng với mặt trụ).
+  * HÌNH CHÓP/LĂNG TRỤ cắt bởi mặt phẳng song song với đáy ở độ cao y=k (đỉnh S tại y=H):
+    - Tỷ lệ thu nhỏ t = (H−k)/H; thiết diện đồng dạng đáy với tỷ lệ (1−t) nếu cắt từ đỉnh.
+    - Tính tọa độ các đỉnh thiết diện = nội suy tuyến tính trên cạnh bên: Ci = S + t·(Vi − S).
+    - Mặt phẳng cắt đủ rộng bao phủ đáy (±1.6×bán kính đường tròn ngoại tiếp đáy).
+  * HÌNH CHÓP/LĂNG TRỤ cắt xiên:
+    - Tính tọa độ giao điểm của mặt phẳng với từng cạnh bên, tạo face từ các giao điểm đó.
+    - Mặt phẳng cắt đủ rộng bao phủ tiết diện + ít nhất 50% mỗi chiều.
+- KÍCH THƯỚC MẶT PHẲNG CẮT chi tiết:
+  * Mặt cầu bán kính r: đỉnh phụ cách tâm chiếu ≥ 1.6r → 4 điểm tại (±1.6r, d, ±1.6r).
+  * Hình trụ bán kính r cao h: đỉnh phụ tại (±1.6r, k, ±1.6r) trong trường hợp cắt ngang.
+  * Hình chóp S.ABCD đáy vuông cạnh a: đỉnh phụ cách trung tâm ≥ 1.6·(a·sqrt(2)/2) → dùng 1.2a theo mỗi chiều.
+  * Nguyên tắc chung: R_plane ≥ 1.6 × max(bán kính, nửa đường chéo) của khối.
+- VÍ DỤ ĐẦY ĐỦ mặt cầu tâm O(0,0,0) bán kính 4, mặt phẳng P: y=3 (khoảng cách từ O đến P là 3):
+  * ρ = sqrt(16−9) = sqrt(7) ≈ 2.646; H = (0,3,0).
+  * Tạo sphere "Cau" center O radius 4 color #5da9ff opacity 0.14.
+  * Tạo point_3d H(0,3,0); segment O-H color #7c3aed line_width 2 style='dashed'.
+  * Tạo 16 point_3d C0..C15: C_i = (sqrt(7)·cos(i·π/8), 3, sqrt(7)·sin(i·π/8)).
+    C0≈(2.646,3,0), C1≈(2.449,3,1.015), C2≈(1.872,3,1.872), ..., C15≈(2.449,3,−1.015).
+  * Tạo point_3d P1(−6.4,3,−6.4), P2(6.4,3,−6.4), P3(6.4,3,6.4), P4(−6.4,3,6.4).
+  * Face "MatPhangCat" points [P1,P2,P3,P4] color #a8edea opacity 0.25.
+  * Face "ThietDien" points [C0,C1,...,C15] color #f97316 opacity 0.62.
+  * Segments C0-C1, C1-C2, ..., C14-C15, C15-C0 color #e63946 line_width 3.
+  * Annotation length "O-H" label "d = 3"; annotation length "C0-H" label "ρ = √7".
 
 Quy tắc hình đặc biệt bổ sung:
 - Tứ diện đều cạnh a: A(0,0,0), B(a,0,0), C(a/2, 0, a*sqrt(3)/2), D(a/2, a*sqrt(6)/3, a*sqrt(3)/6). 6 cạnh bằng nhau, 4 mặt tam giác đều.
@@ -226,6 +274,7 @@ Self-check trước khi xuất JSON (BẮT BUỘC tự kiểm trong nội bộ, 
 4. renderer khớp với loại điểm: geogebra_2d → toàn point_2d; threejs_3d → toàn point_3d.
 5. Mọi *_expr biên dịch được và biến đều có trong parameters.
 6. Mọi quan hệ midpoint/on_plane/on_line đều có toạ độ điểm thoả mãn (M là trung điểm thì M phải = (A+B)/2; nếu không khớp, hãy tự sửa toạ độ điểm thay vì để backend phải fix).
+7. Nếu đề có mặt cắt/thiết diện: (a) đã có đủ 4 thành phần khối chính + mặt phẳng cắt + thiết diện face + viền segments; (b) màu 4 thành phần KHÁC NHAU hoàn toàn; (c) kích thước đỉnh phụ mặt phẳng cắt ≥ 1.6× bán kính khối; (d) face thiết diện có opacity ≥ 0.55 để nổi bật.
 
 Ví dụ đầy đủ 1 — Hình chóp S.ABCD đáy vuông cạnh 4, SA⊥(ABCD), SA=3:
 {"problem_text":"Cho hình chóp S.ABCD có đáy ABCD là hình vuông cạnh 4, SA vuông góc với mặt phẳng đáy, SA = 3.","grade":11,"topic":"solid_geometry","renderer":"threejs_3d","objects":[{"type":"point_3d","name":"A","x":0,"y":0,"z":0},{"type":"point_3d","name":"B","x":4,"y":0,"z":0},{"type":"point_3d","name":"C","x":4,"y":0,"z":4},{"type":"point_3d","name":"D","x":0,"y":0,"z":4},{"type":"point_3d","name":"S","x":0,"y":3,"z":0},{"type":"face","name":"ABCD","points":["A","B","C","D"],"color":"#5da9ff","opacity":0.15},{"type":"face","name":"SAB","points":["S","A","B"],"color":"#ffb86b","opacity":0.14},{"type":"face","name":"SBC","points":["S","B","C"],"color":"#ffd166","opacity":0.14},{"type":"face","name":"SCD","points":["S","C","D"],"color":"#c9a0dc","opacity":0.14},{"type":"face","name":"SDA","points":["S","D","A"],"color":"#7fcdbb","opacity":0.14}],"relations":[{"type":"perpendicular","object_1":"SA","object_2":"plane(ABCD)","metadata":{}},{"type":"equal_length","object_1":"AB","object_2":"BC","metadata":{"value":4}},{"type":"equal_length","object_1":"BC","object_2":"CD","metadata":{"value":4}},{"type":"equal_length","object_1":"CD","object_2":"DA","metadata":{"value":4}}],"annotations":[{"type":"right_angle","target":"A","metadata":{"arms":["S","B"]}},{"type":"right_angle","target":"A","metadata":{"arms":["S","D"]}},{"type":"right_angle","target":"A","metadata":{"arms":["B","D"]}},{"type":"equal_marks","target":"A-B","metadata":{"group":1}},{"type":"equal_marks","target":"B-C","metadata":{"group":1}},{"type":"equal_marks","target":"C-D","metadata":{"group":1}},{"type":"equal_marks","target":"D-A","metadata":{"group":1}},{"type":"length","target":"A-B","label":"a = 4","metadata":{}},{"type":"length","target":"S-A","label":"SA = 3","metadata":{}}],"view":{"dimension":"3d","show_axes":true,"show_grid":true,"show_coordinates":true}}
@@ -349,6 +398,7 @@ Self-check kế hoạch (BẮT BUỘC tự kiểm trong nội bộ trước khi 
 - Mọi quan hệ midpoint/on_plane/on_line/on_sphere/on_circle phải có toạ độ thoả mãn ở points (kiểm bằng số học, không chỉ ý niệm).
 - Mọi expr_for_points dùng biến phải có entry tương ứng trong parameters.
 - renderer phù hợp với dimension: geogebra_2d ↔ "2d", threejs_3d ↔ "3d".
+- Nếu bài có mặt cắt/thiết diện: liệt kê đủ 4 thành phần (khối chính, mặt phẳng cắt, thiết diện face, viền segments) trong edges_and_faces; ghi color_hint khác nhau cho từng thành phần; đảm bảo kích thước đỉnh phụ mặt phẳng ≥ 1.6× bán kính khối.
 """.strip()
 
 
