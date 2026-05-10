@@ -35,8 +35,9 @@ async def test_registry_seeds_from_env(db):
 
 
 @pytest.mark.anyio
-async def test_registry_db_overrides_env(db):
+async def test_registry_db_overrides_env(db, monkeypatch):
     settings = Settings(_env_file=None, router9_text_model="env/model")
+    monkeypatch.setattr("app.services.model_registry.get_settings", lambda: settings)
     await load_model_registry(db, settings)
     await save_provider_config(db, "router9", "http://registry.local/v1", "db/model")
 
@@ -47,8 +48,9 @@ async def test_registry_db_overrides_env(db):
 
 
 @pytest.mark.anyio
-async def test_ollama_registry_db_overrides_env(db):
+async def test_ollama_registry_db_overrides_env(db, monkeypatch):
     settings = Settings(_env_file=None, ollama_base_url="http://env-ollama.local", ollama_text_model="env-ollama")
+    monkeypatch.setattr("app.services.model_registry.get_settings", lambda: settings)
     await load_model_registry(db, settings)
     await save_provider_config(db, "ollama", "http://db-ollama.local", "db-ollama")
 
@@ -202,8 +204,30 @@ async def test_empty_admin_ai_settings_fall_back_to_env(db, monkeypatch):
 
 
 @pytest.mark.anyio
-async def test_sync_ai_settings_persists_openai_compat_provider_config(db):
-    await load_model_registry(db, Settings(_env_file=None))
+async def test_env_secret_keeps_env_openai_compat_connection_when_registry_has_stale_defaults(db, monkeypatch):
+    settings = Settings(
+        _env_file=None,
+        openai_compat_api_key="env-secret",
+        openai_compat_base_url="https://env-openai-compatible.example/v1",
+        openai_compat_text_model="",
+    )
+    monkeypatch.setattr("app.services.model_registry.get_settings", lambda: settings)
+    await load_model_registry(db, settings)
+    await save_provider_config(db, "openai_compat", "http://localhost:8080/v1", "", api_key_configured=False)
+
+    effective = await resolve_effective_settings(db, None)
+
+    assert effective.openai_compat_api_key == "env-secret"
+    assert effective.openai_compat_base_url == "https://env-openai-compatible.example/v1"
+    assert effective.openai_compat_text_model == ""
+
+
+@pytest.mark.anyio
+async def test_sync_ai_settings_persists_openai_compat_provider_config(db, monkeypatch):
+    settings = Settings(_env_file=None, openai_compat_api_key="env-secret")
+    monkeypatch.setattr("app.services.admin_settings.get_settings", lambda: settings)
+    monkeypatch.setattr("app.services.model_registry.get_settings", lambda: settings)
+    await load_model_registry(db, settings)
     await sync_ai_settings_to_registry(db, {
         "version": 1,
         "default_provider": "openai_compat",

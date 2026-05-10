@@ -224,10 +224,12 @@ def settings_from_registry(settings: Settings, registry: ModelRegistry) -> Setti
     elif isinstance(default_provider, str) and default_provider not in {"", "auto", "mock"}:
         data["ai_provider"] = "auto"
     for provider_id, provider in registry.providers.items():
-        if provider.base_url:
+        env_api_key = (getattr(settings, f"{provider_id}_api_key", None) or "").strip()
+        use_registry_connection = provider.api_key_configured or not env_api_key
+        if provider.base_url and use_registry_connection:
             data[f"{provider_id}_base_url"] = provider.base_url
         default_model_id = effective_provider_default_model(registry, provider_id, provider.default_model_id)
-        if default_model_id:
+        if default_model_id and use_registry_connection:
             key = "router9_text_model" if provider_id == "router9" else f"{provider_id}_text_model"
             data[key] = default_model_id
     data["router9_only"] = bool(registry.settings.get("router9_only", settings.router9_only))
@@ -285,18 +287,33 @@ async def set_allowed_models(db: DatabaseClient, provider_id: str, model_ids: li
         )
 
 
-async def save_provider_config(db: DatabaseClient, provider_id: str, base_url: str, default_model_id: str, enabled: bool = True) -> None:
+async def save_provider_config(db: DatabaseClient, provider_id: str, base_url: str, default_model_id: str, enabled: bool = True, api_key_configured: bool | None = None) -> None:
+    if api_key_configured is None:
+        await db.execute(
+            """
+            INSERT INTO ai_providers (id, label, base_url, default_model_id, enabled, updated_at)
+            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET
+              base_url = excluded.base_url,
+              default_model_id = excluded.default_model_id,
+              enabled = excluded.enabled,
+              updated_at = CURRENT_TIMESTAMP
+            """,
+            [provider_id, PROVIDER_LABELS.get(provider_id, provider_id), base_url, default_model_id, int(enabled)],
+        )
+        return
     await db.execute(
         """
-        INSERT INTO ai_providers (id, label, base_url, default_model_id, enabled, updated_at)
-        VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        INSERT INTO ai_providers (id, label, base_url, default_model_id, api_key_configured, enabled, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
         ON CONFLICT(id) DO UPDATE SET
           base_url = excluded.base_url,
           default_model_id = excluded.default_model_id,
+          api_key_configured = excluded.api_key_configured,
           enabled = excluded.enabled,
           updated_at = CURRENT_TIMESTAMP
         """,
-        [provider_id, PROVIDER_LABELS.get(provider_id, provider_id), base_url, default_model_id, int(enabled)],
+        [provider_id, PROVIDER_LABELS.get(provider_id, provider_id), base_url, default_model_id, int(api_key_configured), int(enabled)],
     )
 
 

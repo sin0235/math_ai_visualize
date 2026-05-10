@@ -7,12 +7,19 @@ from app.core.config import Settings, get_settings
 from app.db.migrations import apply_sqlite_migrations
 from app.db.session import SQLiteClient, get_database
 from app.main import app
-from app.repositories.auth import AuthTokenRepository, OAUTH_PASSWORD_SENTINEL, OAUTH_PROVIDER_GOOGLE, OAuthIdentityRepository, OAuthStateRepository, TOKEN_PURPOSE_EMAIL_VERIFICATION, TOKEN_PURPOSE_PASSWORD_RESET, UserRepository
+from app.repositories.auth import AuthTokenRepository, OAUTH_PASSWORD_SENTINEL, OAUTH_PROVIDER_GOOGLE, OAuthIdentityRepository, OAuthStateRepository, TOKEN_PURPOSE_EMAIL_VERIFICATION, TOKEN_PURPOSE_PASSWORD_RESET, UserRepository, pwd_context
 from app.services.google_oauth import GoogleUserInfo
 
 
 def register_payload(email: str, password: str = "StrongPass123") -> dict:
     return {"email": email, "password": password, "accept_privacy_policy": True, "accept_terms": True}
+
+
+def test_bcrypt_hashing_does_not_emit_backend_version_traceback(capsys):
+    password_hash = pwd_context.hash("StrongPass123")
+
+    assert pwd_context.verify("StrongPass123", password_hash)
+    assert "error reading bcrypt version" not in capsys.readouterr().err
 
 
 @pytest.fixture()

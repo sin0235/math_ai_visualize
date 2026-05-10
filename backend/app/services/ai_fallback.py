@@ -94,7 +94,10 @@ def router9_ocr_candidates(settings: Settings, explicit_model: str | None = None
 def openrouter_text_candidates(settings: Settings, explicit_model: str | None = None) -> list[str]:
     if explicit_model:
         return [explicit_model]
-    return dedupe([settings.openrouter_text_model, OPENROUTER_GPT_OSS_MODEL])
+    candidates = [settings.openrouter_text_model, OPENROUTER_GPT_OSS_MODEL]
+    if settings.opencode_nemotron_model:
+        candidates.append(settings.opencode_nemotron_model)
+    return dedupe(candidates)
 
 
 def openrouter_vision_candidates(settings: Settings, explicit_model: str | None = None) -> list[str]:

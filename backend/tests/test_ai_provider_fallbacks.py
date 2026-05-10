@@ -23,6 +23,17 @@ from app.services.router9_bootstrap import (
 from app.services.router9_client import Router9Client
 
 
+def test_http_pool_close_all_closes_async_clients():
+    from app.services import http_pool
+
+    client = http_pool.get_client("https://example.test")
+
+    assert client.is_closed is False
+    asyncio.run(http_pool.close_all())
+    assert client.is_closed is True
+    assert http_pool._pool == {}
+
+
 def test_render_request_accepts_new_ai_providers():
     base = {"problem_text": "test", "preferred_ai_provider": "opencode_nemotron"}
     assert RenderRequest.model_validate(base).preferred_ai_provider == "opencode_nemotron"
@@ -77,41 +88,43 @@ def test_provider_error_redaction_removes_secrets_and_image_data():
     assert "data:image/[REDACTED]" in message
 
 
-def test_provider_order_auto_includes_special_fallbacks():
+def test_provider_order_auto_skips_remote_providers_without_api_keys():
     order = _provider_order(Settings(_env_file=None, ai_provider="auto"))
+
+    assert order == ["ollama_gpt_oss"]
+
+
+def test_provider_order_auto_includes_configured_remote_fallbacks():
+    order = _provider_order(Settings(_env_file=None, ai_provider="auto", openrouter_api_key="router", nvidia_api_key="nvidia"))
 
     assert order == [
         "nvidia",
         "openrouter",
-        "opencode_nemotron",
         "ollama_gpt_oss",
-        "openrouter_gpt_oss",
     ]
 
 
 def test_provider_order_auto_prefers_router9_when_connected():
-    order = _provider_order(Settings(_env_file=None, ai_provider="auto", router9_api_key="secret"))
+    order = _provider_order(Settings(_env_file=None, ai_provider="auto", router9_api_key="secret", openrouter_api_key="router", nvidia_api_key="nvidia"))
 
     assert order == [
         "router9",
         "nvidia",
         "openrouter",
-        "opencode_nemotron",
         "ollama_gpt_oss",
-        "openrouter_gpt_oss",
     ]
 
 
 def test_provider_order_keeps_nemotron_fallbacks_together():
-    order = _provider_order(Settings(_env_file=None), "opencode_nemotron")
+    order = _provider_order(Settings(_env_file=None, openrouter_api_key="secret"), "opencode_nemotron")
 
-    assert order[:4] == ["opencode_nemotron", "openrouter", "ollama_gpt_oss", "openrouter_gpt_oss"]
+    assert order == ["opencode_nemotron", "openrouter", "ollama_gpt_oss"]
 
 
 def test_provider_order_prefers_local_gpt_oss_when_selected():
-    order = _provider_order(Settings(_env_file=None), "ollama_gpt_oss")
+    order = _provider_order(Settings(_env_file=None, openrouter_api_key="secret"), "ollama_gpt_oss")
 
-    assert order[:4] == ["ollama_gpt_oss", "openrouter_gpt_oss", "openrouter", "opencode_nemotron"]
+    assert order == ["ollama_gpt_oss", "openrouter"]
 
 
 def test_provider_order_mock_skips_ai_providers():
@@ -119,15 +132,13 @@ def test_provider_order_mock_skips_ai_providers():
 
 
 def test_provider_order_router9_direct_selection_can_fallback_when_not_only_mode():
-    order = _provider_order(Settings(_env_file=None), "router9")
+    order = _provider_order(Settings(_env_file=None, router9_api_key="router9", openrouter_api_key="router", nvidia_api_key="nvidia"), "router9")
 
     assert order == [
         "router9",
         "openrouter",
-        "opencode_nemotron",
-        "ollama_gpt_oss",
-        "openrouter_gpt_oss",
         "nvidia",
+        "ollama_gpt_oss",
     ]
 
 
@@ -304,16 +315,17 @@ def test_openai_compat_scan_models_uses_models_endpoint_without_api_key(monkeypa
         async def __aexit__(self, exc_type, exc, tb):
             return None
 
-        async def get(self, url: str, headers: dict[str, str]):
+        async def get(self, url: str, headers: dict[str, str], timeout=None):
             calls.append((url, headers, self.timeout))
             return httpx.Response(200, json={"data": [{"id": "deepseek-chat", "owned_by": "deepseek"}]})
 
-    monkeypatch.setattr("app.services.model_scan.httpx.AsyncClient", FakeAsyncClient)
+    monkeypatch.setattr("app.services.http_pool.get_client", lambda *args, **kwargs: FakeAsyncClient(kwargs.get("timeout") or args[1] if len(args) > 1 else 20))
 
     settings = Settings(_env_file=None, openai_compat_base_url="https://deepseek-reverse-api.sin-studio.tech/v1/chat/completions")
     models = asyncio.run(list_provider_models(settings, "openai_compat"))
 
-    assert calls[0] == ("https://deepseek-reverse-api.sin-studio.tech/v1/models", {}, 20)
+    assert calls[0][0] == "https://deepseek-reverse-api.sin-studio.tech/v1/models"
+    assert calls[0][1] == {}
     assert models[0].id == "deepseek-chat"
     assert models[0].provider == "openai_compat"
 
@@ -331,14 +343,14 @@ def test_router9_list_models_uses_openai_compatible_models_endpoint(monkeypatch)
         async def __aexit__(self, exc_type, exc, tb):
             return None
 
-        async def get(self, url: str, headers: dict[str, str]):
+        async def get(self, url: str, headers: dict[str, str], timeout=None):
             calls.append((url, headers))
             return httpx.Response(
                 200,
                 json={"data": [{"id": "cc/claude-opus-4-6", "owned_by": "claude-code", "context_length": 200000}]},
             )
 
-    monkeypatch.setattr("app.services.router9_client.httpx.AsyncClient", FakeAsyncClient)
+    monkeypatch.setattr("app.services.http_pool.get_client", lambda *args, **kwargs: FakeAsyncClient(kwargs.get("timeout") or args[1] if len(args) > 1 else 20))
 
     models = asyncio.run(Router9Client(Settings(_env_file=None, router9_api_key="secret")).list_models())
 
@@ -361,7 +373,7 @@ def test_router9_chat_payload_avoids_response_format(monkeypatch):
         async def __aexit__(self, exc_type, exc, tb):
             return None
 
-        async def post(self, url: str, headers: dict[str, str], json: dict):
+        async def post(self, url: str, headers: dict[str, str], json: dict, timeout=None):
             payloads.append((url, headers, json))
             return httpx.Response(
                 200,
@@ -376,7 +388,7 @@ def test_router9_chat_payload_avoids_response_format(monkeypatch):
                 },
             )
 
-    monkeypatch.setattr("app.services.router9_client.httpx.AsyncClient", FakeAsyncClient)
+    monkeypatch.setattr("app.services.http_pool.get_client", lambda *args, **kwargs: FakeAsyncClient(kwargs.get("timeout") or args[1] if len(args) > 1 else 20))
 
     scene = asyncio.run(
         Router9Client(Settings(_env_file=None, router9_api_key="secret"), model="cc/claude-opus-4-6").extract_scene_json("x")
@@ -485,10 +497,33 @@ def test_render_tries_full_provider_order_before_mock(monkeypatch):
 
     monkeypatch.setattr("app.services.extractor._extract_with_provider", fail_extract)
 
-    scene, warnings = asyncio.run(extract_scene("x", runtime_settings=RuntimeSettings.model_validate({"default_provider": "openrouter"})))
+    runtime_settings = RuntimeSettings.model_validate({
+        "default_provider": "openrouter",
+        "openrouter": {"api_key": "router"},
+        "nvidia": {"api_key": "nvidia"},
+    })
+    scene, warnings = asyncio.run(extract_scene("x", runtime_settings=runtime_settings))
 
     assert scene.topic == "unknown"
     assert {provider for provider, _ in calls} >= {"openrouter", "opencode_nemotron", "openrouter_gpt_oss", "nvidia", "ollama_gpt_oss"}
+    assert warnings[-1] == "Tất cả AI provider đều lỗi; đang dùng mock extractor."
+
+
+def test_render_skips_openrouter_family_without_api_key(monkeypatch):
+    calls = []
+
+    async def fail_extract(provider, settings, problem_text, grade, reasoning_layer, preferred_ai_model=None, **kwargs):
+        calls.append((provider, preferred_ai_model))
+        raise RuntimeError(f"{provider} unavailable")
+
+    monkeypatch.setattr("app.services.extractor._extract_with_provider", fail_extract)
+
+    monkeypatch.setattr("app.services.model_registry.get_settings", lambda: Settings(_env_file=None, ai_provider="openrouter"))
+
+    scene, warnings = asyncio.run(extract_scene("x"))
+
+    assert scene.topic == "unknown"
+    assert [provider for provider, _ in calls] == ["ollama_gpt_oss"]
     assert warnings[-1] == "Tất cả AI provider đều lỗi; đang dùng mock extractor."
 
 
@@ -498,7 +533,7 @@ def test_render_all_ai_failures_warn_with_attempt_chain_before_mock(monkeypatch)
 
     monkeypatch.setattr("app.services.extractor._extract_with_provider", fail_extract)
 
-    scene, warnings = asyncio.run(extract_scene("x", runtime_settings=RuntimeSettings.model_validate({"default_provider": "openrouter"})))
+    scene, warnings = asyncio.run(extract_scene("x", runtime_settings=RuntimeSettings.model_validate({"default_provider": "openrouter", "openrouter": {"api_key": "router"}})))
 
     assert scene.topic == "unknown"
     assert any("AI fallback: openrouter/" in warning for warning in warnings)
@@ -574,13 +609,13 @@ def test_solver_explainer_falls_back_when_openrouter_model_is_invalid(monkeypatc
         async def __aexit__(self, exc_type, exc, tb):
             return None
 
-        async def post(self, url: str, headers: dict[str, str], json: dict):
+        async def post(self, url: str, headers: dict[str, str], json: dict, timeout=None):
             calls.append(json["model"])
             if json["model"] == "nvidia/nemotron-3-super-120b-a12b:free":
                 return httpx.Response(400, json={"error": {"message": "not a valid model ID"}})
             return httpx.Response(200, json={"choices": [{"message": {"content": '{"steps":[{"index":1,"title":"AI","explanation":"LLM fallback worked"}]}'}}]})
 
-    monkeypatch.setattr("app.services.solver_explainer.httpx.AsyncClient", FakeAsyncClient)
+    monkeypatch.setattr("app.services.http_pool.get_client", lambda *args, **kwargs: FakeAsyncClient(kwargs.get("timeout") or args[1] if len(args) > 1 else 20))
 
     data = asyncio.run(_call_explainer(
         {"question": "q", "answer": "a", "warnings": [], "scene_objects": [], "steps": [{"index": 1}]},

@@ -49,16 +49,17 @@ _pool: dict[str, httpx.AsyncClient] = {}
 
 
 def get_client(base_url: str, timeout: httpx.Timeout | None = None) -> httpx.AsyncClient:
-    key = base_url.rstrip("/")
-    client = _pool.get(key)
-    if client is not None and not client.is_closed:
-        return client
     effective_timeout = timeout or httpx.Timeout(
         connect=_CONNECT_TIMEOUT,
         read=_DEFAULT_READ_TIMEOUT,
         write=_DEFAULT_WRITE_TIMEOUT,
         pool=_POOL_TIMEOUT,
     )
+    read_timeout = effective_timeout.read
+    key = f"{base_url.rstrip('/')}:{read_timeout}"
+    client = _pool.get(key)
+    if client is not None and not client.is_closed:
+        return client
     client = httpx.AsyncClient(
         timeout=effective_timeout,
         limits=httpx.Limits(
@@ -75,5 +76,5 @@ def get_client(base_url: str, timeout: httpx.Timeout | None = None) -> httpx.Asy
 async def close_all() -> None:
     for client in _pool.values():
         if not client.is_closed:
-            await client.close()
+            await client.aclose()
     _pool.clear()

@@ -557,30 +557,29 @@ def _fast_provider_order(settings: Settings, preferred_ai_provider: str | None =
 
 def _provider_order(settings: Settings, preferred_ai_provider: str | None = None) -> list[str]:
     provider = preferred_ai_provider or settings.ai_provider
-    nvidia_providers = ["nvidia"]
-    custom_providers = ["openai_compat"] if provider == "openai_compat" or settings.openai_compat_text_model else []
-    nemotron_providers = ["openrouter", "opencode_nemotron"]
-    gpt_oss_providers = ["ollama_gpt_oss", "openrouter_gpt_oss"]
-    router9_providers = ["router9"]
+    router9_providers = ["router9"] if settings.router9_api_key else []
+    nvidia_providers = ["nvidia"] if settings.nvidia_api_key else []
+    custom_providers = ["openai_compat"] if settings.openai_compat_api_key and settings.openai_compat_text_model else []
+    openrouter_providers = ["openrouter"] if settings.openrouter_api_key else []
+    local_providers = ["ollama_gpt_oss"]
     if settings.router9_only:
         if provider not in {"auto", "router9"}:
             raise RuntimeError("9router-only đang bật nên chỉ được dùng model 9router.")
-        return router9_providers
+        return router9_providers or ["router9"]
     if provider == "mock":
         return []
-    if provider in router9_providers:
-        return _dedupe([*router9_providers, *nemotron_providers, *gpt_oss_providers, *nvidia_providers])
-    if provider in custom_providers:
-        return _dedupe([provider, *router9_providers, *nvidia_providers, *nemotron_providers, *gpt_oss_providers])
-    if provider in nvidia_providers:
-        return _dedupe([provider, *custom_providers, *nemotron_providers, *gpt_oss_providers])
-    if provider in nemotron_providers:
-        return _dedupe([provider, *nemotron_providers, *gpt_oss_providers, *nvidia_providers])
-    if provider in gpt_oss_providers:
-        return _dedupe([provider, *gpt_oss_providers, *nemotron_providers, *nvidia_providers])
-    if settings.router9_api_key:
-        return _dedupe([*router9_providers, *custom_providers, *nvidia_providers, *nemotron_providers, *gpt_oss_providers])
-    return _dedupe([*custom_providers, *nvidia_providers, *nemotron_providers, *gpt_oss_providers])
+    if provider == "router9":
+        return _dedupe([*router9_providers, *openrouter_providers, *nvidia_providers, *custom_providers, *local_providers])
+    if provider == "openai_compat":
+        return _dedupe([*custom_providers, *router9_providers, *nvidia_providers, *openrouter_providers, *local_providers])
+    if provider == "nvidia":
+        return _dedupe([*nvidia_providers, *router9_providers, *openrouter_providers, *custom_providers, *local_providers])
+    if provider in {"openrouter", "opencode_nemotron", "openrouter_gpt_oss"}:
+        requested = [provider] if settings.openrouter_api_key else []
+        return _dedupe([*requested, *openrouter_providers, *router9_providers, *nvidia_providers, *custom_providers, *local_providers])
+    if provider == "ollama_gpt_oss":
+        return _dedupe([*local_providers, *router9_providers, *openrouter_providers, *nvidia_providers, *custom_providers])
+    return _dedupe([*router9_providers, *nvidia_providers, *openrouter_providers, *custom_providers, *local_providers])
 
 
 def _provider_model(provider: str, settings: Settings, preferred_ai_model: str | None = None) -> str:
