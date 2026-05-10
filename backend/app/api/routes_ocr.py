@@ -57,12 +57,17 @@ async def enforce_ocr_access(db: DatabaseClient, user: UserRecord | None) -> Non
     since = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
     used = await AdminRepository(db).count_user_usage_events_since(user.id, "ocr", since)
     if used >= plan.daily_ocr_limit:
-        raise api_error(status.HTTP_429_TOO_MANY_REQUESTS, "Bạn đã dùng hết hạn mức OCR hôm nay.", "QUOTA_EXCEEDED")
+        raise api_error(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "Bạn đã dùng hết hạn mức OCR hôm nay của gói hiện tại.",
+            "PLAN_QUOTA_EXCEEDED",
+            suggestions=["Chờ sang ngày mới để hạn mức được đặt lại.", "Nâng cấp gói hoặc liên hệ admin nếu cần thêm lượt OCR."],
+        )
 
 
 def enforce_enabled(flags: SystemFeatureFlags) -> None:
     if flags.maintenance_mode:
-        raise api_error(status.HTTP_503_SERVICE_UNAVAILABLE, flags.maintenance_message, "PROVIDER_UNAVAILABLE")
+        raise api_error(status.HTTP_503_SERVICE_UNAVAILABLE, flags.maintenance_message, "MAINTENANCE_MODE")
     if not flags.ocr_enabled:
         raise api_error(status.HTTP_403_FORBIDDEN, "Tính năng OCR đang tạm tắt.", "OCR_DISABLED")
 

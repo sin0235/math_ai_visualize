@@ -349,6 +349,14 @@ class RegistryTaskProfileDefaults(BaseModel):
     fallbacks: list[str] = Field(default_factory=list)
 
 
+class FeatureFlagsDefaults(BaseModel):
+    maintenance_mode: bool = False
+    maintenance_message: str = ""
+    google_oauth_enabled: bool = True
+    ocr_enabled: bool = True
+    render_enabled: bool = True
+
+
 class SettingsDefaultsResponse(BaseModel):
     app_name: str
     default_provider: str
@@ -362,6 +370,7 @@ class SettingsDefaultsResponse(BaseModel):
     registry_models: list[RegistryModelDefaults] = Field(default_factory=list)
     registry_task_profiles: list[RegistryTaskProfileDefaults] = Field(default_factory=list)
     registry_legacy_ai_settings_present: bool = False
+    feature_flags: FeatureFlagsDefaults = Field(default_factory=FeatureFlagsDefaults)
 
 
 class RenderRequest(BaseModel):

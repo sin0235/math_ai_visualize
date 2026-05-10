@@ -1,9 +1,10 @@
+import type { SettingsDefaults } from '../types/settings';
 import { HomeTetrahedronShowcase } from './HomeTetrahedronShowcase';
 
 export interface HomeBackendStatus {
   state: 'checking' | 'online' | 'offline';
   appName?: string;
-  settingsDefaults: unknown;
+  settingsDefaults: SettingsDefaults | null;
 }
 
 interface HomePageProps {
@@ -27,9 +28,36 @@ const learningOutcomes = [
   { value: 'Chuẩn học thuật', label: 'Tối ưu quy trình biên soạn tài liệu giảng dạy.' },
 ];
 
-export function HomePage({ onOpenLogin }: HomePageProps) {
+function systemBanners(defaults: SettingsDefaults | null) {
+  const flags = defaults?.feature_flags;
+  if (!flags) return [];
+  const banners: Array<{ kind: string; title: string; message: string }> = [];
+  if (flags.maintenance_mode) {
+    banners.push({ kind: 'maintenance', title: 'Hệ thống đang bảo trì', message: flags.maintenance_message || 'Một số chức năng đang tạm dừng. Vui lòng quay lại sau.' });
+  }
+  if (!flags.render_enabled) {
+    banners.push({ kind: 'warning', title: 'Tính năng dựng hình đang tạm tắt', message: 'Bạn vẫn có thể xem nội dung đã lưu, nhưng chưa thể tạo hình mới.' });
+  }
+  if (!flags.ocr_enabled) {
+    banners.push({ kind: 'warning', title: 'Tính năng OCR đang tạm tắt', message: 'Bạn vẫn có thể nhập đề bằng văn bản trong lúc OCR được bảo trì.' });
+  }
+  return banners;
+}
+
+export function HomePage({ backendStatus, onOpenLogin }: HomePageProps) {
+  const banners = systemBanners(backendStatus.settingsDefaults);
   return (
     <section className="home-page">
+      {banners.length > 0 && (
+        <div className="home-system-banners" aria-live="polite">
+          {banners.map((banner) => (
+            <article className={`home-system-banner ${banner.kind}`} key={banner.title}>
+              <strong>{banner.title}</strong>
+              <span>{banner.message}</span>
+            </article>
+          ))}
+        </div>
+      )}
       <div className="home-hero">
         <div className="home-hero-copy">
           <h2>Giải pháp AI toàn diện cho số hóa hình học và toán học.</h2>

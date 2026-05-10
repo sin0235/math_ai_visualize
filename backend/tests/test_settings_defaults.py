@@ -88,6 +88,25 @@ def test_settings_defaults_route_hides_api_keys(monkeypatch):
 
 
 
+def test_settings_defaults_exposes_public_feature_flags(settings_defaults_client):
+    asyncio.run(settings_defaults_client.db.execute(
+        "INSERT INTO system_settings (key, value_json) VALUES (?, ?)",
+        ["feature_flags", json.dumps({"version": 1, "maintenance_mode": True, "maintenance_message": "Đang nâng cấp hệ thống.", "render_enabled": False, "ocr_enabled": True, "google_oauth_enabled": False})],
+    ))
+
+    response = settings_defaults_client.get("/api/settings/defaults")
+
+    assert response.status_code == 200
+    assert response.json()["feature_flags"] == {
+        "maintenance_mode": True,
+        "maintenance_message": "Đang nâng cấp hệ thống.",
+        "google_oauth_enabled": False,
+        "ocr_enabled": True,
+        "render_enabled": False,
+    }
+
+
+
 def test_settings_defaults_loads_ollama_base_url_from_database(settings_defaults_client):
     asyncio.run(settings_defaults_client.db.execute(
         "INSERT INTO system_settings (key, value_json) VALUES (?, ?)",

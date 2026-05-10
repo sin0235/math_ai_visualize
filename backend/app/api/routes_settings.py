@@ -14,8 +14,10 @@ from app.schemas.scene import (
     ProviderSettingsDefaults,
     OcrSettingsDefaults,
     Router9SettingsDefaults,
+    FeatureFlagsDefaults,
     SettingsDefaultsResponse,
 )
+from app.services.system_settings import load_feature_flags
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -25,6 +27,7 @@ async def get_settings_defaults(db: DatabaseClient = Depends(get_database)) -> S
     settings = get_settings()
     registry = await load_model_registry(db, settings) if getattr(db, "backend", settings.database_backend) == settings.database_backend else registry_from_settings(settings)
     ocr_profile = resolve_task_profile(registry, "ocr")
+    feature_flags = await load_feature_flags(db)
     return SettingsDefaultsResponse(
         app_name=settings.app_name,
         default_provider=registry_default_provider(registry, settings.ai_provider),
@@ -77,6 +80,13 @@ async def get_settings_defaults(db: DatabaseClient = Depends(get_database)) -> S
         registry_models=[model.__dict__ for models in registry.models.values() for model in models],
         registry_task_profiles=[profile.__dict__ for profile in registry.task_profiles.values()],
         registry_legacy_ai_settings_present=registry.legacy_used,
+        feature_flags=FeatureFlagsDefaults(
+            maintenance_mode=feature_flags.maintenance_mode,
+            maintenance_message=feature_flags.maintenance_message,
+            google_oauth_enabled=feature_flags.google_oauth_enabled,
+            ocr_enabled=feature_flags.ocr_enabled,
+            render_enabled=feature_flags.render_enabled,
+        ),
     )
 
 

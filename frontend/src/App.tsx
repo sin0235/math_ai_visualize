@@ -693,7 +693,7 @@ export default function App() {
 
   function showApiError(title: string, error: ApiError, fallbackSuggestion: string) {
     const details = error.details.length > 0 ? error.details : [fallbackSuggestion];
-    showNotification(title, error.message, details, 'error');
+    showNotification(errorTitle(title, error.message), error.message, details, 'error');
   }
 
   function showWarnings(warnings: string[]) {
@@ -1717,12 +1717,20 @@ function toApiError(caught: unknown, fallback: string): ApiError {
 function friendlyMessage(message: string) {
   const text = message.trim();
   if (!text) return 'Có lỗi xảy ra. Hãy thử lại hoặc đổi cấu hình model.';
-  if (/quota|rate limit|429/i.test(text)) return 'Model hoặc tài khoản đang bị giới hạn lượt gọi. Hãy chờ một lúc hoặc chọn model/provider khác.';
+  if (/MAINTENANCE_MODE|bảo trì/i.test(text)) return text.replace(/^\[MAINTENANCE_MODE\]\s*/, '') || 'Hệ thống đang bảo trì. Vui lòng quay lại sau.';
+  if (/PLAN_QUOTA_EXCEEDED|hạn mức.*gói/i.test(text)) return text.replace(/^\[PLAN_QUOTA_EXCEEDED\]\s*/, '') || 'Bạn đã hết hạn mức sử dụng hôm nay của gói hiện tại.';
+  if (/quota|rate limit|429/i.test(text)) return 'Model hoặc tài khoản provider đang bị giới hạn lượt gọi. Hãy chờ một lúc hoặc chọn model/provider khác.';
   if (/api key|unauthorized|401|403|forbidden/i.test(text)) return 'Provider chưa được cấu hình đúng hoặc API key không có quyền dùng model này.';
   if (/model.*not found|not found.*model/i.test(text)) return 'Model đã chọn không khả dụng. Hãy quét lại danh sách model hoặc chọn model khác.';
   if (/timeout|timed out/i.test(text)) return 'Provider phản hồi quá lâu. Hãy thử lại hoặc đổi model nhẹ hơn.';
   if (/validation|field required|Input should/i.test(text)) return 'Dữ liệu hình chưa hợp lệ. Hãy thử dựng lại hoặc chỉnh hình đơn giản hơn.';
   return text.length > 220 ? `${text.slice(0, 217)}...` : text;
+}
+
+function errorTitle(fallback: string, message: string) {
+  if (/MAINTENANCE_MODE|bảo trì/i.test(message)) return 'Hệ thống đang bảo trì';
+  if (/PLAN_QUOTA_EXCEEDED|hạn mức.*gói/i.test(message)) return 'Bạn đã hết hạn mức gói';
+  return fallback;
 }
 
 function friendlyDetails(details: string[]) {
@@ -1736,6 +1744,8 @@ function friendlyDetail(detail: string) {
   if (/mock extractor/i.test(text)) return 'AI provider hiện không sẵn sàng nên hệ thống dùng hình mẫu dự phòng.';
   if (/Đã thử:|provider|router9|openrouter|nvidia|ollama/i.test(text)) return text.replace(/RuntimeError:|Error:/g, '').slice(0, 240);
   if (/api key|unauthorized|401|403|forbidden/i.test(text)) return 'Kiểm tra API key hoặc quyền truy cập model trong phần Settings.';
+  if (/PLAN_QUOTA_EXCEEDED|hạn mức.*gói/i.test(text)) return text.replace(/^\[PLAN_QUOTA_EXCEEDED\]\s*/, '') || 'Chờ sang ngày mới hoặc nâng cấp gói để có thêm lượt sử dụng.';
+  if (/MAINTENANCE_MODE|bảo trì/i.test(text)) return text.replace(/^\[MAINTENANCE_MODE\]\s*/, '') || 'Hệ thống đang tạm bảo trì, vui lòng quay lại sau.';
   if (/quota|rate limit|429/i.test(text)) return 'Provider đang giới hạn lượt gọi; thử model/provider khác hoặc chờ quota hồi lại.';
   if (/not found|404/i.test(text)) return 'Model không còn khả dụng; hãy quét lại danh sách model.';
   return text.length > 240 ? `${text.slice(0, 237)}...` : text;

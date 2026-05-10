@@ -305,7 +305,7 @@ def test_ocr_enforces_daily_plan_limit(isolated_database, monkeypatch):
 
     assert response.status_code == 429
     detail = response.json()["detail"]
-    assert detail["code"] == "QUOTA_EXCEEDED"
+    assert detail["code"] == "PLAN_QUOTA_EXCEEDED"
     assert "hạn mức OCR" in detail["debug_message"]
     assert detail["suggestions"]
 

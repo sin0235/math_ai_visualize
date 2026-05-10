@@ -123,6 +123,14 @@ export interface RegistryTaskProfileDefaults {
   fallbacks: string[];
 }
 
+export interface FeatureFlagsDefaults {
+  maintenance_mode: boolean;
+  maintenance_message: string;
+  google_oauth_enabled: boolean;
+  ocr_enabled: boolean;
+  render_enabled: boolean;
+}
+
 export interface SettingsDefaults {
   app_name: string;
   default_provider: string;
@@ -136,6 +144,7 @@ export interface SettingsDefaults {
   registry_models?: RegistryModelDefaults[];
   registry_task_profiles?: RegistryTaskProfileDefaults[];
   registry_legacy_ai_settings_present?: boolean;
+  feature_flags?: FeatureFlagsDefaults;
 }
 
 export const SETTINGS_STORAGE_VERSION = 4;

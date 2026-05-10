@@ -28,6 +28,14 @@ ERROR_SUGGESTIONS: dict[str, list[str]] = {
         "Kiểm tra trạng thái provider hoặc base URL.",
         "Thử lại sau hoặc đổi sang provider khác.",
     ],
+    "MAINTENANCE_MODE": [
+        "Hệ thống đang tạm bảo trì, vui lòng quay lại sau.",
+        "Theo dõi thông báo trên trang chủ để biết khi nào hệ thống hoạt động lại.",
+    ],
+    "PLAN_QUOTA_EXCEEDED": [
+        "Chờ sang ngày mới để hạn mức được đặt lại.",
+        "Nâng cấp gói hoặc liên hệ admin nếu cần thêm lượt sử dụng.",
+    ],
     "INVALID_PROVIDER_RESPONSE": [
         "Provider trả dữ liệu không đúng định dạng. Thử model khác.",
         "Giảm độ phức tạp đề bài nếu lỗi lặp lại.",
@@ -52,8 +60,11 @@ def bad_request_from_error(error: Exception, fallback_code: str = "BAD_REQUEST")
     return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
 
 
-def api_error(status_code: int, message: str, fallback_code: str = "BAD_REQUEST") -> HTTPException:
-    return HTTPException(status_code=status_code, detail=classify_error(message, fallback_code, status_code))
+def api_error(status_code: int, message: str, fallback_code: str = "BAD_REQUEST", suggestions: list[str] | None = None) -> HTTPException:
+    detail = classify_error(message, fallback_code, status_code)
+    if suggestions is not None:
+        detail["suggestions"] = suggestions
+    return HTTPException(status_code=status_code, detail=detail)
 
 
 def classify_error(message: str, fallback_code: str = "BAD_REQUEST", status_code: int | None = None) -> dict[str, object]:
@@ -96,6 +107,10 @@ def user_message(code: str, message: str) -> str:
         return "Model đã chọn không tồn tại hoặc không khả dụng."
     if code == "PROVIDER_UNAVAILABLE":
         return "Provider hiện không sẵn sàng."
+    if code == "MAINTENANCE_MODE":
+        return message or "Hệ thống đang bảo trì."
+    if code == "PLAN_QUOTA_EXCEEDED":
+        return message or "Bạn đã hết hạn mức sử dụng của gói hiện tại."
     if code == "INVALID_PROVIDER_RESPONSE":
         return "Provider trả dữ liệu không đúng định dạng hệ thống cần."
     return message or "Có lỗi xảy ra."

@@ -3813,6 +3813,39 @@ button:disabled {
   gap: clamp(18px, 3vw, 36px);
 }
 
+.home-system-banners {
+  display: grid;
+  gap: 10px;
+}
+
+.home-system-banner {
+  display: grid;
+  gap: 4px;
+  border: 1px solid #fed7aa;
+  border-radius: 18px;
+  padding: 14px 16px;
+  background: #fff7ed;
+  color: #9a3412;
+}
+
+.home-system-banner.warning {
+  border-color: #fde68a;
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.home-system-banner strong {
+  color: inherit;
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
+.home-system-banner span {
+  color: inherit;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
 .home-hero {
   display: grid;
   grid-template-columns: minmax(320px, 0.95fr) minmax(420px, 1.05fr);
