@@ -7,6 +7,7 @@ import httpx
 from app.core.config import Settings
 from app.schemas.scene import AiModelInfo
 from app.services.ai_prompt import REASONING_SYSTEM_PROMPT, SCENE_EXTRACTION_SYSTEM_PROMPT, build_reasoning_prompt, build_scene_extraction_prompt
+from app.services.chat_response import extract_chat_message_content
 from app.services.openrouter_client import OCR_SYSTEM_PROMPT
 from app.services.provider_logging import format_provider_error, log_ocr_summary, log_provider_request, log_provider_response, log_scene_summary
 
@@ -192,15 +193,7 @@ def _build_headers(settings: Settings) -> dict[str, str]:
 
 def _extract_message_content(response: httpx.Response) -> str:
     message = response.json()["choices"][0]["message"]
-    content = message["content"]
-    if isinstance(content, list):
-        text_parts = [
-            part["text"]
-            for part in content
-            if isinstance(part, dict) and isinstance(part.get("text"), str)
-        ]
-        return "".join(text_parts)
-    return content
+    return extract_chat_message_content(message)
 
 
 def _parse_router9_models(data: list[Any]) -> list[AiModelInfo]:

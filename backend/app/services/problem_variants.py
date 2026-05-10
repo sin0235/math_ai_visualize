@@ -25,6 +25,7 @@ from app.schemas.scene import MathScene
 from app.services.ai_fallback import Attempt, format_attempts, text_model_candidates, text_provider_order
 from app.services.openrouter_client import _build_headers, _extract_message, _format_openrouter_error, _normalize_model_id, _strip_json_fences
 from app.services.provider_logging import log_provider_request, log_provider_response
+from app.services.chat_response import extract_chat_message_content
 from app.services.router9_client import Router9Client, _extract_message_content as _extract_router9_message_content
 
 VARIANTS_SYSTEM_PROMPT = """
@@ -118,8 +119,8 @@ async def _call_openrouter_variants(model: str, user_prompt: str, settings: Sett
     log_provider_response("openrouter", "variants", response.status_code, elapsed_ms, len(response.text))
     if response.status_code >= 400:
         raise RuntimeError(_format_openrouter_error(response))
-    content = _extract_message(response).get("content")
-    if not isinstance(content, str) or not content.strip():
+    content = extract_chat_message_content(_extract_message(response))
+    if not content.strip():
         raise RuntimeError("Provider không trả về nội dung biến thể.")
     return content
 
@@ -150,8 +151,8 @@ async def _call_nvidia_variants(model: str, user_prompt: str, settings: Settings
     log_provider_response("nvidia", "variants", response.status_code, elapsed_ms, len(response.text))
     if response.status_code >= 400:
         raise RuntimeError(f"NVIDIA variants lỗi HTTP {response.status_code}: {response.text[:300]}")
-    content = _extract_message(response).get("content")
-    if not isinstance(content, str) or not content.strip():
+    content = extract_chat_message_content(_extract_message(response))
+    if not content.strip():
         raise RuntimeError("NVIDIA không trả về nội dung biến thể.")
     return content
 

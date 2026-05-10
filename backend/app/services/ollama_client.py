@@ -5,6 +5,7 @@ import httpx
 
 from app.core.config import Settings
 from app.services.ai_prompt import REASONING_SYSTEM_PROMPT, SCENE_EXTRACTION_SYSTEM_PROMPT, build_reasoning_prompt, build_scene_extraction_prompt
+from app.services.chat_response import extract_chat_message_content
 from app.services.provider_logging import log_provider_request, log_provider_response, log_scene_summary
 
 
@@ -121,11 +122,11 @@ class OllamaClient:
             raise RuntimeError(f"Ollama cloud request lỗi: {message}") from error
 
         try:
-            content = response.json()["choices"][0]["message"]["content"]
+            content = extract_chat_message_content(response.json()["choices"][0]["message"])
         except (KeyError, IndexError, TypeError, ValueError) as error:
             raise RuntimeError("Ollama cloud response không đúng định dạng choices[0].message.content") from error
-        if not isinstance(content, str):
-            raise RuntimeError("Ollama cloud response message.content không phải chuỗi")
+        if not content.strip():
+            raise RuntimeError("Ollama cloud response message.content không có nội dung")
         scene_json = json.loads(_strip_json_fences(content))
         log_scene_summary("ollama_cloud", scene_json)
         return scene_json
@@ -210,7 +211,7 @@ class OllamaClient:
             raise RuntimeError(f"Ollama cloud reasoning request lỗi: {message}") from error
 
         try:
-            content = response.json()["choices"][0]["message"]["content"]
+            content = extract_chat_message_content(response.json()["choices"][0]["message"])
         except (KeyError, IndexError, TypeError, ValueError) as error:
             raise RuntimeError("Ollama cloud reasoning response không đúng định dạng") from error
         return json.loads(_strip_json_fences(content))

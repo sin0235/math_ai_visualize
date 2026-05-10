@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from app.core.config import Settings
 from app.services.ai_fallback import Attempt, format_attempts, openrouter_vision_candidates, router9_ocr_candidates
 from app.services.ocr import validate_image_data_url
+from app.services.chat_response import extract_chat_message_content
 from app.services.openrouter_client import _build_headers, _extract_message, _format_openrouter_error, _normalize_model_id, _strip_text_fences
 from app.services.provider_logging import log_provider_request, log_provider_response
 from app.services.router9_client import Router9Client
@@ -108,8 +109,8 @@ async def _call_openrouter_vision(image_data_url: str, settings: Settings, model
         raise RuntimeError(_format_openrouter_error(response))
 
     message = _extract_message(response)
-    content = message.get("content")
-    if not isinstance(content, str) or not content.strip():
+    content = extract_chat_message_content(message)
+    if not content.strip():
         raise RuntimeError("Vision model không trả về nội dung mô tả.")
     text = _strip_text_fences(content).strip()
     if text == "KHÔNG_NHẬN_DIỆN_ĐƯỢC":

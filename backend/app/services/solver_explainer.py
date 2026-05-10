@@ -10,6 +10,7 @@ from app.core.config import Settings
 from app.services.model_registry import TaskProfile
 from app.services.ai_fallback import Attempt, format_attempts, text_model_candidates, text_provider_order
 from app.services.openrouter_client import _build_headers as _build_openrouter_headers, _extract_message as _extract_openrouter_message
+from app.services.chat_response import extract_chat_message_content
 from app.services.router9_client import Router9Client, _extract_message_content as _extract_router9_message_content
 from app.services.solver_service import SolverResult, SolverStep
 
@@ -155,8 +156,8 @@ async def _call_nvidia(prompt: str, settings: Settings, model: str) -> str:
     if response.status_code >= 400:
         raise RuntimeError(f"NVIDIA explainer lỗi HTTP {response.status_code}: {response.text[:300]}")
     message = _extract_openrouter_message(response)
-    content = message.get("content")
-    if not isinstance(content, str) or not content.strip():
+    content = extract_chat_message_content(message)
+    if not content.strip():
         raise RuntimeError("NVIDIA không trả về nội dung diễn giải.")
     return content
 
@@ -182,8 +183,8 @@ async def _call_openrouter_model(prompt: str, settings: Settings, model: str, re
     if response.status_code >= 400:
         raise RuntimeError(f"OpenRouter explainer lỗi HTTP {response.status_code}: {response.text[:300]}")
     message = _extract_openrouter_message(response)
-    content = message.get("content")
-    if not isinstance(content, str) or not content.strip():
+    content = extract_chat_message_content(message)
+    if not content.strip():
         raise RuntimeError("OpenRouter không trả về nội dung diễn giải.")
     return content
 

@@ -9,6 +9,7 @@ import httpx
 from app.core.config import Settings
 from app.services.ai_prompt import REASONING_SYSTEM_PROMPT, SCENE_EXTRACTION_SYSTEM_PROMPT, build_reasoning_prompt, build_scene_extraction_prompt
 from app.services.openrouter_client import _strip_json_fences
+from app.services.chat_response import extract_chat_message_content
 from app.services.provider_logging import format_provider_error, log_provider_request, log_provider_response, log_scene_summary
 
 
@@ -78,9 +79,9 @@ class OpenAICompatClient:
             raise RuntimeError(format_provider_error("OpenAI-compatible", response))
         try:
             body = response.json()
-            content = body["choices"][0]["message"]["content"]
+            content = extract_chat_message_content(body["choices"][0]["message"])
         except (ValueError, KeyError, IndexError, TypeError) as error:
             raise RuntimeError("OpenAI-compatible response không đúng định dạng choices[0].message.content.") from error
-        if not isinstance(content, str) or not content.strip():
+        if not content.strip():
             raise RuntimeError("OpenAI-compatible không trả về nội dung.")
         return content

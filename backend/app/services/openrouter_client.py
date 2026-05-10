@@ -5,6 +5,7 @@ import httpx
 
 from app.core.config import Settings
 from app.services.ai_prompt import REASONING_SYSTEM_PROMPT, SCENE_EXTRACTION_SYSTEM_PROMPT, build_reasoning_prompt, build_scene_extraction_prompt
+from app.services.chat_response import extract_chat_message_content
 from app.services.provider_logging import format_provider_error, log_ocr_summary, log_provider_request, log_provider_response, log_scene_summary
 
 
@@ -62,8 +63,8 @@ class OpenRouterClient:
             raise RuntimeError(_format_openrouter_error(response))
 
         message = _extract_message(response)
-        content = message.get("content")
-        if not isinstance(content, str) or not content.strip():
+        content = extract_chat_message_content(message)
+        if not content.strip():
             raise RuntimeError("OpenRouter không trả về nội dung JSON trong choices[0].message.content.")
         try:
             scene_json = json.loads(_strip_json_fences(content))
@@ -105,8 +106,8 @@ class OpenRouterClient:
             raise RuntimeError(_format_openrouter_error(response))
 
         message = _extract_message(response)
-        content = message.get("content")
-        if not isinstance(content, str) or not content.strip():
+        content = extract_chat_message_content(message)
+        if not content.strip():
             raise RuntimeError("OpenRouter không trả về reasoning content.")
         try:
             return json.loads(_strip_json_fences(content))

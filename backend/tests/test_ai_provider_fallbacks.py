@@ -389,6 +389,13 @@ def test_router9_chat_payload_avoids_response_format(monkeypatch):
     assert scene["renderer"] == "geogebra_2d"
 
 
+def test_extract_chat_message_content_accepts_part_lists():
+    from app.services.chat_response import extract_chat_message_content
+
+    assert extract_chat_message_content({"content": [{"type": "text", "text": "hello"}, {"type": "text", "text": " world"}]}) == "hello world"
+    assert extract_chat_message_content({"content": [{"type": "output_text", "content": "hello"}]}) == "hello"
+
+
 def test_render_fallback_success_returns_prior_failures_as_warnings(monkeypatch):
     async def fake_extract(provider, settings, problem_text, grade, reasoning_layer, preferred_ai_model=None):
         if provider == "nvidia":
