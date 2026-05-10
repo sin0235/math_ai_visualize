@@ -25,7 +25,8 @@ async def list_provider_models(settings: Settings, provider: ModelScanProvider) 
         headers = {**headers, **_openrouter_optional_headers(settings)}
 
     normalized_base = openrouter_api_base_url(settings) if provider == "openrouter" else _normalize_openai_base_url(base).rstrip("/")
-    return await _fetch_openai_style_models(provider, headers, normalized_base)
+    alternate_base = _alternate_openai_compat_base(normalized_base) if provider == "openai_compat" else None
+    return await _fetch_openai_style_models(provider, headers, normalized_base, alternate_base)
 
 
 def _provider_connection(settings: Settings, provider: ModelScanProvider) -> tuple[str | None, str]:
@@ -40,7 +41,20 @@ def _provider_connection(settings: Settings, provider: ModelScanProvider) -> tup
     raise AssertionError(f"unknown scan provider: {provider}")
 
 
-async def _fetch_openai_style_models(provider: str, headers: dict[str, str], normalized_base: str) -> list[AiModelInfo]:
+async def _fetch_openai_style_models(provider: str, headers: dict[str, str], normalized_base: str, alternate_base: str | None = None) -> list[AiModelInfo]:
+    last_error: RuntimeError | None = None
+    for base in _dedupe_bases([normalized_base, alternate_base]):
+        try:
+            response = await _get_openai_models(provider, headers, base)
+            return _parse_openai_style_models(provider, response)
+        except RuntimeError as error:
+            last_error = error
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError(f"{provider} chưa có base URL hợp lệ.")
+
+
+async def _get_openai_models(provider: str, headers: dict[str, str], normalized_base: str) -> httpx.Response:
     from app.services.http_pool import TIMEOUT_MODELS, get_client
 
     url = f"{normalized_base}/models"
@@ -49,13 +63,12 @@ async def _fetch_openai_style_models(provider: str, headers: dict[str, str], nor
         response = await client.get(url, headers=headers, timeout=TIMEOUT_MODELS)
         if response.status_code >= 400:
             raise RuntimeError(_format_scan_error(provider, response))
+        return response
     except httpx.TimeoutException as error:
         raise RuntimeError(f"{provider} models request quá chậm; gateway không trả trong 20 giây.") from error
     except httpx.HTTPError as error:
         message = str(error) or error.__class__.__name__
         raise RuntimeError(f"{provider} models request lỗi: {message}") from error
-
-    return _parse_openai_style_models(provider, response)
 
 
 def _normalize_openai_base_url(base_url: str) -> str:
@@ -65,6 +78,21 @@ def _normalize_openai_base_url(base_url: str) -> str:
     if base.endswith("/completions"):
         return base.removesuffix("/completions")
     return base
+
+
+def _alternate_openai_compat_base(normalized_base: str) -> str | None:
+    if normalized_base.endswith("/v1"):
+        return normalized_base.removesuffix("/v1")
+    return f"{normalized_base}/v1"
+
+
+def _dedupe_bases(bases: list[str | None]) -> list[str]:
+    result: list[str] = []
+    for base in bases:
+        normalized = (base or "").rstrip("/")
+        if normalized and normalized not in result:
+            result.append(normalized)
+    return result
 
 
 def _uses_openai_style_ollama(base_url: str) -> bool:

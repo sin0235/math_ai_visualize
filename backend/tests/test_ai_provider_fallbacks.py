@@ -330,6 +330,27 @@ def test_openai_compat_scan_models_uses_models_endpoint_without_api_key(monkeypa
     assert models[0].provider == "openai_compat"
 
 
+def test_openai_compat_scan_models_falls_back_to_v1_models(monkeypatch):
+    from app.services.model_scan import list_provider_models
+
+    calls = []
+
+    class FakeAsyncClient:
+        async def get(self, url: str, headers: dict[str, str], timeout=None):
+            calls.append(url)
+            if url == "https://compat.local/models":
+                return httpx.Response(404, json={"error": "not found"})
+            return httpx.Response(200, json={"data": [{"id": "compat/model"}]})
+
+    monkeypatch.setattr("app.services.http_pool.get_client", lambda *args, **kwargs: FakeAsyncClient())
+
+    settings = Settings(_env_file=None, openai_compat_base_url="https://compat.local")
+    models = asyncio.run(list_provider_models(settings, "openai_compat"))
+
+    assert calls == ["https://compat.local/models", "https://compat.local/v1/models"]
+    assert models[0].id == "compat/model"
+
+
 def test_router9_list_models_uses_openai_compatible_models_endpoint(monkeypatch):
     calls = []
 
