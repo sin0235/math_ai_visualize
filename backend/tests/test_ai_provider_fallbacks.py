@@ -4,6 +4,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
+from app.api.deps import require_active_user
 from app.core.config import Settings, merge_runtime_settings
 from app.main import app
 from app.schemas.scene import AiModelInfo, OcrRequest, RenderRequest, RuntimeSettings
@@ -466,12 +467,48 @@ def test_render_route_returns_detail_for_ai_runtime_errors(monkeypatch):
     async def fail_extract_scene(*args, **kwargs):
         raise RuntimeError("9router-only đang bật nên không fallback sang provider khác.")
 
-    monkeypatch.setattr("app.api.routes_render.extract_scene", fail_extract_scene)
+    async def no_user():
+        return None
 
-    response = TestClient(app).post("/api/render", json={"problem_text": "x"})
+    async def noop(*args, **kwargs):
+        return None
+
+    app.dependency_overrides[require_active_user] = no_user
+    monkeypatch.setattr("app.api.routes_render.enforce_rate_limit", noop)
+    monkeypatch.setattr("app.api.routes_render.enforce_render_access", noop)
+    monkeypatch.setattr("app.api.routes_render.extract_scene", fail_extract_scene)
+    try:
+        response = TestClient(app).post("/api/render", json={"problem_text": "x"})
+    finally:
+        app.dependency_overrides.clear()
 
     assert response.status_code == 400
-    assert response.json()["detail"] == "9router-only đang bật nên không fallback sang provider khác."
+    assert response.json()["detail"]["debug_message"] == "9router-only đang bật nên không fallback sang provider khác."
+
+
+def test_render_route_falls_back_before_ai_timeout(monkeypatch):
+    async def slow_extract_scene(*args, **kwargs):
+        await asyncio.sleep(0.01)
+
+    async def no_user():
+        return None
+
+    async def noop(*args, **kwargs):
+        return None
+
+    app.dependency_overrides[require_active_user] = no_user
+    monkeypatch.setattr("app.api.routes_render.RENDER_AI_TIMEOUT_SECONDS", 0.001)
+    monkeypatch.setattr("app.api.routes_render.enforce_rate_limit", noop)
+    monkeypatch.setattr("app.api.routes_render.enforce_render_access", noop)
+    monkeypatch.setattr("app.api.routes_render.extract_scene", slow_extract_scene)
+    try:
+        response = TestClient(app).post("/api/render", json={"problem_text": "A(0,0), B(1,1)"})
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["scene"]["topic"] == "coordinate_2d"
+    assert response.json()["warnings"] == ["AI provider quá chậm; đang dùng mock extractor để tránh timeout backend."]
 
 
 def test_solver_explainer_falls_back_when_openrouter_model_is_invalid(monkeypatch):

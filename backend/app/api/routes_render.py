@@ -1,3 +1,4 @@
+import asyncio
 import json
 from datetime import UTC, datetime
 
@@ -13,11 +14,13 @@ from app.schemas.auth import SystemFeatureFlags
 from app.schemas.scene import RenderRequest, RenderResponse, SceneRenderRequest
 from app.services.api_errors import api_error, bad_request_from_error
 from app.services.system_settings import load_feature_flags
-from app.services.extractor import extract_scene
+from app.services.extractor import extract_scene, extract_scene_mock
 from app.services.geometry_engine import normalize_scene
 from app.services.renderer_router import build_render_payload
 
 router = APIRouter(prefix="/api", tags=["render"])
+
+RENDER_AI_TIMEOUT_SECONDS = 25
 
 
 @router.post("/render", response_model=RenderResponse, dependencies=[Depends(require_trusted_origin)])
@@ -30,15 +33,21 @@ async def render_problem(
     await enforce_rate_limit(db, http_request, user, "render", 20 if user else 8, 60)
     await enforce_render_access(db, user)
     try:
-        scene, warnings = await extract_scene(
-            request.problem_text,
-            request.grade,
-            request.preferred_ai_provider,
-            request.preferred_ai_model,
-            request.advanced_settings,
-            request.runtime_settings,
-            db=db,
+        scene, warnings = await asyncio.wait_for(
+            extract_scene(
+                request.problem_text,
+                request.grade,
+                request.preferred_ai_provider,
+                request.preferred_ai_model,
+                request.advanced_settings,
+                request.runtime_settings,
+                db=db,
+            ),
+            timeout=RENDER_AI_TIMEOUT_SECONDS,
         )
+    except TimeoutError:
+        scene = extract_scene_mock(request.problem_text, request.grade)
+        warnings = ["AI provider quá chậm; đang dùng mock extractor để tránh timeout backend."]
     except (RuntimeError, ValidationError, ValueError, KeyError) as error:
         raise bad_request_from_error(error, "render_failed") from error
     if request.preferred_renderer is not None:
