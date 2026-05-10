@@ -498,7 +498,7 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave, onToast }
 }
 
 export function AdminPlanSettingsForm({ plans, onSavePlan }: { plans: AdminPlanResponse[]; onSavePlan: (planId: string, patch: Partial<Pick<AdminPlanResponse, 'name' | 'daily_render_limit' | 'daily_ocr_limit' | 'sort_order' | 'is_active'>>) => Promise<AdminPlanResponse> }) {
-  const orderedPlans = plans.length > 0 ? [...plans].sort((left, right) => left.sort_order - right.sort_order || left.id.localeCompare(right.id)) : [];
+  const orderedPlans = [...(plans.length > 0 ? plans : defaultAdminPlans())].sort((left, right) => left.sort_order - right.sort_order || left.id.localeCompare(right.id));
   const [drafts, setDrafts] = useState(() => buildPlanDrafts(orderedPlans));
   const [savingPlan, setSavingPlan] = useState<string | null>(null);
 
@@ -527,25 +527,51 @@ export function AdminPlanSettingsForm({ plans, onSavePlan }: { plans: AdminPlanR
   }
 
   return (
-    <section className="admin-settings-section"><h4>Giới hạn theo gói</h4><p className="field-hint">Để trống nghĩa là không giới hạn theo ngày. Dữ liệu lưu trong bảng plans.</p><div className="admin-table">
-      {orderedPlans.map((plan) => {
-        const draft = drafts[plan.id] ?? { name: plan.name, render: '', ocr: '', active: plan.is_active };
-        return (
-          <article className="admin-row admin-row-block" key={plan.id}>
-            <div><strong>{planLabel(plan.id)}</strong><span>{plan.id} · {plan.is_active ? 'active' : 'inactive'}</span></div>
-            <div className="admin-field-grid">
-              <label className="field-label">Tên gói<input value={draft.name} onChange={(event) => updateDraft(plan.id, { name: event.target.value })} /></label>
-              <label className="field-label">Render/ngày<input type="number" min="0" value={draft.render} onChange={(event) => updateDraft(plan.id, { render: event.target.value })} /></label>
-              <label className="field-label">OCR/ngày<input type="number" min="0" value={draft.ocr} onChange={(event) => updateDraft(plan.id, { ocr: event.target.value })} /></label>
-              <label className="checkbox-label"><input type="checkbox" checked={draft.active} onChange={(event) => updateDraft(plan.id, { active: event.target.checked })} /> Đang hoạt động</label>
-            </div>
-            <button type="button" className="secondary-button" onClick={() => void savePlan(plan)} disabled={savingPlan === plan.id}>{savingPlan === plan.id ? 'Đang lưu...' : 'Lưu gói'}</button>
-          </article>
-        );
-      })}
-      {orderedPlans.length === 0 && <p className="field-hint">Chưa có bảng plans hoặc migration chưa chạy.</p>}
-    </div></section>
+    <section className="admin-settings-section admin-plan-settings-section">
+      <div className="admin-plan-section-head">
+        <div>
+          <h4>Giới hạn theo gói</h4>
+          <p className="field-hint">Để trống nghĩa là không giới hạn theo ngày. Dữ liệu lưu trong bảng plans.</p>
+        </div>
+        <span className="admin-plan-count">{orderedPlans.length} gói</span>
+      </div>
+      <div className="admin-plan-grid" role="table" aria-label="Giới hạn theo gói người dùng">
+        <div className="admin-plan-grid-head" role="row">
+          <span>Gói</span>
+          <span>Tên hiển thị</span>
+          <span>Render/ngày</span>
+          <span>OCR/ngày</span>
+          <span>Trạng thái</span>
+          <span></span>
+        </div>
+        {orderedPlans.map((plan) => {
+          const draft = drafts[plan.id] ?? { name: plan.name, render: '', ocr: '', active: plan.is_active };
+          return (
+            <article className="admin-plan-row" key={plan.id} role="row">
+              <div className="admin-plan-name-cell">
+                <strong>{planLabel(plan.id)}</strong>
+                <span>{plan.id}</span>
+              </div>
+              <label className="field-label admin-plan-field"><span>Tên hiển thị</span><input value={draft.name} onChange={(event) => updateDraft(plan.id, { name: event.target.value })} /></label>
+              <label className="field-label admin-plan-field"><span>Render/ngày</span><input type="number" min="0" placeholder="∞" value={draft.render} onChange={(event) => updateDraft(plan.id, { render: event.target.value })} /></label>
+              <label className="field-label admin-plan-field"><span>OCR/ngày</span><input type="number" min="0" placeholder="∞" value={draft.ocr} onChange={(event) => updateDraft(plan.id, { ocr: event.target.value })} /></label>
+              <label className="admin-plan-toggle"><input type="checkbox" checked={draft.active} onChange={(event) => updateDraft(plan.id, { active: event.target.checked })} /><span>{draft.active ? 'Active' : 'Inactive'}</span></label>
+              <button type="button" className="secondary-button admin-plan-save" onClick={() => void savePlan(plan)} disabled={savingPlan === plan.id}>{savingPlan === plan.id ? 'Đang lưu...' : 'Lưu'}</button>
+            </article>
+          );
+        })}
+      </div>
+      {plans.length === 0 && <p className="field-hint admin-plan-warning">Backend chưa trả bảng plans; đang hiển thị 3 gói mặc định để cấu hình sau khi migration chạy.</p>}
+    </section>
   );
+}
+
+function defaultAdminPlans(): AdminPlanResponse[] {
+  return [
+    { id: 'free', name: 'Free', daily_render_limit: 20, daily_ocr_limit: 20, sort_order: 10, is_active: true, created_at: '', updated_at: '' },
+    { id: 'pro', name: 'Pro', daily_render_limit: 200, daily_ocr_limit: 200, sort_order: 20, is_active: true, created_at: '', updated_at: '' },
+    { id: 'pro_plus', name: 'Pro+', daily_render_limit: null, daily_ocr_limit: null, sort_order: 30, is_active: true, created_at: '', updated_at: '' },
+  ];
 }
 
 function buildPlanDrafts(plans: AdminPlanResponse[]) {

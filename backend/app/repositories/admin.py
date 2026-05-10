@@ -150,13 +150,40 @@ class AdminRepository:
         await self.db.execute("DELETE FROM render_jobs WHERE id = ?", [job_id])
 
     async def list_plans(self, active_only: bool = False) -> list[PlanRecord]:
+        await self.ensure_default_plans()
         where = " WHERE is_active = 1" if active_only else ""
         rows = await self.db.fetch_all(f"SELECT * FROM plans{where} ORDER BY sort_order ASC, id ASC")
         return [plan_from_row(row) for row in rows]
 
     async def find_plan(self, plan_id: str) -> PlanRecord | None:
+        await self.ensure_default_plans()
         row = await self.db.fetch_one("SELECT * FROM plans WHERE id = ?", [plan_id])
         return plan_from_row(row) if row else None
+
+    async def ensure_default_plans(self) -> None:
+        await self.db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS plans (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                daily_render_limit INTEGER CHECK(daily_render_limit IS NULL OR daily_render_limit >= 0),
+                daily_ocr_limit INTEGER CHECK(daily_ocr_limit IS NULL OR daily_ocr_limit >= 0),
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                is_active INTEGER NOT NULL DEFAULT 1 CHECK(is_active IN (0, 1)),
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        for plan_id, name, render_limit, ocr_limit, sort_order in [("free", "Free", 20, 20, 10), ("pro", "Pro", 200, 200, 20), ("pro_plus", "Pro+", None, None, 30)]:
+            await self.db.execute(
+                """
+                INSERT INTO plans (id, name, daily_render_limit, daily_ocr_limit, sort_order, is_active)
+                VALUES (?, ?, ?, ?, ?, 1)
+                ON CONFLICT(id) DO NOTHING
+                """,
+                [plan_id, name, render_limit, ocr_limit, sort_order],
+            )
 
     async def update_plan(self, plan_id: str, patch: dict[str, object]) -> PlanRecord | None:
         current = await self.db.fetch_one("SELECT * FROM plans WHERE id = ?", [plan_id])

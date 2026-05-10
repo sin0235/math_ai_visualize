@@ -122,17 +122,17 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
   const onRefresh = async (showSuccess = false) => {
     setLoading(true);
     try {
-      const [s, u, r, st, p, a, f, defaults, diagnostics] = await Promise.all([
+      const [s, u, r, st, a, f, defaults, diagnostics] = await Promise.all([
         getAdminSummary(),
         getAdminUsers({}),
         getAdminRenderJobs({}),
         getAdminSystemSettings(),
-        getAdminPlans(),
         getAdminAuditLogs({}),
         getAdminFeedback({}),
         getSettingsDefaults(),
         getAdminDatabaseDiagnostics(),
       ]);
+      const p = await loadAdminPlans(st);
       setSummary(s);
       setUsers(u);
       setRenderJobs(r);
@@ -824,6 +824,35 @@ function AdminAuditLogRow({ log }: { log: AuditLogResponse }) {
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback;
+}
+
+async function loadAdminPlans(settings: SystemSettingResponse[]): Promise<AdminPlanResponse[]> {
+  try {
+    return await getAdminPlans();
+  } catch (error) {
+    const legacy = settings.find((item) => item.key === 'plan_settings')?.value as Record<string, unknown> | undefined;
+    const plansValue = legacy?.plans && typeof legacy.plans === 'object' ? legacy.plans as Record<string, unknown> : {};
+    const ids = Object.keys(plansValue).length > 0 ? Object.keys(plansValue) : ['free', 'pro', 'pro_plus'];
+    return ids.map((id, index) => {
+      const data = plansValue[id] && typeof plansValue[id] === 'object' ? plansValue[id] as Record<string, unknown> : {};
+      return {
+        id,
+        name: planLabel(id),
+        daily_render_limit: typeof data.daily_render_limit === 'number' ? data.daily_render_limit : defaultPlanLimit(id),
+        daily_ocr_limit: typeof data.daily_ocr_limit === 'number' ? data.daily_ocr_limit : defaultPlanLimit(id),
+        sort_order: (index + 1) * 10,
+        is_active: true,
+        created_at: '',
+        updated_at: '',
+      };
+    });
+  }
+}
+
+function defaultPlanLimit(id: string) {
+  if (id === 'free') return 20;
+  if (id === 'pro') return 200;
+  return null;
 }
 
 function adminAiSettingsValue(value: Record<string, unknown>, defaults: SettingsDefaults | null) {
