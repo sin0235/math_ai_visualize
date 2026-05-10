@@ -63,7 +63,9 @@ async def extract_text_from_image(
 ) -> OcrResult:
     validate_image_data_url(image_data_url)
     attempts: list[OcrAttempt] = []
-    selected_provider: OcrProvider = provider or "openrouter"
+    selected_provider = _resolve_ocr_provider(provider, model)
+    selected_model = _normalize_ocr_model_for_provider(selected_provider, model)
+    explicit_model = model is not None
     system_prompt = DIAGRAM_OCR_SYSTEM_PROMPT if mode == "diagram" else None
     user_text = DIAGRAM_OCR_USER_TEXT if mode == "diagram" else PROBLEM_OCR_USER_TEXT
 
@@ -71,10 +73,10 @@ async def extract_text_from_image(
         raise RuntimeError("9router-only đang bật nên OCR không fallback sang provider khác. Hãy chọn OCR provider 9router hoặc tắt 9router-only.")
 
     if selected_provider == "router9":
-        result = await _try_router9_ocr(image_data_url, settings, model, attempts, system_prompt, user_text)
+        result = await _try_router9_ocr(image_data_url, settings, selected_model, attempts, system_prompt, user_text)
         if result is not None:
             return result
-        if settings.router9_only or model is not None:
+        if settings.router9_only or explicit_model:
             raise RuntimeError(_format_ocr_failure("OCR 9router thất bại.", attempts, settings.router9_only))
 
     elif provider is None and model is None and settings.router9_api_key:
@@ -83,10 +85,10 @@ async def extract_text_from_image(
             return result
 
     if selected_provider == "openrouter" or selected_provider == "router9":
-        result = await _try_openrouter_ocr(image_data_url, settings, model, attempts, system_prompt, user_text)
+        result = await _try_openrouter_ocr(image_data_url, settings, selected_model, attempts, system_prompt, user_text)
         if result is not None:
             return result
-        if model is not None:
+        if explicit_model:
             raise RuntimeError(_format_ocr_failure("OCR OpenRouter thất bại với model đã chọn.", attempts, settings.router9_only))
 
     for nvidia_model in ("google/gemma-3n-e2b-it", "mistralai/mistral-large-3-675b-instruct-2512"):
@@ -153,6 +155,24 @@ async def _try_openrouter_ocr(
 
 def _attempt_warnings(attempts: list[OcrAttempt]) -> list[str]:
     return [f"OCR fallback: {attempt.warning()}" for attempt in attempts]
+
+
+def _resolve_ocr_provider(provider: OcrProvider | None, model: str | None) -> OcrProvider:
+    if provider is not None:
+        return provider
+    if model and _looks_like_router9_model(model):
+        return "router9"
+    return "openrouter"
+
+
+def _normalize_ocr_model_for_provider(provider: OcrProvider, model: str | None) -> str | None:
+    if provider == "router9" and model:
+        return model.removeprefix("router9/")
+    return model
+
+
+def _looks_like_router9_model(model: str) -> bool:
+    return model.startswith(("router9/", "gh/", "cc/", "github/", "codex-"))
 
 
 def _router9_ocr_model_candidates(settings: Settings, explicit_model: str | None) -> list[str]:

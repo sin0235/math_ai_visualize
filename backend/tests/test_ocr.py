@@ -338,6 +338,36 @@ def test_ocr_route_uses_env_openrouter_key_with_registry_ocr_profile(monkeypatch
     assert payloads[0][2]["model"] == "gh/gpt-5.2"
 
 
+def test_ocr_route_uses_router9_for_router9_github_profile(monkeypatch, isolated_database):
+    from app.services.model_registry import load_model_registry, save_task_profile
+
+    settings = Settings(_env_file=None, sqlite_path=isolated_database.path, router9_api_key="router9-key")
+    app.dependency_overrides[get_settings] = lambda: settings
+    monkeypatch.setattr("app.api.routes_ocr.get_settings", lambda: settings)
+    monkeypatch.setattr("app.services.model_registry.get_settings", lambda: settings)
+    asyncio.run(load_model_registry(isolated_database, settings))
+    asyncio.run(save_task_profile(isolated_database, "ocr", "router9", "gh/gpt-5.2", []))
+    calls = []
+
+    async def fake_router9(self, image_data_url: str, model: str | None = None):
+        calls.append(("router9", model))
+        return "Đề OCR."
+
+    async def fake_openrouter(self, image_data_url: str, model: str | None = None):
+        calls.append(("openrouter", model))
+        return "Không nên gọi OpenRouter."
+
+    monkeypatch.setattr("app.services.router9_client.Router9Client.ocr_image", fake_router9)
+    monkeypatch.setattr("app.services.openrouter_client.OpenRouterClient.ocr_image", fake_openrouter)
+
+    response = TestClient(app).post("/api/ocr", json={"image_data_url": _IMAGE_DATA_URL})
+
+    assert response.status_code == 200
+    assert response.json()["provider"] == "router9"
+    assert response.json()["model"] == "gh/gpt-5.2"
+    assert calls == [("router9", "gh/gpt-5.2")]
+
+
 def test_openrouter_ocr_payload_uses_vision_message(monkeypatch):
     payloads = []
 
