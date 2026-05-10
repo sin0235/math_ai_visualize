@@ -13,8 +13,8 @@ export function GeneralSettingsPanel({ value, defaults, onChange, onReset }: Gen
   const providerOptions = buildProviderOptions(defaults, false);
   const providerModelOptions = buildProviderModelOptions(defaults, value.default_provider, currentProviderModel(value));
   const ocrProviderOptions = buildOcrProviderOptions(defaults);
-  const ocrProviderDefaults = value.ocr.provider === 'router9' ? defaults?.router9 : defaults?.openrouter;
-  const ocrModels = buildUserModelOptionsFromDefaults(ocrProviderDefaults, value.ocr.model, [defaults?.ocr.model ?? '']);
+  const ocrProviderDefaults = getOcrProviderDefaults(defaults, value.ocr.provider);
+  const ocrModels = buildUserModelOptionsFromDefaults(ocrProviderDefaults, value.ocr.model, [defaults?.ocr.provider === value.ocr.provider ? defaults.ocr.model : '']);
   const selectedOcrModel = value.ocr.model;
 
   function updateField<Key extends keyof RuntimeSettings>(key: Key, nextValue: RuntimeSettings[Key]) {
@@ -22,6 +22,18 @@ export function GeneralSettingsPanel({ value, defaults, onChange, onReset }: Gen
   }
 
   function updateOcr<Field extends keyof RuntimeSettings['ocr']>(field: Field, nextValue: RuntimeSettings['ocr'][Field]) {
+    if (field === 'provider') {
+      const nextProvider = nextValue as OcrProvider;
+      onChange({
+        ...value,
+        ocr: {
+          ...value.ocr,
+          provider: nextProvider,
+          model: defaultOcrModelForProvider(defaults, value, nextProvider),
+        },
+      });
+      return;
+    }
     onChange({
       ...value,
       ocr: {
@@ -92,7 +104,7 @@ export function GeneralSettingsPanel({ value, defaults, onChange, onReset }: Gen
           <label className="field-label">
             Model OCR mặc định
             <select value={selectedOcrModel} onChange={(event) => updateOcr('model', event.target.value)}>
-              <option value="">Dùng mặc định hệ thống: {value.ocr.provider === 'openrouter' ? defaults?.openrouter.vision_model : defaults?.router9.model || 'chưa đặt'}</option>
+              <option value="">Dùng mặc định hệ thống: {systemOcrModelLabel(defaults, value.ocr.provider)}</option>
               {value.ocr.model && !ocrModels.some((model) => model.id === value.ocr.model) && <option value={value.ocr.model}>{value.ocr.model}</option>}
               {ocrModels.map((model) => <option key={model.id} value={model.id}>{model.label}</option>)}
             </select>
@@ -135,6 +147,27 @@ function buildProviderModelOptions(defaults: SettingsDefaults | null, provider: 
 function buildUserModelOptionsFromDefaults(providerDefaults: SettingsDefaults['openrouter'] | SettingsDefaults['nvidia'] | SettingsDefaults['ollama'] | SettingsDefaults['openai_compat'] | SettingsDefaults['router9'] | undefined, currentModel = '', extraModelIds: string[] = []): Option[] {
   if (!providerDefaults) return uniqueOptions([currentModel, ...extraModelIds]);
   return buildModelOptionsFromDefaults(providerDefaults, currentModel, extraModelIds);
+}
+
+function getOcrProviderDefaults(defaults: SettingsDefaults | null, provider: OcrProvider) {
+  if (!defaults) return undefined;
+  return defaults[provider];
+}
+
+function defaultOcrModelForProvider(defaults: SettingsDefaults | null, value: RuntimeSettings, provider: OcrProvider): string {
+  if (defaults?.ocr.provider === provider && defaults.ocr.model) return defaults.ocr.model;
+  if (provider === 'openrouter') return defaults?.openrouter.vision_model || value.openrouter.model;
+  const providerSettings = value[provider];
+  const providerDefaults = getOcrProviderDefaults(defaults, provider);
+  return providerSettings.model || providerDefaults?.model || providerDefaults?.allowed_model_ids[0] || providerDefaults?.scanned_models[0]?.id || '';
+}
+
+function systemOcrModelLabel(defaults: SettingsDefaults | null, provider: OcrProvider): string {
+  if (!defaults) return 'chưa đặt';
+  if (defaults.ocr.provider === provider && defaults.ocr.model) return defaults.ocr.model;
+  if (provider === 'openrouter') return defaults.openrouter.vision_model || 'chưa đặt';
+  const providerDefaults = defaults[provider];
+  return providerDefaults.model || providerDefaults.allowed_model_ids[0] || providerDefaults.scanned_models[0]?.id || 'chưa đặt';
 }
 
 function uniqueOptions(ids: string[]): Option[] {

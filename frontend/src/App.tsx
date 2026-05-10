@@ -1761,9 +1761,10 @@ function mergeBackendDefaults(current: RuntimeSettings, defaults: SettingsDefaul
   const openrouter = mergeProviderDefaults(current.openrouter, defaults.openrouter, 'openrouter');
   const nvidia = mergeProviderDefaults(current.nvidia, defaults.nvidia, 'nvidia');
   const ollama = mergeProviderDefaults(current.ollama, defaults.ollama, 'ollama');
+  const openai_compat = mergeProviderDefaults(current.openai_compat, defaults.openai_compat, 'openai_compat');
   const router9 = mergeProviderDefaults(current.router9, defaults.router9, 'router9');
   const ocrProvider = current.ocr.provider || defaults.ocr.provider;
-  const ocrModel = current.ocr.model || defaults.ocr.model || (ocrProvider === 'router9' ? router9.model : defaults.openrouter.vision_model) || '';
+  const ocrModel = current.ocr.model || defaultOcrModelFromMergedDefaults(ocrProvider, defaults, { openrouter, nvidia, ollama, openai_compat, router9 });
 
   return {
     ...current,
@@ -1771,6 +1772,7 @@ function mergeBackendDefaults(current: RuntimeSettings, defaults: SettingsDefaul
     openrouter,
     nvidia,
     ollama,
+    openai_compat,
     router9: {
       ...router9,
       only_mode: current.router9.only_mode || defaults.router9.only_mode,
@@ -1784,7 +1786,17 @@ function mergeBackendDefaults(current: RuntimeSettings, defaults: SettingsDefaul
   };
 }
 
-function mergeProviderDefaults<Provider extends 'openrouter' | 'nvidia' | 'ollama' | 'router9'>(
+function defaultOcrModelFromMergedDefaults(
+  provider: RuntimeSettings['ocr']['provider'],
+  defaults: SettingsDefaults,
+  merged: Pick<RuntimeSettings, 'openrouter' | 'nvidia' | 'ollama' | 'openai_compat' | 'router9'>,
+): string {
+  if (defaults.ocr.provider === provider && defaults.ocr.model) return defaults.ocr.model;
+  if (provider === 'openrouter') return defaults.openrouter.vision_model || merged.openrouter.model || '';
+  return merged[provider].model || defaults[provider].allowed_model_ids[0] || defaults[provider].scanned_models[0]?.id || '';
+}
+
+function mergeProviderDefaults<Provider extends 'openrouter' | 'nvidia' | 'ollama' | 'openai_compat' | 'router9'>(
   current: RuntimeSettings[Provider],
   defaults: SettingsDefaults[Provider],
   provider: Provider,

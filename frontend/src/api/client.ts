@@ -516,6 +516,7 @@ export async function scanProviderModels(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
+    signal: timeoutSignal(30_000),
     body: JSON.stringify({ provider, runtime_settings: compactRuntimeSettings(runtimeSettings) }),
   }, 'Không thể quét model provider.');
   return response.models;
@@ -526,6 +527,7 @@ export async function scanRouter9Models(runtimeSettings: RuntimeSettings): Promi
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
+    signal: timeoutSignal(30_000),
     body: JSON.stringify({ runtime_settings: compactRuntimeSettings(runtimeSettings) }),
   }, 'Không thể quét model 9router.');
   return response.models;
@@ -793,10 +795,16 @@ async function fetchWithRetry(input: RequestInfo | URL, init?: RequestInit) {
   try {
     return await fetch(input, init);
   } catch (caught) {
-    if (!isTransientNetworkError(caught)) throw caught;
+    if (init?.signal?.aborted || !isTransientNetworkError(caught)) throw caught;
     await new Promise((resolve) => window.setTimeout(resolve, 350));
     return fetch(input, init);
   }
+}
+
+function timeoutSignal(ms: number) {
+  const controller = new AbortController();
+  window.setTimeout(() => controller.abort(), ms);
+  return controller.signal;
 }
 
 function isTransientNetworkError(caught: unknown) {
@@ -804,6 +812,7 @@ function isTransientNetworkError(caught: unknown) {
 }
 
 function networkApiError(caught: unknown, fallbackMessage: string) {
+  if (caught instanceof DOMException && caught.name === 'AbortError') return new ApiError(`${fallbackMessage} Request quá lâu, đã tự hủy sau 30 giây.`);
   if (caught instanceof TypeError) {
     return new ApiError('Không kết nối được backend.', [
       `Frontend đang gọi API tại ${API_BASE_URL || 'cùng domain hiện tại'}.`,

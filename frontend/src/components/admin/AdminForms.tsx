@@ -309,16 +309,7 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave, onToast }
           : await scanProviderModels(provider as 'openrouter' | 'openai_compat' | 'nvidia' | 'ollama', runtime);
       const next = normalizeDefaultModel({ ...draft[provider], scanned_models: models, last_scanned_at: new Date().toISOString() });
       updateProvider(provider, next);
-      const providerPatch: Record<string, unknown> = {
-        base_url: next.base_url,
-        model: next.model,
-        scanned_models: next.scanned_models,
-        allowed_model_ids: next.allowed_model_ids,
-        last_scanned_at: next.last_scanned_at,
-      };
-      if (provider === 'router9') providerPatch.only_mode = next.only_mode;
-      await onSave({ [provider]: providerPatch });
-      onToast?.('Quét model', `Đã quét ${models.length} model từ ${providerLabels[provider]}.`, 'info');
+      onToast?.('Quét model', `Đã quét ${models.length} model từ ${providerLabels[provider]}. Bấm Lưu provider để lưu danh sách này.`, 'info');
     } catch (error) {
       onToast?.('Quét model', getErrorMessage(error, `Không thể quét model cho ${providerLabels[provider]}.`), 'error');
     } finally {
