@@ -2485,24 +2485,53 @@ select {
 }
 
 .history-item {
+  position: relative;
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 8px;
+  overflow: hidden;
   border: 1px solid #e5e7eb;
   border-radius: 14px;
   padding: 12px;
   background: #ffffff;
-  transition: border-color 0.14s ease, background 0.14s ease;
+  transition: border-color 0.14s ease, background 0.14s ease, box-shadow 0.14s ease, transform 0.14s ease;
 }
 
 .history-item:hover {
   border-color: #cbd5e1;
   background: #f8fafc;
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.08);
+  transform: translateY(-1px);
+}
+
+.history-item:active,
+.history-item.opening {
+  border-color: #93c5fd;
+  background: #eff6ff;
+  transform: translateY(0) scale(0.99);
+}
+
+.history-item::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at var(--history-click-x, 50%) var(--history-click-y, 50%), rgba(37, 99, 235, 0.16), transparent 42%);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease;
+}
+
+.history-item:active::after,
+.history-item.opening::after {
+  opacity: 1;
 }
 
 .history-item button:first-child {
-  display: grid;
-  gap: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
   border: 0;
   padding: 0;
   color: inherit;
@@ -2510,11 +2539,34 @@ select {
   background: transparent;
 }
 
+.history-item-copy {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
 .history-item strong {
   overflow: hidden;
   color: #111111;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.history-opening-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #2563eb;
+}
+
+.history-opening-indicator .sp-spinner {
+  width: 14px;
+  height: 14px;
+  border-width: 2px;
 }
 
 .history-delete {

@@ -154,6 +154,7 @@ export default function App() {
   const [historyItems, setHistoryItems] = useState<RenderHistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [openingHistoryId, setOpeningHistoryId] = useState<string | null>(null);
   const [remoteSettingsHydrated, setRemoteSettingsHydrated] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [toolsMenuOpen, setToolsMenuOpen] = useState(false);
@@ -622,6 +623,7 @@ export default function App() {
   }
 
   async function openHistoryItem(id: string) {
+    setOpeningHistoryId(id);
     try {
       const detail = await getRenderHistoryDetail(id);
       setProblemText(detail.problem_text);
@@ -631,6 +633,8 @@ export default function App() {
     } catch (caught) {
       const apiError = toApiError(caught, 'Không thể mở lịch sử dựng hình.');
       showApiError('Không thể mở lịch sử', apiError, 'Hãy đăng nhập lại hoặc thử tải lại trang.');
+    } finally {
+      setOpeningHistoryId(null);
     }
   }
 
@@ -1017,7 +1021,7 @@ export default function App() {
                       <button type="button" className="secondary-button history-toggle" onClick={() => setHistoryOpen((open) => !open)}>
                         {historyOpen ? 'Ẩn lịch sử' : `Lịch sử (${historyItems.length})`}
                       </button>
-                      {historyOpen && <HistoryPanel items={historyItems} loading={historyLoading} onOpen={openHistoryItem} onDelete={removeHistoryItem} />}
+                      {historyOpen && <HistoryPanel items={historyItems} loading={historyLoading} openingId={openingHistoryId} onOpen={openHistoryItem} onDelete={removeHistoryItem} />}
                     </div>
                   )}
                 </>
@@ -1179,6 +1183,7 @@ export default function App() {
             user={user}
             items={historyItems}
             loading={historyLoading}
+            openingId={openingHistoryId}
             onOpen={openHistoryItem}
             onDelete={removeHistoryItem}
             onLogin={() => navigateTo('login')}
@@ -1579,7 +1584,7 @@ function AboutPage({ onStart, onGuide }: { onStart: () => void; onGuide: () => v
 }
 
 
-function HistoryPage({ user, items, loading, onOpen, onDelete, onLogin, onWorkspace }: { user: UserResponse | null; items: RenderHistoryItem[]; loading: boolean; onOpen: (id: string) => void; onDelete: (id: string) => void; onLogin: () => void; onWorkspace: () => void }) {
+function HistoryPage({ user, items, loading, openingId, onOpen, onDelete, onLogin, onWorkspace }: { user: UserResponse | null; items: RenderHistoryItem[]; loading: boolean; openingId: string | null; onOpen: (id: string) => void; onDelete: (id: string) => void; onLogin: () => void; onWorkspace: () => void }) {
   if (!user) {
     return (
       <section className="product-page-card">
@@ -1601,7 +1606,7 @@ function HistoryPage({ user, items, loading, onOpen, onDelete, onLogin, onWorksp
         </div>
         <button type="button" onClick={onWorkspace}>Dựng hình mới</button>
       </div>
-      <HistoryPanel items={items} loading={loading} onOpen={onOpen} onDelete={onDelete} />
+      <HistoryPanel items={items} loading={loading} openingId={openingId} onOpen={onOpen} onDelete={onDelete} />
     </section>
   );
 }
@@ -1616,7 +1621,7 @@ function MetricCard({ label, value, suffix = '' }: { label: string; value: numbe
   );
 }
 
-function HistoryPanel({ items, loading, onOpen, onDelete }: { items: RenderHistoryItem[]; loading: boolean; onOpen: (id: string) => void; onDelete: (id: string) => void }) {
+function HistoryPanel({ items, loading, openingId, onOpen, onDelete }: { items: RenderHistoryItem[]; loading: boolean; openingId: string | null; onOpen: (id: string) => void; onDelete: (id: string) => void }) {
   return (
     <section className="history-panel">
       <div className="history-panel-header">
@@ -1627,15 +1632,21 @@ function HistoryPanel({ items, loading, onOpen, onDelete }: { items: RenderHisto
         <p>Các lượt render mới sau khi đăng nhập sẽ được lưu vào hệ thống.</p>
       ) : (
         <div className="history-list">
-          {items.map((item) => (
-            <article className="history-item" key={item.id}>
-              <button type="button" onClick={() => onOpen(item.id)}>
-                <strong>{item.problem_text}</strong>
-                <span>{formatHistoryDate(item.created_at)} · {historySourceLabel(item.source_type)}{item.renderer ? ` · ${item.renderer}` : ''}{item.model ? ` · ${item.model}` : ''}</span>
-              </button>
-              <button type="button" className="history-delete" onClick={() => onDelete(item.id)} aria-label="Xoá lịch sử">×</button>
-            </article>
-          ))}
+          {items.map((item) => {
+            const opening = openingId === item.id;
+            return (
+              <article className={`history-item${opening ? ' opening' : ''}`} key={item.id}>
+                <button type="button" onClick={() => onOpen(item.id)} disabled={opening} aria-busy={opening}>
+                  <span className="history-item-copy">
+                    <strong>{item.problem_text}</strong>
+                    <span>{formatHistoryDate(item.created_at)} · {historySourceLabel(item.source_type)}{item.renderer ? ` · ${item.renderer}` : ''}{item.model ? ` · ${item.model}` : ''}</span>
+                  </span>
+                  {opening && <span className="history-opening-indicator" aria-hidden="true"><span className="sp-spinner" /></span>}
+                </button>
+                <button type="button" className="history-delete" onClick={() => onDelete(item.id)} disabled={opening} aria-label="Xoá lịch sử">×</button>
+              </article>
+            );
+          })}
         </div>
       )}
     </section>
