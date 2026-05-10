@@ -8,9 +8,19 @@ from app.schemas.scene import AiModelInfo, ModelScanProvider
 
 async def list_provider_models(settings: Settings, provider: ModelScanProvider) -> list[AiModelInfo]:
     api_key, base_url = _provider_connection(settings, provider)
-    headers = _headers(api_key) if api_key else {}
+    base = (base_url or "").strip()
+    if not base:
+        raise RuntimeError(f"{provider} chưa có base URL hợp lệ.")
 
-    url = f"{base_url.rstrip('/')}/models"
+    if provider == "ollama":
+        return await _fetch_ollama_models(settings, api_key, base)
+
+    _require_api_key_if_needed(provider, api_key)
+    headers = _bearer_headers(api_key)
+    if provider == "openrouter":
+        headers = {**headers, **_openrouter_optional_headers(settings)}
+
+    url = f"{base.rstrip('/')}/models"
     try:
         async with httpx.AsyncClient(timeout=60) as client:
             response = await client.get(url, headers=headers)
@@ -20,22 +30,58 @@ async def list_provider_models(settings: Settings, provider: ModelScanProvider) 
         message = str(error) or error.__class__.__name__
         raise RuntimeError(f"{provider} models request lỗi: {message}") from error
 
-    return _parse_models(provider, response)
+    return _parse_openai_style_models(provider, response)
 
 
 def _provider_connection(settings: Settings, provider: ModelScanProvider) -> tuple[str | None, str]:
     if provider == "openrouter":
         return settings.openrouter_api_key, settings.openrouter_base_url
-    return settings.openai_compat_api_key, settings.openai_compat_base_url
+    if provider == "openai_compat":
+        return settings.openai_compat_api_key, settings.openai_compat_base_url
+    if provider == "nvidia":
+        return settings.nvidia_api_key, settings.nvidia_base_url
+    if provider == "ollama":
+        return settings.ollama_api_key, settings.ollama_base_url
+    raise AssertionError(f"unknown scan provider: {provider}")
 
 
-def _headers(api_key: str | None) -> dict[str, str]:
-    if not api_key:
+def _require_api_key_if_needed(provider: ModelScanProvider, api_key: str | None) -> None:
+    if provider in ("openrouter", "nvidia") and not (api_key or "").strip():
         raise RuntimeError("API key chưa được cấu hình cho provider này.")
-    return {"Authorization": f"Bearer {api_key}"}
 
 
-def _parse_models(provider: str, response: httpx.Response) -> list[AiModelInfo]:
+def _bearer_headers(api_key: str | None) -> dict[str, str]:
+    key = (api_key or "").strip()
+    if not key:
+        return {}
+    return {"Authorization": f"Bearer {key}"}
+
+
+def _openrouter_optional_headers(settings: Settings) -> dict[str, str]:
+    headers: dict[str, str] = {}
+    if settings.openrouter_http_referer:
+        headers["HTTP-Referer"] = settings.openrouter_http_referer
+    if settings.openrouter_x_title:
+        headers["X-Title"] = settings.openrouter_x_title
+    return headers
+
+
+async def _fetch_ollama_models(settings: Settings, api_key: str | None, base_url: str) -> list[AiModelInfo]:
+    headers = _bearer_headers(api_key)
+    url = f"{base_url.rstrip('/')}/api/tags"
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            response = await client.get(url, headers=headers)
+            if response.status_code >= 400:
+                raise RuntimeError(_format_scan_error("ollama", response))
+    except httpx.HTTPError as error:
+        message = str(error) or error.__class__.__name__
+        raise RuntimeError(f"ollama models request lỗi: {message}") from error
+
+    return _parse_ollama_tags(response)
+
+
+def _parse_openai_style_models(provider: str, response: httpx.Response) -> list[AiModelInfo]:
     try:
         body = response.json()
     except ValueError as error:
@@ -63,6 +109,44 @@ def _parse_models(provider: str, response: httpx.Response) -> list[AiModelInfo]:
     return sorted(models, key=lambda model: model.id.lower())
 
 
+def _parse_ollama_tags(response: httpx.Response) -> list[AiModelInfo]:
+    try:
+        body = response.json()
+    except ValueError as error:
+        raise RuntimeError("ollama response không phải JSON hợp lệ.") from error
+
+    raw = body.get("models") if isinstance(body, dict) else None
+    if not isinstance(raw, list):
+        raise RuntimeError("ollama response không đúng định dạng models[].")
+
+    models: list[AiModelInfo] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        name = item.get("name")
+        if not isinstance(name, str) or not name:
+            continue
+        details = item.get("details")
+        owned_by = None
+        if isinstance(details, dict):
+            fam = details.get("family")
+            if isinstance(fam, str):
+                owned_by = fam
+        modified = item.get("modified_at")
+        created = _optional_int(modified) if isinstance(modified, int) else None
+        models.append(
+            AiModelInfo(
+                id=name,
+                label=name,
+                provider="ollama",
+                owned_by=owned_by,
+                created=created,
+                context_length=_extract_context_length(item),
+            )
+        )
+    return sorted(models, key=lambda model: model.id.lower())
+
+
 def _optional_str(value: Any) -> str | None:
     return value if isinstance(value, str) else None
 
@@ -76,6 +160,12 @@ def _extract_context_length(item: dict[str, Any]) -> int | None:
         value = item.get(key)
         if isinstance(value, int):
             return value
+    details = item.get("details")
+    if isinstance(details, dict):
+        for key in ("context_length", "context_window", "max_context_length"):
+            value = details.get(key)
+            if isinstance(value, int):
+                return value
     return None
 
 

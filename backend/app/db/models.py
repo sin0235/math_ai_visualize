@@ -106,6 +106,10 @@ class RenderJobRecord:
     runtime_settings_json: str | None = None
     source_type: str = "problem"
     renderer: str | None = None
+    status: str = "completed"
+    error_json: str | None = None
+    started_at: str | None = None
+    finished_at: str | None = None
 
 
 @dataclass(frozen=True)

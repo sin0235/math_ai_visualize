@@ -15,6 +15,7 @@ Renderer = Literal["geogebra_2d", "geogebra_3d", "threejs_3d"]
 AiProvider = Literal["auto", "router9", "openrouter", "openrouter_gpt_oss", "opencode_nemotron", "nvidia", "ollama_gpt_oss", "openai_compat", "mock"]
 CoordinateAssignment = Literal["ai", "auto_origin", "prefer_o_origin"]
 ReasoningLayerMode = Literal["off", "auto", "force"]
+RenderJobStatus = Literal["queued", "running", "completed", "failed"]
 Topic = Literal[
     "coordinate_2d",
     "function_graph",
@@ -231,7 +232,7 @@ class AiModelInfo(BaseModel):
     context_length: int | None = None
 
 
-ModelScanProvider = Literal["openrouter", "openai_compat"]
+ModelScanProvider = Literal["openrouter", "openai_compat", "nvidia", "ollama"]
 
 
 class ModelScanRequest(BaseModel):
@@ -398,3 +399,15 @@ class RenderResponse(BaseModel):
     scene: MathScene
     payload: RenderPayload
     warnings: list[str] = Field(default_factory=list)
+
+
+class RenderJobCreateResponse(BaseModel):
+    job_id: str
+    status: RenderJobStatus
+
+
+class RenderJobStatusResponse(BaseModel):
+    job_id: str
+    status: RenderJobStatus
+    response: RenderResponse | None = None
+    error: dict[str, Any] | None = None

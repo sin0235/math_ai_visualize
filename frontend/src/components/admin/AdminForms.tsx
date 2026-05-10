@@ -303,7 +303,10 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave, onToast }
     setScanning(provider);
     try {
       const runtime = adminSettingsToRuntime({ ...value, [provider]: draft[provider] }, defaults);
-      const models = provider === 'router9' ? await scanRouter9Models(runtime) : await scanProviderModels(provider as 'openrouter' | 'openai_compat', runtime);
+      const models =
+        provider === 'router9'
+          ? await scanRouter9Models(runtime)
+          : await scanProviderModels(provider as 'openrouter' | 'openai_compat' | 'nvidia' | 'ollama', runtime);
       const next = normalizeDefaultModel({ ...draft[provider], scanned_models: models, last_scanned_at: new Date().toISOString() });
       updateProvider(provider, next);
       await onSave({ [provider]: next });

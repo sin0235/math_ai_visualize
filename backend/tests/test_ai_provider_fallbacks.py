@@ -5,7 +5,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.api.deps import require_active_user
-from app.core.config import Settings, merge_runtime_settings
+from app.core.config import Settings, get_settings, merge_runtime_settings
+from app.db.migrations import apply_sqlite_migrations
+from app.db.models import UserRecord
+from app.db.session import SQLiteClient, get_database
 from app.main import app
 from app.schemas.scene import AiModelInfo, OcrRequest, RenderRequest, RuntimeSettings
 from app.services.extractor import extract_scene, _provider_order
@@ -275,12 +278,12 @@ def test_bootstrap_router9_models_adds_codex_defaults(monkeypatch):
     assert settings.router9_ocr_model == "cc/codex-5.5-image"
 
 
-def test_model_scan_provider_rejects_manual_provider_ids():
+def test_model_scan_provider_rejects_unknown_provider_ids():
     from pydantic import ValidationError
 
     from app.schemas.scene import ProviderModelScanRequest
 
-    for provider in ["openrouter", "nvidia", "ollama"]:
+    for provider in ["not_a_provider", "openai", "vllm"]:
         with pytest.raises(ValidationError):
             ProviderModelScanRequest(provider=provider)
 
@@ -463,52 +466,52 @@ def test_render_router9_only_failure_includes_attempted_model(monkeypatch):
         raise AssertionError("Expected router9-only render failure")
 
 
-def test_render_route_returns_detail_for_ai_runtime_errors(monkeypatch):
+def test_render_route_enqueues_and_failed_job_can_be_polled(monkeypatch, tmp_path):
+    db = SQLiteClient(str(tmp_path / "render-route.db"))
+    asyncio.run(apply_sqlite_migrations(db))
+    settings = Settings(_env_file=None, sqlite_path=db.path)
+    user = UserRecord("u1", "u@example.com", "hash", "now", "now")
+    asyncio.run(db.execute("INSERT INTO users (id, email, password_hash) VALUES (?, ?, ?)", [user.id, user.email, user.password_hash]))
+
+    async def override_db():
+        return db
+
+    async def override_user():
+        return user
+
+    async def noop(*args, **kwargs):
+        return None
+
     async def fail_extract_scene(*args, **kwargs):
         raise RuntimeError("9router-only đang bật nên không fallback sang provider khác.")
 
-    async def no_user():
+    app.dependency_overrides[get_database] = override_db
+    app.dependency_overrides[get_settings] = lambda: settings
+    app.dependency_overrides[require_active_user] = override_user
+    created_tasks = []
+
+    def capture_task(coro):
+        created_tasks.append(coro)
         return None
 
-    async def noop(*args, **kwargs):
-        return None
-
-    app.dependency_overrides[require_active_user] = no_user
     monkeypatch.setattr("app.api.routes_render.enforce_rate_limit", noop)
     monkeypatch.setattr("app.api.routes_render.enforce_render_access", noop)
     monkeypatch.setattr("app.api.routes_render.extract_scene", fail_extract_scene)
+    monkeypatch.setattr("app.api.routes_render.asyncio.create_task", capture_task)
     try:
-        response = TestClient(app).post("/api/render", json={"problem_text": "x"})
+        client = TestClient(app)
+        response = client.post("/api/render", json={"problem_text": "x"})
+        assert response.status_code == 202
+        job_id = response.json()["job_id"]
+        assert created_tasks
+        asyncio.run(created_tasks[0])
+        status_response = client.get(f"/api/render/jobs/{job_id}")
     finally:
         app.dependency_overrides.clear()
 
-    assert response.status_code == 400
-    assert response.json()["detail"]["debug_message"] == "9router-only đang bật nên không fallback sang provider khác."
-
-
-def test_render_route_falls_back_before_ai_timeout(monkeypatch):
-    async def slow_extract_scene(*args, **kwargs):
-        await asyncio.sleep(0.01)
-
-    async def no_user():
-        return None
-
-    async def noop(*args, **kwargs):
-        return None
-
-    app.dependency_overrides[require_active_user] = no_user
-    monkeypatch.setattr("app.api.routes_render.RENDER_AI_TIMEOUT_SECONDS", 0.001)
-    monkeypatch.setattr("app.api.routes_render.enforce_rate_limit", noop)
-    monkeypatch.setattr("app.api.routes_render.enforce_render_access", noop)
-    monkeypatch.setattr("app.api.routes_render.extract_scene", slow_extract_scene)
-    try:
-        response = TestClient(app).post("/api/render", json={"problem_text": "A(0,0), B(1,1)"})
-    finally:
-        app.dependency_overrides.clear()
-
-    assert response.status_code == 200
-    assert response.json()["scene"]["topic"] == "coordinate_2d"
-    assert response.json()["warnings"] == ["AI provider quá chậm; đang dùng mock extractor để tránh timeout backend."]
+    assert status_response.status_code == 200
+    assert status_response.json()["status"] == "failed"
+    assert status_response.json()["error"]["debug_message"] == "9router-only đang bật nên không fallback sang provider khác."
 
 
 def test_solver_explainer_falls_back_when_openrouter_model_is_invalid(monkeypatch):
@@ -541,26 +544,38 @@ def test_solver_explainer_falls_back_when_openrouter_model_is_invalid(monkeypatc
     assert data["steps"][0]["explanation"] == "LLM fallback worked"
 
 
-def test_render_scene_route_rebuilds_payload_from_edited_scene():
-    response = TestClient(app).post(
-        "/api/render/scene",
-        json={
-            "scene": {
-                "problem_text": "edited",
-                "grade": 10,
-                "topic": "coordinate_2d",
-                "renderer": "geogebra_2d",
-                "objects": [
-                    {"type": "point_2d", "name": "A", "x": 0, "y": 0},
-                    {"type": "point_2d", "name": "B", "x": 1, "y": 1},
-                    {"type": "line_2d", "name": "d1", "through": ["A", "B"]},
-                ],
-                "relations": [],
-                "annotations": [],
-                "view": {"dimension": "2d", "show_axes": True, "show_grid": True, "show_coordinates": False},
-            }
-        },
-    )
+def test_render_scene_route_rebuilds_payload_from_edited_scene(monkeypatch):
+    async def no_user():
+        return None
+
+    async def noop(*args, **kwargs):
+        return None
+
+    app.dependency_overrides[require_active_user] = no_user
+    monkeypatch.setattr("app.api.routes_render.enforce_rate_limit", noop)
+    monkeypatch.setattr("app.api.routes_render.enforce_render_access", noop)
+    try:
+        response = TestClient(app).post(
+            "/api/render/scene",
+            json={
+                "scene": {
+                    "problem_text": "edited",
+                    "grade": 10,
+                    "topic": "coordinate_2d",
+                    "renderer": "geogebra_2d",
+                    "objects": [
+                        {"type": "point_2d", "name": "A", "x": 0, "y": 0},
+                        {"type": "point_2d", "name": "B", "x": 1, "y": 1},
+                        {"type": "line_2d", "name": "d1", "through": ["A", "B"]},
+                    ],
+                    "relations": [],
+                    "annotations": [],
+                    "view": {"dimension": "2d", "show_axes": True, "show_grid": True, "show_coordinates": False},
+                }
+            },
+        )
+    finally:
+        app.dependency_overrides.clear()
 
     assert response.status_code == 200
     assert "d1 = Line(A, B)" in response.json()["payload"]["geogebra_commands"]

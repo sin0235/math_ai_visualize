@@ -64,6 +64,16 @@ export interface RenderHistoryDetail extends RenderHistoryItem {
   runtime_settings?: Record<string, unknown> | null;
 }
 
+export interface RenderJobCreateResponse {
+  job_id: string;
+  status: 'queued' | 'running' | 'completed' | 'failed';
+}
+
+export interface RenderJobStatusResponse extends RenderJobCreateResponse {
+  response?: RenderResponse | null;
+  error?: Record<string, unknown> | null;
+}
+
 export interface UserSettingsResponse {
   settings?: UserBasicSettings | null;
   updated_at?: string | null;
@@ -478,6 +488,18 @@ export async function renderProblem(
   preferredRenderer?: Renderer,
   runtimeSettings?: RuntimeSettings,
 ): Promise<RenderResponse> {
+  const job = await startRenderJob(problemText, preferredAiProvider, preferredAiModel, advancedSettings, preferredRenderer, runtimeSettings);
+  return pollRenderJob(job.job_id);
+}
+
+export async function startRenderJob(
+  problemText: string,
+  preferredAiProvider?: string,
+  preferredAiModel?: string,
+  advancedSettings?: AdvancedRenderSettings,
+  preferredRenderer?: Renderer,
+  runtimeSettings?: RuntimeSettings,
+): Promise<RenderJobCreateResponse> {
   return requestJson('/api/render', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -490,7 +512,35 @@ export async function renderProblem(
       advanced_settings: advancedSettings,
       runtime_settings: compactRuntimeSettings(runtimeSettings),
     }),
-  }, 'Không thể dựng hình từ đề bài.');
+  }, 'Không thể tạo render job.');
+}
+
+export async function getRenderJob(jobId: string): Promise<RenderJobStatusResponse> {
+  return requestJson(`/api/render/jobs/${encodeURIComponent(jobId)}`, { credentials: 'include' }, 'Không thể tải trạng thái render job.');
+}
+
+async function pollRenderJob(jobId: string): Promise<RenderResponse> {
+  const startedAt = Date.now();
+  const timeoutMs = 180_000;
+  while (Date.now() - startedAt < timeoutMs) {
+    await delay(1500);
+    const job = await getRenderJob(jobId);
+    if (job.status === 'completed' && job.response) return job.response;
+    if (job.status === 'failed') throw apiErrorFromRenderJob(job.error);
+  }
+  throw new ApiError('Dựng hình lâu hơn dự kiến.', ['Render job vẫn đang chạy. Hãy thử lại hoặc kiểm tra lịch sử sau.']);
+}
+
+function apiErrorFromRenderJob(error: Record<string, unknown> | null | undefined) {
+  if (!error) return new ApiError('Không thể dựng hình từ đề bài này.');
+  const message = typeof error.message === 'string' ? error.message : 'Không thể dựng hình từ đề bài này.';
+  const suggestions = Array.isArray(error.suggestions) ? error.suggestions.map(String) : [];
+  const debugMessage = typeof error.debug_message === 'string' ? [error.debug_message] : [];
+  return new ApiError(message, [...suggestions, ...debugMessage]);
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 export async function ocrImage(imageDataUrl: string, runtimeSettings: RuntimeSettings, mode: 'problem' | 'diagram' = 'problem'): Promise<OcrResponse> {
@@ -508,7 +558,10 @@ export async function ocrImage(imageDataUrl: string, runtimeSettings: RuntimeSet
   }, 'Không thể OCR ảnh đề bài.');
 }
 
-export async function scanProviderModels(provider: 'openrouter' | 'openai_compat', runtimeSettings: RuntimeSettings): Promise<ScannedModelInfo[]> {
+export async function scanProviderModels(
+  provider: 'openrouter' | 'openai_compat' | 'nvidia' | 'ollama',
+  runtimeSettings: RuntimeSettings,
+): Promise<ScannedModelInfo[]> {
   const payload = await requestJson<{ models: ScannedModelInfo[] }>('/api/ai/models/scan', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

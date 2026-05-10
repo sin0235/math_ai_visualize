@@ -54,12 +54,85 @@ class RenderHistoryRepository:
             raise RuntimeError("Không thể lưu lịch sử dựng hình.")
         return render_job_from_row(row)
 
+    async def create_pending(
+        self,
+        user_id: str,
+        problem_text: str,
+        provider: str | None,
+        model: str | None,
+        *,
+        render_request_json: str | None = None,
+        advanced_settings_json: str | None = None,
+        runtime_settings_json: str | None = None,
+        source_type: str = "problem",
+        renderer: str | None = None,
+    ) -> RenderJobRecord:
+        job_id = str(uuid4())
+        await self.db.execute(
+            """
+            INSERT INTO render_jobs (
+              id, user_id, problem_text, provider, model, scene_json, payload_json, warnings_json,
+              render_request_json, advanced_settings_json, runtime_settings_json, source_type, renderer, status
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                job_id,
+                user_id,
+                problem_text,
+                provider,
+                model,
+                "{}",
+                "{}",
+                "[]",
+                render_request_json,
+                advanced_settings_json,
+                runtime_settings_json,
+                source_type,
+                renderer,
+                "queued",
+            ],
+        )
+        row = await self.db.fetch_one("SELECT * FROM render_jobs WHERE id = ?", [job_id])
+        if row is None:
+            raise RuntimeError("Không thể tạo render job.")
+        return render_job_from_row(row)
+
+    async def mark_running(self, job_id: str) -> None:
+        await self.db.execute("UPDATE render_jobs SET status = 'running', started_at = CURRENT_TIMESTAMP WHERE id = ?", [job_id])
+
+    async def mark_completed(self, job_id: str, response: RenderResponse, renderer: str | None) -> None:
+        await self.db.execute(
+            """
+            UPDATE render_jobs
+            SET status = 'completed', scene_json = ?, payload_json = ?, warnings_json = ?, renderer = ?, finished_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            [
+                response.scene.model_dump_json(),
+                response.payload.model_dump_json(),
+                json.dumps(response.warnings, ensure_ascii=False),
+                renderer,
+                job_id,
+            ],
+        )
+
+    async def mark_failed(self, job_id: str, error: dict) -> None:
+        await self.db.execute(
+            """
+            UPDATE render_jobs
+            SET status = 'failed', error_json = ?, finished_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            [json.dumps(error, ensure_ascii=False), job_id],
+        )
+
     async def list_for_user(self, user_id: str, limit: int = 30) -> list[RenderJobRecord]:
         rows = await self.db.fetch_all(
             """
-            SELECT id, user_id, problem_text, provider, model, warnings_json, created_at, source_type, renderer
+            SELECT id, user_id, problem_text, provider, model, warnings_json, created_at, source_type, renderer, status, error_json, started_at, finished_at
             FROM render_jobs
-            WHERE user_id = ?
+            WHERE user_id = ? AND status = 'completed'
             ORDER BY created_at DESC
             LIMIT ?
             """,
@@ -91,4 +164,8 @@ def render_job_from_row(row: DbRow) -> RenderJobRecord:
         runtime_settings_json=str(row["runtime_settings_json"]) if row.get("runtime_settings_json") is not None else None,
         source_type=str(row.get("source_type") or "problem"),
         renderer=str(row["renderer"]) if row.get("renderer") is not None else None,
+        status=str(row.get("status") or "completed"),
+        error_json=str(row["error_json"]) if row.get("error_json") is not None else None,
+        started_at=str(row["started_at"]) if row.get("started_at") is not None else None,
+        finished_at=str(row["finished_at"]) if row.get("finished_at") is not None else None,
     )
