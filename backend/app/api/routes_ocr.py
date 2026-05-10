@@ -33,6 +33,7 @@ async def ocr_image(
     apply_profile = should_apply_ocr_profile(settings, raw_ocr_profile, ocr_profile, request.ocr_provider, request.ocr_model)
     profile_provider = ocr_profile.provider_id if apply_profile else request.ocr_provider
     profile_model = ocr_profile.model_id if apply_profile else request.ocr_model
+    profile_fallbacks = ocr_profile.fallbacks if apply_profile else []
     try:
         result = await extract_text_from_image(
             request.image_data_url,
@@ -40,6 +41,7 @@ async def ocr_image(
             profile_provider,
             profile_model,
             request.mode,
+            profile_fallbacks,
         )
     except (RuntimeError, ValueError) as error:
         raise bad_request_from_error(error, "ocr_failed") from error

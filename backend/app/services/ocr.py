@@ -63,11 +63,13 @@ async def extract_text_from_image(
     provider: OcrProvider | None = None,
     model: str | None = None,
     mode: OcrMode = "problem",
+    fallback_models: list[str] | None = None,
 ) -> OcrResult:
     validate_image_data_url(image_data_url)
     attempts: list[OcrAttempt] = []
     selected_provider = resolve_ocr_provider(provider, model)
     selected_model = normalize_model_for_provider(selected_provider, model)
+    selected_models = _dedupe([selected_model or "", *[normalize_model_for_provider(selected_provider, fallback) or "" for fallback in fallback_models or []]])
     explicit_model = model is not None
     system_prompt = DIAGRAM_OCR_SYSTEM_PROMPT if mode == "diagram" else None
     user_text = DIAGRAM_OCR_USER_TEXT if mode == "diagram" else PROBLEM_OCR_USER_TEXT
@@ -76,7 +78,7 @@ async def extract_text_from_image(
         raise RuntimeError("9router-only đang bật nên OCR không fallback sang provider khác. Hãy chọn OCR provider 9router hoặc tắt 9router-only.")
 
     if selected_provider == "router9":
-        result = await _try_router9_ocr(image_data_url, settings, selected_model, attempts, system_prompt, user_text)
+        result = await _try_router9_ocr(image_data_url, settings, selected_models, attempts, system_prompt, user_text)
         if result is not None:
             return result
         if settings.router9_only or explicit_model:
@@ -89,14 +91,15 @@ async def extract_text_from_image(
 
     provider_order = _ocr_provider_order(settings, selected_provider, provider is None and model is None)
     for fallback_provider in provider_order:
+        provider_models = selected_models if selected_provider == fallback_provider else None
         if fallback_provider == "openrouter":
-            result = await _try_openrouter_ocr(image_data_url, settings, selected_model if selected_provider == fallback_provider else None, attempts, system_prompt, user_text)
+            result = await _try_openrouter_ocr(image_data_url, settings, provider_models, attempts, system_prompt, user_text)
         elif fallback_provider == "nvidia":
-            result = await _try_nvidia_ocr(image_data_url, settings, selected_model if selected_provider == fallback_provider else None, attempts, system_prompt, user_text)
+            result = await _try_nvidia_ocr(image_data_url, settings, provider_models, attempts, system_prompt, user_text)
         elif fallback_provider == "ollama":
-            result = await _try_ollama_ocr(image_data_url, settings, selected_model if selected_provider == fallback_provider else None, attempts, system_prompt, user_text)
+            result = await _try_ollama_ocr(image_data_url, settings, provider_models, attempts, system_prompt, user_text)
         elif fallback_provider == "openai_compat":
-            result = await _try_openai_compat_ocr(image_data_url, settings, selected_model if selected_provider == fallback_provider else None, attempts, system_prompt, user_text)
+            result = await _try_openai_compat_ocr(image_data_url, settings, provider_models, attempts, system_prompt, user_text)
         else:
             continue
         if result is not None:
@@ -110,12 +113,12 @@ async def extract_text_from_image(
 async def _try_router9_ocr(
     image_data_url: str,
     settings: Settings,
-    explicit_model: str | None,
+    explicit_models: list[str] | None,
     attempts: list[OcrAttempt],
     system_prompt: str | None,
     user_text: str,
 ) -> OcrResult | None:
-    models = _router9_ocr_model_candidates(settings, explicit_model)
+    models = explicit_models or _router9_ocr_model_candidates(settings, None)
     if not models:
         attempts.append(OcrAttempt("router9", "<none>", "Chưa chọn model OCR 9router."))
         return None
@@ -135,12 +138,12 @@ async def _try_router9_ocr(
 async def _try_openrouter_ocr(
     image_data_url: str,
     settings: Settings,
-    explicit_model: str | None,
+    explicit_models: list[str] | None,
     attempts: list[OcrAttempt],
     system_prompt: str | None,
     user_text: str,
 ) -> OcrResult | None:
-    models = openrouter_vision_candidates(settings, explicit_model)
+    models = explicit_models or openrouter_vision_candidates(settings, None)
 
     for selected_model in models:
         try:
@@ -158,12 +161,12 @@ async def _try_openrouter_ocr(
 async def _try_nvidia_ocr(
     image_data_url: str,
     settings: Settings,
-    explicit_model: str | None,
+    explicit_models: list[str] | None,
     attempts: list[OcrAttempt],
     system_prompt: str | None,
     user_text: str,
 ) -> OcrResult | None:
-    models = _dedupe([explicit_model or "", settings.nvidia_text_model, "google/gemma-3n-e2b-it", "mistralai/mistral-large-3-675b-instruct-2512"])
+    models = explicit_models or _dedupe([settings.nvidia_text_model, "google/gemma-3n-e2b-it", "mistralai/mistral-large-3-675b-instruct-2512"])
     for selected_model in models:
         try:
             client = NvidiaClient(settings, model=selected_model)
@@ -180,12 +183,12 @@ async def _try_nvidia_ocr(
 async def _try_ollama_ocr(
     image_data_url: str,
     settings: Settings,
-    explicit_model: str | None,
+    explicit_models: list[str] | None,
     attempts: list[OcrAttempt],
     system_prompt: str | None,
     user_text: str,
 ) -> OcrResult | None:
-    models = _dedupe([explicit_model or "", settings.ollama_text_model])
+    models = explicit_models or _dedupe([settings.ollama_text_model])
     for selected_model in models:
         try:
             client = OllamaClient(settings, model=selected_model)
@@ -199,12 +202,12 @@ async def _try_ollama_ocr(
 async def _try_openai_compat_ocr(
     image_data_url: str,
     settings: Settings,
-    explicit_model: str | None,
+    explicit_models: list[str] | None,
     attempts: list[OcrAttempt],
     system_prompt: str | None,
     user_text: str,
 ) -> OcrResult | None:
-    models = _dedupe([explicit_model or "", settings.openai_compat_text_model])
+    models = explicit_models or _dedupe([settings.openai_compat_text_model])
     for selected_model in models:
         try:
             client = OpenAICompatClient(settings, model=selected_model)

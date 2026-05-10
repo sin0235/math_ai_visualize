@@ -449,6 +449,38 @@ def test_ocr_route_ignores_empty_registry_ocr_profile(monkeypatch, isolated_data
     assert payloads[0]["model"] == "env/vision"
 
 
+def test_ocr_route_uses_profile_fallback_models(monkeypatch, isolated_database):
+    from app.services.model_registry import load_model_registry, save_task_profile, set_allowed_models
+
+    settings = Settings(
+        _env_file=None,
+        sqlite_path=isolated_database.path,
+        openrouter_api_key="env-openrouter-key",
+    )
+    app.dependency_overrides[get_settings] = lambda: settings
+    monkeypatch.setattr("app.api.routes_ocr.get_settings", lambda: settings)
+    monkeypatch.setattr("app.services.model_registry.get_settings", lambda: settings)
+    asyncio.run(load_model_registry(isolated_database, settings))
+    asyncio.run(set_allowed_models(isolated_database, "openrouter", ["primary/vision", "fallback/vision"]))
+    asyncio.run(save_task_profile(isolated_database, "ocr", "openrouter", "primary/vision", ["fallback/vision"]))
+    calls = []
+
+    async def fake_openrouter(self, image_data_url: str, model: str | None = None):
+        calls.append(model)
+        if model == "primary/vision":
+            raise RuntimeError("primary unavailable")
+        return "Đề từ fallback."
+
+    monkeypatch.setattr("app.services.openrouter_client.OpenRouterClient.ocr_image", fake_openrouter)
+
+    response = TestClient(app).post("/api/ocr", json={"image_data_url": _IMAGE_DATA_URL})
+
+    assert response.status_code == 200
+    assert response.json()["text"] == "Đề từ fallback."
+    assert response.json()["model"] == "fallback/vision"
+    assert calls == ["primary/vision", "fallback/vision"]
+
+
 def test_ocr_route_uses_router9_for_router9_github_profile(monkeypatch, isolated_database):
     from app.services.model_registry import load_model_registry, save_task_profile
 

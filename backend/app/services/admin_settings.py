@@ -136,7 +136,9 @@ async def sync_ai_settings_to_registry(db: DatabaseClient, value: dict, patch: d
         await set_model_setting(db, "openrouter_reasoning_enabled", ai_settings.openrouter_reasoning_enabled)
     if "ocr" in patch_keys:
         await set_model_setting(db, "ocr_max_image_mb", ai_settings.ocr.max_image_mb)
-        await save_task_profile(db, "ocr", ai_settings.ocr.provider, ai_settings.ocr.model, [])
+        registry = await load_model_registry(db, settings)
+        fallbacks = registry.task_profiles.get("ocr").fallbacks if registry.task_profiles.get("ocr") else []
+        await save_task_profile(db, "ocr", ai_settings.ocr.provider, ai_settings.ocr.model, fallbacks)
 
 
 def normalize_provider_defaults(value: dict | None) -> dict | None:
