@@ -313,8 +313,8 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
           : [...prev, updated]
       );
       setSettingsDefaults(await getSettingsDefaults());
-    } catch {
-      throw new Error('Không thể lưu cấu hình AI.');
+    } catch (error) {
+      throw error;
     } finally {
       setSavingAiSettings(false);
     }

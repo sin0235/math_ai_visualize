@@ -148,6 +148,8 @@ def normalize_provider_defaults(value: dict | None) -> dict | None:
         if not isinstance(provider, dict):
             continue
         provider_normalized = dict(provider)
+        if provider_id != "router9":
+            provider_normalized.pop("only_mode", None)
         allowed = provider_normalized.get("allowed_model_ids")
         model = provider_normalized.get("model")
         if isinstance(allowed, list) and allowed and isinstance(model, str) and model and model not in allowed:

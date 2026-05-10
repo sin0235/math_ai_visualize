@@ -114,6 +114,21 @@ def test_validate_system_setting_normalizes_default_to_allowlist():
     assert validated["openai_compat"]["model"] == "deepseek-v4-flash"
 
 
+def test_validate_system_setting_removes_non_router9_only_mode():
+    from app.api.routes_admin import validate_system_setting
+
+    validated = validate_system_setting("ai_settings", {
+        "version": 1,
+        "openrouter": {"only_mode": False, "model": "openrouter/model"},
+        "openai_compat": {"only_mode": False, "model": "compat/model"},
+        "router9": {"only_mode": True, "model": "gh/gpt-5.2"},
+    })
+
+    assert "only_mode" not in validated["openrouter"]
+    assert "only_mode" not in validated["openai_compat"]
+    assert validated["router9"]["only_mode"] is True
+
+
 @pytest.mark.anyio
 async def test_sync_ai_settings_normalizes_nvidia_default_to_allowlist(db):
     await load_model_registry(db, Settings(_env_file=None))
