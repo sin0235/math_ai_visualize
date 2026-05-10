@@ -1990,7 +1990,7 @@ function fileToDataUrl(file: File): Promise<string> {
 }
 
 function buildModelOptions(settings: RuntimeSettings, defaults?: SettingsDefaults | null): ModelOption[] {
-  const providerOptions = (['openrouter', 'nvidia', 'ollama'] as const).flatMap((provider) => {
+  const providerOptions = (['openrouter', 'nvidia', 'ollama', 'openai_compat'] as const).flatMap((provider) => {
     const providerDefaults = defaults?.[provider];
     const ids = modelIdsForProvider(providerDefaults, settings[provider].model, defaults, provider);
     return ids.map((modelId) => {
@@ -2025,7 +2025,7 @@ function buildModelOptions(settings: RuntimeSettings, defaults?: SettingsDefault
   return [{ key: 'provider:auto', provider: 'auto', label: 'Tự động chọn mô hình phù hợp', description: 'Tự động dùng provider/model do admin cấu hình.' }, ...providerOptions, ...router9Options];
 }
 
-function modelIdsForProvider(providerDefaults: SettingsDefaults['openrouter'] | SettingsDefaults['nvidia'] | SettingsDefaults['ollama'] | SettingsDefaults['router9'] | undefined, currentModel: string, defaults: SettingsDefaults | null | undefined, providerId: string) {
+function modelIdsForProvider(providerDefaults: SettingsDefaults['openrouter'] | SettingsDefaults['nvidia'] | SettingsDefaults['ollama'] | SettingsDefaults['openai_compat'] | SettingsDefaults['router9'] | undefined, currentModel: string, defaults: SettingsDefaults | null | undefined, providerId: string) {
   const registryModels = defaults?.registry_models?.filter((model) => model.provider_id === providerId && model.enabled) ?? [];
   if (registryModels.length > 0) {
     const visibleModels = registryModels.some((model) => model.allowed) ? registryModels.filter((model) => model.allowed) : registryModels;
@@ -2036,8 +2036,9 @@ function modelIdsForProvider(providerDefaults: SettingsDefaults['openrouter'] | 
   return [providerDefaults.model].filter(Boolean) as string[];
 }
 
-function providerLabel(provider: 'openrouter' | 'nvidia' | 'ollama') {
+function providerLabel(provider: 'openrouter' | 'nvidia' | 'ollama' | 'openai_compat') {
   if (provider === 'openrouter') return 'OpenRouter';
   if (provider === 'nvidia') return 'NVIDIA';
+  if (provider === 'openai_compat') return 'OpenAI-Compatible';
   return 'Ollama';
 }
