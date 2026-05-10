@@ -9,7 +9,7 @@ from app.repositories.admin import AdminRepository
 from app.schemas.auth import SystemFeatureFlags
 from app.schemas.scene import OcrRequest, OcrResponse
 from app.services.api_errors import api_error, bad_request_from_error
-from app.services.model_registry import resolve_effective_settings
+from app.services.model_registry import load_model_registry, resolve_effective_settings, resolve_task_profile
 from app.services.ocr import extract_text_from_image
 from app.services.system_settings import load_feature_flags, load_plan_settings
 
@@ -26,12 +26,16 @@ async def ocr_image(
     await enforce_rate_limit(db, http_request, user, "ocr", 12 if user else 4, 60)
     await enforce_ocr_access(db, user)
     settings = await resolve_effective_settings(db, request.runtime_settings)
+    registry = await load_model_registry(db, settings)
+    ocr_profile = resolve_task_profile(registry, "ocr", request.ocr_provider, request.ocr_model)
+    profile_provider = ocr_profile.provider_id if should_apply_ocr_profile(settings, ocr_profile, request.ocr_provider, request.ocr_model) else request.ocr_provider
+    profile_model = ocr_profile.model_id if should_apply_ocr_profile(settings, ocr_profile, request.ocr_provider, request.ocr_model) else request.ocr_model
     try:
         result = await extract_text_from_image(
             request.image_data_url,
             settings,
-            request.ocr_provider,
-            request.ocr_model,
+            profile_provider,
+            profile_model,
             request.mode,
         )
     except (RuntimeError, ValueError) as error:
@@ -61,6 +65,16 @@ def enforce_enabled(flags: SystemFeatureFlags) -> None:
         raise api_error(status.HTTP_503_SERVICE_UNAVAILABLE, flags.maintenance_message, "PROVIDER_UNAVAILABLE")
     if not flags.ocr_enabled:
         raise api_error(status.HTTP_403_FORBIDDEN, "Tính năng OCR đang tạm tắt.", "OCR_DISABLED")
+
+
+def should_apply_ocr_profile(settings, profile, requested_provider, requested_model) -> bool:
+    if profile is None or requested_provider or requested_model:
+        return False
+    if profile.provider_id == "openrouter" and profile.model_id == settings.openrouter_vision_model:
+        return False
+    if profile.provider_id == "router9" and profile.model_id in {settings.router9_ocr_model, settings.router9_text_model}:
+        return False
+    return bool(profile.provider_id and profile.provider_id != "auto")
 
 
 def sanitize_public_runtime_settings(runtime_settings: object):

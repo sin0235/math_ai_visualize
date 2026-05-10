@@ -8,7 +8,7 @@ from pydantic import ValidationError
 from app.core.config import get_settings
 from app.db.session import DatabaseClient, get_database
 from app.schemas.auth import SystemAiSettings
-from app.services.model_registry import load_model_registry, registry_from_settings
+from app.services.model_registry import effective_provider_default_model, load_model_registry, provider_is_enabled, registry_from_settings, resolve_task_profile
 from app.schemas.scene import (
     OpenRouterSettingsDefaults,
     ProviderSettingsDefaults,
@@ -24,55 +24,54 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
 async def get_settings_defaults(db: DatabaseClient = Depends(get_database)) -> SettingsDefaultsResponse:
     settings = get_settings()
     registry = await load_model_registry(db, settings) if getattr(db, "backend", settings.database_backend) == settings.database_backend else registry_from_settings(settings)
-    loaded = await load_system_ai_settings(db)
-    ai_settings = loaded.settings
+    ocr_profile = resolve_task_profile(registry, "ocr")
     return SettingsDefaultsResponse(
         app_name=settings.app_name,
-        default_provider=merge_text(ai_settings.default_provider, settings.ai_provider, loaded.raw, "default_provider"),
+        default_provider=registry_default_provider(registry, settings.ai_provider),
         openrouter=OpenRouterSettingsDefaults(
-            api_key_configured=provider_api_key_configured(ai_settings.openrouter.api_key, settings.openrouter_api_key),
-            base_url=provider_default(registry, "openrouter", "base_url", merge_provider_text(ai_settings.openrouter.base_url, settings.openrouter_base_url, loaded.raw, "openrouter", "base_url"), loaded.raw),
-            model=provider_default(registry, "openrouter", "model", merge_provider_text(ai_settings.openrouter.model, settings.openrouter_text_model, loaded.raw, "openrouter", "model"), loaded.raw),
-            vision_model=settings.openrouter_vision_model,
-            http_referer=merge_text(ai_settings.openrouter_http_referer, settings.openrouter_http_referer, loaded.raw, "openrouter_http_referer"),
-            x_title=merge_text(ai_settings.openrouter_x_title, settings.openrouter_x_title, loaded.raw, "openrouter_x_title"),
-            reasoning_enabled=merge_bool(ai_settings.openrouter_reasoning_enabled, settings.openrouter_reasoning_enabled, loaded.raw, "openrouter_reasoning_enabled"),
-            scanned_models=registry.scanned_model_infos("openrouter") or dump_scanned_models(ai_settings.openrouter.scanned_models),
-            allowed_model_ids=registry.allowed_model_ids("openrouter") or merge_provider_list(ai_settings.openrouter.allowed_model_ids, [], loaded.raw, "openrouter", "allowed_model_ids"),
+            api_key_configured=registry_api_key_configured(registry, "openrouter", settings.openrouter_api_key),
+            base_url=registry_provider_base_url(registry, "openrouter", settings.openrouter_base_url),
+            model=registry_provider_model(registry, "openrouter", settings.openrouter_text_model),
+            vision_model=ocr_profile.model_id if ocr_profile and ocr_profile.provider_id == "openrouter" and ocr_profile.model_id else settings.openrouter_vision_model,
+            http_referer=settings.openrouter_http_referer,
+            x_title=settings.openrouter_x_title,
+            reasoning_enabled=bool(registry.settings.get("openrouter_reasoning_enabled", settings.openrouter_reasoning_enabled)),
+            scanned_models=registry.scanned_model_infos("openrouter"),
+            allowed_model_ids=registry.allowed_model_ids("openrouter"),
         ),
         nvidia=ProviderSettingsDefaults(
-            api_key_configured=provider_api_key_configured(ai_settings.nvidia.api_key, settings.nvidia_api_key),
-            base_url=provider_default(registry, "nvidia", "base_url", merge_provider_text(ai_settings.nvidia.base_url, settings.nvidia_base_url, loaded.raw, "nvidia", "base_url"), loaded.raw),
-            model=provider_default(registry, "nvidia", "model", merge_provider_text(ai_settings.nvidia.model, settings.nvidia_text_model, loaded.raw, "nvidia", "model"), loaded.raw),
-            scanned_models=registry.scanned_model_infos("nvidia") or dump_scanned_models(ai_settings.nvidia.scanned_models),
-            allowed_model_ids=registry.allowed_model_ids("nvidia") or merge_provider_list(ai_settings.nvidia.allowed_model_ids, [], loaded.raw, "nvidia", "allowed_model_ids"),
+            api_key_configured=registry_api_key_configured(registry, "nvidia", settings.nvidia_api_key),
+            base_url=registry_provider_base_url(registry, "nvidia", settings.nvidia_base_url),
+            model=registry_provider_model(registry, "nvidia", settings.nvidia_text_model),
+            scanned_models=registry.scanned_model_infos("nvidia"),
+            allowed_model_ids=registry.allowed_model_ids("nvidia"),
         ),
         ollama=ProviderSettingsDefaults(
-            api_key_configured=provider_api_key_configured(ai_settings.ollama.api_key, settings.ollama_api_key),
-            base_url=provider_default(registry, "ollama", "base_url", merge_provider_text(ai_settings.ollama.base_url, settings.ollama_base_url, loaded.raw, "ollama", "base_url"), loaded.raw),
-            model=provider_default(registry, "ollama", "model", merge_provider_text(ai_settings.ollama.model, settings.ollama_text_model, loaded.raw, "ollama", "model"), loaded.raw),
-            scanned_models=registry.scanned_model_infos("ollama") or dump_scanned_models(ai_settings.ollama.scanned_models),
-            allowed_model_ids=registry.allowed_model_ids("ollama") or merge_provider_list(ai_settings.ollama.allowed_model_ids, [], loaded.raw, "ollama", "allowed_model_ids"),
+            api_key_configured=registry_api_key_configured(registry, "ollama", settings.ollama_api_key),
+            base_url=registry_provider_base_url(registry, "ollama", settings.ollama_base_url),
+            model=registry_provider_model(registry, "ollama", settings.ollama_text_model),
+            scanned_models=registry.scanned_model_infos("ollama"),
+            allowed_model_ids=registry.allowed_model_ids("ollama"),
         ),
         openai_compat=ProviderSettingsDefaults(
-            api_key_configured=provider_api_key_configured(ai_settings.openai_compat.api_key, settings.openai_compat_api_key),
-            base_url=provider_default(registry, "openai_compat", "base_url", merge_provider_text(ai_settings.openai_compat.base_url, settings.openai_compat_base_url, loaded.raw, "openai_compat", "base_url"), loaded.raw),
-            model=provider_default(registry, "openai_compat", "model", merge_provider_text(ai_settings.openai_compat.model, settings.openai_compat_text_model, loaded.raw, "openai_compat", "model"), loaded.raw),
-            scanned_models=registry.scanned_model_infos("openai_compat") or dump_scanned_models(ai_settings.openai_compat.scanned_models),
-            allowed_model_ids=registry.allowed_model_ids("openai_compat") or merge_provider_list(ai_settings.openai_compat.allowed_model_ids, [], loaded.raw, "openai_compat", "allowed_model_ids"),
+            api_key_configured=registry_api_key_configured(registry, "openai_compat", settings.openai_compat_api_key),
+            base_url=registry_provider_base_url(registry, "openai_compat", settings.openai_compat_base_url),
+            model=registry_provider_model(registry, "openai_compat", settings.openai_compat_text_model),
+            scanned_models=registry.scanned_model_infos("openai_compat"),
+            allowed_model_ids=registry.allowed_model_ids("openai_compat"),
         ),
         router9=Router9SettingsDefaults(
-            api_key_configured=provider_api_key_configured(ai_settings.router9.api_key, settings.router9_api_key),
-            base_url=provider_default(registry, "router9", "base_url", merge_provider_text(ai_settings.router9.base_url, settings.router9_base_url, loaded.raw, "router9", "base_url"), loaded.raw),
-            model=provider_default(registry, "router9", "model", merge_provider_text(ai_settings.router9.model, settings.router9_text_model, loaded.raw, "router9", "model"), loaded.raw),
-            only_mode=bool(registry.settings.get("router9_only", merge_provider_bool(ai_settings.router9.only_mode, settings.router9_only, loaded.raw, "router9", "only_mode"))),
-            allowed_model_ids=registry.allowed_model_ids("router9") or merge_provider_list(ai_settings.router9.allowed_model_ids, settings.router9_allowed_models, loaded.raw, "router9", "allowed_model_ids"),
-            scanned_models=registry.scanned_model_infos("router9") or dump_scanned_models(ai_settings.router9.scanned_models),
+            api_key_configured=registry_api_key_configured(registry, "router9", settings.router9_api_key),
+            base_url=registry_provider_base_url(registry, "router9", settings.router9_base_url),
+            model=registry_provider_model(registry, "router9", settings.router9_text_model),
+            only_mode=bool(registry.settings.get("router9_only", settings.router9_only)),
+            allowed_model_ids=registry.allowed_model_ids("router9"),
+            scanned_models=registry.scanned_model_infos("router9"),
         ),
         ocr=OcrSettingsDefaults(
-            provider=registry.task_profiles.get("ocr").provider_id if registry.task_profiles.get("ocr") and registry.task_profiles["ocr"].provider_id in {"openrouter", "router9"} else ai_settings.ocr.provider,
-            model=registry.task_profiles.get("ocr").model_id if registry.task_profiles.get("ocr") and registry.task_profiles["ocr"].model_id else merge_provider_text(ai_settings.ocr.model, settings.router9_ocr_model or settings.router9_text_model if ai_settings.ocr.provider == "router9" else settings.openrouter_vision_model, loaded.raw, "ocr", "model"),
-            max_image_mb=int(registry.settings.get("ocr_max_image_mb", ai_settings.ocr.max_image_mb)),
+            provider=ocr_profile.provider_id if ocr_profile and ocr_profile.provider_id in {"openrouter", "router9"} else "openrouter",
+            model=ocr_profile.model_id if ocr_profile and ocr_profile.model_id else settings.openrouter_vision_model,
+            max_image_mb=int(registry.settings.get("ocr_max_image_mb", 5)),
         ),
         registry_providers=[provider.__dict__ for provider in registry.providers.values()],
         registry_models=[model.__dict__ for models in registry.models.values() for model in models],
@@ -111,6 +110,31 @@ def has_provider_key(raw: dict[str, Any], provider: str, key: str) -> bool:
 
 def provider_api_key_configured(db_value: str | None, env_value: str | None) -> bool:
     return bool((db_value or "").strip() or (env_value or "").strip())
+
+
+def registry_api_key_configured(registry: Any, provider_id: str, env_value: str | None) -> bool:
+    provider = registry.providers.get(provider_id)
+    return bool((env_value or "").strip() or (provider and provider.api_key_configured))
+
+
+def registry_default_provider(registry: Any, fallback: str | None) -> str:
+    value = registry.settings.get("default_provider")
+    if isinstance(value, str) and value and value in {"auto", "mock"}:
+        return value
+    if isinstance(value, str) and value and provider_is_enabled(registry, value):
+        return value
+    return fallback if fallback in {"auto", "mock"} else "auto"
+
+
+def registry_provider_base_url(registry: Any, provider_id: str, fallback: str | None) -> str:
+    provider = registry.providers.get(provider_id)
+    return (provider.base_url if provider and provider.base_url else fallback) or ""
+
+
+def registry_provider_model(registry: Any, provider_id: str, fallback: str | None) -> str:
+    provider = registry.providers.get(provider_id)
+    default_model = provider.default_model_id if provider and provider.default_model_id else fallback or ""
+    return effective_provider_default_model(registry, provider_id, default_model)
 
 
 

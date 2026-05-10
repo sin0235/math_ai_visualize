@@ -65,10 +65,16 @@ class ModelRegistry:
     def allowed_model_ids(self, provider_id: str) -> list[str]:
         return [model.id for model in self.models.get(provider_id, []) if model.allowed and model.enabled]
 
+    def enabled_model_ids(self, provider_id: str) -> list[str]:
+        return [model.id for model in self.models.get(provider_id, []) if model.enabled]
+
+    def has_allowlist(self, provider_id: str) -> bool:
+        return any(model.allowed and model.enabled for model in self.models.get(provider_id, []))
+
     def scanned_model_infos(self, provider_id: str) -> list[AiModelInfo]:
         return [
             AiModelInfo(id=model.id, label=model.label, provider=provider_id, owned_by=model.owned_by, context_length=model.context_length)
-            for model in self.models.get(provider_id, [])
+            for model in self.models.get(provider_id, []) if model.enabled
         ]
 
 
@@ -129,9 +135,7 @@ async def load_model_registry(db: DatabaseClient, settings: Settings | None = No
 async def seed_model_registry(db: DatabaseClient, settings: Settings) -> None:
     existing = await db.fetch_one("SELECT 1 FROM ai_providers LIMIT 1")
     if existing is not None:
-        profile = await db.fetch_one("SELECT 1 FROM ai_task_profiles WHERE task = ?", ["solver_explanation"])
-        if profile is None:
-            await save_task_profile(db, "solver_explanation", settings.ai_provider, "", [])
+        await ensure_task_profiles(db, settings)
         return
     legacy = await load_legacy_ai_settings(db)
     provider_data = _provider_seed_data(settings, legacy)
@@ -179,7 +183,6 @@ async def resolve_effective_settings(db: DatabaseClient | None, runtime_settings
     if db is not None:
         registry = await load_model_registry(db, settings)
         settings = settings_from_registry(settings, registry)
-        settings = settings_from_admin_ai_settings(settings, await load_legacy_ai_settings(db), registry)
     return merge_runtime_settings(settings, runtime_settings)
 
 
@@ -216,12 +219,14 @@ def settings_from_admin_ai_settings(settings: Settings, admin_settings: SystemAi
 def settings_from_registry(settings: Settings, registry: ModelRegistry) -> Settings:
     data = settings.model_dump()
     default_provider = registry.settings.get("default_provider")
-    if isinstance(default_provider, str) and default_provider:
+    if isinstance(default_provider, str) and default_provider and provider_is_enabled(registry, default_provider):
         data["ai_provider"] = default_provider
+    elif isinstance(default_provider, str) and default_provider not in {"", "auto", "mock"}:
+        data["ai_provider"] = "auto"
     for provider_id, provider in registry.providers.items():
         if provider.base_url:
             data[f"{provider_id}_base_url"] = provider.base_url
-        default_model_id = _effective_provider_default_model(registry, provider_id, provider.default_model_id)
+        default_model_id = effective_provider_default_model(registry, provider_id, provider.default_model_id)
         if default_model_id:
             key = "router9_text_model" if provider_id == "router9" else f"{provider_id}_text_model"
             data[key] = default_model_id
@@ -230,7 +235,7 @@ def settings_from_registry(settings: Settings, registry: ModelRegistry) -> Setti
     router9_allowed = registry.allowed_model_ids("router9")
     if router9_allowed:
         data["router9_allowed_models"] = router9_allowed
-    ocr_profile = registry.task_profiles.get("ocr")
+    ocr_profile = resolve_task_profile(registry, "ocr")
     if ocr_profile and ocr_profile.model_id:
         if ocr_profile.provider_id == "router9":
             data["router9_ocr_model"] = ocr_profile.model_id
@@ -327,6 +332,19 @@ async def set_model_setting(db: DatabaseClient, key: str, value: Any) -> None:
         """,
         [key, json.dumps(value)],
     )
+
+
+async def ensure_task_profiles(db: DatabaseClient, settings: Settings) -> None:
+    defaults = {
+        "render": (settings.ai_provider, "", []),
+        "reasoning": (settings.ai_provider, "", []),
+        "solver_explanation": (settings.ai_provider, "", []),
+        "ocr": ("router9" if settings.router9_ocr_model else "openrouter", settings.router9_ocr_model or settings.openrouter_vision_model, []),
+    }
+    for task, (provider_id, model_id, fallbacks) in defaults.items():
+        existing = await db.fetch_one("SELECT 1 FROM ai_task_profiles WHERE task = ?", [task])
+        if existing is None:
+            await save_task_profile(db, task, provider_id, model_id, fallbacks)
 
 
 async def ensure_provider(db: DatabaseClient, provider_id: str) -> None:
@@ -429,13 +447,64 @@ def _dedupe_models(models: list[AiModelInfo]) -> list[AiModelInfo]:
     return output
 
 
-def _effective_provider_default_model(registry: ModelRegistry, provider_id: str, default_model_id: str) -> str:
+def provider_is_enabled(registry: ModelRegistry, provider_id: str) -> bool:
+    provider = registry.providers.get(provider_id)
+    return bool(provider and provider.enabled)
+
+
+def model_is_enabled(registry: ModelRegistry, provider_id: str, model_id: str) -> bool:
+    if not model_id:
+        return False
+    models = registry.models.get(provider_id, [])
+    if not models:
+        return True
+    matched = [model for model in models if model.id == model_id]
+    if not matched:
+        return True
+    return any(model.enabled for model in matched)
+
+
+def model_is_allowed(registry: ModelRegistry, provider_id: str, model_id: str) -> bool:
+    if not provider_is_enabled(registry, provider_id) or not model_is_enabled(registry, provider_id, model_id):
+        return False
     allowed_model_ids = registry.allowed_model_ids(provider_id)
-    if not allowed_model_ids:
+    return not allowed_model_ids or model_id in allowed_model_ids
+
+
+def effective_provider_default_model(registry: ModelRegistry, provider_id: str, default_model_id: str) -> str:
+    if not provider_is_enabled(registry, provider_id):
+        return ""
+    allowed_model_ids = registry.allowed_model_ids(provider_id)
+    if allowed_model_ids:
+        if default_model_id in allowed_model_ids:
+            return default_model_id
+        return allowed_model_ids[0]
+    if model_is_enabled(registry, provider_id, default_model_id):
         return default_model_id
-    if default_model_id in allowed_model_ids:
-        return default_model_id
-    return allowed_model_ids[0]
+    enabled_model_ids = registry.enabled_model_ids(provider_id)
+    return enabled_model_ids[0] if enabled_model_ids else ""
+
+
+def resolve_task_profile(registry: ModelRegistry, task: str, preferred_provider: str | None = None, preferred_model: str | None = None) -> TaskProfile | None:
+    profile = registry.task_profiles.get(task)
+    provider_id = preferred_provider or profile.provider_id if profile else preferred_provider or "auto"
+    if provider_id == "auto":
+        default_provider = registry.settings.get("default_provider")
+        provider_id = default_provider if isinstance(default_provider, str) and provider_is_enabled(registry, default_provider) else "auto"
+    if provider_id == "auto" or not provider_is_enabled(registry, provider_id):
+        return None
+    model_id = preferred_model or profile.model_id if profile else preferred_model or ""
+    if not model_id:
+        provider = registry.providers.get(provider_id)
+        model_id = effective_provider_default_model(registry, provider_id, provider.default_model_id if provider else "")
+    if model_id and not model_is_allowed(registry, provider_id, model_id):
+        model_id = effective_provider_default_model(registry, provider_id, "")
+    fallbacks = [model for model in (profile.fallbacks if profile else []) if model_is_allowed(registry, provider_id, model)]
+    return TaskProfile(task, provider_id, model_id, fallbacks)
+
+
+# Backwards-compatible private alias for older imports/tests.
+_effective_provider_default_model = effective_provider_default_model
 
 
 def _json_value(value: Any) -> Any:

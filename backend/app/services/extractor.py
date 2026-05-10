@@ -17,7 +17,7 @@ from app.services.openrouter_client import OpenRouterClient
 from app.services.router9_bootstrap import select_router9_render_model_ids_from_ids
 from app.services.router9_client import Router9Client
 from app.services.provider_logging import redact_sensitive
-from app.services.model_registry import resolve_effective_settings
+from app.services.model_registry import load_model_registry, resolve_effective_settings, resolve_task_profile
 from app.services.solid_presets import equilateral_triangle, rectangular_box, square_pyramid, triangular_prism, triangular_pyramid
 
 _HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
@@ -73,6 +73,13 @@ async def extract_scene(
     db: DatabaseClient | None = None,
 ) -> tuple[MathScene, list[str]]:
     settings = await _build_render_settings(db, runtime_settings)
+    registry = await load_model_registry(db, settings) if db is not None else None
+    render_profile = resolve_task_profile(registry, "render", preferred_ai_provider, preferred_ai_model) if registry else None
+    reasoning_profile = resolve_task_profile(registry, "reasoning", preferred_ai_provider, preferred_ai_model) if registry else None
+    render_provider = render_profile.provider_id if render_profile else preferred_ai_provider
+    render_model = render_profile.model_id if render_profile else preferred_ai_model
+    reasoning_provider = reasoning_profile.provider_id if reasoning_profile else preferred_ai_provider
+    reasoning_model = reasoning_profile.model_id if reasoning_profile else preferred_ai_model
     render_settings = advanced_settings or AdvancedRenderSettings()
     warnings: list[str] = []
     attempts: list[RenderAttempt] = []
@@ -86,16 +93,16 @@ async def extract_scene(
     if use_two_stage:
         reasoning_plan = await _run_reasoning_stage(
             settings, problem_text, grade,
-            preferred_ai_provider, preferred_ai_model,
+            reasoning_provider, reasoning_model,
             warnings, system_prompt=reasoning_sys_prompt,
         )
         if reasoning_plan is not None:
             warnings.append("Đã hoàn thành tầng suy luận (reasoning layer).")
 
     # --- TẦNG 2: Trích xuất scene ---
-    requested_provider = preferred_ai_provider or settings.ai_provider
-    for provider in _provider_order(settings, preferred_ai_provider):
-        explicit_model = preferred_ai_model if provider == requested_provider else None
+    requested_provider = render_provider or settings.ai_provider
+    for provider in _provider_order(settings, render_provider):
+        explicit_model = render_model if provider == requested_provider else None
         for model in _provider_model_candidates(provider, settings, explicit_model):
             try:
                 try:

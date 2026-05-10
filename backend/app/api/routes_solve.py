@@ -11,7 +11,6 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from app.api.deps import enforce_rate_limit, require_active_user, require_trusted_origin
-from app.core.config import get_settings, merge_runtime_settings
 from app.schemas.scene import MAX_IMAGE_DATA_URL_CHARS, MAX_PROBLEM_TEXT_CHARS, RuntimeSettings
 from app.services.ai_fallback import Attempt, format_attempts, text_model_candidates, text_provider_order
 from app.services.function_analyzer import analyze_function
@@ -22,7 +21,7 @@ from app.services.router9_client import Router9Client, _extract_message_content 
 from app.db.models import UserRecord
 from app.db.session import DatabaseClient, get_database
 from app.services.api_errors import api_error, bad_request_from_error
-from app.services.model_registry import resolve_effective_settings
+from app.services.model_registry import load_model_registry, resolve_effective_settings, resolve_task_profile
 from app.services.solver_explainer import explain_solver_result
 from app.services.solver_service import solve
 
@@ -144,8 +143,10 @@ async def solve_problem(
     try:
         result = solve(request.scene, request.question)
         settings = await resolve_effective_settings(db, request.runtime_settings)
+        registry = await load_model_registry(db, settings)
+        solver_profile = resolve_task_profile(registry, "solver_explanation")
         if settings.router9_api_key or settings.openrouter_api_key:
-            result = await explain_solver_result(result, request.scene, settings)
+            result = await explain_solver_result(result, request.scene, settings, solver_profile)
     except Exception as e:
         raise bad_request_from_error(e, "solve_failed") from e
 
@@ -192,10 +193,24 @@ async def analyze_function_endpoint(request: AnalyzeRequest) -> AnalyzeResponse:
 
 
 @router.post("/analyze/ocr", response_model=AnalyzeResponse, dependencies=[Depends(require_trusted_origin)])
-async def analyze_from_ocr(request: AnalyzeOcrRequest) -> AnalyzeResponse:
-    settings = merge_runtime_settings(get_settings(), request.runtime_settings)
+async def analyze_from_ocr(
+    request: AnalyzeOcrRequest,
+    db: DatabaseClient = Depends(get_database),
+) -> AnalyzeResponse:
+    settings = await resolve_effective_settings(db, request.runtime_settings)
+    registry = await load_model_registry(db, settings)
+    ocr_profile = resolve_task_profile(registry, "ocr")
+    apply_ocr_profile = ocr_profile is not None and not (
+        (ocr_profile.provider_id == "openrouter" and ocr_profile.model_id == settings.openrouter_vision_model)
+        or (ocr_profile.provider_id == "router9" and ocr_profile.model_id in {settings.router9_ocr_model, settings.router9_text_model})
+    )
     try:
-        ocr_result = await extract_text_from_image(request.image_data_url, settings)
+        ocr_result = await extract_text_from_image(
+            request.image_data_url,
+            settings,
+            ocr_profile.provider_id if apply_ocr_profile and ocr_profile else None,
+            ocr_profile.model_id if apply_ocr_profile and ocr_profile else None,
+        )
         expression = await _extract_function_from_text(ocr_result.text, settings)
         if expression == "NONE":
             return AnalyzeResponse(expression="", error="Không tìm thấy biểu thức hàm số trong ảnh.", ocr_text=ocr_result.text, warnings=ocr_result.warnings)

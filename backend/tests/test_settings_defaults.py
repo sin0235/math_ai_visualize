@@ -113,7 +113,7 @@ def test_settings_defaults_falls_back_to_env_when_database_lacks_ollama(settings
 
 
 
-def test_settings_defaults_reports_database_api_key_without_leaking(settings_defaults_client):
+def test_settings_defaults_reports_legacy_key_present_without_activating_it(settings_defaults_client):
     asyncio.run(settings_defaults_client.db.execute(
         "INSERT INTO system_settings (key, value_json) VALUES (?, ?)",
         ["ai_settings", json.dumps({"version": 1, "ollama": {"api_key": "db-ollama-secret"}})],
@@ -123,7 +123,8 @@ def test_settings_defaults_reports_database_api_key_without_leaking(settings_def
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["ollama"]["api_key_configured"] is True
+    assert payload["ollama"]["api_key_configured"] is False
+    assert payload["registry_legacy_ai_settings_present"] is True
     assert "db-ollama-secret" not in response.text
 
 

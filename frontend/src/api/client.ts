@@ -568,7 +568,7 @@ export async function exportScene(
 ): Promise<{ blob: Blob; filename: string }> {
   const meta = EXPORT_META[format];
   try {
-    const response = await fetch(apiUrl(meta.path), {
+    const response = await fetchWithRetry(apiUrl(meta.path), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -743,7 +743,7 @@ function queryString(filters: object) {
 
 async function requestJson<T>(path: string, init: RequestInit | undefined, fallbackMessage: string): Promise<T> {
   try {
-    const response = await fetch(apiUrl(path), init);
+    const response = await fetchWithRetry(apiUrl(path), init);
     if (!response.ok) throw await parseApiError(response, `${fallbackMessage} HTTP ${response.status}`);
     return response.json() as Promise<T>;
   } catch (caught) {
@@ -754,12 +754,26 @@ async function requestJson<T>(path: string, init: RequestInit | undefined, fallb
 
 async function requestVoid(path: string, init: RequestInit | undefined, fallbackMessage: string): Promise<void> {
   try {
-    const response = await fetch(apiUrl(path), init);
+    const response = await fetchWithRetry(apiUrl(path), init);
     if (!response.ok) throw await parseApiError(response, `${fallbackMessage} HTTP ${response.status}`);
   } catch (caught) {
     if (caught instanceof ApiError) throw caught;
     throw networkApiError(caught, fallbackMessage);
   }
+}
+
+async function fetchWithRetry(input: RequestInfo | URL, init?: RequestInit) {
+  try {
+    return await fetch(input, init);
+  } catch (caught) {
+    if (!isTransientNetworkError(caught)) throw caught;
+    await new Promise((resolve) => window.setTimeout(resolve, 350));
+    return fetch(input, init);
+  }
+}
+
+function isTransientNetworkError(caught: unknown) {
+  return caught instanceof TypeError;
 }
 
 function networkApiError(caught: unknown, fallbackMessage: string) {
@@ -769,6 +783,7 @@ function networkApiError(caught: unknown, fallbackMessage: string) {
       'Nếu deploy khác domain, hãy build frontend với VITE_API_BASE_URL trỏ tới backend.',
       'Nếu dùng đăng nhập khác domain, backend phải bật CORS credentials và frontend gọi API qua HTTPS.',
       'Nếu backend đã nhận OPTIONS nhưng trả 400, hãy thêm domain frontend vào CORS_ORIGINS và restart backend.',
+      'Nếu Chrome báo ERR_QUIC_PROTOCOL_ERROR, kiểm tra HTTP/3/QUIC ở CDN/proxy hoặc thử tắt HTTP/3 cho domain API.',
       'Kiểm tra backend còn chạy và HTTPS/domain API truy cập được từ trình duyệt.',
     ]);
   }

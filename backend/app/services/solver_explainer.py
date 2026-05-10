@@ -7,6 +7,7 @@ from typing import Any
 import httpx
 
 from app.core.config import Settings
+from app.services.model_registry import TaskProfile
 from app.services.ai_fallback import Attempt, format_attempts, text_model_candidates, text_provider_order
 from app.services.openrouter_client import _build_headers as _build_openrouter_headers, _extract_message as _extract_openrouter_message
 from app.services.router9_client import Router9Client, _extract_message_content as _extract_router9_message_content
@@ -32,12 +33,12 @@ Không markdown, không code fence, không LaTeX trong explanation.
 """.strip()
 
 
-async def explain_solver_result(result: SolverResult, scene: dict[str, Any], settings: Settings) -> SolverResult:
+async def explain_solver_result(result: SolverResult, scene: dict[str, Any], settings: Settings, selection: TaskProfile | None = None) -> SolverResult:
     if result.answer == "Không xác định" or not result.steps:
         return result
     try:
         payload = _payload(result, scene)
-        data = await _call_explainer(payload, settings)
+        data = await _call_explainer(payload, settings, selection)
         steps_by_index = _parse_steps(data)
         if not steps_by_index:
             return result
@@ -91,12 +92,14 @@ def _payload(result: SolverResult, scene: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-async def _call_explainer(payload: dict[str, Any], settings: Settings) -> dict[str, Any]:
+async def _call_explainer(payload: dict[str, Any], settings: Settings, selection: TaskProfile | None = None) -> dict[str, Any]:
     prompt = "Diễn giải lời giải sau cho học sinh, giữ nguyên đáp số và công thức:\n" + json.dumps(payload, ensure_ascii=False)
     attempts: list[Attempt] = []
+    preferred_provider = selection.provider_id if selection else ("router9" if settings.router9_api_key else None)
+    preferred_model = selection.model_id if selection else None
 
-    for provider in text_provider_order(settings, "router9" if settings.router9_api_key else None):
-        for model in text_model_candidates(provider, settings):
+    for provider in text_provider_order(settings, preferred_provider):
+        for model in text_model_candidates(provider, settings, preferred_model if provider == preferred_provider else None):
             selected_model = model or "<none>"
             try:
                 if provider == "router9":

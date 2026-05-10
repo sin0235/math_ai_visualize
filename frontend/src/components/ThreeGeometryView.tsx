@@ -208,7 +208,8 @@ function LabelText({ position, children, ...props }: LabelTextProps) {
       <Text
         ref={textRef}
         outlineWidth={0.012}
-        outlineColor="rgba(255,255,255,0.9)"
+        outlineColor="#ffffff"
+        outlineOpacity={0.9}
         fillOpacity={1}
         renderOrder={20}
         {...props}

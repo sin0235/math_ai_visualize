@@ -531,9 +531,20 @@ export function AdminAiProfilesForm({ value, aiSettings, onSave, onToast }: { va
   const settingsDefaults = adminSettingsToDefaults(aiSettings);
   const providerOptions = buildProviderOptions(settingsDefaults, false);
 
+  useEffect(() => {
+    const nextGeometry = getAiTaskProfile(value.geometry_reasoning);
+    const nextSolver = getAiTaskProfile(value.solver_explanation);
+    setGeometryProvider(nextGeometry.provider);
+    setGeometryModel(nextGeometry.model);
+    setGeometryFallbacks(nextGeometry.fallbacks);
+    setSolverProvider(nextSolver.provider);
+    setSolverModel(nextSolver.model);
+    setSolverFallbacks(nextSolver.fallbacks);
+  }, [value]);
+
   function providerDefaults(selectedProvider: string): ProviderSettingsDefaults | undefined {
-    if (selectedProvider === 'openrouter' || selectedProvider === 'nvidia' || selectedProvider === 'ollama' || selectedProvider === 'router9') return settingsDefaults[selectedProvider];
-    return settingsDefaults.router9;
+    if (selectedProvider === 'openrouter' || selectedProvider === 'nvidia' || selectedProvider === 'ollama' || selectedProvider === 'openai_compat' || selectedProvider === 'router9') return settingsDefaults[selectedProvider];
+    return undefined;
   }
 
   function modelOptions(selectedProvider: string, selectedModel: string, fallbackModels: string[] = []) {

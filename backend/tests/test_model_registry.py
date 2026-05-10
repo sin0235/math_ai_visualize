@@ -158,7 +158,9 @@ async def test_registry_ocr_profile_updates_router9_ocr_model(db):
 
 
 @pytest.mark.anyio
-async def test_admin_ai_settings_api_key_overrides_env(db):
+async def test_admin_ai_settings_api_key_is_not_active_after_registry_seed(db, monkeypatch):
+    settings = Settings(_env_file=None, ollama_api_key="env-ollama-key")
+    monkeypatch.setattr("app.services.model_registry.get_settings", lambda: settings)
     await db.execute(
         "INSERT INTO system_settings (key, value_json) VALUES (?, ?)",
         ["ai_settings", json.dumps({"version": 1, "ollama": {"api_key": "db-ollama-key"}})],
@@ -166,7 +168,7 @@ async def test_admin_ai_settings_api_key_overrides_env(db):
 
     effective = await resolve_effective_settings(db, None)
 
-    assert effective.ollama_api_key == "db-ollama-key"
+    assert effective.ollama_api_key == "env-ollama-key"
 
 
 @pytest.mark.anyio
