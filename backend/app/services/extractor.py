@@ -552,9 +552,7 @@ def _circle_scene(text: str, grade: int | None, points: list[dict[str, Any]]) ->
 
 
 def _fast_provider_order(settings: Settings, preferred_ai_provider: str | None = None) -> list[str]:
-    if settings.router9_only:
-        return _provider_order(settings, preferred_ai_provider)
-    return _provider_order(settings, preferred_ai_provider)[:2]
+    return _provider_order(settings, preferred_ai_provider)
 
 
 def _provider_order(settings: Settings, preferred_ai_provider: str | None = None) -> list[str]:

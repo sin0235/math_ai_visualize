@@ -87,6 +87,21 @@ async def test_registry_uses_allowed_default_for_openrouter_when_saved_default_i
     assert effective.openrouter_text_model == "allowed/model"
 
 
+def test_validate_system_setting_normalizes_default_to_allowlist():
+    from app.api.routes_admin import validate_system_setting
+
+    validated = validate_system_setting("ai_settings", {
+        "version": 1,
+        "openai_compat": {
+            "base_url": "https://deepseek-reverse-api.sin-studio.tech/v1",
+            "model": "stale-model",
+            "allowed_model_ids": ["deepseek-v4-flash"],
+        },
+    })
+
+    assert validated["openai_compat"]["model"] == "deepseek-v4-flash"
+
+
 @pytest.mark.anyio
 async def test_sync_ai_settings_normalizes_nvidia_default_to_allowlist(db):
     await load_model_registry(db, Settings(_env_file=None))

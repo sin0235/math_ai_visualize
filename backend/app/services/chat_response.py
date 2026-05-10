@@ -4,7 +4,7 @@ from typing import Any
 
 
 def extract_chat_message_content(message: dict[str, Any]) -> str:
-    content = message["content"]
+    content = message.get("content")
     if isinstance(content, str):
         return content
     if isinstance(content, list):

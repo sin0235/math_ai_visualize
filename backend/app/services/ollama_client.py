@@ -69,11 +69,11 @@ class OllamaClient:
             raise RuntimeError(f"Ollama request lỗi: {message}") from error
 
         try:
-            content = response.json()["message"]["content"]
+            content = extract_chat_message_content(response.json()["message"])
         except (KeyError, TypeError, ValueError) as error:
             raise RuntimeError("Ollama response không đúng định dạng message.content") from error
-        if not isinstance(content, str):
-            raise RuntimeError("Ollama response message.content không phải chuỗi")
+        if not content.strip():
+            raise RuntimeError("Ollama response message.content không có nội dung")
         scene_json = json.loads(_strip_json_fences(content))
         log_scene_summary("ollama", scene_json)
         return scene_json
@@ -171,7 +171,7 @@ class OllamaClient:
             raise RuntimeError(f"Ollama reasoning request lỗi: {message}") from error
 
         try:
-            content = response.json()["message"]["content"]
+            content = extract_chat_message_content(response.json()["message"])
         except (KeyError, TypeError, ValueError) as error:
             raise RuntimeError("Ollama reasoning response không đúng định dạng") from error
         return json.loads(_strip_json_fences(content))

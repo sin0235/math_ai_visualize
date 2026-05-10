@@ -155,8 +155,8 @@ class OpenRouterClient:
                     raise RuntimeError(_format_openrouter_error(response))
 
                 message = _extract_message(response)
-                content = message.get("content")
-                if not isinstance(content, str) or not content.strip():
+                content = extract_chat_message_content(message)
+                if not content.strip():
                     raise RuntimeError("OpenRouter không trả về nội dung OCR trong choices[0].message.content.")
                 text = _strip_text_fences(content)
                 log_ocr_summary("openrouter", text)

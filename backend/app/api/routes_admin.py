@@ -31,7 +31,7 @@ from app.schemas.auth import (
 )
 from app.schemas.feedback import AdminFeedbackResponse, AdminFeedbackUpdateRequest
 from app.schemas.scene import MathScene, ModelScanRequest, RenderPayload
-from app.services.admin_settings import build_database_diagnostics, sync_ai_profiles_to_registry, sync_ai_settings_to_registry
+from app.services.admin_settings import build_database_diagnostics, normalize_provider_defaults, sync_ai_profiles_to_registry, sync_ai_settings_to_registry
 from app.services.model_registry import resolve_effective_settings
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -386,6 +386,8 @@ def deep_merge_dict(base: dict, patch: dict) -> dict:
 
 
 def validate_system_setting(key: str, value: dict) -> dict:
+    if key == "ai_settings":
+        value = normalize_provider_defaults(value) or {}
     schemas = {
         "ai_settings": SystemAiSettings,
         "feature_flags": SystemFeatureFlags,

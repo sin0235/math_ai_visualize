@@ -476,6 +476,22 @@ def test_render_router9_tries_preferred_model_chain(monkeypatch):
     assert len(warnings) == 3
 
 
+def test_render_tries_full_provider_order_before_mock(monkeypatch):
+    calls = []
+
+    async def fail_extract(provider, settings, problem_text, grade, reasoning_layer, preferred_ai_model=None, **kwargs):
+        calls.append((provider, preferred_ai_model))
+        raise RuntimeError(f"{provider} unavailable")
+
+    monkeypatch.setattr("app.services.extractor._extract_with_provider", fail_extract)
+
+    scene, warnings = asyncio.run(extract_scene("x", runtime_settings=RuntimeSettings.model_validate({"default_provider": "openrouter"})))
+
+    assert scene.topic == "unknown"
+    assert {provider for provider, _ in calls} >= {"openrouter", "opencode_nemotron", "openrouter_gpt_oss", "nvidia", "ollama_gpt_oss"}
+    assert warnings[-1] == "Tất cả AI provider đều lỗi; đang dùng mock extractor."
+
+
 def test_render_all_ai_failures_warn_with_attempt_chain_before_mock(monkeypatch):
     async def fail_extract(provider, settings, problem_text, grade, reasoning_layer, preferred_ai_model=None):
         raise RuntimeError(f"{provider} unavailable")
