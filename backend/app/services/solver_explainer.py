@@ -136,6 +136,8 @@ async def _call_router9(prompt: str, settings: Settings, model: str) -> str:
 async def _call_nvidia(prompt: str, settings: Settings, model: str) -> str:
     if not settings.nvidia_api_key:
         raise RuntimeError("NVIDIA_API_KEY chưa được cấu hình cho diễn giải solver.")
+    from app.services.http_pool import TIMEOUT_FAST, get_client
+
     payload = {
         "model": model,
         "messages": [
@@ -147,10 +149,11 @@ async def _call_nvidia(prompt: str, settings: Settings, model: str) -> str:
         "max_tokens": 8192,
     }
     headers = {"Authorization": f"Bearer {settings.nvidia_api_key}", "Content-Type": "application/json"}
-    async with httpx.AsyncClient(timeout=60) as client:
-        response = await client.post(f"{settings.nvidia_base_url.rstrip('/')}/chat/completions", headers=headers, json=payload)
-        if response.status_code >= 400:
-            raise RuntimeError(f"NVIDIA explainer lỗi HTTP {response.status_code}: {response.text[:300]}")
+    base_url = settings.nvidia_base_url.rstrip("/")
+    client = get_client(base_url, TIMEOUT_FAST)
+    response = await client.post(f"{base_url}/chat/completions", headers=headers, json=payload, timeout=TIMEOUT_FAST)
+    if response.status_code >= 400:
+        raise RuntimeError(f"NVIDIA explainer lỗi HTTP {response.status_code}: {response.text[:300]}")
     message = _extract_openrouter_message(response)
     content = message.get("content")
     if not isinstance(content, str) or not content.strip():
@@ -161,6 +164,8 @@ async def _call_nvidia(prompt: str, settings: Settings, model: str) -> str:
 async def _call_openrouter_model(prompt: str, settings: Settings, model: str, reasoning_enabled: bool) -> str:
     if not settings.openrouter_api_key:
         raise RuntimeError("Chưa cấu hình OpenRouter cho diễn giải solver.")
+    from app.services.http_pool import TIMEOUT_FAST, get_client
+
     payload = {
         "model": model.removeprefix("openrouter/"),
         "messages": [
@@ -171,10 +176,11 @@ async def _call_openrouter_model(prompt: str, settings: Settings, model: str, re
     }
     if reasoning_enabled:
         payload["reasoning"] = {"enabled": True}
-    async with httpx.AsyncClient(timeout=60) as client:
-        response = await client.post(f"{settings.openrouter_base_url.rstrip('/')}/chat/completions", headers=_build_openrouter_headers(settings), json=payload)
-        if response.status_code >= 400:
-            raise RuntimeError(f"OpenRouter explainer lỗi HTTP {response.status_code}: {response.text[:300]}")
+    base_url = settings.openrouter_base_url.rstrip("/")
+    client = get_client(base_url, TIMEOUT_FAST)
+    response = await client.post(f"{base_url}/chat/completions", headers=_build_openrouter_headers(settings), json=payload, timeout=TIMEOUT_FAST)
+    if response.status_code >= 400:
+        raise RuntimeError(f"OpenRouter explainer lỗi HTTP {response.status_code}: {response.text[:300]}")
     message = _extract_openrouter_message(response)
     content = message.get("content")
     if not isinstance(content, str) or not content.strip():

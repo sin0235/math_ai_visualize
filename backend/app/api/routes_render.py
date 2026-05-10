@@ -20,6 +20,7 @@ from app.services.geometry_engine import normalize_scene
 from app.services.renderer_router import build_render_payload
 
 router = APIRouter(prefix="/api", tags=["render"])
+RENDER_JOB_TIMEOUT_SECONDS = 110
 
 
 @router.post("/render", response_model=RenderJobCreateResponse, status_code=status.HTTP_202_ACCEPTED, dependencies=[Depends(require_trusted_origin)])
@@ -77,8 +78,10 @@ async def process_render_job(job_id: str, request: RenderRequest, settings: Sett
     repo = RenderHistoryRepository(db)
     await repo.mark_running(job_id)
     try:
-        response = await build_problem_render_response(request, db)
+        response = await asyncio.wait_for(build_problem_render_response(request, db), timeout=RENDER_JOB_TIMEOUT_SECONDS)
         await repo.mark_completed(job_id, response, response.scene.renderer)
+    except asyncio.TimeoutError as error:
+        await repo.mark_failed(job_id, render_error_payload(RuntimeError("Render job quá thời gian xử lý. Hãy thử model nhanh hơn hoặc tắt reasoning layer.")))
     except (RuntimeError, ValidationError, ValueError, KeyError) as error:
         await repo.mark_failed(job_id, render_error_payload(error))
     except Exception as error:
@@ -213,6 +216,7 @@ def sanitize_public_runtime_settings(runtime_settings: object):
             "openrouter": {"model": (data.get("openrouter") or {}).get("model")},
             "nvidia": {"model": (data.get("nvidia") or {}).get("model")},
             "ollama": {"model": (data.get("ollama") or {}).get("model")},
+            "openai_compat": {"model": (data.get("openai_compat") or {}).get("model")},
             "router9": {"model": (data.get("router9") or {}).get("model")},
         }
     )

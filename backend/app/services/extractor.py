@@ -31,6 +31,8 @@ _COLOR_NAMES = {
     "grey": "#8b95a7",
     "yellow": "#ffd166",
 }
+_MAX_RENDER_ATTEMPTS = 2
+
 _DEFAULT_COLORS = {
     "segment": "#1d3557",
     "face": "#5da9ff",
@@ -101,7 +103,7 @@ async def extract_scene(
 
     # --- TẦNG 2: Trích xuất scene ---
     requested_provider = render_provider or settings.ai_provider
-    for provider in _provider_order(settings, render_provider):
+    for provider in _fast_provider_order(settings, render_provider):
         explicit_model = render_model if provider == requested_provider else None
         for model in _provider_model_candidates(provider, settings, explicit_model):
             try:
@@ -134,6 +136,10 @@ async def extract_scene(
                 attempts.append(RenderAttempt(provider, model or _provider_model(provider, settings), message))
                 if settings.router9_only:
                     raise RuntimeError(_format_render_failure("9router-only đang bật nên không fallback sang provider khác.", attempts, True)) from error
+            if len(attempts) >= _MAX_RENDER_ATTEMPTS:
+                break
+        if len(attempts) >= _MAX_RENDER_ATTEMPTS:
+            break
 
     warnings.extend(_render_attempt_warnings(attempts))
     if attempts:
@@ -156,25 +162,43 @@ async def _run_reasoning_stage(
 
     Returns None if reasoning fails (the pipeline will fall back to
     single-stage extraction).
+    Giới hạn tối đa 2 lần thử và 40s tổng để không kéo dài pipeline.
     """
+    import asyncio
     import logging
     logger = logging.getLogger(__name__)
 
-    requested_provider = preferred_ai_provider or settings.ai_provider
-    for provider in _provider_order(settings, preferred_ai_provider):
-        explicit_model = preferred_ai_model if provider == requested_provider else None
-        for model in _provider_model_candidates(provider, settings, explicit_model):
-            try:
-                plan = await _reason_with_provider(provider, settings, problem_text, grade, model, system_prompt=system_prompt)
-                if isinstance(plan, dict):
-                    logger.info("Reasoning stage succeeded via %s/%s", provider, model)
-                    return plan
-            except Exception as error:
-                logger.warning("Reasoning stage failed via %s/%s: %s", provider, model, error)
-                warnings.append(f"Tầng suy luận lỗi ({provider}/{model}): {_short_error(str(error))}")
-                continue
-    warnings.append("Tầng suy luận không thành công; sẽ dùng single-stage extraction.")
-    return None
+    _MAX_REASONING_ATTEMPTS = 2
+    _REASONING_TOTAL_TIMEOUT = 40
+
+    async def _try_reasoning() -> dict | None:
+        attempts = 0
+        requested_provider = preferred_ai_provider or settings.ai_provider
+        for provider in _provider_order(settings, preferred_ai_provider):
+            explicit_model = preferred_ai_model if provider == requested_provider else None
+            for model in _provider_model_candidates(provider, settings, explicit_model):
+                if attempts >= _MAX_REASONING_ATTEMPTS:
+                    return None
+                attempts += 1
+                try:
+                    plan = await _reason_with_provider(provider, settings, problem_text, grade, model, system_prompt=system_prompt)
+                    if isinstance(plan, dict):
+                        logger.info("Reasoning stage succeeded via %s/%s", provider, model)
+                        return plan
+                except Exception as error:
+                    logger.warning("Reasoning stage failed via %s/%s: %s", provider, model, error)
+                    warnings.append(f"Tầng suy luận lỗi ({provider}/{model}): {_short_error(str(error))}")
+                    continue
+        return None
+
+    try:
+        result = await asyncio.wait_for(_try_reasoning(), timeout=_REASONING_TOTAL_TIMEOUT)
+        if result is None:
+            warnings.append("Tầng suy luận không thành công; sẽ dùng single-stage extraction.")
+        return result
+    except asyncio.TimeoutError:
+        warnings.append("Tầng suy luận quá thời gian (40s); sẽ dùng single-stage extraction.")
+        return None
 
 
 def normalize_scene_json(scene_json: dict) -> dict:
@@ -532,6 +556,12 @@ def _circle_scene(text: str, grade: int | None, points: list[dict[str, Any]]) ->
     )
 
 
+def _fast_provider_order(settings: Settings, preferred_ai_provider: str | None = None) -> list[str]:
+    if settings.router9_only:
+        return _provider_order(settings, preferred_ai_provider)
+    return _provider_order(settings, preferred_ai_provider)[:2]
+
+
 def _provider_order(settings: Settings, preferred_ai_provider: str | None = None) -> list[str]:
     provider = preferred_ai_provider or settings.ai_provider
     nvidia_providers = ["nvidia"]
@@ -633,6 +663,7 @@ def _router9_model_candidates(settings: Settings, preferred_ai_model: str | None
             *select_router9_render_model_ids_from_ids(settings.router9_allowed_models),
         ])
         candidates = [model for model in candidates if model and model in settings.router9_allowed_models]
+        candidates = candidates[:2]
     else:
         candidates = _dedupe(settings.router9_text_fallback_models)
 

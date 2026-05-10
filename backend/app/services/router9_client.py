@@ -26,12 +26,13 @@ class Router9Client:
         params: dict[str, str] = {}
         seen_cursors: set[str] = set()
         try:
-            async with httpx.AsyncClient(timeout=60) as client:
-                while True:
-                    if params:
-                        response = await client.get(url, headers=headers, params=params)
-                    else:
-                        response = await client.get(url, headers=headers)
+            from app.services.http_pool import TIMEOUT_MODELS, get_client
+            client = get_client(self.settings.router9_base_url.rstrip("/"), TIMEOUT_MODELS)
+            while True:
+                if params:
+                    response = await client.get(url, headers=headers, params=params, timeout=TIMEOUT_MODELS)
+                else:
+                    response = await client.get(url, headers=headers, timeout=TIMEOUT_MODELS)
                     if response.status_code >= 400:
                         raise RuntimeError(_format_router9_error(response))
                     body = response.json()
@@ -110,7 +111,8 @@ class Router9Client:
             "temperature": 0.15,
             "stream": False,
         }
-        response = await self._post_chat(payload)
+        from app.services.http_pool import TIMEOUT_REASONING
+        response = await self._post_chat(payload, timeout=TIMEOUT_REASONING)
 
         try:
             content = _extract_message_content(response)
@@ -145,7 +147,8 @@ class Router9Client:
             "temperature": 0,
             "stream": False,
         }
-        response = await self._post_chat(payload)
+        from app.services.http_pool import TIMEOUT_OCR
+        response = await self._post_chat(payload, timeout=TIMEOUT_OCR)
 
         try:
             content = _extract_message_content(response)
@@ -157,21 +160,24 @@ class Router9Client:
         log_ocr_summary("9router", text)
         return text
 
-    async def _post_chat(self, payload: dict) -> httpx.Response:
+    async def _post_chat(self, payload: dict, timeout: httpx.Timeout | None = None) -> httpx.Response:
+        from app.services.http_pool import TIMEOUT_SCENE, get_client
+
         headers = _build_headers(self.settings)
-        url = f"{self.settings.router9_base_url.rstrip('/')}/chat/completions"
+        base_url = self.settings.router9_base_url.rstrip("/")
+        url = f"{base_url}/chat/completions"
         try:
             started_at = time.perf_counter()
             kind = "ocr" if any(isinstance(message.get("content"), list) for message in payload.get("messages", []) if isinstance(message, dict)) else "scene"
             input_chars = sum(len(message.get("content", "")) for message in payload.get("messages", []) if isinstance(message, dict) and isinstance(message.get("content"), str))
             log_provider_request("9router", kind, url, payload.get("model"), input_chars=input_chars)
-            async with httpx.AsyncClient(timeout=120) as client:
-                response = await client.post(url, headers=headers, json=payload)
-                elapsed_ms = int((time.perf_counter() - started_at) * 1000)
-                log_provider_response("9router", kind, response.status_code, elapsed_ms, len(response.text))
-                if response.status_code >= 400:
-                    raise RuntimeError(_format_router9_error(response))
-                return response
+            client = get_client(base_url, timeout or TIMEOUT_SCENE)
+            response = await client.post(url, headers=headers, json=payload, timeout=timeout or TIMEOUT_SCENE)
+            elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+            log_provider_response("9router", kind, response.status_code, elapsed_ms, len(response.text))
+            if response.status_code >= 400:
+                raise RuntimeError(_format_router9_error(response))
+            return response
         except httpx.HTTPError as error:
             message = str(error) or error.__class__.__name__
             raise RuntimeError(f"9router request lỗi: {message}") from error

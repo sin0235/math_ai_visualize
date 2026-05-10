@@ -17,8 +17,6 @@ import json
 import time
 from dataclasses import dataclass
 
-import httpx
-
 from app.core.config import Settings
 from app.services.ai_fallback import Attempt, format_attempts, openrouter_vision_candidates, router9_ocr_candidates
 from app.services.ocr import validate_image_data_url
@@ -96,15 +94,18 @@ async def _call_openrouter_vision(image_data_url: str, settings: Settings, model
         ],
         "temperature": 0,
     }
-    url = f"{settings.openrouter_base_url.rstrip('/')}/chat/completions"
+    from app.services.http_pool import TIMEOUT_OCR, get_client
+
+    base_url = settings.openrouter_base_url.rstrip("/")
+    url = f"{base_url}/chat/completions"
     started_at = time.perf_counter()
     log_provider_request("openrouter", "diagram_ocr", url, payload["model"], image_chars=len(image_data_url))
-    async with httpx.AsyncClient(timeout=120) as client:
-        response = await client.post(url, headers=_build_headers(settings), json=payload)
-        elapsed_ms = int((time.perf_counter() - started_at) * 1000)
-        log_provider_response("openrouter", "diagram_ocr", response.status_code, elapsed_ms, len(response.text))
-        if response.status_code >= 400:
-            raise RuntimeError(_format_openrouter_error(response))
+    client = get_client(base_url, TIMEOUT_OCR)
+    response = await client.post(url, headers=_build_headers(settings), json=payload, timeout=TIMEOUT_OCR)
+    elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+    log_provider_response("openrouter", "diagram_ocr", response.status_code, elapsed_ms, len(response.text))
+    if response.status_code >= 400:
+        raise RuntimeError(_format_openrouter_error(response))
 
     message = _extract_message(response)
     content = message.get("content")

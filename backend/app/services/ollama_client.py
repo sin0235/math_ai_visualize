@@ -54,13 +54,15 @@ class OllamaClient:
 
         url = f"{base_url}/api/chat"
         try:
+            from app.services.http_pool import TIMEOUT_SCENE, get_client
+
             started_at = time.perf_counter()
             log_provider_request("ollama", "scene", url, payload["model"], problem_chars=len(problem_text))
-            async with httpx.AsyncClient(timeout=120) as client:
-                response = await client.post(url, headers=headers, json=payload)
-                elapsed_ms = int((time.perf_counter() - started_at) * 1000)
-                log_provider_response("ollama", "scene", response.status_code, elapsed_ms, len(response.text))
-                response.raise_for_status()
+            client = get_client(base_url, TIMEOUT_SCENE)
+            response = await client.post(url, headers=headers, json=payload, timeout=TIMEOUT_SCENE)
+            elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+            log_provider_response("ollama", "scene", response.status_code, elapsed_ms, len(response.text))
+            response.raise_for_status()
         except httpx.HTTPError as error:
             message = str(error) or error.__class__.__name__
             raise RuntimeError(f"Ollama request lỗi: {message}") from error
@@ -105,13 +107,15 @@ class OllamaClient:
 
         url = f"{base_url}/chat/completions"
         try:
+            from app.services.http_pool import TIMEOUT_SCENE, get_client
+
             started_at = time.perf_counter()
             log_provider_request("ollama_cloud", "scene", url, payload["model"], problem_chars=len(problem_text))
-            async with httpx.AsyncClient(timeout=120) as client:
-                response = await client.post(url, headers=headers, json=payload)
-                elapsed_ms = int((time.perf_counter() - started_at) * 1000)
-                log_provider_response("ollama_cloud", "scene", response.status_code, elapsed_ms, len(response.text))
-                response.raise_for_status()
+            client = get_client(base_url, TIMEOUT_SCENE)
+            response = await client.post(url, headers=headers, json=payload, timeout=TIMEOUT_SCENE)
+            elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+            log_provider_response("ollama_cloud", "scene", response.status_code, elapsed_ms, len(response.text))
+            response.raise_for_status()
         except httpx.HTTPError as error:
             message = str(error) or error.__class__.__name__
             raise RuntimeError(f"Ollama cloud request lỗi: {message}") from error
@@ -152,13 +156,15 @@ class OllamaClient:
         }
         url = f"{base_url}/api/chat"
         try:
+            from app.services.http_pool import TIMEOUT_REASONING, get_client
+
             started_at = time.perf_counter()
             log_provider_request("ollama", "reasoning", url, payload["model"], problem_chars=len(problem_text))
-            async with httpx.AsyncClient(timeout=120) as client:
-                response = await client.post(url, headers=headers, json=payload)
-                elapsed_ms = int((time.perf_counter() - started_at) * 1000)
-                log_provider_response("ollama", "reasoning", response.status_code, elapsed_ms, len(response.text))
-                response.raise_for_status()
+            client = get_client(base_url, TIMEOUT_REASONING)
+            response = await client.post(url, headers=headers, json=payload, timeout=TIMEOUT_REASONING)
+            elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+            log_provider_response("ollama", "reasoning", response.status_code, elapsed_ms, len(response.text))
+            response.raise_for_status()
         except httpx.HTTPError as error:
             message = str(error) or error.__class__.__name__
             raise RuntimeError(f"Ollama reasoning request lỗi: {message}") from error
@@ -190,13 +196,15 @@ class OllamaClient:
         }
         url = f"{base_url}/chat/completions"
         try:
+            from app.services.http_pool import TIMEOUT_REASONING, get_client
+
             started_at = time.perf_counter()
             log_provider_request("ollama_cloud", "reasoning", url, payload["model"], problem_chars=len(problem_text))
-            async with httpx.AsyncClient(timeout=120) as client:
-                response = await client.post(url, headers=headers, json=payload)
-                elapsed_ms = int((time.perf_counter() - started_at) * 1000)
-                log_provider_response("ollama_cloud", "reasoning", response.status_code, elapsed_ms, len(response.text))
-                response.raise_for_status()
+            client = get_client(base_url, TIMEOUT_REASONING)
+            response = await client.post(url, headers=headers, json=payload, timeout=TIMEOUT_REASONING)
+            elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+            log_provider_response("ollama_cloud", "reasoning", response.status_code, elapsed_ms, len(response.text))
+            response.raise_for_status()
         except httpx.HTTPError as error:
             message = str(error) or error.__class__.__name__
             raise RuntimeError(f"Ollama cloud reasoning request lỗi: {message}") from error

@@ -32,6 +32,8 @@ async def lifespan(app: FastAPI):
     await apply_migrations(create_database_client(current_settings), current_settings)
     await bootstrap_router9_models(current_settings)
     yield
+    from app.services.http_pool import close_all
+    await close_all()
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)

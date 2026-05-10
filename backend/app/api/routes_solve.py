@@ -6,7 +6,6 @@ API routes for:
 """
 from typing import Any
 
-import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
@@ -295,16 +294,19 @@ async def _chat_text(prompt: str, settings) -> str:
                     })
                     return _extract_router9_message_content(response).strip()
                 if provider == "openrouter":
+                    from app.services.http_pool import TIMEOUT_FAST, get_client
+
                     payload = {
                         "model": selected_model.removeprefix("openrouter/"),
                         "messages": [{"role": "user", "content": prompt}],
                         "temperature": 0.1,
                     }
-                    url = f"{settings.openrouter_base_url.rstrip('/')}/chat/completions"
-                    async with httpx.AsyncClient(timeout=90) as client:
-                        response = await client.post(url, headers=_build_openrouter_headers(settings), json=payload)
-                        if response.status_code >= 400:
-                            raise RuntimeError(response.text)
+                    base_url = settings.openrouter_base_url.rstrip("/")
+                    url = f"{base_url}/chat/completions"
+                    client = get_client(base_url, TIMEOUT_FAST)
+                    response = await client.post(url, headers=_build_openrouter_headers(settings), json=payload, timeout=TIMEOUT_FAST)
+                    if response.status_code >= 400:
+                        raise RuntimeError(response.text)
                     content = _extract_openrouter_message(response).get("content")
                     if isinstance(content, str) and content.strip():
                         return content.strip()

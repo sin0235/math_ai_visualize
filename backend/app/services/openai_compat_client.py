@@ -65,14 +65,17 @@ class OpenAICompatClient:
         headers = {"Content-Type": "application/json"}
         if self.settings.openai_compat_api_key:
             headers["Authorization"] = f"Bearer {self.settings.openai_compat_api_key}"
+        from app.services.http_pool import TIMEOUT_SCENE, get_client
+
         started_at = time.perf_counter()
         log_provider_request("openai_compat", kind, url, payload.get("model"), **log_kwargs)
-        async with httpx.AsyncClient(timeout=90) as client:
-            response = await client.post(url, headers=headers, json=payload)
-            elapsed_ms = int((time.perf_counter() - started_at) * 1000)
-            log_provider_response("openai_compat", kind, response.status_code, elapsed_ms, len(response.text))
-            if response.status_code >= 400:
-                raise RuntimeError(format_provider_error("OpenAI-compatible", response))
+        base_url = self.settings.openai_compat_base_url.rstrip("/")
+        client = get_client(base_url, TIMEOUT_SCENE)
+        response = await client.post(url, headers=headers, json=payload, timeout=TIMEOUT_SCENE)
+        elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+        log_provider_response("openai_compat", kind, response.status_code, elapsed_ms, len(response.text))
+        if response.status_code >= 400:
+            raise RuntimeError(format_provider_error("OpenAI-compatible", response))
         try:
             body = response.json()
             content = body["choices"][0]["message"]["content"]

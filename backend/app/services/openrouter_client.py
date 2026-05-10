@@ -48,15 +48,18 @@ class OpenRouterClient:
         if self.reasoning_enabled:
             payload["reasoning"] = {"enabled": True}
 
-        url = f"{self.settings.openrouter_base_url.rstrip('/')}/chat/completions"
+        from app.services.http_pool import TIMEOUT_SCENE, get_client
+
+        base_url = self.settings.openrouter_base_url.rstrip("/")
+        url = f"{base_url}/chat/completions"
         started_at = time.perf_counter()
         log_provider_request("openrouter", "scene", url, payload["model"], problem_chars=len(problem_text), reasoning=self.reasoning_enabled)
-        async with httpx.AsyncClient(timeout=60) as client:
-            response = await client.post(url, headers=headers, json=payload)
-            elapsed_ms = int((time.perf_counter() - started_at) * 1000)
-            log_provider_response("openrouter", "scene", response.status_code, elapsed_ms, len(response.text))
-            if response.status_code >= 400:
-                raise RuntimeError(_format_openrouter_error(response))
+        client = get_client(base_url, TIMEOUT_SCENE)
+        response = await client.post(url, headers=headers, json=payload, timeout=TIMEOUT_SCENE)
+        elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+        log_provider_response("openrouter", "scene", response.status_code, elapsed_ms, len(response.text))
+        if response.status_code >= 400:
+            raise RuntimeError(_format_openrouter_error(response))
 
         message = _extract_message(response)
         content = message.get("content")
@@ -88,15 +91,18 @@ class OpenRouterClient:
         if self.reasoning_enabled:
             payload["reasoning"] = {"enabled": True}
 
-        url = f"{self.settings.openrouter_base_url.rstrip('/')}/chat/completions"
+        from app.services.http_pool import TIMEOUT_REASONING, get_client
+
+        base_url = self.settings.openrouter_base_url.rstrip("/")
+        url = f"{base_url}/chat/completions"
         started_at = time.perf_counter()
         log_provider_request("openrouter", "reasoning", url, payload["model"], problem_chars=len(problem_text), reasoning=self.reasoning_enabled)
-        async with httpx.AsyncClient(timeout=90) as client:
-            response = await client.post(url, headers=headers, json=payload)
-            elapsed_ms = int((time.perf_counter() - started_at) * 1000)
-            log_provider_response("openrouter", "reasoning", response.status_code, elapsed_ms, len(response.text))
-            if response.status_code >= 400:
-                raise RuntimeError(_format_openrouter_error(response))
+        client = get_client(base_url, TIMEOUT_REASONING)
+        response = await client.post(url, headers=headers, json=payload, timeout=TIMEOUT_REASONING)
+        elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+        log_provider_response("openrouter", "reasoning", response.status_code, elapsed_ms, len(response.text))
+        if response.status_code >= 400:
+            raise RuntimeError(_format_openrouter_error(response))
 
         message = _extract_message(response)
         content = message.get("content")
@@ -134,15 +140,18 @@ class OpenRouterClient:
             }
 
             try:
-                url = f"{self.settings.openrouter_base_url.rstrip('/')}/chat/completions"
+                from app.services.http_pool import TIMEOUT_OCR, get_client
+
+                base_url = self.settings.openrouter_base_url.rstrip("/")
+                url = f"{base_url}/chat/completions"
                 started_at = time.perf_counter()
                 log_provider_request("openrouter", "ocr", url, payload["model"], image_chars=len(image_data_url))
-                async with httpx.AsyncClient(timeout=120) as client:
-                    response = await client.post(url, headers=_build_headers(self.settings), json=payload)
-                    elapsed_ms = int((time.perf_counter() - started_at) * 1000)
-                    log_provider_response("openrouter", "ocr", response.status_code, elapsed_ms, len(response.text))
-                    if response.status_code >= 400:
-                        raise RuntimeError(_format_openrouter_error(response))
+                client = get_client(base_url, TIMEOUT_OCR)
+                response = await client.post(url, headers=_build_headers(self.settings), json=payload, timeout=TIMEOUT_OCR)
+                elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+                log_provider_response("openrouter", "ocr", response.status_code, elapsed_ms, len(response.text))
+                if response.status_code >= 400:
+                    raise RuntimeError(_format_openrouter_error(response))
 
                 message = _extract_message(response)
                 content = message.get("content")

@@ -20,8 +20,6 @@ import json
 import time
 from dataclasses import dataclass
 
-import httpx
-
 from app.core.config import Settings
 from app.schemas.scene import MathScene
 from app.services.ai_fallback import Attempt, format_attempts, text_model_candidates, text_provider_order
@@ -108,15 +106,18 @@ async def _call_openrouter_variants(model: str, user_prompt: str, settings: Sett
         ],
         "temperature": 0.6,
     }
-    url = f"{settings.openrouter_base_url.rstrip('/')}/chat/completions"
+    from app.services.http_pool import TIMEOUT_SCENE, get_client
+
+    base_url = settings.openrouter_base_url.rstrip("/")
+    url = f"{base_url}/chat/completions"
     started_at = time.perf_counter()
     log_provider_request("openrouter", "variants", url, payload["model"], problem_chars=len(user_prompt))
-    async with httpx.AsyncClient(timeout=90) as client:
-        response = await client.post(url, headers=_build_headers(settings), json=payload)
-        elapsed_ms = int((time.perf_counter() - started_at) * 1000)
-        log_provider_response("openrouter", "variants", response.status_code, elapsed_ms, len(response.text))
-        if response.status_code >= 400:
-            raise RuntimeError(_format_openrouter_error(response))
+    client = get_client(base_url, TIMEOUT_SCENE)
+    response = await client.post(url, headers=_build_headers(settings), json=payload, timeout=TIMEOUT_SCENE)
+    elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+    log_provider_response("openrouter", "variants", response.status_code, elapsed_ms, len(response.text))
+    if response.status_code >= 400:
+        raise RuntimeError(_format_openrouter_error(response))
     content = _extract_message(response).get("content")
     if not isinstance(content, str) or not content.strip():
         raise RuntimeError("Provider không trả về nội dung biến thể.")
@@ -137,15 +138,18 @@ async def _call_nvidia_variants(model: str, user_prompt: str, settings: Settings
         "max_tokens": 8192,
     }
     headers = {"Authorization": f"Bearer {settings.nvidia_api_key}", "Content-Type": "application/json"}
-    url = f"{settings.nvidia_base_url.rstrip('/')}/chat/completions"
+    from app.services.http_pool import TIMEOUT_SCENE, get_client
+
+    base_url = settings.nvidia_base_url.rstrip("/")
+    url = f"{base_url}/chat/completions"
     started_at = time.perf_counter()
     log_provider_request("nvidia", "variants", url, payload["model"], problem_chars=len(user_prompt))
-    async with httpx.AsyncClient(timeout=90) as client:
-        response = await client.post(url, headers=headers, json=payload)
-        elapsed_ms = int((time.perf_counter() - started_at) * 1000)
-        log_provider_response("nvidia", "variants", response.status_code, elapsed_ms, len(response.text))
-        if response.status_code >= 400:
-            raise RuntimeError(f"NVIDIA variants lỗi HTTP {response.status_code}: {response.text[:300]}")
+    client = get_client(base_url, TIMEOUT_SCENE)
+    response = await client.post(url, headers=headers, json=payload, timeout=TIMEOUT_SCENE)
+    elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+    log_provider_response("nvidia", "variants", response.status_code, elapsed_ms, len(response.text))
+    if response.status_code >= 400:
+        raise RuntimeError(f"NVIDIA variants lỗi HTTP {response.status_code}: {response.text[:300]}")
     content = _extract_message(response).get("content")
     if not isinstance(content, str) or not content.strip():
         raise RuntimeError("NVIDIA không trả về nội dung biến thể.")

@@ -15,7 +15,7 @@ class NvidiaClient:
         settings: Settings,
         model: str | None = None,
         reasoning_effort: str | None = None,
-        thinking: bool = True,
+        thinking: bool = False,
     ) -> None:
         self.settings = settings
         self.model = model or settings.nvidia_text_model
@@ -49,7 +49,7 @@ class NvidiaClient:
             ],
             "temperature": 0.1,
             "top_p": 0.95,
-            "max_tokens": 16384,
+            "max_tokens": 4096,
         }
         if chat_template_kwargs:
             payload["chat_template_kwargs"] = chat_template_kwargs
@@ -60,14 +60,16 @@ class NvidiaClient:
         url = f"{self.settings.nvidia_base_url.rstrip('/')}/chat/completions"
 
         try:
+            from app.services.http_pool import TIMEOUT_SCENE, get_client
+
             started_at = time.perf_counter()
             log_provider_request("nvidia", "scene", url, payload["model"], problem_chars=len(problem_text), thinking=self.thinking)
-            async with httpx.AsyncClient(timeout=60) as client:
-                response = await client.post(url, headers=headers, json=payload)
-                elapsed_ms = int((time.perf_counter() - started_at) * 1000)
-                log_provider_response("nvidia", "scene", response.status_code, elapsed_ms, len(response.text))
-                if response.status_code >= 400:
-                    raise RuntimeError(_format_nvidia_error(response))
+            client = get_client(self.settings.nvidia_base_url.rstrip("/"), TIMEOUT_SCENE)
+            response = await client.post(url, headers=headers, json=payload, timeout=TIMEOUT_SCENE)
+            elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+            log_provider_response("nvidia", "scene", response.status_code, elapsed_ms, len(response.text))
+            if response.status_code >= 400:
+                raise RuntimeError(_format_nvidia_error(response))
         except httpx.HTTPError as error:
             message = str(error) or error.__class__.__name__
             raise RuntimeError(f"NVIDIA request lỗi: {message}") from error
@@ -109,14 +111,16 @@ class NvidiaClient:
         url = f"{self.settings.nvidia_base_url.rstrip('/')}/chat/completions"
 
         try:
+            from app.services.http_pool import TIMEOUT_REASONING, get_client
+
             started_at = time.perf_counter()
             log_provider_request("nvidia", "reasoning", url, payload["model"], problem_chars=len(problem_text), thinking=self.thinking)
-            async with httpx.AsyncClient(timeout=90) as client:
-                response = await client.post(url, headers=headers, json=payload)
-                elapsed_ms = int((time.perf_counter() - started_at) * 1000)
-                log_provider_response("nvidia", "reasoning", response.status_code, elapsed_ms, len(response.text))
-                if response.status_code >= 400:
-                    raise RuntimeError(_format_nvidia_error(response))
+            client = get_client(self.settings.nvidia_base_url.rstrip("/"), TIMEOUT_REASONING)
+            response = await client.post(url, headers=headers, json=payload, timeout=TIMEOUT_REASONING)
+            elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+            log_provider_response("nvidia", "reasoning", response.status_code, elapsed_ms, len(response.text))
+            if response.status_code >= 400:
+                raise RuntimeError(_format_nvidia_error(response))
         except httpx.HTTPError as error:
             message = str(error) or error.__class__.__name__
             raise RuntimeError(f"NVIDIA reasoning request lỗi: {message}") from error
@@ -160,14 +164,16 @@ class NvidiaClient:
         url = f"{self.settings.nvidia_base_url.rstrip('/')}/chat/completions"
 
         try:
+            from app.services.http_pool import TIMEOUT_OCR, get_client
+
             started_at = time.perf_counter()
             log_provider_request("nvidia", "ocr", url, payload["model"], image_chars=len(image_data_url))
-            async with httpx.AsyncClient(timeout=120) as client:
-                response = await client.post(url, headers=headers, json=payload)
-                elapsed_ms = int((time.perf_counter() - started_at) * 1000)
-                log_provider_response("nvidia", "ocr", response.status_code, elapsed_ms, len(response.text))
-                if response.status_code >= 400:
-                    raise RuntimeError(_format_nvidia_error(response))
+            client = get_client(self.settings.nvidia_base_url.rstrip("/"), TIMEOUT_OCR)
+            response = await client.post(url, headers=headers, json=payload, timeout=TIMEOUT_OCR)
+            elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+            log_provider_response("nvidia", "ocr", response.status_code, elapsed_ms, len(response.text))
+            if response.status_code >= 400:
+                raise RuntimeError(_format_nvidia_error(response))
         except httpx.HTTPError as error:
             message = str(error) or error.__class__.__name__
             raise RuntimeError(f"NVIDIA OCR request lỗi: {message}") from error
