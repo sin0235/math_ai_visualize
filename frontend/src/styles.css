@@ -18,7 +18,7 @@
   --ink-2: #262626;
   --ink-3: #525252;
   --ink-4: #737373;
-  --accent: #1d4ed8;
+  --accent: #111111;
   --accent-fg: #ffffff;
   --accent-soft: #eef4ff;
   --up: #16a34a;
@@ -1197,6 +1197,16 @@ select {
   gap: clamp(22px, 4vw, 36px);
 }
 
+.feedback-loading {
+  margin: 0;
+  text-align: center;
+  font-size: clamp(1.2rem, 2.8vw, 1.5rem);
+  font-weight: 600;
+  line-height: 1.45;
+  color: #374151;
+  padding: clamp(28px, 6vw, 56px) 16px;
+}
+
 .feedback-form,
 .feedback-history-list {
   display: grid;
@@ -1215,11 +1225,42 @@ select {
   resize: vertical;
 }
 
-.feedback-actions,
+.feedback-textarea-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.feedback-textarea-wrap textarea {
+  padding-bottom: 2.35rem;
+  display: block;
+}
+
+.feedback-char-counter {
+  position: absolute;
+  right: 11px;
+  bottom: 10px;
+  font-size: 0.72rem;
+  line-height: 1.2;
+  color: #6b7280;
+  pointer-events: none;
+  user-select: none;
+  padding: 3px 7px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.92);
+}
+
 .feedback-card-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.feedback-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
   gap: 12px;
   flex-wrap: wrap;
 }
@@ -4035,13 +4076,17 @@ button:disabled {
 
 .home-hero-copy h2 {
   max-width: 720px;
-  font-size: clamp(2.25rem, 4.5vw, 4.4rem);
+  font-size: clamp(1.55rem, 2.85vw, 2.65rem);
   font-weight: 690;
-  line-height: 0.98;
+  line-height: 1.12;
 }
 
 .home-hero-copy h2 span {
   display: block;
+}
+
+.home-hero-copy h2 span + span {
+  margin-top: 0.08em;
 }
 
 .login-form h2 {
@@ -4941,8 +4986,8 @@ pre {
 
   .home-hero-copy h2 {
     max-width: calc(100vw - 36px);
-    font-size: 1.85rem;
-    line-height: 1.06;
+    font-size: 1.45rem;
+    line-height: 1.14;
     overflow-wrap: normal;
     word-break: normal;
   }
@@ -5338,6 +5383,28 @@ pre {
   color: #000000;
 }
 
+#fa-submit-btn {
+  border: 1px solid #111111;
+  background: #111111;
+  color: #ffffff;
+}
+
+#fa-submit-btn:hover:not(:disabled) {
+  background: #000000;
+  opacity: 1;
+}
+
+#fa-submit-btn:disabled {
+  border-color: #d4d4d4;
+  background: #d4d4d4;
+  color: #ffffff;
+}
+
+#fa-submit-btn .sp-spinner {
+  border-color: rgba(255, 255, 255, 0.35);
+  border-top-color: #ffffff;
+}
+
 #solver-submit-btn .sp-spinner {
   border-color: rgba(0, 0, 0, 0.25);
   border-top-color: #000000;
@@ -5447,12 +5514,15 @@ pre {
 }
 
 .fa2-tool-strip {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .fa2-tool-pill {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
   border: 1px solid var(--line-2);
   border-radius: 999px;
   padding: 6px 12px;
@@ -5472,14 +5542,20 @@ pre {
   color: #fff;
 }
 
+.fa2-tool-pill:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
 .fa2-tool-panel {
   display: grid;
   gap: 10px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 12px;
-  background: #fff;
-  box-shadow: var(--shadow-subtle);
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  padding: 12px 0 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .fa2-tool-row {
@@ -5916,8 +5992,7 @@ pre {
 }
 
 .fa2-control-panel {
-  position: sticky;
-  top: 70px;
+  position: static;
   display: grid;
   gap: 14px;
   align-content: start;
@@ -5968,10 +6043,10 @@ pre {
 .fa2-results-panel {
   display: grid;
   gap: 14px;
-  max-height: calc(100vh - 86px);
-  overflow-y: auto;
+  max-height: none;
+  overflow-y: visible;
   overscroll-behavior: contain;
-  padding-right: 2px;
+  padding-right: 0;
 }
 
 .fa2-control-card,
@@ -6376,35 +6451,86 @@ pre {
 }
 
 .fa2-graph-column {
-  position: sticky;
-  top: 0;
+  position: static;
 }
 
 .fa2-analysis-column {
   align-content: start;
 }
 
-.fa2-result-sticky-head {
-  position: sticky;
-  top: 0;
-  z-index: 4;
+.fa2-result-tabs {
   display: grid;
-  gap: 4px;
-  border: 0;
-  border-bottom: 1px solid var(--line);
-  border-radius: 0;
-  padding: 10px 0;
-  background: rgba(246, 246, 244, 0.94);
-  backdrop-filter: blur(8px);
+  gap: 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+  min-width: 0;
 }
 
-/* Chỉ nhãn 'Đang xem'; không áp uppercase lên KatexSpan (sẽ biến y=x^4 thành Y=X^4) */
-.fa2-result-sticky-head > span:first-child {
+.fa2-tab-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: center;
+  gap: 0;
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+}
+
+.fa2-result-tab {
+  display: inline-flex;
+  justify-content: center;
+  position: relative;
+  border: 0;
+  border-radius: 0;
+  padding: 0 0 10px;
+  background: transparent;
   color: var(--ink-4);
-  font-size: 0.68rem;
+  font-family: inherit;
+  font-size: 0.78rem;
   font-weight: 900;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.07em;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.fa2-result-tab::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: var(--ink);
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 0.18s ease;
+}
+
+.fa2-result-tab:hover,
+.fa2-result-tab.is-active {
+  color: var(--ink);
+}
+
+.fa2-result-tab.is-active::after {
+  transform: scaleX(1);
+}
+
+.fa2-tab-panel,
+.fa2-quick-workbench,
+.fa2-tools-workbench,
+.fa2-tools-card,
+.fa2-tool-results {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.fa2-tool-empty {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+  color: var(--ink-4);
+  font-size: 0.82rem;
+  font-weight: 800;
 }
 
 .fa2-detail-grid {
@@ -6448,9 +6574,8 @@ pre {
   display: grid;
   gap: 12px;
   border: 0;
-  border-top: 1px solid var(--line);
   border-radius: 0;
-  padding: 14px 0 0;
+  padding: 0;
   background: transparent;
   min-width: 0;
 }
@@ -6482,8 +6607,27 @@ pre {
 }
 
 .fa2-quick-rows {
-  display: grid;
-  gap: 8px;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  gap: 10px 14px;
+  min-width: 0;
+}
+
+.fa2-quick-rows .fa2-summary-card {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow-x: auto;
+  border-top: none;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  border-left: 1px solid var(--line);
+  padding-left: 12px;
+}
+
+.fa2-quick-rows .fa2-summary-card:first-child {
+  border-left: none;
+  padding-left: 0;
 }
 
 @media (max-width: 1100px) {
@@ -6519,8 +6663,7 @@ pre {
     grid-template-columns: 1fr;
   }
   .fa2-control-panel,
-  .fa2-graph-column,
-  .fa2-result-sticky-head {
+  .fa2-graph-column {
     position: static;
   }
 
@@ -6671,8 +6814,10 @@ pre {
 
 .fa2-svg-graph {
   width: 100%;
-  max-height: 360px;
+  max-height: min(440px, 54vh);
   display: block;
+  border: 1px solid var(--line);
+  border-radius: 12px;
   touch-action: none;
   cursor: grab;
 }
@@ -6784,20 +6929,21 @@ pre {
 
 /* Generic section */
 .fa2-section {
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  overflow: hidden;
-  background: var(--paper);
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  overflow: visible;
+  background: transparent;
   min-width: 0;
 }
 .fa2-section-head {
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: 46px;
-  padding: 10px 14px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--line);
+  min-height: auto;
+  padding: 14px 0 10px;
+  background: transparent;
+  border-bottom: 0;
 }
 .fa2-section-icon {
   display: inline-flex;
@@ -6825,7 +6971,7 @@ pre {
   flex-shrink: 0;
 }
 .fa2-section-body {
-  padding: 14px;
+  padding: 0 0 14px;
   display: grid;
   gap: 12px;
   min-width: 0;
@@ -8182,6 +8328,15 @@ button.analyzer-guide-label:hover {
   white-space: nowrap;
 }
 
+.csim-playbar-formula {
+  min-width: 0;
+  color: var(--ink-3);
+  font-size: 0.8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .csim-playbar-actions,
 .csim-playbar-status {
   display: flex;
@@ -8684,6 +8839,23 @@ button.analyzer-guide-label:hover {
   fill: #000;
 }
 
+.trig-svg-katex-label {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-3);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.trig-svg-katex-label .katex {
+  font-size: 1em;
+}
+
 .trig-radius,
 .trig-base-radius,
 .trig-phase-arc,
@@ -8732,6 +8904,12 @@ button.analyzer-guide-label:hover {
 .trig-phase-state {
   font-size: 14px;
   letter-spacing: 0.04em;
+}
+
+.trig-phase-label .trig-svg-katex-label {
+  color: #0a0a0a;
+  font-size: 15px;
+  font-weight: 900;
 }
 
 .trig-hypotenuse {

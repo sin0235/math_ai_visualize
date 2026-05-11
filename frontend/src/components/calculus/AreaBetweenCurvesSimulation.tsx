@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { KatexSpan } from '../KatexSpan';
 import { compileExpression } from '../../utils/calculusExpression';
 import { domainWarningFor, findIntersections, formatNumber, functionsCoincide, integrate, riemannBetween, sampleFunction, validateBounds } from '../../utils/calculusNumerics';
@@ -25,7 +25,7 @@ export function AreaBetweenCurvesSimulation({ step, progress }: Props) {
           <FormulaInput label="g(x)" value={state.g} onChange={(g) => setState({ ...state, g })} />
           <PresetButtons presets={AREA_PRESETS} onApply={(preset) => setState({ ...state, ...preset.patch })} />
           <BoundsInput a={state.a} b={state.b} onChange={(patch) => setState({ ...state, ...patch })} />
-          <SliderInput label="Số hình chữ nhật n" value={state.n} min={4} max={200} step={1} onChange={(n) => setState({ ...state, n })} />
+          <SliderInput label={<>Số hình chữ nhật <KatexSpan tex="n" /></>} value={state.n} min={4} max={200} step={1} onChange={(n) => setState({ ...state, n })} />
         </div>
         <ResultCard title="Diện tích" error={computed.error} rows={[
           ['Cộng dồn hiện tại', formatNumber(accumulatedArea)],
@@ -93,9 +93,9 @@ function functionsAreIdentical(fPoints: Array<{ y: number; valid: boolean }>, gP
 
 function StepExplanation({ step }: { step: number }) {
   const copy = [
-    ['Bước 1', 'Vẽ hai đường cong và đánh dấu giao điểm để học sinh thấy các cận tích phân tự nhiên.'],
-    ['Bước 2', 'Các hình chữ nhật Riemann xuất hiện từ trái sang phải, xây dựng tổng xấp xỉ Σ|f(xᵢ)-g(xᵢ)|Δx.'],
-    ['Bước 3', 'Vùng tô liền biểu diễn giới hạn khi số hình chữ nhật tiến tới vô hạn, dẫn đến công thức tích phân.'],
+    ['Bước 1', <>Vẽ hai đường cong <KatexSpan tex="f(x)" /> và <KatexSpan tex="g(x)" />; đánh dấu giao điểm để thấy các cận tích phân tự nhiên.</>],
+    ['Bước 2', <>Các hình chữ nhật Riemann xuất hiện từ trái sang phải, xây dựng tổng xấp xỉ <KatexSpan tex={String.raw`\sum_i |f(x_i)-g(x_i)|\Delta x`} />.</>],
+    ['Bước 3', <>Vùng tô liền biểu diễn giới hạn khi <KatexSpan tex={String.raw`n\to\infty`} />, dẫn đến <KatexSpan tex={String.raw`S=\int_a^b |f(x)-g(x)|\,dx`} />.</>],
   ][step - 1];
   return <div className="csim-card csim-step-copy"><strong>{copy[0]}</strong><p>{copy[1]}</p></div>;
 }
@@ -103,7 +103,7 @@ function StepExplanation({ step }: { step: number }) {
 export function FormulaInput({ label, value, onChange, placeholder = 'vd: sin(x), x^2, sqrt(x), 5' }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string }) {
   const [touched, setTouched] = useState(false);
   const error = touched ? formulaError(value) : null;
-  return <label className={`csim-field ${error ? 'has-error' : ''}`}><span>{label}</span><input value={value} onChange={(e) => onChange(e.target.value)} onBlur={() => setTouched(true)} placeholder={placeholder} spellCheck={false} />{error ? <small className="csim-field-error">{error}</small> : <small className="csim-field-hint">Dùng biến x. Ví dụ: x^2, sin(x), sqrt(x), 5.</small>}</label>;
+  return <label className={`csim-field ${error ? 'has-error' : ''}`}><span><KatexSpan tex={label} /></span><input value={value} onChange={(e) => onChange(e.target.value)} onBlur={() => setTouched(true)} placeholder={placeholder} spellCheck={false} />{error ? <small className="csim-field-error">{error}</small> : <small className="csim-field-hint">Dùng biến <KatexSpan tex="x" />. Ví dụ: <KatexSpan tex="x^2" />, <KatexSpan tex={String.raw`\sin(x)`} />, <KatexSpan tex={String.raw`\sqrt{x}`} />, <KatexSpan tex="5" />.</small>}</label>;
 }
 
 export function BoundsInput({ a, b, onChange }: { a: number; b: number; onChange: (patch: { a?: number; b?: number }) => void }) {
@@ -147,10 +147,10 @@ function parseBound(raw: string) {
   return { value, error: null };
 }
 
-export function SliderInput({ label, value, min, max, step, onChange }: { label: string; value: number; min: number; max: number; step: number; onChange: (value: number) => void }) {
+export function SliderInput({ label, value, min, max, step, onChange }: { label: ReactNode; value: number; min: number; max: number; step: number; onChange: (value: number) => void }) {
   return <label className="csim-slider"><span>{label}: <strong>{formatNumber(value, 2)}</strong></span><input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(Number(e.target.value))} /></label>;
 }
 
-export function ResultCard({ title, error, rows, formula, highlight }: { title: string; error: string | null; rows: Array<[string, string]>; formula: string; highlight?: boolean }) {
-  return <div className={`csim-card csim-result-card ${highlight ? 'is-complete' : ''}`}><div className="csim-card-head"><strong>{title}</strong><span>Kết quả số</span></div>{error ? <div className="sp-error">{error}</div> : <><KatexSpan tex={formula} className="csim-formula" /> <div className="csim-result-grid">{rows.map(([label, value]) => <div className="csim-result-row" key={label}><span>{label}</span><strong>{value}</strong></div>)}</div></>}</div>;
+export function ResultCard({ title, error, rows, formula, highlight }: { title: string; error: string | null; rows: Array<[ReactNode, string]>; formula: string; highlight?: boolean }) {
+  return <div className={`csim-card csim-result-card ${highlight ? 'is-complete' : ''}`}><div className="csim-card-head"><strong>{title}</strong><span>Kết quả số</span></div>{error ? <div className="sp-error">{error}</div> : <><KatexSpan tex={formula} className="csim-formula" /> <div className="csim-result-grid">{rows.map(([label, value], index) => <div className="csim-result-row" key={index}><span>{label}</span><strong>{value}</strong></div>)}</div></>}</div>;
 }

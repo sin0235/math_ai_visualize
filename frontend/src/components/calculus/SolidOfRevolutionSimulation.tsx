@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { KatexSpan } from '../KatexSpan';
 import { compileExpression } from '../../utils/calculusExpression';
 import { clamp, domainWarningFor, formatNumber, integrate, sampleFunction, safeEval, validateBounds } from '../../utils/calculusNumerics';
@@ -32,15 +32,15 @@ export function SolidOfRevolutionSimulation({ step, progress }: Props) {
     <div className="csim-module-grid csim-module-grid-wide">
       <aside className="csim-control-stack">
         <div className="csim-card">
-          <div className="csim-card-head"><strong>Khối tròn xoay</strong><span>Disk / Washer quanh Ox</span></div>
+          <div className="csim-card-head"><strong>Khối tròn xoay</strong><span><KatexSpan tex={String.raw`\text{Disk / Washer quanh }Ox`} /></span></div>
           <FormulaInput label="f(x)" value={state.f} onChange={(f) => setState({ ...state, f })} />
-          <label className="csim-check"><input type="checkbox" checked={state.useWasher} onChange={(e) => setState({ ...state, useWasher: e.target.checked })} /> Dùng biến thể washer với g(x)</label>
+          <label className="csim-check"><input type="checkbox" checked={state.useWasher} onChange={(e) => setState({ ...state, useWasher: e.target.checked })} /> Dùng biến thể washer với <KatexSpan tex="g(x)" /></label>
           {state.useWasher && <FormulaInput label="g(x)" value={state.g} onChange={(g) => setState({ ...state, g })} />}
           <PresetButtons presets={SOLID_PRESETS} onApply={(preset) => setState((current) => ({ ...current, ...preset.patch }))} />
           <BoundsInput a={state.a} b={state.b} onChange={(patch) => setState((current) => ({ ...current, ...patch, sliceX: clamp(current.sliceX, patch.a ?? current.a, patch.b ?? current.b) }))} />
           <label className="csim-field"><span>Trục quay</span><select value={state.axis} onChange={(e) => setState({ ...state, axis: e.target.value as State['axis'] })}><option value="Ox">Ox — hỗ trợ đầy đủ</option><option value="Oy" disabled>Oy — sắp có</option></select></label>
-          <SliderInput label="Vị trí lát cắt x" value={safeSliceX} min={state.a} max={state.b} step={(state.b - state.a) / 200 || 0.01} onChange={(sliceX) => setState({ ...state, sliceX })} />
-          <SliderInput label="Số lát tích phân n" value={state.n} min={6} max={120} step={1} onChange={(n) => setState({ ...state, n })} />
+          <SliderInput label={<>Vị trí lát cắt <KatexSpan tex="x" /></>} value={safeSliceX} min={state.a} max={state.b} step={(state.b - state.a) / 200 || 0.01} onChange={(sliceX) => setState({ ...state, sliceX })} />
+          <SliderInput label={<>Số lát tích phân <KatexSpan tex="n" /></>} value={state.n} min={6} max={120} step={1} onChange={(n) => setState({ ...state, n })} />
         </div>
         <ResultCard title="Thể tích" error={computed.error} formula={state.useWasher ? String.raw`V=\pi\int_a^b\left(R(x)^2-r(x)^2\right)\,dx` : String.raw`V=\pi\int_a^b f(x)^2\,dx`} highlight={step >= 4} rows={[
           [step >= 4 ? 'Cộng dồn lát đĩa' : 'Cộng dồn phần đã quét', formatNumber(step >= 4 ? diskSum : sweptVolume)],
@@ -104,9 +104,11 @@ function solidStepTitle(step: number) {
   return ['Bước 1 — Đồ thị và trục quay', 'Bước 2 — Quét quanh trục Ox', 'Bước 3 — Cắt lát đĩa / vành khăn', 'Bước 4 — Tổng hợp công thức'][step - 1] ?? 'Mô phỏng';
 }
 
-function solidStepCopy(step: number, washer: boolean) {
-  if (step === 1) return 'Quan sát đồ thị trên đoạn [a,b] và trục Ox được dùng làm trục quay.';
-  if (step === 2) return 'Đường cong quay quanh Ox, quét ra bề mặt 3D của khối tròn xoay. Bạn có thể xoay góc nhìn bằng chuột.';
-  if (step === 3) return washer ? 'Kéo vị trí x để xem một vành khăn đại diện: diện tích ngoài trừ diện tích lỗ bên trong.' : 'Kéo vị trí x để xem một lát đĩa đại diện: bán kính là f(x), nên diện tích là πf(x)².';
-  return 'Các lát đĩa/vành khăn mỏng xuất hiện dọc trục x; tổng ΣA(xᵢ)Δx tiến dần tới tích phân thể tích.';
+function solidStepCopy(step: number, washer: boolean): ReactNode {
+  if (step === 1) return <>Quan sát đồ thị trên đoạn <KatexSpan tex="[a,b]" /> và trục <KatexSpan tex="Ox" /> được dùng làm trục quay.</>;
+  if (step === 2) return <>Đường cong quay quanh <KatexSpan tex="Ox" />, quét ra bề mặt 3D của khối tròn xoay. Bạn có thể xoay góc nhìn bằng chuột.</>;
+  if (step === 3) return washer
+    ? <>Kéo vị trí <KatexSpan tex="x" /> để xem một vành khăn đại diện: diện tích ngoài trừ diện tích lỗ bên trong.</>
+    : <>Kéo vị trí <KatexSpan tex="x" /> để xem một lát đĩa đại diện: bán kính là <KatexSpan tex="f(x)" />, nên diện tích là <KatexSpan tex={String.raw`\pi f(x)^2`} />.</>;
+  return <>Các lát đĩa/vành khăn mỏng xuất hiện dọc trục <KatexSpan tex="x" />; tổng <KatexSpan tex={String.raw`\sum_i A(x_i)\Delta x`} /> tiến dần tới tích phân thể tích.</>;
 }

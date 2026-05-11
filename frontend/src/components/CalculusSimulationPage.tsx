@@ -55,11 +55,17 @@ export function CalculusSimulationPage() {
   const [menuCollapsed, setMenuCollapsed] = useState(false);
   const rafRef = useRef<number | null>(null);
   const lastTimeRef = useRef<number | null>(null);
+  const stepRef = useRef(step);
   const module = useMemo(() => MODULES.find((item) => item.key === moduleKey) ?? MODULES[0], [moduleKey]);
   const subject = useMemo(() => SUBJECTS.find((item) => item.key === subjectKey) ?? SUBJECTS[0], [subjectKey]);
   const totalSteps = subjectKey === 'integral' ? module.steps : subject.steps;
 
   useEffect(() => {
+    stepRef.current = step;
+  }, [step]);
+
+  useEffect(() => {
+    stepRef.current = 1;
     setStep(1);
     setProgress(0);
     setPlaying(false);
@@ -87,14 +93,13 @@ export function CalculusSimulationPage() {
       setProgress((current) => {
         const next = current + delta * 0.38 * speed;
         if (next < 1) return next;
-        let reachedFinalStep = false;
-        setStep((currentStep) => {
-          if (currentStep >= totalSteps) {
-            reachedFinalStep = true;
-            return 1;
-          }
-          return currentStep + 1;
-        });
+        if (stepRef.current >= totalSteps) {
+          setPlaying(false);
+          return 1;
+        }
+        const nextStep = Math.min(totalSteps, stepRef.current + 1);
+        stepRef.current = nextStep;
+        setStep(nextStep);
         return 0;
       });
       rafRef.current = requestAnimationFrame(tick);
@@ -108,13 +113,21 @@ export function CalculusSimulationPage() {
 
   function previousStep() {
     setPlaying(false);
-    setStep((current) => Math.max(1, current - 1));
+    setStep((current) => {
+      const next = Math.max(1, current - 1);
+      stepRef.current = next;
+      return next;
+    });
     setProgress(0);
   }
 
   function nextStep() {
     setPlaying(false);
-    setStep((current) => Math.min(totalSteps, current + 1));
+    setStep((current) => {
+      const next = Math.min(totalSteps, current + 1);
+      stepRef.current = next;
+      return next;
+    });
     setProgress(0);
   }
 
@@ -130,6 +143,7 @@ export function CalculusSimulationPage() {
 
   function reset() {
     setPlaying(false);
+    stepRef.current = 1;
     setStep(1);
     setProgress(0);
   }
@@ -172,6 +186,7 @@ export function CalculusSimulationPage() {
             <div className="csim-playbar-title">
               <span>{subject.title}</span>
               <strong>{subjectKey === 'integral' ? module.title : subject.subtitle}</strong>
+              {subjectKey === 'integral' && <KatexSpan tex={module.subtitleTex} className="csim-playbar-formula" />}
             </div>
             <div className="csim-playbar-actions" aria-label="Điều khiển mô phỏng">
               <button type="button" className="csim-btn csim-btn-ghost" onClick={previousStep} disabled={step <= 1}>← Lùi</button>

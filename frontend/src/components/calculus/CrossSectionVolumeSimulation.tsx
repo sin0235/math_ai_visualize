@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
+import { KatexSpan } from '../KatexSpan';
 import { compileExpression } from '../../utils/calculusExpression';
 import { clamp, domainWarningFor, formatNumber, integrate, sampleFunction, safeEval, validateBounds } from '../../utils/calculusNumerics';
 import { CalculusGraph2D } from './CalculusGraph2D';
@@ -30,14 +31,14 @@ export function CrossSectionVolumeSimulation({ step, progress }: Props) {
     <div className="csim-module-grid csim-module-grid-wide">
       <aside className="csim-control-stack">
         <div className="csim-card">
-          <div className="csim-card-head"><strong>Thiết diện song song</strong><span>V = ∫S(x)dx</span></div>
-          <FormulaInput label="Độ dài cơ sở s(x)" value={state.base} onChange={(base) => setState({ ...state, base })} />
+          <div className="csim-card-head"><strong>Thiết diện song song</strong><span><KatexSpan tex={String.raw`V=\int_a^b S(x)\,dx`} /></span></div>
+          <FormulaInput label="s(x)" value={state.base} onChange={(base) => setState({ ...state, base })} />
           <PresetButtons presets={CROSS_PRESETS} onApply={(preset) => setState((current) => ({ ...current, ...preset.patch }))} />
           <BoundsInput a={state.a} b={state.b} onChange={(patch) => setState((current) => ({ ...current, ...patch, sliceX: clamp(current.sliceX, patch.a ?? current.a, patch.b ?? current.b) }))} />
           <label className="csim-field"><span>Dạng thiết diện</span><select value={state.shape} onChange={(e) => setState({ ...state, shape: e.target.value as Shape })}><option value="square">Hình vuông</option><option value="rectangle">Hình chữ nhật</option><option value="triangle">Tam giác đều</option><option value="circle">Hình tròn</option></select></label>
-          {state.shape === 'rectangle' && <SliderInput label="Tỉ lệ chiều cao / đáy" value={state.ratio} min={0.3} max={3} step={0.1} onChange={(ratio) => setState({ ...state, ratio })} />}
+          {state.shape === 'rectangle' && <SliderInput label={<>Tỉ lệ <KatexSpan tex={String.raw`\frac{h}{s}`} /></>} value={state.ratio} min={0.3} max={3} step={0.1} onChange={(ratio) => setState({ ...state, ratio })} />}
           <SliderInput label="Số lát cắt" value={state.n} min={4} max={120} step={1} onChange={(n) => setState({ ...state, n })} />
-          <SliderInput label="Vị trí x" value={safeSliceX} min={state.a} max={state.b} step={(state.b - state.a) / 200 || 0.01} onChange={(sliceX) => setState({ ...state, sliceX })} />
+          <SliderInput label={<>Vị trí <KatexSpan tex="x" /></>} value={safeSliceX} min={state.a} max={state.b} step={(state.b - state.a) / 200 || 0.01} onChange={(sliceX) => setState({ ...state, sliceX })} />
         </div>
         <ResultCard title="Thể tích thiết diện" error={computed.error} formula={shapeFormula(state.shape, state.ratio)} highlight={step >= 4} rows={[
           ['Cộng dồn hiện tại', formatNumber(accumulatedVolume)],
@@ -103,9 +104,9 @@ function crossStepTitle(step: number) {
   return ['Bước 1 — Đồ thị S(x)', 'Bước 2 — Mặt phẳng cắt', 'Bước 3 — Xếp lát mỏng', 'Bước 4 — Tích phân hóa'][step - 1] ?? 'Mô phỏng';
 }
 
-function crossStepCopy(step: number) {
-  if (step === 1) return 'Trước hết học sinh nhìn S(x) như một hàm diện tích biến thiên theo vị trí x.';
-  if (step === 2) return 'Kéo slider x để thấy mặt phẳng cắt đi dọc khối và diện tích thiết diện tại vị trí đó.';
-  if (step === 3) return 'Các lát mỏng bề dày Δx xếp chồng lên nhau; tổng ΣS(xᵢ)Δx là xấp xỉ thể tích.';
-  return 'Khi số lát tăng vô hạn, tổng xấp xỉ trở thành tích phân V = ∫S(x)dx.';
+function crossStepCopy(step: number): ReactNode {
+  if (step === 1) return <>Trước hết học sinh nhìn <KatexSpan tex="S(x)" /> như một hàm diện tích biến thiên theo vị trí <KatexSpan tex="x" />.</>;
+  if (step === 2) return <>Kéo slider <KatexSpan tex="x" /> để thấy mặt phẳng cắt đi dọc khối và diện tích thiết diện tại vị trí đó.</>;
+  if (step === 3) return <>Các lát mỏng bề dày <KatexSpan tex={String.raw`\Delta x`} /> xếp chồng lên nhau; tổng <KatexSpan tex={String.raw`\sum_i S(x_i)\Delta x`} /> là xấp xỉ thể tích.</>;
+  return <>Khi số lát tăng vô hạn, tổng xấp xỉ trở thành tích phân <KatexSpan tex={String.raw`V=\int_a^b S(x)\,dx`} />.</>;
 }

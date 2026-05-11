@@ -62,8 +62,7 @@ export function HomePage({ backendStatus, onOpenLogin }: HomePageProps) {
         <div className="home-hero-copy">
           <h2>
             <span>Giải pháp AI toàn diện</span>
-            <span>cho số hóa hình học</span>
-            <span>và toán học.</span>
+            <span>cho số hóa hình học và toán học.</span>
           </h2>
           <p>
             Chuyển đổi bài toán từ văn bản và hình ảnh thành mô hình đồ họa tương tác.

@@ -1,5 +1,6 @@
 import type { RectSample, SamplePoint } from '../../utils/calculusNumerics';
 import { formatNumber, sampleRange } from '../../utils/calculusNumerics';
+import { KatexSpan } from '../KatexSpan';
 
 export interface CalculusGraph2DProps {
   primary: SamplePoint[];
@@ -34,7 +35,7 @@ export function CalculusGraph2D({ primary, secondary = [], fillBetween = false, 
     <div className="csim-graph-card">
       <div className="csim-graph-head">
         <strong>{title ?? 'Đồ thị'}</strong>
-        <span><i className="csim-line f" /> {primaryLabel}{showSecondaryLegend && <><i className="csim-line g" /> {secondaryLabel}</>}</span>
+        <span><i className="csim-line f" /> <GraphLegendLabel label={primaryLabel} />{showSecondaryLegend && <><i className="csim-line g" /> <GraphLegendLabel label={secondaryLabel} /></>}</span>
       </div>
       <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="csim-svg" role="img" aria-label={title ?? 'Đồ thị mô phỏng'}>
         <rect x="0" y="0" width={WIDTH} height={HEIGHT} rx="18" className="csim-svg-bg" />
@@ -73,6 +74,12 @@ export function CalculusGraph2D({ primary, secondary = [], fillBetween = false, 
       </svg>
     </div>
   );
+}
+
+function GraphLegendLabel({ label }: { label: string }) {
+  if (!label.trim()) return null;
+  if (label === 'Ox') return <KatexSpan tex="Ox" />;
+  return <KatexSpan tex={label} />;
 }
 
 function curvesOverlap(primary: SamplePoint[], secondary: SamplePoint[]) {

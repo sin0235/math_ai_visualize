@@ -15,6 +15,7 @@ const TRIG_SVG_SIZE = 560;
 const TRIG_WAVE_VIEW_W = 680;
 const TRIG_UNIT_RADIUS_U = 190;
 const TRIG_PLOT_PIXEL_SCALE = 0.76;
+const WAVE_TICK_LABELS = [String.raw`0`, String.raw`\frac{\pi}{2}`, String.raw`\pi`, String.raw`\frac{3\pi}{2}`, String.raw`2\pi`];
 
 type VisibleKey = 'sin' | 'cos' | 'tan' | 'cot';
 
@@ -82,19 +83,19 @@ export function TrigonometrySimulation({ playing }: Props) {
     <section className="trig-core" data-trig-ui="3">
       <aside className="trig-control-panel">
         <label className="trig-angle-control">
-          <span>Góc gốc θ</span>
+          <span>Góc gốc <KatexSpan tex={String.raw`\theta`} /></span>
           <strong>{Math.round(baseAngleDeg)}° · {formatAngleLabel(baseAngleRad, false)}</strong>
           <input type="range" min="0" max="360" step="1" value={Math.round(baseAngleDeg)} onChange={(event) => setAngleDeg(Number(event.target.value))} />
         </label>
 
         <label className="trig-angle-control trig-param-control">
-          <span>Tốc độ góc ω</span>
+          <span>Tốc độ góc <KatexSpan tex={String.raw`\omega`} /></span>
           <strong>{angularSpeed.toFixed(2)} rad/s</strong>
           <input type="range" min="0.1" max="2.5" step="0.05" value={angularSpeed} onChange={(event) => setAngularSpeed(Number(event.target.value))} />
         </label>
 
         <label className="trig-angle-control trig-param-control">
-          <span>Pha φ</span>
+          <span>Pha <KatexSpan tex={String.raw`\varphi`} /></span>
           <strong>{phaseDeg > 0 ? 'Sớm pha' : phaseDeg < 0 ? 'Trễ pha' : 'Cùng pha'} · {phaseDeg}°</strong>
           <input type="range" min="-180" max="180" step="5" value={phaseDeg} onChange={(event) => setPhaseDeg(Number(event.target.value))} />
         </label>
@@ -104,22 +105,22 @@ export function TrigonometrySimulation({ playing }: Props) {
         </div>
 
         <div className="trig-phase-readout">
-          <span>Vector gốc P(θ): {Math.round(baseAngleDeg)}°</span>
-          <strong>Vector pha Q(θ+φ): {Math.round(phaseAngleDeg)}°</strong>
+          <span>Vector gốc <KatexSpan tex={String.raw`P(\theta)`} />: {Math.round(baseAngleDeg)}°</span>
+          <strong>Vector pha <KatexSpan tex={String.raw`Q(\theta+\varphi)`} />: {Math.round(phaseAngleDeg)}°</strong>
         </div>
 
         <div className="trig-values-core">
-          <ValueTile label={<KatexSpan tex="\sin(\theta+\varphi)" className="trig-value-tile-katex" />} value={formatTrigNumber(sin)} tone="sin" />
-          <ValueTile label={<KatexSpan tex="\cos(\theta+\varphi)" className="trig-value-tile-katex" />} value={formatTrigNumber(cos)} tone="cos" />
-          <ValueTile label={<KatexSpan tex="\tan(\theta+\varphi)" className="trig-value-tile-katex" />} value={tan.undefined ? 'Không xác định' : formatTrigNumber(tan.value)} tone="tan" />
-          <ValueTile label={<KatexSpan tex="\cot(\theta+\varphi)" className="trig-value-tile-katex" />} value={cot.undefined ? 'Không xác định' : formatTrigNumber(cot.value)} tone="cot" />
+          <ValueTile label={<KatexSpan tex={String.raw`\sin(\theta+\varphi)`} className="trig-value-tile-katex" />} value={formatTrigNumber(sin)} tone="sin" />
+          <ValueTile label={<KatexSpan tex={String.raw`\cos(\theta+\varphi)`} className="trig-value-tile-katex" />} value={formatTrigNumber(cos)} tone="cos" />
+          <ValueTile label={<KatexSpan tex={String.raw`\tan(\theta+\varphi)`} className="trig-value-tile-katex" />} value={tan.undefined ? 'Không xác định' : formatTrigNumber(tan.value)} tone="tan" />
+          <ValueTile label={<KatexSpan tex={String.raw`\cot(\theta+\varphi)`} className="trig-value-tile-katex" />} value={cot.undefined ? 'Không xác định' : formatTrigNumber(cot.value)} tone="cot" />
         </div>
 
         <div className="trig-toggle-list">
           {(['sin', 'cos', 'tan', 'cot'] as VisibleKey[]).map((key) => (
             <button key={key} type="button" className={visible[key] ? `active ${key}` : ''} onClick={() => toggle(key)}>
               <span />
-              {key} θ
+              <KatexSpan tex={`\\${key}\\theta`} />
             </button>
           ))}
         </div>
@@ -330,7 +331,7 @@ function TrigWaveGraphSvg({
       <rect x="0" y="0" width={width} height={height} className="trig-canvas-bg" />
       <line x1={pad} x2={width - pad} y1={height / 2} y2={height / 2} className="trig-axis" />
       {showOrthogonalAxis && <line x1={midX} x2={midX} y1={pad} y2={height - pad} className="trig-axis" aria-hidden="true" />}
-      {[0, Math.PI / 2, Math.PI, 3 * Math.PI / 2, TAU].map((x, index) => <g key={x}><line x1={project(x, 0).x} x2={project(x, 0).x} y1={pad} y2={height - pad} className="trig-grid-line" /><text x={project(x, 0).x} y={height - 10} className="trig-graph-label">{['0', 'π/2', 'π', '3π/2', '2π'][index]}</text></g>)}
+      {[0, Math.PI / 2, Math.PI, 3 * Math.PI / 2, TAU].map((x, index) => <g key={x}><line x1={project(x, 0).x} x2={project(x, 0).x} y1={pad} y2={height - pad} className="trig-grid-line" /><SvgKatexLabel x={project(x, 0).x} y={height - 14} tex={WAVE_TICK_LABELS[index]} className="trig-graph-label" /></g>)}
       {[-1, 1].map((y) => <g key={y}><line x1={pad} x2={width - pad} y1={project(0, y).y} y2={project(0, y).y} className="trig-grid-line" /><text x={pad - 6} y={project(0, y).y + 5} className="trig-y-label">{y}</text></g>)}
       {visible.cos && <path d={buildPath(waves.cos, project)} className="trig-wave-path cos" />}
       {visible.sin && <path d={buildPath(waves.sin, project)} className="trig-wave-path sin" />}
@@ -340,6 +341,16 @@ function TrigWaveGraphSvg({
       {visible.sin && <circle ref={sinDotRef as React.Ref<SVGCircleElement> | undefined} cx={markerX} cy={project(angleRad, Math.sin(angleRad)).y} r="7" className="trig-wave-dot sin" />}
       {visible.cos && <circle ref={cosDotRef as React.Ref<SVGCircleElement> | undefined} cx={markerX} cy={project(angleRad, Math.cos(angleRad)).y} r="7" className="trig-wave-dot cos" />}
     </svg>
+  );
+}
+
+function SvgKatexLabel({ x, y, tex, className, width = 66, height = 24 }: { x: number; y: number; tex: string; className?: string; width?: number; height?: number }) {
+  return (
+    <foreignObject x={x - width / 2} y={y - height / 2} width={width} height={height} className={className}>
+      <div className="trig-svg-katex-label">
+        <KatexSpan tex={tex} />
+      </div>
+    </foreignObject>
   );
 }
 
@@ -481,7 +492,7 @@ function UnitCircle({
         <circle cx={baseP.x} cy={baseP.y} r="8" className="trig-base-point" />
         <text x={baseP.x + 12} y={baseP.y + 18} className="trig-base-point-label">P</text>
         {phaseAbs > 0 && <path d={`M ${arcStart.x} ${arcStart.y} A ${arcRadius} ${arcRadius} 0 ${arcLarge} ${arcSweep} ${arcEnd.x} ${arcEnd.y}`} className={phaseDeg > 0 ? 'trig-phase-arc is-leading' : 'trig-phase-arc is-lagging'} />}
-        {phaseAbs > 0 && <text x={arcLabel.x} y={arcLabel.y} className="trig-phase-label">φ={phaseDeg > 0 ? '+' : '-'}{phaseAbs}°</text>}
+        {phaseAbs > 0 && <SvgKatexLabel x={arcLabel.x} y={arcLabel.y} tex={String.raw`\varphi=${phaseDeg > 0 ? '+' : '-'}${phaseAbs}^{\circ}`} className="trig-phase-label" width={86} />}
         {phaseAbs > 0 && <text x={center} y={center + radius + 62} className={phaseDeg > 0 ? 'trig-phase-state is-leading' : 'trig-phase-state is-lagging'}>{phaseDirection}</text>}
         <line x1={center} y1={center} x2={p.x} y2={p.y} className="trig-radius" />
         <line x1={center} y1={center} x2={p.x} y2={center} className="trig-cos-segment" />

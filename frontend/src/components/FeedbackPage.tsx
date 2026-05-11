@@ -89,14 +89,18 @@ export function FeedbackPage({ user, onLogin, onBackWorkspace, onToast }: Feedba
       <div className="page-title-row">
         <div>
           <p className="eyebrow">Góp ý sản phẩm</p>
-          <h2>Gửi góp ý cho Hình</h2>
+          <h2>Gửi góp ý cho Quản trị viên</h2>
           <p>Gửi lỗi, đề xuất, hoặc điểm chưa rõ. Mỗi tài khoản chỉ có một góp ý đang chờ tiếp nhận.</p>
         </div>
         <button type="button" className="secondary-button" onClick={onBackWorkspace}>Về workspace</button>
       </div>
 
       {error && <div className="error-box">{error}</div>}
-      {loading && <p className="muted-text">Đang tải góp ý...</p>}
+      {loading && (
+        <p className="feedback-loading" role="status" aria-live="polite">
+          Đang tải góp ý...
+        </p>
+      )}
 
       {!loading && pending && (
         <div className="feedback-pending-card">
@@ -118,11 +122,23 @@ export function FeedbackPage({ user, onLogin, onBackWorkspace, onToast }: Feedba
           </label>
           <label>
             <span className="field-label">Nội dung</span>
-            <textarea value={message} maxLength={4000} rows={8} onChange={(event) => setMessage(event.target.value)} placeholder="Mô tả góp ý, bước tái hiện, hoặc mong muốn của bạn..." />
+            <div className="feedback-textarea-wrap">
+              <textarea
+                id="feedback-message"
+                value={message}
+                maxLength={4000}
+                rows={8}
+                onChange={(event) => setMessage(event.target.value)}
+                placeholder="Mô tả góp ý, bước tái hiện, hoặc mong muốn của bạn..."
+                aria-describedby="feedback-message-counter"
+              />
+              <span id="feedback-message-counter" className="feedback-char-counter" aria-live="polite">
+                {message.trim().length}/4000 ký tự
+              </span>
+            </div>
           </label>
           <div className="feedback-actions">
             <button type="submit" className="primary-button" disabled={submitting}>{submitting ? 'Đang gửi...' : 'Gửi góp ý'}</button>
-            <span className="muted-text">{message.trim().length}/4000 ký tự</span>
           </div>
         </form>
       )}

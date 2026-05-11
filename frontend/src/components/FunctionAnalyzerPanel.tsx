@@ -61,7 +61,7 @@ export function FunctionAnalyzerPanel({ initialExpression = '', onOpenGuide }: F
   const [transformType, setTransformType] = useState('vertical_shift');
   const [transformValue, setTransformValue] = useState(1);
   const [isAnimatingTransform, setIsAnimatingTransform] = useState(false);
-  const [showAdvancedControls, setShowAdvancedControls] = useState(true);
+  const [showAdvancedControls, setShowAdvancedControls] = useState(false);
   const [isDraggingImage, setIsDraggingImage] = useState(false);
   const [result, setResult] = useState<AnalyzeResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -181,16 +181,23 @@ export function FunctionAnalyzerPanel({ initialExpression = '', onOpenGuide }: F
   }
 
   function updateToolEnabled(key: 'interval' | 'line' | 'transform', enabled: boolean) {
-    if (key === 'interval') setEnableInterval(enabled);
-    if (key === 'line') setEnableLine(enabled);
+    const nextEnableInterval = key === 'interval' ? enabled : false;
+    const nextEnableLine = key === 'line' ? enabled : false;
+    const nextEnableTransform = key === 'transform' ? enabled : false;
+
+    setEnableInterval(nextEnableInterval);
+    setEnableLine(nextEnableLine);
+    setEnableTransform(nextEnableTransform);
     if (key === 'transform') {
-      setEnableTransform(enabled);
       if (!enabled) setIsAnimatingTransform(false);
+    } else {
+      setIsAnimatingTransform(false);
     }
+
     scheduleToolAnalyze({
-      enableInterval: key === 'interval' ? enabled : enableInterval,
-      enableLine: key === 'line' ? enabled : enableLine,
-      enableTransform: key === 'transform' ? enabled : enableTransform,
+      enableInterval: nextEnableInterval,
+      enableLine: nextEnableLine,
+      enableTransform: nextEnableTransform,
     });
   }
 
@@ -336,54 +343,40 @@ export function FunctionAnalyzerPanel({ initialExpression = '', onOpenGuide }: F
             </div>
           </div>
 
-          <div className="fa2-control-card">
-            <div className="fa2-control-card-head"><span>Công cụ khảo sát</span></div>
-            <div className="fa2-tool-strip">
-              <button type="button" className={`fa2-tool-pill ${enableInterval ? 'is-active' : ''}`} onClick={() => updateToolEnabled('interval', !enableInterval)}>GTLN/GTNN</button>
-              <button type="button" className={`fa2-tool-pill ${enableLine ? 'is-active' : ''}`} onClick={() => updateToolEnabled('line', !enableLine)}>Đường thẳng</button>
-              <button type="button" className={`fa2-tool-pill ${enableTransform ? 'is-active' : ''}`} onClick={() => updateToolEnabled('transform', !enableTransform)}>Biến đổi</button>
-            </div>
-
-            {(enableInterval || enableLine || enableTransform) && (
-              <div className="fa2-tool-panel">
-                {enableInterval && (
-                  <div className="fa2-tool-row">
-                    <span className="fa2-tool-label">Đoạn [a,b]</span>
-                    <input className="fa2-mini-input" type="number" value={intervalA} onChange={(e) => { setIntervalA(Number(e.target.value)); scheduleToolAnalyze({ intervalA: Number(e.target.value), enableInterval: true }); }} />
-                    <input className="fa2-mini-input" type="number" value={intervalB} onChange={(e) => { setIntervalB(Number(e.target.value)); scheduleToolAnalyze({ intervalB: Number(e.target.value), enableInterval: true }); }} />
-                  </div>
-                )}
-
-                {enableLine && (
-                  <div className="fa2-tool-stack">
-                    <div className="fa2-tool-label">Đường thẳng y = kx + b</div>
-                    <SliderNumber label="k" value={lineK} min={-5} max={5} step={0.1} onChange={(value) => { setLineK(value); scheduleToolAnalyze({ lineK: value, enableLine: true }); }} />
-                    <SliderNumber label="b" value={lineB} min={-10} max={10} step={0.1} onChange={(value) => { setLineB(value); scheduleToolAnalyze({ lineB: value, enableLine: true }); }} />
-                  </div>
-                )}
-
-                {enableTransform && (
-                  <div className="fa2-tool-stack">
-                    <div className="fa2-tool-row">
-                      <span className="fa2-tool-label">Biến đổi</span>
-                      <select className="fa2-mini-input" value={transformType} onChange={(e) => { setTransformType(e.target.value); scheduleToolAnalyze({ transformType: e.target.value, enableTransform: true }); }}>
-                        {TRANSFORMS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-                      </select>
-                      <button type="button" className="sp-btn-secondary" onClick={() => setIsAnimatingTransform((value) => !value)}>{isAnimatingTransform ? 'Dừng' : 'Animation'}</button>
-                    </div>
-                    <SliderNumber label="a" value={transformValue} min={-3} max={3} step={0.1} onChange={(value) => { setTransformValue(value); scheduleToolAnalyze({ transformValue: value, enableTransform: true }); }} />
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
           </div>}
 
           {error && <div className="sp-error" role="alert">{error}</div>}
         </aside>
 
         <section className="fa2-results-panel">
-          {loading ? <AnalyzerLoadingResult /> : result ? <AnalysisResult result={result} /> : <EmptyAnalyzerResult />}
+          {loading ? <AnalyzerLoadingResult /> : result ? (
+            <AnalysisResult
+              result={result}
+              toolControls={
+                <AnalyzerToolControls
+                  enableInterval={enableInterval}
+                  enableLine={enableLine}
+                  enableTransform={enableTransform}
+                  intervalA={intervalA}
+                  intervalB={intervalB}
+                  lineK={lineK}
+                  lineB={lineB}
+                  transformType={transformType}
+                  transformValue={transformValue}
+                  isAnimatingTransform={isAnimatingTransform}
+                  disabled={loading || ocrLoading}
+                  onToggleTool={updateToolEnabled}
+                  onIntervalAChange={(value) => { setIntervalA(value); scheduleToolAnalyze({ intervalA: value, enableInterval: true }); }}
+                  onIntervalBChange={(value) => { setIntervalB(value); scheduleToolAnalyze({ intervalB: value, enableInterval: true }); }}
+                  onLineKChange={(value) => { setLineK(value); scheduleToolAnalyze({ lineK: value, enableLine: true }); }}
+                  onLineBChange={(value) => { setLineB(value); scheduleToolAnalyze({ lineB: value, enableLine: true }); }}
+                  onTransformTypeChange={(value) => { setTransformType(value); scheduleToolAnalyze({ transformType: value, enableTransform: true }); }}
+                  onTransformValueChange={(value) => { setTransformValue(value); scheduleToolAnalyze({ transformValue: value, enableTransform: true }); }}
+                  onToggleAnimation={() => setIsAnimatingTransform((value) => !value)}
+                />
+              }
+            />
+          ) : <EmptyAnalyzerResult />}
         </section>
       </div>
     </div>
@@ -423,6 +416,93 @@ function SliderNumber({ label, value, min, max, step, onChange }: { label: strin
   );
 }
 
+interface AnalyzerToolControlsProps {
+  enableInterval: boolean;
+  enableLine: boolean;
+  enableTransform: boolean;
+  intervalA: number;
+  intervalB: number;
+  lineK: number;
+  lineB: number;
+  transformType: string;
+  transformValue: number;
+  isAnimatingTransform: boolean;
+  disabled: boolean;
+  onToggleTool: (key: 'interval' | 'line' | 'transform', enabled: boolean) => void;
+  onIntervalAChange: (value: number) => void;
+  onIntervalBChange: (value: number) => void;
+  onLineKChange: (value: number) => void;
+  onLineBChange: (value: number) => void;
+  onTransformTypeChange: (value: string) => void;
+  onTransformValueChange: (value: number) => void;
+  onToggleAnimation: () => void;
+}
+
+function AnalyzerToolControls({
+  enableInterval,
+  enableLine,
+  enableTransform,
+  intervalA,
+  intervalB,
+  lineK,
+  lineB,
+  transformType,
+  transformValue,
+  isAnimatingTransform,
+  disabled,
+  onToggleTool,
+  onIntervalAChange,
+  onIntervalBChange,
+  onLineKChange,
+  onLineBChange,
+  onTransformTypeChange,
+  onTransformValueChange,
+  onToggleAnimation,
+}: AnalyzerToolControlsProps) {
+  return (
+    <div className="fa2-tools-card">
+      <div className="fa2-tool-strip" role="group" aria-label="Công cụ khảo sát">
+        <button type="button" className={`fa2-tool-pill ${enableInterval ? 'is-active' : ''}`} onClick={() => onToggleTool('interval', !enableInterval)} disabled={disabled}>GTLN/GTNN</button>
+        <button type="button" className={`fa2-tool-pill ${enableLine ? 'is-active' : ''}`} onClick={() => onToggleTool('line', !enableLine)} disabled={disabled}>Đường thẳng</button>
+        <button type="button" className={`fa2-tool-pill ${enableTransform ? 'is-active' : ''}`} onClick={() => onToggleTool('transform', !enableTransform)} disabled={disabled}>Biến đổi</button>
+      </div>
+
+      {(enableInterval || enableLine || enableTransform) && (
+        <div className="fa2-tool-panel">
+          {enableInterval && (
+            <div className="fa2-tool-row">
+              <span className="fa2-tool-label">Đoạn [a,b]</span>
+              <input className="fa2-mini-input" type="number" value={intervalA} onChange={(e) => onIntervalAChange(Number(e.target.value))} disabled={disabled} />
+              <input className="fa2-mini-input" type="number" value={intervalB} onChange={(e) => onIntervalBChange(Number(e.target.value))} disabled={disabled} />
+            </div>
+          )}
+
+          {enableLine && (
+            <div className="fa2-tool-stack">
+              <div className="fa2-tool-label">Đường thẳng y = kx + b</div>
+              <SliderNumber label="k" value={lineK} min={-5} max={5} step={0.1} onChange={onLineKChange} />
+              <SliderNumber label="b" value={lineB} min={-10} max={10} step={0.1} onChange={onLineBChange} />
+            </div>
+          )}
+
+          {enableTransform && (
+            <div className="fa2-tool-stack">
+              <div className="fa2-tool-row">
+                <span className="fa2-tool-label">Biến đổi</span>
+                <select className="fa2-mini-input" value={transformType} onChange={(e) => onTransformTypeChange(e.target.value)} disabled={disabled}>
+                  {TRANSFORMS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+                </select>
+                <button type="button" className="sp-btn-secondary" onClick={onToggleAnimation} disabled={disabled}>{isAnimatingTransform ? 'Dừng' : 'Animation'}</button>
+              </div>
+              <SliderNumber label="a" value={transformValue} min={-3} max={3} step={0.1} onChange={onTransformValueChange} />
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function clampToRange(value: number, min: number, max: number) {
   if (!Number.isFinite(value)) return min;
   return Math.min(Math.max(value, min), max);
@@ -432,9 +512,10 @@ function formatSliderValue(value: number) {
   return Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
 }
 
-function AnalysisResult({ result }: { result: AnalyzeResponse }) {
+function AnalysisResult({ result, toolControls }: { result: AnalyzeResponse; toolControls: ReactNode }) {
   const hasShapeDetails = result.concave_up_intervals.length > 0 || result.concave_down_intervals.length > 0 || result.horizontal_asymptotes.length > 0 || result.vertical_asymptotes.length > 0 || !!result.oblique_asymptote;
   const [variationBbtOpen, setVariationBbtOpen] = useState(false);
+  const [activeResultTab, setActiveResultTab] = useState<'quick' | 'tools'>('quick');
   const hasVariationTable = !!result.variation_table && result.variation_table.length > 0;
 
   return (
@@ -447,75 +528,96 @@ function AnalysisResult({ result }: { result: AnalyzeResponse }) {
         </div>
 
         <div className="fa2-analysis-column">
-          <div className="fa2-result-sticky-head">
-            <span>Đang xem</span>
-            <KatexSpan tex={`y=${result.evaluated_expression_latex || result.expression_latex || sympyToLatex(result.evaluated_expression || result.expression)}`} />
-          </div>
+          <div className="fa2-result-tabs">
+            <div className="fa2-tab-list" role="tablist" aria-label="Kết quả phân tích">
+              <button type="button" role="tab" aria-selected={activeResultTab === 'quick'} className={`fa2-result-tab ${activeResultTab === 'quick' ? 'is-active' : ''}`} onClick={() => setActiveResultTab('quick')}>Kết quả nhanh</button>
+              <button type="button" role="tab" aria-selected={activeResultTab === 'tools'} className={`fa2-result-tab ${activeResultTab === 'tools' ? 'is-active' : ''}`} onClick={() => setActiveResultTab('tools')}>Công cụ khảo sát</button>
+            </div>
+            <div className="fa2-tab-panel">
+              {activeResultTab === 'quick' ? (
+                <div className="fa2-quick-workbench">
+                  <QuickSummary result={result} />
 
-          <QuickSummary result={result} />
+                  <Section
+                    title="Đạo hàm và biến thiên"
+                    icon="derivative"
+                    headTrailing={
+                      hasVariationTable ? (
+                        <button type="button" className="bbt-zoom-btn bbt-zoom-btn-borderless" onClick={() => setVariationBbtOpen(true)} aria-label="Ấn để phóng to">
+                          <span aria-hidden="true"><SvgIcon name="magnify" /></span>
+                        </button>
+                      ) : null
+                    }
+                  >
+                    <div className="fa2-formula-row"><KatexSpan tex="f'(x)=" className="fa2-label-mono fa2-label-katex" /><KatexSpan tex={result.derivative_latex || sympyToLatex(result.derivative || '')} className="fa2-katex" /></div>
+                    {result.second_derivative && <div className="fa2-formula-row"><KatexSpan tex="f''(x)=" className="fa2-label-mono fa2-label-katex" /><KatexSpan tex={result.second_derivative_latex || sympyToLatex(result.second_derivative)} className="fa2-katex" /></div>}
+                    <VariationTable rows={result.variation_table} expanded={variationBbtOpen} onExpandedChange={setVariationBbtOpen} hideZoomButton />
+                  </Section>
 
-
-          <Section
-            title="Đạo hàm và biến thiên"
-            icon="derivative"
-            headTrailing={
-              hasVariationTable ? (
-                <button type="button" className="bbt-zoom-btn bbt-zoom-btn-borderless" onClick={() => setVariationBbtOpen(true)} aria-label="Ấn để phóng to">
-                  <span aria-hidden="true"><SvgIcon name="magnify" /></span>
-                </button>
-              ) : null
-            }
-          >
-            <div className="fa2-formula-row"><KatexSpan tex="f'(x)=" className="fa2-label-mono fa2-label-katex" /><KatexSpan tex={result.derivative_latex || sympyToLatex(result.derivative || '')} className="fa2-katex" /></div>
-            {result.second_derivative && <div className="fa2-formula-row"><KatexSpan tex="f''(x)=" className="fa2-label-mono fa2-label-katex" /><KatexSpan tex={result.second_derivative_latex || sympyToLatex(result.second_derivative)} className="fa2-katex" /></div>}
-            <VariationTable rows={result.variation_table} expanded={variationBbtOpen} onExpandedChange={setVariationBbtOpen} hideZoomButton />
-          </Section>
-
-          {hasShapeDetails && (
-            <Section title="Lồi lõm và tiệm cận" icon="asymptote">
-              <div className="fa2-compact-list">
-                {result.concave_up_intervals.length > 0 && <IntervalLine label="Lồi" value={result.concave_up_intervals.join(', ')} className="fa2-mono-inc" />}
-                {result.concave_down_intervals.length > 0 && <IntervalLine label="Lõm" value={result.concave_down_intervals.join(', ')} className="fa2-mono-dec" />}
-                {result.horizontal_asymptotes.map((ha, i) => <Asymptote key={`ha-${i}`} label="Ngang" tex={`y = ${sympyToLatex(ha.value)}`} />)}
-                {result.vertical_asymptotes.map((va, i) => <Asymptote key={`va-${i}`} label="Đứng" tex={`x = ${sympyToLatex(va.x)}`} />)}
-                {result.oblique_asymptote && <Asymptote label="Xiên" tex={sympyToLatex(result.oblique_asymptote)} />}
-              </div>
-            </Section>
-          )}
-
-          <div className="fa2-detail-grid">
-            {result.interval_analysis && (
-              <Section title="GTLN/GTNN trên đoạn" icon="points">
-                <IntervalExtremaAnalysis interval={result.interval_analysis} />
-              </Section>
-            )}
-
-            {result.line_analysis && (
-              <Section title="Tương giao với đường thẳng" icon="graph">
-                <div className="fa2-compact-list">
-                  <IntervalLine label="Đường thẳng" value={result.line_analysis.equation} className="fa2-mono-inc" />
-                  <IntervalLine label="Số giao điểm" value={String(result.line_analysis.intersection_count)} className="fa2-mono-inc" />
-                  {result.line_analysis.intersections.map((pt, index) => <PointBadge key={`line-${index}`} label="Giao điểm" tex={`(${sympyToLatex(pt.x)},\\; ${sympyToLatex(pt.y)})`} kind="axis" />)}
-                  {result.line_analysis.relative_intervals.above.length > 0 && <IntervalLine label="f(x) > d" value={result.line_analysis.relative_intervals.above.join(', ')} className="fa2-mono-inc" />}
-                  {result.line_analysis.relative_intervals.below.length > 0 && <IntervalLine label="f(x) < d" value={result.line_analysis.relative_intervals.below.join(', ')} className="fa2-mono-dec" />}
+                  {hasShapeDetails && (
+                    <Section title="Lồi lõm và tiệm cận" icon="asymptote">
+                      <div className="fa2-compact-list">
+                        {result.concave_up_intervals.length > 0 && <IntervalLine label="Lồi" value={result.concave_up_intervals.join(', ')} className="fa2-mono-inc" />}
+                        {result.concave_down_intervals.length > 0 && <IntervalLine label="Lõm" value={result.concave_down_intervals.join(', ')} className="fa2-mono-dec" />}
+                        {result.horizontal_asymptotes.map((ha, i) => <Asymptote key={`ha-${i}`} label="Ngang" tex={`y = ${sympyToLatex(ha.value)}`} />)}
+                        {result.vertical_asymptotes.map((va, i) => <Asymptote key={`va-${i}`} label="Đứng" tex={`x = ${sympyToLatex(va.x)}`} />)}
+                        {result.oblique_asymptote && <Asymptote label="Xiên" tex={sympyToLatex(result.oblique_asymptote)} />}
+                      </div>
+                    </Section>
+                  )}
                 </div>
-              </Section>
-            )}
-
-            {result.transform_preview && (
-              <Section title="Biến đổi đồ thị" icon="graph">
-                <div className="fa2-transform-formula">
-                  <KatexSpan tex={TRANSFORM_LABEL_TEX[result.transform_preview.type] ?? sympyToLatex(result.transform_preview.label)} className="fa2-transform-rule" />
-                  <KatexSpan tex={`g(x)=${result.transform_preview.expression_latex || sympyToLatex(result.transform_preview.expression)}`} className="fa2-katex" />
+              ) : (
+                <div className="fa2-tools-workbench">
+                  {toolControls}
+                  <ToolAnalysisResults result={result} />
                 </div>
-              </Section>
-            )}
+              )}
+            </div>
           </div>
 
           {result.ocr_text && <div className="sp-info">OCR: {result.ocr_text}</div>}
           {result.warnings.length > 0 && <div className="sp-warnings">{result.warnings.map((w, i) => <div key={i} className="sp-warning">{w}</div>)}</div>}
         </div>
       </div>
+    </div>
+  );
+}
+
+function ToolAnalysisResults({ result }: { result: AnalyzeResponse }) {
+  const hasToolResults = !!result.interval_analysis || !!result.line_analysis || !!result.transform_preview;
+
+  if (!hasToolResults) {
+    return <div className="fa2-tool-empty">Chọn công cụ để xem kết quả.</div>;
+  }
+
+  return (
+    <div className="fa2-tool-results">
+      {result.interval_analysis && (
+        <Section title="GTLN/GTNN trên đoạn" icon="points">
+          <IntervalExtremaAnalysis interval={result.interval_analysis} />
+        </Section>
+      )}
+
+      {result.line_analysis && (
+        <Section title="Tương giao với đường thẳng" icon="graph">
+          <div className="fa2-compact-list">
+            <IntervalLine label="Đường thẳng" value={result.line_analysis.equation} className="fa2-mono-inc" />
+            <IntervalLine label="Số giao điểm" value={String(result.line_analysis.intersection_count)} className="fa2-mono-inc" />
+            {result.line_analysis.intersections.map((pt, index) => <PointBadge key={`line-${index}`} label="Giao điểm" tex={`(${sympyToLatex(pt.x)},\\; ${sympyToLatex(pt.y)})`} kind="axis" />)}
+            {result.line_analysis.relative_intervals.above.length > 0 && <IntervalLine label="f(x) > d" value={result.line_analysis.relative_intervals.above.join(', ')} className="fa2-mono-inc" />}
+            {result.line_analysis.relative_intervals.below.length > 0 && <IntervalLine label="f(x) < d" value={result.line_analysis.relative_intervals.below.join(', ')} className="fa2-mono-dec" />}
+          </div>
+        </Section>
+      )}
+
+      {result.transform_preview && (
+        <Section title="Biến đổi đồ thị" icon="graph">
+          <div className="fa2-transform-formula">
+            <KatexSpan tex={TRANSFORM_LABEL_TEX[result.transform_preview.type] ?? sympyToLatex(result.transform_preview.label)} className="fa2-transform-rule" />
+            <KatexSpan tex={`g(x)=${result.transform_preview.expression_latex || sympyToLatex(result.transform_preview.expression)}`} className="fa2-katex" />
+          </div>
+        </Section>
+      )}
     </div>
   );
 }
@@ -753,18 +855,25 @@ function buildSvgGraph(points: Array<{ x: number; y: number }>, result: AnalyzeR
       yAxis: { x1: width / 2, y1: pad, x2: width / 2, y2: height - pad },
     };
   }
-  const specialXs = [
+  const featureXs = [
     ...result.critical_points.map((p) => Number(p.x)),
     ...result.inflection_points.map((p) => Number(p.x)),
     ...result.x_intercepts.map(Number),
+  ].filter(Number.isFinite);
+  const specialXs = [
+    ...featureXs,
     0,
   ].filter(Number.isFinite);
   const quantileMinX = quantile(finitePoints.map((p) => p.x), 0.08);
   const quantileMaxX = quantile(finitePoints.map((p) => p.x), 0.92);
   const keyMinX = specialXs.length > 0 ? Math.min(...specialXs) : quantileMinX;
   const keyMaxX = specialXs.length > 0 ? Math.max(...specialXs) : quantileMaxX;
-  const baseMinX = Math.min(quantileMinX, keyMinX);
-  const baseMaxX = Math.max(quantileMaxX, keyMaxX);
+  let baseMinX = featureXs.length > 0 ? keyMinX : Math.max(quantileMinX, -6);
+  let baseMaxX = featureXs.length > 0 ? keyMaxX : Math.min(quantileMaxX, 6);
+  if (baseMinX >= baseMaxX) {
+    baseMinX = quantileMinX;
+    baseMaxX = quantileMaxX;
+  }
   const span = Math.max(baseMaxX - baseMinX, 4);
   const xMargin = Math.max(0.9, span * 0.18);
   const x0 = baseMinX - xMargin;
