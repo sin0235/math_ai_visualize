@@ -105,6 +105,7 @@ export function GeoGebraView({ commands, renderer, scene, view, onPointChange, e
   const [selectedObject, setSelectedObject] = useState<string | null>(null);
   const [updateCount, setUpdateCount] = useState(0);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [showAlgebraInput, setShowAlgebraInput] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -131,7 +132,7 @@ export function GeoGebraView({ commands, renderer, scene, view, onPointChange, e
           width: containerWidth,
           height: containerHeight,
           showToolBar: false,
-          showAlgebraInput: false,
+          showAlgebraInput,
           showMenuBar: false,
           showResetIcon: false,
           enableShiftDragZoom: true,
@@ -175,7 +176,7 @@ export function GeoGebraView({ commands, renderer, scene, view, onPointChange, e
       if (host) host.innerHTML = '';
       setApiReady(false);
     };
-  }, [appletId, appName, retryCount]);
+  }, [appletId, appName, retryCount, showAlgebraInput]);
 
   useEffect(() => {
     if (!apiReady || !apiRef.current) return;
@@ -249,6 +250,15 @@ export function GeoGebraView({ commands, renderer, scene, view, onPointChange, e
           <button type="button" className="secondary-button" onClick={() => setRetryCount((count) => count + 1)}>Thử tải lại</button>
         </div>
       )}
+      <div className="geogebra-tools">
+        <button
+          type="button"
+          className="secondary-button"
+          onClick={() => setShowAlgebraInput((current) => !current)}
+        >
+          {showAlgebraInput ? 'Ẩn thanh công thức' : 'Hiện thanh công thức'}
+        </button>
+      </div>
       <div ref={containerRef} id={appletId} className="geogebra-view" />
       {syncMessage && (
         <div className="geogebra-tools">
