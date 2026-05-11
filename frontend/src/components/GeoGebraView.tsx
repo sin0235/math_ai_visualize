@@ -105,7 +105,7 @@ export function GeoGebraView({ commands, renderer, scene, view, onPointChange, e
   const [selectedObject, setSelectedObject] = useState<string | null>(null);
   const [updateCount, setUpdateCount] = useState(0);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
-  const [showAlgebraInput, setShowAlgebraInput] = useState(false);
+  const [showAlgebraPanel, setShowAlgebraPanel] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -132,16 +132,16 @@ export function GeoGebraView({ commands, renderer, scene, view, onPointChange, e
           width: containerWidth,
           height: containerHeight,
           showToolBar: false,
-          showAlgebraInput,
+          showAlgebraInput: false,
           showMenuBar: false,
           showResetIcon: false,
           enableShiftDragZoom: true,
-          perspective: renderer === 'geogebra_2d' ? 'G' : undefined,
+          perspective: renderer === 'geogebra_2d' ? (showAlgebraPanel ? 'AG' : 'G') : undefined,
           appletOnLoad: (api: GeoGebraApi) => {
             if (cancelled) return;
             apiRef.current = api;
             api.setErrorDialogsActive?.(false);
-            if (renderer === 'geogebra_2d') api.setPerspective?.('G');
+            if (renderer === 'geogebra_2d') api.setPerspective?.(showAlgebraPanel ? 'AG' : 'G');
             requestAnimationFrame(() => resizeAppletToContainer(api, containerRef.current));
             window[clickCallbackName] = (name: string) => setSelectedObject(name);
             window[updateCallbackName] = (name?: string) => {
@@ -176,7 +176,7 @@ export function GeoGebraView({ commands, renderer, scene, view, onPointChange, e
       if (host) host.innerHTML = '';
       setApiReady(false);
     };
-  }, [appletId, appName, retryCount, showAlgebraInput]);
+  }, [appletId, appName, retryCount, showAlgebraPanel, renderer]);
 
   useEffect(() => {
     if (!apiReady || !apiRef.current) return;
@@ -250,16 +250,25 @@ export function GeoGebraView({ commands, renderer, scene, view, onPointChange, e
           <button type="button" className="secondary-button" onClick={() => setRetryCount((count) => count + 1)}>Thử tải lại</button>
         </div>
       )}
-      <div className="geogebra-tools">
+      <div className="geogebra-shell">
         <button
           type="button"
-          className="secondary-button"
-          onClick={() => setShowAlgebraInput((current) => !current)}
+          className={`geogebra-panel-toggle ${showAlgebraPanel ? 'is-open' : ''}`}
+          onClick={() => setShowAlgebraPanel((current) => !current)}
+          aria-pressed={showAlgebraPanel}
+          aria-label={showAlgebraPanel ? 'Thu bảng công thức GeoGebra' : 'Bung bảng công thức GeoGebra'}
+          title={showAlgebraPanel ? 'Thu bảng công thức GeoGebra' : 'Bung bảng công thức GeoGebra'}
         >
-          {showAlgebraInput ? 'Ẩn thanh công thức' : 'Hiện thanh công thức'}
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            {showAlgebraPanel ? (
+              <path d="M14.5 6.5 9 12l5.5 5.5M20 4v16M4 5.5h5M4 12h3.5M4 18.5h5" />
+            ) : (
+              <path d="M9.5 6.5 15 12l-5.5 5.5M4 4v16M20 5.5h-5M20 12h-3.5M20 18.5h-5" />
+            )}
+          </svg>
         </button>
+        <div ref={containerRef} id={appletId} className="geogebra-view" />
       </div>
-      <div ref={containerRef} id={appletId} className="geogebra-view" />
       {syncMessage && (
         <div className="geogebra-tools">
           <div className="geogebra-status">

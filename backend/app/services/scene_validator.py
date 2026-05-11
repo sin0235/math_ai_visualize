@@ -490,6 +490,14 @@ def _enforce_geometry_sanity(scene: MathScene, report: ValidationReport) -> Math
                     f"function_graph '{obj.get('name') or '?'}' thiếu expression — đã bỏ"
                 )
                 keep = False
+            else:
+                normalized_expr = _normalize_function_expression(expr)
+                if normalized_expr != expr:
+                    obj["expression"] = normalized_expr
+                    changed = True
+                    report.repairs.append(
+                        f"function_graph '{obj.get('name') or '?'}' expression LaTeX — đã chuẩn hoá"
+                    )
 
         if not keep:
             changed = True
@@ -500,6 +508,23 @@ def _enforce_geometry_sanity(scene: MathScene, report: ValidationReport) -> Math
         data["objects"] = new_objects
         return MathScene.model_validate(data)
     return scene
+
+
+def _normalize_function_expression(expression: str) -> str:
+    expr = expression.strip()
+    expr = re.sub(r"^\\\\\((.*)\\\\\)$", r"\1", expr)
+    expr = re.sub(r"^\\\\\[(.*)\\\\\]$", r"\1", expr)
+    expr = expr.strip("$ ")
+    expr = re.sub(r"^y\s*=\s*", "", expr, flags=re.IGNORECASE)
+    expr = re.sub(r"\\\\frac\s*\{([^{}]+)\}\s*\{([^{}]+)\}", r"(\1)/(\2)", expr)
+    expr = expr.replace("\\\\cdot", "*").replace("\\\\times", "*")
+    expr = expr.replace("\\\\left", "").replace("\\\\right", "")
+    expr = expr.replace("{", "(").replace("}", ")")
+    expr = expr.replace(" ", "")
+    expr = re.sub(r"(?<=\d)(?=[A-Za-z])", "*", expr)
+    expr = re.sub(r"(?<=\))(?=[A-Za-z0-9(])", "*", expr)
+    expr = re.sub(r"(?<=[A-Za-z])(?=\()", "*", expr)
+    return expr
 
 
 def _are_collinear(pts: list[Point2D | Point3D]) -> bool:
