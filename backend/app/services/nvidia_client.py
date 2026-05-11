@@ -135,7 +135,7 @@ class NvidiaClient:
         except json.JSONDecodeError as error:
             raise RuntimeError(f"NVIDIA reasoning JSON không hợp lệ: {error.msg}") from error
 
-    async def ocr_image(self, image_data_url: str, model: str | None = None) -> str:
+    async def ocr_image(self, image_data_url: str, model: str | None = None, system_prompt: str | None = None, user_text: str = "Trích xuất nguyên văn đề toán trong ảnh.") -> str:
         if not self.settings.nvidia_api_key:
             raise RuntimeError("NVIDIA_API_KEY chưa được cấu hình.")
 
@@ -143,11 +143,11 @@ class NvidiaClient:
         payload = {
             "model": selected_model,
             "messages": [
-                {"role": "system", "content": OCR_SYSTEM_PROMPT},
+                {"role": "system", "content": system_prompt or OCR_SYSTEM_PROMPT},
                 {
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": "Trích xuất nguyên văn đề toán trong ảnh."},
+                        {"type": "text", "text": user_text},
                         {"type": "image_url", "image_url": {"url": image_data_url}},
                     ],
                 },

@@ -160,6 +160,13 @@ export function ProblemInput({
     pickImageFile(event.dataTransfer.files);
   }
 
+  function handleDiagramDrop(event: DragEvent<HTMLElement>) {
+    event.preventDefault();
+    if (busy) return;
+    setDragActive(false);
+    pickImageFile(event.dataTransfer.files, 'diagram');
+  }
+
   function handlePaste(event: React.ClipboardEvent<HTMLTextAreaElement>) {
     if (busy) return;
     const imageItem = Array.from(event.clipboardData.items).find((item) => item.type.startsWith('image/'));
@@ -178,6 +185,7 @@ export function ProblemInput({
   function handleTextAreaDoubleClick(event: MouseEvent<HTMLTextAreaElement>) {
     if (problemText.trim() || loading || ocrLoading) return;
     event.preventDefault();
+    fileInputRef.current?.setAttribute('data-ocr-mode', 'problem');
     fileInputRef.current?.click();
   }
 
@@ -207,12 +215,7 @@ export function ProblemInput({
               if (!busy) setDragActive(true);
             }}
             onDragLeave={() => { if (!busy) setDragActive(false); }}
-            onDrop={(event) => {
-              event.preventDefault();
-              if (busy) return;
-              setDragActive(false);
-              pickImageFile(event.dataTransfer.files, 'diagram');
-            }}
+            onDrop={handleDiagramDrop}
           >
             Kéo thả ảnh vào đây hoặc bấm để chọn ảnh
           </button>

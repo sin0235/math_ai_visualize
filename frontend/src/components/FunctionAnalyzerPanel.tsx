@@ -551,8 +551,6 @@ function FunctionGraphSvg({ result }: { result: AnalyzeResponse }) {
   const selectedPoint = visibleSpecialPoints.find((point) => point.key === selectedPointKey) ?? null;
   if (result.geogebra_commands.length > 0) {
     const scene = result.graph_scene ?? createFallbackGraphScene(result.expression);
-    const overlayPoints = visibleSpecialPoints.filter((point) => point.kind !== 'axis-x' && point.kind !== 'axis-y');
-    const overlaySelected = overlayPoints.find((point) => point.key === selectedPointKey) ?? null;
     return (
       <div className="fa2-graph-card fa2-geogebra-graph-card">
         <GeoGebraView
@@ -562,7 +560,6 @@ function FunctionGraphSvg({ result }: { result: AnalyzeResponse }) {
           view={scene.view}
           embedded
         />
-        <GraphPointOverlay points={overlayPoints} selectedPoint={overlaySelected} onSelectPoint={setSelectedPointKey} />
       </div>
     );
   }
@@ -708,39 +705,6 @@ function FunctionGraphSvg({ result }: { result: AnalyzeResponse }) {
           <text key={`yt-${idx}`} x={6} y={tick.y + 4} className="fa2-graph-tick">{tick.label}</text>
         ))}
       </svg>
-    </div>
-  );
-}
-
-function GraphPointOverlay({ points, selectedPoint, onSelectPoint }: {
-  points: ReturnType<typeof plotSpecialPoints>;
-  selectedPoint: ReturnType<typeof plotSpecialPoints>[number] | null;
-  onSelectPoint: (key: string) => void;
-}) {
-  if (points.length === 0) return null;
-  return (
-    <div className="fa2-geogebra-point-overlay">
-      {points.map((point) => (
-        <button
-          key={point.key}
-          type="button"
-          className={`fa2-geogebra-point fa2-geogebra-point-${point.kind}`}
-          style={{ left: `${(point.x / SVG_WIDTH) * 100}%`, top: `${(point.y / SVG_HEIGHT) * 100}%` }}
-          aria-label={`${point.label} ${point.coordsText}`}
-          onClick={() => onSelectPoint(point.key)}
-        >
-          <span>{point.label}</span>
-        </button>
-      ))}
-      {selectedPoint && (
-        <div
-          className="fa2-geogebra-point-popover"
-          style={{ left: `${(selectedPoint.popoverX / SVG_WIDTH) * 100}%`, top: `${(selectedPoint.popoverY / SVG_HEIGHT) * 100}%` }}
-        >
-          <span>{selectedPoint.label}</span>
-          <strong>{selectedPoint.coordsText}</strong>
-        </div>
-      )}
     </div>
   );
 }
