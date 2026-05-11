@@ -60,7 +60,11 @@ export function HomePage({ backendStatus, onOpenLogin }: HomePageProps) {
       )}
       <div className="home-hero">
         <div className="home-hero-copy">
-          <h2>Giải pháp AI toàn diện cho số hóa hình học và toán học.</h2>
+          <h2>
+            <span>Giải pháp AI toàn diện</span>
+            <span>cho số hóa hình học</span>
+            <span>và toán học.</span>
+          </h2>
           <p>
             Chuyển đổi bài toán từ văn bản và hình ảnh thành mô hình đồ họa tương tác.
             Nền tảng đột phá giúp đơn giản hóa việc dựng hình, khảo sát hàm số và biên soạn tài liệu sư phạm chuyên sâu.
@@ -96,4 +100,3 @@ export function HomePage({ backendStatus, onOpenLogin }: HomePageProps) {
     </section>
   );
 }
-

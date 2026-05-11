@@ -52,6 +52,7 @@ export function CalculusSimulationPage() {
   const [playing, setPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [speed, setSpeed] = useState(1);
+  const [menuCollapsed, setMenuCollapsed] = useState(false);
   const rafRef = useRef<number | null>(null);
   const lastTimeRef = useRef<number | null>(null);
   const module = useMemo(() => MODULES.find((item) => item.key === moduleKey) ?? MODULES[0], [moduleKey]);
@@ -135,59 +136,77 @@ export function CalculusSimulationPage() {
 
   return (
     <section className="csim-page">
-      <div className="csim-subject-tabs" role="tablist" aria-label="Chọn nhóm mô phỏng">
-        {SUBJECTS.map((item) => (
-          <button key={item.key} type="button" role="tab" aria-selected={subjectKey === item.key} className={subjectKey === item.key ? 'active' : ''} onClick={() => switchSubject(item.key)}>
-            <strong>{item.title}</strong>
-            <span>{item.subtitle}</span>
+      <div className={`csim-workbench${menuCollapsed ? ' is-menu-collapsed' : ''}`}>
+        <aside className="csim-menu-panel" aria-label="Menu mô phỏng">
+          <button type="button" className="csim-menu-toggle" onClick={() => setMenuCollapsed((value) => !value)} aria-expanded={!menuCollapsed} aria-label={menuCollapsed ? 'Bung menu mô phỏng' : 'Thu menu mô phỏng'}>
+            <span>{menuCollapsed ? '›' : '‹'}</span>
+            <strong>Menu</strong>
           </button>
-        ))}
-      </div>
 
-      {subjectKey === 'integral' && (
-        <div className="csim-tabs" role="tablist" aria-label="Chọn module tích phân">
-          {MODULES.map((item) => (
-            <button key={item.key} type="button" role="tab" aria-selected={moduleKey === item.key} className={moduleKey === item.key ? 'active' : ''} onClick={() => switchModule(item.key)} aria-label={`${item.title}. ${item.subtitle}`}>
-              <strong>{item.title}</strong>
-              <span className="csim-tab-subtitle"><KatexSpan tex={item.subtitleTex} className="csim-tab-subtitle-katex" /></span>
-            </button>
-          ))}
-        </div>
-      )}
+          <div className="csim-menu-content">
+            <div className="csim-menu-group">
+              <button type="button" className={`csim-menu-group-button${subjectKey === 'integral' ? ' active' : ''}`} aria-expanded={subjectKey === 'integral'} onClick={() => switchSubject('integral')}>
+                <span>Tích phân</span>
+              </button>
+              {subjectKey === 'integral' && (
+                <div className="csim-menu-children" role="tablist" aria-label="Chọn module tích phân">
+                  {MODULES.map((item) => (
+                    <button key={item.key} type="button" role="tab" aria-selected={moduleKey === item.key} className={moduleKey === item.key ? 'active' : ''} onClick={() => switchModule(item.key)} aria-label={`${item.title}. ${item.subtitle}`}>
+                      <strong>{item.title}</strong>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
 
-      <div className="csim-playbar">
-        <div className="csim-playbar-actions" aria-label="Điều khiển mô phỏng">
-          <button type="button" className="csim-btn csim-btn-ghost" onClick={previousStep} disabled={step <= 1}>← Back</button>
-          <button type="button" className="csim-btn csim-btn-filled" onClick={nextStep} disabled={step >= totalSteps}>Step →</button>
-          <button type="button" className="csim-btn csim-btn-filled" onClick={() => setPlaying((value) => !value)}>{playing ? 'Pause' : 'Play'}</button>
-          <button type="button" className="csim-btn csim-btn-ghost" onClick={reset}>Reset</button>
-        </div>
-        <div className="csim-playbar-status">
-          <strong>Bước {step}/{totalSteps}</strong>
-          <ol className="csim-progress-dots" aria-label={`Bước ${step} trên ${totalSteps}`}>
-            {Array.from({ length: totalSteps }, (_, index) => {
-              const currentStep = index + 1;
-              return <li key={currentStep} className={currentStep <= step ? 'active' : ''} aria-current={currentStep === step ? 'step' : undefined}><span /></li>;
-            })}
-          </ol>
-          <div className="csim-progress" aria-hidden="true">
-            <span style={{ width: `${((step - 1 + Math.min(progress, 1)) / totalSteps) * 100}%` }} />
+            <div className="csim-menu-group">
+              <button type="button" className={`csim-menu-group-button${subjectKey === 'trigonometry' ? ' active' : ''}`} aria-expanded={subjectKey === 'trigonometry'} onClick={() => switchSubject('trigonometry')}>
+                <span>Lượng giác</span>
+              </button>
+            </div>
           </div>
-          <label className="csim-speed-select">Tốc độ
-            <select value={speed} onChange={(event) => setSpeed(Number(event.target.value))}>
-              <option value={0.5}>0.5x</option>
-              <option value={1}>1x</option>
-              <option value={1.5}>1.5x</option>
-              <option value={2}>2x</option>
-            </select>
-          </label>
+        </aside>
+
+        <div className="csim-workspace">
+          <div className="csim-playbar">
+            <div className="csim-playbar-title">
+              <span>{subject.title}</span>
+              <strong>{subjectKey === 'integral' ? module.title : subject.subtitle}</strong>
+            </div>
+            <div className="csim-playbar-actions" aria-label="Điều khiển mô phỏng">
+              <button type="button" className="csim-btn csim-btn-ghost" onClick={previousStep} disabled={step <= 1}>← Lùi</button>
+              <button type="button" className="csim-btn csim-btn-ghost" onClick={nextStep} disabled={step >= totalSteps}>Bước →</button>
+              <button type="button" className="csim-btn csim-btn-filled" onClick={() => setPlaying((value) => !value)}>{playing ? 'Tạm dừng' : 'Chạy'}</button>
+              <button type="button" className="csim-btn csim-btn-ghost" onClick={reset}>Đặt lại</button>
+            </div>
+            <div className="csim-playbar-status">
+              <strong>Bước {step}/{totalSteps}</strong>
+              <ol className="csim-progress-dots" aria-label={`Bước ${step} trên ${totalSteps}`}>
+                {Array.from({ length: totalSteps }, (_, index) => {
+                  const currentStep = index + 1;
+                  return <li key={currentStep} className={currentStep <= step ? 'active' : ''} aria-current={currentStep === step ? 'step' : undefined}><span /></li>;
+                })}
+              </ol>
+              <div className="csim-progress" aria-hidden="true">
+                <span style={{ width: `${((step - 1 + Math.min(progress, 1)) / totalSteps) * 100}%` }} />
+              </div>
+              <label className="csim-speed-select">Tốc độ
+                <select value={speed} onChange={(event) => setSpeed(Number(event.target.value))}>
+                  <option value={0.5}>0.5x</option>
+                  <option value={1}>1x</option>
+                  <option value={1.5}>1.5x</option>
+                  <option value={2}>2x</option>
+                </select>
+              </label>
+            </div>
+          </div>
+
+          {subjectKey === 'integral' && moduleKey === 'area' && <AreaBetweenCurvesSimulation step={step} progress={progress} />}
+          {subjectKey === 'integral' && moduleKey === 'revolution' && <SolidOfRevolutionSimulation step={step} progress={progress} />}
+          {subjectKey === 'integral' && moduleKey === 'cross-section' && <CrossSectionVolumeSimulation step={step} progress={progress} />}
+          {subjectKey === 'trigonometry' && <TrigonometrySimulation playing={playing} />}
         </div>
       </div>
-
-      {subjectKey === 'integral' && moduleKey === 'area' && <AreaBetweenCurvesSimulation step={step} progress={progress} />}
-      {subjectKey === 'integral' && moduleKey === 'revolution' && <SolidOfRevolutionSimulation step={step} progress={progress} />}
-      {subjectKey === 'integral' && moduleKey === 'cross-section' && <CrossSectionVolumeSimulation step={step} progress={progress} />}
-      {subjectKey === 'trigonometry' && <TrigonometrySimulation playing={playing} />}
     </section>
   );
 }
