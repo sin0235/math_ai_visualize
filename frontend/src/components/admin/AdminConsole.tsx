@@ -586,7 +586,7 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
             </header>
             <section className="admin-panel admin-panel-full">
             <AdminAiSettingsForm value={adminAiSettingsValue(aiSettings, settingsDefaults)} defaults={settingsDefaults} saving={savingAiSettings} onSave={saveAiSettingsPatch} onToast={onToast} />
-            <AdminAiProfilesForm value={adminAiProfilesValue(settings.find((item) => item.key === 'ai_profiles')?.value, settingsDefaults)} aiSettings={aiSettings} onSave={(value) => saveAdminSystemSetting('ai_profiles', value)} onToast={onToast} />
+            <AdminAiProfilesForm value={adminAiProfilesValue(settings.find((item) => item.key === 'ai_profiles')?.value, settingsDefaults)} aiSettings={aiSettings} defaults={settingsDefaults} onSave={(value) => saveAdminSystemSetting('ai_profiles', value)} onToast={onToast} />
             <AdminAiPromptsForm value={settings.find((item) => item.key === 'ai_prompts')?.value ?? {}} onSave={(value) => saveAdminSystemSetting('ai_prompts', value)} onToast={onToast} />
           </section>
           </>
@@ -956,16 +956,24 @@ function adminAiSettingsValue(value: Record<string, unknown>, defaults: Settings
 function adminAiProfilesValue(value: unknown, defaults: SettingsDefaults | null) {
   const data = value && typeof value === 'object' ? value as Record<string, unknown> : {};
   const profiles = defaults?.registry_task_profiles ?? [];
-  if (Object.keys(data).length > 0 || profiles.length === 0) return data;
   const byTask = Object.fromEntries(profiles.map((profile) => [profile.task, profile]));
   const geometry = byTask.reasoning ?? byTask.render;
   const solver = byTask.solver_explanation;
   const ocr = byTask.ocr;
+  if (Object.keys(data).length === 0) {
+    if (profiles.length === 0) return data;
+    return {
+      version: 1,
+      ...(geometry ? { geometry_reasoning: { provider: geometry.provider_id, model: geometry.model_id, fallbacks: geometry.fallbacks } } : {}),
+      ...(solver ? { solver_explanation: { provider: solver.provider_id, model: solver.model_id, fallbacks: solver.fallbacks } } : {}),
+      ...(ocr ? { ocr: { provider: ocr.provider_id, model: ocr.model_id, fallbacks: ocr.fallbacks } } : {}),
+    };
+  }
   return {
-    version: 1,
-    ...(geometry ? { geometry_reasoning: { provider: geometry.provider_id, model: geometry.model_id, fallbacks: geometry.fallbacks } } : {}),
-    ...(solver ? { solver_explanation: { provider: solver.provider_id, model: solver.model_id, fallbacks: solver.fallbacks } } : {}),
-    ...(ocr ? { ocr: { provider: ocr.provider_id, model: ocr.model_id, fallbacks: ocr.fallbacks } } : {}),
+    ...data,
+    ...(data.geometry_reasoning === undefined && geometry ? { geometry_reasoning: { provider: geometry.provider_id, model: geometry.model_id, fallbacks: geometry.fallbacks } } : {}),
+    ...(data.solver_explanation === undefined && solver ? { solver_explanation: { provider: solver.provider_id, model: solver.model_id, fallbacks: solver.fallbacks } } : {}),
+    ...(data.ocr === undefined && ocr ? { ocr: { provider: ocr.provider_id, model: ocr.model_id, fallbacks: ocr.fallbacks } } : {}),
   };
 }
 

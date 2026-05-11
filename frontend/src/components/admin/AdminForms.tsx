@@ -614,7 +614,7 @@ export function AdminFeatureFlagsForm({ value, onSave, onToast }: { value: Recor
   );
 }
 
-export function AdminAiProfilesForm({ value, aiSettings, onSave, onToast }: { value: Record<string, unknown>; aiSettings: Record<string, unknown>; onSave: (value: Record<string, unknown>) => Promise<void>; onToast?: AdminToast }) {
+export function AdminAiProfilesForm({ value, aiSettings, defaults, onSave, onToast }: { value: Record<string, unknown>; aiSettings: Record<string, unknown>; defaults?: SettingsDefaults | null; onSave: (value: Record<string, unknown>) => Promise<void>; onToast?: AdminToast }) {
   const geometry = getAiTaskProfile(value.geometry_reasoning);
   const solver = getAiTaskProfile(value.solver_explanation);
   const ocr = getAiTaskProfile(value.ocr);
@@ -628,7 +628,7 @@ export function AdminAiProfilesForm({ value, aiSettings, onSave, onToast }: { va
   const [ocrModel, setOcrModel] = useState(ocr.model);
   const [ocrFallbacks, setOcrFallbacks] = useState<string[]>(ocr.fallbacks);
   const [saving, setSaving] = useState(false);
-  const settingsDefaults = adminSettingsToDefaults(aiSettings);
+  const settingsDefaults = defaults ?? adminSettingsToDefaults(aiSettings);
   const providerOptions = buildProviderOptions(settingsDefaults, false);
 
   useEffect(() => {
@@ -652,7 +652,17 @@ export function AdminAiProfilesForm({ value, aiSettings, onSave, onToast }: { va
   }
 
   function modelOptions(selectedProvider: string, selectedModel: string, fallbackModels: string[] = []) {
-    return buildModelOptionsFromDefaults(providerDefaults(selectedProvider), selectedModel, fallbackModels, settingsDefaults, selectedProvider);
+    const options = buildModelOptionsFromDefaults(providerDefaults(selectedProvider), selectedModel, fallbackModels, settingsDefaults, selectedProvider);
+    if (options.length > 0 || selectedProvider !== 'auto') return options;
+    // Khi provider là auto và không có models, tổng hợp từ tất cả providers đã cấu hình
+    const seen = new Set<string>();
+    const combined: Array<{ id: string; label: string }> = [];
+    (['openrouter', 'nvidia', 'ollama', 'openai_compat', 'router9'] as const).forEach((provider) => {
+      buildModelOptionsFromDefaults(settingsDefaults[provider], '', [], settingsDefaults, provider).forEach((option) => {
+        if (!seen.has(option.id)) { seen.add(option.id); combined.push(option); }
+      });
+    });
+    return combined;
   }
 
   function updateFallbacks(kind: 'geometry' | 'solver' | 'ocr', modelId: string, checked: boolean) {
@@ -674,11 +684,11 @@ export function AdminAiProfilesForm({ value, aiSettings, onSave, onToast }: { va
 
   return (
     <section className="admin-settings-section"><h4>Hồ sơ AI</h4><div className="admin-field-grid">
-      <label className="field-label">Provider hình học<select value={geometryProvider} onChange={(event) => setGeometryProvider(event.target.value)} disabled={saving}><option value="auto">auto</option>{providerOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
+      <label className="field-label">Provider hình học<select value={geometryProvider} onChange={(event) => setGeometryProvider(event.target.value)} disabled={saving}>{providerOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
       <label className="field-label">Model hình học<select value={geometryModel} onChange={(event) => setGeometryModel(event.target.value)} disabled={saving}><option value="">Chọn model</option>{modelOptions(geometryProvider, geometryModel, geometryFallbacks).map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.label}</option>)}</select></label>
-      <label className="field-label">Provider diễn giải lời giải<select value={solverProvider} onChange={(event) => setSolverProvider(event.target.value)} disabled={saving}><option value="auto">auto</option>{providerOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
+      <label className="field-label">Provider diễn giải lời giải<select value={solverProvider} onChange={(event) => setSolverProvider(event.target.value)} disabled={saving}>{providerOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
       <label className="field-label">Model diễn giải lời giải<select value={solverModel} onChange={(event) => setSolverModel(event.target.value)} disabled={saving}><option value="">Chọn model</option>{modelOptions(solverProvider, solverModel, solverFallbacks).map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.label}</option>)}</select></label>
-      <label className="field-label">Provider OCR<select value={ocrProvider} onChange={(event) => setOcrProvider(event.target.value)} disabled={saving}><option value="auto">auto</option>{providerOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
+      <label className="field-label">Provider OCR<select value={ocrProvider} onChange={(event) => setOcrProvider(event.target.value)} disabled={saving}>{providerOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
       <label className="field-label">Model OCR<select value={ocrModel} onChange={(event) => setOcrModel(event.target.value)} disabled={saving}><option value="">Chọn model</option>{modelOptions(ocrProvider, ocrModel, ocrFallbacks).map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.label}</option>)}</select></label>
     </div>
     <div className="admin-model-fallback-grid">
@@ -691,14 +701,17 @@ export function AdminAiProfilesForm({ value, aiSettings, onSave, onToast }: { va
 }
 
 function ModelFallbackChecklist({ title, options, selected, onToggle, disabled }: { title: string; options: Array<{ id: string; label: string }>; selected: string[]; onToggle: (modelId: string, checked: boolean) => void; disabled?: boolean }) {
+  // Đảm bảo các model đã được chọn luôn hiển thị dù không còn trong allowlist
+  const visibleOptions = [...options];
+  selected.filter((id) => id && !options.some((o) => o.id === id)).forEach((id) => visibleOptions.push({ id, label: id }));
   return (
     <section className="admin-model-fallback-list">
       <div className="admin-provider-models-head">
         <strong>{title}</strong>
-        <span>{options.length}</span>
+        <span>{visibleOptions.length}</span>
       </div>
       <div className="admin-model-checklist">
-        {options.length > 0 ? options.map((option) => (
+        {visibleOptions.length > 0 ? visibleOptions.map((option) => (
           <div key={option.id} className="admin-model-checkbox">
             <label>
               <input type="checkbox" checked={selected.includes(option.id)} onChange={(event) => onToggle(option.id, event.target.checked)} disabled={disabled} />
