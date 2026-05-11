@@ -82,6 +82,7 @@ interface ProblemInputProps {
     preferredAiModel?: string,
     advancedSettings?: AdvancedRenderSettings,
     preferredRenderer?: Renderer,
+    mode?: 'problem' | 'diagram',
   ) => void;
   onOcrClipboardImage: () => void;
   onOpenRouter9Settings: () => void;
@@ -138,7 +139,7 @@ export function ProblemInput({
     );
   }
 
-  function pickImageFile(files: FileList | null) {
+  function pickImageFile(files: FileList | null, mode: 'problem' | 'diagram' = 'problem') {
     const file = Array.from(files ?? []).find((item) => item.type.startsWith('image/'));
     if (file) {
       onOcrImage(
@@ -147,6 +148,7 @@ export function ProblemInput({
         selectedModel?.modelId,
         advancedSettings,
         preferredRenderer === 'auto' ? undefined : preferredRenderer,
+        mode,
       );
     }
   }
@@ -196,13 +198,21 @@ export function ProblemInput({
             type="button"
             className={`ocr-image-drop-target ${dragActive ? 'drag-active' : ''}`.trim()}
             disabled={busy}
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => {
+              fileInputRef.current?.setAttribute('data-ocr-mode', 'diagram');
+              fileInputRef.current?.click();
+            }}
             onDragOver={(event) => {
               event.preventDefault();
               if (!busy) setDragActive(true);
             }}
             onDragLeave={() => { if (!busy) setDragActive(false); }}
-            onDrop={handleDrop}
+            onDrop={(event) => {
+              event.preventDefault();
+              if (busy) return;
+              setDragActive(false);
+              pickImageFile(event.dataTransfer.files, 'diagram');
+            }}
           >
             Kéo thả ảnh vào đây hoặc bấm để chọn ảnh
           </button>
@@ -223,7 +233,8 @@ export function ProblemInput({
             accept="image/*"
             className="hidden-file-input"
             onChange={(event) => {
-              pickImageFile(event.target.files);
+              pickImageFile(event.target.files, event.currentTarget.dataset.ocrMode === 'diagram' ? 'diagram' : 'problem');
+              delete event.currentTarget.dataset.ocrMode;
               event.target.value = '';
             }}
           />

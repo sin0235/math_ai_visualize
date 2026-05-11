@@ -35,9 +35,10 @@ export function riemannBetween(f: CompiledExpression, g: CompiledExpression, a: 
     const midX = x + width / 2;
     const fy = safeEval(f, midX);
     const gy = safeEval(g, midX);
+    if (!Number.isFinite(fy) || !Number.isFinite(gy)) return { x, midX, top: NaN, bottom: NaN, height: NaN, width, area: NaN };
     const top = Math.max(fy, gy);
     const bottom = Math.min(fy, gy);
-    const height = Number.isFinite(top - bottom) ? top - bottom : 0;
+    const height = top - bottom;
     return { x, midX, top, bottom, height, width, area: height * width };
   });
 }
@@ -45,22 +46,42 @@ export function riemannBetween(f: CompiledExpression, g: CompiledExpression, a: 
 export function findIntersections(f: CompiledExpression, g: CompiledExpression, a: number, b: number, samples = 420) {
   const roots: Array<{ x: number; y: number }> = [];
   const h = (b - a) / samples;
+  const rootEps = 1e-7;
   let prevX = a;
   let prevY = diff(f, g, prevX);
+  if (Number.isFinite(prevY) && Math.abs(prevY) <= rootEps) addRoot(roots, prevX, safeEval(f, prevX), h);
   for (let i = 1; i <= samples; i += 1) {
     const x = a + i * h;
     const y = diff(f, g, x);
-    if (Number.isFinite(prevY) && Number.isFinite(y)) {
-      if (Math.abs(y) < 1e-5) addRoot(roots, x, safeEval(f, x));
-      if (prevY * y < 0) {
-        const rootX = bisect((value) => diff(f, g, value), prevX, x);
-        addRoot(roots, rootX, safeEval(f, rootX));
-      }
+    if (Number.isFinite(y) && Math.abs(y) <= rootEps) addRoot(roots, x, safeEval(f, x), h);
+    if (Number.isFinite(prevY) && Number.isFinite(y) && prevY * y < 0) {
+      const rootX = bisect((value) => diff(f, g, value), prevX, x);
+      addRoot(roots, rootX, safeEval(f, rootX), h);
     }
     prevX = x;
     prevY = y;
   }
-  return roots;
+  return roots.sort((left, right) => left.x - right.x);
+}
+
+export function functionsCoincide(f: CompiledExpression, g: CompiledExpression, a: number, b: number, samples = 120) {
+  const h = (b - a) / Math.max(1, samples - 1);
+  let valid = 0;
+  for (let i = 0; i < samples; i += 1) {
+    const x = a + h * i;
+    const fy = safeEval(f, x);
+    const gy = safeEval(g, x);
+    if (!Number.isFinite(fy) || !Number.isFinite(gy)) continue;
+    valid += 1;
+    if (Math.abs(fy - gy) > 1e-7) return false;
+  }
+  return valid >= samples * 0.95;
+}
+
+export function domainWarningFor(points: SamplePoint[], label = 'hàm') {
+  const invalid = points.find((point) => !point.valid);
+  if (!invalid) return null;
+  return `${label} không xác định tại một phần đoạn đã chọn (ví dụ x = ${formatNumber(invalid.x, 3)}). Hãy điều chỉnh cận hoặc biểu thức.`;
 }
 
 export function safeEval(fn: CompiledExpression, x: number) {
@@ -139,8 +160,9 @@ function bisect(fn: (x: number) => number, left: number, right: number) {
   return (lo + hi) / 2;
 }
 
-function addRoot(roots: Array<{ x: number; y: number }>, x: number, y: number) {
+function addRoot(roots: Array<{ x: number; y: number }>, x: number, y: number, spacing = 1e-3) {
   if (!Number.isFinite(x) || !Number.isFinite(y)) return;
-  if (roots.some((root) => Math.abs(root.x - x) < 1e-3)) return;
+  const dedupe = Math.max(1e-5, Math.abs(spacing) * 0.55);
+  if (roots.some((root) => Math.abs(root.x - x) < dedupe)) return;
   roots.push({ x, y });
 }

@@ -172,7 +172,7 @@ class StoredRouter9Settings(StoredProviderSettings):
 class StoredOcrSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    provider: Literal["openrouter", "router9"] = "openrouter"
+    provider: Literal["", "openrouter", "router9"] = ""
     model: str = Field(default="", max_length=MAX_MODEL_ID_CHARS)
     max_image_mb: int = Field(default=5, ge=1, le=32)
 

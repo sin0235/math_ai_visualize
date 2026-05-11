@@ -1,4 +1,4 @@
-import type { OcrProvider, RuntimeSettings, SettingsDefaults } from '../types/settings';
+import type { OcrProvider, OcrProviderChoice, RuntimeSettings, SettingsDefaults } from '../types/settings';
 import { buildModelOptionsFromDefaults, buildOcrProviderOptions, buildProviderOptions } from '../utils/settingsOptions';
 import type { Option } from '../utils/settingsOptions';
 
@@ -13,8 +13,9 @@ export function GeneralSettingsPanel({ value, defaults, onChange, onReset }: Gen
   const providerOptions = buildProviderOptions(defaults, false);
   const providerModelOptions = buildProviderModelOptions(defaults, value.default_provider, currentProviderModel(value));
   const ocrProviderOptions = buildOcrProviderOptions(defaults);
-  const ocrProviderDefaults = getOcrProviderDefaults(defaults, value.ocr.provider);
-  const ocrModels = buildUserModelOptionsFromDefaults(ocrProviderDefaults, value.ocr.model, [defaults?.ocr.provider === value.ocr.provider ? defaults.ocr.model : '']);
+  const resolvedOcrProvider = (value.ocr.provider || defaults?.ocr.provider || 'openrouter') as OcrProvider;
+  const ocrProviderDefaults = getOcrProviderDefaults(defaults, resolvedOcrProvider);
+  const ocrModels = buildUserModelOptionsFromDefaults(ocrProviderDefaults, value.ocr.model, [defaults?.ocr.provider === resolvedOcrProvider ? defaults.ocr.model : '']);
   const selectedOcrModel = value.ocr.model;
 
   function updateField<Key extends keyof RuntimeSettings>(key: Key, nextValue: RuntimeSettings[Key]) {
@@ -23,13 +24,13 @@ export function GeneralSettingsPanel({ value, defaults, onChange, onReset }: Gen
 
   function updateOcr<Field extends keyof RuntimeSettings['ocr']>(field: Field, nextValue: RuntimeSettings['ocr'][Field]) {
     if (field === 'provider') {
-      const nextProvider = nextValue as OcrProvider;
+      const nextProvider = nextValue as OcrProviderChoice;
       onChange({
         ...value,
         ocr: {
           ...value.ocr,
           provider: nextProvider,
-          model: defaultOcrModelForProvider(defaults, value, nextProvider),
+          model: nextProvider === '' ? '' : defaultOcrModelForProvider(defaults, value, nextProvider),
         },
       });
       return;
@@ -96,7 +97,7 @@ export function GeneralSettingsPanel({ value, defaults, onChange, onReset }: Gen
 
           <label className="field-label">
             Provider OCR mặc định
-            <select value={value.ocr.provider} onChange={(event) => updateOcr('provider', event.target.value as OcrProvider)}>
+            <select value={value.ocr.provider} onChange={(event) => updateOcr('provider', event.target.value as OcrProviderChoice)}>
               {ocrProviderOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>) }
             </select>
           </label>
@@ -104,7 +105,7 @@ export function GeneralSettingsPanel({ value, defaults, onChange, onReset }: Gen
           <label className="field-label">
             Model OCR mặc định
             <select value={selectedOcrModel} onChange={(event) => updateOcr('model', event.target.value)}>
-              <option value="">Dùng mặc định hệ thống: {systemOcrModelLabel(defaults, value.ocr.provider)}</option>
+              <option value="">Dùng mặc định hệ thống: {systemOcrModelLabel(defaults, resolvedOcrProvider)}</option>
               {value.ocr.model && !ocrModels.some((model) => model.id === value.ocr.model) && <option value={value.ocr.model}>{value.ocr.model}</option>}
               {ocrModels.map((model) => <option key={model.id} value={model.id}>{model.label}</option>)}
             </select>
@@ -154,11 +155,12 @@ function getOcrProviderDefaults(defaults: SettingsDefaults | null, provider: Ocr
   return defaults[provider];
 }
 
-function defaultOcrModelForProvider(defaults: SettingsDefaults | null, value: RuntimeSettings, provider: OcrProvider): string {
-  if (defaults?.ocr.provider === provider && defaults.ocr.model) return defaults.ocr.model;
-  if (provider === 'openrouter') return defaults?.openrouter.vision_model || value.openrouter.model;
-  const providerSettings = value[provider];
-  const providerDefaults = getOcrProviderDefaults(defaults, provider);
+function defaultOcrModelForProvider(defaults: SettingsDefaults | null, value: RuntimeSettings, provider: OcrProviderChoice): string {
+  const resolved = (provider || defaults?.ocr.provider || 'openrouter') as OcrProvider;
+  if (defaults?.ocr.provider === resolved && defaults.ocr.model) return defaults.ocr.model;
+  if (resolved === 'openrouter') return defaults?.openrouter.vision_model || value.openrouter.model;
+  const providerSettings = value[resolved];
+  const providerDefaults = getOcrProviderDefaults(defaults, resolved);
   return providerSettings.model || providerDefaults?.model || providerDefaults?.allowed_model_ids[0] || providerDefaults?.scanned_models[0]?.id || '';
 }
 

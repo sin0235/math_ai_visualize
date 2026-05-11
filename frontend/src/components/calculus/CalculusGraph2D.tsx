@@ -26,14 +26,15 @@ export function CalculusGraph2D({ primary, secondary = [], fillBetween = false, 
   });
   const xAxis = project(0, 0).y;
   const yAxis = project(0, 0).x;
-  const shownRects = rectangles.slice(0, Math.max(0, Math.min(rectangles.length, visibleRectangles)));
-  const fillPath = fillBetween && secondary.length > 1 ? buildAreaPath(primary, secondary, project) : '';
+  const shownRects = rectangles.filter((rect) => Number.isFinite(rect.top) && Number.isFinite(rect.bottom) && Number.isFinite(rect.area)).slice(0, Math.max(0, Math.min(rectangles.length, visibleRectangles)));
+  const fillPath = fillBetween && secondary.length > 1 && !curvesOverlap(primary, secondary) ? buildAreaPaths(primary, secondary, project) : [];
+  const showSecondaryLegend = secondary.length > 1 && secondaryLabel.trim().length > 0;
 
   return (
     <div className="csim-graph-card">
       <div className="csim-graph-head">
         <strong>{title ?? 'Đồ thị'}</strong>
-        <span><i className="csim-line f" /> {primaryLabel} <i className="csim-line g" /> {secondaryLabel}</span>
+        <span><i className="csim-line f" /> {primaryLabel}{showSecondaryLegend && <><i className="csim-line g" /> {secondaryLabel}</>}</span>
       </div>
       <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="csim-svg" role="img" aria-label={title ?? 'Đồ thị mô phỏng'}>
         <rect x="0" y="0" width={WIDTH} height={HEIGHT} rx="18" className="csim-svg-bg" />
@@ -47,7 +48,7 @@ export function CalculusGraph2D({ primary, secondary = [], fillBetween = false, 
         })}
         <line x1={PAD} x2={WIDTH - PAD} y1={clampSvg(xAxis, PAD, HEIGHT - PAD)} y2={clampSvg(xAxis, PAD, HEIGHT - PAD)} className="csim-axis" />
         <line x1={clampSvg(yAxis, PAD, WIDTH - PAD)} x2={clampSvg(yAxis, PAD, WIDTH - PAD)} y1={PAD} y2={HEIGHT - PAD} className="csim-axis" />
-        {fillPath && <path d={fillPath} className="csim-area-fill" />}
+        {fillPath.map((path, index) => <path key={`area-${index}`} d={path} className="csim-area-fill" />)}
         {shownRects.map((rect, index) => {
           const left = project(rect.x, rect.bottom);
           const right = project(rect.x + rect.width, rect.top);
@@ -74,6 +75,11 @@ export function CalculusGraph2D({ primary, secondary = [], fillBetween = false, 
   );
 }
 
+function curvesOverlap(primary: SamplePoint[], secondary: SamplePoint[]) {
+  const pairs = primary.map((point, index) => [point, secondary[index]] as const).filter(([a, b]) => a.valid && b?.valid);
+  return pairs.length > 1 && pairs.every(([a, b]) => Math.abs(a.y - b.y) < 1e-7);
+}
+
 function buildLinePath(points: SamplePoint[], project: (x: number, y: number) => { x: number; y: number }) {
   const parts: string[] = [];
   let open = false;
@@ -89,22 +95,35 @@ function buildLinePath(points: SamplePoint[], project: (x: number, y: number) =>
   return parts.join(' ');
 }
 
-function buildAreaPath(primary: SamplePoint[], secondary: SamplePoint[], project: (x: number, y: number) => { x: number; y: number }) {
-  const top = primary.filter((p) => p.valid);
-  const bottom = secondary.filter((p) => p.valid).slice().reverse();
-  if (top.length < 2 || bottom.length < 2) return '';
-  const first = project(top[0].x, top[0].y);
-  const parts = [`M ${first.x.toFixed(2)} ${first.y.toFixed(2)}`];
-  top.slice(1).forEach((point) => {
-    const p = project(point.x, point.y);
-    parts.push(`L ${p.x.toFixed(2)} ${p.y.toFixed(2)}`);
+function buildAreaPaths(primary: SamplePoint[], secondary: SamplePoint[], project: (x: number, y: number) => { x: number; y: number }) {
+  const paths: string[] = [];
+  let segment: Array<{ top: SamplePoint; bottom: SamplePoint }> = [];
+  const flush = () => {
+    if (segment.length < 2) {
+      segment = [];
+      return;
+    }
+    const first = project(segment[0].top.x, segment[0].top.y);
+    const parts = [`M ${first.x.toFixed(2)} ${first.y.toFixed(2)}`];
+    segment.slice(1).forEach(({ top }) => {
+      const p = project(top.x, top.y);
+      parts.push(`L ${p.x.toFixed(2)} ${p.y.toFixed(2)}`);
+    });
+    segment.slice().reverse().forEach(({ bottom }) => {
+      const p = project(bottom.x, bottom.y);
+      parts.push(`L ${p.x.toFixed(2)} ${p.y.toFixed(2)}`);
+    });
+    parts.push('Z');
+    paths.push(parts.join(' '));
+    segment = [];
+  };
+  primary.forEach((top, index) => {
+    const bottom = secondary[index];
+    if (top.valid && bottom?.valid && Math.abs(top.x - bottom.x) < 1e-8) segment.push({ top, bottom });
+    else flush();
   });
-  bottom.forEach((point) => {
-    const p = project(point.x, point.y);
-    parts.push(`L ${p.x.toFixed(2)} ${p.y.toFixed(2)}`);
-  });
-  parts.push('Z');
-  return parts.join(' ');
+  flush();
+  return paths;
 }
 
 function ticks(min: number, max: number, count: number) {

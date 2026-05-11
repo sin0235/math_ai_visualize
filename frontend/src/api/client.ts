@@ -1,5 +1,6 @@
 import type { AdvancedRenderSettings, MathScene, RenderResponse, Renderer } from '../types/scene';
-import type { RuntimeSettings, ScannedModelInfo, SettingsDefaults, UserBasicSettings } from '../types/settings';
+import type { OcrProvider, RuntimeSettings, ScannedModelInfo, SettingsDefaults, UserBasicSettings } from '../types/settings';
+import { inferOcrProviderFromModelId } from '../utils/settingsOptions';
 import { buildExportFilename, type ExportFormatKey } from '../utils/exportFilename';
 
 export interface OcrResponse {
@@ -493,6 +494,24 @@ export async function renderProblem(
   }, 'Không thể dựng hình.');
 }
 
+function effectiveOcrProviderForRequest(settings: RuntimeSettings): OcrProvider | undefined {
+  if (settings.router9.only_mode) return 'router9';
+  const explicit = settings.ocr.provider.trim();
+  const raw = settings.ocr.model.trim();
+  const inferred = inferOcrProviderFromModelId(settings.ocr.model);
+  if (explicit) {
+    const chosen = explicit as OcrProvider;
+    if (chosen === 'openrouter' && inferred === 'router9' && !raw.startsWith('openrouter/')) {
+      return 'router9';
+    }
+    if (chosen === 'router9' && inferred === 'openrouter') {
+      return 'openrouter';
+    }
+    return chosen;
+  }
+  return inferred ?? undefined;
+}
+
 export async function ocrImage(imageDataUrl: string, runtimeSettings: RuntimeSettings, mode: 'problem' | 'diagram' = 'problem'): Promise<OcrResponse> {
   return requestJson('/api/ocr', {
     method: 'POST',
@@ -500,7 +519,7 @@ export async function ocrImage(imageDataUrl: string, runtimeSettings: RuntimeSet
     credentials: 'include',
     body: JSON.stringify({
       image_data_url: imageDataUrl,
-      ocr_provider: runtimeSettings.router9.only_mode ? 'router9' : runtimeSettings.ocr.provider,
+      ocr_provider: effectiveOcrProviderForRequest(runtimeSettings),
       ocr_model: runtimeSettings.ocr.model.trim() || undefined,
       mode,
       runtime_settings: compactRuntimeSettings(runtimeSettings),

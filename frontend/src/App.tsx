@@ -15,12 +15,14 @@ import { SceneEditorPanel, type PointPlacementPlane } from './components/SceneEd
 import { PrivacyPolicyPage, TermsPage } from './components/LegalPages';
 import { SolverPanel } from './components/SolverPanel';
 import { FunctionAnalyzerPanel } from './components/FunctionAnalyzerPanel';
+import { CalculusSimulationPage } from './components/CalculusSimulationPage';
 import { KatexSpan } from './components/KatexSpan';
 import { ExportMenuItems } from './components/ExportMenu';
 import { ProblemVariantTool } from './components/DiagramTools';
 import { getDefaultParamValues, patchGeogebraCommandsForScene, recomputeSceneWithParameters, recomputeThreeScene } from './utils/sceneParameters';
 import type { AdvancedRenderSettings, MathScene, RenderResponse, Renderer } from './types/scene';
 import { defaultRuntimeSettings, SETTINGS_STORAGE_VERSION, type OcrProvider, type RuntimeSettings, type SettingsDefaults, type UserBasicSettings } from './types/settings';
+import { inferOcrProviderFromModelId } from './utils/settingsOptions';
 import logoUrl from '../img.svg';
 import './styles.css';
 
@@ -30,7 +32,7 @@ const MOBILE_BREAKPOINT_QUERY = '(max-width: 900px)';
 const DEVELOPER_GITHUB_URL = 'https://github.com/sin0235';
 const CONTACT_EMAIL = 'support@sin-studio.tech';
 
-type AppView = 'home' | 'render' | 'analyzer' | 'analyzer-guide' | 'history' | 'guide' | 'about' | 'privacy-policy' | 'terms' | 'login' | 'settings' | 'admin' | 'account' | 'feedback' | 'reset-password' | 'verify-email';
+type AppView = 'home' | 'render' | 'analyzer' | 'analyzer-guide' | 'simulation' | 'history' | 'guide' | 'about' | 'privacy-policy' | 'terms' | 'login' | 'settings' | 'admin' | 'account' | 'feedback' | 'reset-password' | 'verify-email';
 type EditTool = 'move' | 'connect' | 'project_to_segment' | 'add_point';
 type Vec3 = { x: number; y: number; z: number };
 type Notification = {
@@ -55,6 +57,7 @@ const viewPaths: Record<AppView, string> = {
   render: '/render',
   analyzer: '/analyzer',
   'analyzer-guide': '/analyzer/guide',
+  simulation: '/simulation',
   history: '/history',
   guide: '/guide',
   about: '/about',
@@ -386,6 +389,7 @@ export default function App() {
     preferredAiModel?: string,
     advancedSettings?: AdvancedRenderSettings,
     preferredRenderer?: Renderer,
+    mode: 'problem' | 'diagram' = 'problem',
   ) {
     if (!user) {
       showNotification('Cần đăng nhập', 'Vui lòng đăng nhập trước khi dùng OCR.', [], 'warning');
@@ -412,7 +416,7 @@ export default function App() {
     setOcrLoading(true);
     try {
       const imageDataUrl = await fileToDataUrl(file);
-      const response = await ocrImage(imageDataUrl, runtimeSettings);
+      const response = await ocrImage(imageDataUrl, runtimeSettings, mode);
       const nextProblemText = response.text.trim();
       setProblemText(nextProblemText);
       if (nextProblemText) {
@@ -855,7 +859,7 @@ export default function App() {
         </div>
         <nav className="header-nav">
           <div className="tools-menu" ref={toolsMenuRef}>
-            <button type="button" className={`nav-item ${activeView === 'render' || activeView === 'analyzer' || activeView === 'analyzer-guide' ? 'active' : ''}`} aria-haspopup="menu" aria-expanded={toolsMenuOpen} onClick={() => setToolsMenuOpen((open) => !open)}>
+            <button type="button" className={`nav-item ${activeView === 'render' || activeView === 'analyzer' || activeView === 'analyzer-guide' || activeView === 'simulation' ? 'active' : ''}`} aria-haspopup="menu" aria-expanded={toolsMenuOpen} onClick={() => setToolsMenuOpen((open) => !open)}>
               <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3v18"></path><path d="M3 12h18"></path><path d="M5 5l14 14"></path><path d="M19 5L5 19"></path></svg>
               Công cụ
               <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
@@ -876,17 +880,12 @@ export default function App() {
                   <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
                   <span><strong>Khảo sát hàm</strong><small>Đồ thị, đạo hàm, cực trị</small></span>
                 </button>
-                <button type="button" role="menuitem" onClick={() => {
+                <button type="button" role="menuitem" className={activeView === 'simulation' ? 'active' : ''} onClick={() => {
                   setToolsMenuOpen(false);
-                  showNotification(
-                    'Thông báo',
-                    'Chức năng đang trong quá trình hoàn thiện!',
-                    [],
-                    'info'
-                  );
+                  navigateTo('simulation');
                 }}>
                   <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><polygon points="10 8 16 12 10 16 10 8"></polygon></svg>
-                  <span><strong>Mô phỏng</strong><small>Step-by-step bài toán THPT</small></span>
+                  <span><strong>Mô phỏng</strong><small>Tích phân, lượng giác, animation học toán</small></span>
                 </button>
                 <button type="button" role="menuitem" onClick={() => {
                   setToolsMenuOpen(false);
@@ -1183,6 +1182,7 @@ export default function App() {
             <FunctionAnalyzerPanel onOpenGuide={() => navigateTo('analyzer-guide')} />
           </div>
         )}
+        {activeView === 'simulation' && <CalculusSimulationPage />}
         {activeView === 'analyzer-guide' && <AnalyzerGuidePage onOpenGeneralGuide={() => navigateTo('guide')} />}
         {activeView === 'history' && (
           <HistoryPage
@@ -1765,8 +1765,20 @@ function mergeBackendDefaults(current: RuntimeSettings, defaults: SettingsDefaul
   const ollama = mergeProviderDefaults(current.ollama, defaults.ollama, 'ollama');
   const openai_compat = mergeProviderDefaults(current.openai_compat, defaults.openai_compat, 'openai_compat');
   const router9 = mergeProviderDefaults(current.router9, defaults.router9, 'router9');
-  const ocrProvider = current.ocr.provider || defaults.ocr.provider;
-  const ocrModel = current.ocr.model || defaultOcrModelFromMergedDefaults(ocrProvider, defaults, { openrouter, nvidia, ollama, openai_compat, router9 });
+  const userWantsSystemOcrProvider = !String(current.ocr.provider ?? '').trim();
+  const ocrProviderFromChoice = (current.ocr.provider || defaults.ocr.provider || 'openrouter') as OcrProvider;
+  const ocrModel =
+    current.ocr.model ||
+    defaultOcrModelFromMergedDefaults(ocrProviderFromChoice, defaults, { openrouter, nvidia, ollama, openai_compat, router9 });
+  const inferred = inferOcrProviderFromModelId(ocrModel);
+  const rawModel = ocrModel.trim();
+  const ocrProviderEffective =
+    ocrProviderFromChoice === 'openrouter' && inferred === 'router9' && !rawModel.startsWith('openrouter/')
+      ? 'router9'
+      : ocrProviderFromChoice === 'router9' && inferred === 'openrouter'
+        ? 'openrouter'
+        : ocrProviderFromChoice;
+  const ocrProviderStored = userWantsSystemOcrProvider ? '' : ocrProviderEffective;
 
   return {
     ...current,
@@ -1781,7 +1793,7 @@ function mergeBackendDefaults(current: RuntimeSettings, defaults: SettingsDefaul
     },
     ocr: {
       ...current.ocr,
-      provider: ocrProvider,
+      provider: ocrProviderStored,
       model: ocrModel,
       max_image_mb: current.ocr.max_image_mb || defaults.ocr.max_image_mb,
     },
@@ -1789,7 +1801,7 @@ function mergeBackendDefaults(current: RuntimeSettings, defaults: SettingsDefaul
 }
 
 function defaultOcrModelFromMergedDefaults(
-  provider: RuntimeSettings['ocr']['provider'],
+  provider: OcrProvider,
   defaults: SettingsDefaults,
   merged: Pick<RuntimeSettings, 'openrouter' | 'nvidia' | 'ollama' | 'openai_compat' | 'router9'>,
 ): string {
@@ -1848,6 +1860,10 @@ function readMobileWarningDismissed() {
 function loadStoredSettings(saved: string): RuntimeSettings {
   const parsed = JSON.parse(saved) as { version?: number; settings?: Partial<RuntimeSettings> } & Partial<RuntimeSettings>;
   const next = mergeRuntimeSettingsShape(parsed.settings ?? parsed);
+
+  if ((parsed.version ?? 0) < 5 && next.ocr.provider === 'openrouter' && !next.ocr.model.trim()) {
+    next.ocr.provider = '';
+  }
 
   if (parsed.version !== SETTINGS_STORAGE_VERSION) {
     dropLegacyDefaults(next);

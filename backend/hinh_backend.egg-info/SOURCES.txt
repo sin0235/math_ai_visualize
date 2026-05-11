@@ -47,6 +47,7 @@ app/services/ai_prompt.py
 app/services/api_errors.py
 app/services/cas_repair.py
 app/services/cas_verifier.py
+app/services/chat_response.py
 app/services/cross_check.py
 app/services/diagram_ocr.py
 app/services/email.py
@@ -57,7 +58,9 @@ app/services/function_analyzer.py
 app/services/function_graph_builder.py
 app/services/geometry_engine.py
 app/services/google_oauth.py
+app/services/http_pool.py
 app/services/linalg.py
+app/services/model_provider.py
 app/services/model_registry.py
 app/services/model_scan.py
 app/services/nvidia_client.py
@@ -80,6 +83,7 @@ hinh_backend.egg-info/SOURCES.txt
 hinh_backend.egg-info/dependency_links.txt
 hinh_backend.egg-info/requires.txt
 hinh_backend.egg-info/top_level.txt
+tests/test_admin_packages.py
 tests/test_ai_prompt.py
 tests/test_ai_provider_fallbacks.py
 tests/test_auth_product.py
@@ -93,6 +97,7 @@ tests/test_extractor_pipeline.py
 tests/test_feedback.py
 tests/test_geometry_engine.py
 tests/test_geometry_nsimplify.py
+tests/test_history_repository.py
 tests/test_model_registry.py
 tests/test_ocr.py
 tests/test_scene_output_normalization.py

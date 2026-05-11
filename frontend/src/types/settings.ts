@@ -1,5 +1,6 @@
 export type ProviderKey = 'openrouter' | 'nvidia' | 'ollama' | 'openai_compat';
 export type OcrProvider = 'openrouter' | 'router9' | 'nvidia' | 'ollama' | 'openai_compat';
+export type OcrProviderChoice = '' | OcrProvider;
 
 export interface ScannedModelInfo {
   id: string;
@@ -27,7 +28,7 @@ export interface Router9Settings extends ProviderConnectionSettings {
 }
 
 export interface OcrSettings {
-  provider: OcrProvider;
+  provider: OcrProviderChoice;
   model: string;
   max_image_mb: number;
 }
@@ -147,7 +148,7 @@ export interface SettingsDefaults {
   feature_flags?: FeatureFlagsDefaults;
 }
 
-export const SETTINGS_STORAGE_VERSION = 4;
+export const SETTINGS_STORAGE_VERSION = 5;
 
 export const defaultRuntimeSettings: RuntimeSettings = {
   default_provider: 'auto',
@@ -193,7 +194,7 @@ export const defaultRuntimeSettings: RuntimeSettings = {
     last_scanned_at: '',
   },
   ocr: {
-    provider: 'openrouter',
+    provider: '',
     model: '',
     max_image_mb: 5,
   },

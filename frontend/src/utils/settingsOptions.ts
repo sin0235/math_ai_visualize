@@ -1,4 +1,4 @@
-import type { ProviderSettingsDefaults, SettingsDefaults } from '../types/settings';
+import type { OcrProvider, ProviderSettingsDefaults, SettingsDefaults } from '../types/settings';
 
 export type Option = { id: string; label: string };
 
@@ -43,7 +43,7 @@ export function buildProviderOptions(defaults: SettingsDefaults | null, includeM
 }
 
 export function buildOcrProviderOptions(defaults: SettingsDefaults | null): Option[] {
-  const options: Option[] = [];
+  const options: Option[] = [{ id: '', label: 'Theo mặc định hệ thống' }];
   const providers = ['openrouter', 'router9', 'nvidia', 'ollama', 'openai_compat'] as const;
   providers.forEach((provider) => {
     if (!defaults) {
@@ -122,4 +122,35 @@ export function distinctOptions(values: Array<string | null | undefined>, base: 
     if (!byId.has(id)) byId.set(id, { id, label: id });
   });
   return [...byId.values()];
+}
+
+const ROUTER9_MODEL_PREFIXES = [
+  'router9/',
+  'gh/',
+  'cc/',
+  'cx/',
+  'oc/',
+  'kr/',
+  'cf/',
+  'claude-ds/',
+  'openAI-ds/',
+  'kc/',
+  'github/',
+  'codex-',
+] as const;
+
+const OPENROUTER_MODEL_PREFIXES = ['openrouter/', 'openai/', 'google/', 'anthropic/', 'meta-llama/', 'mistralai/', 'qwen/'] as const;
+const NVIDIA_MODEL_PREFIXES = ['nvidia/'] as const;
+const OLLAMA_MODEL_PREFIXES = ['ollama/'] as const;
+const OPENAI_COMPAT_MODEL_PREFIXES = ['openai_compat/', 'openai-compat/'] as const;
+
+export function inferOcrProviderFromModelId(model: string): OcrProvider | null {
+  const value = model.trim();
+  if (!value) return null;
+  if (ROUTER9_MODEL_PREFIXES.some((prefix) => value.startsWith(prefix))) return 'router9';
+  if (value.startsWith(NVIDIA_MODEL_PREFIXES[0])) return 'nvidia';
+  if (value.startsWith(OLLAMA_MODEL_PREFIXES[0])) return 'ollama';
+  if (OPENAI_COMPAT_MODEL_PREFIXES.some((prefix) => value.startsWith(prefix))) return 'openai_compat';
+  if (OPENROUTER_MODEL_PREFIXES.some((prefix) => value.startsWith(prefix))) return 'openrouter';
+  return null;
 }
