@@ -1,9 +1,12 @@
 import json
+import logging
 from functools import lru_cache
 
 from fastapi import HTTPException, status
 
 from app.core.config import Settings
+
+logger = logging.getLogger(__name__)
 
 try:
     import firebase_admin
@@ -47,4 +50,5 @@ async def verify_firebase_id_token(id_token: str, settings: Settings) -> dict:
     except RuntimeError as error:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(error)) from error
     except Exception as error:
+        logger.warning("Firebase token verification failed: %s: %s", type(error).__name__, error)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Firebase token không hợp lệ hoặc đã hết hạn.") from error

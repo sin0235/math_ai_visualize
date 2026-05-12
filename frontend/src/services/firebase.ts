@@ -77,6 +77,7 @@ export async function registerWithFirebaseEmail(email: string, password: string,
   if (!credential.user.emailVerified) {
     await sendEmailVerification(credential.user, { url: window.location.origin + '/login' });
   }
+  await credential.user.getIdToken(true);
 }
 
 export async function signInWithFirebaseGoogle() {
