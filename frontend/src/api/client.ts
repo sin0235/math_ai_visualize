@@ -2,6 +2,17 @@ import type { AdvancedRenderSettings, MathScene, RenderResponse, Renderer } from
 import type { OcrProvider, RuntimeSettings, ScannedModelInfo, SettingsDefaults, UserBasicSettings } from '../types/settings';
 import { inferOcrProviderFromModelId } from '../utils/settingsOptions';
 import { buildExportFilename, type ExportFormatKey } from '../utils/exportFilename';
+import {
+  changeFirebasePassword,
+  getFirebaseIdToken,
+  isFirebaseAuthConfigured,
+  registerWithFirebaseEmail,
+  resendFirebaseVerificationEmail,
+  sendFirebasePasswordReset,
+  signInWithFirebaseEmail,
+  signInWithFirebaseGoogle,
+  signOutFirebase,
+} from '../services/firebase';
 
 export interface OcrResponse {
   text: string;
@@ -214,6 +225,7 @@ function apiUrl(path: string) {
 }
 
 export function getGoogleOAuthStartUrl(): string {
+  if (isFirebaseAuthConfigured()) return '#firebase-google-popup';
   return apiUrl('/api/auth/google/start');
 }
 
@@ -238,6 +250,10 @@ export async function getCurrentUser(): Promise<AuthResponse> {
 }
 
 export async function login(email: string, password: string): Promise<AuthResponse> {
+  if (isFirebaseAuthConfigured()) {
+    await signInWithFirebaseEmail(email, password);
+    return getCurrentUser();
+  }
   return requestJson('/api/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -247,6 +263,19 @@ export async function login(email: string, password: string): Promise<AuthRespon
 }
 
 export async function register(email: string, password: string, displayName: string | undefined, acceptPrivacyPolicy: boolean, acceptTerms: boolean): Promise<AuthResponse> {
+  if (isFirebaseAuthConfigured()) {
+    await registerWithFirebaseEmail(email, password, displayName);
+    return requestJson('/api/auth/firebase/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        display_name: displayName ? cleanText(displayName) : undefined,
+        accept_privacy_policy: acceptPrivacyPolicy,
+        accept_terms: acceptTerms,
+      }),
+    }, 'Không thể đồng bộ tài khoản Firebase.');
+  }
   return requestJson('/api/auth/register', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -262,6 +291,10 @@ export async function register(email: string, password: string, displayName: str
 }
 
 export async function forgotPassword(email: string): Promise<MessageResponse> {
+  if (isFirebaseAuthConfigured()) {
+    await sendFirebasePasswordReset(email);
+    return { message: 'Nếu tài khoản tồn tại, hướng dẫn đặt lại mật khẩu đã được gửi.' };
+  }
   return requestJson('/api/auth/forgot-password', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -289,6 +322,10 @@ export async function verifyEmail(token: string, otp: string): Promise<AuthRespo
 }
 
 export async function resendVerification(email: string): Promise<MessageResponse> {
+  if (isFirebaseAuthConfigured()) {
+    await resendFirebaseVerificationEmail();
+    return { message: `Email xác minh đã được gửi lại tới ${email}.` };
+  }
   return requestJson('/api/auth/resend-verification', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -298,6 +335,10 @@ export async function resendVerification(email: string): Promise<MessageResponse
 }
 
 export async function changePassword(currentPassword: string, newPassword: string): Promise<MessageResponse> {
+  if (isFirebaseAuthConfigured()) {
+    await changeFirebasePassword(currentPassword, newPassword);
+    return { message: 'Mật khẩu đã được cập nhật.' };
+  }
   return requestJson('/api/auth/change-password', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -328,7 +369,20 @@ export async function revokeOtherSessions(): Promise<MessageResponse> {
 }
 
 export async function logout(): Promise<void> {
+  if (isFirebaseAuthConfigured()) {
+    await signOutFirebase();
+    return;
+  }
   await requestVoid('/api/auth/logout', { method: 'POST', credentials: 'include' }, 'Không thể đăng xuất.');
+}
+
+export async function loginWithGoogle(): Promise<AuthResponse> {
+  if (!isFirebaseAuthConfigured()) {
+    window.location.href = getGoogleOAuthStartUrl();
+    throw new Error('Đang chuyển tới Google OAuth.');
+  }
+  await signInWithFirebaseGoogle();
+  return getCurrentUser();
 }
 
 export async function getUserSettings(): Promise<UserSettingsResponse> {
@@ -791,7 +845,7 @@ function queryString(filters: object) {
 
 async function requestJson<T>(path: string, init: RequestInit | undefined, fallbackMessage: string): Promise<T> {
   try {
-    const response = await fetchWithRetry(apiUrl(path), init);
+    const response = await fetchWithRetry(apiUrl(path), await withFirebaseAuthHeader(init));
     if (!response.ok) throw await parseApiError(response, `${fallbackMessage} HTTP ${response.status}`);
     return response.json() as Promise<T>;
   } catch (caught) {
@@ -802,12 +856,21 @@ async function requestJson<T>(path: string, init: RequestInit | undefined, fallb
 
 async function requestVoid(path: string, init: RequestInit | undefined, fallbackMessage: string): Promise<void> {
   try {
-    const response = await fetchWithRetry(apiUrl(path), init);
+    const response = await fetchWithRetry(apiUrl(path), await withFirebaseAuthHeader(init));
     if (!response.ok) throw await parseApiError(response, `${fallbackMessage} HTTP ${response.status}`);
   } catch (caught) {
     if (caught instanceof ApiError) throw caught;
     throw networkApiError(caught, fallbackMessage);
   }
+}
+
+async function withFirebaseAuthHeader(init?: RequestInit): Promise<RequestInit | undefined> {
+  if (!isFirebaseAuthConfigured()) return init;
+  const token = await getFirebaseIdToken();
+  if (!token) return init;
+  const headers = new Headers(init?.headers);
+  headers.set('Authorization', `Bearer ${token}`);
+  return { ...init, headers };
 }
 
 async function fetchWithRetry(input: RequestInfo | URL, init?: RequestInit) {

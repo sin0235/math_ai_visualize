@@ -53,6 +53,29 @@ Nếu chạy Ollama local thì dùng `OLLAMA_BASE_URL=http://localhost:11434` v�
 
 9router chạy local mặc định tại `http://localhost:20128/v1`. Sau khi mở 9router và cấu hình provider trong dashboard của nó, vào tab `9router` trên UI để quét `GET /v1/models`, chọn model được phép hiển thị, rồi chọn model đó ở form dựng hình. Khi bật 9router-only, render/OCR chỉ dùng các model 9router đã chọn.
 
+## Cấu hình Firebase Auth
+
+App hỗ trợ Firebase Auth theo kiểu hybrid: frontend đăng nhập bằng Firebase, backend vẫn giữ database local để lưu role, plan, settings, history và admin.
+
+Frontend `.env`:
+
+```bash
+VITE_FIREBASE_API_KEY=...
+VITE_FIREBASE_AUTH_DOMAIN=...
+VITE_FIREBASE_PROJECT_ID=...
+VITE_FIREBASE_APP_ID=...
+```
+
+Backend `.env`:
+
+```bash
+FIREBASE_PROJECT_ID=...
+FIREBASE_CREDENTIALS_PATH=path/to/service-account.json
+# hoặc FIREBASE_CREDENTIALS_JSON='{"type":"service_account",...}'
+```
+
+Nếu không đặt `VITE_FIREBASE_*`, frontend tự fallback về auth backend cũ. Nếu frontend bật Firebase thì backend phải có `FIREBASE_PROJECT_ID` kèm credentials hoặc Application Default Credentials để verify Firebase ID token.
+
 ## Chạy frontend
 
 ```bash

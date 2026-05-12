@@ -22,6 +22,7 @@ class UserRecord:
     failed_login_count: int = 0
     locked_until: str | None = None
     last_failed_login_at: str | None = None
+    firebase_uid: str | None = None
 
 
 @dataclass(frozen=True)
