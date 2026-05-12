@@ -23,13 +23,14 @@ const firebaseConfig = {
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
+const firebaseEnabled = import.meta.env.VITE_FIREBASE_ENABLED === 'false';
 
 let app: FirebaseApp | null = null;
 let auth: Auth | null = null;
 let authReady: Promise<User | null> | null = null;
 
 export function isFirebaseAuthConfigured() {
-  return Boolean(firebaseConfig.apiKey && firebaseConfig.authDomain && firebaseConfig.projectId && firebaseConfig.appId);
+  return Boolean(firebaseEnabled && firebaseConfig.apiKey && firebaseConfig.authDomain && firebaseConfig.projectId && firebaseConfig.appId);
 }
 
 function getFirebaseAuth() {
