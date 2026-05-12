@@ -39,6 +39,7 @@ export function AreaBetweenCurvesSimulation({ step, progress }: Props) {
           primary={computed.fPoints}
           secondary={computed.gPoints}
           fillBetween={step >= 3}
+          fillProgress={step === 3 ? progress : step > 3 ? 1 : 0}
           rectangles={computed.rectangles}
           visibleRectangles={visibleRectangles}
           intersections={computed.intersections}

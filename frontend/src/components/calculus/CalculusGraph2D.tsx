@@ -6,6 +6,7 @@ export interface CalculusGraph2DProps {
   primary: SamplePoint[];
   secondary?: SamplePoint[];
   fillBetween?: boolean;
+  fillProgress?: number;
   rectangles?: RectSample[];
   visibleRectangles?: number;
   intersections?: Array<{ x: number; y: number }>;
@@ -19,7 +20,7 @@ const WIDTH = 760;
 const HEIGHT = 380;
 const PAD = 42;
 
-export function CalculusGraph2D({ primary, secondary = [], fillBetween = false, rectangles = [], visibleRectangles = rectangles.length, intersections = [], markerX, title, primaryLabel = 'f(x)', secondaryLabel = 'g(x)' }: CalculusGraph2DProps) {
+export function CalculusGraph2D({ primary, secondary = [], fillBetween = false, fillProgress = 1, rectangles = [], visibleRectangles = rectangles.length, intersections = [], markerX, title, primaryLabel = 'f(x)', secondaryLabel = 'g(x)' }: CalculusGraph2DProps) {
   const range = sampleRange([...primary, ...secondary], rectangles.flatMap((r) => [r.top, r.bottom]));
   const project = (x: number, y: number) => ({
     x: PAD + ((x - range.minX) / Math.max(range.maxX - range.minX, 1e-8)) * (WIDTH - PAD * 2),
@@ -28,7 +29,10 @@ export function CalculusGraph2D({ primary, secondary = [], fillBetween = false, 
   const xAxis = project(0, 0).y;
   const yAxis = project(0, 0).x;
   const shownRects = rectangles.filter((rect) => Number.isFinite(rect.top) && Number.isFinite(rect.bottom) && Number.isFinite(rect.area)).slice(0, Math.max(0, Math.min(rectangles.length, visibleRectangles)));
-  const fillPath = fillBetween && secondary.length > 1 && !curvesOverlap(primary, secondary) ? buildAreaPaths(primary, secondary, project) : [];
+  const fillPointCount = Math.max(0, Math.min(primary.length, secondary.length, Math.ceil(Math.min(primary.length, secondary.length) * clampUnit(fillProgress))));
+  const fillPrimary = primary.slice(0, fillPointCount);
+  const fillSecondary = secondary.slice(0, fillPointCount);
+  const fillPath = fillBetween && fillPointCount > 1 && !curvesOverlap(primary, secondary) ? buildAreaPaths(fillPrimary, fillSecondary, project) : [];
   const showSecondaryLegend = secondary.length > 1 && secondaryLabel.trim().length > 0;
 
   return (
@@ -151,4 +155,9 @@ function shortTick(value: number) {
 
 function clampSvg(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
+}
+
+function clampUnit(value: number) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(1, Math.max(0, value));
 }
