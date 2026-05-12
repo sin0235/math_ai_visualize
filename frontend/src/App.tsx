@@ -16,6 +16,7 @@ import { PrivacyPolicyPage, TermsPage } from './components/LegalPages';
 import { SolverPanel } from './components/SolverPanel';
 import { FunctionAnalyzerPanel } from './components/FunctionAnalyzerPanel';
 import { CalculusSimulationPage } from './components/CalculusSimulationPage';
+import { GeoGebraLabPage } from './components/GeoGebraLabPage';
 import { KatexSpan } from './components/KatexSpan';
 import { ExportMenuItems } from './components/ExportMenu';
 import { ProblemVariantTool } from './components/DiagramTools';
@@ -32,7 +33,7 @@ const MOBILE_BREAKPOINT_QUERY = '(max-width: 900px)';
 const DEVELOPER_GITHUB_URL = 'https://github.com/sin0235';
 const CONTACT_EMAIL = 'support@sin-studio.tech';
 
-type AppView = 'home' | 'render' | 'analyzer' | 'analyzer-guide' | 'simulation' | 'history' | 'guide' | 'about' | 'privacy-policy' | 'terms' | 'login' | 'settings' | 'admin' | 'account' | 'feedback' | 'reset-password' | 'verify-email';
+type AppView = 'home' | 'render' | 'analyzer' | 'analyzer-guide' | 'simulation' | 'geogebra-lab' | 'history' | 'guide' | 'about' | 'privacy-policy' | 'terms' | 'login' | 'settings' | 'admin' | 'account' | 'feedback' | 'reset-password' | 'verify-email';
 type EditTool = 'move' | 'connect' | 'project_to_segment' | 'add_point';
 type Vec3 = { x: number; y: number; z: number };
 type Notification = {
@@ -58,6 +59,7 @@ const viewPaths: Record<AppView, string> = {
   analyzer: '/analyzer',
   'analyzer-guide': '/analyzer/guide',
   simulation: '/simulation',
+  'geogebra-lab': '/geogebra-lab',
   history: '/history',
   guide: '/guide',
   about: '/about',
@@ -859,7 +861,7 @@ export default function App() {
         </div>
         <nav className="header-nav">
           <div className="tools-menu" ref={toolsMenuRef}>
-            <button type="button" className={`nav-item ${activeView === 'render' || activeView === 'analyzer' || activeView === 'analyzer-guide' || activeView === 'simulation' ? 'active' : ''}`} aria-haspopup="menu" aria-expanded={toolsMenuOpen} onClick={() => setToolsMenuOpen((open) => !open)}>
+            <button type="button" className={`nav-item ${activeView === 'render' || activeView === 'analyzer' || activeView === 'analyzer-guide' || activeView === 'simulation' || activeView === 'geogebra-lab' ? 'active' : ''}`} aria-haspopup="menu" aria-expanded={toolsMenuOpen} onClick={() => setToolsMenuOpen((open) => !open)}>
               <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3v18"></path><path d="M3 12h18"></path><path d="M5 5l14 14"></path><path d="M19 5L5 19"></path></svg>
               Công cụ
               <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
@@ -886,6 +888,13 @@ export default function App() {
                 }}>
                   <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><polygon points="10 8 16 12 10 16 10 8"></polygon></svg>
                   <span><strong>Mô phỏng</strong><small>Tích phân, lượng giác, animation học toán</small></span>
+                </button>
+                <button type="button" role="menuitem" className={activeView === 'geogebra-lab' ? 'active' : ''} onClick={() => {
+                  setToolsMenuOpen(false);
+                  navigateTo('geogebra-lab');
+                }}>
+                  <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18"></path><path d="M9 21V9"></path><circle cx="16" cy="15" r="2"></circle></svg>
+                  <span><strong>GeoGebra Lab</strong><small>Graphing, Geometry, 3D, Probability</small></span>
                 </button>
                 <button type="button" role="menuitem" onClick={() => {
                   setToolsMenuOpen(false);
@@ -1183,6 +1192,7 @@ export default function App() {
           </div>
         )}
         {activeView === 'simulation' && <CalculusSimulationPage />}
+        {activeView === 'geogebra-lab' && <GeoGebraLabPage />}
         {activeView === 'analyzer-guide' && <AnalyzerGuidePage onOpenGeneralGuide={() => navigateTo('guide')} />}
         {activeView === 'history' && (
           <HistoryPage

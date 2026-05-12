@@ -63,13 +63,15 @@ select {
 
 /* Trang Khảo sát hàm (standalone): main lấp chiều cao viewport, tránh cảm giác “cụt” */
 .app-shell:has(.analyzer-standalone-wrap),
-.app-shell:has(.csim-page) {
+.app-shell:has(.csim-page),
+.app-shell:has(.gglab-page) {
   min-height: calc(100dvh - 56px);
   padding-bottom: 24px;
   box-sizing: border-box;
 }
 
-.app-shell:has(.csim-page) {
+.app-shell:has(.csim-page),
+.app-shell:has(.gglab-page) {
   display: grid;
 }
 
@@ -9356,5 +9358,583 @@ button.analyzer-guide-label:hover {
   }
   .csim-empty-three {
     min-height: 200px;
+  }
+}
+
+/* ================================================================== */
+/*  GEOGEBRA LAB                                                      */
+/* ================================================================== */
+
+.gglab-page {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-height: 0;
+  gap: 0;
+}
+
+.gglab-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px 24px;
+  padding: 16px 0 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.gglab-header-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.gglab-header-title h2 {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 820;
+  line-height: 1.2;
+  color: var(--ink);
+}
+
+.gglab-logo {
+  display: flex;
+  align-items: center;
+  color: var(--ink);
+}
+
+.gglab-logo svg {
+  width: 28px;
+  height: 28px;
+}
+
+.gglab-subtitle {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--ink-4);
+  font-weight: 500;
+}
+
+.gglab-tabs {
+  display: flex;
+  gap: 4px;
+  border-radius: var(--radius-md);
+  padding: 3px;
+  background: var(--surface-2);
+}
+
+.gglab-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 14px;
+  color: var(--ink-3);
+  background: transparent;
+  font-size: 0.84rem;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+  white-space: nowrap;
+}
+
+.gglab-tab:hover {
+  color: var(--ink);
+  background: rgba(255,255,255,0.6);
+}
+
+.gglab-tab.active {
+  color: var(--ink);
+  background: var(--paper);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+.gglab-tab-icon {
+  display: flex;
+  align-items: center;
+}
+
+.gglab-tab-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.gglab-tab-label {
+  line-height: 1.2;
+}
+
+/* ---- Body: sidebar + workspace ---- */
+
+.gglab-body {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.gglab-body.sidebar-collapsed {
+  grid-template-columns: 36px 1fr;
+}
+
+/* ---- Sidebar ---- */
+
+.gglab-sidebar {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--line);
+  background: var(--paper);
+  overflow: hidden;
+  min-height: 0;
+  min-width: 0;
+}
+
+.gglab-body.sidebar-collapsed .gglab-sidebar {
+  border-right: 0;
+}
+
+.gglab-sidebar-toggle {
+  position: absolute;
+  top: 8px;
+  right: -1px;
+  z-index: 2;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 0 6px 6px 0;
+  padding: 0;
+  color: var(--ink-3);
+  background: var(--paper);
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.gglab-sidebar-toggle:hover {
+  color: var(--ink);
+  background: var(--surface);
+}
+
+.gglab-body.sidebar-collapsed .gglab-sidebar-toggle {
+  position: relative;
+  top: auto;
+  right: auto;
+  margin: 4px auto;
+  border-radius: 6px;
+}
+
+.gglab-sidebar-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  flex: 1;
+  min-height: 0;
+}
+
+.gglab-section {
+  display: grid;
+  gap: 8px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.gglab-section:last-child {
+  border-bottom: 0;
+}
+
+.gglab-section-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--ink-3);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Command input */
+
+.gglab-cmd-row {
+  display: flex;
+  gap: 6px;
+}
+
+.gglab-cmd-input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 0.84rem;
+  color: var(--ink);
+  background: var(--paper);
+}
+
+.gglab-cmd-input:focus {
+  outline: none;
+  border-color: var(--ink);
+}
+
+.gglab-cmd-run {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--ink);
+  border-radius: 8px;
+  padding: 0;
+  color: var(--accent-fg);
+  background: var(--ink);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.gglab-cmd-run:hover {
+  background: #000;
+}
+
+.gglab-cmd-run:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.gglab-cmd-history {
+  font-size: 0.8rem;
+  color: var(--ink-3);
+}
+
+.gglab-cmd-history summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.gglab-cmd-history ul {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.gglab-cmd-history li button {
+  width: 100%;
+  border: 0;
+  border-radius: 4px;
+  padding: 4px 6px;
+  background: transparent;
+  color: var(--ink-3);
+  font-size: 0.8rem;
+  font-family: monospace;
+  text-align: left;
+  cursor: pointer;
+}
+
+.gglab-cmd-history li button:hover {
+  background: var(--surface);
+  color: var(--ink);
+}
+
+/* Presets grid */
+
+.gglab-presets {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.gglab-preset {
+  display: grid;
+  gap: 2px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--paper);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.gglab-preset:hover {
+  border-color: var(--ink);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+.gglab-preset:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.gglab-preset strong {
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.gglab-preset small {
+  font-size: 0.72rem;
+  color: var(--ink-4);
+}
+
+/* Actions row */
+
+.gglab-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.gglab-actions button {
+  flex: 1 1 auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 10px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 0.8rem;
+  font-weight: 650;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.gglab-actions button:hover {
+  border-color: var(--ink);
+  background: var(--surface);
+}
+
+.gglab-actions button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.gglab-obj-count {
+  font-size: 0.76rem;
+  color: var(--ink-4);
+}
+
+/* Save/Load */
+
+.gglab-save-row {
+  display: flex;
+  gap: 6px;
+}
+
+.gglab-save-row button {
+  flex: 0 0 auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 10px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 0.8rem;
+  font-weight: 650;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.gglab-save-row button:hover {
+  border-color: var(--ink);
+}
+
+.gglab-save-row button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.gglab-saved-list {
+  display: grid;
+  gap: 4px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.gglab-saved-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.gglab-saved-item button:first-child {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  border-radius: 6px;
+  padding: 5px 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.8rem;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gglab-saved-item button:first-child:hover {
+  background: var(--surface-2);
+}
+
+.gglab-saved-delete {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 4px;
+  padding: 0;
+  background: transparent;
+  color: var(--ink-4);
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.gglab-saved-delete:hover {
+  color: var(--down);
+  background: var(--max-bg);
+}
+
+/* ---- Workspace (applet area) ---- */
+
+.gglab-workspace {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  background: #fafafa;
+}
+
+.gglab-applet {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  overflow: hidden;
+}
+
+/* Force GeoGebra's injected article/div to fill the available space */
+.gglab-applet > article,
+.gglab-applet > div {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.gglab-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  background: rgba(250,250,250,0.85);
+  backdrop-filter: blur(4px);
+}
+
+.gglab-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  color: var(--ink-3);
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.gglab-error {
+  display: grid;
+  gap: 10px;
+  max-width: 360px;
+  text-align: center;
+  color: var(--ink);
+}
+
+.gglab-error strong {
+  font-size: 1rem;
+}
+
+.gglab-error p {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: 0.88rem;
+}
+
+.gglab-error button {
+  justify-self: center;
+  border: 1px solid var(--ink);
+  border-radius: 8px;
+  padding: 8px 18px;
+  background: var(--ink);
+  color: var(--accent-fg);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.gglab-mode-badge {
+  position: absolute;
+  bottom: 12px;
+  right: 14px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 8px;
+  padding: 5px 12px;
+  background: rgba(255,255,255,0.88);
+  border: 1px solid var(--line);
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--ink-3);
+  backdrop-filter: blur(6px);
+  pointer-events: none;
+}
+
+.gglab-mode-badge-icon {
+  display: flex;
+  align-items: center;
+}
+
+.gglab-mode-badge-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* ---- Responsive ---- */
+
+@media (max-width: 900px) {
+  .gglab-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding: 12px 0 10px;
+  }
+  .gglab-tabs {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .gglab-body {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+  .gglab-body.sidebar-collapsed {
+    grid-template-columns: 1fr;
+  }
+  .gglab-sidebar {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    max-height: 260px;
+  }
+  .gglab-sidebar-toggle {
+    display: none;
+  }
+  .gglab-presets {
+    grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  }
+  .gglab-workspace {
+    min-height: 420px;
   }
 }
