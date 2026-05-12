@@ -12,7 +12,6 @@ class UserRecord:
     password_hash: str
     created_at: str
     updated_at: str
-    firebase_uid: str | None = None
     role: str = "user"
     status: str = "active"
     display_name: str | None = None

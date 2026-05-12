@@ -49,7 +49,7 @@ export function CrossSectionVolumeSimulation({ step, progress }: Props) {
       </aside>
       <section className="csim-visual-stack">
         <div className="csim-split-visuals">
-          <CalculusGraph2D primary={computed.areaPoints} secondary={zeroPoints} fillBetween={step >= 4} fillProgress={step === 4 ? progress : step > 4 ? 1 : 0} markerX={step === 2 ? safeSliceX : undefined} title="Đồ thị diện tích thiết diện S(x)" primaryLabel="S(x)" secondaryLabel="" />
+          <CalculusGraph2D primary={computed.areaPoints} secondary={zeroPoints} fillBetween={step >= 4} markerX={step === 2 ? safeSliceX : undefined} title="Đồ thị diện tích thiết diện S(x)" primaryLabel="S(x)" secondaryLabel="" />
           {computed.areaAt && !computed.error ? <CrossSectionThreeView areaAt={computed.areaAt} a={state.a} b={state.b} sliceX={safeSliceX} visibleSlices={visibleSlices} totalSlices={state.n} shape={state.shape} ratio={state.ratio} showSelectedSlice={step === 2} /> : <div className="csim-three-card csim-empty-three">Nhập hàm hợp lệ để xem thiết diện.</div>}
         </div>
         <div className="csim-card csim-step-copy"><strong>{crossStepTitle(step)}</strong><p>{crossStepCopy(step)}</p></div>

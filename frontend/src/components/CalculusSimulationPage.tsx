@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { KatexSpan } from './KatexSpan';
 import { AreaBetweenCurvesSimulation } from './calculus/AreaBetweenCurvesSimulation';
 import { SolidOfRevolutionSimulation } from './calculus/SolidOfRevolutionSimulation';
 import { CrossSectionVolumeSimulation } from './calculus/CrossSectionVolumeSimulation';
@@ -11,6 +12,7 @@ type ModuleMeta = {
   key: ModuleKey;
   title: string;
   subtitle: string;
+  subtitleTex: string;
   steps: number;
 };
 
@@ -19,18 +21,21 @@ const MODULES: ModuleMeta[] = [
     key: 'area',
     title: 'Diện tích hình phẳng',
     subtitle: 'Riemann sum và tích phân |f-g|',
+    subtitleTex: String.raw`\text{Riemann sum và tích phân }\int_a^b \lvert f(x)-g(x)\rvert\,dx`,
     steps: 3,
   },
   {
     key: 'revolution',
     title: 'Khối tròn xoay',
     subtitle: 'Disk / Washer với quét 3D quanh Ox',
+    subtitleTex: String.raw`\text{Disk / Washer, quét 3D quanh }Ox`,
     steps: 4,
   },
   {
     key: 'cross-section',
     title: 'Thiết diện song song',
     subtitle: 'Stack lát cắt và V = ∫S(x)dx',
+    subtitleTex: String.raw`\text{Stack lát cắt,}\quad V=\int_a^b S(x)\,dx`,
     steps: 4,
   },
 ];
@@ -83,7 +88,7 @@ export function CalculusSimulationPage() {
     }
     const tick = (time: number) => {
       const last = lastTimeRef.current ?? time;
-      const delta = Math.min((time - last) / 1000, 0.05);
+      const delta = (time - last) / 1000;
       lastTimeRef.current = time;
       setProgress((current) => {
         const next = current + delta * 0.38 * speed;
@@ -178,6 +183,11 @@ export function CalculusSimulationPage() {
 
         <div className="csim-workspace">
           <div className="csim-playbar">
+            <div className="csim-playbar-title">
+              <span>{subject.title}</span>
+              <strong>{subjectKey === 'integral' ? module.title : subject.subtitle}</strong>
+              {subjectKey === 'integral' && <KatexSpan tex={module.subtitleTex} className="csim-playbar-formula" />}
+            </div>
             <div className="csim-playbar-actions" aria-label="Điều khiển mô phỏng">
               <button type="button" className="csim-btn csim-btn-ghost" onClick={previousStep} disabled={step <= 1}>← Lùi</button>
               <button type="button" className="csim-btn csim-btn-ghost" onClick={nextStep} disabled={step >= totalSteps}>Bước →</button>

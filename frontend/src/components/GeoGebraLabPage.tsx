@@ -1,11 +1,10 @@
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from 'react';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                             */
 /* ------------------------------------------------------------------ */
 
 type LabMode = 'graphing' | 'geometry' | '3d' | 'probability';
-type LabSvgName = 'logo' | 'graphing' | 'geometry' | 'threeD' | 'probability' | 'chevronLeft' | 'chevronRight' | 'play' | 'undo' | 'redo' | 'trash' | 'save' | 'folder' | 'close';
 
 interface GeoGebraApi {
   evalCommand: (cmd: string) => boolean | void;
@@ -54,10 +53,9 @@ interface TabConfig {
   key: LabMode;
   label: string;
   desc: string;
-  icon: LabSvgName;
+  icon: ReactNode;
   appName: string;
   perspective?: string;
-  equalAxis?: boolean;
   presets: Preset[];
 }
 
@@ -67,21 +65,28 @@ interface Preset {
   desc?: string;
 }
 
+/* SVG icon helpers */
+const svgProps = { viewBox: '0 0 24 24', width: 18, height: 18, fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, 'aria-hidden': true as const };
+const GraphIcon = <svg {...svgProps}><polyline points="4 18 8 10 12 14 16 6 20 12" /><path d="M4 20h16" /><path d="M4 4v16" /></svg>;
+const GeometryIcon = <svg {...svgProps}><polygon points="12 3 4 20 20 20" /><circle cx="12" cy="14" r="4" /></svg>;
+const ThreeDIcon = <svg {...svgProps}><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z" /><path d="M12 12l8-4.5" /><path d="M12 12v9" /><path d="M12 12L4 7.5" /></svg>;
+const ProbabilityIcon = <svg {...svgProps}><path d="M4 20c0-8 4-16 8-16s8 8 8 16" /><path d="M4 20h16" /><path d="M12 4v16" /></svg>;
+const LabIcon = <svg {...svgProps}><path d="M9 3h6v5l4 9H5l4-9V3z" /><path d="M9 3h6" /><circle cx="10" cy="15" r="1" /><circle cx="14" cy="13" r="1" /></svg>;
+
 const TABS: TabConfig[] = [
   {
     key: 'graphing',
     label: 'Graphing Calculator',
     desc: 'Đồ thị hàm số 2D, phương trình, bất phương trình',
-    icon: 'graphing',
+    icon: GraphIcon,
     appName: 'graphing',
-    equalAxis: true,
     presets: [
-      { label: 'Parabol', commands: ['f(x)=x^2'], desc: 'Đồ thị bậc 2' },
-      { label: 'Đường tròn', commands: ['x^2+y^2=9'], desc: 'Tâm O, R = 3' },
+      { label: 'Parabol y=x²', commands: ['f(x)=x^2'], desc: 'Đồ thị hàm bậc hai' },
+      { label: 'Đường tròn', commands: ['x^2+y^2=9'], desc: 'x²+y²=9' },
       { label: 'Elip', commands: ['x^2/4+y^2/9=1'], desc: 'Elip chuẩn' },
       { label: 'Hyperbol', commands: ['x^2/4-y^2/9=1'], desc: 'Hyperbol chuẩn' },
       { label: 'Sin(x)', commands: ['f(x)=sin(x)'], desc: 'Hàm lượng giác' },
-      { label: 'Bất PT', commands: ['y>=x^2'], desc: 'Miền nghiệm' },
+      { label: 'Bất PT y≥x²', commands: ['y>=x^2'], desc: 'Miền nghiệm' },
       { label: 'Hàm bậc 3', commands: ['f(x)=x^3-3x+1'], desc: 'Cực trị, uốn' },
       { label: 'Đường thẳng', commands: ['y=2x+1', 'y=-x+3'], desc: 'Hai đường cắt nhau' },
     ],
@@ -90,9 +95,8 @@ const TABS: TabConfig[] = [
     key: 'geometry',
     label: 'Geometry',
     desc: 'Hình học phẳng: tam giác, đường tròn, đa giác, góc',
-    icon: 'geometry',
+    icon: GeometryIcon,
     appName: 'geometry',
-    equalAxis: true,
     presets: [
       { label: 'Tam giác', commands: ['A=(0,0)', 'B=(4,0)', 'C=(2,3)', 'Polygon(A,B,C)'], desc: 'ABC' },
       { label: 'Tam giác đều', commands: ['A=(0,0)', 'B=(4,0)', 'RegularPolygon(A,B,3)'] },
@@ -108,80 +112,35 @@ const TABS: TabConfig[] = [
     key: '3d',
     label: '3D Calculator',
     desc: 'Đồ thị 3D, mặt phẳng, bề mặt, khối đa diện',
-    icon: 'threeD',
+    icon: ThreeDIcon,
     appName: '3d',
     presets: [
       { label: 'Mặt phẳng', commands: ['a:x+y+z=3'], desc: 'x+y+z=3' },
       { label: 'Mặt cầu', commands: ['x^2+y^2+z^2=9'], desc: 'R=3' },
-      { label: 'Parabol xoay', commands: ['Surface(u*cos(v),u*sin(v),u^2,u,0,2,v,0,2*pi)'], desc: 'z=x^2+y^2' },
+      { label: 'Parabol xoay', commands: ['Surface(u*cos(v),u*sin(v),u^2,u,0,2,v,0,2*pi)'], desc: 'z=x²+y²' },
       { label: 'Hình nón', commands: ['Cone((0,0,3),(0,0,0),2)'], desc: 'Đỉnh (0,0,3), r=2' },
       { label: 'Hình trụ', commands: ['Cylinder((0,0,0),(0,0,3),1.5)'], desc: 'h=3, r=1.5' },
       { label: 'Tứ diện', commands: ['A=(0,0,0)', 'B=(3,0,0)', 'C=(1.5,2.6,0)', 'D=(1.5,0.87,2.45)', 'Polygon(A,B,C)', 'Polygon(A,B,D)', 'Polygon(B,C,D)', 'Polygon(A,C,D)'] },
       { label: 'Lăng trụ', commands: ['A=(0,0,0)', 'B=(3,0,0)', 'C=(1.5,2.6,0)', 'Prism(A,B,C,4)'] },
-      { label: 'Mặt yên ngựa', commands: ['Surface(u,v,u^2-v^2,u,-2,2,v,-2,2)'], desc: 'z=x^2-y^2' },
+      { label: 'Mặt yên ngựa', commands: ['Surface(u,v,u^2-v^2,u,-2,2,v,-2,2)'], desc: 'z=x²-y²' },
     ],
   },
   {
     key: 'probability',
     label: 'Probability',
     desc: 'Phân phối chuẩn, nhị thức, Poisson, tính xác suất',
-    icon: 'probability',
+    icon: ProbabilityIcon,
     appName: 'classic',
-    perspective: '6',
+    perspective: 'P',
     presets: [
       { label: 'Normal(0,1)', commands: ['Normal(0,1,1)'], desc: 'Phân phối chuẩn tắc' },
       { label: 'Normal(5,2)', commands: ['Normal(5,2,7)'], desc: 'μ=5, σ=2' },
       { label: 'Binomial(10,0.5)', commands: ['BinomialDist(10,0.5,3,true)'], desc: 'n=10, p=0.5' },
       { label: 'Poisson(4)', commands: ['Poisson(4,3,true)'], desc: 'λ=4' },
-      { label: 'P(X<=2)', commands: ['Normal(0,1,2)'], desc: 'CDF chuẩn tắc tại x=2' },
+      { label: 'P(X≤2)', commands: ['Normal(0,1,2)'], desc: 'CDF chuẩn tắc tại x=2' },
     ],
   },
 ];
-
-function LabSvg({ name }: { name: LabSvgName }) {
-  const common = {
-    className: `gglab-svg gglab-svg-${name}`,
-    viewBox: '0 0 24 24',
-    fill: 'none',
-    stroke: 'currentColor',
-    strokeWidth: 1.8,
-    strokeLinecap: 'round' as const,
-    strokeLinejoin: 'round' as const,
-    'aria-hidden': true,
-    focusable: false,
-  };
-
-  switch (name) {
-    case 'logo':
-      return <svg {...common}><circle cx="12" cy="12" r="7.4" /><circle cx="7.2" cy="9.2" r="1.5" fill="currentColor" stroke="none" /><circle cx="11.8" cy="5.7" r="1.35" fill="currentColor" stroke="none" /><circle cx="17.1" cy="9.1" r="1.5" fill="currentColor" stroke="none" /><circle cx="16.2" cy="15.6" r="1.35" fill="currentColor" stroke="none" /><circle cx="9.1" cy="16.8" r="1.45" fill="currentColor" stroke="none" /><path d="M7.2 9.2 11.8 5.7l5.3 3.4-.9 6.5-7.1 1.2-1.9-7.6z" /></svg>;
-    case 'graphing':
-      return <svg {...common}><path d="M4 19.5h16" /><path d="M5 20V4.5" /><path d="M7 16c1.4-5.4 3.1-8.1 5.1-8.1 1.5 0 2.3 1.6 3 3.4.7 1.8 1.4 3.4 3 3.4.5 0 1-.2 1.5-.7" /><path d="M8 11.5h1.2M11.4 8.1h1.2M15.6 13.9h1.2" /></svg>;
-    case 'geometry':
-      return <svg {...common}><path d="M4.5 18.5 11.5 5l8 13.5h-15z" /><path d="M11.5 5v13.5" /><path d="M8.2 18.5a3.3 3.3 0 0 1 3.3-3.3" /><circle cx="4.5" cy="18.5" r="1.35" fill="currentColor" stroke="none" /><circle cx="11.5" cy="5" r="1.35" fill="currentColor" stroke="none" /><circle cx="19.5" cy="18.5" r="1.35" fill="currentColor" stroke="none" /></svg>;
-    case 'threeD':
-      return <svg {...common}><path d="m12 3.5 7 4.1v8.8l-7 4.1-7-4.1V7.6l7-4.1z" /><path d="m5 7.6 7 4.1 7-4.1" /><path d="M12 11.7v8.8" /><path d="M8.3 5.7 15.4 10" /></svg>;
-    case 'probability':
-      return <svg {...common}><path d="M4 19.5h16" /><path d="M5.5 18.5c1.2 0 1.8-1.7 2.4-4.5C8.7 9.9 9.8 5.5 12 5.5s3.3 4.4 4.1 8.5c.6 2.8 1.2 4.5 2.4 4.5" /><path d="M12 5.5v14" /><path d="M8.2 15.2h7.6" /></svg>;
-    case 'chevronLeft':
-      return <svg {...common}><path d="m14.5 6.5-5 5.5 5 5.5" /></svg>;
-    case 'chevronRight':
-      return <svg {...common}><path d="m9.5 6.5 5 5.5-5 5.5" /></svg>;
-    case 'play':
-      return <svg {...common}><path d="m8.3 5.6 10.2 6.4-10.2 6.4V5.6z" fill="currentColor" stroke="none" /></svg>;
-    case 'undo':
-      return <svg {...common}><path d="M8.5 7.2H4.8v3.7" /><path d="M4.8 10.9c2-3.1 5.8-4.5 9.2-3.2 3.7 1.4 5.2 5.7 3.1 9-.8 1.3-2.1 2.2-3.6 2.6" /></svg>;
-    case 'redo':
-      return <svg {...common}><path d="M15.5 7.2h3.7v3.7" /><path d="M19.2 10.9c-2-3.1-5.8-4.5-9.2-3.2-3.7 1.4-5.2 5.7-3.1 9 .8 1.3 2.1 2.2 3.6 2.6" /></svg>;
-    case 'trash':
-      return <svg {...common}><path d="M4.5 7h15" /><path d="M9.2 7V4.8h5.6V7" /><path d="M6.8 7 7.7 20h8.6l.9-13" /><path d="M10.2 11v5.6M13.8 11v5.6" /></svg>;
-    case 'save':
-      return <svg {...common}><path d="M5 4.5h11.4L19 7.1V19.5H5v-15z" /><path d="M8 4.5v5h7v-5" /><path d="M8 19.5v-6h8v6" /></svg>;
-    case 'folder':
-      return <svg {...common}><path d="M3.5 7.2h6.2l2 2h8.8v8.9a2.4 2.4 0 0 1-2.4 2.4H5.9a2.4 2.4 0 0 1-2.4-2.4V7.2z" /><path d="M3.5 7.2V5.9a2.4 2.4 0 0 1 2.4-2.4h3.4l2 2h6.8a2.4 2.4 0 0 1 2.4 2.4v1.3" /></svg>;
-    case 'close':
-      return <svg {...common}><path d="m7 7 10 10M17 7 7 17" /></svg>;
-  }
-}
 
 /* ------------------------------------------------------------------ */
 /*  GeoGebra script loader (shared with GeoGebraView.tsx)             */
@@ -224,7 +183,6 @@ export function GeoGebraLabPage() {
   const containerId = `gglab-${rawId.replace(/[^a-zA-Z0-9]/g, '')}`;
   const apiRef = useRef<GeoGebraApi | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const workspaceRef = useRef<HTMLDivElement | null>(null);
 
   const tab = TABS.find((t) => t.key === mode)!;
 
@@ -242,18 +200,13 @@ export function GeoGebraLabPage() {
     loadGeoGebraScript()
       .then(() => {
         if (cancelled || !window.GGBApplet) return;
-        const bounds = workspaceRef.current ?? containerRef.current;
-        const w = Math.max(bounds?.clientWidth ?? 800, 400);
-        const h = Math.max(bounds?.clientHeight ?? 600, 400);
+        const w = Math.max(containerRef.current?.clientWidth ?? 800, 400);
+        const h = Math.max(containerRef.current?.clientHeight ?? 600, 400);
 
         const params: Record<string, unknown> = {
           appName: tab.appName,
-          id: containerId,
           width: w,
           height: h,
-          scaleContainerClass: 'gglab-workspace',
-          autoHeight: false,
-          allowUpscale: true,
           showToolBar: true,
           showAlgebraInput: true,
           showMenuBar: true,
@@ -273,8 +226,8 @@ export function GeoGebraLabPage() {
             if (cancelled) return;
             apiRef.current = api;
             api.setErrorDialogsActive?.(false);
-            if (tab.perspective) setGeoGebraPerspective(api, tab.perspective);
-            requestAnimationFrame(() => resizeLabApplet(api, workspaceRef.current ?? containerRef.current, tab));
+            if (tab.perspective) api.setPerspective?.(tab.perspective);
+            requestAnimationFrame(() => resizeToContainer(api, containerRef.current));
             setStatus('ready');
             refreshObjectCount(api);
           },
@@ -290,27 +243,32 @@ export function GeoGebraLabPage() {
   }, [mode, containerId, tab.appName, tab.perspective]);
 
   /* ---------- resize observer ---------- */
-  useEffect(() => {
-    if (status !== 'ready' || !workspaceRef.current) return;
-    let frame = 0;
-    const obs = new ResizeObserver(() => {
-      if (frame) cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => resizeLabApplet(apiRef.current, workspaceRef.current ?? containerRef.current, tab));
-    });
-    obs.observe(workspaceRef.current);
-    return () => { obs.disconnect(); if (frame) cancelAnimationFrame(frame); };
-  }, [status]);
+  const workspaceRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (status !== 'ready') return;
-    const resize = () => resizeLabApplet(apiRef.current, workspaceRef.current ?? containerRef.current, tab);
-    const frame = requestAnimationFrame(resize);
-    const timers = [80, 240].map((delay) => window.setTimeout(resize, delay));
-    return () => {
-      cancelAnimationFrame(frame);
-      timers.forEach(window.clearTimeout);
+    const workspace = workspaceRef.current;
+    const container = containerRef.current;
+    if (!workspace || !container) return;
+    let frame = 0;
+    const doResize = () => {
+      if (frame) cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => resizeToContainer(apiRef.current, container));
     };
-  }, [sidebarOpen, status, tab]);
+    const obs = new ResizeObserver(doResize);
+    obs.observe(workspace);
+    return () => { obs.disconnect(); if (frame) cancelAnimationFrame(frame); };
+  }, [status]);
+
+  /* ---------- resize on sidebar toggle ---------- */
+  useEffect(() => {
+    if (status !== 'ready') return;
+    // Multiple delays to catch CSS grid reflow timing
+    const timers = [50, 150, 350].map((ms) =>
+      setTimeout(() => resizeToContainer(apiRef.current, containerRef.current), ms),
+    );
+    return () => timers.forEach(clearTimeout);
+  }, [sidebarOpen, status]);
 
   /* ---------- helpers ---------- */
   function refreshObjectCount(api: GeoGebraApi | null) {
@@ -336,7 +294,6 @@ export function GeoGebraLabPage() {
     api.newConstruction?.();
     api.setErrorDialogsActive?.(false);
     preset.commands.forEach((c) => api.evalCommand(c));
-    if (tab.equalAxis) applyEqualAxis(api, workspaceRef.current?.clientWidth ?? 0, workspaceRef.current?.clientHeight ?? 0);
     api.showAllObjects?.();
     refreshObjectCount(api);
   }
@@ -399,10 +356,10 @@ export function GeoGebraLabPage() {
       {/* ---- Header ---- */}
       <div className="gglab-header">
         <div className="gglab-header-title">
-          <span className="gglab-logo" aria-hidden="true"><LabSvg name="logo" /></span>
+          <span className="gglab-logo" aria-hidden="true">{LabIcon}</span>
           <div>
             <h2>GeoGebra Lab</h2>
-            <span className="gglab-subtitle">Dựng hình chuyên nghiệp bằng công thức</span>
+            <span className="gglab-subtitle">Phòng thí nghiệm toán học tương tác</span>
           </div>
         </div>
         <div className="gglab-tabs" role="tablist" aria-label="Chế độ GeoGebra">
@@ -416,7 +373,7 @@ export function GeoGebraLabPage() {
               onClick={() => setMode(t.key)}
               title={t.desc}
             >
-              <span className="gglab-tab-icon"><LabSvg name={t.icon} /></span>
+              <span className="gglab-tab-icon">{t.icon}</span>
               <span className="gglab-tab-label">{t.label}</span>
             </button>
           ))}
@@ -428,7 +385,7 @@ export function GeoGebraLabPage() {
         {/* ---- Sidebar ---- */}
         <aside className="gglab-sidebar" aria-label="Công cụ phụ">
           <button type="button" className="gglab-sidebar-toggle" onClick={() => setSidebarOpen((v) => !v)} aria-label={sidebarOpen ? 'Thu sidebar' : 'Mở sidebar'}>
-            <LabSvg name={sidebarOpen ? 'chevronLeft' : 'chevronRight'} />
+            {sidebarOpen ? '‹' : '›'}
           </button>
           {sidebarOpen && (
             <div className="gglab-sidebar-content">
@@ -445,7 +402,7 @@ export function GeoGebraLabPage() {
                     onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); runCommand(cmdText); } }}
                     disabled={status !== 'ready'}
                   />
-                  <button type="button" className="gglab-cmd-run" onClick={() => runCommand(cmdText)} disabled={status !== 'ready' || !cmdText.trim()} aria-label="Chạy lệnh"><LabSvg name="play" /></button>
+                  <button type="button" className="gglab-cmd-run" onClick={() => runCommand(cmdText)} disabled={status !== 'ready' || !cmdText.trim()}><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" stroke="none" aria-hidden="true"><polygon points="6 3 20 12 6 21" /></svg></button>
                 </div>
                 {cmdHistory.length > 0 && (
                   <details className="gglab-cmd-history">
@@ -457,7 +414,7 @@ export function GeoGebraLabPage() {
 
               {/* Presets */}
               <div className="gglab-section">
-                <strong className="gglab-section-title">Mẫu nhanh - {tab.label}</strong>
+                <strong className="gglab-section-title">Mẫu nhanh — {tab.label}</strong>
                 <div className="gglab-presets">
                   {tab.presets.map((p) => (
                     <button key={p.label} type="button" className="gglab-preset" onClick={() => applyPreset(p)} disabled={status !== 'ready'} title={p.desc || p.commands.join('; ')}>
@@ -472,9 +429,9 @@ export function GeoGebraLabPage() {
               <div className="gglab-section">
                 <strong className="gglab-section-title">Thao tác</strong>
                 <div className="gglab-actions">
-                  <button type="button" onClick={handleUndo} disabled={status !== 'ready'} title="Hoàn tác"><LabSvg name="undo" /><span>Undo</span></button>
-                  <button type="button" onClick={handleRedo} disabled={status !== 'ready'} title="Làm lại"><LabSvg name="redo" /><span>Redo</span></button>
-                  <button type="button" onClick={clearAll} disabled={status !== 'ready'} title="Xoá tất cả"><LabSvg name="trash" /><span>Xoá</span></button>
+                  <button type="button" onClick={handleUndo} disabled={status !== 'ready'} title="Hoàn tác"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 7v6h6" /><path d="M3 13a9 9 0 0 1 15.36-6.36" /></svg> Undo</button>
+                  <button type="button" onClick={handleRedo} disabled={status !== 'ready'} title="Làm lại"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 7v6h-6" /><path d="M21 13a9 9 0 0 0-15.36-6.36" /></svg> Redo</button>
+                  <button type="button" onClick={clearAll} disabled={status !== 'ready'} title="Xoá tất cả"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v5" /><path d="M14 11v5" /></svg> Xoá</button>
                 </div>
                 <span className="gglab-obj-count">{objectCount} đối tượng</span>
               </div>
@@ -494,14 +451,14 @@ export function GeoGebraLabPage() {
                 <strong className="gglab-section-title">Lưu / Tải trạng thái</strong>
                 <div className="gglab-save-row">
                   <input type="text" placeholder="Tên bản lưu (tuỳ chọn)" className="gglab-cmd-input" value={saveLabel} onChange={(e) => setSaveLabel(e.target.value)} />
-                  <button type="button" onClick={saveState} disabled={status !== 'ready'}><LabSvg name="save" /><span>Lưu</span></button>
+                  <button type="button" onClick={saveState} disabled={status !== 'ready'}><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" /><polyline points="17 21 17 13 7 13 7 21" /><polyline points="7 3 7 8 15 8" /></svg> Lưu</button>
                 </div>
                 {Object.keys(savedStates).length > 0 && (
                   <div className="gglab-saved-list">
                     {Object.entries(savedStates).map(([key, b64]) => (
                       <div key={key} className="gglab-saved-item">
-                        <button type="button" onClick={() => loadState(b64)} title="Tải lại trạng thái"><LabSvg name="folder" /><span>{key}</span></button>
-                        <button type="button" className="gglab-saved-delete" onClick={() => deleteState(key)} aria-label="Xoá"><LabSvg name="close" /></button>
+                        <button type="button" onClick={() => loadState(b64)} title="Tải lại trạng thái"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{marginRight:4,verticalAlign:'middle'}}><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" /></svg>{key}</button>
+                        <button type="button" className="gglab-saved-delete" onClick={() => deleteState(key)} aria-label="Xoá">×</button>
                       </div>
                     ))}
                   </div>
@@ -531,6 +488,7 @@ export function GeoGebraLabPage() {
             </div>
           )}
           <div ref={containerRef} id={containerId} className="gglab-applet" />
+          <div className="gglab-mode-badge"><span className="gglab-mode-badge-icon">{tab.icon}</span> {tab.label}</div>
         </div>
       </div>
     </section>
@@ -541,40 +499,13 @@ export function GeoGebraLabPage() {
 /*  Utils                                                             */
 /* ------------------------------------------------------------------ */
 
-function resizeLabApplet(api: GeoGebraApi | null, el: HTMLDivElement | null, tab: TabConfig) {
+function resizeToContainer(api: GeoGebraApi | null, el: HTMLDivElement | null) {
   if (!api || !el) return;
   const w = Math.max(el.clientWidth, 400);
   const h = Math.max(el.clientHeight, 400);
   api.setSize?.(w, h);
   api.setWidth?.(w);
   api.setHeight?.(h);
-  if (tab.equalAxis) applyEqualAxis(api, w, h);
-  api.refreshViews?.();
-  window.dispatchEvent(new Event('resize'));
-}
-
-function applyEqualAxis(api: GeoGebraApi, width: number, height: number) {
-  if (!api.setCoordSystem || width <= 0 || height <= 0) return;
-  const ratio = width / height;
-  const yRadius = 6;
-  const xRadius = yRadius * ratio;
-  api.setCoordSystem(-xRadius, xRadius, -yRadius, yRadius);
-}
-
-function setGeoGebraPerspective(api: GeoGebraApi, perspective: string) {
-  try {
-    api.setPerspective?.(perspective);
-    return;
-  } catch {
-    // GeoGebra Classic web runtimes can differ; "B" is the Probability view code.
-  }
-  if (perspective === '6') {
-    try {
-      api.setPerspective?.('B');
-    } catch {
-      api.evalCommand?.('SetPerspective("6")');
-    }
-  }
 }
 
 function downloadDataUrl(url: string, filename: string) {

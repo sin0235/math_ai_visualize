@@ -65,9 +65,6 @@ class Settings(BaseSettings):
     resend_from_email: str | None = None
     auth_email_dev_mode: bool = True
     require_email_verification: bool = True
-    firebase_project_id: str | None = None
-    firebase_credentials_json: str | None = None
-    firebase_credentials_path: str | None = None
     google_oauth_client_id: str | None = None
     google_oauth_client_secret: str | None = None
     google_oauth_redirect_uri: str = "https://math-renderer-api.sin-studio.tech/api/auth/google/callback"
