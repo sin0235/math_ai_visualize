@@ -75,7 +75,14 @@ export function buildRegistryModelOptions(defaults: SettingsDefaults | null, pro
 export function buildModelOptionsFromDefaults(providerDefaults: ProviderSettingsDefaults | undefined, currentModel = '', extraModelIds: string[] = [], defaults?: SettingsDefaults | null, providerId?: string): Option[] {
   if (defaults && providerId) {
     const registryOptions = buildRegistryModelOptions(defaults, providerId, currentModel, extraModelIds);
-    if (registryOptions.length > 0) return registryOptions;
+    if (registryOptions.length > 0) {
+      return mergeOptions(registryOptions, [
+        providerDefaults?.model,
+        ...(providerDefaults?.allowed_model_ids ?? []),
+        currentModel,
+        ...extraModelIds,
+      ]);
+    }
   }
   if (!providerDefaults) return uniqueOptions([currentModel, ...extraModelIds]);
   const ids = providerDefaults.allowed_model_ids.length > 0
@@ -93,6 +100,15 @@ export function buildModelOptionsFromDefaults(providerDefaults: ProviderSettings
     });
   }
   return options;
+}
+
+function mergeOptions(base: Option[], extraIds: Array<string | null | undefined>) {
+  const byId = new Map(base.map((option) => [option.id, option]));
+  extraIds.filter(Boolean).forEach((value) => {
+    const id = String(value);
+    if (!byId.has(id)) byId.set(id, { id, label: id });
+  });
+  return [...byId.values()];
 }
 
 function uniqueOptions(ids: string[]) {

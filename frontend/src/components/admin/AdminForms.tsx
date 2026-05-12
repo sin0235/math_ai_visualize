@@ -193,6 +193,38 @@ function adminSettingsToDefaults(value: Record<string, unknown>): SettingsDefaul
   };
 }
 
+function mergeAdminProfileDefaults(defaults: SettingsDefaults | null | undefined, aiSettingsDefaults: SettingsDefaults): SettingsDefaults {
+  if (!defaults) return aiSettingsDefaults;
+  return {
+    ...defaults,
+    default_provider: defaults.default_provider || aiSettingsDefaults.default_provider,
+    openrouter: mergeProviderDefaults(defaults.openrouter, aiSettingsDefaults.openrouter),
+    nvidia: mergeProviderDefaults(defaults.nvidia, aiSettingsDefaults.nvidia),
+    ollama: mergeProviderDefaults(defaults.ollama, aiSettingsDefaults.ollama),
+    openai_compat: mergeProviderDefaults(defaults.openai_compat, aiSettingsDefaults.openai_compat),
+    router9: {
+      ...mergeProviderDefaults(defaults.router9, aiSettingsDefaults.router9),
+      only_mode: defaults.router9.only_mode || aiSettingsDefaults.router9.only_mode,
+    },
+    ocr: defaults.ocr ?? aiSettingsDefaults.ocr,
+  };
+}
+
+function mergeProviderDefaults<T extends ProviderSettingsDefaults>(defaults: T, aiSettingsDefaults: T): T {
+  return {
+    ...defaults,
+    api_key_configured: defaults.api_key_configured || aiSettingsDefaults.api_key_configured,
+    base_url: defaults.base_url || aiSettingsDefaults.base_url,
+    model: defaults.model || aiSettingsDefaults.model,
+    scanned_models: defaults.scanned_models.length > 0 ? defaults.scanned_models : aiSettingsDefaults.scanned_models,
+    allowed_model_ids: mergeModelIds(defaults.allowed_model_ids, aiSettingsDefaults.allowed_model_ids),
+  };
+}
+
+function mergeModelIds(primary: string[], secondary: string[]) {
+  return [...new Set([...primary, ...secondary].filter(Boolean))];
+}
+
 function getPlanQuota(value: unknown) {
   const data = value && typeof value === 'object' ? value as Record<string, unknown> : {};
   return {
@@ -628,7 +660,7 @@ export function AdminAiProfilesForm({ value, aiSettings, defaults, onSave, onToa
   const [ocrModel, setOcrModel] = useState(ocr.model);
   const [ocrFallbacks, setOcrFallbacks] = useState<string[]>(ocr.fallbacks);
   const [saving, setSaving] = useState(false);
-  const settingsDefaults = defaults ?? adminSettingsToDefaults(aiSettings);
+  const settingsDefaults = mergeAdminProfileDefaults(defaults, adminSettingsToDefaults(aiSettings));
   const providerOptions = buildProviderOptions(settingsDefaults, false);
 
   useEffect(() => {

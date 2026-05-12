@@ -6610,13 +6610,16 @@ pre {
   display: flex;
   flex-wrap: nowrap;
   align-items: flex-start;
+  justify-content: center;
   gap: 10px 14px;
   min-width: 0;
+  text-align: center;
 }
 
 .fa2-quick-rows .fa2-summary-card {
   flex: 1 1 0;
   min-width: 0;
+  justify-items: center;
   overflow-x: auto;
   border-top: none;
   padding-top: 4px;
