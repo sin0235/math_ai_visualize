@@ -11,7 +11,7 @@ interface LoginPageProps {
   onOpenWorkspace: () => void;
   onToast: (title: string, message: string, kind?: ToastKind) => void;
   onLogin: (email: string, password: string) => Promise<void>;
-  onGoogleLogin: () => Promise<void>;
+  onGoogleLogin: () => void;
   onRegister: (email: string, password: string, displayName: string | undefined, acceptPrivacyPolicy: boolean, acceptTerms: boolean) => Promise<void>;
   onForgotPassword: (email: string) => Promise<string>;
   onLogout: () => Promise<void>;
@@ -81,21 +81,12 @@ export function LoginPage({ logoUrl, user, authLoading, onOpenWorkspace, onToast
         return;
       }
       await onRegister(cleanEmail, password, displayName.trim() || undefined, acceptPrivacyPolicy, acceptTerms);
-      onToast('Tạo tài khoản', 'Tạo tài khoản thành công. Hãy kiểm tra email và mở liên kết xác minh trước khi đăng nhập.', 'info');
+      onToast('Tạo tài khoản', 'Tạo tài khoản thành công. Hãy kiểm tra email, mở liên kết xác minh và nhập mã OTP.', 'info');
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : 'Không thể xử lý đăng nhập.';
       const title = mode === 'register' ? 'Tạo tài khoản' : mode === 'forgot' ? 'Quên mật khẩu' : 'Đăng nhập';
       const hint = /xác minh email|verify/i.test(message) ? `${message} Hãy kiểm tra hộp thư hoặc dùng trang tài khoản để gửi lại email xác minh.` : message;
       onToast(title, hint, 'error');
-    }
-  }
-
-  async function handleGoogleLogin() {
-    try {
-      await onGoogleLogin();
-    } catch (caught) {
-      const message = caught instanceof Error ? caught.message : 'Không thể đăng nhập Google.';
-      if (!/Đang chuyển tới Google OAuth/i.test(message)) onToast('Đăng nhập Google', message, 'error');
     }
   }
 
@@ -132,7 +123,7 @@ export function LoginPage({ logoUrl, user, authLoading, onOpenWorkspace, onToast
             <>
               <p className="field-hint">{mode === 'forgot' ? 'Nhập email tài khoản. Nếu email tồn tại, hệ thống sẽ gửi liên kết đặt lại mật khẩu.' : 'AI Math Renderer biến đề bài thành hình GeoGebra và 3D. Đăng nhập để lưu lịch sử dựng hình, giữ cấu hình riêng và tiếp tục chỉnh sửa khi bạn quay lại.'}</p>
               {mode !== 'forgot' && (
-                <button type="button" className="oauth-button" onClick={handleGoogleLogin} disabled={authLoading}>
+                <button type="button" className="oauth-button" onClick={onGoogleLogin} disabled={authLoading}>
                   <svg className="oauth-google-icon" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
                     <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
                     <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
