@@ -2,10 +2,10 @@ from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from sqlite3 import IntegrityError
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Query, Request, Response, status
+from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Query, Request, Response, status
 from fastapi.responses import RedirectResponse
 
-from app.api.deps import get_current_user, require_trusted_origin
+from app.api.deps import get_current_user, parse_bearer_token, require_trusted_origin
 from app.core.config import Settings, get_settings
 from app.db.models import SessionRecord, UserRecord
 from app.db.session import DatabaseClient, get_database
@@ -28,6 +28,7 @@ from app.repositories.auth import (
 from app.schemas.auth import (
     AuthResponse,
     ChangePasswordRequest,
+    FirebaseSyncRequest,
     ForgotPasswordRequest,
     LoginRequest,
     MessageResponse,
@@ -39,6 +40,7 @@ from app.schemas.auth import (
     VerifyEmailRequest,
 )
 from app.services.email import send_password_reset_email, send_verification_email
+from app.services.firebase_auth import verify_firebase_id_token
 from app.services.google_oauth import build_google_authorization_url, exchange_google_code, fetch_google_userinfo, google_oauth_configured
 from app.services.system_settings import load_feature_flags
 
@@ -243,6 +245,44 @@ async def me(
     return AuthResponse(user=user_response(user))
 
 
+@router.post("/firebase/sync", response_model=AuthResponse, dependencies=[Depends(require_trusted_origin)])
+async def firebase_sync(
+    request: FirebaseSyncRequest,
+    raw_request: Request,
+    authorization: str | None = Header(default=None),
+    db: DatabaseClient = Depends(get_database),
+    settings: Settings = Depends(get_settings),
+) -> AuthResponse:
+    bearer_token = parse_bearer_token(authorization)
+    if not bearer_token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Bạn chưa đăng nhập Firebase.")
+    decoded = await verify_firebase_id_token(bearer_token, settings)
+    firebase_uid = str(decoded.get("uid") or decoded.get("sub") or "")
+    email = normalize_email(str(decoded.get("email") or ""))
+    email_verified = bool(decoded.get("email_verified"))
+    if not firebase_uid or not email:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Firebase token thiếu UID hoặc email.")
+    users = UserRepository(db)
+    user = await users.find_by_firebase_uid(firebase_uid)
+    if user is None:
+        user = await users.find_by_email(email)
+        if user is None:
+            user = await users.create_firebase_user(firebase_uid, email, request.display_name, email_verified)
+        else:
+            user = await users.link_firebase_uid(user.id, firebase_uid)
+    user = await users.sync_firebase_profile(user.id, email, request.display_name, email_verified)
+    if user.status != "active":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Tài khoản này đã bị vô hiệu hoá.")
+    if request.display_name is not None:
+        user = await UserRepository(db).update_profile(user.id, request.display_name)
+    if request.accept_privacy_policy and request.accept_terms:
+        await LegalAcceptanceRepository(db).record_registration_acceptances(user.id, client_ip(raw_request), raw_request.headers.get("user-agent"))
+        await audit(db, user.id, "legal.privacy_policy_accepted", "user", user.id, raw_request)
+        await audit(db, user.id, "legal.terms_accepted", "user", user.id, raw_request)
+    await audit(db, user.id, "auth.firebase_synced", "user", user.id, raw_request)
+    return AuthResponse(user=user_response(user))
+
+
 @router.post("/forgot-password", response_model=MessageResponse)
 async def forgot_password(request: ForgotPasswordRequest, raw_request: Request, db: DatabaseClient = Depends(get_database), settings: Settings = Depends(get_settings)) -> MessageResponse:
     email = normalize_email(str(request.email))
@@ -348,9 +388,13 @@ async def update_profile(request: UpdateProfileRequest, raw_request: Request, us
 @router.get("/sessions", response_model=list[SessionResponse])
 async def list_sessions(
     hinh_session: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+    authorization: str | None = Header(default=None),
     user: UserRecord = Depends(get_current_user),
     db: DatabaseClient = Depends(get_database),
 ) -> list[SessionResponse]:
+    if parse_bearer_token(authorization) and not hinh_session:
+        now = datetime.now(UTC).isoformat()
+        return [SessionResponse(id="firebase-current", created_at=now, expires_at=now, last_seen_at=now, current=True)]
     current = await SessionRepository(db).find_by_token(hinh_session) if hinh_session else None
     sessions = await SessionRepository(db).list_for_user(user.id)
     return [session_response(session, current.id if current else None) for session in sessions]

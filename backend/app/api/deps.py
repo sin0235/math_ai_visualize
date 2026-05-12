@@ -1,18 +1,24 @@
 from urllib.parse import urlparse
 
-from fastapi import Cookie, Depends, HTTPException, Request, status
+from fastapi import Cookie, Depends, Header, HTTPException, Request, status
 
 from app.core.config import Settings, get_settings
 from app.db.models import UserRecord
 from app.db.session import DatabaseClient, get_database
 from app.repositories.auth import SESSION_COOKIE_NAME, RateLimitRepository, SessionRepository, UserRepository
+from app.services.firebase_auth import verify_firebase_id_token
 
 
 async def get_current_user(
     hinh_session: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+    authorization: str | None = Header(default=None),
     db: DatabaseClient = Depends(get_database),
     settings: Settings = Depends(get_settings),
 ) -> UserRecord:
+    bearer_token = parse_bearer_token(authorization)
+    if bearer_token:
+        return await get_firebase_user(bearer_token, db, settings)
+
     if not hinh_session:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Bạn chưa đăng nhập.")
     session = await SessionRepository(db).find_by_token(hinh_session)
@@ -30,8 +36,17 @@ async def get_current_user(
 
 async def get_optional_current_user(
     hinh_session: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+    authorization: str | None = Header(default=None),
     db: DatabaseClient = Depends(get_database),
+    settings: Settings = Depends(get_settings),
 ) -> UserRecord | None:
+    bearer_token = parse_bearer_token(authorization)
+    if bearer_token:
+        try:
+            return await get_firebase_user(bearer_token, db, settings)
+        except HTTPException:
+            return None
+
     if not hinh_session:
         return None
     session = await SessionRepository(db).find_by_token(hinh_session)
@@ -41,6 +56,33 @@ async def get_optional_current_user(
     if user is None or user.status != "active":
         return None
     return user
+
+
+async def get_firebase_user(id_token: str, db: DatabaseClient, settings: Settings) -> UserRecord:
+    decoded = await verify_firebase_id_token(id_token, settings)
+    firebase_uid = str(decoded.get("uid") or decoded.get("sub") or "")
+    email = str(decoded.get("email") or "").strip().lower()
+    display_name = decoded.get("name")
+    email_verified = bool(decoded.get("email_verified"))
+    if not firebase_uid or not email:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Firebase token thiếu UID hoặc email.")
+
+    users = UserRepository(db)
+    user = await users.find_by_firebase_uid(firebase_uid)
+    if user is None:
+        user = await users.find_by_email(email)
+        if user is None:
+            user = await users.create_firebase_user(firebase_uid, email, str(display_name) if display_name else None, email_verified)
+        else:
+            user = await users.link_firebase_uid(user.id, firebase_uid)
+
+    user = await users.sync_firebase_profile(user.id, email, str(display_name) if display_name else None, email_verified)
+    if user.status != "active":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Tài khoản này đã bị vô hiệu hoá.")
+    if settings.require_email_verification and user.email_verified_at is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Bạn cần xác minh email trước khi dùng tài khoản.")
+    await users.mark_login(user.id)
+    return await users.find_by_id(user.id) or user
 
 
 async def require_active_user(user: UserRecord = Depends(get_current_user)) -> UserRecord:
@@ -99,3 +141,12 @@ def origin_allowed(source: str, allowed_origins: list[str]) -> bool:
         return False
     source_origin = f"{parsed_source.scheme}://{parsed_source.netloc}"
     return "*" in allowed_origins or source_origin in allowed_origins
+
+
+def parse_bearer_token(authorization: str | None) -> str | None:
+    if not authorization:
+        return None
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token.strip():
+        return None
+    return token.strip()
