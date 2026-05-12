@@ -20,7 +20,7 @@
   --ink-4: #737373;
   --accent: #111111;
   --accent-fg: #ffffff;
-  --accent-soft: #eef4ff;
+  --accent-soft: #f0f0ed;
   --up: #16a34a;
   --down: #dc2626;
   --max-bg: #fef2f2;
@@ -36,6 +36,7 @@
 body {
   margin: 0;
   background:
+    linear-gradient(90deg, rgba(17, 17, 17, 0.012) 1px, transparent 1px) 0 0 / 48px 48px,
     linear-gradient(180deg, #fbfbfa 0, #f6f6f4 360px),
     #f6f6f4;
 }
@@ -2028,7 +2029,11 @@ select {
 
 .admin-panel {
   min-width: 0;
-  padding: 18px;
+  border: 0;
+  border-top: 1px solid var(--line-2);
+  border-radius: 0;
+  padding: 18px 0 0;
+  background: transparent;
 }
 
 .admin-panel-wide,
@@ -2042,19 +2047,21 @@ select {
 }
 
 .admin-panel h3 {
-  margin: 0 0 12px;
+  margin: 0 0 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
   color: #171717;
   font-size: 16px;
-  font-weight: 700;
+  font-weight: 780;
 }
 
 .admin-settings-section {
   display: grid;
   gap: 12px;
   border: 0;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--line-2);
   border-radius: 0;
-  padding: 14px 0 0;
+  padding: 16px 0 0;
   background: transparent;
 }
 
@@ -2862,21 +2869,24 @@ select {
 .empty-state,
 .error-box,
 .warning-box {
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: rgba(255, 255, 255, 0.94);
+  border: 0;
+  border-top: 1px solid var(--line-2);
+  border-radius: 0;
+  background: transparent;
   box-shadow: none;
 }
 
 .panel {
-  padding: 18px;
+  padding: 18px 0 0;
 }
 
 .panel-title,
 .viewer-header {
-  margin-bottom: 12px;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
   color: var(--ink);
-  font-weight: 650;
+  font-weight: 760;
   font-size: 1rem;
 }
 
@@ -3952,7 +3962,8 @@ button:disabled {
 
 .settings-grid .settings-section {
   border: 0;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--line-2);
+  border-radius: 0;
   padding: 18px 0 0;
   background: transparent;
 }
@@ -4148,7 +4159,7 @@ button:disabled {
   border: 1px solid var(--line);
   padding: clamp(8px, 1.6vw, 14px);
   background:
-    linear-gradient(135deg, #eef4ff, #ffffff 58%, #f4f4f1);
+    linear-gradient(135deg, #efefec, #ffffff 58%, #e8e8e3);
   cursor: pointer;
   min-width: 0;
 }
@@ -4202,8 +4213,9 @@ button:disabled {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0;
   margin-top: 18px;
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
+  border-top: 1px solid var(--line-2);
+  border-bottom: 1px solid var(--line-2);
+  background: transparent;
 }
 
 .home-outcome-strip div {
@@ -5743,9 +5755,10 @@ pre {
   display: grid;
   gap: 14px;
   border: 0;
+  border-top: 1px solid var(--line-2);
   border-radius: 0;
-  padding: 16px;
-  background: var(--paper);
+  padding: 18px 0 0;
+  background: transparent;
   margin-top: 0;
   box-shadow: none;
 }
@@ -5996,8 +6009,12 @@ pre {
   display: grid;
   gap: 14px;
   align-content: start;
-  padding-right: 20px;
-  border-right: 1px solid var(--line);
+  border: 0;
+  border-right: 1px solid var(--line-2);
+  border-radius: 0;
+  padding: 0 20px 0 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .fa2-sticky-controls {
@@ -6052,7 +6069,7 @@ pre {
 .fa2-control-card,
 .fa2-empty-result {
   border: 0;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--line-2);
   border-radius: 0;
   background: transparent;
   box-shadow: none;
@@ -6075,8 +6092,8 @@ pre {
   justify-content: space-between;
   gap: 10px;
   color: var(--ink-2);
-  font-size: 0.75rem;
-  font-weight: 760;
+  font-size: 0.72rem;
+  font-weight: 900;
   text-transform: uppercase;
   letter-spacing: 0.09em;
 }
@@ -6461,8 +6478,12 @@ pre {
 .fa2-result-tabs {
   display: grid;
   gap: 12px;
-  border-top: 1px solid var(--line);
-  padding-top: 10px;
+  border: 0;
+  border-top: 1px solid var(--line-2);
+  border-radius: 0;
+  padding: 10px 0 0;
+  background: transparent;
+  box-shadow: none;
   min-width: 0;
 }
 
@@ -6471,7 +6492,7 @@ pre {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: center;
   gap: 0;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--line-2);
   overflow-x: auto;
 }
 
@@ -6698,13 +6719,18 @@ pre {
   display: grid;
   gap: 10px;
   min-width: 0;
+  border: 0;
+  border-top: 1px solid var(--line-2);
+  border-radius: 0;
+  padding: 12px 0 0;
+  background: transparent;
 }
 
 .fa2-graph-card .geogebra-view {
   min-height: 420px;
   height: min(60vh, 560px);
-  border: 1px solid var(--line);
-  border-radius: 14px;
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
   overflow: hidden;
   background: #fff;
 }
@@ -6933,7 +6959,7 @@ pre {
 /* Generic section */
 .fa2-section {
   border: 0;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--line-2);
   border-radius: 0;
   overflow: visible;
   background: transparent;
@@ -8061,6 +8087,11 @@ button.analyzer-guide-label:hover {
   grid-template-columns: minmax(168px, 198px) minmax(0, 1fr);
   gap: clamp(16px, 2vw, 24px);
   align-items: start;
+  border: 0;
+  border-top: 1px solid var(--line-2);
+  border-radius: 0;
+  padding-top: clamp(14px, 1.8vw, 20px);
+  background: transparent;
 }
 
 .csim-workbench.is-menu-collapsed {
@@ -8080,7 +8111,7 @@ button.analyzer-guide-label:hover {
   gap: 10px;
   min-width: 0;
   border: 0;
-  border-right: 1px solid var(--line);
+  border-right: 1px solid var(--line-2);
   border-radius: 0;
   padding: 0 16px 0 0;
   background: transparent;
@@ -8226,9 +8257,10 @@ button.analyzer-guide-label:hover {
 .trig-board,
 .trig-control-panel,
 .csim-three-card {
-  border: 1px solid var(--line) !important;
-  border-radius: var(--radius-md) !important;
-  background: rgba(255,255,255,0.92) !important;
+  border: 0 !important;
+  border-top: 1px solid var(--line-2) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
   box-shadow: none !important;
 }
 
@@ -8236,7 +8268,7 @@ button.analyzer-guide-label:hover {
 
 .csim-control-stack .csim-card {
   border: 0 !important;
-  border-top: 1px solid var(--line) !important;
+  border-top: 1px solid var(--line-2) !important;
   border-radius: 0 !important;
   padding: 18px 0 0;
   background: transparent !important;
@@ -8299,10 +8331,10 @@ button.analyzer-guide-label:hover {
   grid-template-columns: minmax(170px, 0.55fr) auto minmax(280px, 1fr);
   align-items: center;
   gap: 14px;
-  padding: 0 0 14px;
   border: 0;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--line-2);
   border-radius: 0;
+  padding: 0 0 14px;
   background: transparent;
   box-shadow: none;
 }
@@ -9012,10 +9044,11 @@ button.analyzer-guide-label:hover {
 .csim-graph-card {
   display: grid;
   gap: 10px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--paper);
-  padding: clamp(14px, 2vw, 18px);
+  border: 0;
+  border-top: 1px solid var(--line-2);
+  border-radius: 0;
+  background: transparent;
+  padding: clamp(14px, 2vw, 18px) 0 0;
   box-shadow: none;
 }
 
@@ -9044,7 +9077,7 @@ button.analyzer-guide-label:hover {
 }
 
 .csim-svg-bg {
-  fill: #fafbfd;
+  fill: #fbfbfa;
 }
 
 .csim-grid {
@@ -9114,7 +9147,7 @@ button.analyzer-guide-label:hover {
 .csim-line.f {
   display: inline-block;
   width: 18px;
-  height: 3px;
+  height: 2px;
   background: #2563eb;
   border-radius: 2px;
   vertical-align: middle;
@@ -9124,7 +9157,7 @@ button.analyzer-guide-label:hover {
 .csim-line.g {
   display: inline-block;
   width: 18px;
-  height: 3px;
+  height: 2px;
   background: #dc2626;
   border-radius: 2px;
   vertical-align: middle;
@@ -9315,7 +9348,7 @@ button.analyzer-guide-label:hover {
     gap: 6px;
   }
   .csim-graph-card {
-    padding: 10px;
+    padding: 10px 0 0;
   }
   .csim-three-card,
   .csim-three-canvas {
