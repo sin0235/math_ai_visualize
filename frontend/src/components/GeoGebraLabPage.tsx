@@ -238,7 +238,7 @@ export function GeoGebraLabPage() {
           errorDialogsActive: false,
           language: 'vi',
           showToolBarHelp: true,
-          preventFocus: false,
+          preventFocus: true,
           ...(tab.perspective ? { perspective: tab.perspective } : {}),
           appletOnLoad: (api: GeoGebraApi) => {
             if (cancelled) return;
