@@ -32,7 +32,13 @@ Sản phẩm giải quyết bài toán thực tế: học sinh và giáo viên t
 
 ### 1. Lý do chọn đề tài
 
-Trong chương trình toán THPT (lớp 10–12), hình học chiếm tỉ trọng lớn và là phần gây khó khăn nhất cho học sinh do đòi hỏi khả năng tưởng tượng không gian và dựng hình chính xác. Cụ thể:
+Ý tưởng xây dựng AI Math Renderer bắt nguồn từ chính trải nghiệm thực tế khi mình nhận gia sư cho một bạn học sinh lớp 12 môn Toán để ôn thi tốt nghiệp THPT. Trong quá trình kèm cặp, mình nhận ra bạn ấy không hề yếu kiến thức lý thuyết — bạn thuộc công thức, hiểu phương pháp — nhưng cứ đến phần hình học không gian và khảo sát hàm số là "đứng hình". Lý do đơn giản: **bạn không hình dung được hình trong không gian 3D chỉ từ đề bài văn bản**, và khi vẽ đồ thị hàm số, bạn hay sai ở bước lập bảng biến thiên rồi kéo theo cả bài sai.
+
+Mỗi buổi dạy, mình phải mất rất nhiều thời gian vẽ tay hình minh họa trên giấy — mà hình 3D vẽ trên giấy 2D thì luôn bị méo, khó hiểu. Mình từng nghĩ: *"Giá mà có cách nào chỉ cần gõ đề bài vào là máy tự dựng hình cho mình, để em ấy xoay qua xoay lại mà nhìn..."*. Mình thử tìm trên mạng — GeoGebra thì phải biết nhập lệnh, Desmos chỉ vẽ đồ thị 2D, Wolfram Alpha thì toàn tiếng Anh và không hỗ trợ hình không gian kiểu SGK Việt Nam. Không có công cụ nào cho phép nhập đề bài tiếng Việt rồi tự dựng hình cả.
+
+Từ bài toán thực tế đó, mình quyết định tự xây dựng một nền tảng giải quyết đúng nỗi đau này: **nhập đề bài bằng tiếng Việt (hoặc chụp ảnh đề) → hệ thống tự động dựng hình tương tác 2D/3D**. Và AI Math Renderer ra đời.
+
+Nhìn rộng hơn, đây không chỉ là vấn đề của riêng một học sinh. Trong chương trình toán THPT (lớp 10–12), hình học chiếm tỉ trọng lớn và là phần gây khó khăn nhất cho học sinh do đòi hỏi khả năng tưởng tượng không gian và dựng hình chính xác. Cụ thể:
 
 - **Hình học không gian (lớp 11–12):** Học sinh cần hình dung các hình chóp, lăng trụ, mặt phẳng cắt trong không gian 3D — điều rất khó thực hiện chỉ trên giấy 2D. Nhiều học sinh mất điểm không phải vì thiếu kiến thức mà vì không dựng được hình đúng.
 

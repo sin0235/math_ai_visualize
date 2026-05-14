@@ -70,7 +70,7 @@ const svgProps = { viewBox: '0 0 24 24', width: 18, height: 18, fill: 'none', st
 const GraphIcon = <svg {...svgProps}><polyline points="4 18 8 10 12 14 16 6 20 12" /><path d="M4 20h16" /><path d="M4 4v16" /></svg>;
 const GeometryIcon = <svg {...svgProps}><polygon points="12 3 4 20 20 20" /><circle cx="12" cy="14" r="4" /></svg>;
 const ThreeDIcon = <svg {...svgProps}><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z" /><path d="M12 12l8-4.5" /><path d="M12 12v9" /><path d="M12 12L4 7.5" /></svg>;
-const ProbabilityIcon = <svg {...svgProps}><path d="M4 20c0-8 4-16 8-16s8 8 8 16" /><path d="M4 20h16" /><path d="M12 4v16" /></svg>;
+const ProbabilityIcon = <svg {...svgProps}><path d="M2 20 C2 20 5 20 7 19 C9 18 10 8 12 5 C14 8 15 18 17 19 C19 20 22 20 22 20" /><line x1="2" y1="20" x2="22" y2="20" /><line x1="12" y1="4" x2="12" y2="20" strokeDasharray="2 2" opacity="0.5" /></svg>;
 const LabIcon = <svg {...svgProps}><path d="M9 3h6v5l4 9H5l4-9V3z" /><path d="M9 3h6" /><circle cx="10" cy="15" r="1" /><circle cx="14" cy="13" r="1" /></svg>;
 
 const TABS: TabConfig[] = [
@@ -130,7 +130,8 @@ const TABS: TabConfig[] = [
     label: 'Probability',
     desc: 'Phân phối chuẩn, nhị thức, Poisson, tính xác suất',
     icon: ProbabilityIcon,
-    appName: 'probability',
+    appName: 'classic',
+    perspective: '6',
     presets: [],
   },
 ];
