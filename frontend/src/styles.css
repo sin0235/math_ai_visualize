@@ -9808,6 +9808,8 @@ button.analyzer-guide-label:hover {
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
+  overscroll-behavior: contain;
+  touch-action: none;
   background: #fafafa;
 }
 

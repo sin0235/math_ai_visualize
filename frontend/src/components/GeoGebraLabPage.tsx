@@ -183,8 +183,26 @@ export function GeoGebraLabPage() {
   const containerId = `gglab-${rawId.replace(/[^a-zA-Z0-9]/g, '')}`;
   const apiRef = useRef<GeoGebraApi | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const workspaceRef = useRef<HTMLDivElement | null>(null);
 
   const tab = TABS.find((t) => t.key === mode)!;
+
+  useEffect(() => {
+    const workspace = workspaceRef.current;
+    if (!workspace) return;
+
+    const stopPageScroll = (event: WheelEvent | TouchEvent) => {
+      event.preventDefault();
+    };
+
+    workspace.addEventListener('wheel', stopPageScroll, { passive: false });
+    workspace.addEventListener('touchmove', stopPageScroll, { passive: false });
+
+    return () => {
+      workspace.removeEventListener('wheel', stopPageScroll);
+      workspace.removeEventListener('touchmove', stopPageScroll);
+    };
+  }, []);
 
   /* ---------- inject applet ---------- */
   useEffect(() => {
@@ -243,8 +261,6 @@ export function GeoGebraLabPage() {
   }, [mode, containerId, tab.appName, tab.perspective]);
 
   /* ---------- resize observer ---------- */
-  const workspaceRef = useRef<HTMLDivElement | null>(null);
-
   useEffect(() => {
     if (status !== 'ready') return;
     const workspace = workspaceRef.current;
