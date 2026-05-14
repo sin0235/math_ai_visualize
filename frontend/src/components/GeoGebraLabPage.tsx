@@ -130,15 +130,8 @@ const TABS: TabConfig[] = [
     label: 'Probability',
     desc: 'Phân phối chuẩn, nhị thức, Poisson, tính xác suất',
     icon: ProbabilityIcon,
-    appName: 'classic',
-    perspective: 'P',
-    presets: [
-      { label: 'Normal(0,1)', commands: ['Normal(0,1,1)'], desc: 'Phân phối chuẩn tắc' },
-      { label: 'Normal(5,2)', commands: ['Normal(5,2,7)'], desc: 'μ=5, σ=2' },
-      { label: 'Binomial(10,0.5)', commands: ['BinomialDist(10,0.5,3,true)'], desc: 'n=10, p=0.5' },
-      { label: 'Poisson(4)', commands: ['Poisson(4,3,true)'], desc: 'λ=4' },
-      { label: 'P(X≤2)', commands: ['Normal(0,1,2)'], desc: 'CDF chuẩn tắc tại x=2' },
-    ],
+    appName: 'probability',
+    presets: [],
   },
 ];
 
@@ -225,8 +218,8 @@ export function GeoGebraLabPage() {
           width: w,
           height: h,
           showToolBar: true,
-          showAlgebraInput: true,
-          showMenuBar: true,
+          showAlgebraInput: mode !== 'probability',
+          showMenuBar: mode !== 'probability',
           showResetIcon: true,
           enableShiftDragZoom: true,
           enableRightClick: true,
@@ -399,14 +392,18 @@ export function GeoGebraLabPage() {
               {/* Presets */}
               <div className="gglab-section">
                 <strong className="gglab-section-title">Mẫu nhanh — {tab.label}</strong>
-                <div className="gglab-presets">
-                  {tab.presets.map((p) => (
-                    <button key={p.label} type="button" className="gglab-preset" onClick={() => applyPreset(p)} disabled={status !== 'ready'} title={p.desc || p.commands.join('; ')}>
-                      <strong>{p.label}</strong>
-                      {p.desc && <small>{p.desc}</small>}
-                    </button>
-                  ))}
-                </div>
+                {tab.presets.length > 0 ? (
+                  <div className="gglab-presets">
+                    {tab.presets.map((p) => (
+                      <button key={p.label} type="button" className="gglab-preset" onClick={() => applyPreset(p)} disabled={status !== 'ready'} title={p.desc || p.commands.join('; ')}>
+                        <strong>{p.label}</strong>
+                        {p.desc && <small>{p.desc}</small>}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="gglab-section-note">Dùng bảng Probability trong GeoGebra để chọn phân phối và nhập tham số.</p>
+                )}
               </div>
 
               {/* Actions */}
