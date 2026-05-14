@@ -9473,10 +9473,6 @@ button.analyzer-guide-label:hover {
   overflow: hidden;
 }
 
-.gglab-body.sidebar-collapsed {
-  grid-template-columns: 36px 1fr;
-}
-
 /* ---- Sidebar ---- */
 
 .gglab-sidebar {
@@ -9488,42 +9484,6 @@ button.analyzer-guide-label:hover {
   overflow: hidden;
   min-height: 0;
   min-width: 0;
-}
-
-.gglab-body.sidebar-collapsed .gglab-sidebar {
-  border-right: 0;
-}
-
-.gglab-sidebar-toggle {
-  position: absolute;
-  top: 8px;
-  right: -1px;
-  z-index: 2;
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--line);
-  border-radius: 0 6px 6px 0;
-  padding: 0;
-  color: var(--ink-3);
-  background: var(--paper);
-  font-size: 1rem;
-  cursor: pointer;
-}
-
-.gglab-sidebar-toggle:hover {
-  color: var(--ink);
-  background: var(--surface);
-}
-
-.gglab-body.sidebar-collapsed .gglab-sidebar-toggle {
-  position: relative;
-  top: auto;
-  right: auto;
-  margin: 4px auto;
-  border-radius: 6px;
 }
 
 .gglab-sidebar-content {
@@ -9922,16 +9882,10 @@ button.analyzer-guide-label:hover {
     grid-template-columns: 1fr;
     grid-template-rows: auto 1fr;
   }
-  .gglab-body.sidebar-collapsed {
-    grid-template-columns: 1fr;
-  }
   .gglab-sidebar {
     border-right: 0;
     border-bottom: 1px solid var(--line);
     max-height: 260px;
-  }
-  .gglab-sidebar-toggle {
-    display: none;
   }
   .gglab-presets {
     grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));

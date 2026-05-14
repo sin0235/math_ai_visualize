@@ -175,7 +175,6 @@ export function GeoGebraLabPage() {
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [errorMsg, setErrorMsg] = useState('');
   const [objectCount, setObjectCount] = useState(0);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [savedStates, setSavedStates] = useState<Record<string, string>>({});
   const [saveLabel, setSaveLabel] = useState('');
 
@@ -245,7 +244,6 @@ export function GeoGebraLabPage() {
             apiRef.current = api;
             api.setErrorDialogsActive?.(false);
             if (tab.perspective) api.setPerspective?.(tab.perspective);
-            requestAnimationFrame(() => resizeToContainer(api, containerRef.current));
             setStatus('ready');
             refreshObjectCount(api);
           },
@@ -259,32 +257,6 @@ export function GeoGebraLabPage() {
 
     return () => { cancelled = true; apiRef.current = null; if (host) host.innerHTML = ''; };
   }, [mode, containerId, tab.appName, tab.perspective]);
-
-  /* ---------- resize observer ---------- */
-  useEffect(() => {
-    if (status !== 'ready') return;
-    const workspace = workspaceRef.current;
-    const container = containerRef.current;
-    if (!workspace || !container) return;
-    let frame = 0;
-    const doResize = () => {
-      if (frame) cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => resizeToContainer(apiRef.current, container));
-    };
-    const obs = new ResizeObserver(doResize);
-    obs.observe(workspace);
-    return () => { obs.disconnect(); if (frame) cancelAnimationFrame(frame); };
-  }, [status]);
-
-  /* ---------- resize on sidebar toggle ---------- */
-  useEffect(() => {
-    if (status !== 'ready') return;
-    // Multiple delays to catch CSS grid reflow timing
-    const timers = [50, 150, 350].map((ms) =>
-      setTimeout(() => resizeToContainer(apiRef.current, containerRef.current), ms),
-    );
-    return () => timers.forEach(clearTimeout);
-  }, [sidebarOpen, status]);
 
   /* ---------- helpers ---------- */
   function refreshObjectCount(api: GeoGebraApi | null) {
@@ -397,14 +369,10 @@ export function GeoGebraLabPage() {
       </div>
 
       {/* ---- Body ---- */}
-      <div className={`gglab-body${sidebarOpen ? '' : ' sidebar-collapsed'}`}>
+      <div className="gglab-body">
         {/* ---- Sidebar ---- */}
         <aside className="gglab-sidebar" aria-label="Công cụ phụ">
-          <button type="button" className="gglab-sidebar-toggle" onClick={() => setSidebarOpen((v) => !v)} aria-label={sidebarOpen ? 'Thu sidebar' : 'Mở sidebar'}>
-            {sidebarOpen ? '‹' : '›'}
-          </button>
-          {sidebarOpen && (
-            <div className="gglab-sidebar-content">
+          <div className="gglab-sidebar-content">
               {/* Command input */}
               <div className="gglab-section">
                 <strong className="gglab-section-title">Nhập lệnh GeoGebra</strong>
@@ -480,8 +448,7 @@ export function GeoGebraLabPage() {
                   </div>
                 )}
               </div>
-            </div>
-          )}
+          </div>
         </aside>
 
         {/* ---- Applet area ---- */}
@@ -514,15 +481,6 @@ export function GeoGebraLabPage() {
 /* ------------------------------------------------------------------ */
 /*  Utils                                                             */
 /* ------------------------------------------------------------------ */
-
-function resizeToContainer(api: GeoGebraApi | null, el: HTMLDivElement | null) {
-  if (!api || !el) return;
-  const w = Math.max(el.clientWidth, 400);
-  const h = Math.max(el.clientHeight, 400);
-  api.setSize?.(w, h);
-  api.setWidth?.(w);
-  api.setHeight?.(h);
-}
 
 function downloadDataUrl(url: string, filename: string) {
   const a = document.createElement('a');
