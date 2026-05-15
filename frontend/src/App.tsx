@@ -17,9 +17,11 @@ import { SolverPanel } from './components/SolverPanel';
 import { FunctionAnalyzerPanel } from './components/FunctionAnalyzerPanel';
 import { CalculusSimulationPage } from './components/CalculusSimulationPage';
 import { GeoGebraLabPage } from './components/GeoGebraLabPage';
+import { PdfToWordPage } from './components/PdfToWordPage';
 import { KatexSpan } from './components/KatexSpan';
 import { ExportMenuItems } from './components/ExportMenu';
 import { ProblemVariantTool } from './components/DiagramTools';
+import { normalizeMineruBaseUrl } from './api/mineru';
 import { getDefaultParamValues, patchGeogebraCommandsForScene, recomputeSceneWithParameters, recomputeThreeScene } from './utils/sceneParameters';
 import type { AdvancedRenderSettings, MathScene, RenderResponse, Renderer } from './types/scene';
 import { defaultRuntimeSettings, SETTINGS_STORAGE_VERSION, type OcrProvider, type RuntimeSettings, type SettingsDefaults, type UserBasicSettings } from './types/settings';
@@ -32,8 +34,10 @@ const MOBILE_WARNING_STORAGE_KEY = 'hinh-mobile-warning-dismissed';
 const MOBILE_BREAKPOINT_QUERY = '(max-width: 900px)';
 const DEVELOPER_GITHUB_URL = 'https://github.com/sin0235';
 const CONTACT_EMAIL = 'support@sin-studio.tech';
+const PDF_WORD_ENABLED = parseEnvFlag(import.meta.env.VITE_PDF_WORD_ENABLED);
+const MINERU_API_BASE_URL = normalizeMineruBaseUrl(import.meta.env.VITE_MINERU_API_BASE_URL);
 
-type AppView = 'home' | 'render' | 'analyzer' | 'analyzer-guide' | 'simulation' | 'geogebra-lab' | 'history' | 'guide' | 'about' | 'privacy-policy' | 'terms' | 'login' | 'settings' | 'admin' | 'account' | 'feedback' | 'reset-password' | 'verify-email';
+type AppView = 'home' | 'render' | 'analyzer' | 'analyzer-guide' | 'simulation' | 'geogebra-lab' | 'pdf-to-word' | 'history' | 'guide' | 'about' | 'privacy-policy' | 'terms' | 'login' | 'settings' | 'admin' | 'account' | 'feedback' | 'reset-password' | 'verify-email';
 type EditTool = 'move' | 'connect' | 'project_to_segment' | 'add_point';
 type Vec3 = { x: number; y: number; z: number };
 type Notification = {
@@ -60,6 +64,7 @@ const viewPaths: Record<AppView, string> = {
   'analyzer-guide': '/analyzer/guide',
   simulation: '/simulation',
   'geogebra-lab': '/geogebra-lab',
+  'pdf-to-word': '/pdf-to-word',
   history: '/history',
   guide: '/guide',
   about: '/about',
@@ -878,7 +883,7 @@ export default function App() {
         </div>
         <nav className="header-nav">
           <div className="tools-menu" ref={toolsMenuRef}>
-            <button type="button" className={`nav-item ${activeView === 'render' || activeView === 'analyzer' || activeView === 'analyzer-guide' || activeView === 'simulation' || activeView === 'geogebra-lab' ? 'active' : ''}`} aria-haspopup="menu" aria-expanded={toolsMenuOpen} onClick={() => setToolsMenuOpen((open) => !open)}>
+            <button type="button" className={`nav-item ${activeView === 'render' || activeView === 'analyzer' || activeView === 'analyzer-guide' || activeView === 'simulation' || activeView === 'geogebra-lab' || activeView === 'pdf-to-word' ? 'active' : ''}`} aria-haspopup="menu" aria-expanded={toolsMenuOpen} onClick={() => setToolsMenuOpen((open) => !open)}>
               <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3v18"></path><path d="M3 12h18"></path><path d="M5 5l14 14"></path><path d="M19 5L5 19"></path></svg>
               Công cụ
               <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
@@ -913,12 +918,16 @@ export default function App() {
                   <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18"></path><path d="M9 21V9"></path><circle cx="16" cy="15" r="2"></circle></svg>
                   <span><strong>GeoGebra Lab</strong><small>Graphing, Geometry, 3D, Probability</small></span>
                 </button>
-                <button type="button" role="menuitem" onClick={() => {
+                <button type="button" role="menuitem" className={activeView === 'pdf-to-word' ? 'active' : ''} onClick={() => {
                   setToolsMenuOpen(false);
+                  if (PDF_WORD_ENABLED) {
+                    navigateTo('pdf-to-word');
+                    return;
+                  }
                   showNotification(
                     'PDF → Word chuẩn đề trắc nghiệm',
-                    'Chức năng này cần GPU nên tạm chưa deploy trực tiếp. Hãy gửi mail để được hỗ trợ cài đặt miễn phí.',
-                    ['Khuyến khích để lại Zalo, email hoặc Facebook để em hỗ trợ nhanh hơn.', CONTACT_EMAIL],
+                    'Chức năng này đang tắt bằng feature flag. Bật VITE_PDF_WORD_ENABLED và cấu hình VITE_MINERU_API_BASE_URL để dùng demo.',
+                    ['Khi chưa bật demo, hãy gửi mail để được hỗ trợ cài đặt miễn phí.', CONTACT_EMAIL],
                     'info',
                     { label: 'Chuyển tới Mail', href: `mailto:${CONTACT_EMAIL}?subject=Hỗ trợ cài đặt PDF sang Word&body=Em/chào bạn,%0D%0A%0D%0AMình cần hỗ trợ cài đặt chức năng PDF sang Word chuẩn cấu trúc đề trắc nghiệm.%0D%0A%0D%0AThông tin liên hệ:%0D%0A- Zalo:%0D%0A- Email/Facebook:%0D%0A%0D%0AXin cảm ơn.` },
                   );
@@ -1210,6 +1219,20 @@ export default function App() {
         )}
         {activeView === 'simulation' && <CalculusSimulationPage />}
         {activeView === 'geogebra-lab' && <GeoGebraLabPage />}
+        {activeView === 'pdf-to-word' && (
+          <PdfToWordPage
+            enabled={PDF_WORD_ENABLED}
+            apiBaseUrl={MINERU_API_BASE_URL}
+            modelOptions={modelOptions}
+            runtimeSettings={runtimeSettings}
+            router9Only={settingsDefaults?.router9.only_mode ?? false}
+            onOpenSettings={() => navigateTo(user?.role === 'admin' ? 'admin' : 'settings')}
+            onUseProblemText={(text) => {
+              setProblemText(text);
+              navigateTo('render');
+            }}
+          />
+        )}
         {activeView === 'analyzer-guide' && <AnalyzerGuidePage onOpenGeneralGuide={() => navigateTo('guide')} />}
         {activeView === 'history' && (
           <HistoryPage
@@ -1882,6 +1905,12 @@ function readMobileWarningDismissed() {
   } catch {
     return false;
   }
+}
+
+function parseEnvFlag(value: string | boolean | undefined) {
+  if (typeof value === 'boolean') return value;
+  const normalized = (value ?? '').trim().toLowerCase();
+  return ['1', 'true', 'yes', 'on'].includes(normalized);
 }
 
 function loadStoredSettings(saved: string): RuntimeSettings {

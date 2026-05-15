@@ -798,7 +798,13 @@ async function requestJson<T>(path: string, init: RequestInit | undefined, fallb
   try {
     const response = await fetchWithRetry(apiUrl(path), init);
     if (!response.ok) throw await parseApiError(response, `${fallbackMessage} HTTP ${response.status}`);
-    return response.json() as Promise<T>;
+    const body = await response.text();
+    if (!body.trim()) throw new ApiError(fallbackMessage);
+    try {
+      return JSON.parse(body) as T;
+    } catch {
+      throw new ApiError(fallbackMessage);
+    }
   } catch (caught) {
     if (caught instanceof ApiError) throw caught;
     throw networkApiError(caught, fallbackMessage);

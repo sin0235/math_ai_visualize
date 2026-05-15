@@ -622,6 +622,414 @@ select {
   color: #ffffff;
 }
 
+.pdf-word-page {
+  width: 100%;
+  min-height: calc(100dvh - 56px - 48px);
+  background: var(--paper);
+}
+
+.pdf-word-shell {
+  display: grid;
+  gap: 20px;
+  width: min(1180px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 28px 0 44px;
+}
+
+.pdf-word-intro {
+  display: grid;
+  gap: 10px;
+  max-width: 760px;
+}
+
+.pdf-word-intro .eyebrow {
+  margin: 0;
+  color: var(--ink-4);
+  font-size: 0.74rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.pdf-word-intro h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: clamp(1.7rem, 4vw, 3rem);
+  line-height: 1.05;
+}
+
+.pdf-word-intro p {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: 1rem;
+  line-height: 1.65;
+}
+
+.pdf-word-status-panel {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 12px;
+  border-top: 1px solid var(--line-2);
+  border-bottom: 1px solid var(--line);
+  padding: 14px 0;
+}
+
+.pdf-word-status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: #f59e0b;
+  box-shadow: 0 0 0 5px rgba(245, 158, 11, 0.14);
+}
+
+.pdf-word-status-dot.ready {
+  background: #16a34a;
+  box-shadow: 0 0 0 5px rgba(22, 163, 74, 0.14);
+}
+
+.pdf-word-status-panel div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pdf-word-status-panel strong {
+  color: var(--ink);
+  font-size: 0.95rem;
+}
+
+.pdf-word-status-panel span:not(.pdf-word-status-dot) {
+  overflow-wrap: anywhere;
+  color: var(--ink-4);
+  font-size: 0.86rem;
+  line-height: 1.4;
+}
+
+.pdf-word-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.75fr);
+  gap: 28px;
+  align-items: start;
+}
+
+.pdf-word-upload-column,
+.pdf-word-options-column {
+  display: grid;
+  gap: 14px;
+}
+
+.pdf-word-options-column {
+  border-top: 1px solid var(--line-2);
+  padding-top: 18px;
+}
+
+.pdf-word-dropzone {
+  display: grid;
+  place-items: center;
+  gap: 10px;
+  min-height: 260px;
+  border: 1.5px dashed var(--line-2);
+  border-radius: 12px;
+  padding: 28px;
+  background:
+    linear-gradient(135deg, rgba(17, 17, 17, 0.035), transparent 34%),
+    var(--surface);
+  color: var(--ink-3);
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.pdf-word-dropzone input {
+  display: none;
+}
+
+.pdf-word-dropzone.drag-active,
+.pdf-word-dropzone:hover {
+  border-color: var(--ink);
+  background: var(--paper);
+  transform: translateY(-1px);
+}
+
+.pdf-word-dropzone.has-file {
+  border-style: solid;
+  background: #f8fafc;
+}
+
+.pdf-word-drop-icon {
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.pdf-word-drop-icon svg {
+  width: 28px;
+  height: 28px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.pdf-word-dropzone strong {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font-size: 1.02rem;
+}
+
+.pdf-word-dropzone span:last-child {
+  color: var(--ink-4);
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.pdf-word-field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.pdf-word-option-toggles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.pdf-word-option-toggles .checkbox-label {
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: 0.86rem;
+}
+
+.pdf-word-advanced-options {
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.pdf-word-advanced-options:not([open]) {
+  gap: 0;
+}
+
+.pdf-word-advanced-options summary {
+  cursor: pointer;
+  color: var(--ink);
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.pdf-word-llm-summary {
+  display: grid;
+  grid-template-columns: minmax(72px, auto) minmax(0, 1fr);
+  gap: 8px 12px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  padding: 12px 0;
+}
+
+.pdf-word-llm-summary span {
+  color: var(--ink-4);
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.pdf-word-llm-summary strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--ink-2);
+  font-size: 0.88rem;
+}
+
+.pdf-word-error {
+  border-left: 3px solid #b91c1c;
+  padding: 8px 10px;
+  background: #fef2f2;
+  color: #991b1b;
+  font-size: 0.86rem;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.pdf-word-result-strip {
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid var(--line-2);
+  padding-top: 18px;
+}
+
+.pdf-word-progress-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.pdf-word-progress-track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--line);
+}
+
+.pdf-word-progress-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--ink);
+  transition: width 180ms ease;
+}
+
+.pdf-word-result-strip p {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.pdf-word-terminal {
+  max-height: 180px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  margin: 0;
+  padding: 12px;
+  background: #0f172a;
+  color: #e5e7eb;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.pdf-word-log-panel {
+  display: grid;
+  gap: 8px;
+}
+
+.pdf-word-log-panel summary {
+  cursor: pointer;
+  color: var(--ink-3);
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.pdf-word-downloads {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.pdf-word-download-primary,
+.pdf-word-download-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  border: 1px solid var(--ink);
+  border-radius: 10px;
+  padding: 8px 12px;
+  color: var(--ink);
+  background: var(--paper);
+  font-size: 0.86rem;
+  font-weight: 850;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.pdf-word-download-primary {
+  background: var(--ink);
+  color: var(--accent-fg);
+}
+
+.pdf-word-download-link:disabled {
+  opacity: 0.58;
+  cursor: not-allowed;
+}
+
+.pdf-word-artifact-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  width: 100%;
+  margin-top: 4px;
+}
+
+.pdf-word-artifact-list a {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--ink-2);
+  background: var(--surface);
+  text-decoration: none;
+}
+
+.pdf-word-artifact-list span {
+  border-radius: 6px;
+  padding: 2px 6px;
+  background: var(--paper);
+  color: var(--ink-4);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.pdf-word-artifact-list strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink-2);
+  font-size: 0.82rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pdf-word-artifact-list em {
+  color: var(--ink-4);
+  font-size: 0.78rem;
+  font-style: normal;
+  font-weight: 700;
+}
+
+@media (max-width: 860px) {
+  .pdf-word-workspace,
+  .pdf-word-field-grid,
+  .pdf-word-option-toggles,
+  .pdf-word-artifact-list {
+    grid-template-columns: 1fr;
+  }
+
+  .pdf-word-shell {
+    width: min(100% - 24px, 680px);
+    padding-top: 18px;
+  }
+
+  .pdf-word-dropzone {
+    min-height: 210px;
+    padding: 22px 16px;
+  }
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
