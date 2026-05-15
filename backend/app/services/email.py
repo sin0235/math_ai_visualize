@@ -1,6 +1,7 @@
 import logging
 import smtplib
 from email.message import EmailMessage
+from hashlib import sha256
 
 import resend
 
@@ -67,8 +68,9 @@ async def send_email(to_email: str, subject: str, text: str, html: str, settings
     from_email = settings.resend_from_email or settings.smtp_from_email
     if settings.resend_api_key:
         resend.api_key = settings.resend_api_key
+        logger.info("Auth email sending via Resend to_hash=%s subject=%s from=%s", _email_hash(to_email), subject, from_email)
         try:
-            resend.Emails.send(
+            result = resend.Emails.send(
                 {
                     "from": from_email,
                     "to": [to_email],
@@ -77,15 +79,18 @@ async def send_email(to_email: str, subject: str, text: str, html: str, settings
                     "text": text,
                 }
             )
+            logger.info("Auth email accepted by Resend to_hash=%s subject=%s result=%s", _email_hash(to_email), subject, _safe_resend_result(result))
             return
         except Exception:
-            logger.exception("Resend email delivery failed to=%s subject=%s", to_email, subject)
+            logger.exception("Resend email delivery failed to_hash=%s subject=%s from=%s", _email_hash(to_email), subject, from_email)
             if not settings.smtp_host:
                 raise
 
     if not settings.smtp_host:
         if settings.auth_email_dev_mode:
-            logger.warning("Auth email dev mode to=%s subject=%s body=%s", to_email, subject, text)
+            logger.warning("Auth email dev mode to_hash=%s subject=%s body=%s", _email_hash(to_email), subject, text)
+        else:
+            logger.error("Auth email skipped because no Resend or SMTP transport is configured to_hash=%s subject=%s", _email_hash(to_email), subject)
         return
 
     message = EmailMessage()
@@ -101,3 +106,15 @@ async def send_email(to_email: str, subject: str, text: str, html: str, settings
         if settings.smtp_username and settings.smtp_password:
             smtp.login(settings.smtp_username, settings.smtp_password)
         smtp.send_message(message)
+    logger.info("Auth email sent via SMTP to_hash=%s subject=%s from=%s", _email_hash(to_email), subject, from_email)
+
+
+def _email_hash(email: str) -> str:
+    return sha256(email.strip().lower().encode("utf-8")).hexdigest()[:12]
+
+
+def _safe_resend_result(result: object) -> str:
+    if isinstance(result, dict):
+        value = result.get("id") or result.get("message_id") or result.get("status")
+        return str(value)[:120] if value is not None else "dict"
+    return type(result).__name__

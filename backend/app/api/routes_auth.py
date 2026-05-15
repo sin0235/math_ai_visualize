@@ -1,3 +1,4 @@
+import logging
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from sqlite3 import IntegrityError
@@ -42,6 +43,7 @@ from app.services.email import send_password_reset_email, send_verification_emai
 from app.services.google_oauth import build_google_authorization_url, exchange_google_code, fetch_google_userinfo, google_oauth_configured
 from app.services.system_settings import load_feature_flags
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 GENERIC_LOGIN_ERROR = "Email hoặc mật khẩu không đúng."
 GENERIC_RESET_MESSAGE = "Nếu tài khoản tồn tại, hướng dẫn đặt lại mật khẩu đã được gửi."
@@ -80,6 +82,7 @@ async def register(
     await LegalAcceptanceRepository(db).record_registration_acceptances(user.id, client_ip(raw_request), raw_request.headers.get("user-agent"))
     token_repo = AuthTokenRepository(db)
     _, verification_token, verification_otp = await token_repo.create(user.id, TOKEN_PURPOSE_EMAIL_VERIFICATION, 24 * 60, client_ip(raw_request), raw_request.headers.get("user-agent"), include_otp=True)
+    logger.info("Auth register sending verification email user_id=%s email_hash=%s", user.id, email_hash(user.email))
     await send_verification_email(user, verification_token, verification_otp, settings)
     await audit(db, user.id, "legal.privacy_policy_accepted", "user", user.id, raw_request)
     await audit(db, user.id, "legal.terms_accepted", "user", user.id, raw_request)
@@ -252,9 +255,11 @@ async def forgot_password(request: ForgotPasswordRequest, raw_request: Request, 
     user = await UserRepository(db).find_by_email(email)
     if user and user.status == "active":
         _, token = await AuthTokenRepository(db).create(user.id, TOKEN_PURPOSE_PASSWORD_RESET, 60, client_ip(raw_request), raw_request.headers.get("user-agent"))
+        logger.info("Auth forgot-password sending reset email user_id=%s email_hash=%s", user.id, email_hash(email))
         await send_password_reset_email(user, token, settings)
         await audit(db, user.id, "auth.password_reset_requested", "user", user.id, raw_request)
     else:
+        logger.info("Auth forgot-password skipped email email_hash=%s reason=%s", email_hash(email), "missing_user" if user is None else f"status_{user.status}")
         await audit(db, None, "auth.password_reset_requested", "user", None, raw_request, {"email_hash": email_hash(email)})
     return MessageResponse(message=GENERIC_RESET_MESSAGE)
 
@@ -312,9 +317,12 @@ async def resend_verification(
     user = await UserRepository(db).find_by_email(email)
     if user and user.status == "active" and user.email_verified_at is None:
         _, token, otp = await AuthTokenRepository(db).create(user.id, TOKEN_PURPOSE_EMAIL_VERIFICATION, 24 * 60, client_ip(raw_request), raw_request.headers.get("user-agent"), include_otp=True)
+        logger.info("Auth resend-verification sending email user_id=%s email_hash=%s", user.id, email_hash(email))
         await send_verification_email(user, token, otp, settings)
         await audit(db, user.id, "auth.email_verification_sent", "user", user.id, raw_request)
     else:
+        reason = "missing_user" if user is None else "already_verified" if user.email_verified_at is not None else f"status_{user.status}"
+        logger.info("Auth resend-verification skipped email email_hash=%s reason=%s", email_hash(email), reason)
         await audit(db, user.id if user else None, "auth.email_verification_requested", "user", user.id if user else None, raw_request, {"email_hash": email_hash(email)})
     return MessageResponse(message="Nếu tài khoản tồn tại và chưa xác minh, hướng dẫn xác minh đã được gửi.")
 
