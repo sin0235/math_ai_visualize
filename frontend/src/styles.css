@@ -4403,8 +4403,11 @@ button:disabled {
 }
 
 .login-illustration {
-  width: 100%;
-  max-height: 300px;
+  width: min(118%, 680px);
+  max-width: none;
+  max-height: clamp(340px, 42vw, 430px);
+  justify-self: center;
+  overflow: visible;
 }
 
 .login-form {
@@ -4644,11 +4647,97 @@ button:disabled {
   line-height: 1.5;
 }
 
+.auth-focus-page {
+  align-items: center;
+  min-height: min(720px, calc(100vh - 180px));
+}
+
+.auth-flow-card {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  max-width: 760px;
+  padding: clamp(28px, 5vw, 56px);
+}
+
+.auth-flow-card::before {
+  content: '';
+  position: absolute;
+  inset: -30% auto auto 48%;
+  z-index: -1;
+  width: 360px;
+  height: 360px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(37, 99, 235, 0.14), rgba(37, 99, 235, 0));
+}
+
+.auth-flow-card h2 {
+  max-width: 620px;
+}
+
+.auth-flow-copy {
+  max-width: 620px;
+  font-size: 1rem;
+}
+
+.otp-field-label {
+  gap: 12px;
+}
+
 .otp-input {
+  min-height: 72px;
+  border-radius: 18px;
   text-align: center;
-  font-size: 1.35rem;
+  font-size: clamp(1.85rem, 7vw, 3rem);
+  font-weight: 950;
+  letter-spacing: 0.42em;
+  font-variant-numeric: tabular-nums;
+  background:
+    linear-gradient(90deg, rgba(37, 99, 235, 0.08), rgba(124, 58, 237, 0.08)),
+    #ffffff;
+}
+
+.password-strength {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: center;
+  color: #64748b;
+  font-size: 0.78rem;
   font-weight: 900;
-  letter-spacing: 0.35em;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.password-strength::before {
+  content: '';
+  grid-column: 1;
+  grid-row: 1;
+  height: 8px;
+  border-radius: 999px;
+  background: #e5e7eb;
+}
+
+.password-strength span {
+  grid-column: 1;
+  grid-row: 1;
+  height: 8px;
+  border-radius: 999px;
+  background: #94a3b8;
+  transition: width 0.2s ease, background 0.2s ease;
+}
+
+.password-strength strong {
+  grid-column: 2;
+  color: #334155;
+}
+
+.password-strength.strength-weak span { background: #ef4444; }
+.password-strength.strength-medium span { background: #f97316; }
+.password-strength.strength-strong span { background: #16a34a; }
+
+.auth-actions-split {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
 
 .standalone-auth-card,
@@ -4982,6 +5071,11 @@ pre {
   .home-hero,
   .login-card {
     grid-template-columns: 1fr;
+  }
+
+  .login-illustration {
+    width: 100%;
+    max-height: 320px;
   }
 
   .home-page,
@@ -5669,9 +5763,12 @@ pre {
   font-weight: 700;
 }
 
-.fa2-interval-note .katex {
+.fa2-interval-note .katex,
+.fa2-interval-note .fa2-katex {
   color: var(--ink);
   font-size: 1rem;
+  max-width: 100%;
+  overflow-x: auto;
 }
 
 .fa2-interval-table th {

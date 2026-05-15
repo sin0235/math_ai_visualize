@@ -1,17 +1,19 @@
 import { useState } from 'react';
 
+type ToastKind = 'error' | 'warning' | 'info';
+
 interface VerifyEmailPageProps {
   token: string;
+  email?: string;
   onVerifyEmail: (token: string, otp: string) => Promise<void>;
   onBackWorkspace: () => void;
   onBackLogin: () => void;
+  onToast: (title: string, message: string, kind?: ToastKind) => void;
 }
 
-export function VerifyEmailPage({ token, onVerifyEmail, onBackWorkspace, onBackLogin }: VerifyEmailPageProps) {
+export function VerifyEmailPage({ token, email, onVerifyEmail, onBackWorkspace, onBackLogin, onToast }: VerifyEmailPageProps) {
   const [otp, setOtp] = useState('');
-  const [message, setMessage] = useState(token ? 'Nhập mã OTP gồm 6 chữ số trong email xác minh.' : 'Liên kết xác minh không hợp lệ hoặc thiếu token.');
   const [loading, setLoading] = useState(false);
-  const [verified, setVerified] = useState(false);
 
   function cleanOtpInput(value: string) {
     return value.replace(/\D/g, '').slice(0, 6);
@@ -21,40 +23,42 @@ export function VerifyEmailPage({ token, onVerifyEmail, onBackWorkspace, onBackL
     event.preventDefault();
     const cleanOtp = cleanOtpInput(otp);
     if (!token) {
-      setMessage('Liên kết xác minh không hợp lệ hoặc thiếu token.');
+      onToast('Xác minh email', 'Liên kết xác minh không hợp lệ hoặc thiếu token. Hãy dùng liên kết mới nhất trong email.', 'error');
       return;
     }
     if (!/^\d{6}$/.test(cleanOtp)) {
-      setMessage('Mã OTP phải gồm 6 chữ số.');
+      onToast('Xác minh email', 'Mã OTP phải gồm đúng 6 chữ số.', 'error');
       return;
     }
     setLoading(true);
     try {
       await onVerifyEmail(token, cleanOtp);
-      setVerified(true);
-      setMessage('Email đã được xác minh thành công. Phiên đăng nhập đã được bật và workspace sẽ mở tự động.');
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Không thể xác minh email.');
+      onToast('Xác minh email', error instanceof Error ? error.message : 'Không thể xác minh email.', 'error');
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <section className="login-page">
-      <form className="login-form standalone-auth-card" onSubmit={handleSubmit}>
+    <section className="login-page auth-focus-page">
+      <form className="login-form standalone-auth-card auth-flow-card" onSubmit={handleSubmit}>
         <div className="auth-page-icon" aria-hidden="true">
           <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M4 4h16v16H4z" />
-            <path d="m22 6-10 7L2 6" />
+            <path d="M4 5h16v14H4z" />
+            <path d="m4 7 8 6 8-6" />
             <path d="m9 16 2 2 4-5" />
           </svg>
         </div>
         <span className="home-eyebrow">Xác minh email</span>
-        <h2>Bảo vệ tài khoản của bạn</h2>
-        <p className="field-hint">{message}</p>
-        {token && !verified && (
-          <label className="field-label">
+        <h2>Mở khóa workspace bằng mã OTP</h2>
+        <p className="field-hint auth-flow-copy">
+          {token
+            ? <>Nhập mã 6 chữ số đã gửi tới {email ? <strong>{email}</strong> : 'email đăng ký của bạn'}. Mã này giúp kích hoạt lịch sử dựng hình và cấu hình cá nhân.</>
+            : 'Liên kết xác minh không hợp lệ hoặc thiếu token. Hãy mở lại email xác minh mới nhất.'}
+        </p>
+        {token && (
+          <label className="field-label otp-field-label">
             Mã OTP
             <input
               className="otp-input"
@@ -66,17 +70,18 @@ export function VerifyEmailPage({ token, onVerifyEmail, onBackWorkspace, onBackL
                 event.preventDefault();
                 setOtp(cleanOtpInput(event.clipboardData.getData('text')));
               }}
-              placeholder="123456"
+              placeholder="000000"
               inputMode="numeric"
               autoComplete="one-time-code"
               maxLength={6}
               required
             />
+            <span className="input-hint">Bạn có thể dán trực tiếp mã từ email. Hệ thống chỉ giữ 6 chữ số.</span>
           </label>
         )}
-        <div className="auth-actions">
-          {token && !verified && <button type="submit" disabled={loading}>{loading ? 'Đang xác minh...' : 'Xác minh email'}</button>}
-          {verified && <button type="button" onClick={onBackLogin}>Trang đăng nhập</button>}
+        <div className="auth-actions auth-actions-split">
+          {token && <button type="submit" disabled={loading}>{loading ? 'Đang xác minh...' : 'Xác minh và mở workspace'}</button>}
+          <button type="button" className="secondary-button" onClick={onBackLogin}>Quay lại đăng nhập</button>
           <button type="button" className="secondary-button" onClick={onBackWorkspace}>Vào workspace</button>
         </div>
       </form>

@@ -156,6 +156,7 @@ export default function App() {
   const [user, setUser] = useState<UserResponse | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
   const [authToken, setAuthToken] = useState('');
+  const [pendingVerificationEmail, setPendingVerificationEmail] = useState('');
   const [historyItems, setHistoryItems] = useState<RenderHistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -509,6 +510,7 @@ export default function App() {
     try {
       const response = await login(email, password);
       applyAuthenticatedUserInBackground(response.user);
+      setPendingVerificationEmail('');
       navigateTo(response.user.role === 'admin' ? 'admin' : 'render');
     } finally {
       setAuthLoading(false);
@@ -537,7 +539,9 @@ export default function App() {
       } else {
         await logout().catch(() => undefined);
         clearSessionState();
-        navigateTo('login');
+        setPendingVerificationEmail(email);
+        navigateTo('verify-email');
+        showNotification('Xác minh email', 'Tài khoản đã tạo. Nhập mã OTP trong email để kích hoạt workspace.', [], 'info');
       }
     } finally {
       setAuthLoading(false);
@@ -563,6 +567,9 @@ export default function App() {
   async function handleResetPassword(token: string, password: string) {
     const response = await resetPassword(token, password);
     clearSessionState();
+    setAuthToken('');
+    navigateTo('login');
+    showNotification('Đặt lại mật khẩu', `${response.message} Hãy đăng nhập để mở workspace.`, [], 'info');
     return response.message;
   }
 
@@ -570,7 +577,9 @@ export default function App() {
     const response = await verifyEmail(token, otp);
     await applyAuthenticatedUser(response.user);
     setAuthToken('');
+    setPendingVerificationEmail('');
     navigateTo(response.user.role === 'admin' ? 'admin' : 'render');
+    showNotification('Xác minh email', 'Email đã xác minh. Workspace của bạn đã sẵn sàng.', [], 'info');
   }
 
   async function handleResendVerification() {
@@ -1259,10 +1268,10 @@ export default function App() {
           />
         )}
         {activeView === 'reset-password' && (
-          <ResetPasswordPage token={authToken} onResetPassword={handleResetPassword} onBackLogin={() => navigateTo('login')} />
+          <ResetPasswordPage token={authToken} onResetPassword={handleResetPassword} onBackLogin={() => navigateTo('login')} onToast={(title, message, kind = 'info') => showNotification(title, message, [], kind)} />
         )}
         {activeView === 'verify-email' && (
-          <VerifyEmailPage token={authToken} onVerifyEmail={handleVerifyEmail} onBackWorkspace={() => navigateTo('render')} onBackLogin={() => navigateTo('login')} />
+          <VerifyEmailPage token={authToken} email={pendingVerificationEmail} onVerifyEmail={handleVerifyEmail} onBackWorkspace={() => navigateTo('render')} onBackLogin={() => navigateTo('login')} onToast={(title, message, kind = 'info') => showNotification(title, message, [], kind)} />
         )}
         {activeView === 'settings' && (
           <section className="settings-page">

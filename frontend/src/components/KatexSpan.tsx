@@ -13,9 +13,12 @@ interface KatexSpanProps {
 }
 
 export function KatexSpan({ tex, display = false, className }: KatexSpanProps) {
+  const normalizedTex = normalizeKatexInput(tex);
+  const plainText = latexTextFallback(normalizedTex);
   const html = useMemo(() => {
+    if (plainText) return null;
     try {
-      return katex.renderToString(tex, {
+      return katex.renderToString(normalizedTex, {
         throwOnError: false,
         displayMode: display,
         output: 'html',
@@ -24,10 +27,10 @@ export function KatexSpan({ tex, display = false, className }: KatexSpanProps) {
     } catch {
       return null;
     }
-  }, [tex, display]);
+  }, [normalizedTex, display, plainText]);
 
   if (!html) {
-    return <span className={className}>{tex}</span>;
+    return <span className={className}>{plainText || normalizedTex}</span>;
   }
 
   return (
@@ -37,6 +40,19 @@ export function KatexSpan({ tex, display = false, className }: KatexSpanProps) {
       dangerouslySetInnerHTML={{ __html: html }}
     />
   );
+}
+
+function normalizeKatexInput(value: string): string {
+  if (!/<\/?[a-z][\s\S]*>/i.test(value)) return value;
+  const doc = new DOMParser().parseFromString(value, 'text/html');
+  return doc.body.textContent?.replace(/\s+/g, ' ').trim() || '';
+}
+
+function latexTextFallback(value: string): string | null {
+  const match = value.match(/^\\text\{([\s\S]+)\}$/);
+  if (!match) return null;
+  const text = match[1].replace(/\\,/g, ' ').replace(/\\ /g, ' ').replace(/\s+/g, ' ').trim();
+  return text.length > 18 || /[À-ỹ]/.test(text) ? text : null;
 }
 
 /** Convert a SymPy-style string to a rough LaTeX string for display */

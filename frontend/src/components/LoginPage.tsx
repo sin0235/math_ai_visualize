@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 
 import type { UserResponse } from '../api/client';
 
@@ -81,7 +81,7 @@ export function LoginPage({ logoUrl, user, authLoading, onOpenWorkspace, onToast
         return;
       }
       await onRegister(cleanEmail, password, displayName.trim() || undefined, acceptPrivacyPolicy, acceptTerms);
-      onToast('Tạo tài khoản', 'Tạo tài khoản thành công. Hãy kiểm tra email và mở liên kết xác minh trước khi đăng nhập.', 'info');
+      onToast('Tạo tài khoản', 'Tạo tài khoản thành công. Nhập mã OTP trong email để kích hoạt workspace.', 'info');
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : 'Không thể xử lý đăng nhập.';
       const title = mode === 'register' ? 'Tạo tài khoản' : mode === 'forgot' ? 'Quên mật khẩu' : 'Đăng nhập';
@@ -190,7 +190,7 @@ export function LoginPage({ logoUrl, user, authLoading, onOpenWorkspace, onToast
                   </label>
                 </div>
               )}
-              <button type="submit" className="auth-primary-button" disabled={authLoading}>{authLoading ? 'Đang xử lý...' : mode === 'login' ? 'Đăng nhập' : mode === 'register' ? 'Tạo tài khoản' : 'Gửi hướng dẫn'}</button>
+              <button type="submit" className="auth-primary-button" disabled={authLoading}>{authLoading ? 'Đang xử lý...' : mode === 'login' ? 'Đăng nhập' : mode === 'register' ? 'Tạo tài khoản' : 'Gửi liên kết đặt lại mật khẩu'}</button>
               <div className="auth-secondary-links">
                 {mode === 'login' && (
                   <span>Chưa có tài khoản? <button type="button" onClick={() => switchMode('register')}>Tạo tài khoản</button></span>
@@ -245,22 +245,27 @@ function PasswordToggleButton({ visible, onToggle }: { visible: boolean; onToggl
 }
 
 function LoginGeometryIllustration() {
+  const id = useId().replace(/:/g, '');
+  const gridGradientId = `loginIllusGridGradient-${id}`;
+  const glowId = `loginIllusGlow-${id}`;
+  const arrowId = `loginIllusArrow-${id}`;
+
   return (
-    <svg className="login-illustration" viewBox="0 0 560 420" role="img" aria-label="Scene dựng hình toán học từ AI">
+    <svg className="login-illustration" viewBox="0 0 600 420" role="img" aria-label="Scene dựng hình toán học từ AI">
       <defs>
-        <linearGradient id="loginIllusGridGradient" x1="0" x2="1" y1="0" y2="1">
+        <linearGradient id={gridGradientId} x1="0" x2="1" y1="0" y2="1">
           <stop offset="0" stopColor="#2563eb" stopOpacity="0.18" />
           <stop offset="1" stopColor="#7c3aed" stopOpacity="0.08" />
         </linearGradient>
-        <radialGradient id="loginIllusGlow" cx="50%" cy="50%" r="50%">
+        <radialGradient id={glowId} cx="50%" cy="50%" r="50%">
           <stop offset="0" stopColor="#60a5fa" stopOpacity="0.55" />
           <stop offset="1" stopColor="#60a5fa" stopOpacity="0" />
         </radialGradient>
-        <marker id="loginIllusArrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+        <marker id={arrowId} markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
           <path d="M0,0 L0,6 L9,3 z" fill="#2563eb" />
         </marker>
       </defs>
-      <rect x="24" y="24" width="512" height="348" rx="28" fill="url(#loginIllusGridGradient)" stroke="#d4d4d4" />
+      <rect x="24" y="24" width="552" height="348" rx="28" fill={`url(#${gridGradientId})`} stroke="#d4d4d4" />
       {Array.from({ length: 9 }).map((_, index) => (
         <path key={`login-grid-v-${index}`} d={`M${72 + index * 52} 56V340`} stroke="#cbd5e1" strokeWidth="1" strokeDasharray="5 8" />
       ))}
@@ -276,8 +281,8 @@ function LoginGeometryIllustration() {
       <path d="M312 130V286" stroke="#7c3aed" strokeWidth="3" strokeDasharray="8 9" />
       <path d="M312 286h12v-12h-12z" fill="none" stroke="#111827" strokeWidth="2" strokeLinejoin="miter" />
       <path d="M164 286L312 130" stroke="#f97316" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M356 180L456 116" stroke="#2563eb" strokeWidth="2" strokeLinecap="round" markerEnd="url(#loginIllusArrow)" />
-      <circle cx="312" cy="130" r="72" fill="url(#loginIllusGlow)" />
+      <path d="M356 180L456 116" stroke="#2563eb" strokeWidth="2" strokeLinecap="round" markerEnd={`url(#${arrowId})`} />
+      <circle cx="312" cy="130" r="72" fill={`url(#${glowId})`} />
       {[[164, 286, 'A'], [312, 130, 'S'], [430, 286, 'B'], [312, 286, 'H']].map(([cx, cy, label]) => (
         <g key={label as string}>
           <circle cx={cx as number} cy={cy as number} r="8" fill="#111827" />
