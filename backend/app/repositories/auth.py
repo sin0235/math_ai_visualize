@@ -56,53 +56,13 @@ class UserRepository:
             raise RuntimeError("Không thể tạo tài khoản Google.")
         return user_from_row(row)
 
-    async def create_firebase_user(self, firebase_uid: str, email: str, display_name: str | None = None, email_verified: bool = False) -> UserRecord:
-        user_id = str(uuid4())
-        await self.db.execute(
-            "INSERT INTO users (id, email, password_hash, firebase_uid, display_name, email_verified_at, status) VALUES (?, ?, ?, ?, ?, ?, 'active')",
-            [user_id, normalize_email(email), f"firebase:{firebase_uid}", firebase_uid, display_name, None],
-        )
-        if email_verified:
-            await self.db.execute("UPDATE users SET email_verified_at = CURRENT_TIMESTAMP WHERE id = ?", [user_id])
-        row = await self.db.fetch_one("SELECT * FROM users WHERE id = ?", [user_id])
-        if row is None:
-            raise RuntimeError("Không thể tạo tài khoản Firebase.")
-        return user_from_row(row)
-
     async def find_by_email(self, email: str) -> UserRecord | None:
         row = await self.db.fetch_one("SELECT * FROM users WHERE email = ?", [normalize_email(email)])
-        return user_from_row(row) if row else None
-
-    async def find_by_firebase_uid(self, firebase_uid: str) -> UserRecord | None:
-        row = await self.db.fetch_one("SELECT * FROM users WHERE firebase_uid = ?", [firebase_uid])
         return user_from_row(row) if row else None
 
     async def find_by_id(self, user_id: str) -> UserRecord | None:
         row = await self.db.fetch_one("SELECT * FROM users WHERE id = ?", [user_id])
         return user_from_row(row) if row else None
-
-    async def link_firebase_uid(self, user_id: str, firebase_uid: str) -> UserRecord:
-        await self.db.execute("UPDATE users SET firebase_uid = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [firebase_uid, user_id])
-        user = await self.find_by_id(user_id)
-        if user is None:
-            raise RuntimeError("Không thể liên kết tài khoản Firebase.")
-        return user
-
-    async def sync_firebase_profile(self, user_id: str, email: str, display_name: str | None, email_verified: bool) -> UserRecord:
-        await self.db.execute(
-            """
-            UPDATE users
-            SET email = ?, display_name = COALESCE(?, display_name),
-                email_verified_at = CASE WHEN ? THEN COALESCE(email_verified_at, CURRENT_TIMESTAMP) ELSE email_verified_at END,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-            """,
-            [normalize_email(email), display_name, 1 if email_verified else 0, user_id],
-        )
-        user = await self.find_by_id(user_id)
-        if user is None:
-            raise RuntimeError("Không thể đồng bộ tài khoản Firebase.")
-        return user
 
     async def mark_login(self, user_id: str) -> None:
         await self.db.execute(
@@ -444,7 +404,6 @@ def user_from_row(row: DbRow) -> UserRecord:
         password_hash=str(row["password_hash"]),
         created_at=str(row["created_at"]),
         updated_at=str(row["updated_at"]),
-        firebase_uid=optional_str(row, "firebase_uid"),
         role=str(row.get("role") or "user"),
         status=str(row.get("status") or "active"),
         display_name=optional_str(row, "display_name"),

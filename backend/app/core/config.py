@@ -44,11 +44,17 @@ class Settings(BaseSettings):
     router9_only: bool = False
     router9_allowed_models: list[str] = []
     ai_provider: str = "auto"
-    database_backend: str = "sqlite"
+    database_backend: str = "d1"
     sqlite_path: str = "backend/.data/hinh.db"
     d1_account_id: str | None = None
     d1_database_id: str | None = None
     d1_api_token: str | None = None
+    r2_account_id: str | None = None
+    r2_access_key_id: str | None = None
+    r2_secret_access_key: str | None = None
+    r2_bucket_name: str | None = None
+    r2_public_base_url: str | None = None
+    r2_upload_prefix: str = "uploads"
     auto_apply_sqlite_migrations: bool = True
     auto_apply_d1_migrations: bool = False
     session_cookie_secure: bool = False
@@ -65,9 +71,6 @@ class Settings(BaseSettings):
     resend_from_email: str | None = None
     auth_email_dev_mode: bool = True
     require_email_verification: bool = True
-    firebase_project_id: str | None = None
-    firebase_credentials_json: str | None = None
-    firebase_credentials_path: str | None = None
     google_oauth_client_id: str | None = None
     google_oauth_client_secret: str | None = None
     google_oauth_redirect_uri: str = "https://math-renderer-api.sin-studio.tech/api/auth/google/callback"
@@ -76,7 +79,7 @@ class Settings(BaseSettings):
     cas_repair_max_iterations: int = 2
     cas_repair_min_severity: Literal["warning", "error"] = "warning"
 
-    model_config = SettingsConfigDict(env_file=(".env", "backend/.env"), env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(env_file=(".env", "backend/.env"), env_file_encoding="utf-8", extra="ignore")
 
     @model_validator(mode="after")
     def validate_cookie_settings(self) -> "Settings":

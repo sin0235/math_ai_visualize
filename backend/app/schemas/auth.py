@@ -102,11 +102,6 @@ class UpdateProfileRequest(BaseModel):
         return text or None
 
 
-class FirebaseSyncRequest(UpdateProfileRequest):
-    accept_privacy_policy: bool = False
-    accept_terms: bool = False
-
-
 class MessageResponse(BaseModel):
     message: str
 
