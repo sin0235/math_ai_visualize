@@ -667,7 +667,7 @@ select {
 
 .pdf-word-status-panel {
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
   border-top: 1px solid var(--line-2);
@@ -699,11 +699,148 @@ select {
   font-size: 0.95rem;
 }
 
+.pdf-word-guide-button {
+  display: inline-grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  justify-self: end;
+  transform: translateX(-8px);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  color: #111827;
+  background: transparent;
+  cursor: pointer;
+}
+
+
+.pdf-word-guide-button svg {
+  display: block;
+  flex-shrink: 0;
+}
+
 .pdf-word-status-panel span:not(.pdf-word-status-dot) {
   overflow-wrap: anywhere;
   color: var(--ink-4);
   font-size: 0.86rem;
   line-height: 1.4;
+}
+
+.pdf-word-guide-backdrop {
+  position: fixed;
+  z-index: 50;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.46);
+}
+
+.pdf-word-guide-modal {
+  display: grid;
+  gap: 18px;
+  width: min(720px, 100%);
+  max-height: min(86vh, 820px);
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 22px;
+  background: var(--paper);
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.28);
+}
+
+.pdf-word-guide-header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.pdf-word-guide-header h3 {
+  margin: 4px 0 0;
+  color: var(--ink);
+  font-size: 1.35rem;
+}
+
+.pdf-word-guide-close {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 0;
+  padding: 0;
+  color: var(--ink-2);
+  background: transparent;
+  cursor: pointer;
+}
+
+.pdf-word-guide-close svg {
+  display: block;
+  overflow: visible;
+}
+
+.pdf-word-guide-steps {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding-left: 22px;
+  color: var(--ink-3);
+  font-size: 0.94rem;
+  line-height: 1.6;
+}
+
+.pdf-word-guide-steps li {
+  padding-left: 4px;
+}
+
+.pdf-word-guide-steps strong {
+  display: block;
+  color: var(--ink);
+}
+
+.pdf-word-guide-inline-step {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pdf-word-guide-inline-step strong {
+  display: inline;
+}
+
+.pdf-word-guide-steps a {
+  display: inline-flex;
+  width: fit-content;
+  border: 1px solid var(--ink);
+  border-radius: 8px;
+  padding: 4px 8px;
+  color: var(--accent-fg);
+  background: var(--ink);
+  font-size: 0.82rem;
+  line-height: 1.2;
+  font-weight: 850;
+  text-decoration: none;
+}
+
+.pdf-word-guide-steps span,
+.pdf-word-guide-note span {
+  border-radius: 6px;
+  padding: 1px 5px;
+  color: var(--ink-2);
+  background: var(--surface);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.86em;
+}
+
+.pdf-word-guide-note {
+  border-left: 3px solid #f59e0b;
+  padding: 10px 12px;
+  color: var(--ink-3);
+  background: #fffbeb;
+  font-size: 0.9rem;
+  line-height: 1.55;
 }
 
 .pdf-word-workspace {
@@ -935,6 +1072,42 @@ select {
   flex-wrap: wrap;
   gap: 10px;
   align-items: center;
+}
+
+.pdf-word-preview-panel {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+  margin-top: 6px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px;
+  background: var(--surface);
+}
+
+.pdf-word-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--ink-2);
+  font-size: 0.88rem;
+  font-weight: 850;
+}
+
+.pdf-word-preview-head a {
+  color: var(--ink-3);
+  font-size: 0.8rem;
+  font-weight: 800;
+  text-decoration: underline;
+}
+
+.pdf-word-preview-panel iframe {
+  width: 100%;
+  min-height: min(70vh, 720px);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper);
 }
 
 .pdf-word-download-primary,

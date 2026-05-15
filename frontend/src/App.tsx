@@ -1227,10 +1227,6 @@ export default function App() {
             runtimeSettings={runtimeSettings}
             router9Only={settingsDefaults?.router9.only_mode ?? false}
             onOpenSettings={() => navigateTo(user?.role === 'admin' ? 'admin' : 'settings')}
-            onUseProblemText={(text) => {
-              setProblemText(text);
-              navigateTo('render');
-            }}
           />
         )}
         {activeView === 'analyzer-guide' && <AnalyzerGuidePage onOpenGeneralGuide={() => navigateTo('guide')} />}

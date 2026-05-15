@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 
-import { convertPdfWithMineru, fetchMineruText, getMineruJob, getMineruStatus, mineruUrl, type MineruArtifact, type MineruJobSnapshot, type MineruResult } from '../api/mineru';
+import { convertPdfWithMineru, getMineruJob, getMineruStatus, mineruUrl, normalizeMineruBaseUrl, type MineruArtifact, type MineruJobSnapshot, type MineruResult } from '../api/mineru';
 import type { ModelOption } from './ProblemInput';
 import type { RuntimeSettings } from '../types/settings';
 
@@ -13,11 +13,10 @@ interface PdfToWordPageProps {
   runtimeSettings: RuntimeSettings;
   router9Only: boolean;
   onOpenSettings: () => void;
-  onUseProblemText: (text: string) => void;
 }
 
 const MAX_LOCAL_UPLOAD_MB = 128;
-const MAX_PROBLEM_TEXT_CHARS = 2000;
+const MINERU_API_BASE_URL_STORAGE_KEY = 'pdfWordMineruApiBaseUrl';
 const ALLOWED_LLM_PROVIDERS = new Set(['auto', 'openrouter', 'router9', 'nvidia']);
 const backendOptions = [
   { value: 'auto', label: 'Tự động' },
@@ -27,6 +26,18 @@ const backendOptions = [
   { value: 'hybrid-http-client', label: 'Cân bằng từ xa' },
   { value: 'vlm-http-client', label: 'Chính xác cao từ xa' },
 ];
+const guideStrokeIcon = {
+  viewBox: '0 0 24 24',
+  width: 20,
+  height: 20,
+  fill: 'none' as const,
+  stroke: 'currentColor',
+  strokeWidth: 1.8,
+  strokeLinecap: 'round' as const,
+  strokeLinejoin: 'round' as const,
+  'aria-hidden': true as const,
+};
+
 const languageOptions = [
   { value: 'latin', label: 'Latin/Vietnamese' },
   { value: 'en', label: 'English' },
@@ -54,7 +65,6 @@ export function PdfToWordPage({
   runtimeSettings,
   router9Only,
   onOpenSettings,
-  onUseProblemText,
 }: PdfToWordPageProps) {
   const [selectedModelKey, setSelectedModelKey] = useState(modelOptions[0]?.key ?? 'provider:auto');
   const [file, setFile] = useState<File | null>(null);
@@ -68,18 +78,18 @@ export function PdfToWordPage({
   const [remoteMaxUploadMb, setRemoteMaxUploadMb] = useState<number | null>(null);
   const [readinessMessage, setReadinessMessage] = useState('');
   const [readinessReady, setReadinessReady] = useState<boolean | null>(null);
+  const [guideOpen, setGuideOpen] = useState(false);
   const [backend, setBackend] = useState('auto');
   const [parseMethod, setParseMethod] = useState('auto');
-  const [language, setLanguage] = useState('latin');
+  const [language, setLanguage] = useState('ch');
   const [latexDelimitersType, setLatexDelimitersType] = useState('b');
   const [formulaEnable, setFormulaEnable] = useState(true);
   const [tableEnable, setTableEnable] = useState(true);
-  const [llmMode, setLlmMode] = useState('review');
-  const [examFormat, setExamFormat] = useState(true);
+  const [llmMode, setLlmMode] = useState('off');
+  const [examFormat, setExamFormat] = useState(false);
   const [startPage, setStartPage] = useState('1');
   const [endPage, setEndPage] = useState('');
-  const [serverUrl, setServerUrl] = useState('');
-  const [importingText, setImportingText] = useState(false);
+  const [mineruApiBaseUrl, setMineruApiBaseUrl] = useState(() => loadMineruApiBaseUrl(apiBaseUrl));
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pollAbortRef = useRef(false);
 
@@ -87,15 +97,15 @@ export function PdfToWordPage({
   const llmProvider = normalizePdfLlmProvider(router9Only ? 'router9' : selectedModel?.provider);
   const llmModel = selectedModel?.modelId ?? providerDefaultModel(runtimeSettings, llmProvider);
   const credentials = providerCredentials(runtimeSettings, llmProvider);
+  const activeApiBaseUrl = normalizeMineruBaseUrl(mineruApiBaseUrl) || apiBaseUrl;
   const maxUploadMb = remoteMaxUploadMb ?? Number(import.meta.env.VITE_PDF_WORD_MAX_UPLOAD_MB || MAX_LOCAL_UPLOAD_MB);
   const busy = status === 'queued' || status === 'running';
-  const markdownArtifact = result?.artifacts?.find((artifact) => artifact.kind === 'markdown' || artifact.filename?.toLowerCase().endsWith('.md'));
 
   const readinessLabel = useMemo(() => {
-    if (!enabled || !apiBaseUrl) return 'Chưa sẵn sàng';
+    if (!enabled || !activeApiBaseUrl) return 'Chưa sẵn sàng';
     if (readinessReady === null) return 'Đang kiểm tra';
     return readinessReady ? 'Sẵn sàng xử lý' : 'Chưa sẵn sàng';
-  }, [apiBaseUrl, enabled, readinessReady]);
+  }, [activeApiBaseUrl, enabled, readinessReady]);
 
   useEffect(() => {
     if (!modelOptions.some((option) => option.key === selectedModelKey)) {
@@ -104,9 +114,16 @@ export function PdfToWordPage({
   }, [modelOptions, selectedModelKey]);
 
   useEffect(() => {
+    const saved = window.localStorage.getItem(MINERU_API_BASE_URL_STORAGE_KEY);
+    if (!saved) setMineruApiBaseUrl(apiBaseUrl);
+  }, [apiBaseUrl]);
+
+  useEffect(() => {
     pollAbortRef.current = false;
-    if (!enabled || !apiBaseUrl) return;
-    getMineruStatus(apiBaseUrl)
+    setReadinessReady(null);
+    setReadinessMessage('');
+    if (!enabled || !activeApiBaseUrl) return;
+    getMineruStatus(activeApiBaseUrl)
       .then((snapshot) => {
         setRemoteMaxUploadMb(snapshot.max_upload_mb ?? null);
         setReadinessReady(snapshot.readiness?.ready ?? null);
@@ -119,7 +136,7 @@ export function PdfToWordPage({
     return () => {
       pollAbortRef.current = true;
     };
-  }, [apiBaseUrl, enabled]);
+  }, [activeApiBaseUrl, enabled]);
 
   function pickFile(nextFile: File | null) {
     setError('');
@@ -147,7 +164,7 @@ export function PdfToWordPage({
       setError('Chức năng này hiện chưa mở.');
       return;
     }
-    if (!apiBaseUrl) {
+    if (!activeApiBaseUrl) {
       setError('Dịch vụ chuyển đổi chưa sẵn sàng.');
       return;
     }
@@ -164,7 +181,7 @@ export function PdfToWordPage({
     setMessage('Đang chuẩn bị file...');
 
     try {
-      const initial = await convertPdfWithMineru(apiBaseUrl, {
+      const initial = await convertPdfWithMineru(activeApiBaseUrl, {
         file,
         backend,
         parseMethod,
@@ -175,7 +192,7 @@ export function PdfToWordPage({
         examFormat,
         startPage,
         endPage,
-        serverUrl,
+        serverUrl: '',
         llmMode,
         llmProvider,
         llmModel,
@@ -195,7 +212,7 @@ export function PdfToWordPage({
   async function pollJob(jobId: string) {
     while (!pollAbortRef.current) {
       await sleep(1500);
-      const snapshot = await getMineruJob(apiBaseUrl, jobId);
+      const snapshot = await getMineruJob(activeApiBaseUrl, jobId);
       applyJobSnapshot(snapshot);
       if (snapshot.done || snapshot.status === 'completed' || snapshot.status === 'failed') return;
     }
@@ -220,22 +237,6 @@ export function PdfToWordPage({
     setStatus(snapshot.status === 'queued' ? 'queued' : 'running');
   }
 
-  async function handleUseMarkdown() {
-    if (!markdownArtifact?.download_url && !markdownArtifact?.relative_path) return;
-    setImportingText(true);
-    setError('');
-    try {
-      const markdown = await fetchMineruText(apiBaseUrl, markdownArtifact.download_url || markdownArtifact.relative_path || '');
-      const normalized = markdown.replace(/\s+/g, ' ').trim().slice(0, MAX_PROBLEM_TEXT_CHARS);
-      if (!normalized) throw new Error('Markdown trích xuất đang rỗng.');
-      onUseProblemText(normalized);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Không thể lấy Markdown từ MinerU.');
-    } finally {
-      setImportingText(false);
-    }
-  }
-
   return (
     <section className="pdf-word-page">
       <div className="pdf-word-shell">
@@ -253,7 +254,18 @@ export function PdfToWordPage({
             <strong>{readinessLabel}</strong>
             <span>{formatReadinessMessage(readinessReady, readinessMessage)}</span>
           </div>
+          <button type="button" className="pdf-word-guide-button" aria-label="Hướng dẫn chạy MinerU Colab" onClick={() => setGuideOpen(true)}>
+            <svg {...guideStrokeIcon}>
+              <path d="M9.25 14.75c-.95-.76-1.5-1.9-1.5-3.2A4.25 4.25 0 0 1 12 7.25a4.25 4.25 0 0 1 4.25 4.3c0 1.3-.55 2.44-1.5 3.2-.55.44-.9 1.03-.98 1.75h-3.54c-.08-.72-.43-1.31-.98-1.75Z" />
+              <path d="M10 19h4" />
+              <path d="M10.75 21h2.5" />
+              <path d="M12 3v1.5" />
+              <path d="m5.75 5.75 1.05 1.05" />
+              <path d="m18.25 5.75-1.05 1.05" />
+            </svg>
+          </button>
         </aside>
+        {guideOpen && <MineruColabGuide onClose={() => setGuideOpen(false)} />}
 
         <form className="pdf-word-workspace" onSubmit={handleSubmit}>
           <div className="pdf-word-upload-column">
@@ -345,12 +357,12 @@ export function PdfToWordPage({
             <details className="pdf-word-advanced-options">
               <summary>Tuỳ chọn nâng cao</summary>
               <label className="field-label">
-                Nguồn xử lý riêng
+                Link xử lý MinerU
                 <input
-                  value={serverUrl}
+                  value={mineruApiBaseUrl}
                   disabled={busy}
-                  placeholder="Để trống để dùng cấu hình mặc định"
-                  onChange={(event) => setServerUrl(event.target.value)}
+                  placeholder="https://...trycloudflare.com"
+                  onChange={(event) => updateMineruApiBaseUrl(event.target.value, setMineruApiBaseUrl)}
                 />
               </label>
             </details>
@@ -369,7 +381,7 @@ export function PdfToWordPage({
             {modelOptions.length === 0 && (
               <button type="button" className="link-button" onClick={onOpenSettings}>Mở cài đặt kiểm tra</button>
             )}
-            <button className="submit-button" type="submit" disabled={busy || !file || !enabled || !apiBaseUrl}>
+            <button className="submit-button" type="submit" disabled={busy || !file || !enabled || !activeApiBaseUrl}>
               {busy && <Spinner />}
               {busy ? 'Đang chuyển đổi...' : 'Chuyển PDF sang Word'}
             </button>
@@ -392,13 +404,7 @@ export function PdfToWordPage({
               </details>
             )}
             {result && (
-              <ResultDownloads
-                baseUrl={apiBaseUrl}
-                result={result}
-                markdownArtifact={markdownArtifact}
-                importingText={importingText}
-                onUseMarkdown={handleUseMarkdown}
-              />
+              <ResultDownloads baseUrl={activeApiBaseUrl} result={result} />
             )}
           </section>
         )}
@@ -407,21 +413,71 @@ export function PdfToWordPage({
   );
 }
 
-function ResultDownloads({
-  baseUrl,
-  result,
-  markdownArtifact,
-  importingText,
-  onUseMarkdown,
-}: {
-  baseUrl: string;
-  result: MineruResult;
-  markdownArtifact?: MineruArtifact;
-  importingText: boolean;
-  onUseMarkdown: () => void;
-}) {
+function MineruColabGuide({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="pdf-word-guide-backdrop" role="dialog" aria-modal="true" aria-labelledby="mineru-colab-guide-title" onMouseDown={onClose}>
+      <div className="pdf-word-guide-modal" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="pdf-word-guide-header">
+          <div>
+            <p className="eyebrow">MinerU Colab / Kaggle</p>
+            <h3 id="mineru-colab-guide-title">Hướng dẫn lấy link xử lý PDF</h3>
+          </div>
+          <button type="button" className="pdf-word-guide-close" aria-label="Đóng hướng dẫn" onClick={onClose}>
+            <svg {...guideStrokeIcon} strokeWidth={2.2}>
+              <path d="M18 6 6 18" />
+              <path d="M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <ol className="pdf-word-guide-steps">
+          <li className="pdf-word-guide-inline-step">
+            <strong>Mở notebook Colab.</strong>
+            <a href="https://colab.research.google.com/drive/1KC1hHv9eYoRjwKkrwXO-uHrAzEAw8ATY?usp=sharing" target="_blank" rel="noreferrer">
+              Mở MinerU Colab
+            </a>
+          </li>
+          <li>
+            <strong>Bật GPU đúng cách.</strong>
+            Vào <span>Runtime → Change runtime type</span>, chọn <span>T4 GPU</span> hoặc GPU đang có, rồi bấm <span>Save</span>.
+          </li>
+          <li>
+            <strong>Chạy lần lượt các cell từ trên xuống.</strong>
+            Nếu Colab hỏi quyền Drive hoặc cài package, chấp nhận và đợi đến khi server khởi động xong. Không đóng tab trong lúc xử lý.
+          </li>
+          <li>
+            <strong>Lấy link API Cloudflare.</strong>
+            Sau cell tunnel chạy xong, copy link dạng <span>https://...trycloudflare.com</span>. Mở thử link đó trên trình duyệt: nếu thấy web PDF sang Word hoặc gọi được <span>/api/status</span> là link đúng.
+          </li>
+          <li>
+            <strong>Dán link vào ô “Link xử lý MinerU”.</strong>
+            Dán nguyên link Cloudflare vào ô trong trang này. Hệ thống sẽ dùng link đó thay cho URL trong <span>.env</span> và tự lưu lại cho lần refresh sau.
+          </li>
+          <li>
+            <strong>Khi đổi runtime hoặc chạy lại notebook.</strong>
+            Link Cloudflare có thể đổi. Nếu xử lý báo lỗi hoặc mất kết nối, copy link mới từ Colab rồi dán lại vào ô “Link xử lý MinerU”.
+          </li>
+          <li>
+            <strong>Tắt GPU khi dùng xong.</strong>
+            Trong Colab chọn <span>Runtime → Disconnect and delete runtime</span>. Nếu dùng Kaggle, bấm <span>Stop session</span> hoặc tắt notebook session để tránh giữ GPU lãng phí.
+          </li>
+        </ol>
+
+        <div className="pdf-word-guide-note">
+          Không paste link này vào “server_url” của MinerU CLI. Trang này dùng nó làm base API cho các endpoint <span>/api/status</span>, <span>/api/convert</span> và <span>/api/jobs</span>.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ResultDownloads({ baseUrl, result }: { baseUrl: string; result: MineruResult }) {
   const artifacts = result.artifacts ?? [];
   const docx = artifacts.find((artifact) => artifact.kind === 'docx') ?? artifacts.find((artifact) => artifact.filename?.toLowerCase().endsWith('.docx'));
+  const previewPdf = artifacts.find((artifact) => artifact.preview_kind === 'pdf' && artifact.preview_url)
+    ?? artifacts.find((artifact) => artifact.kind === 'layout' && (artifact.preview_url || artifact.download_url))
+    ?? artifacts.find((artifact) => artifact.filename?.toLowerCase().endsWith('.pdf') && (artifact.preview_url || artifact.download_url));
+  const previewUrl = previewPdf ? mineruUrl(baseUrl, previewPdf.preview_url || previewPdf.download_url || previewPdf.relative_path || '') : '';
 
   return (
     <div className="pdf-word-downloads">
@@ -430,27 +486,31 @@ function ResultDownloads({
           Tải file Word
         </a>
       )}
-      {result.artifacts_zip_url && (
-        <a className="pdf-word-download-link" href={mineruUrl(baseUrl, result.artifacts_zip_url)} target="_blank" rel="noreferrer">
-          Tải dữ liệu kèm theo
-        </a>
+      {previewUrl && (
+        <div className="pdf-word-preview-panel">
+          <div className="pdf-word-preview-head">
+            <strong>Preview PDF</strong>
+            <a href={previewUrl} target="_blank" rel="noreferrer">Mở tab mới</a>
+          </div>
+          <iframe src={previewUrl} title="Preview PDF MinerU" />
+        </div>
       )}
-      {markdownArtifact && (
-        <button type="button" className="pdf-word-download-link" disabled={importingText} onClick={onUseMarkdown}>
-          {importingText ? 'Đang lấy nội dung...' : 'Dùng nội dung để dựng hình'}
-        </button>
-      )}
-      <div className="pdf-word-artifact-list">
-        {artifacts.slice(0, 6).map((artifact) => (
-          <a key={`${artifact.kind}-${artifact.filename}-${artifact.relative_path}`} href={mineruUrl(baseUrl, artifact.download_url || artifact.relative_path || '')} target="_blank" rel="noreferrer">
-            <span>{artifact.kind || 'file'}</span>
-            <strong>{artifact.filename || artifact.relative_path}</strong>
-            {typeof artifact.size_bytes === 'number' && <em>{formatBytes(artifact.size_bytes)}</em>}
-          </a>
-        ))}
-      </div>
     </div>
   );
+}
+
+function loadMineruApiBaseUrl(fallback: string) {
+  return window.localStorage.getItem(MINERU_API_BASE_URL_STORAGE_KEY) || fallback;
+}
+
+function updateMineruApiBaseUrl(value: string, setValue: (value: string) => void) {
+  setValue(value);
+  const normalized = normalizeMineruBaseUrl(value);
+  if (normalized) {
+    window.localStorage.setItem(MINERU_API_BASE_URL_STORAGE_KEY, normalized);
+  } else {
+    window.localStorage.removeItem(MINERU_API_BASE_URL_STORAGE_KEY);
+  }
 }
 
 function normalizePdfLlmProvider(provider: string | undefined) {
