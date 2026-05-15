@@ -23,7 +23,7 @@ const firebaseConfig = {
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
-const firebaseEnabled = import.meta.env.VITE_FIREBASE_ENABLED === 'false';
+const firebaseEnabled = import.meta.env.VITE_FIREBASE_ENABLED === 'true';
 
 let app: FirebaseApp | null = null;
 let auth: Auth | null = null;
