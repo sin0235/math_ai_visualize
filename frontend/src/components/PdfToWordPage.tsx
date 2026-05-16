@@ -7,7 +7,6 @@ import type { RuntimeSettings } from '../types/settings';
 type UploadState = 'idle' | 'queued' | 'running' | 'completed' | 'failed';
 
 interface PdfToWordPageProps {
-  enabled: boolean;
   apiBaseUrl: string;
   modelOptions: ModelOption[];
   runtimeSettings: RuntimeSettings;
@@ -59,7 +58,6 @@ const languageOptions = [
 ];
 
 export function PdfToWordPage({
-  enabled,
   apiBaseUrl,
   modelOptions,
   runtimeSettings,
@@ -102,10 +100,10 @@ export function PdfToWordPage({
   const busy = status === 'queued' || status === 'running';
 
   const readinessLabel = useMemo(() => {
-    if (!enabled || !activeApiBaseUrl) return 'Chưa sẵn sàng';
+    if (!activeApiBaseUrl) return 'Cần link xử lý';
     if (readinessReady === null) return 'Đang kiểm tra';
     return readinessReady ? 'Sẵn sàng xử lý' : 'Chưa sẵn sàng';
-  }, [activeApiBaseUrl, enabled, readinessReady]);
+  }, [activeApiBaseUrl, readinessReady]);
 
   useEffect(() => {
     if (!modelOptions.some((option) => option.key === selectedModelKey)) {
@@ -122,7 +120,7 @@ export function PdfToWordPage({
     pollAbortRef.current = false;
     setReadinessReady(null);
     setReadinessMessage('');
-    if (!enabled || !activeApiBaseUrl) return;
+    if (!activeApiBaseUrl) return;
     getMineruStatus(activeApiBaseUrl)
       .then((snapshot) => {
         setRemoteMaxUploadMb(snapshot.max_upload_mb ?? null);
@@ -136,7 +134,7 @@ export function PdfToWordPage({
     return () => {
       pollAbortRef.current = true;
     };
-  }, [activeApiBaseUrl, enabled]);
+  }, [activeApiBaseUrl]);
 
   function pickFile(nextFile: File | null) {
     setError('');
@@ -160,12 +158,8 @@ export function PdfToWordPage({
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    if (!enabled) {
-      setError('Chức năng này hiện chưa mở.');
-      return;
-    }
     if (!activeApiBaseUrl) {
-      setError('Dịch vụ chuyển đổi chưa sẵn sàng.');
+      setError('Dán link xử lý MinerU trước khi chuyển đổi.');
       return;
     }
     if (!file) {
@@ -286,7 +280,7 @@ export function PdfToWordPage({
                 ref={fileInputRef}
                 type="file"
                 accept=".pdf,application/pdf"
-                disabled={busy || !enabled}
+                disabled={busy}
                 onChange={(event) => pickFile(event.target.files?.[0] ?? null)}
               />
               <span className="pdf-word-drop-icon" aria-hidden="true">
@@ -354,7 +348,7 @@ export function PdfToWordPage({
               </label>
             </div>
 
-            <details className="pdf-word-advanced-options">
+            <details className="pdf-word-advanced-options" open={!activeApiBaseUrl}>
               <summary>Tuỳ chọn nâng cao</summary>
               <label className="field-label">
                 Link xử lý MinerU
@@ -381,7 +375,7 @@ export function PdfToWordPage({
             {modelOptions.length === 0 && (
               <button type="button" className="link-button" onClick={onOpenSettings}>Mở cài đặt kiểm tra</button>
             )}
-            <button className="submit-button" type="submit" disabled={busy || !file || !enabled || !activeApiBaseUrl}>
+            <button className="submit-button" type="submit" disabled={busy || !file || !activeApiBaseUrl}>
               {busy && <Spinner />}
               {busy ? 'Đang chuyển đổi...' : 'Chuyển PDF sang Word'}
             </button>

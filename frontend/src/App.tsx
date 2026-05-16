@@ -34,7 +34,6 @@ const MOBILE_WARNING_STORAGE_KEY = 'hinh-mobile-warning-dismissed';
 const MOBILE_BREAKPOINT_QUERY = '(max-width: 900px)';
 const DEVELOPER_GITHUB_URL = 'https://github.com/sin0235';
 const CONTACT_EMAIL = 'support@sin-studio.tech';
-const PDF_WORD_ENABLED = parseEnvFlag(import.meta.env.VITE_PDF_WORD_ENABLED);
 const MINERU_API_BASE_URL = normalizeMineruBaseUrl(import.meta.env.VITE_MINERU_API_BASE_URL);
 
 type AppView = 'home' | 'render' | 'analyzer' | 'analyzer-guide' | 'simulation' | 'geogebra-lab' | 'pdf-to-word' | 'history' | 'guide' | 'about' | 'privacy-policy' | 'terms' | 'login' | 'settings' | 'admin' | 'account' | 'feedback' | 'reset-password' | 'verify-email';
@@ -920,17 +919,7 @@ export default function App() {
                 </button>
                 <button type="button" role="menuitem" className={activeView === 'pdf-to-word' ? 'active' : ''} onClick={() => {
                   setToolsMenuOpen(false);
-                  if (PDF_WORD_ENABLED) {
-                    navigateTo('pdf-to-word');
-                    return;
-                  }
-                  showNotification(
-                    'PDF → Word chuẩn đề trắc nghiệm',
-                    'Chức năng này cần GPU nên tạm chưa deploy trực tiếp. Hãy gửi mail để được hỗ trợ cài đặt miễn phí.',
-                    ['Khuyến khích để lại Zalo, email hoặc Facebook để em hỗ trợ nhanh hơn.', CONTACT_EMAIL],
-                    'info',
-                    { label: 'Chuyển tới Mail', href: `mailto:${CONTACT_EMAIL}?subject=Hỗ trợ cài đặt PDF sang Word&body=Em/chào bạn,%0D%0A%0D%0AMình cần hỗ trợ cài đặt chức năng PDF sang Word chuẩn cấu trúc đề trắc nghiệm.%0D%0A%0D%0AThông tin liên hệ:%0D%0A- Zalo:%0D%0A- Email/Facebook:%0D%0A%0D%0AXin cảm ơn.` },
-                  );
+                  navigateTo('pdf-to-word');
                 }}>
                   <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path><path d="M8 13h8"></path><path d="M8 17h5"></path></svg>
                   <span><strong>PDF → Word</strong><small>Chuẩn cấu trúc đề trắc nghiệm</small></span>
@@ -1221,7 +1210,6 @@ export default function App() {
         {activeView === 'geogebra-lab' && <GeoGebraLabPage />}
         {activeView === 'pdf-to-word' && (
           <PdfToWordPage
-            enabled={PDF_WORD_ENABLED}
             apiBaseUrl={MINERU_API_BASE_URL}
             modelOptions={modelOptions}
             runtimeSettings={runtimeSettings}
@@ -1901,12 +1889,6 @@ function readMobileWarningDismissed() {
   } catch {
     return false;
   }
-}
-
-function parseEnvFlag(value: string | boolean | undefined) {
-  if (typeof value === 'boolean') return value;
-  const normalized = (value ?? '').trim().toLowerCase();
-  return ['1', 'true', 'yes', 'on'].includes(normalized);
 }
 
 function loadStoredSettings(saved: string): RuntimeSettings {
