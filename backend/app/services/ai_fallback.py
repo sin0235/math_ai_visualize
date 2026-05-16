@@ -74,6 +74,10 @@ def text_model_candidates(provider: str, settings: Settings, explicit_model: str
 
 
 def explicit_model_for_provider(provider: str, model: str | None) -> str | None:
+    if provider == "router9" and model:
+        if model.startswith(("openrouter/", "nvidia/", "ollama/", "openai_compat/", "openai-compat/")):
+            return None
+        return normalize_model_for_provider(provider, model)
     inferred = infer_provider_from_model(model)
     if inferred and inferred != provider:
         return None

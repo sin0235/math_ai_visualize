@@ -2657,6 +2657,21 @@ select {
   font-weight: 700;
 }
 
+.admin-section-heading-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.admin-section-heading-row > div {
+  min-width: 0;
+}
+
+.admin-section-heading-row .field-hint {
+  margin: 0;
+}
+
 .admin-plan-settings-section {
   gap: 14px;
 }

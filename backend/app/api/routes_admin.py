@@ -1,3 +1,4 @@
+import asyncio
 import json
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -33,6 +34,7 @@ from app.schemas.feedback import AdminFeedbackResponse, AdminFeedbackUpdateReque
 from app.schemas.scene import MathScene, ModelScanRequest, RenderPayload
 from app.services.admin_settings import build_database_diagnostics, normalize_provider_defaults, sync_ai_profiles_to_registry, sync_ai_settings_to_registry
 from app.services.model_registry import resolve_effective_settings, save_provider_check
+from app.services.provider_ping import ADMIN_PING_PROVIDERS, ping_provider
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -333,31 +335,25 @@ async def admin_check_provider(
     await enforce_rate_limit(db, http_request, admin, "admin_provider_check", 20, 60)
 
     settings = await resolve_effective_settings(db, request.runtime_settings)
-    provider_aliases = {
-        "ollama": "ollama_gpt_oss",
-    }
-    resolved_provider = provider_aliases.get(provider, provider)
-    try:
-        await _check_provider_connection(resolved_provider, settings)
-        message = f"Kết nối tới {provider} thành công."
-        await save_provider_check(db, provider, "ok", message)
-        return {"status": "ok", "message": message}
-    except Exception as error:
-        message = str(error)
-        await save_provider_check(db, provider, "error", message)
-        return {"status": "error", "message": message}
+    result = await ping_provider(provider, settings)
+    await save_provider_check(db, result.provider, result.status, result.message)
+    return result.as_dict()
 
 
-async def _check_provider_connection(provider: str, settings) -> None:
-    if provider == "openai_compat":
-        from app.services.openai_compat_client import OpenAICompatClient
+@router.post("/providers/check-all")
+async def admin_check_all_providers(
+    request: ModelScanRequest,
+    http_request: Request,
+    admin: UserRecord = Depends(require_admin_user),
+    db: DatabaseClient = Depends(get_database),
+) -> dict:
+    await enforce_rate_limit(db, http_request, admin, "admin_provider_check_all", 5, 60)
 
-        await OpenAICompatClient(settings).check_connection()
-        return
-
-    from app.services.extractor import _extract_with_provider
-
-    await _extract_with_provider(provider, settings, "Vẽ điểm A(0,0).", grade=None, reasoning_layer="off")
+    settings = await resolve_effective_settings(db, request.runtime_settings)
+    results = await asyncio.gather(*(ping_provider(provider, settings) for provider in ADMIN_PING_PROVIDERS))
+    for result in results:
+        await save_provider_check(db, result.provider, result.status, result.message)
+    return {"results": [result.as_dict() for result in results]}
 
 
 @router.get("/audit-logs", response_model=list[AuditLogResponse])

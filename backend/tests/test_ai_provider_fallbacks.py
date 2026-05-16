@@ -15,6 +15,7 @@ from app.schemas.scene import AiModelInfo, OcrRequest, RenderRequest, RuntimeSet
 from app.services.extractor import extract_scene, _provider_order
 from app.services.openai_compat_client import OpenAICompatClient
 from app.services.provider_logging import format_provider_error, redact_sensitive
+from app.services.provider_ping import check_provider_connection
 from app.services.solver_explainer import _call_explainer
 from app.services.router9_bootstrap import (
     bootstrap_router9_models,
@@ -109,6 +110,32 @@ def test_openai_compat_provider_check_uses_small_chat_payload(monkeypatch):
 
     assert result == "OK"
     assert captured["kind"] == "check"
+    assert captured["payload"]["model"] == "test-model"
+    assert captured["payload"]["max_tokens"] == 16
+    assert "Vẽ điểm" not in json.dumps(captured["payload"], ensure_ascii=False)
+
+
+def test_provider_ping_uses_small_chat_payload(monkeypatch):
+    captured = {}
+
+    class FakeClient:
+        async def post(self, url, headers, json, timeout):
+            captured["url"] = url
+            captured["headers"] = headers
+            captured["payload"] = json
+            captured["timeout"] = timeout
+            return httpx.Response(200, json={"choices": [{"message": {"content": "OK"}}]})
+
+    monkeypatch.setattr("app.services.http_pool.get_client", lambda *args: FakeClient())
+
+    model = asyncio.run(
+        check_provider_connection(
+            "openrouter",
+            Settings(_env_file=None, openrouter_api_key="secret", openrouter_text_model="openrouter/test-model"),
+        )
+    )
+
+    assert model == "openrouter/test-model"
     assert captured["payload"]["model"] == "test-model"
     assert captured["payload"]["max_tokens"] == 16
     assert "Vẽ điểm" not in json.dumps(captured["payload"], ensure_ascii=False)
@@ -541,6 +568,34 @@ def test_render_router9_allowlist_uses_single_selected_model(monkeypatch):
 
     assert scene.topic == "unknown"
     assert calls == [("router9", "cc/codex-5.5")]
+    assert warnings == []
+
+
+def test_render_router9_accepts_explicit_vendor_prefixed_model(monkeypatch):
+    calls = []
+
+    async def fake_extract(provider, settings, problem_text, grade, reasoning_layer, preferred_ai_model=None, **kwargs):
+        calls.append((provider, preferred_ai_model))
+        return {"problem_text": problem_text, "renderer": "geogebra_2d", "objects": [], "view": {"dimension": "2d"}}
+
+    monkeypatch.setattr("app.services.extractor._extract_with_provider", fake_extract)
+
+    runtime_settings = RuntimeSettings.model_validate({
+        "router9": {
+            "api_key": "secret",
+            "model": "cx/gpt-5.5",
+            "allowed_model_ids": ["cx/gpt-5.5", "google/gemini-2.5-pro"],
+        }
+    })
+    scene, warnings = asyncio.run(extract_scene(
+        "x",
+        preferred_ai_provider="router9",
+        preferred_ai_model="google/gemini-2.5-pro",
+        runtime_settings=runtime_settings,
+    ))
+
+    assert scene.topic == "unknown"
+    assert calls == [("router9", "google/gemini-2.5-pro")]
     assert warnings == []
 
 

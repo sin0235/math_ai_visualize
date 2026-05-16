@@ -197,6 +197,14 @@ export interface AdminDatabaseDiagnostics {
   };
 }
 
+export interface AdminProviderCheckResponse {
+  provider: string;
+  status: string;
+  message: string;
+  model?: string | null;
+  latency_ms?: number | null;
+}
+
 export class ApiError extends Error {
   details: string[];
 
@@ -438,13 +446,23 @@ export async function getAdminDatabaseDiagnostics(): Promise<AdminDatabaseDiagno
   return requestJson('/api/admin/database/diagnostics', { credentials: 'include' }, 'Không thể tải chẩn đoán database.');
 }
 
-export async function checkAdminProvider(provider: string, runtimeSettings: RuntimeSettings): Promise<{ status: string; message: string }> {
+export async function checkAdminProvider(provider: string, runtimeSettings: RuntimeSettings): Promise<AdminProviderCheckResponse> {
   return requestJson(`/api/admin/providers/${encodeURIComponent(provider)}/check`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
     body: JSON.stringify({ runtime_settings: compactRuntimeSettings(runtimeSettings) }),
   }, 'Không thể kiểm tra kết nối provider.');
+}
+
+export async function checkAllAdminProviders(runtimeSettings: RuntimeSettings): Promise<AdminProviderCheckResponse[]> {
+  const response = await requestJson<{ results: AdminProviderCheckResponse[] }>('/api/admin/providers/check-all', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ runtime_settings: compactRuntimeSettings(runtimeSettings) }),
+  }, 'Không thể kiểm tra tất cả provider.');
+  return response.results;
 }
 
 export async function getAdminFeedback(filters: AdminFeedbackFilters = {}): Promise<AdminFeedbackResponse[]> {

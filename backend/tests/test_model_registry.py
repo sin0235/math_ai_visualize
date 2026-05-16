@@ -87,6 +87,44 @@ async def test_registry_preserves_allowed_models_after_scan(db):
 
 
 @pytest.mark.anyio
+async def test_registry_disables_stale_scanned_models_after_rescan(db):
+    settings = Settings(_env_file=None)
+    await load_model_registry(db, settings)
+
+    await upsert_scanned_models(db, "router9", [
+        AiModelInfo(id="stale-model", label="Stale", provider="router9"),
+        AiModelInfo(id="fresh-model", label="Fresh", provider="router9"),
+    ])
+    await set_allowed_models(db, "router9", ["stale-model", "fresh-model"])
+    await upsert_scanned_models(db, "router9", [
+        AiModelInfo(id="fresh-model", label="Fresh", provider="router9"),
+    ])
+
+    registry = await load_model_registry(db, settings)
+    stale = next(model for model in registry.models["router9"] if model.id == "stale-model")
+
+    assert stale.enabled is False
+    assert stale.allowed is False
+    assert registry.allowed_model_ids("router9") == ["fresh-model"]
+    assert [model.id for model in registry.scanned_model_infos("router9")] == ["fresh-model"]
+
+
+@pytest.mark.anyio
+async def test_registry_reenables_scanned_model_when_it_reappears(db):
+    settings = Settings(_env_file=None)
+    await load_model_registry(db, settings)
+
+    await upsert_scanned_models(db, "router9", [AiModelInfo(id="model-a", label="Model A", provider="router9")])
+    await upsert_scanned_models(db, "router9", [])
+    await upsert_scanned_models(db, "router9", [AiModelInfo(id="model-a", label="Model A", provider="router9")])
+
+    registry = await load_model_registry(db, settings)
+
+    assert registry.scanned_model_infos("router9")[0].id == "model-a"
+    assert registry.models["router9"][0].enabled is True
+
+
+@pytest.mark.anyio
 async def test_registry_uses_allowed_default_for_openrouter_when_saved_default_is_disallowed(db, monkeypatch):
     settings = Settings(_env_file=None, openrouter_text_model="env/openrouter")
     monkeypatch.setattr("app.services.model_registry.get_settings", lambda: settings)

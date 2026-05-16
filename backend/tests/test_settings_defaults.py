@@ -9,7 +9,7 @@ from app.core.config import Settings, get_settings
 from app.db.migrations import apply_sqlite_migrations
 from app.db.session import SQLiteClient, get_database
 from app.main import app
-from app.schemas.auth import SystemAiSettings
+from app.schemas.auth import SystemAiSettings, SystemFeatureFlags
 from app.services.model_registry import registry_from_settings
 
 
@@ -17,26 +17,51 @@ from app.services.model_registry import registry_from_settings
 def settings_defaults_client(tmp_path):
     db = SQLiteClient(str(tmp_path / "settings.db"))
     asyncio.run(apply_sqlite_migrations(db))
-    settings = Settings(_env_file=None, sqlite_path=db.path, ollama_base_url="http://env-ollama.local", ollama_api_key="", ollama_text_model="env-ollama")
+    settings = Settings(
+        _env_file=None,
+        database_backend="sqlite",
+        sqlite_path=db.path,
+        ollama_base_url="http://env-ollama.local",
+        ollama_api_key="",
+        ollama_text_model="env-ollama",
+    )
 
     async def override_db():
         return db
 
+    async def noop_startup(*args, **kwargs):
+        return None
+
     app.dependency_overrides[get_database] = override_db
     app.dependency_overrides[get_settings] = lambda: settings
     import app.api.routes_settings as routes_settings
+    import app.main as main
     import app.services.model_registry as model_registry
 
     original_routes_get_settings = routes_settings.get_settings
+    original_main_get_settings = main.get_settings
+    original_main_create_database_client = main.create_database_client
+    original_main_apply_migrations = main.apply_migrations
+    original_main_bootstrap_router9_models = main.bootstrap_router9_models
     original_registry_get_settings = model_registry.get_settings
     routes_settings.get_settings = lambda: settings
+    main.get_settings = lambda: settings
+    main.create_database_client = lambda current_settings: db
+    main.apply_migrations = noop_startup
+    main.bootstrap_router9_models = noop_startup
     model_registry.get_settings = lambda: settings
-    with TestClient(app) as test_client:
-        test_client.db = db
-        yield test_client
-    routes_settings.get_settings = original_routes_get_settings
-    model_registry.get_settings = original_registry_get_settings
-    app.dependency_overrides.clear()
+    try:
+        with TestClient(app) as test_client:
+            test_client.db = db
+            yield test_client
+    finally:
+        routes_settings.get_settings = original_routes_get_settings
+        main.get_settings = original_main_get_settings
+        main.create_database_client = original_main_create_database_client
+        main.apply_migrations = original_main_apply_migrations
+        main.bootstrap_router9_models = original_main_bootstrap_router9_models
+        model_registry.get_settings = original_registry_get_settings
+        app.dependency_overrides.clear()
 
 
 
@@ -68,10 +93,21 @@ def test_settings_defaults_route_hides_api_keys(monkeypatch):
     async def fake_load_model_registry(_db, s=None):
         return registry_from_settings(s if s is not None else settings)
 
+    async def fake_load_feature_flags(_db):
+        return SystemFeatureFlags()
+
+    async def fake_database():
+        return None
+
+    app.dependency_overrides[get_database] = fake_database
     monkeypatch.setattr("app.api.routes_settings.load_system_ai_settings", fake_load_system_ai_settings)
     monkeypatch.setattr("app.api.routes_settings.load_model_registry", fake_load_model_registry)
+    monkeypatch.setattr("app.api.routes_settings.load_feature_flags", fake_load_feature_flags)
 
-    response = TestClient(app).get("/api/settings/defaults")
+    try:
+        response = TestClient(app).get("/api/settings/defaults")
+    finally:
+        app.dependency_overrides.clear()
 
     assert response.status_code == 200
     payload = response.json()

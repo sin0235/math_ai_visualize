@@ -7,6 +7,7 @@ from app.core.config import Settings, get_settings
 from app.db.migrations import apply_sqlite_migrations
 from app.db.session import SQLiteClient, get_database
 from app.main import app
+from app.services.provider_ping import ProviderPingResult
 
 
 def register_payload(email: str, password: str = "StrongPass123") -> dict:
@@ -25,8 +26,15 @@ def client(tmp_path, monkeypatch):
     async def noop_email(*args, **kwargs):
         return None
 
+    async def noop_startup(*args, **kwargs):
+        return None
+
     app.dependency_overrides[get_database] = override_db
     app.dependency_overrides[get_settings] = lambda: settings
+    monkeypatch.setattr("app.main.get_settings", lambda: settings)
+    monkeypatch.setattr("app.main.create_database_client", lambda current_settings: db)
+    monkeypatch.setattr("app.main.apply_migrations", noop_startup)
+    monkeypatch.setattr("app.main.bootstrap_router9_models", noop_startup)
     monkeypatch.setattr("app.api.routes_auth.send_verification_email", noop_email)
     monkeypatch.setattr("app.api.routes_auth.send_password_reset_email", noop_email)
     with TestClient(app) as test_client:
@@ -111,3 +119,22 @@ def test_legacy_plan_settings_is_rejected(client):
     response = admin_client.put("/api/admin/system-settings", json={"key": "plan_settings", "value": {"version": 1, "plans": {"free": {}}}})
 
     assert response.status_code == 422
+
+
+def test_admin_check_all_providers_uses_ping_module(client, monkeypatch):
+    admin_client = make_admin(client, "admin@example.com")
+
+    async def fake_ping_provider(provider, settings):
+        return ProviderPingResult(provider=provider, status="ok", message=f"{provider} ok", model=f"{provider}-model", latency_ms=3)
+
+    monkeypatch.setattr("app.api.routes_admin.ping_provider", fake_ping_provider)
+
+    response = admin_client.post("/api/admin/providers/check-all", json={})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [item["provider"] for item in body["results"]] == ["openrouter", "nvidia", "ollama", "openai_compat", "router9"]
+    rows = asyncio.run(client.db.fetch_all("SELECT id, last_check_status FROM ai_providers ORDER BY id"))
+    statuses = {row["id"]: row["last_check_status"] for row in rows}
+    assert statuses["openrouter"] == "ok"
+    assert statuses["router9"] == "ok"

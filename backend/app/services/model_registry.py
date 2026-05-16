@@ -258,6 +258,26 @@ async def upsert_scanned_models(db: DatabaseClient, provider_id: str, models: li
         for row in await db.fetch_all("SELECT id FROM ai_models WHERE provider_id = ? AND allowed = 1", [provider_id])
     }
     await ensure_provider(db, provider_id)
+    scanned_ids = [model.id for model in models if model.id]
+    if scanned_ids:
+        placeholders = ", ".join("?" for _ in scanned_ids)
+        await db.execute(
+            f"""
+            UPDATE ai_models
+            SET enabled = 0, allowed = 0, updated_at = CURRENT_TIMESTAMP
+            WHERE provider_id = ? AND source = 'scan' AND id NOT IN ({placeholders})
+            """,
+            [provider_id, *scanned_ids],
+        )
+    else:
+        await db.execute(
+            """
+            UPDATE ai_models
+            SET enabled = 0, allowed = 0, updated_at = CURRENT_TIMESTAMP
+            WHERE provider_id = ? AND source = 'scan'
+            """,
+            [provider_id],
+        )
     for model in models:
         await upsert_model(db, provider_id, model, allowed=model.id in existing_allowed, source="scan")
 
@@ -272,6 +292,7 @@ async def upsert_model(db: DatabaseClient, provider_id: str, model: AiModelInfo,
           owned_by = excluded.owned_by,
           context_length = excluded.context_length,
           source = excluded.source,
+          enabled = 1,
           last_seen_at = CURRENT_TIMESTAMP,
           updated_at = CURRENT_TIMESTAMP
         """,

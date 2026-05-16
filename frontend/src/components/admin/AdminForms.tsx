@@ -11,6 +11,7 @@ import {
   scanProviderModels,
   scanRouter9Models,
   checkAdminProvider,
+  checkAllAdminProviders,
 } from '../../api/client';
 import { buildModelOptionsFromDefaults, buildProviderOptions, planLabel, providerLabels } from '../../utils/settingsOptions';
 import type { ProviderSettingsDefaults, SettingsDefaults } from '../../types/settings';
@@ -271,6 +272,7 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave, onToast }
   const [ocrMaxImageMb, setOcrMaxImageMb] = useState(String(ocrValue.max_image_mb));
   const [scanning, setScanning] = useState<string | null>(null);
   const [checking, setChecking] = useState<string | null>(null);
+  const [checkingAll, setCheckingAll] = useState(false);
   const [modelFilter, setModelFilter] = useState('');
   const [manualModelInputs, setManualModelInputs] = useState<Record<string, string>>({});
   const [checkResults, setCheckResults] = useState<Record<string, { status: string; message: string }>>({});
@@ -391,6 +393,30 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave, onToast }
     }
   }
 
+  async function checkAllProviders() {
+    setCheckingAll(true);
+    try {
+      const runtime = adminSettingsToRuntime(value, defaults);
+      providers.forEach((provider) => {
+        runtime[provider] = { ...runtime[provider], ...draft[provider] };
+      });
+      const results = await checkAllAdminProviders(runtime);
+      setCheckResults(Object.fromEntries(results.map((result) => [result.provider, result])));
+      const failed = results.filter((result) => result.status !== 'ok');
+      onToast?.(
+        'Kiểm tra provider',
+        failed.length === 0
+          ? 'Tất cả provider đã kết nối thành công.'
+          : `${results.length - failed.length}/${results.length} provider kết nối thành công.`,
+        failed.length === 0 ? 'info' : 'warning',
+      );
+    } catch (error) {
+      onToast?.('Kiểm tra provider', getErrorMessage(error, 'Không thể kiểm tra tất cả provider.'), 'error');
+    } finally {
+      setCheckingAll(false);
+    }
+  }
+
   function toggleModelId(provider: (typeof providers)[number], modelId: string) {
     updateProvider(provider, {
       allowed_model_ids: draft[provider].allowed_model_ids.includes(modelId)
@@ -455,8 +481,15 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave, onToast }
   return (
     <div className="admin-ai-settings">
       <section className="admin-settings-section">
-        <h4>Provider & model</h4>
-        <p className="field-hint">OpenRouter, OpenAI-compatible và 9router có thể quét endpoint /models. NVIDIA và Ollama quản lý model thủ công.</p>
+        <div className="admin-section-heading-row">
+          <div>
+            <h4>Provider & model</h4>
+            <p className="field-hint">OpenRouter, OpenAI-compatible và 9router có thể quét endpoint /models. NVIDIA và Ollama quản lý model thủ công.</p>
+          </div>
+          <button type="button" className="secondary-button" onClick={() => void checkAllProviders()} disabled={saving || checkingAll || checking !== null}>
+            {checkingAll ? 'Đang kiểm tra...' : 'Kiểm tra tất cả'}
+          </button>
+        </div>
         <label className="field-label">Tìm model<input type="search" value={modelFilter} onChange={(event) => setModelFilter(event.target.value)} placeholder="Nhập tên hoặc ID model" /></label>
         <div className="admin-provider-grid">
           {providers.map((provider) => {
