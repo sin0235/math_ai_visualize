@@ -44,6 +44,9 @@ def test_render_request_accepts_new_ai_providers():
     base["preferred_ai_provider"] = "ollama_gpt_oss"
     assert RenderRequest.model_validate(base).preferred_ai_provider == "ollama_gpt_oss"
 
+    base["preferred_ai_provider"] = "ollama"
+    assert RenderRequest.model_validate(base).preferred_ai_provider == "ollama"
+
     base["preferred_ai_provider"] = "router9"
     base["preferred_ai_model"] = "provider/model"
     request = RenderRequest.model_validate(base)
@@ -680,6 +683,69 @@ def test_render_provider_selection_uses_runtime_model_when_payload_model_missing
 
     assert scene.topic == "unknown"
     assert calls == [("router9", "google/gemini-2.5-pro")]
+    assert warnings == []
+
+
+def test_render_explicit_openai_compat_is_tried_before_fallback_without_api_key(monkeypatch):
+    calls = []
+
+    async def fake_extract(provider, settings, problem_text, grade, reasoning_layer, preferred_ai_model=None, **kwargs):
+        calls.append((provider, preferred_ai_model))
+        return {"problem_text": problem_text, "renderer": "geogebra_2d", "objects": [], "view": {"dimension": "2d"}}
+
+    monkeypatch.setattr("app.services.extractor._extract_with_provider", fake_extract)
+
+    runtime_settings = RuntimeSettings.model_validate({
+        "openai_compat": {
+            "base_url": "https://deepseek.example/v1",
+            "model": "deepseek-v4-flash",
+        },
+        "router9": {
+            "api_key": "router9-secret",
+            "model": "cx/gpt-5.5",
+            "allowed_model_ids": ["cx/gpt-5.5"],
+        },
+    })
+    scene, warnings = asyncio.run(extract_scene(
+        "x",
+        preferred_ai_provider="openai_compat",
+        preferred_ai_model="deepseek-v4-flash",
+        runtime_settings=runtime_settings,
+    ))
+
+    assert scene.topic == "unknown"
+    assert calls == [("openai_compat", "deepseek-v4-flash")]
+    assert warnings == []
+
+
+def test_render_explicit_ollama_alias_uses_ollama_provider(monkeypatch):
+    calls = []
+
+    async def fake_extract(provider, settings, problem_text, grade, reasoning_layer, preferred_ai_model=None, **kwargs):
+        calls.append((provider, preferred_ai_model))
+        return {"problem_text": problem_text, "renderer": "geogebra_2d", "objects": [], "view": {"dimension": "2d"}}
+
+    monkeypatch.setattr("app.services.extractor._extract_with_provider", fake_extract)
+
+    runtime_settings = RuntimeSettings.model_validate({
+        "ollama": {
+            "base_url": "https://ollama.example/v1",
+            "model": "gpt-oss:120b",
+        },
+        "router9": {
+            "api_key": "router9-secret",
+            "model": "cx/gpt-5.5",
+        },
+    })
+    scene, warnings = asyncio.run(extract_scene(
+        "x",
+        preferred_ai_provider="ollama",
+        preferred_ai_model="gpt-oss:120b",
+        runtime_settings=runtime_settings,
+    ))
+
+    assert scene.topic == "unknown"
+    assert calls == [("ollama_gpt_oss", "gpt-oss:120b")]
     assert warnings == []
 
 

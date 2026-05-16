@@ -80,13 +80,14 @@ async def extract_scene(
 ) -> tuple[MathScene, list[str]]:
     settings = await _build_render_settings(db, runtime_settings)
     registry = await load_model_registry(db, settings) if db is not None else None
-    request_model = preferred_ai_model or _runtime_model_for_provider(runtime_settings, preferred_ai_provider)
-    has_explicit_model_choice = bool(preferred_ai_provider and request_model)
+    preferred_provider = _normalize_provider_alias(preferred_ai_provider)
+    request_model = preferred_ai_model or _runtime_model_for_provider(runtime_settings, preferred_provider)
+    has_explicit_model_choice = bool(preferred_provider and request_model)
     render_profile = None if has_explicit_model_choice else resolve_task_profile(registry, "render", preferred_ai_provider, preferred_ai_model) if registry else None
     reasoning_profile = None if has_explicit_model_choice else resolve_task_profile(registry, "reasoning", preferred_ai_provider, preferred_ai_model) if registry else None
-    render_provider = preferred_ai_provider if has_explicit_model_choice else render_profile.provider_id if render_profile else preferred_ai_provider
+    render_provider = preferred_provider if has_explicit_model_choice else _normalize_provider_alias(render_profile.provider_id) if render_profile else preferred_provider
     render_model = request_model if has_explicit_model_choice else render_profile.model_id if render_profile else preferred_ai_model
-    reasoning_provider = preferred_ai_provider if has_explicit_model_choice else reasoning_profile.provider_id if reasoning_profile else preferred_ai_provider
+    reasoning_provider = preferred_provider if has_explicit_model_choice else _normalize_provider_alias(reasoning_profile.provider_id) if reasoning_profile else preferred_provider
     reasoning_model = request_model if has_explicit_model_choice else reasoning_profile.model_id if reasoning_profile else preferred_ai_model
     render_settings = advanced_settings or AdvancedRenderSettings()
     warnings: list[str] = []
@@ -109,7 +110,7 @@ async def extract_scene(
             warnings.append("Đã hoàn thành tầng suy luận (reasoning layer).")
 
     # --- TẦNG 2: Trích xuất scene ---
-    requested_provider = render_provider or settings.ai_provider
+    requested_provider = render_provider or _normalize_provider_alias(settings.ai_provider)
     for provider in _fast_provider_order(settings, render_provider):
         explicit_model = render_model if provider == requested_provider else None
         models = _profile_model_candidates(render_profile, provider, settings, explicit_model)
@@ -577,11 +578,13 @@ def _circle_scene(text: str, grade: int | None, points: list[dict[str, Any]]) ->
 
 
 def _fast_provider_order(settings: Settings, preferred_ai_provider: str | None = None) -> list[str]:
-    return _provider_order(settings, preferred_ai_provider)
+    return _provider_order(settings, preferred_ai_provider, explicit=preferred_ai_provider is not None)
 
 
-def _provider_order(settings: Settings, preferred_ai_provider: str | None = None) -> list[str]:
-    provider = preferred_ai_provider or settings.ai_provider
+def _provider_order(settings: Settings, preferred_ai_provider: str | None = None, *, explicit: bool | None = None) -> list[str]:
+    if explicit is None:
+        explicit = preferred_ai_provider is not None
+    provider = _normalize_provider_alias(preferred_ai_provider) or _normalize_provider_alias(settings.ai_provider)
     router9_providers = ["router9"] if provider_configured(settings.router9_api_key) else []
     nvidia_providers = ["nvidia"] if provider_configured(settings.nvidia_api_key) else []
     custom_providers = ["openai_compat"] if provider_configured(settings.openai_compat_api_key) and settings.openai_compat_text_model else []
@@ -594,13 +597,16 @@ def _provider_order(settings: Settings, preferred_ai_provider: str | None = None
     if provider == "mock":
         return []
     if provider == "router9":
-        return _dedupe([*router9_providers, *openrouter_providers, *nvidia_providers, *custom_providers, *local_providers])
+        requested = ["router9"] if explicit else []
+        return _dedupe([*requested, *router9_providers, *openrouter_providers, *nvidia_providers, *custom_providers, *local_providers])
     if provider == "openai_compat":
-        return _dedupe([*custom_providers, *router9_providers, *nvidia_providers, *openrouter_providers, *local_providers])
+        requested = ["openai_compat"] if explicit else []
+        return _dedupe([*requested, *custom_providers, *router9_providers, *nvidia_providers, *openrouter_providers, *local_providers])
     if provider == "nvidia":
-        return _dedupe([*nvidia_providers, *router9_providers, *openrouter_providers, *custom_providers, *local_providers])
+        requested = ["nvidia"] if explicit else []
+        return _dedupe([*requested, *nvidia_providers, *router9_providers, *openrouter_providers, *custom_providers, *local_providers])
     if provider in {"openrouter", "opencode_nemotron", "openrouter_gpt_oss"}:
-        requested = [provider] if provider_configured(settings.openrouter_api_key) else []
+        requested = [provider] if explicit else []
         return _dedupe([*requested, *openrouter_providers, *router9_providers, *nvidia_providers, *custom_providers, *local_providers])
     if provider == "ollama_gpt_oss":
         return _dedupe([*local_providers, *router9_providers, *openrouter_providers, *nvidia_providers, *custom_providers])
@@ -608,6 +614,7 @@ def _provider_order(settings: Settings, preferred_ai_provider: str | None = None
 
 
 def _provider_model(provider: str, settings: Settings, preferred_ai_model: str | None = None) -> str:
+    provider = _normalize_provider_alias(provider) or provider
     if provider == "router9":
         return preferred_ai_model or settings.router9_text_model or "<none>"
     if provider == "openrouter":
@@ -626,6 +633,7 @@ def _provider_model(provider: str, settings: Settings, preferred_ai_model: str |
 
 
 def _provider_model_candidates(provider: str, settings: Settings, preferred_ai_model: str | None = None) -> list[str | None]:
+    provider = _normalize_provider_alias(provider) or provider
     if provider == "router9":
         return _router9_model_candidates(settings, preferred_ai_model)
     if provider in {"openrouter", "nvidia", "ollama_gpt_oss", "openai_compat"}:
@@ -644,7 +652,14 @@ def _runtime_model_for_provider(runtime_settings: RuntimeSettings | None, provid
     return model or None
 
 
+def _normalize_provider_alias(provider: str | None) -> str | None:
+    if provider == "ollama":
+        return "ollama_gpt_oss"
+    return provider
+
+
 def _profile_model_candidates(profile: Any, provider: str, settings: Settings, preferred_ai_model: str | None = None) -> list[str | None]:
+    provider = _normalize_provider_alias(provider) or provider
     candidates = _provider_model_candidates(provider, settings, preferred_ai_model)
     if profile is None or provider != profile.provider_id:
         return candidates
