@@ -2097,7 +2097,7 @@ function buildModelOptions(settings: RuntimeSettings, defaults?: SettingsDefault
     return router9Options;
   }
 
-  return [{ key: 'provider:auto', provider: 'auto', label: 'Tự động chọn mô hình phù hợp', description: 'Tự động dùng provider/model do admin cấu hình.' }, ...providerOptions, ...router9Options];
+  return [...providerOptions, ...router9Options, { key: 'provider:auto', provider: 'auto', label: 'Tự động chọn mô hình phù hợp', description: 'Tự động dùng provider/model do admin cấu hình.' }];
 }
 
 function modelIdsForProvider(providerDefaults: SettingsDefaults['openrouter'] | SettingsDefaults['nvidia'] | SettingsDefaults['ollama'] | SettingsDefaults['openai_compat'] | SettingsDefaults['router9'] | undefined, currentModel: string, defaults: SettingsDefaults | null | undefined, providerId: string) {

@@ -599,6 +599,90 @@ def test_render_router9_accepts_explicit_vendor_prefixed_model(monkeypatch):
     assert warnings == []
 
 
+def test_render_explicit_model_bypasses_registry_task_profile(monkeypatch):
+    from app.services.model_registry import ModelRegistry, ModelRegistryItem, ProviderRegistryItem, TaskProfile
+
+    calls = []
+
+    async def fake_extract(provider, settings, problem_text, grade, reasoning_layer, preferred_ai_model=None, **kwargs):
+        calls.append((provider, preferred_ai_model))
+        return {"problem_text": problem_text, "renderer": "geogebra_2d", "objects": [], "view": {"dimension": "2d"}}
+
+    registry = ModelRegistry(
+        providers={
+            "router9": ProviderRegistryItem(
+                id="router9",
+                label="9router",
+                base_url="https://api-9router.sin-studio.tech/v1",
+                default_model_id="cx/gpt-5.5",
+                api_key_configured=True,
+            )
+        },
+        models={
+            "router9": [
+                ModelRegistryItem("router9", "cx/gpt-5.5", "cx/gpt-5.5", allowed=True),
+                ModelRegistryItem("router9", "google/gemini-2.5-pro", "google/gemini-2.5-pro", allowed=True),
+            ]
+        },
+        task_profiles={"render": TaskProfile("render", "router9", "cx/gpt-5.5", [])},
+        settings={"default_provider": "router9"},
+    )
+
+    async def fake_load_model_registry(_db, _settings=None):
+        return registry
+
+    monkeypatch.setattr("app.services.extractor._extract_with_provider", fake_extract)
+    monkeypatch.setattr("app.services.extractor.load_model_registry", fake_load_model_registry)
+    monkeypatch.setattr("app.services.model_registry.load_model_registry", fake_load_model_registry)
+
+    runtime_settings = RuntimeSettings.model_validate({
+        "router9": {
+            "api_key": "secret",
+            "model": "cx/gpt-5.5",
+            "allowed_model_ids": ["cx/gpt-5.5", "google/gemini-2.5-pro"],
+        }
+    })
+    scene, warnings = asyncio.run(extract_scene(
+        "x",
+        preferred_ai_provider="router9",
+        preferred_ai_model="google/gemini-2.5-pro",
+        runtime_settings=runtime_settings,
+        db=object(),
+    ))
+
+    assert scene.topic == "unknown"
+    assert calls == [("router9", "google/gemini-2.5-pro")]
+    assert warnings == []
+
+
+def test_render_provider_selection_uses_runtime_model_when_payload_model_missing(monkeypatch):
+    calls = []
+
+    async def fake_extract(provider, settings, problem_text, grade, reasoning_layer, preferred_ai_model=None, **kwargs):
+        calls.append((provider, preferred_ai_model))
+        return {"problem_text": problem_text, "renderer": "geogebra_2d", "objects": [], "view": {"dimension": "2d"}}
+
+    monkeypatch.setattr("app.services.extractor._extract_with_provider", fake_extract)
+
+    runtime_settings = RuntimeSettings.model_validate({
+        "router9": {
+            "api_key": "secret",
+            "model": "google/gemini-2.5-pro",
+            "allowed_model_ids": ["cx/gpt-5.5", "google/gemini-2.5-pro"],
+        }
+    })
+    scene, warnings = asyncio.run(extract_scene(
+        "x",
+        preferred_ai_provider="router9",
+        preferred_ai_model=None,
+        runtime_settings=runtime_settings,
+    ))
+
+    assert scene.topic == "unknown"
+    assert calls == [("router9", "google/gemini-2.5-pro")]
+    assert warnings == []
+
+
 def test_render_tries_full_provider_order_before_mock(monkeypatch):
     calls = []
 

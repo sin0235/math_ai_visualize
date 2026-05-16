@@ -108,7 +108,8 @@ export function ProblemInput({
   onOpenRouter9Settings,
   onSubmit,
 }: ProblemInputProps) {
-  const [selectedModelKey, setSelectedModelKey] = useState(modelOptions[0]?.key ?? '');
+  const firstConcreteModelKey = modelOptions.find((option) => option.modelId)?.key ?? modelOptions[0]?.key ?? '';
+  const [selectedModelKey, setSelectedModelKey] = useState(firstConcreteModelKey);
   const [preferredRenderer, setPreferredRenderer] = useState<'auto' | Renderer>('auto');
   const [advancedSettings, setAdvancedSettings] = useState<AdvancedRenderSettings>(defaultAdvancedSettings);
   const [dragActive, setDragActive] = useState(false);
@@ -119,9 +120,9 @@ export function ProblemInput({
 
   useEffect(() => {
     if (!modelOptions.some((option) => option.key === selectedModelKey)) {
-      setSelectedModelKey(modelOptions[0]?.key ?? '');
+      setSelectedModelKey(firstConcreteModelKey);
     }
-  }, [modelOptions, selectedModelKey]);
+  }, [firstConcreteModelKey, modelOptions, selectedModelKey]);
 
   function updateAdvancedSettings(next: Partial<AdvancedRenderSettings>) {
     setAdvancedSettings((current) => ({ ...current, ...next }));

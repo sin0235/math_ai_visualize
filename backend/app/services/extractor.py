@@ -80,12 +80,14 @@ async def extract_scene(
 ) -> tuple[MathScene, list[str]]:
     settings = await _build_render_settings(db, runtime_settings)
     registry = await load_model_registry(db, settings) if db is not None else None
-    render_profile = resolve_task_profile(registry, "render", preferred_ai_provider, preferred_ai_model) if registry else None
-    reasoning_profile = resolve_task_profile(registry, "reasoning", preferred_ai_provider, preferred_ai_model) if registry else None
-    render_provider = render_profile.provider_id if render_profile else preferred_ai_provider
-    render_model = render_profile.model_id if render_profile else preferred_ai_model
-    reasoning_provider = reasoning_profile.provider_id if reasoning_profile else preferred_ai_provider
-    reasoning_model = reasoning_profile.model_id if reasoning_profile else preferred_ai_model
+    request_model = preferred_ai_model or _runtime_model_for_provider(runtime_settings, preferred_ai_provider)
+    has_explicit_model_choice = bool(preferred_ai_provider and request_model)
+    render_profile = None if has_explicit_model_choice else resolve_task_profile(registry, "render", preferred_ai_provider, preferred_ai_model) if registry else None
+    reasoning_profile = None if has_explicit_model_choice else resolve_task_profile(registry, "reasoning", preferred_ai_provider, preferred_ai_model) if registry else None
+    render_provider = preferred_ai_provider if has_explicit_model_choice else render_profile.provider_id if render_profile else preferred_ai_provider
+    render_model = request_model if has_explicit_model_choice else render_profile.model_id if render_profile else preferred_ai_model
+    reasoning_provider = preferred_ai_provider if has_explicit_model_choice else reasoning_profile.provider_id if reasoning_profile else preferred_ai_provider
+    reasoning_model = request_model if has_explicit_model_choice else reasoning_profile.model_id if reasoning_profile else preferred_ai_model
     render_settings = advanced_settings or AdvancedRenderSettings()
     warnings: list[str] = []
     attempts: list[RenderAttempt] = []
@@ -629,6 +631,17 @@ def _provider_model_candidates(provider: str, settings: Settings, preferred_ai_m
     if provider in {"openrouter", "nvidia", "ollama_gpt_oss", "openai_compat"}:
         return text_model_candidates(provider, settings, preferred_ai_model)
     return [None]
+
+
+def _runtime_model_for_provider(runtime_settings: RuntimeSettings | None, provider: str | None) -> str | None:
+    if runtime_settings is None or provider in {None, "auto", "mock"}:
+        return None
+    provider_key = "ollama" if provider == "ollama_gpt_oss" else provider
+    if provider_key not in {"openrouter", "nvidia", "ollama", "openai_compat", "router9"}:
+        return None
+    provider_settings = getattr(runtime_settings, provider_key, None)
+    model = (getattr(provider_settings, "model", None) or "").strip()
+    return model or None
 
 
 def _profile_model_candidates(profile: Any, provider: str, settings: Settings, preferred_ai_model: str | None = None) -> list[str | None]:
