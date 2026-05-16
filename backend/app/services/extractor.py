@@ -149,7 +149,13 @@ async def extract_scene(
                         timeout=attempt_timeout,
                     )
                 warnings.extend(_render_attempt_warnings(attempts))
-                scene, cas_warnings = build_scene_with_cas_fix(scene_json)
+                try:
+                    scene, cas_warnings = build_scene_with_cas_fix(scene_json)
+                except (ValidationError, ValueError, KeyError) as error:
+                    attempts.append(RenderAttempt(provider, model or _provider_model(provider, settings), str(error)))
+                    warnings.extend(_render_attempt_warnings(attempts))
+                    warnings.append("AI đã phản hồi nhưng scene không hợp lệ; đang dùng mock extractor.")
+                    return extract_scene_mock(problem_text, grade), warnings
                 warnings.extend(cas_warnings)
                 return scene, warnings
             except TimeoutError as error:

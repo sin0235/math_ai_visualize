@@ -515,6 +515,29 @@ def test_render_fallback_success_returns_prior_failures_as_warnings(monkeypatch)
     assert any("AI fallback: nvidia/" in warning and "quota exceeded" in warning for warning in warnings)
 
 
+def test_render_stops_after_invalid_ai_response(monkeypatch):
+    calls = []
+
+    async def fake_extract(provider, settings, problem_text, grade, reasoning_layer, preferred_ai_model=None, **kwargs):
+        calls.append((provider, preferred_ai_model))
+        return {"problem_text": problem_text, "renderer": "geogebra_2d", "objects": [{"type": "point_2d"}], "view": {"dimension": "2d"}}
+
+    monkeypatch.setattr("app.services.extractor._extract_with_provider", fake_extract)
+
+    scene, warnings = asyncio.run(extract_scene(
+        "x",
+        runtime_settings=RuntimeSettings.model_validate({
+            "default_provider": "router9",
+            "router9": {"api_key": "router9-secret", "model": "cx/gpt-5.5"},
+            "openrouter": {"api_key": "openrouter-secret", "model": "openrouter/model"},
+        }),
+    ))
+
+    assert scene.topic == "unknown"
+    assert calls == [("router9", "cx/gpt-5.5")]
+    assert any("AI đã phản hồi nhưng scene không hợp lệ" in warning for warning in warnings)
+
+
 def test_render_uses_profile_fallback_models(monkeypatch):
     from app.services.model_registry import TaskProfile
     from app.services.extractor import _profile_model_candidates

@@ -929,12 +929,12 @@ function compactRuntimeSettings(settings?: RuntimeSettings) {
   if (!settings) return undefined;
 
   const compact = {
-    default_provider: cleanText(settings.default_provider) && settings.default_provider !== 'auto' ? settings.default_provider : undefined,
-    openrouter: compactProviderSettings(settings.openrouter),
-    nvidia: compactProviderSettings(settings.nvidia),
-    ollama: compactProviderSettings(settings.ollama),
-    openai_compat: compactProviderSettings(settings.openai_compat),
-    router9: compactRouter9Settings(settings),
+    default_provider: undefined,
+    openrouter: compactProviderConnectionSettings(settings.openrouter),
+    nvidia: compactProviderConnectionSettings(settings.nvidia),
+    ollama: compactProviderConnectionSettings(settings.ollama),
+    openai_compat: compactProviderConnectionSettings(settings.openai_compat),
+    router9: compactRouter9ConnectionSettings(settings),
     openrouter_http_referer: cleanText(settings.openrouter_http_referer),
     openrouter_x_title: cleanText(settings.openrouter_x_title),
     openrouter_reasoning_enabled: settings.openrouter_reasoning_enabled ? true : undefined,
@@ -957,25 +957,23 @@ function compactRuntimeSettings(settings?: RuntimeSettings) {
   return compact;
 }
 
-function compactProviderSettings(settings: RuntimeSettings['openrouter']) {
+function compactProviderConnectionSettings(settings: RuntimeSettings['openrouter']) {
   const compact = {
     api_key: cleanText(settings.api_key),
     base_url: cleanText(settings.base_url),
-    model: cleanText(settings.model),
   };
 
-  if (compact.api_key === undefined && compact.base_url === undefined && compact.model === undefined) {
+  if (compact.api_key === undefined && compact.base_url === undefined) {
     return undefined;
   }
 
   return compact;
 }
 
-function compactRouter9Settings(settings: RuntimeSettings) {
+function compactRouter9ConnectionSettings(settings: RuntimeSettings) {
   const compact = {
     api_key: cleanText(settings.router9.api_key),
     base_url: cleanText(settings.router9.base_url),
-    model: cleanText(settings.router9.model),
     only_mode: settings.router9.only_mode ? true : undefined,
     allowed_model_ids: settings.router9.allowed_model_ids.length > 0 ? settings.router9.allowed_model_ids : undefined,
   };
@@ -983,7 +981,6 @@ function compactRouter9Settings(settings: RuntimeSettings) {
   if (
     compact.api_key === undefined &&
     compact.base_url === undefined &&
-    compact.model === undefined &&
     compact.only_mode === undefined &&
     compact.allowed_model_ids === undefined
   ) {
