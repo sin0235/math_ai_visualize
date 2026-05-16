@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Request, status
@@ -15,6 +16,7 @@ from app.services.api_errors import api_error
 from app.services.system_settings import load_feature_flags
 
 router = APIRouter(prefix="/api", tags=["render"])
+logger = logging.getLogger("app.services.ai_providers")
 
 RENDER_TIMEOUT_SECONDS = 310
 
@@ -28,6 +30,7 @@ async def render_problem(
 ) -> RenderResponse:
     await enforce_rate_limit(db, http_request, user, "render", 20 if user else 8, 60)
     await enforce_render_access(db, user)
+    log_render_choice(request)
     try:
         response = await asyncio.wait_for(build_problem_render_response(request, db), timeout=RENDER_TIMEOUT_SECONDS)
     except TimeoutError as error:
@@ -58,6 +61,20 @@ async def render_problem(
             renderer=response.scene.renderer,
         )
     return response
+
+
+def log_render_choice(request: RenderRequest) -> None:
+    runtime = request.runtime_settings
+    logger.info(
+        "Render request choice preferred_provider=%s preferred_model=%s runtime_default=%s runtime_openai_compat_model=%s runtime_router9_model=%s runtime_openrouter_model=%s runtime_nvidia_model=%s",
+        request.preferred_ai_provider or "<none>",
+        request.preferred_ai_model or "<none>",
+        runtime.default_provider if runtime else "<none>",
+        runtime.openai_compat.model if runtime and runtime.openai_compat else "<none>",
+        runtime.router9.model if runtime and runtime.router9 else "<none>",
+        runtime.openrouter.model if runtime and runtime.openrouter else "<none>",
+        runtime.nvidia.model if runtime and runtime.nvidia else "<none>",
+    )
 
 
 async def build_problem_render_response(request: RenderRequest, db: DatabaseClient) -> RenderResponse:

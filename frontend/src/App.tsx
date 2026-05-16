@@ -146,6 +146,7 @@ export default function App() {
   const [pointPlacementPlane, setPointPlacementPlane] = useState<PointPlacementPlane>('xy');
   const [pointPlacementDepth, setPointPlacementDepth] = useState('0');
   const [runtimeSettings, setRuntimeSettings] = useState<RuntimeSettings>(defaultRuntimeSettings);
+  const [selectedRenderModelKey, setSelectedRenderModelKey] = useState('');
   const [settingsDefaults, setSettingsDefaults] = useState<SettingsDefaults | null>(null);
   const [backendStatus, setBackendStatus] = useState<BackendStatus>({ state: 'checking' });
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -351,6 +352,20 @@ export default function App() {
   }, [result, paramValues]);
 
   const modelOptions = buildModelOptions(runtimeSettings, settingsDefaults);
+  const firstRenderModelKey = modelOptions.find((option) => option.modelId)?.key ?? modelOptions[0]?.key ?? '';
+  const previousFirstRenderModelKeyRef = useRef(firstRenderModelKey);
+  useEffect(() => {
+    const previousFirstKey = previousFirstRenderModelKeyRef.current;
+    const selectedKey = selectedRenderModelKey || firstRenderModelKey;
+    if (!modelOptions.some((option) => option.key === selectedKey)) {
+      setSelectedRenderModelKey(firstRenderModelKey);
+    } else if (firstRenderModelKey !== previousFirstKey && selectedKey === previousFirstKey) {
+      setSelectedRenderModelKey(firstRenderModelKey);
+    } else if (!selectedRenderModelKey && firstRenderModelKey) {
+      setSelectedRenderModelKey(firstRenderModelKey);
+    }
+    previousFirstRenderModelKeyRef.current = firstRenderModelKey;
+  }, [firstRenderModelKey, modelOptions, selectedRenderModelKey]);
   const threeInteraction = effectiveResult?.scene.renderer === 'threejs_3d'
     ? {
         mode: editTool,
@@ -1038,8 +1053,10 @@ export default function App() {
                     ocrError={null}
                     problemText={problemText}
                     modelOptions={modelOptions}
+                    selectedModelKey={selectedRenderModelKey || firstRenderModelKey}
                     router9Only={settingsDefaults?.router9.only_mode ?? false}
                     onProblemTextChange={setProblemText}
+                    onSelectedModelKeyChange={setSelectedRenderModelKey}
                     onOcrImage={handleOcrImage}
                     onOcrClipboardImage={handleOcrClipboardImage}
                     onOpenRouter9Settings={() => navigateTo(user?.role === 'admin' ? 'admin' : 'settings')}
@@ -2065,7 +2082,8 @@ function fileToDataUrl(file: File): Promise<string> {
 }
 
 function buildModelOptions(settings: RuntimeSettings, defaults?: SettingsDefaults | null): ModelOption[] {
-  const providerOptions = (['openrouter', 'nvidia', 'ollama', 'openai_compat'] as const).flatMap((provider) => {
+  const providerOrder = orderRenderProviders(settings.default_provider);
+  const options = providerOrder.flatMap((provider) => {
     const providerDefaults = defaults?.[provider];
     const ids = modelIdsForProvider(providerDefaults, settings[provider].model, defaults, provider);
     return ids.map((modelId) => {
@@ -2074,30 +2092,28 @@ function buildModelOptions(settings: RuntimeSettings, defaults?: SettingsDefault
         key: `${provider}:${modelId}`,
         provider,
         modelId,
-        label: `${providerLabel(provider)}: ${model?.label ?? modelId}`,
-        description: `${providerLabel(provider)} model ${modelId}${model?.context_length ? ` — context ${model.context_length}` : ''}`,
+        label: `${renderProviderLabel(provider)}: ${model?.label ?? modelId}`,
+        description: `${renderProviderLabel(provider)} model ${modelId}${model?.context_length ? ` — context ${model.context_length}` : ''}`,
       };
     });
   });
 
-  const router9Defaults = defaults?.router9;
-  const router9Ids = modelIdsForProvider(router9Defaults, settings.router9.model, defaults, 'router9');
-  const router9Options = router9Ids.map((modelId) => {
-    const scanned = router9Defaults?.scanned_models.find((model) => model.id === modelId);
-    return {
-      key: `router9:${modelId}`,
-      provider: 'router9',
-      modelId,
-      label: `9router: ${scanned?.label ?? modelId}`,
-      description: `9router model ${modelId}`,
-    };
-  });
-
   if (defaults?.router9.only_mode) {
-    return router9Options;
+    return options.filter((option) => option.provider === 'router9');
   }
 
-  return [...providerOptions, ...router9Options, { key: 'provider:auto', provider: 'auto', label: 'Tự động chọn mô hình phù hợp', description: 'Tự động dùng provider/model do admin cấu hình.' }];
+  return [...options, { key: 'provider:auto', provider: 'auto', label: 'Tự động chọn mô hình phù hợp', description: 'Tự động dùng provider/model do admin cấu hình.' }];
+}
+
+type RenderProviderKey = 'openrouter' | 'nvidia' | 'ollama' | 'openai_compat' | 'router9';
+
+function orderRenderProviders(defaultProvider: RuntimeSettings['default_provider']): RenderProviderKey[] {
+  const providers = ['openrouter', 'nvidia', 'ollama', 'openai_compat', 'router9'] as const;
+  if (!defaultProvider || defaultProvider === 'auto' || defaultProvider === 'mock' || defaultProvider === 'openrouter_gpt_oss' || defaultProvider === 'opencode_nemotron') {
+    return [...providers];
+  }
+  const normalized: RenderProviderKey = defaultProvider === 'ollama_gpt_oss' ? 'ollama' : defaultProvider as RenderProviderKey;
+  return [normalized, ...providers.filter((provider) => provider !== normalized)];
 }
 
 function modelIdsForProvider(providerDefaults: SettingsDefaults['openrouter'] | SettingsDefaults['nvidia'] | SettingsDefaults['ollama'] | SettingsDefaults['openai_compat'] | SettingsDefaults['router9'] | undefined, currentModel: string, defaults: SettingsDefaults | null | undefined, providerId: string) {
@@ -2130,4 +2146,9 @@ function providerLabel(provider: 'openrouter' | 'nvidia' | 'ollama' | 'openai_co
   if (provider === 'nvidia') return 'NVIDIA';
   if (provider === 'openai_compat') return 'OpenAI-Compatible';
   return 'Ollama';
+}
+
+function renderProviderLabel(provider: RenderProviderKey) {
+  if (provider === 'router9') return '9router';
+  return providerLabel(provider);
 }

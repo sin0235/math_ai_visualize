@@ -1,4 +1,4 @@
-import { DragEvent, FormEvent, MouseEvent, useEffect, useRef, useState } from 'react';
+import { DragEvent, FormEvent, MouseEvent, useRef, useState } from 'react';
 
 import type { AdvancedRenderSettings, CoordinateAssignment, ReasoningLayerMode, Renderer } from '../types/scene';
 
@@ -74,8 +74,10 @@ interface ProblemInputProps {
   ocrError: string | null;
   problemText: string;
   modelOptions: ModelOption[];
+  selectedModelKey: string;
   router9Only: boolean;
   onProblemTextChange: (next: string) => void;
+  onSelectedModelKeyChange: (next: string) => void;
   onOcrImage: (
     file: File,
     preferredAiProvider?: string,
@@ -101,15 +103,15 @@ export function ProblemInput({
   ocrError,
   problemText,
   modelOptions,
+  selectedModelKey,
   router9Only,
   onProblemTextChange,
+  onSelectedModelKeyChange,
   onOcrImage,
   onOcrClipboardImage,
   onOpenRouter9Settings,
   onSubmit,
 }: ProblemInputProps) {
-  const firstConcreteModelKey = modelOptions.find((option) => option.modelId)?.key ?? modelOptions[0]?.key ?? '';
-  const [selectedModelKey, setSelectedModelKey] = useState(firstConcreteModelKey);
   const [preferredRenderer, setPreferredRenderer] = useState<'auto' | Renderer>('auto');
   const [advancedSettings, setAdvancedSettings] = useState<AdvancedRenderSettings>(defaultAdvancedSettings);
   const [dragActive, setDragActive] = useState(false);
@@ -117,12 +119,6 @@ export function ProblemInput({
   const selectedModel = modelOptions.find((option) => option.key === selectedModelKey);
   const busy = loading || ocrLoading;
   const submitDisabled = busy || modelOptions.length === 0;
-
-  useEffect(() => {
-    if (!modelOptions.some((option) => option.key === selectedModelKey)) {
-      setSelectedModelKey(firstConcreteModelKey);
-    }
-  }, [firstConcreteModelKey, modelOptions, selectedModelKey]);
 
   function updateAdvancedSettings(next: Partial<AdvancedRenderSettings>) {
     setAdvancedSettings((current) => ({ ...current, ...next }));
@@ -276,7 +272,7 @@ export function ProblemInput({
           value={selectedModelKey}
           title={selectedModel?.description ?? ''}
           disabled={modelOptions.length === 0}
-          onChange={(event) => setSelectedModelKey(event.target.value)}
+          onChange={(event) => onSelectedModelKeyChange(event.target.value)}
         >
           {modelOptions.map((option) => (
             <option key={option.key} value={option.key} title={option.description}>{option.label}</option>
