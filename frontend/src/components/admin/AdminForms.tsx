@@ -353,10 +353,8 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave, onToast }
       const models = uniqueScannedModels(scannedModels);
       const scannedIds = models.map((model) => model.id);
       const scannedIdSet = new Set(scannedIds);
-      const allowed_model_ids = scannedIds.length > 0
-        ? scannedIds
-        : draft[provider].allowed_model_ids.filter((id) => scannedIdSet.has(id));
-      const model = scannedIdSet.has(draft[provider].model) ? draft[provider].model : allowed_model_ids[0] ?? '';
+      const allowed_model_ids = draft[provider].allowed_model_ids.filter((id) => scannedIdSet.has(id));
+      const model = scannedIdSet.has(draft[provider].model) ? draft[provider].model : '';
       const next = normalizeDefaultModel({
         ...draft[provider],
         scanned_models: models,
@@ -365,7 +363,7 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave, onToast }
         last_scanned_at: new Date().toISOString(),
       });
       updateProvider(provider, next);
-      onToast?.('Quét model', `Đã quét ${models.length} model duy nhất từ ${providerLabels[provider]} và đã lưu vào database.`, 'info');
+      onToast?.('Quét model', `Đã quét ${models.length} model duy nhất từ ${providerLabels[provider]}. Chọn model cần dùng rồi bấm Lưu provider.`, 'info');
     } catch (error) {
       onToast?.('Quét model', getErrorMessage(error, `Không thể quét model cho ${providerLabels[provider]}.`), 'error');
     } finally {

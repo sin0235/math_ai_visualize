@@ -7,7 +7,7 @@ from app.db.session import DatabaseClient, get_database
 from app.schemas.scene import ModelScanRequest, ModelScanResponse, ProviderModelScanRequest
 from app.schemas.scene import AiModelInfo
 from app.services.ai_fallback import provider_configured
-from app.services.model_registry import resolve_effective_settings, save_provider_config, set_allowed_models, upsert_scanned_models
+from app.services.model_registry import resolve_effective_settings, save_provider_config, upsert_scanned_models
 from app.services.model_scan import list_provider_models
 from app.services.router9_client import Router9Client
 
@@ -51,8 +51,6 @@ async def _persist_scan(db: DatabaseClient, settings: Settings, provider: str, m
         api_key_configured=provider_configured(_provider_api_key(settings, provider)),
     )
     await upsert_scanned_models(db, provider, models)
-    if model_ids:
-        await set_allowed_models(db, provider, model_ids)
 
 
 def _unique_models(models: list[AiModelInfo], provider: str) -> list[AiModelInfo]:
