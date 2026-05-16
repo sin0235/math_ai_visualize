@@ -20,9 +20,9 @@ Thuộc lĩnh vực: Ứng dụng trí tuệ nhân tạo (AI) trong giáo dục
 
 ## A. Tóm tắt đề tài
 
-**AI Math Renderer** là nền tảng web ứng dụng trí tuệ nhân tạo (AI) để chuyển đổi bài toán hình học và đại số từ ngôn ngữ tự nhiên (văn bản hoặc hình ảnh đề bài) thành mô hình đồ họa tương tác 2D/3D. Hệ thống hỗ trợ học sinh lớp 10–12 trực quan hóa các bài toán hình học phẳng, hình học không gian Oxyz, đồ thị hàm số, đồng thời cung cấp công cụ khảo sát hàm số, giải từng bước (step-by-step solver), mô phỏng tích phân – lượng giác và phòng thí nghiệm GeoGebra tích hợp.
+**AI Math Renderer** là nền tảng web ứng dụng trí tuệ nhân tạo (AI) để chuyển đổi bài toán hình học và đại số từ ngôn ngữ tự nhiên (văn bản hoặc hình ảnh đề bài) thành mô hình đồ họa tương tác 2D/3D. Hệ thống hỗ trợ học sinh lớp 10–12 trực quan hóa các bài toán hình học phẳng, hình học không gian Oxyz, đồ thị hàm số, đồng thời cung cấp công cụ khảo sát hàm số, giải từng bước (step-by-step solver), mô phỏng tích phân – lượng giác, phòng thí nghiệm GeoGebra tích hợp và chức năng chuyển đề toán PDF sang Word để phục vụ soạn thảo tài liệu học tập.
 
-Sản phẩm giải quyết bài toán thực tế: học sinh và giáo viên thường gặp khó khăn trong việc dựng hình chính xác từ đề bài văn bản, đặc biệt là hình học không gian 3D. AI Math Renderer tự động hóa hoàn toàn quy trình này — từ nhận diện đề bài (bao gồm OCR ảnh), trích xuất thông tin hình học bằng AI, đến render hình tương tác và xuất bản dưới dạng TikZ/LaTeX/PDF chuẩn học thuật.
+Sản phẩm giải quyết bài toán thực tế: học sinh và giáo viên thường gặp khó khăn trong việc dựng hình chính xác từ đề bài văn bản, đặc biệt là hình học không gian 3D. AI Math Renderer tự động hóa hoàn toàn quy trình này — từ nhận diện đề bài (bao gồm OCR ảnh), trích xuất thông tin hình học bằng AI, đến render hình tương tác và xuất bản dưới dạng TikZ/LaTeX/PDF chuẩn học thuật. Ngoài ra, hệ thống còn hỗ trợ số hóa đề toán PDF thành file Word có thể chỉnh sửa, giúp giáo viên tái sử dụng ngân hàng đề và biên soạn tài liệu nhanh hơn.
 
 **Link sản phẩm:** [https://math-renderer.sin-studio.tech/](https://math-renderer.sin-studio.tech/)
 
@@ -139,6 +139,19 @@ Công cụ phân tích toàn diện hàm số bằng SymPy:
 - Xuất PNG/SVG/PDF
 - Phù hợp cho soạn đề thi, bài giảng, luận văn
 
+**Chức năng 7: Chuyển đề toán PDF sang Word**
+
+Chức năng này giúp giáo viên hoặc người soạn tài liệu chuyển các file đề thi PDF sang file Word có thể chỉnh sửa, tập trung vào cấu trúc đề toán và đề trắc nghiệm.
+
+- Tải lên file PDF đề toán và chuyển thành tài liệu Word (`.docx`)
+- Giữ lại công thức toán, bảng biểu và bố cục câu hỏi ở mức tối đa
+- Có tùy chọn tối ưu cấu trúc đề trắc nghiệm, nhận diện công thức và giữ bảng
+- Hỗ trợ chọn phạm vi trang cần xử lý để tiết kiệm thời gian với file đề dài
+- Cho phép nhập link xử lý MinerU chạy từ môi trường GPU bên ngoài như Kaggle/Colab thông qua Cloudflare Tunnel
+- Có cơ chế kiểm tra trạng thái dịch vụ xử lý, hiển thị tiến trình và tải file Word sau khi hoàn tất
+
+Do tác vụ phân tích PDF bằng mô hình thị giác cần tài nguyên GPU, bản production hiện tại cho phép người dùng tự cung cấp link backend xử lý tạm thời từ Kaggle/Colab. Cách triển khai này giúp demo được chức năng thật mà không cần triển khai GPU cố định trên server chính.
+
 #### 3.3. Hướng dẫn sử dụng
 
 **Bước 1:** Truy cập [https://math-renderer.sin-studio.tech/](https://math-renderer.sin-studio.tech/)
@@ -148,6 +161,7 @@ Công cụ phân tích toàn diện hàm số bằng SymPy:
 - **Khảo sát hàm:** Nhập công thức hàm số → Nhấn "Phân tích" → Xem đồ thị, BBT, cực trị
 - **Mô phỏng:** Chọn mô phỏng tích phân hoặc lượng giác → Tương tác với animation
 - **GeoGebra Lab:** Chọn module → Nhập lệnh hoặc dùng mẫu nhanh → Vẽ và xuất hình
+- **PDF → Word:** Dán link xử lý MinerU từ Kaggle/Colab → Chọn file PDF → Chọn tùy chọn đề toán → Tải file Word sau khi xử lý xong
 
 **Bước 3:** Tương tác với hình đã dựng:
 - **2D:** Kéo điểm, zoom, pan
@@ -174,8 +188,11 @@ Hệ thống theo kiến trúc **Client-Server** với frontend và backend tác
 │  │ GeoGebra │ │ Three.js │ │  KaTeX   │ │ Firebase Auth    │   │
 │  │ Renderer │ │ Renderer │ │ (LaTeX)  │ │ (Đăng nhập)      │   │
 │  └──────────┘ └──────────┘ └──────────┘ └──────────────────┘   │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │    PDF → Word UI: upload PDF, cấu hình đề toán, tải DOCX │   │
+│  └──────────────────────────────────────────────────────────┘   │
 └──────────────────────────┬──────────────────────────────────────┘
-                           │ REST API (JSON)
+                           │ REST API (JSON/FormData)
 ┌──────────────────────────▼──────────────────────────────────────┐
 │                        BACKEND (Server)                         │
 │  Python FastAPI                                                 │
@@ -191,6 +208,12 @@ Hệ thống theo kiến trúc **Client-Server** với frontend và backend tác
 │  │ SQLite   │ │ SymPy    │ │ Geometry Engine  │                │
 │  │ Database │ │ (CAS)    │ │ (Normalization)  │                │
 │  └──────────┘ └──────────┘ └──────────────────┘                │
+└─────────────────────────────────────────────────────────────────┘
+                           │ HTTPS tunnel khi cần GPU
+┌──────────────────────────▼──────────────────────────────────────┐
+│              MINERU PDF BACKEND (Kaggle/Colab GPU)              │
+│  Flask API + MinerU CLI + Cloudflare Tunnel                     │
+│  /api/status │ /api/convert │ /api/jobs │ artifact download     │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -208,6 +231,7 @@ Hệ thống theo kiến trúc **Client-Server** với frontend và backend tác
 | **Công thức toán** | KaTeX 0.16 | Render công thức LaTeX trong giao diện |
 | **Xác thực** | Firebase Authentication | Đăng nhập Google, email/password |
 | **Cơ sở dữ liệu** | SQLite (aiosqlite) | Lưu user, lịch sử, cài đặt |
+| **Chuyển PDF → Word** | MinerU, Flask API, Cloudflare Tunnel, Kaggle/Colab GPU | Phân tích PDF đề toán và xuất file Word có thể chỉnh sửa |
 | **Deploy Frontend** | Vercel | Hosting frontend tĩnh, CDN toàn cầu |
 | **Deploy Backend** | Cloud Server | API server Python |
 
@@ -251,6 +275,8 @@ Hệ thống theo kiến trúc **Client-Server** với frontend và backend tác
 
 - **GeoGebra Lab tích hợp:** Giáo viên có ngay phòng thí nghiệm toán học với đủ 4 module GeoGebra mà không cần cài đặt phần mềm riêng.
 
+- **Tái sử dụng ngân hàng đề PDF:** Với chức năng PDF → Word, giáo viên có thể chuyển đề thi, đề ôn tập hoặc tài liệu sưu tầm ở dạng PDF thành file Word để chỉnh sửa, bổ sung đáp án, thay đổi câu hỏi hoặc chuẩn hóa định dạng trước khi phát cho học sinh.
+
 #### 5.3. Khả năng mở rộng
 
 - **Đa ngôn ngữ:** Kiến trúc cho phép mở rộng sang tiếng Anh, tiếng Pháp... bằng cách thay đổi AI prompt.
@@ -280,6 +306,7 @@ Sản phẩm đã được triển khai và chạy ổn định tại: [https://
 | Mô phỏng tích phân & lượng giác | ✅ Hoàn thiện | Animation tương tác |
 | GeoGebra Lab (4 module) | ✅ Hoàn thiện | Graphing, Geometry, 3D, Probability |
 | Xuất TikZ/LaTeX/PDF/PNG/SVG | ✅ Hoàn thiện | Chuẩn học thuật |
+| Chuyển đề toán PDF sang Word | ✅ Hoàn thiện demo | Dùng MinerU backend qua link Kaggle/Colab GPU, nhập link xử lý trực tiếp trên giao diện |
 | Đăng nhập (Firebase Auth) | ✅ Hoàn thiện | Google, email/password |
 | Lịch sử dựng hình | ✅ Hoàn thiện | Lưu và xem lại kết quả |
 | Multi-provider AI | ✅ Hoàn thiện | OpenRouter, NVIDIA, Ollama, 9router, Mock |
@@ -303,6 +330,7 @@ Truy cập [https://math-renderer.sin-studio.tech/](https://math-renderer.sin-st
 3. **Hình học không gian:** `Cho hình chóp S.ABCD có đáy ABCD là hình vuông, SA vuông góc với mặt phẳng đáy.`
 4. **Tọa độ Oxyz:** `Trong Oxyz cho A(1,2,3), B(4,5,6).`
 5. **Khảo sát hàm số:** Vào "Khảo sát hàm" → nhập `y = x^3 - 3*x + 2` → xem kết quả phân tích đầy đủ.
+6. **PDF sang Word:** Vào "PDF → Word" → dán link xử lý MinerU từ Kaggle/Colab → tải lên file đề toán PDF → chọn "Tối ưu cấu trúc đề trắc nghiệm" → tải file `.docx` sau khi hoàn tất.
 
 
 |  | *TP. Hồ Chí Minh, ngày 14 tháng 05 năm 2026* Đại diện nhóm *(Ký tên và ghi rõ họ tên)*   **Trần Phúc Toàn** |
