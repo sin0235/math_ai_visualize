@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 
-import { convertPdfWithMineru, getMineruJob, getMineruStatus, mineruUrl, normalizeMineruBaseUrl, type MineruArtifact, type MineruJobSnapshot, type MineruResult } from '../api/mineru';
+import { convertPdfWithMineru, getMineruJob, getMineruStatus, mineruUrl, normalizeMineruBaseUrl, type MineruJobSnapshot, type MineruResult } from '../api/mineru';
 import type { ModelOption } from './ProblemInput';
 import type { RuntimeSettings } from '../types/settings';
 
@@ -73,6 +73,7 @@ export function PdfToWordPage({
   const [error, setError] = useState('');
   const [terminalLines, setTerminalLines] = useState<string[]>([]);
   const [result, setResult] = useState<MineruResult | null>(null);
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState('');
   const [remoteMaxUploadMb, setRemoteMaxUploadMb] = useState<number | null>(null);
   const [readinessMessage, setReadinessMessage] = useState('');
   const [readinessReady, setReadinessReady] = useState<boolean | null>(null);
@@ -115,6 +116,18 @@ export function PdfToWordPage({
     const saved = window.localStorage.getItem(MINERU_API_BASE_URL_STORAGE_KEY);
     if (!saved) setMineruApiBaseUrl(apiBaseUrl);
   }, [apiBaseUrl]);
+
+  useEffect(() => {
+    if (!file) {
+      setPdfPreviewUrl('');
+      return;
+    }
+    const objectUrl = URL.createObjectURL(file);
+    setPdfPreviewUrl(objectUrl);
+    return () => {
+      URL.revokeObjectURL(objectUrl);
+    };
+  }, [file]);
 
   useEffect(() => {
     pollAbortRef.current = false;
@@ -289,6 +302,10 @@ export function PdfToWordPage({
               <strong>{file ? file.name : 'Kéo thả PDF hoặc bấm để chọn'}</strong>
               <span>{file ? `${formatBytes(file.size)} · sẵn sàng chuyển đổi` : `Tối đa ${maxUploadMb} MB`}</span>
             </label>
+
+            {file && pdfPreviewUrl && (
+              <PdfOriginalPreview fileName={file.name} url={pdfPreviewUrl} />
+            )}
 
             <div className="pdf-word-field-grid">
               <label className="field-label">
@@ -468,10 +485,6 @@ function MineruColabGuide({ onClose }: { onClose: () => void }) {
 function ResultDownloads({ baseUrl, result }: { baseUrl: string; result: MineruResult }) {
   const artifacts = result.artifacts ?? [];
   const docx = artifacts.find((artifact) => artifact.kind === 'docx') ?? artifacts.find((artifact) => artifact.filename?.toLowerCase().endsWith('.docx'));
-  const previewPdf = artifacts.find((artifact) => artifact.preview_kind === 'pdf' && artifact.preview_url)
-    ?? artifacts.find((artifact) => artifact.kind === 'layout' && (artifact.preview_url || artifact.download_url))
-    ?? artifacts.find((artifact) => artifact.filename?.toLowerCase().endsWith('.pdf') && (artifact.preview_url || artifact.download_url));
-  const previewUrl = previewPdf ? mineruUrl(baseUrl, previewPdf.preview_url || previewPdf.download_url || previewPdf.relative_path || '') : '';
 
   return (
     <div className="pdf-word-downloads">
@@ -480,15 +493,18 @@ function ResultDownloads({ baseUrl, result }: { baseUrl: string; result: MineruR
           Tải file Word
         </a>
       )}
-      {previewUrl && (
-        <div className="pdf-word-preview-panel">
-          <div className="pdf-word-preview-head">
-            <strong>Preview PDF</strong>
-            <a href={previewUrl} target="_blank" rel="noreferrer">Mở tab mới</a>
-          </div>
-          <iframe src={previewUrl} title="Preview PDF MinerU" />
-        </div>
-      )}
+    </div>
+  );
+}
+
+function PdfOriginalPreview({ fileName, url }: { fileName: string; url: string }) {
+  return (
+    <div className="pdf-word-preview-panel">
+      <div className="pdf-word-preview-head">
+        <strong>Bản PDF đã tải lên</strong>
+        <a href={url} target="_blank" rel="noreferrer">Mở tab mới</a>
+      </div>
+      <iframe src={url} title={`Xem trước ${fileName}`} />
     </div>
   );
 }
