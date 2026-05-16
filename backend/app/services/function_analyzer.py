@@ -20,11 +20,12 @@ from sympy import (
     S, Symbol, oo, simplify, diff, solve, limit,
     Rational, zoo, nan, latex,
     sympify, SympifyError, fraction, cancel,
-    sin, cos, tan, cot, asin, acos, atan, log, exp, pi, E,
+    sin, cos, tan, cot, asin, acos, atan, log, exp, sqrt, pi, E, Abs,
     solveset, Interval, Poly, discriminant, Eq, solve_univariate_inequality,
 )
 from sympy.calculus.util import continuous_domain, function_range
 from sympy.calculus.singularities import singularities
+from sympy.parsing.sympy_parser import implicit_multiplication_application, standard_transformations, parse_expr
 
 
 x = Symbol("x", real=True)
@@ -52,12 +53,19 @@ def _parse_expr(expression: str):
         "log": log,
         "ln": log,
         "exp": exp,
+        "sqrt": sqrt,
+        "abs": Abs,
+        "Abs": Abs,
         "pi": pi,
         "E": E,
     }
     try:
-        expr = sympify(cleaned, locals=locals_map)
-    except (SympifyError, SyntaxError, TypeError) as e:
+        expr = parse_expr(
+            cleaned,
+            local_dict=locals_map,
+            transformations=standard_transformations + (implicit_multiplication_application,),
+        )
+    except (SympifyError, SyntaxError, TypeError, ValueError) as e:
         raise ValueError(f"Không thể phân tích biểu thức: {expression!r}. Lỗi: {e}") from e
 
     unsupported = expr.free_symbols - {x, m}
@@ -68,12 +76,203 @@ def _parse_expr(expression: str):
 
 
 def _preprocess_expression(expression: str) -> str:
-    cleaned = expression.replace("^", "**")
+    cleaned = expression.strip()
+    cleaned = _strip_math_delimiters(cleaned)
+    cleaned = _strip_text_commands(cleaned)
+    cleaned = cleaned.replace("\\dfrac", "\\frac").replace("\\tfrac", "\\frac")
+    cleaned = _replace_latex_command_groups(cleaned, "\\frac", lambda groups: f"(({_preprocess_expression(groups[0])})/({_preprocess_expression(groups[1])}))", 2)
+    cleaned = _replace_latex_command_groups(cleaned, "\\sqrt", _format_sqrt_groups, 1, optional_group=True)
+    cleaned = _replace_latex_over(cleaned)
+    cleaned = _replace_latex_power_groups(cleaned)
+    cleaned = _replace_absolute_bars(cleaned)
+    cleaned = cleaned.replace("\\left", "").replace("\\right", "")
+    cleaned = cleaned.replace("\\cdot", "*").replace("\\times", "*").replace("·", "*").replace("×", "*")
+    cleaned = cleaned.replace("−", "-").replace("–", "-").replace("÷", "/")
+    cleaned = cleaned.replace("{", "(").replace("}", ")")
+    cleaned = cleaned.replace("^", "**")
+    replacements = {
+        "\\arcsin": "asin",
+        "\\arccos": "acos",
+        "\\arctan": "atan",
+        "\\sin": "sin",
+        "\\cos": "cos",
+        "\\tan": "tan",
+        "\\tg": "tan",
+        "\\cot": "cot",
+        "\\ctg": "cot",
+        "\\ln": "log",
+        "\\log": "log",
+        "\\lg": "log",
+        "\\exp": "exp",
+        "\\pi": "pi",
+        "\\infty": "oo",
+    }
+    for old, new in replacements.items():
+        cleaned = cleaned.replace(old, new)
+    cleaned = cleaned.replace("π", "pi").replace("∞", "oo")
+    cleaned = cleaned.translate(str.maketrans("⁰¹²³⁴⁵⁶⁷⁸⁹", "0123456789"))
+    cleaned = re.sub(r"([xm\)])([0-9]+)", r"\1**\2", cleaned)
+    cleaned = re.sub(r"\be\b", "E", cleaned)
     cleaned = re.sub(r"\bln\s*\(", "log(", cleaned)
     cleaned = re.sub(r"\btg\s*\(", "tan(", cleaned)
     cleaned = re.sub(r"\bctg\s*\(", "cot(", cleaned)
+    cleaned = re.sub(r"\blog_\s*\(([^()]+)\)\s*\(([^()]+)\)", r"log(\2, \1)", cleaned)
     cleaned = re.sub(r"\blog_([0-9]+(?:\.[0-9]+)?)\s*\(([^()]+)\)", r"log(\2, \1)", cleaned)
+    cleaned = _wrap_bare_function_arguments(cleaned)
     return cleaned
+
+
+def _strip_math_delimiters(expression: str) -> str:
+    text = expression.strip()
+    for left, right in (("$$", "$$"), ("\\[", "\\]"), ("\\(", "\\)"), ("$", "$")):
+        if text.startswith(left) and text.endswith(right):
+            return text[len(left):len(text) - len(right)].strip()
+    return text
+
+
+def _strip_text_commands(expression: str) -> str:
+    text = expression
+    for command in ("\\operatorname", "\\mathrm", "\\text"):
+        while command in text:
+            start = text.find(command)
+            group, end = _read_latex_group(text, start + len(command), command)
+            text = f"{text[:start]}{group}{text[end:]}"
+    return text
+
+
+def _replace_latex_command_groups(expression: str, command: str, replacement, group_count: int, *, optional_group: bool = False) -> str:
+    text = expression
+    while command in text:
+        start = text.find(command)
+        cursor = start + len(command)
+        groups: list[str] = []
+        if optional_group:
+            optional, optional_end = _try_read_latex_bracket_group(text, cursor)
+            if optional is not None:
+                groups.append(optional)
+                cursor = optional_end
+        for _ in range(group_count):
+            group, cursor = _read_latex_group(text, cursor, command)
+            groups.append(group)
+        text = f"{text[:start]}{replacement(groups)}{text[cursor:]}"
+    return text
+
+
+def _format_sqrt_groups(groups: list[str]) -> str:
+    if len(groups) == 1:
+        return f"sqrt({_preprocess_expression(groups[0])})"
+    return f"(({_preprocess_expression(groups[1])})**(1/({_preprocess_expression(groups[0])})))"
+
+
+def _replace_latex_over(expression: str) -> str:
+    text = expression
+    while "\\over" in text:
+        index = text.find("\\over")
+        left_start = _find_fraction_side_start(text, index)
+        right_end = _find_fraction_side_end(text, index + len("\\over"))
+        numerator = text[left_start:index].strip()
+        denominator = text[index + len("\\over"):right_end].strip()
+        text = f"{text[:left_start]}(({_preprocess_expression(numerator)})/({_preprocess_expression(denominator)})){text[right_end:]}"
+    return text
+
+
+def _find_fraction_side_start(text: str, index: int) -> int:
+    cursor = index - 1
+    while cursor >= 0 and text[cursor].isspace():
+        cursor -= 1
+    if cursor >= 0 and text[cursor] == "}":
+        depth = 0
+        for pos in range(cursor, -1, -1):
+            if text[pos] == "}":
+                depth += 1
+            elif text[pos] == "{":
+                depth -= 1
+                if depth == 0:
+                    return pos
+    while cursor >= 0 and text[cursor] not in "+-*/(=":
+        cursor -= 1
+    return cursor + 1
+
+
+def _find_fraction_side_end(text: str, index: int) -> int:
+    cursor = index
+    while cursor < len(text) and text[cursor].isspace():
+        cursor += 1
+    if cursor < len(text) and text[cursor] == "{":
+        _, end = _read_latex_group(text, cursor, "\\over")
+        return end
+    while cursor < len(text) and text[cursor] not in "+-*/)=":
+        cursor += 1
+    return cursor
+
+
+def _replace_absolute_bars(expression: str) -> str:
+    text = expression.replace("\\lvert", "|").replace("\\rvert", "|").replace("\\left|", "|").replace("\\right|", "|")
+    result: list[str] = []
+    open_abs = False
+    for char in text:
+        if char == "|":
+            result.append("Abs(" if not open_abs else ")")
+            open_abs = not open_abs
+        else:
+            result.append(char)
+    return "".join(result)
+
+
+def _wrap_bare_function_arguments(expression: str) -> str:
+    functions = "sin|cos|tan|cot|asin|acos|atan|log|exp|sqrt|Abs"
+    return re.sub(rf"\b({functions})\s+([A-Za-z0-9_.]+)", r"\1(\2)", expression)
+
+
+def _replace_latex_power_groups(expression: str) -> str:
+    text = expression
+    index = 0
+    while index < len(text):
+        if text[index] == "^":
+            cursor = index + 1
+            while cursor < len(text) and text[cursor].isspace():
+                cursor += 1
+            if cursor < len(text) and text[cursor] == "{":
+                group, end = _read_latex_group(text, cursor, "lũy thừa")
+                text = f"{text[:index]}**({_preprocess_expression(group)}){text[end:]}"
+                index += 3
+                continue
+        index += 1
+    return text
+
+
+def _try_read_latex_bracket_group(text: str, start: int) -> tuple[str | None, int]:
+    while start < len(text) and text[start].isspace():
+        start += 1
+    if start >= len(text) or text[start] != "[":
+        return None, start
+    depth = 0
+    for index in range(start, len(text)):
+        char = text[index]
+        if char == "[":
+            depth += 1
+        elif char == "]":
+            depth -= 1
+            if depth == 0:
+                return text[start + 1:index], index + 1
+    raise ValueError("Thiếu dấu ] trong biểu thức LaTeX.")
+
+
+def _read_latex_group(text: str, start: int, command: str) -> tuple[str, int]:
+    while start < len(text) and text[start].isspace():
+        start += 1
+    if start >= len(text) or text[start] != "{":
+        raise ValueError(f"Cú pháp {command} cần nhóm trong dấu {{}}.")
+    depth = 0
+    for index in range(start, len(text)):
+        char = text[index]
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start + 1:index], index + 1
+    raise ValueError("Thiếu dấu } trong biểu thức LaTeX.")
 
 
 def _fmt_sym(expr) -> str:

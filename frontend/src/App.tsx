@@ -1202,20 +1202,6 @@ export default function App() {
                 )}
               </div>
             </div>
-            {/* Lựa chọn 1: Khảo sát hàm số (chỉ khi có function_graph) */}
-            {effectiveResult?.scene && effectiveResult.scene.topic === 'function_graph' && (
-              <div className="result-area">
-                <FunctionAnalyzerPanel
-                  initialExpression={
-                    (() => {
-                      const fg = effectiveResult.scene.objects.find((o: { type: string }) => o.type === 'function_graph') as { expression?: string } | undefined;
-                      return fg?.expression ?? '';
-                    })()
-                  }
-                  onOpenGuide={() => navigateTo('analyzer-guide')}
-                />
-              </div>
-            )}
           </section>
         )}
         {activeView === 'analyzer' && (
