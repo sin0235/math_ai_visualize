@@ -169,6 +169,20 @@ def test_settings_defaults_reports_allowed_openrouter_default(settings_defaults_
     assert payload["openrouter"]["allowed_model_ids"] == ["allowed/model"]
 
 
+def test_settings_defaults_reports_nvidia_ocr_profile(settings_defaults_client):
+    from app.services.model_registry import save_provider_config, save_task_profile
+
+    asyncio.run(save_provider_config(settings_defaults_client.db, "nvidia", "https://integrate.api.nvidia.com/v1", "nvidia/vision", api_key_configured=True))
+    asyncio.run(save_task_profile(settings_defaults_client.db, "ocr", "nvidia", "nvidia/vision", []))
+
+    response = settings_defaults_client.get("/api/settings/defaults")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ocr"]["provider"] == "nvidia"
+    assert payload["ocr"]["model"] == "vision"
+
+
 def test_settings_defaults_normalizes_raw_openrouter_model_to_allowlist(settings_defaults_client):
     asyncio.run(settings_defaults_client.db.execute(
         """

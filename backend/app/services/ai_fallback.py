@@ -82,12 +82,10 @@ def explicit_model_for_provider(provider: str, model: str | None) -> str | None:
 
 def router9_text_candidates(settings: Settings) -> list[str]:
     if settings.router9_allowed_models:
-        candidates = dedupe([
-            settings.router9_text_model or "",
-            *select_router9_render_model_ids_from_ids(settings.router9_allowed_models),
-            *settings.router9_allowed_models,
-        ])
-        return [model for model in candidates if model in settings.router9_allowed_models]
+        if settings.router9_text_model and settings.router9_text_model in settings.router9_allowed_models:
+            return [settings.router9_text_model]
+        selected = select_router9_render_model_ids_from_ids(settings.router9_allowed_models)
+        return [selected[0] if selected else settings.router9_allowed_models[0]]
     return dedupe([settings.router9_text_model or "", *settings.router9_text_fallback_models])
 
 
@@ -95,12 +93,10 @@ def router9_ocr_candidates(settings: Settings, explicit_model: str | None = None
     if explicit_model:
         return [explicit_model]
     if settings.router9_allowed_models:
-        candidates = dedupe([
-            settings.router9_ocr_model or "",
-            *select_router9_ocr_model_ids_from_ids(settings.router9_allowed_models),
-            *settings.router9_allowed_models,
-        ])
-        return [model for model in candidates if model in settings.router9_allowed_models]
+        if settings.router9_ocr_model and settings.router9_ocr_model in settings.router9_allowed_models:
+            return [settings.router9_ocr_model]
+        selected = select_router9_ocr_model_ids_from_ids(settings.router9_allowed_models)
+        return [selected[0] if selected else settings.router9_allowed_models[0]]
     return dedupe([settings.router9_ocr_model or "", *settings.router9_ocr_fallback_models])
 
 

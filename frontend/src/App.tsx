@@ -1801,9 +1801,9 @@ function mergeBackendDefaults(current: RuntimeSettings, defaults: SettingsDefaul
   const router9 = mergeProviderDefaults(current.router9, defaults.router9, 'router9');
   const userWantsSystemOcrProvider = !String(current.ocr.provider ?? '').trim();
   const ocrProviderFromChoice = (current.ocr.provider || defaults.ocr.provider || 'openrouter') as OcrProvider;
-  const ocrModel =
-    current.ocr.model ||
-    defaultOcrModelFromMergedDefaults(ocrProviderFromChoice, defaults, { openrouter, nvidia, ollama, openai_compat, router9 });
+  const ocrModel = userWantsSystemOcrProvider
+    ? ''
+    : current.ocr.model || defaultOcrModelFromMergedDefaults(ocrProviderFromChoice, defaults, { openrouter, nvidia, ollama, openai_compat, router9 });
   const inferred = inferOcrProviderFromModelId(ocrModel);
   const rawModel = ocrModel.trim();
   const ocrProviderEffective =
@@ -1921,7 +1921,7 @@ function toUserBasicSettings(settings: RuntimeSettings): UserBasicSettings {
     version: 2,
     default_provider: settings.default_provider,
     default_model: currentProviderModel(settings),
-    ocr: settings.ocr,
+    ocr: settings.ocr.provider.trim() ? settings.ocr : { ...settings.ocr, model: '' },
   };
 }
 
@@ -1952,7 +1952,7 @@ function sanitizeSettingsForStorage(settings: RuntimeSettings): RuntimeSettings 
     ollama: { ...defaultRuntimeSettings.ollama, model: settings.ollama.model, allowed_model_ids: settings.ollama.allowed_model_ids },
     openai_compat: { ...defaultRuntimeSettings.openai_compat, model: settings.openai_compat.model, allowed_model_ids: settings.openai_compat.allowed_model_ids },
     router9: { ...defaultRuntimeSettings.router9, model: settings.router9.model, allowed_model_ids: settings.router9.allowed_model_ids },
-    ocr: settings.ocr,
+    ocr: settings.ocr.provider.trim() ? settings.ocr : { ...settings.ocr, model: '' },
   };
 }
 
@@ -1984,6 +1984,10 @@ function dropLegacyDefaults(settings: RuntimeSettings) {
 }
 
 function dropLegacyOcrDefaults(settings: RuntimeSettings) {
+  if (!settings.ocr.provider.trim()) {
+    settings.ocr.model = '';
+    return;
+  }
   if (settings.ocr.model === 'qwen/qwen2.5-vl-72b-instruct:free' || settings.ocr.model === 'google/gemma-4-26b-a4b-it:free') {
     settings.ocr.model = '';
   }

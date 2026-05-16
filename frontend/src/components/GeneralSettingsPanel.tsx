@@ -104,7 +104,7 @@ export function GeneralSettingsPanel({ value, defaults, onChange, onReset }: Gen
 
           <label className="field-label">
             Model OCR mặc định
-            <select value={selectedOcrModel} onChange={(event) => updateOcr('model', event.target.value)}>
+            <select value={selectedOcrModel} onChange={(event) => updateOcr('model', event.target.value)} disabled={value.ocr.provider === ''}>
               <option value="">Dùng mặc định hệ thống: {systemOcrModelLabel(defaults, resolvedOcrProvider)}</option>
               {value.ocr.model && !ocrModels.some((model) => model.id === value.ocr.model) && <option value={value.ocr.model}>{value.ocr.model}</option>}
               {ocrModels.map((model) => <option key={model.id} value={model.id}>{model.label}</option>)}

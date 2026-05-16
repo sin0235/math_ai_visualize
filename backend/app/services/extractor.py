@@ -53,6 +53,7 @@ _CIRCLE_RADIUS_RE = re.compile(r"(?:tâm|tam)\s+([A-Z]).*?(?:bán kính|ban kinh
 _RENDER_TOTAL_BUDGET_SECONDS = 300.0
 _RENDER_MIN_ATTEMPT_SECONDS = 10.0
 _RENDER_MAX_ATTEMPT_SECONDS = 285.0
+_REASONING_TOTAL_TIMEOUT_SECONDS = 120.0
 
 
 @dataclass(frozen=True)
@@ -181,15 +182,13 @@ async def _run_reasoning_stage(
 
     Returns None if reasoning fails (the pipeline will fall back to
     single-stage extraction).
-    Giới hạn tối đa 1 lần thử và 25s tổng để không kéo dài pipeline.
+    Giới hạn tối đa 1 lần thử và timeout riêng để không kéo dài pipeline quá mức.
     """
     import asyncio
     import logging
     logger = logging.getLogger(__name__)
 
     _MAX_REASONING_ATTEMPTS = 1
-    _REASONING_TOTAL_TIMEOUT = 25
-
     async def _try_reasoning() -> dict | None:
         attempts = 0
         requested_provider = preferred_ai_provider or settings.ai_provider
@@ -211,12 +210,12 @@ async def _run_reasoning_stage(
         return None
 
     try:
-        result = await asyncio.wait_for(_try_reasoning(), timeout=_REASONING_TOTAL_TIMEOUT)
+        result = await asyncio.wait_for(_try_reasoning(), timeout=_REASONING_TOTAL_TIMEOUT_SECONDS)
         if result is None:
             warnings.append("Tầng suy luận không thành công; sẽ dùng single-stage extraction.")
         return result
     except asyncio.TimeoutError:
-        warnings.append("Tầng suy luận quá thời gian (25s); sẽ dùng single-stage extraction.")
+        warnings.append(f"Tầng suy luận quá thời gian ({_REASONING_TOTAL_TIMEOUT_SECONDS:.0f}s); sẽ dùng single-stage extraction.")
         return None
 
 

@@ -216,14 +216,12 @@ def test_ocr_uses_selected_openai_compat_provider(monkeypatch):
     assert calls == [("openai_compat", "vision-model")]
 
 
-def test_ocr_router9_tries_image_models_then_github_gpt52(monkeypatch):
+def test_ocr_router9_allowlist_uses_single_selected_model(monkeypatch):
     calls = []
 
     async def fake_router9(self, image_data_url: str, model: str | None = None):
         calls.append(("router9", model))
-        if model != "gh/gpt-5.2":
-            raise RuntimeError("model unavailable")
-        return "Đề từ GPT 5.2."
+        return "Đề từ Codex 5.5."
 
     monkeypatch.setattr("app.services.router9_client.Router9Client.ocr_image", fake_router9)
 
@@ -241,13 +239,9 @@ def test_ocr_router9_tries_image_models_then_github_gpt52(monkeypatch):
     )
 
     assert response.status_code == 200
-    assert response.json()["text"] == "Đề từ GPT 5.2."
-    assert response.json()["model"] == "gh/gpt-5.2"
-    assert calls == [
-        ("router9", "cc/codex-5.5-image"),
-        ("router9", "cc/codex-5.4-image"),
-        ("router9", "gh/gpt-5.2"),
-    ]
+    assert response.json()["text"] == "Đề từ Codex 5.5."
+    assert response.json()["model"] == "cc/codex-5.5-image"
+    assert calls == [("router9", "cc/codex-5.5-image")]
 
 
 def test_ocr_router9_falls_back_to_openrouter_when_not_only(monkeypatch):

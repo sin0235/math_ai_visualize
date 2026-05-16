@@ -20,6 +20,7 @@ from app.schemas.scene import (
 from app.services.system_settings import load_feature_flags
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
+OCR_PROVIDERS = {"openrouter", "router9", "nvidia", "ollama", "openai_compat"}
 
 
 @router.get("/defaults", response_model=SettingsDefaultsResponse)
@@ -27,6 +28,7 @@ async def get_settings_defaults(db: DatabaseClient = Depends(get_database)) -> S
     settings = get_settings()
     registry = await load_model_registry(db, settings) if getattr(db, "backend", settings.database_backend) == settings.database_backend else registry_from_settings(settings)
     ocr_profile = resolve_task_profile(registry, "ocr")
+    ocr_provider, ocr_model = registry_ocr_default(registry, settings, ocr_profile)
     feature_flags = await load_feature_flags(db)
     return SettingsDefaultsResponse(
         app_name=settings.app_name,
@@ -72,8 +74,8 @@ async def get_settings_defaults(db: DatabaseClient = Depends(get_database)) -> S
             scanned_models=registry.scanned_model_infos("router9"),
         ),
         ocr=OcrSettingsDefaults(
-            provider=ocr_profile.provider_id if ocr_profile and ocr_profile.provider_id in {"openrouter", "router9"} else "openrouter",
-            model=ocr_profile.model_id if ocr_profile and ocr_profile.model_id else settings.openrouter_vision_model,
+            provider=ocr_provider,
+            model=ocr_model,
             max_image_mb=int(registry.settings.get("ocr_max_image_mb", 5)),
         ),
         registry_providers=[provider.__dict__ for provider in registry.providers.values()],
@@ -200,6 +202,26 @@ def allowed_provider_default(registry: Any, provider_id: str, default_model_id: 
     if allowed_model_ids and default_model_id not in allowed_model_ids:
         return allowed_model_ids[0]
     return default_model_id
+
+
+def registry_ocr_default(registry: Any, settings: Any, ocr_profile: Any) -> tuple[str, str]:
+    if ocr_profile and ocr_profile.provider_id in OCR_PROVIDERS and ocr_profile.model_id:
+        return ocr_profile.provider_id, ocr_profile.model_id
+
+    if settings.router9_ocr_model:
+        return "router9", settings.router9_ocr_model
+
+    openrouter_vision = getattr(settings, "openrouter_vision_model", "") or ""
+    if openrouter_vision:
+        return "openrouter", openrouter_vision
+
+    for provider_id in ("router9", "openrouter", "nvidia", "ollama", "openai_compat"):
+        provider = registry.providers.get(provider_id)
+        default_model = effective_provider_default_model(registry, provider_id, provider.default_model_id if provider else "")
+        if default_model:
+            return provider_id, default_model
+
+    return "openrouter", ""
 
 
 def dump_scanned_models(models: list[Any]) -> list[dict[str, Any]]:

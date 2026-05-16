@@ -514,18 +514,19 @@ function effectiveOcrProviderForRequest(settings: RuntimeSettings): OcrProvider 
     }
     return chosen;
   }
-  return inferred ?? undefined;
+  return undefined;
 }
 
 export async function ocrImage(imageDataUrl: string, runtimeSettings: RuntimeSettings, mode: 'problem' | 'diagram' = 'problem'): Promise<OcrResponse> {
+  const ocrProvider = effectiveOcrProviderForRequest(runtimeSettings);
   return requestJson('/api/ocr', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
     body: JSON.stringify({
       image_data_url: imageDataUrl,
-      ocr_provider: effectiveOcrProviderForRequest(runtimeSettings),
-      ocr_model: runtimeSettings.ocr.model.trim() || undefined,
+      ocr_provider: ocrProvider,
+      ocr_model: ocrProvider ? runtimeSettings.ocr.model.trim() || undefined : undefined,
       mode,
       runtime_settings: compactRuntimeSettings(runtimeSettings),
     }),

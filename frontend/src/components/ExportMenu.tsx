@@ -104,8 +104,8 @@ export function ExportMenuItems({ scene, advancedSettings, onError, captureCurre
             key={fmt}
             type="button"
             role="menuitem"
-            className={itemClassName}
-            disabled={busy !== null || isLocked}
+            className={`${itemClassName}${isLocked ? ' is-locked' : ''}`}
+            disabled={busy !== null}
             aria-disabled={isLocked || undefined}
             title={tooltip}
             onClick={() => handleDownload(fmt)}
@@ -114,9 +114,8 @@ export function ExportMenuItems({ scene, advancedSettings, onError, captureCurre
             <span>
               <strong>
                 {busy === fmt ? 'Đang tải…' : fmtLabels.label}
-                {isLocked && lockReason && <em className="export-menu-locked-tag"> ({lockReason})</em>}
               </strong>
-              <small>{isLocked && lockReason ? lockReason : fmtLabels.hint}</small>
+              <small>{fmtLabels.hint}</small>
             </span>
           </button>
         );

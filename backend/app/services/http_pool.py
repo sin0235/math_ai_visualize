@@ -22,25 +22,25 @@ TIMEOUT_SCENE = httpx.Timeout(
 )
 TIMEOUT_REASONING = httpx.Timeout(
     connect=_CONNECT_TIMEOUT,
-    read=80.0,
+    read=120.0,
     write=_DEFAULT_WRITE_TIMEOUT,
     pool=_POOL_TIMEOUT,
 )
 TIMEOUT_OCR = httpx.Timeout(
     connect=_CONNECT_TIMEOUT,
-    read=80.0,
-    write=30.0,
+    read=285.0,
+    write=60.0,
     pool=_POOL_TIMEOUT,
 )
 TIMEOUT_FAST = httpx.Timeout(
     connect=_CONNECT_TIMEOUT,
-    read=30.0,
+    read=120.0,
     write=_DEFAULT_WRITE_TIMEOUT,
     pool=_POOL_TIMEOUT,
 )
 TIMEOUT_MODELS = httpx.Timeout(
     connect=_CONNECT_TIMEOUT,
-    read=20.0,
+    read=60.0,
     write=_DEFAULT_WRITE_TIMEOUT,
     pool=_POOL_TIMEOUT,
 )

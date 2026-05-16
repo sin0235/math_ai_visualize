@@ -1681,11 +1681,12 @@ select {
   transition: background 0.12s;
 }
 
-.export-menu-item:hover:not(:disabled) {
+.export-menu-item:hover:not(:disabled):not([aria-disabled='true']) {
   background: #f5f5f5;
 }
 
-.export-menu-item:disabled {
+.export-menu-item:disabled,
+.export-menu-item[aria-disabled='true'] {
   cursor: not-allowed;
   opacity: 0.6;
 }

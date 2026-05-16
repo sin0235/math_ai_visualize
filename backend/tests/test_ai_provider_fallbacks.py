@@ -453,7 +453,7 @@ def test_render_fallback_success_returns_prior_failures_as_warnings(monkeypatch)
 
     monkeypatch.setattr("app.services.extractor._extract_with_provider", fake_extract)
 
-    scene, warnings = asyncio.run(extract_scene("x", runtime_settings=RuntimeSettings.model_validate({"default_provider": "nvidia"})))
+    scene, warnings = asyncio.run(extract_scene("x", runtime_settings=RuntimeSettings.model_validate({"default_provider": "nvidia", "nvidia": {"api_key": "secret"}})))
 
     assert scene.renderer == "geogebra_2d"
     assert any("AI fallback: nvidia/" in warning and "quota exceeded" in warning for warning in warnings)
