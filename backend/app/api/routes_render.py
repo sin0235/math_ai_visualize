@@ -1,3 +1,4 @@
+import asyncio
 import json
 from datetime import UTC, datetime
 
@@ -15,6 +16,8 @@ from app.services.system_settings import load_feature_flags
 
 router = APIRouter(prefix="/api", tags=["render"])
 
+RENDER_TIMEOUT_SECONDS = 45
+
 
 @router.post("/render", response_model=RenderResponse, dependencies=[Depends(require_trusted_origin)])
 async def render_problem(
@@ -26,7 +29,18 @@ async def render_problem(
     await enforce_rate_limit(db, http_request, user, "render", 20 if user else 8, 60)
     await enforce_render_access(db, user)
     try:
-        response = await build_problem_render_response(request, db)
+        response = await asyncio.wait_for(build_problem_render_response(request, db), timeout=RENDER_TIMEOUT_SECONDS)
+    except TimeoutError as error:
+        raise api_error(
+            status.HTTP_504_GATEWAY_TIMEOUT,
+            f"Render vượt quá {RENDER_TIMEOUT_SECONDS}s trước khi provider trả kết quả.",
+            "TIMEOUT",
+            [
+                "Thử lại sau vài giây hoặc đổi sang model nhẹ hơn.",
+                "Tắt reasoning layer hoặc giảm số model fallback nếu đang bật nhiều model.",
+                "Kiểm tra provider/model đang chọn có phản hồi ổn định không.",
+            ],
+        ) from error
     except (RuntimeError, ValueError, KeyError) as error:
         payload = render_error_payload(error)
         raise api_error(status.HTTP_400_BAD_REQUEST, payload["debug_message"], payload["code"], payload["suggestions"]) from error

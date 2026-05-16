@@ -800,6 +800,7 @@ async function requestJson<T>(path: string, init: RequestInit | undefined, fallb
     if (!response.ok) throw await parseApiError(response, `${fallbackMessage} HTTP ${response.status}`);
     const body = await response.text();
     if (!body.trim()) throw new ApiError(fallbackMessage);
+    if (looksLikeHtml(body)) throw gatewayHtmlApiError(response.status, fallbackMessage);
     try {
       return JSON.parse(body) as T;
     } catch {
@@ -851,6 +852,9 @@ function networkApiError(caught: unknown, fallbackMessage: string) {
 async function parseApiError(response: Response, fallbackMessage: string): Promise<ApiError> {
   const body = await response.text();
   if (!body.trim()) return new ApiError(fallbackMessage);
+  if (looksLikeHtml(body) || response.headers.get('content-type')?.toLowerCase().includes('text/html')) {
+    return gatewayHtmlApiError(response.status, fallbackMessage);
+  }
 
   try {
     const parsed = JSON.parse(body) as { detail?: unknown };
@@ -861,6 +865,23 @@ async function parseApiError(response: Response, fallbackMessage: string): Promi
   }
 
   return new ApiError(body.trim() || fallbackMessage);
+}
+
+function looksLikeHtml(body: string) {
+  return /^\s*<!doctype\s+html/i.test(body) || /^\s*<html[\s>]/i.test(body);
+}
+
+function gatewayHtmlApiError(statusCode: number, fallbackMessage: string) {
+  if (statusCode === 504 || statusCode === 408 || statusCode === 0) {
+    return new ApiError('Hệ thống đang quá tải do provider phản hồi quá lâu. Vui lòng thử lại sau ít phút.', [
+      'Thử model nhẹ hơn hoặc tắt reasoning layer nếu đang bật.',
+      'Nếu lỗi lặp lại, quản trị viên cần tăng timeout proxy hoặc giảm chuỗi fallback model.',
+    ]);
+  }
+  if (statusCode === 502 || statusCode === 503) {
+    return new ApiError('Backend hoặc provider tạm thời không sẵn sàng. Vui lòng thử lại sau ít phút.');
+  }
+  return new ApiError(fallbackMessage);
 }
 
 function parseDetail(detail: unknown): ApiError | null {
