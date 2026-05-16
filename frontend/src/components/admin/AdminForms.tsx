@@ -4,7 +4,8 @@ import {
   AdminProviderModelSettings,
   AdminRouter9ModelSettings,
   RuntimeSettings,
-  OcrProvider
+  OcrProvider,
+  ScannedModelInfo,
 } from '../../types/settings';
 import { 
   scanProviderModels,
@@ -103,7 +104,7 @@ function adminSettingsToRuntime(value: Record<string, unknown>, defaults?: Setti
 }
 
 function normalizeScannedModels(models: any[]) {
-  return models
+  return uniqueScannedModels(models
     .map((modelItem) => {
       const id = typeof modelItem === 'string' ? modelItem : modelItem?.id;
       if (!id) return null;
@@ -113,7 +114,17 @@ function normalizeScannedModels(models: any[]) {
         provider: typeof modelItem === 'object' && modelItem.provider ? modelItem.provider : '',
       };
     })
-    .filter(Boolean) as ProviderSettingsDefaults['scanned_models'];
+    .filter(Boolean) as ProviderSettingsDefaults['scanned_models']);
+}
+
+function uniqueScannedModels(models: ScannedModelInfo[]) {
+  const byId = new Map<string, ScannedModelInfo>();
+  for (const model of models) {
+    const id = String(model.id || '').trim();
+    if (!id || byId.has(id)) continue;
+    byId.set(id, { ...model, id, label: model.label || id });
+  }
+  return [...byId.values()];
 }
 
 function adminProviderToDefaults(value: Record<string, unknown>, provider: string): ProviderSettingsDefaults {
@@ -335,13 +346,26 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave, onToast }
     setScanning(provider);
     try {
       const runtime = adminSettingsToRuntime({ ...value, [provider]: draft[provider] }, defaults);
-      const models =
+      const scannedModels =
         provider === 'router9'
           ? await scanRouter9Models(runtime)
           : await scanProviderModels(provider as 'openrouter' | 'openai_compat' | 'nvidia' | 'ollama', runtime);
-      const next = normalizeDefaultModel({ ...draft[provider], scanned_models: models, last_scanned_at: new Date().toISOString() });
+      const models = uniqueScannedModels(scannedModels);
+      const scannedIds = models.map((model) => model.id);
+      const scannedIdSet = new Set(scannedIds);
+      const allowed_model_ids = scannedIds.length > 0
+        ? scannedIds
+        : draft[provider].allowed_model_ids.filter((id) => scannedIdSet.has(id));
+      const model = scannedIdSet.has(draft[provider].model) ? draft[provider].model : allowed_model_ids[0] ?? '';
+      const next = normalizeDefaultModel({
+        ...draft[provider],
+        scanned_models: models,
+        allowed_model_ids,
+        model,
+        last_scanned_at: new Date().toISOString(),
+      });
       updateProvider(provider, next);
-      onToast?.('Quét model', `Đã quét ${models.length} model từ ${providerLabels[provider]}. Bấm Lưu provider để lưu danh sách này.`, 'info');
+      onToast?.('Quét model', `Đã quét ${models.length} model duy nhất từ ${providerLabels[provider]} và đã lưu vào database.`, 'info');
     } catch (error) {
       onToast?.('Quét model', getErrorMessage(error, `Không thể quét model cho ${providerLabels[provider]}.`), 'error');
     } finally {
