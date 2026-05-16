@@ -525,6 +525,16 @@ def test_render_uses_profile_fallback_models(monkeypatch):
     assert _profile_model_candidates(profile, "router9", settings, "cx/gpt-5.5") == ["cx/gpt-5.5", "gh/gemini-3.1-pro-preview"]
 
 
+def test_render_uses_profile_fallback_models_for_provider_alias(monkeypatch):
+    from app.services.model_registry import TaskProfile
+    from app.services.extractor import _profile_model_candidates
+
+    profile = TaskProfile("render", "ollama", "gpt-oss:120b", ["gpt-oss:20b"])
+    settings = Settings(_env_file=None, ollama_text_model="gpt-oss:120b")
+
+    assert _profile_model_candidates(profile, "ollama_gpt_oss", settings, "gpt-oss:120b") == ["gpt-oss:120b", "gpt-oss:20b"]
+
+
 def test_openrouter_base_url_normalizes_missing_api_segment():
     from app.services.openrouter_client import openrouter_api_base_url
 
@@ -716,6 +726,120 @@ def test_render_explicit_openai_compat_is_tried_before_fallback_without_api_key(
     assert scene.topic == "unknown"
     assert calls == [("openai_compat", "deepseek-v4-flash")]
     assert warnings == []
+
+
+def test_render_explicit_model_does_not_fallback_to_other_providers(monkeypatch):
+    calls = []
+
+    async def fail_extract(provider, settings, problem_text, grade, reasoning_layer, preferred_ai_model=None, **kwargs):
+        calls.append((provider, preferred_ai_model))
+        raise RuntimeError(f"{provider} unavailable")
+
+    monkeypatch.setattr("app.services.extractor._extract_with_provider", fail_extract)
+
+    runtime_settings = RuntimeSettings.model_validate({
+        "openai_compat": {
+            "base_url": "https://deepseek.example/v1",
+            "model": "deepseek-v4-flash",
+        },
+        "router9": {
+            "api_key": "router9-secret",
+            "model": "cx/gpt-5.5",
+            "allowed_model_ids": ["cx/gpt-5.5"],
+        },
+        "nvidia": {
+            "api_key": "nvidia-secret",
+            "model": "qwen/qwen3-coder-480b-a35b-instruct",
+        },
+    })
+
+    with pytest.raises(RuntimeError) as error:
+        asyncio.run(extract_scene(
+            "x",
+            preferred_ai_provider="openai_compat",
+            preferred_ai_model="deepseek-v4-flash",
+            runtime_settings=runtime_settings,
+        ))
+
+    assert calls == [("openai_compat", "deepseek-v4-flash")]
+    assert "Không fallback sang provider ngoài lựa chọn" in str(error.value)
+    assert "router9/" not in str(error.value)
+    assert "nvidia/" not in str(error.value)
+
+
+def test_render_explicit_model_uses_configured_profile_fallbacks_only(monkeypatch):
+    from app.services.model_registry import ModelRegistry, ModelRegistryItem, ProviderRegistryItem, TaskProfile
+
+    calls = []
+
+    async def fake_extract(provider, settings, problem_text, grade, reasoning_layer, preferred_ai_model=None, **kwargs):
+        calls.append((provider, preferred_ai_model))
+        if preferred_ai_model == "deepseek-v4-flash":
+            raise RuntimeError("primary failed")
+        return {"problem_text": problem_text, "renderer": "geogebra_2d", "objects": [], "view": {"dimension": "2d"}}
+
+    registry = ModelRegistry(
+        providers={
+            "openai_compat": ProviderRegistryItem(
+                id="openai_compat",
+                label="OpenAI-compatible",
+                base_url="https://deepseek.example/v1",
+                default_model_id="deepseek-v4-flash",
+                api_key_configured=True,
+            ),
+            "router9": ProviderRegistryItem(
+                id="router9",
+                label="9router",
+                base_url="https://api-9router.sin-studio.tech/v1",
+                default_model_id="cx/gpt-5.5",
+                api_key_configured=True,
+            ),
+        },
+        models={
+            "openai_compat": [
+                ModelRegistryItem("openai_compat", "deepseek-v4-flash", "deepseek-v4-flash", allowed=True),
+                ModelRegistryItem("openai_compat", "deepseek-v4-fallback", "deepseek-v4-fallback", allowed=True),
+            ],
+            "router9": [
+                ModelRegistryItem("router9", "cx/gpt-5.5", "cx/gpt-5.5", allowed=True),
+            ],
+        },
+        task_profiles={
+            "render": TaskProfile("render", "openai_compat", "deepseek-v4-flash", ["deepseek-v4-fallback"]),
+        },
+        settings={"default_provider": "router9"},
+    )
+
+    async def fake_load_model_registry(_db, _settings=None):
+        return registry
+
+    monkeypatch.setattr("app.services.extractor._extract_with_provider", fake_extract)
+    monkeypatch.setattr("app.services.extractor.load_model_registry", fake_load_model_registry)
+    monkeypatch.setattr("app.services.model_registry.load_model_registry", fake_load_model_registry)
+
+    runtime_settings = RuntimeSettings.model_validate({
+        "openai_compat": {
+            "base_url": "https://deepseek.example/v1",
+            "model": "deepseek-v4-flash",
+        },
+        "router9": {
+            "api_key": "router9-secret",
+            "model": "cx/gpt-5.5",
+            "allowed_model_ids": ["cx/gpt-5.5"],
+        },
+    })
+
+    scene, warnings = asyncio.run(extract_scene(
+        "x",
+        preferred_ai_provider="openai_compat",
+        preferred_ai_model="deepseek-v4-flash",
+        runtime_settings=runtime_settings,
+        db=object(),
+    ))
+
+    assert scene.topic == "unknown"
+    assert calls == [("openai_compat", "deepseek-v4-flash"), ("openai_compat", "deepseek-v4-fallback")]
+    assert any("AI fallback: openai_compat/deepseek-v4-flash" in warning for warning in warnings)
 
 
 def test_render_explicit_ollama_alias_uses_ollama_provider(monkeypatch):

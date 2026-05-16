@@ -25,7 +25,7 @@ _KEY_VALUE_RE = re.compile(r"(?i)(api[_-]?key|access[_-]?token|refresh[_-]?token
 def log_provider_request(provider: str, kind: str, url: str, model: Any, **metadata: Any) -> None:
     meta_text = _metadata_text(metadata)
     logger.info(
-        "AI provider rq provider=%s kind=%s model=%s url=%s%s",
+        "AI provider request provider=%s kind=%s model=%s url=%s%s",
         provider,
         kind,
         model or "<none>",
@@ -37,7 +37,7 @@ def log_provider_request(provider: str, kind: str, url: str, model: Any, **metad
 
 def log_provider_response(provider: str, kind: str, status_code: int, elapsed_ms: int, response_chars: int, model: Any = None) -> None:
     logger.info(
-        "AI provider rp provider=%s kind=%s model=%s status=%s elapsed_ms=%s response_chars=%s",
+        "AI provider response provider=%s kind=%s model=%s status=%s elapsed_ms=%s response_chars=%s",
         provider,
         kind,
         model or "<unknown>",

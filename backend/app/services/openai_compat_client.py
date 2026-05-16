@@ -98,16 +98,21 @@ class OpenAICompatClient:
         return text
 
     async def _post_chat(self, payload: dict[str, Any], kind: str, **log_kwargs: Any) -> str:
-        url = f"{self.settings.openai_compat_base_url.rstrip('/')}/chat/completions"
-        headers = {"Content-Type": "application/json"}
+        base_url = self.settings.openai_compat_base_url.rstrip("/")
         api_key = (self.settings.openai_compat_api_key or "").strip()
+        if not api_key and _requires_api_key(base_url):
+            raise RuntimeError(
+                f"OpenAI-compatible endpoint ({base_url}) cần API key nhưng chưa được cấu hình. "
+                "Hãy thêm OPENAI_COMPAT_API_KEY hoặc chọn provider khác."
+            )
+        url = f"{base_url}/chat/completions"
+        headers = {"Content-Type": "application/json"}
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
         from app.services.http_pool import TIMEOUT_SCENE, get_client
 
         started_at = time.perf_counter()
         log_provider_request("openai_compat", kind, url, payload.get("model"), **log_kwargs)
-        base_url = self.settings.openai_compat_base_url.rstrip("/")
         client = get_client(base_url, TIMEOUT_SCENE)
         response = await client.post(url, headers=headers, json=payload, timeout=TIMEOUT_SCENE)
         elapsed_ms = int((time.perf_counter() - started_at) * 1000)
@@ -123,3 +128,12 @@ class OpenAICompatClient:
             raise RuntimeError("OpenAI-compatible không trả về nội dung.")
         log_provider_parse("openai_compat", kind, payload.get("model"), len(content))
         return content
+
+
+def _requires_api_key(base_url: str) -> bool:
+    """Heuristic: remote (non-localhost) OpenAI-compatible endpoints typically
+    require an API key.  Local servers (localhost / 127.0.0.1) are assumed open.
+    """
+    import re
+    host = re.sub(r"^https?://", "", base_url).split("/")[0].split(":")[0].lower()
+    return host not in {"localhost", "127.0.0.1", "0.0.0.0", ""}

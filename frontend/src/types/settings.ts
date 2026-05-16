@@ -148,7 +148,7 @@ export interface SettingsDefaults {
   feature_flags?: FeatureFlagsDefaults;
 }
 
-export const SETTINGS_STORAGE_VERSION = 6;
+export const SETTINGS_STORAGE_VERSION = 7;
 
 export const defaultRuntimeSettings: RuntimeSettings = {
   default_provider: 'auto',

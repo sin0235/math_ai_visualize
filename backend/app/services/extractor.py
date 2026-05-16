@@ -81,9 +81,9 @@ async def extract_scene(
     settings = await _build_render_settings(db, runtime_settings)
     registry = await load_model_registry(db, settings) if db is not None else None
     preferred_provider = _normalize_provider_alias(preferred_ai_provider)
-    request_model = preferred_ai_model or _runtime_model_for_provider(runtime_settings, preferred_provider)
+    request_model = preferred_ai_model
     has_explicit_model_choice = bool(preferred_provider and request_model)
-    render_profile = None if has_explicit_model_choice else resolve_task_profile(registry, "render", preferred_ai_provider, preferred_ai_model) if registry else None
+    render_profile = resolve_task_profile(registry, "render", preferred_ai_provider, preferred_ai_model) if registry else None
     reasoning_profile = None if has_explicit_model_choice else resolve_task_profile(registry, "reasoning", preferred_ai_provider, preferred_ai_model) if registry else None
     render_provider = preferred_provider if has_explicit_model_choice else _normalize_provider_alias(render_profile.provider_id) if render_profile else preferred_provider
     render_model = request_model if has_explicit_model_choice else render_profile.model_id if render_profile else preferred_ai_model
@@ -111,12 +111,14 @@ async def extract_scene(
 
     # --- TẦNG 2: Trích xuất scene ---
     requested_provider = render_provider or _normalize_provider_alias(settings.ai_provider)
-    for provider in _fast_provider_order(settings, render_provider):
+    for provider in _render_provider_order(settings, render_provider, has_explicit_model_choice):
         explicit_model = render_model if provider == requested_provider else None
         models = _profile_model_candidates(render_profile, provider, settings, explicit_model)
         for model in models:
             remaining = _render_budget_remaining(started_at)
             if remaining < _RENDER_MIN_ATTEMPT_SECONDS:
+                if has_explicit_model_choice:
+                    raise RuntimeError(_format_strict_render_failure("Model đã chọn và các model dự phòng đã gần hết thời gian.", attempts, settings.router9_only))
                 warnings.extend(_render_attempt_warnings(attempts))
                 warnings.append(_render_budget_warning(attempts, remaining))
                 if settings.router9_only:
@@ -165,6 +167,8 @@ async def extract_scene(
                     raise RuntimeError(_format_render_failure("9router-only đang bật nên không fallback sang provider khác.", attempts, True)) from error
 
     warnings.extend(_render_attempt_warnings(attempts))
+    if has_explicit_model_choice:
+        raise RuntimeError(_format_strict_render_failure("Model đã chọn và các model dự phòng đã lỗi.", attempts, settings.router9_only))
     if attempts:
         warnings.append("Tất cả AI provider đều lỗi; đang dùng mock extractor.")
     else:
@@ -581,6 +585,17 @@ def _fast_provider_order(settings: Settings, preferred_ai_provider: str | None =
     return _provider_order(settings, preferred_ai_provider, explicit=preferred_ai_provider is not None)
 
 
+def _render_provider_order(settings: Settings, preferred_ai_provider: str | None, strict: bool) -> list[str]:
+    provider = _normalize_provider_alias(preferred_ai_provider)
+    if strict:
+        if settings.router9_only and provider != "router9":
+            raise RuntimeError("9router-only đang bật nên chỉ được dùng model 9router.")
+        if provider in {None, "auto", "mock"}:
+            return []
+        return [provider]
+    return _fast_provider_order(settings, preferred_ai_provider)
+
+
 def _provider_order(settings: Settings, preferred_ai_provider: str | None = None, *, explicit: bool | None = None) -> list[str]:
     if explicit is None:
         explicit = preferred_ai_provider is not None
@@ -641,17 +656,6 @@ def _provider_model_candidates(provider: str, settings: Settings, preferred_ai_m
     return [None]
 
 
-def _runtime_model_for_provider(runtime_settings: RuntimeSettings | None, provider: str | None) -> str | None:
-    if runtime_settings is None or provider in {None, "auto", "mock"}:
-        return None
-    provider_key = "ollama" if provider == "ollama_gpt_oss" else provider
-    if provider_key not in {"openrouter", "nvidia", "ollama", "openai_compat", "router9"}:
-        return None
-    provider_settings = getattr(runtime_settings, provider_key, None)
-    model = (getattr(provider_settings, "model", None) or "").strip()
-    return model or None
-
-
 def _normalize_provider_alias(provider: str | None) -> str | None:
     if provider == "ollama":
         return "ollama_gpt_oss"
@@ -661,7 +665,8 @@ def _normalize_provider_alias(provider: str | None) -> str | None:
 def _profile_model_candidates(profile: Any, provider: str, settings: Settings, preferred_ai_model: str | None = None) -> list[str | None]:
     provider = _normalize_provider_alias(provider) or provider
     candidates = _provider_model_candidates(provider, settings, preferred_ai_model)
-    if profile is None or provider != profile.provider_id:
+    profile_provider = _normalize_provider_alias(profile.provider_id) if profile is not None else None
+    if profile is None or provider != profile_provider:
         return candidates
     return _dedupe([*(model or "" for model in candidates), *profile.fallbacks])
 
@@ -686,6 +691,14 @@ def _format_render_failure(message: str, attempts: list[RenderAttempt], router9_
     if router9_only:
         suggestions += " Nếu muốn fallback sang provider khác, hãy tắt 9router-only."
     return f"{message} Đã thử: {details}. {suggestions}"
+
+
+def _format_strict_render_failure(message: str, attempts: list[RenderAttempt], router9_only: bool) -> str:
+    details = " | ".join(attempt.warning() for attempt in attempts) or "chưa có provider/model nào được thử"
+    suggestions = "Hãy kiểm tra provider/model đã chọn hoặc cấu hình fallback model cho đúng provider."
+    if router9_only:
+        suggestions += " 9router-only đang bật nên chỉ được dùng model 9router."
+    return f"{message} Không fallback sang provider ngoài lựa chọn. Đã thử: {details}. {suggestions}"
 
 
 def _short_error(message: str) -> str:

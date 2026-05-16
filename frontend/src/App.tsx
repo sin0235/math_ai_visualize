@@ -352,20 +352,20 @@ export default function App() {
   }, [result, paramValues]);
 
   const modelOptions = buildModelOptions(runtimeSettings, settingsDefaults);
-  const firstRenderModelKey = modelOptions.find((option) => option.modelId)?.key ?? modelOptions[0]?.key ?? '';
-  const previousFirstRenderModelKeyRef = useRef(firstRenderModelKey);
+  const defaultRenderModelKey = defaultModelKeyForSettings(runtimeSettings, modelOptions);
+  const previousDefaultRenderModelKeyRef = useRef(defaultRenderModelKey);
   useEffect(() => {
-    const previousFirstKey = previousFirstRenderModelKeyRef.current;
-    const selectedKey = selectedRenderModelKey || firstRenderModelKey;
+    const previousDefaultKey = previousDefaultRenderModelKeyRef.current;
+    const selectedKey = selectedRenderModelKey || defaultRenderModelKey;
     if (!modelOptions.some((option) => option.key === selectedKey)) {
-      setSelectedRenderModelKey(firstRenderModelKey);
-    } else if (firstRenderModelKey !== previousFirstKey && selectedKey === previousFirstKey) {
-      setSelectedRenderModelKey(firstRenderModelKey);
-    } else if (!selectedRenderModelKey && firstRenderModelKey) {
-      setSelectedRenderModelKey(firstRenderModelKey);
+      setSelectedRenderModelKey(defaultRenderModelKey);
+    } else if (defaultRenderModelKey !== previousDefaultKey && selectedKey === previousDefaultKey) {
+      setSelectedRenderModelKey(defaultRenderModelKey);
+    } else if (!selectedRenderModelKey && defaultRenderModelKey) {
+      setSelectedRenderModelKey(defaultRenderModelKey);
     }
-    previousFirstRenderModelKeyRef.current = firstRenderModelKey;
-  }, [firstRenderModelKey, modelOptions, selectedRenderModelKey]);
+    previousDefaultRenderModelKeyRef.current = defaultRenderModelKey;
+  }, [defaultRenderModelKey, modelOptions, selectedRenderModelKey]);
   const threeInteraction = effectiveResult?.scene.renderer === 'threejs_3d'
     ? {
         mode: editTool,
@@ -1053,7 +1053,7 @@ export default function App() {
                     ocrError={null}
                     problemText={problemText}
                     modelOptions={modelOptions}
-                    selectedModelKey={selectedRenderModelKey || firstRenderModelKey}
+                    selectedModelKey={selectedRenderModelKey || defaultRenderModelKey}
                     router9Only={settingsDefaults?.router9.only_mode ?? false}
                     onProblemTextChange={setProblemText}
                     onSelectedModelKeyChange={setSelectedRenderModelKey}
@@ -1818,9 +1818,7 @@ function mergeBackendDefaults(current: RuntimeSettings, defaults: SettingsDefaul
   const router9 = mergeProviderDefaults(current.router9, defaults.router9, 'router9');
   const userWantsSystemOcrProvider = !String(current.ocr.provider ?? '').trim();
   const ocrProviderFromChoice = (current.ocr.provider || defaults.ocr.provider || 'openrouter') as OcrProvider;
-  const ocrModel = userWantsSystemOcrProvider
-    ? ''
-    : current.ocr.model || defaultOcrModelFromMergedDefaults(ocrProviderFromChoice, defaults, { openrouter, nvidia, ollama, openai_compat, router9 });
+  const ocrModel = userWantsSystemOcrProvider ? '' : current.ocr.model;
   const inferred = inferOcrProviderFromModelId(ocrModel);
   const rawModel = ocrModel.trim();
   const ocrProviderEffective =
@@ -1833,14 +1831,13 @@ function mergeBackendDefaults(current: RuntimeSettings, defaults: SettingsDefaul
 
   return {
     ...current,
-    default_provider: current.default_provider === 'auto' && defaults.default_provider ? defaults.default_provider : current.default_provider,
     openrouter,
     nvidia,
     ollama,
     openai_compat,
     router9: {
       ...router9,
-      only_mode: current.router9.only_mode || defaults.router9.only_mode,
+      only_mode: current.router9.only_mode,
     },
     ocr: {
       ...current.ocr,
@@ -1851,58 +1848,31 @@ function mergeBackendDefaults(current: RuntimeSettings, defaults: SettingsDefaul
   };
 }
 
-function defaultOcrModelFromMergedDefaults(
-  provider: OcrProvider,
-  defaults: SettingsDefaults,
-  merged: Pick<RuntimeSettings, 'openrouter' | 'nvidia' | 'ollama' | 'openai_compat' | 'router9'>,
-): string {
-  if (defaults.ocr.provider === provider && defaults.ocr.model) return defaults.ocr.model;
-  if (provider === 'openrouter') return defaults.openrouter.vision_model || merged.openrouter.model || '';
-  return merged[provider].model || defaults[provider].allowed_model_ids[0] || defaults[provider].scanned_models[0]?.id || '';
-}
-
 function mergeProviderDefaults<Provider extends 'openrouter' | 'nvidia' | 'ollama' | 'openai_compat' | 'router9'>(
   current: RuntimeSettings[Provider],
   defaults: SettingsDefaults[Provider],
   provider: Provider,
 ): RuntimeSettings[Provider] {
-  const allowlist = defaults.allowed_model_ids.length > 0 ? defaults.allowed_model_ids : [defaults.model ?? ''].filter(Boolean);
-  const allowed_model_ids = allowlist;
-  const defaultModel = defaults.model && (!allowed_model_ids.length || allowed_model_ids.includes(defaults.model))
-    ? defaults.model
-    : allowed_model_ids[0] || '';
-  const model = current.model && (!allowed_model_ids.length || allowed_model_ids.includes(current.model))
-    ? current.model
-    : defaultModel;
-  const scanned_models = mergeScannedModels(
-    defaults.scanned_models.filter((item) => !allowed_model_ids.length || allowed_model_ids.includes(item.id)),
-    allowed_model_ids.map((id) => ({ id, label: id, provider }))
-  );
+  const visibleModelIds = modelIdsForProvider(defaults, '', null, provider);
+  let model = current.model.trim();
+  if (model && defaults.model && model === defaults.model) model = '';
+  if (model && visibleModelIds.length > 0 && !visibleModelIds.includes(model)) model = '';
   const currentBaseUrl = isLegacyLocalOpenAICompatBase(provider, current.base_url) ? '' : current.base_url;
+  const base_url = currentBaseUrl.trim() && currentBaseUrl.trim().replace(/\/$/, '') !== defaults.base_url.trim().replace(/\/$/, '')
+    ? currentBaseUrl
+    : '';
 
   return {
     ...current,
-    base_url: currentBaseUrl || defaults.base_url || '',
+    base_url,
     model,
-    allowed_model_ids,
-    scanned_models,
+    scanned_models: current.scanned_models,
+    allowed_model_ids: current.allowed_model_ids.filter((id) => !visibleModelIds.length || visibleModelIds.includes(id)),
   };
 }
 
 function isLegacyLocalOpenAICompatBase(provider: string, baseUrl: string) {
   return provider === 'openai_compat' && baseUrl.trim().replace(/\/$/, '') === 'http://localhost:8080/v1';
-}
-
-function mergeUnique(primary: string[], secondary: string[]) {
-  return [...new Set([...primary, ...secondary].filter(Boolean))];
-}
-
-function mergeScannedModels(primary: RuntimeSettings['router9']['scanned_models'], secondary: RuntimeSettings['router9']['scanned_models']) {
-  const byId = new Map(primary.map((model) => [model.id, model]));
-  secondary.forEach((model) => {
-    if (!byId.has(model.id)) byId.set(model.id, model);
-  });
-  return [...byId.values()];
 }
 
 function readMobileWarningDismissed() {
@@ -1923,6 +1893,9 @@ function loadStoredSettings(saved: string): RuntimeSettings {
 
   if (parsed.version !== SETTINGS_STORAGE_VERSION) {
     dropLegacyDefaults(next);
+  }
+  if ((parsed.version ?? 0) < 7) {
+    dropStoredProviderOverrides(next);
   }
   dropLegacyOcrDefaults(next);
 
@@ -1969,11 +1942,11 @@ function sanitizeSettingsForStorage(settings: RuntimeSettings): RuntimeSettings 
   return {
     ...defaultRuntimeSettings,
     default_provider: settings.default_provider,
-    openrouter: { ...defaultRuntimeSettings.openrouter, model: settings.openrouter.model, allowed_model_ids: settings.openrouter.allowed_model_ids },
-    nvidia: { ...defaultRuntimeSettings.nvidia, model: settings.nvidia.model, allowed_model_ids: settings.nvidia.allowed_model_ids },
-    ollama: { ...defaultRuntimeSettings.ollama, model: settings.ollama.model, allowed_model_ids: settings.ollama.allowed_model_ids },
-    openai_compat: { ...defaultRuntimeSettings.openai_compat, model: settings.openai_compat.model, allowed_model_ids: settings.openai_compat.allowed_model_ids },
-    router9: { ...defaultRuntimeSettings.router9, model: settings.router9.model, allowed_model_ids: settings.router9.allowed_model_ids },
+    openrouter: { ...defaultRuntimeSettings.openrouter, model: settings.openrouter.model, base_url: settings.openrouter.base_url },
+    nvidia: { ...defaultRuntimeSettings.nvidia, model: settings.nvidia.model, base_url: settings.nvidia.base_url },
+    ollama: { ...defaultRuntimeSettings.ollama, model: settings.ollama.model, base_url: settings.ollama.base_url },
+    openai_compat: { ...defaultRuntimeSettings.openai_compat, model: settings.openai_compat.model, base_url: settings.openai_compat.base_url },
+    router9: { ...defaultRuntimeSettings.router9, model: settings.router9.model, base_url: settings.router9.base_url, only_mode: settings.router9.only_mode },
     ocr: settings.ocr.provider.trim() ? settings.ocr : { ...settings.ocr, model: '' },
   };
 }
@@ -2013,6 +1986,16 @@ function dropLegacyOcrDefaults(settings: RuntimeSettings) {
   if (settings.ocr.model === 'qwen/qwen2.5-vl-72b-instruct:free' || settings.ocr.model === 'google/gemma-4-26b-a4b-it:free') {
     settings.ocr.model = '';
   }
+}
+
+function dropStoredProviderOverrides(settings: RuntimeSettings) {
+  for (const provider of ['openrouter', 'nvidia', 'ollama', 'openai_compat', 'router9'] as const) {
+    settings[provider].base_url = '';
+    settings[provider].model = '';
+    settings[provider].scanned_models = [];
+    settings[provider].allowed_model_ids = [];
+  }
+  settings.router9.only_mode = false;
 }
 
 function hasSegment(scene: MathScene, start: string, end: string) {
@@ -2088,37 +2071,77 @@ function fileToDataUrl(file: File): Promise<string> {
 
 function buildModelOptions(settings: RuntimeSettings, defaults?: SettingsDefaults | null): ModelOption[] {
   const providerOrder = orderRenderProviders(settings.default_provider);
-  const options = providerOrder.flatMap((provider) => {
+  const providerOptions = providerOrder.flatMap((provider) => {
     const providerDefaults = defaults?.[provider];
     const ids = modelIdsForProvider(providerDefaults, settings[provider].model, defaults, provider);
-    return ids.map((modelId) => {
+    const exactModelOptions = ids.map((modelId) => {
       const model = providerDefaults?.scanned_models.find((item) => item.id === modelId);
       return {
-        key: `${provider}:${modelId}`,
+        key: `model:${provider}:${modelId}`,
         provider,
         modelId,
         label: `${renderProviderLabel(provider)}: ${model?.label ?? modelId}`,
         description: `${renderProviderLabel(provider)} model ${modelId}${model?.context_length ? ` — context ${model.context_length}` : ''}`,
       };
     });
+    const canUseProviderDefault = Boolean(providerDefaults?.model || providerDefaults?.allowed_model_ids.length || providerDefaults?.scanned_models.length || settings[provider].model);
+    const defaultOption = canUseProviderDefault
+      ? [{
+          key: `default:${provider}`,
+          provider,
+          label: `${renderProviderLabel(provider)} mặc định`,
+          description: `Dùng provider ${renderProviderLabel(provider)} với model mặc định do admin cấu hình.`,
+        }]
+      : [];
+    return [...defaultOption, ...exactModelOptions];
   });
 
   if (defaults?.router9.only_mode) {
-    return options.filter((option) => option.provider === 'router9');
+    const router9Options = providerOptions.filter((option) => option.provider === 'router9');
+    return router9Options.length > 0
+      ? [
+          { key: 'default:auto', provider: 'auto', label: 'Mặc định hệ thống (9router)', description: '9router-only đang bật, backend tự chọn model 9router được phép.' },
+          ...router9Options,
+        ]
+      : [];
   }
 
-  return [...options, { key: 'provider:auto', provider: 'auto', label: 'Tự động chọn mô hình phù hợp', description: 'Tự động dùng provider/model do admin cấu hình.' }];
+  return [
+    { key: 'default:auto', provider: 'auto', label: 'Mặc định hệ thống', description: 'Tự động dùng provider/model và fallback do admin cấu hình.' },
+    ...providerOptions,
+  ];
+}
+
+function defaultModelKeyForSettings(settings: RuntimeSettings, options: ModelOption[]) {
+  const provider = normalizeRenderProvider(settings.default_provider);
+  if (provider) {
+    const model = settings[provider].model.trim();
+    if (model) {
+      const exact = options.find((option) => option.provider === provider && option.modelId === model);
+      if (exact) return exact.key;
+    }
+    const providerDefault = options.find((option) => option.key === `default:${provider}`);
+    if (providerDefault) return providerDefault.key;
+  }
+  return options[0]?.key ?? '';
 }
 
 type RenderProviderKey = 'openrouter' | 'nvidia' | 'ollama' | 'openai_compat' | 'router9';
 
 function orderRenderProviders(defaultProvider: RuntimeSettings['default_provider']): RenderProviderKey[] {
   const providers = ['openrouter', 'nvidia', 'ollama', 'openai_compat', 'router9'] as const;
-  if (!defaultProvider || defaultProvider === 'auto' || defaultProvider === 'mock' || defaultProvider === 'openrouter_gpt_oss' || defaultProvider === 'opencode_nemotron') {
+  const normalized = normalizeRenderProvider(defaultProvider);
+  if (!normalized) {
     return [...providers];
   }
-  const normalized: RenderProviderKey = defaultProvider === 'ollama_gpt_oss' ? 'ollama' : defaultProvider as RenderProviderKey;
   return [normalized, ...providers.filter((provider) => provider !== normalized)];
+}
+
+function normalizeRenderProvider(provider: RuntimeSettings['default_provider']): RenderProviderKey | null {
+  if (!provider || provider === 'auto' || provider === 'mock' || provider === 'openrouter_gpt_oss' || provider === 'opencode_nemotron') return null;
+  if (provider === 'ollama_gpt_oss') return 'ollama';
+  if (provider === 'openrouter' || provider === 'nvidia' || provider === 'ollama' || provider === 'openai_compat' || provider === 'router9') return provider;
+  return null;
 }
 
 function modelIdsForProvider(providerDefaults: SettingsDefaults['openrouter'] | SettingsDefaults['nvidia'] | SettingsDefaults['ollama'] | SettingsDefaults['openai_compat'] | SettingsDefaults['router9'] | undefined, currentModel: string, defaults: SettingsDefaults | null | undefined, providerId: string) {

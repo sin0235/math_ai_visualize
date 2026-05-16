@@ -30,7 +30,7 @@ export function GeneralSettingsPanel({ value, defaults, onChange, onReset }: Gen
         ocr: {
           ...value.ocr,
           provider: nextProvider,
-          model: nextProvider === '' ? '' : defaultOcrModelForProvider(defaults, value, nextProvider),
+          model: '',
         },
       });
       return;
@@ -153,15 +153,6 @@ function buildUserModelOptionsFromDefaults(providerDefaults: SettingsDefaults['o
 function getOcrProviderDefaults(defaults: SettingsDefaults | null, provider: OcrProvider) {
   if (!defaults) return undefined;
   return defaults[provider];
-}
-
-function defaultOcrModelForProvider(defaults: SettingsDefaults | null, value: RuntimeSettings, provider: OcrProviderChoice): string {
-  const resolved = (provider || defaults?.ocr.provider || 'openrouter') as OcrProvider;
-  if (defaults?.ocr.provider === resolved && defaults.ocr.model) return defaults.ocr.model;
-  if (resolved === 'openrouter') return defaults?.openrouter.vision_model || value.openrouter.model;
-  const providerSettings = value[resolved];
-  const providerDefaults = getOcrProviderDefaults(defaults, resolved);
-  return providerSettings.model || providerDefaults?.model || providerDefaults?.allowed_model_ids[0] || providerDefaults?.scanned_models[0]?.id || '';
 }
 
 function systemOcrModelLabel(defaults: SettingsDefaults | null, provider: OcrProvider): string {

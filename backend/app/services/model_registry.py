@@ -531,10 +531,17 @@ def effective_provider_default_model(registry: ModelRegistry, provider_id: str, 
 
 def resolve_task_profile(registry: ModelRegistry, task: str, preferred_provider: str | None = None, preferred_model: str | None = None) -> TaskProfile | None:
     profile = registry.task_profiles.get(task)
-    raw_model_id = preferred_model or profile.model_id if profile else preferred_model or ""
+    preferred_provider_id = normalize_registry_provider_id(preferred_provider)
+    profile_provider = profile.provider_id if profile else ""
+    if preferred_model:
+        raw_model_id = preferred_model
+    elif preferred_provider_id and preferred_provider_id not in {"auto", "mock"}:
+        raw_model_id = profile.model_id if profile and profile_provider == preferred_provider_id else ""
+    else:
+        raw_model_id = profile.model_id if profile else ""
     inferred_provider = infer_provider_from_model(raw_model_id)
-    if preferred_provider:
-        provider_id = preferred_provider
+    if preferred_provider_id:
+        provider_id = preferred_provider_id
     elif inferred_provider and profile and profile.provider_id in {"auto", inferred_provider}:
         provider_id = inferred_provider
     elif inferred_provider and (profile is None or not profile.provider_id):
@@ -555,6 +562,14 @@ def resolve_task_profile(registry: ModelRegistry, task: str, preferred_provider:
     fallbacks = [normalize_model_for_provider(provider_id, model) or "" for model in (profile.fallbacks if profile else [])]
     fallbacks = [model for model in fallbacks if model_is_allowed(registry, provider_id, model)]
     return TaskProfile(task, provider_id, model_id, fallbacks)
+
+
+def normalize_registry_provider_id(provider_id: str | None) -> str | None:
+    if provider_id == "ollama_gpt_oss":
+        return "ollama"
+    if provider_id in {"openrouter_gpt_oss", "opencode_nemotron"}:
+        return "openrouter"
+    return provider_id
 
 
 # Backwards-compatible private alias for older imports/tests.

@@ -91,8 +91,13 @@ async def check_provider_connection(provider: str, settings: Settings) -> str:
         model = _require_text(settings.openai_compat_text_model, "Chưa chọn model OpenAI-compatible.")
         base_url = settings.openai_compat_base_url.rstrip("/")
         headers = {"Content-Type": "application/json"}
-        if settings.openai_compat_api_key and settings.openai_compat_api_key.strip():
-            headers["Authorization"] = f"Bearer {settings.openai_compat_api_key.strip()}"
+        api_key = (settings.openai_compat_api_key or "").strip()
+        if not api_key and _is_remote_host(base_url):
+            raise RuntimeError(
+                f"OpenAI-compatible endpoint ({base_url}) cần API key nhưng chưa cấu hình OPENAI_COMPAT_API_KEY."
+            )
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
         await _ping_openai_compatible_chat(
             provider="openai_compat",
             label="OpenAI-compatible",
@@ -223,3 +228,10 @@ def _require_text(value: str | None, message: str) -> str:
 
 def _uses_openai_compatible_api(base_url: str) -> bool:
     return base_url.endswith("/v1") or "ollama.com" in base_url
+
+
+def _is_remote_host(base_url: str) -> bool:
+    """Return True when the base_url points to a non-local host."""
+    import re
+    host = re.sub(r"^https?://", "", base_url).split("/")[0].split(":")[0].lower()
+    return host not in {"localhost", "127.0.0.1", "0.0.0.0", ""}

@@ -10,6 +10,7 @@ from app.services.admin_settings import sync_ai_profiles_to_registry, sync_ai_se
 from app.services.model_registry import (
     load_model_registry,
     resolve_effective_settings,
+    resolve_task_profile,
     save_provider_config,
     save_task_profile,
     set_allowed_models,
@@ -135,6 +136,22 @@ async def test_registry_uses_allowed_default_for_openrouter_when_saved_default_i
     effective = await resolve_effective_settings(db, None)
 
     assert effective.openrouter_text_model == "allowed/model"
+
+
+@pytest.mark.anyio
+async def test_explicit_provider_without_model_uses_that_provider_default(db):
+    settings = Settings(_env_file=None)
+    await load_model_registry(db, settings)
+    await save_provider_config(db, "openrouter", "https://openrouter.example/v1", "openrouter/model")
+    await save_provider_config(db, "openai_compat", "https://compat.example/v1", "compat/default")
+    await save_task_profile(db, "render", "openrouter", "openrouter/model", [])
+
+    registry = await load_model_registry(db, settings)
+    profile = resolve_task_profile(registry, "render", preferred_provider="openai_compat")
+
+    assert profile is not None
+    assert profile.provider_id == "openai_compat"
+    assert profile.model_id == "compat/default"
 
 
 def test_validate_system_setting_normalizes_default_to_allowlist():
