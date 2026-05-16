@@ -926,8 +926,8 @@ export default function App() {
                   }
                   showNotification(
                     'PDF → Word chuẩn đề trắc nghiệm',
-                    'Chức năng này đang tắt bằng feature flag. Bật VITE_PDF_WORD_ENABLED và cấu hình VITE_MINERU_API_BASE_URL để dùng demo.',
-                    ['Khi chưa bật demo, hãy gửi mail để được hỗ trợ cài đặt miễn phí.', CONTACT_EMAIL],
+                    'Chức năng này cần GPU nên tạm chưa deploy trực tiếp. Hãy gửi mail để được hỗ trợ cài đặt miễn phí.',
+                    ['Khuyến khích để lại Zalo, email hoặc Facebook để em hỗ trợ nhanh hơn.', CONTACT_EMAIL],
                     'info',
                     { label: 'Chuyển tới Mail', href: `mailto:${CONTACT_EMAIL}?subject=Hỗ trợ cài đặt PDF sang Word&body=Em/chào bạn,%0D%0A%0D%0AMình cần hỗ trợ cài đặt chức năng PDF sang Word chuẩn cấu trúc đề trắc nghiệm.%0D%0A%0D%0AThông tin liên hệ:%0D%0A- Zalo:%0D%0A- Email/Facebook:%0D%0A%0D%0AXin cảm ơn.` },
                   );
