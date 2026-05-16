@@ -10,13 +10,13 @@ from __future__ import annotations
 import httpx
 
 _CONNECT_TIMEOUT = 8.0
-_DEFAULT_READ_TIMEOUT = 55.0
+_DEFAULT_READ_TIMEOUT = 285.0
 _DEFAULT_WRITE_TIMEOUT = 15.0
 _POOL_TIMEOUT = 5.0
 
 TIMEOUT_SCENE = httpx.Timeout(
     connect=_CONNECT_TIMEOUT,
-    read=55.0,
+    read=285.0,
     write=_DEFAULT_WRITE_TIMEOUT,
     pool=_POOL_TIMEOUT,
 )

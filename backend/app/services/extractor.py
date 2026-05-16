@@ -1,4 +1,6 @@
+import asyncio
 import re
+import time
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -48,6 +50,9 @@ _POINT_2D_RE = re.compile(r"([A-Z])\s*\(\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d
 _POINT_3D_RE = re.compile(r"([A-Z])\s*\(\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\)")
 _FUNCTION_RE = re.compile(r"y\s*=\s*([^.,;\n]+)", re.IGNORECASE)
 _CIRCLE_RADIUS_RE = re.compile(r"(?:tâm|tam)\s+([A-Z]).*?(?:bán kính|ban kinh|r)\s*[=:]?\s*(\d+(?:\.\d+)?)", re.IGNORECASE)
+_RENDER_TOTAL_BUDGET_SECONDS = 300.0
+_RENDER_MIN_ATTEMPT_SECONDS = 10.0
+_RENDER_MAX_ATTEMPT_SECONDS = 285.0
 
 
 @dataclass(frozen=True)
@@ -84,6 +89,7 @@ async def extract_scene(
     warnings: list[str] = []
     attempts: list[RenderAttempt] = []
     use_two_stage = render_settings.reasoning_layer in ("auto", "force")
+    started_at = time.monotonic()
 
     # --- TẢI SYSTEM PROMPTS ---
     scene_sys_prompt, reasoning_sys_prompt = await get_system_prompts(db)
@@ -105,27 +111,45 @@ async def extract_scene(
         explicit_model = render_model if provider == requested_provider else None
         models = _profile_model_candidates(render_profile, provider, settings, explicit_model)
         for model in models:
+            remaining = _render_budget_remaining(started_at)
+            if remaining < _RENDER_MIN_ATTEMPT_SECONDS:
+                warnings.extend(_render_attempt_warnings(attempts))
+                warnings.append(_render_budget_warning(attempts, remaining))
+                if settings.router9_only:
+                    raise RuntimeError(_format_render_failure("9router-only đang bật và render đã gần hết thời gian.", attempts, True))
+                return extract_scene_mock(problem_text, grade), warnings
+            attempt_timeout = min(remaining, _RENDER_MAX_ATTEMPT_SECONDS)
             try:
                 try:
-                    scene_json = await _extract_with_provider(
-                        provider, settings, problem_text, grade,
-                        render_settings.reasoning_layer,
-                        preferred_ai_model=model,
-                        reasoning_plan=reasoning_plan,
-                        system_prompt=scene_sys_prompt,
+                    scene_json = await asyncio.wait_for(
+                        _extract_with_provider(
+                            provider, settings, problem_text, grade,
+                            render_settings.reasoning_layer,
+                            preferred_ai_model=model,
+                            reasoning_plan=reasoning_plan,
+                            system_prompt=scene_sys_prompt,
+                        ),
+                        timeout=attempt_timeout,
                     )
                 except TypeError as error:
                     if "unexpected keyword argument" not in str(error):
                         raise
-                    scene_json = await _extract_with_provider(
-                        provider, settings, problem_text, grade,
-                        render_settings.reasoning_layer,
-                        preferred_ai_model=model,
+                    scene_json = await asyncio.wait_for(
+                        _extract_with_provider(
+                            provider, settings, problem_text, grade,
+                            render_settings.reasoning_layer,
+                            preferred_ai_model=model,
+                        ),
+                        timeout=attempt_timeout,
                     )
                 warnings.extend(_render_attempt_warnings(attempts))
                 scene, cas_warnings = build_scene_with_cas_fix(scene_json)
                 warnings.extend(cas_warnings)
                 return scene, warnings
+            except TimeoutError as error:
+                attempts.append(RenderAttempt(provider, model or _provider_model(provider, settings), f"provider timeout after {attempt_timeout:.0f}s"))
+                if settings.router9_only:
+                    raise RuntimeError(_format_render_failure("9router-only đang bật nên không fallback sang provider khác.", attempts, True)) from error
             except (RuntimeError, ValidationError, ValueError, KeyError) as error:
                 attempts.append(RenderAttempt(provider, model or _provider_model(provider, settings), str(error)))
                 if settings.router9_only:
@@ -619,6 +643,16 @@ def _render_attempt_warnings(attempts: list[RenderAttempt]) -> list[str]:
     return [f"AI fallback: {attempt.warning()}" for attempt in attempts]
 
 
+def _render_budget_remaining(started_at: float) -> float:
+    return max(0.0, _RENDER_TOTAL_BUDGET_SECONDS - (time.monotonic() - started_at))
+
+
+def _render_budget_warning(attempts: list[RenderAttempt], remaining_seconds: float) -> str:
+    tried = len(attempts)
+    suffix = f" sau {tried} lần thử" if tried else ""
+    return f"Dừng fallback AI{suffix} vì chỉ còn {remaining_seconds:.1f}s trước timeout; đang dùng mock extractor."
+
+
 def _format_render_failure(message: str, attempts: list[RenderAttempt], router9_only: bool) -> str:
     details = " | ".join(attempt.warning() for attempt in attempts) or "chưa có provider/model nào được thử"
     suggestions = "Hãy kiểm tra API key/gateway, chọn model khác hoặc quét lại model 9router."
@@ -658,14 +692,13 @@ def _router9_model_candidates(settings: Settings, preferred_ai_model: str | None
         return [_router9_model(settings, explicit_model)]
 
     if settings.router9_allowed_models:
-        candidates = _dedupe([
-            settings.router9_text_model or "",
-            *select_router9_render_model_ids_from_ids(settings.router9_allowed_models),
-            *settings.router9_allowed_models,
-        ])
-        candidates = [model for model in candidates if model and model in settings.router9_allowed_models]
+        if settings.router9_text_model and settings.router9_text_model in settings.router9_allowed_models:
+            candidates = [settings.router9_text_model]
+        else:
+            selected = select_router9_render_model_ids_from_ids(settings.router9_allowed_models)
+            candidates = [selected[0] if selected else settings.router9_allowed_models[0]]
     else:
-        candidates = _dedupe(settings.router9_text_fallback_models)
+        candidates = [settings.router9_text_model or settings.router9_text_fallback_models[0]]
 
     if not candidates:
         raise RuntimeError("Chưa chọn model 9router phù hợp cho render.")

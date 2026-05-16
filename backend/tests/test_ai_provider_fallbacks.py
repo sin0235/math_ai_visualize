@@ -496,13 +496,11 @@ def test_ollama_cloud_scan_uses_openai_models_endpoint(monkeypatch):
     assert models[0].id == "gpt-oss:120b"
 
 
-def test_render_router9_tries_preferred_model_chain(monkeypatch):
+def test_render_router9_allowlist_uses_single_selected_model(monkeypatch):
     calls = []
 
     async def fake_extract(provider, settings, problem_text, grade, reasoning_layer, preferred_ai_model=None):
         calls.append((provider, preferred_ai_model))
-        if preferred_ai_model != "gh/gpt-5.2":
-            raise RuntimeError("model unavailable")
         return {"problem_text": problem_text, "renderer": "geogebra_2d", "objects": [], "view": {"dimension": "2d"}}
 
     monkeypatch.setattr("app.services.extractor._extract_with_provider", fake_extract)
@@ -516,13 +514,8 @@ def test_render_router9_tries_preferred_model_chain(monkeypatch):
     scene, warnings = asyncio.run(extract_scene("x", runtime_settings=runtime_settings))
 
     assert scene.topic == "unknown"
-    assert calls == [
-        ("router9", "cc/codex-5.5"),
-        ("router9", "cc/codex-5.4"),
-        ("router9", "cc/codex-5.3"),
-        ("router9", "gh/gpt-5.2"),
-    ]
-    assert len(warnings) == 3
+    assert calls == [("router9", "cc/codex-5.5")]
+    assert warnings == []
 
 
 def test_render_tries_full_provider_order_before_mock(monkeypatch):

@@ -16,7 +16,7 @@ from app.services.system_settings import load_feature_flags
 
 router = APIRouter(prefix="/api", tags=["render"])
 
-RENDER_TIMEOUT_SECONDS = 45
+RENDER_TIMEOUT_SECONDS = 310
 
 
 @router.post("/render", response_model=RenderResponse, dependencies=[Depends(require_trusted_origin)])
