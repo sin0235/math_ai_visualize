@@ -226,12 +226,10 @@ def settings_from_registry(settings: Settings, registry: ModelRegistry) -> Setti
     elif isinstance(default_provider, str) and default_provider not in {"", "auto", "mock"}:
         data["ai_provider"] = "auto"
     for provider_id, provider in registry.providers.items():
-        env_api_key = (getattr(settings, f"{provider_id}_api_key", None) or "").strip()
-        use_registry_connection = provider.api_key_configured or not env_api_key
-        if provider.base_url and use_registry_connection:
+        if provider.base_url:
             data[f"{provider_id}_base_url"] = provider.base_url
         default_model_id = effective_provider_default_model(registry, provider_id, provider.default_model_id)
-        if default_model_id and use_registry_connection:
+        if default_model_id:
             key = "router9_text_model" if provider_id == "router9" else f"{provider_id}_text_model"
             data[key] = default_model_id
     data["router9_only"] = bool(registry.settings.get("router9_only", settings.router9_only))

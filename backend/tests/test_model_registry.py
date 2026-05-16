@@ -72,6 +72,20 @@ async def test_ollama_registry_db_overrides_env(db, monkeypatch):
 
 
 @pytest.mark.anyio
+async def test_registry_model_overrides_env_without_dropping_env_api_key(db, monkeypatch):
+    settings = Settings(_env_file=None, openrouter_api_key="env-secret", openrouter_base_url="https://env-openrouter.example/v1", openrouter_text_model="env/model")
+    monkeypatch.setattr("app.services.model_registry.get_settings", lambda: settings)
+    await load_model_registry(db, settings)
+    await save_provider_config(db, "openrouter", "https://registry-openrouter.example/v1", "registry/model", api_key_configured=True)
+
+    effective = await resolve_effective_settings(db, None)
+
+    assert effective.openrouter_api_key == "env-secret"
+    assert effective.openrouter_base_url == "https://registry-openrouter.example/v1"
+    assert effective.openrouter_text_model == "registry/model"
+
+
+@pytest.mark.anyio
 async def test_registry_preserves_allowed_models_after_scan(db):
     settings = Settings(_env_file=None)
     await load_model_registry(db, settings)
