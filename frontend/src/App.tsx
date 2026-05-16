@@ -1878,14 +1878,19 @@ function mergeProviderDefaults<Provider extends 'openrouter' | 'nvidia' | 'ollam
     defaults.scanned_models.filter((item) => !allowed_model_ids.length || allowed_model_ids.includes(item.id)),
     allowed_model_ids.map((id) => ({ id, label: id, provider }))
   );
+  const currentBaseUrl = isLegacyLocalOpenAICompatBase(provider, current.base_url) ? '' : current.base_url;
 
   return {
     ...current,
-    base_url: current.base_url || defaults.base_url || '',
+    base_url: currentBaseUrl || defaults.base_url || '',
     model,
     allowed_model_ids,
     scanned_models,
   };
+}
+
+function isLegacyLocalOpenAICompatBase(provider: string, baseUrl: string) {
+  return provider === 'openai_compat' && baseUrl.trim().replace(/\/$/, '') === 'http://localhost:8080/v1';
 }
 
 function mergeUnique(primary: string[], secondary: string[]) {

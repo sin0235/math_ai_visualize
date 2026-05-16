@@ -148,7 +148,7 @@ export interface SettingsDefaults {
   feature_flags?: FeatureFlagsDefaults;
 }
 
-export const SETTINGS_STORAGE_VERSION = 5;
+export const SETTINGS_STORAGE_VERSION = 6;
 
 export const defaultRuntimeSettings: RuntimeSettings = {
   default_provider: 'auto',
@@ -178,7 +178,7 @@ export const defaultRuntimeSettings: RuntimeSettings = {
   },
   openai_compat: {
     api_key: '',
-    base_url: 'http://localhost:8080/v1',
+    base_url: '',
     model: '',
     scanned_models: [],
     allowed_model_ids: [],
