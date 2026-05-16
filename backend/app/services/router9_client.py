@@ -18,7 +18,7 @@ class Router9Client:
         self.model = model or settings.router9_text_model
 
     async def list_models(self) -> list[AiModelInfo]:
-        if not self.settings.router9_api_key:
+        if not _api_key(self.settings):
             raise RuntimeError("ROUTER9_API_KEY chưa được cấu hình.")
 
         headers = _build_headers(self.settings)
@@ -63,7 +63,7 @@ class Router9Client:
         reasoning_plan: dict | None = None,
         system_prompt: str | None = None,
     ) -> dict:
-        if not self.settings.router9_api_key:
+        if not _api_key(self.settings):
             raise RuntimeError("ROUTER9_API_KEY chưa được cấu hình.")
         if not self.model:
             raise RuntimeError("Chưa chọn model 9router.")
@@ -96,7 +96,7 @@ class Router9Client:
 
     async def reason_about_problem(self, problem_text: str, grade: int | None = None, system_prompt: str | None = None) -> dict:
         """Task 1: Analyze the problem and return a structured reasoning plan."""
-        if not self.settings.router9_api_key:
+        if not _api_key(self.settings):
             raise RuntimeError("ROUTER9_API_KEY chưa được cấu hình.")
         if not self.model:
             raise RuntimeError("Chưa chọn model 9router.")
@@ -127,7 +127,7 @@ class Router9Client:
             raise RuntimeError(f"9router reasoning JSON không hợp lệ: {error.msg}") from error
 
     async def ocr_image(self, image_data_url: str, model: str | None = None, system_prompt: str | None = None, user_text: str = "Trích xuất nguyên văn đề toán trong ảnh.") -> str:
-        if not self.settings.router9_api_key:
+        if not _api_key(self.settings):
             raise RuntimeError("ROUTER9_API_KEY chưa được cấu hình.")
         selected_model = model or self.model
         if not selected_model:
@@ -186,9 +186,13 @@ class Router9Client:
 
 def _build_headers(settings: Settings) -> dict[str, str]:
     return {
-        "Authorization": f"Bearer {settings.router9_api_key}",
+        "Authorization": f"Bearer {_api_key(settings)}",
         "Content-Type": "application/json",
     }
+
+
+def _api_key(settings: Settings) -> str:
+    return (settings.router9_api_key or "").strip()
 
 
 def _extract_message_content(response: httpx.Response) -> str:

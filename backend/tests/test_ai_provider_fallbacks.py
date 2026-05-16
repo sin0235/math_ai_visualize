@@ -94,6 +94,22 @@ def test_provider_order_auto_skips_remote_providers_without_api_keys():
     assert order == ["ollama_gpt_oss"]
 
 
+def test_provider_order_auto_skips_whitespace_api_keys():
+    order = _provider_order(
+        Settings(
+            _env_file=None,
+            ai_provider="auto",
+            router9_api_key=" ",
+            openrouter_api_key="\t",
+            nvidia_api_key="\n",
+            openai_compat_api_key=" ",
+            openai_compat_text_model="demo",
+        )
+    )
+
+    assert order == ["ollama_gpt_oss"]
+
+
 def test_provider_order_auto_includes_configured_remote_fallbacks():
     order = _provider_order(Settings(_env_file=None, ai_provider="auto", openrouter_api_key="router", nvidia_api_key="nvidia"))
 

@@ -11,6 +11,10 @@ from app.services.router9_bootstrap import select_router9_ocr_model_ids_from_ids
 OPENROUTER_GPT_OSS_MODEL = "openai/gpt-oss-120b:free"
 
 
+def provider_configured(value: str | None) -> bool:
+    return bool((value or "").strip())
+
+
 @dataclass(frozen=True)
 class Attempt:
     provider: str
@@ -29,10 +33,10 @@ def text_provider_order(settings: Settings, preferred_provider: str | None = Non
         return ["router9"]
 
     provider = preferred_provider or settings.ai_provider or "auto"
-    router9 = ["router9"] if settings.router9_api_key else []
-    openrouter = ["openrouter"] if settings.openrouter_api_key else []
-    nvidia = ["nvidia"] if settings.nvidia_api_key else []
-    custom = ["openai_compat"] if settings.openai_compat_api_key and settings.openai_compat_text_model else []
+    router9 = ["router9"] if provider_configured(settings.router9_api_key) else []
+    openrouter = ["openrouter"] if provider_configured(settings.openrouter_api_key) else []
+    nvidia = ["nvidia"] if provider_configured(settings.nvidia_api_key) else []
+    custom = ["openai_compat"] if provider_configured(settings.openai_compat_api_key) and settings.openai_compat_text_model else []
     ollama = ["ollama_gpt_oss"]
 
     if provider == "router9":

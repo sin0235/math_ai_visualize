@@ -32,7 +32,7 @@ class OpenRouterClient:
         reasoning_plan: dict | None = None,
         system_prompt: str | None = None,
     ) -> dict:
-        if not self.settings.openrouter_api_key:
+        if not _api_key(self.settings):
             raise RuntimeError("OPENROUTER_API_KEY chưa được cấu hình.")
 
         sys_prompt = system_prompt or SCENE_EXTRACTION_SYSTEM_PROMPT
@@ -75,7 +75,7 @@ class OpenRouterClient:
 
     async def reason_about_problem(self, problem_text: str, grade: int | None = None, system_prompt: str | None = None) -> dict:
         """Task 1: Analyze the problem and return a structured reasoning plan."""
-        if not self.settings.openrouter_api_key:
+        if not _api_key(self.settings):
             raise RuntimeError("OPENROUTER_API_KEY chưa được cấu hình.")
 
         sys_prompt = system_prompt or REASONING_SYSTEM_PROMPT
@@ -115,7 +115,7 @@ class OpenRouterClient:
             raise RuntimeError(f"OpenRouter reasoning JSON không hợp lệ: {error.msg}") from error
 
     async def ocr_image(self, image_data_url: str, model: str | None = None, system_prompt: str | None = None, user_text: str = "Trích xuất nguyên văn đề toán trong ảnh.") -> str:
-        if not self.settings.openrouter_api_key:
+        if not _api_key(self.settings):
             raise RuntimeError("OPENROUTER_API_KEY chưa được cấu hình.")
 
         models = [model or self.settings.openrouter_vision_model]
@@ -176,7 +176,7 @@ def openrouter_api_base_url(settings: Settings) -> str:
 
 def _build_headers(settings: Settings) -> dict[str, str]:
     headers = {
-        "Authorization": f"Bearer {settings.openrouter_api_key}",
+        "Authorization": f"Bearer {_api_key(settings)}",
         "Content-Type": "application/json",
     }
     if settings.openrouter_http_referer:
@@ -184,6 +184,10 @@ def _build_headers(settings: Settings) -> dict[str, str]:
     if settings.openrouter_x_title:
         headers["X-Title"] = settings.openrouter_x_title
     return headers
+
+
+def _api_key(settings: Settings) -> str:
+    return (settings.openrouter_api_key or "").strip()
 
 
 def _normalize_model_id(model: str) -> str:

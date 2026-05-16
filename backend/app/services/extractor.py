@@ -7,7 +7,7 @@ from pydantic import ValidationError
 from app.core.config import Settings
 from app.schemas.scene import AdvancedRenderSettings, MathScene, RuntimeSettings, SceneView
 from app.db.session import DatabaseClient
-from app.services.ai_fallback import explicit_model_for_provider, text_model_candidates
+from app.services.ai_fallback import explicit_model_for_provider, provider_configured, text_model_candidates
 from app.services.ai_prompt import get_system_prompts
 from app.services.expression_eval import try_safe_eval, try_safe_eval_exact
 from app.services.nvidia_client import NvidiaClient
@@ -157,14 +157,14 @@ async def _run_reasoning_stage(
 
     Returns None if reasoning fails (the pipeline will fall back to
     single-stage extraction).
-    Giới hạn tối đa 2 lần thử và 40s tổng để không kéo dài pipeline.
+    Giới hạn tối đa 1 lần thử và 25s tổng để không kéo dài pipeline.
     """
     import asyncio
     import logging
     logger = logging.getLogger(__name__)
 
-    _MAX_REASONING_ATTEMPTS = 2
-    _REASONING_TOTAL_TIMEOUT = 40
+    _MAX_REASONING_ATTEMPTS = 1
+    _REASONING_TOTAL_TIMEOUT = 25
 
     async def _try_reasoning() -> dict | None:
         attempts = 0
@@ -192,7 +192,7 @@ async def _run_reasoning_stage(
             warnings.append("Tầng suy luận không thành công; sẽ dùng single-stage extraction.")
         return result
     except asyncio.TimeoutError:
-        warnings.append("Tầng suy luận quá thời gian (40s); sẽ dùng single-stage extraction.")
+        warnings.append("Tầng suy luận quá thời gian (25s); sẽ dùng single-stage extraction.")
         return None
 
 
@@ -557,10 +557,10 @@ def _fast_provider_order(settings: Settings, preferred_ai_provider: str | None =
 
 def _provider_order(settings: Settings, preferred_ai_provider: str | None = None) -> list[str]:
     provider = preferred_ai_provider or settings.ai_provider
-    router9_providers = ["router9"] if settings.router9_api_key else []
-    nvidia_providers = ["nvidia"] if settings.nvidia_api_key else []
-    custom_providers = ["openai_compat"] if settings.openai_compat_api_key and settings.openai_compat_text_model else []
-    openrouter_providers = ["openrouter"] if settings.openrouter_api_key else []
+    router9_providers = ["router9"] if provider_configured(settings.router9_api_key) else []
+    nvidia_providers = ["nvidia"] if provider_configured(settings.nvidia_api_key) else []
+    custom_providers = ["openai_compat"] if provider_configured(settings.openai_compat_api_key) and settings.openai_compat_text_model else []
+    openrouter_providers = ["openrouter"] if provider_configured(settings.openrouter_api_key) else []
     local_providers = ["ollama_gpt_oss"]
     if settings.router9_only:
         if provider not in {"auto", "router9"}:
@@ -575,7 +575,7 @@ def _provider_order(settings: Settings, preferred_ai_provider: str | None = None
     if provider == "nvidia":
         return _dedupe([*nvidia_providers, *router9_providers, *openrouter_providers, *custom_providers, *local_providers])
     if provider in {"openrouter", "opencode_nemotron", "openrouter_gpt_oss"}:
-        requested = [provider] if settings.openrouter_api_key else []
+        requested = [provider] if provider_configured(settings.openrouter_api_key) else []
         return _dedupe([*requested, *openrouter_providers, *router9_providers, *nvidia_providers, *custom_providers, *local_providers])
     if provider == "ollama_gpt_oss":
         return _dedupe([*local_providers, *router9_providers, *openrouter_providers, *nvidia_providers, *custom_providers])

@@ -31,7 +31,7 @@ class NvidiaClient:
         reasoning_plan: dict | None = None,
         system_prompt: str | None = None,
     ) -> dict:
-        if not self.settings.nvidia_api_key:
+        if not _api_key(self.settings):
             raise RuntimeError("NVIDIA_API_KEY chưa được cấu hình.")
 
         sys_prompt = system_prompt or SCENE_EXTRACTION_SYSTEM_PROMPT
@@ -55,7 +55,7 @@ class NvidiaClient:
         if chat_template_kwargs:
             payload["chat_template_kwargs"] = chat_template_kwargs
         headers = {
-            "Authorization": f"Bearer {self.settings.nvidia_api_key}",
+            "Authorization": f"Bearer {_api_key(self.settings)}",
             "Content-Type": "application/json",
         }
         url = f"{self.settings.nvidia_base_url.rstrip('/')}/chat/completions"
@@ -88,7 +88,7 @@ class NvidiaClient:
 
     async def reason_about_problem(self, problem_text: str, grade: int | None = None, system_prompt: str | None = None) -> dict:
         """Task 1: Analyze the problem and return a structured reasoning plan."""
-        if not self.settings.nvidia_api_key:
+        if not _api_key(self.settings):
             raise RuntimeError("NVIDIA_API_KEY chưa được cấu hình.")
 
         sys_prompt = system_prompt or REASONING_SYSTEM_PROMPT
@@ -106,7 +106,7 @@ class NvidiaClient:
         if self.thinking:
             payload["chat_template_kwargs"] = {"thinking": True}
         headers = {
-            "Authorization": f"Bearer {self.settings.nvidia_api_key}",
+            "Authorization": f"Bearer {_api_key(self.settings)}",
             "Content-Type": "application/json",
         }
         url = f"{self.settings.nvidia_base_url.rstrip('/')}/chat/completions"
@@ -136,7 +136,7 @@ class NvidiaClient:
             raise RuntimeError(f"NVIDIA reasoning JSON không hợp lệ: {error.msg}") from error
 
     async def ocr_image(self, image_data_url: str, model: str | None = None, system_prompt: str | None = None, user_text: str = "Trích xuất nguyên văn đề toán trong ảnh.") -> str:
-        if not self.settings.nvidia_api_key:
+        if not _api_key(self.settings):
             raise RuntimeError("NVIDIA_API_KEY chưa được cấu hình.")
 
         selected_model = model or self.model
@@ -159,7 +159,7 @@ class NvidiaClient:
             "presence_penalty": 0,
         }
         headers = {
-            "Authorization": f"Bearer {self.settings.nvidia_api_key}",
+            "Authorization": f"Bearer {_api_key(self.settings)}",
             "Content-Type": "application/json",
         }
         url = f"{self.settings.nvidia_base_url.rstrip('/')}/chat/completions"
@@ -194,6 +194,10 @@ def _extract_message(response: httpx.Response) -> dict:
         return body["choices"][0]["message"]
     except (ValueError, KeyError, IndexError, TypeError) as error:
         raise RuntimeError("NVIDIA response không đúng định dạng choices[0].message.") from error
+
+
+def _api_key(settings: Settings) -> str:
+    return (settings.nvidia_api_key or "").strip()
 
 
 def _strip_json_fences(content: str) -> str:

@@ -14,7 +14,7 @@ _OCR_CODEX_VERSIONS = ((5, 5), (5, 4))
 
 
 async def bootstrap_router9_models(settings: Settings) -> None:
-    if not settings.router9_api_key:
+    if not (settings.router9_api_key or "").strip():
         return
     try:
         models = await Router9Client(settings).list_models()

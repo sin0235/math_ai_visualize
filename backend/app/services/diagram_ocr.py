@@ -18,7 +18,7 @@ import time
 from dataclasses import dataclass
 
 from app.core.config import Settings
-from app.services.ai_fallback import Attempt, format_attempts, openrouter_vision_candidates, router9_ocr_candidates
+from app.services.ai_fallback import Attempt, format_attempts, openrouter_vision_candidates, provider_configured, router9_ocr_candidates
 from app.services.ocr import validate_image_data_url
 from app.services.chat_response import extract_chat_message_content
 from app.services.model_provider import infer_provider_from_model, normalize_model_for_provider
@@ -63,7 +63,7 @@ async def describe_diagram(
 
     explicit_provider = infer_provider_from_model(explicit_model)
 
-    if explicit_provider != "router9" and settings.openrouter_api_key:
+    if explicit_provider != "router9" and provider_configured(settings.openrouter_api_key):
         for model in openrouter_vision_candidates(settings, explicit_model if explicit_provider != "router9" else None):
             try:
                 description = await _call_openrouter_vision(image_data_url, settings, model)
@@ -71,7 +71,7 @@ async def describe_diagram(
             except RuntimeError as error:
                 attempts.append(Attempt("openrouter", model, "diagram_ocr", str(error)))
 
-    if explicit_provider != "openrouter" and settings.router9_api_key:
+    if explicit_provider != "openrouter" and provider_configured(settings.router9_api_key):
         for model in router9_ocr_candidates(settings, normalize_model_for_provider("router9", explicit_model)):
             try:
                 client = Router9Client(settings, model=model)

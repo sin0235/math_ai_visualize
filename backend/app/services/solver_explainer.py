@@ -8,7 +8,7 @@ import httpx
 
 from app.core.config import Settings
 from app.services.model_registry import TaskProfile
-from app.services.ai_fallback import Attempt, dedupe, format_attempts, text_model_candidates, text_provider_order
+from app.services.ai_fallback import Attempt, dedupe, format_attempts, provider_configured, text_model_candidates, text_provider_order
 from app.services.model_provider import normalize_model_for_provider
 from app.services.openrouter_client import _build_headers as _build_openrouter_headers, _extract_message as _extract_openrouter_message, openrouter_api_base_url
 from app.services.chat_response import extract_chat_message_content
@@ -97,7 +97,7 @@ def _payload(result: SolverResult, scene: dict[str, Any]) -> dict[str, Any]:
 async def _call_explainer(payload: dict[str, Any], settings: Settings, selection: TaskProfile | None = None) -> dict[str, Any]:
     prompt = "Diễn giải lời giải sau cho học sinh, giữ nguyên đáp số và công thức:\n" + json.dumps(payload, ensure_ascii=False)
     attempts: list[Attempt] = []
-    preferred_provider = selection.provider_id if selection else ("router9" if settings.router9_api_key else None)
+    preferred_provider = selection.provider_id if selection else ("router9" if provider_configured(settings.router9_api_key) else None)
     preferred_model = selection.model_id if selection else None
 
     for provider in text_provider_order(settings, preferred_provider):
@@ -123,7 +123,7 @@ async def _call_explainer(payload: dict[str, Any], settings: Settings, selection
 
 
 async def _call_router9(prompt: str, settings: Settings, model: str) -> str:
-    if not settings.router9_api_key or model == "<none>":
+    if not provider_configured(settings.router9_api_key) or model == "<none>":
         raise RuntimeError("Chưa cấu hình 9router cho diễn giải solver.")
     client = Router9Client(settings, model=model)
     response = await client._post_chat({
@@ -139,7 +139,7 @@ async def _call_router9(prompt: str, settings: Settings, model: str) -> str:
 
 
 async def _call_nvidia(prompt: str, settings: Settings, model: str) -> str:
-    if not settings.nvidia_api_key:
+    if not provider_configured(settings.nvidia_api_key):
         raise RuntimeError("NVIDIA_API_KEY chưa được cấu hình cho diễn giải solver.")
     from app.services.http_pool import TIMEOUT_FAST, get_client
 
@@ -153,7 +153,7 @@ async def _call_nvidia(prompt: str, settings: Settings, model: str) -> str:
         "top_p": 0.95,
         "max_tokens": 8192,
     }
-    headers = {"Authorization": f"Bearer {settings.nvidia_api_key}", "Content-Type": "application/json"}
+    headers = {"Authorization": f"Bearer {(settings.nvidia_api_key or '').strip()}", "Content-Type": "application/json"}
     base_url = settings.nvidia_base_url.rstrip("/")
     client = get_client(base_url, TIMEOUT_FAST)
     response = await client.post(f"{base_url}/chat/completions", headers=headers, json=payload, timeout=TIMEOUT_FAST)
@@ -167,7 +167,7 @@ async def _call_nvidia(prompt: str, settings: Settings, model: str) -> str:
 
 
 async def _call_openrouter_model(prompt: str, settings: Settings, model: str, reasoning_enabled: bool) -> str:
-    if not settings.openrouter_api_key:
+    if not provider_configured(settings.openrouter_api_key):
         raise RuntimeError("Chưa cấu hình OpenRouter cho diễn giải solver.")
     from app.services.http_pool import TIMEOUT_FAST, get_client
 

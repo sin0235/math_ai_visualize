@@ -22,7 +22,7 @@ from dataclasses import dataclass
 
 from app.core.config import Settings
 from app.schemas.scene import MathScene
-from app.services.ai_fallback import Attempt, format_attempts, text_model_candidates, text_provider_order
+from app.services.ai_fallback import Attempt, format_attempts, provider_configured, text_model_candidates, text_provider_order
 from app.services.model_provider import normalize_model_for_provider
 from app.services.openrouter_client import _build_headers, _extract_message, _format_openrouter_error, _strip_json_fences, openrouter_api_base_url
 from app.services.provider_logging import log_provider_request, log_provider_response
@@ -98,7 +98,7 @@ async def _call_variants_provider(provider: str, model: str, user_prompt: str, s
 
 
 async def _call_openrouter_variants(model: str, user_prompt: str, settings: Settings) -> str:
-    if not settings.openrouter_api_key:
+    if not provider_configured(settings.openrouter_api_key):
         raise RuntimeError("OPENROUTER_API_KEY chưa được cấu hình để sinh đề biến thể.")
     payload = {
         "model": normalize_model_for_provider("openrouter", model),
@@ -127,7 +127,7 @@ async def _call_openrouter_variants(model: str, user_prompt: str, settings: Sett
 
 
 async def _call_nvidia_variants(model: str, user_prompt: str, settings: Settings) -> str:
-    if not settings.nvidia_api_key:
+    if not provider_configured(settings.nvidia_api_key):
         raise RuntimeError("NVIDIA_API_KEY chưa được cấu hình để sinh đề biến thể.")
     payload = {
         "model": model,
@@ -139,7 +139,7 @@ async def _call_nvidia_variants(model: str, user_prompt: str, settings: Settings
         "top_p": 0.95,
         "max_tokens": 8192,
     }
-    headers = {"Authorization": f"Bearer {settings.nvidia_api_key}", "Content-Type": "application/json"}
+    headers = {"Authorization": f"Bearer {(settings.nvidia_api_key or '').strip()}", "Content-Type": "application/json"}
     from app.services.http_pool import TIMEOUT_SCENE, get_client
 
     base_url = settings.nvidia_base_url.rstrip("/")

@@ -87,8 +87,9 @@ class OpenAICompatClient:
     async def _post_chat(self, payload: dict[str, Any], kind: str, **log_kwargs: Any) -> str:
         url = f"{self.settings.openai_compat_base_url.rstrip('/')}/chat/completions"
         headers = {"Content-Type": "application/json"}
-        if self.settings.openai_compat_api_key:
-            headers["Authorization"] = f"Bearer {self.settings.openai_compat_api_key}"
+        api_key = (self.settings.openai_compat_api_key or "").strip()
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
         from app.services.http_pool import TIMEOUT_SCENE, get_client
 
         started_at = time.perf_counter()

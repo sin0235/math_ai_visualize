@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from app.core.config import Settings
 from app.schemas.scene import OcrMode, OcrProvider
-from app.services.ai_fallback import openrouter_vision_candidates, router9_ocr_candidates
+from app.services.ai_fallback import openrouter_vision_candidates, provider_configured, router9_ocr_candidates
 from app.services.model_provider import normalize_model_for_provider, resolve_ocr_provider
 from app.services.nvidia_client import NvidiaClient
 from app.services.ollama_client import OllamaClient
@@ -220,16 +220,16 @@ async def _try_openai_compat_ocr(
 
 def _ocr_provider_order(settings: Settings, selected_provider: str, include_router9_auto: bool) -> list[str]:
     providers: list[str] = []
-    if include_router9_auto and settings.router9_api_key:
+    if include_router9_auto and provider_configured(settings.router9_api_key):
         providers.append("router9")
     providers.append(selected_provider)
-    if settings.openrouter_api_key:
+    if provider_configured(settings.openrouter_api_key):
         providers.append("openrouter")
-    if settings.nvidia_api_key:
+    if provider_configured(settings.nvidia_api_key):
         providers.append("nvidia")
     if settings.ollama_text_model:
         providers.append("ollama")
-    if settings.openai_compat_api_key and settings.openai_compat_text_model:
+    if provider_configured(settings.openai_compat_api_key) and settings.openai_compat_text_model:
         providers.append("openai_compat")
     return _dedupe(providers)
 

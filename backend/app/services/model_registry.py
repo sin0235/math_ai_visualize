@@ -10,6 +10,7 @@ from app.core.config import Settings, get_settings, merge_runtime_settings
 from app.db.session import DatabaseClient
 from app.schemas.auth import SystemAiSettings
 from app.schemas.scene import AiModelInfo, RuntimeSettings
+from app.services.ai_fallback import provider_configured
 from app.services.model_provider import infer_provider_from_model, normalize_model_for_provider
 
 PROVIDER_LABELS = {
@@ -389,11 +390,11 @@ def _provider_seed_data(settings: Settings, legacy: SystemAiSettings | None) -> 
         "router9": legacy.router9 if legacy else None,
     }
     base = {
-        "openrouter": {"base_url": settings.openrouter_base_url, "model": settings.openrouter_text_model, "api_key_configured": bool(settings.openrouter_api_key)},
-        "nvidia": {"base_url": settings.nvidia_base_url, "model": settings.nvidia_text_model, "api_key_configured": bool(settings.nvidia_api_key)},
+        "openrouter": {"base_url": settings.openrouter_base_url, "model": settings.openrouter_text_model, "api_key_configured": provider_configured(settings.openrouter_api_key)},
+        "nvidia": {"base_url": settings.nvidia_base_url, "model": settings.nvidia_text_model, "api_key_configured": provider_configured(settings.nvidia_api_key)},
         "ollama": {"base_url": settings.ollama_base_url, "model": settings.ollama_text_model, "api_key_configured": bool(settings.ollama_api_key)},
-        "openai_compat": {"base_url": settings.openai_compat_base_url, "model": settings.openai_compat_text_model, "api_key_configured": bool(settings.openai_compat_api_key)},
-        "router9": {"base_url": settings.router9_base_url, "model": settings.router9_text_model or "", "api_key_configured": bool(settings.router9_api_key)},
+        "openai_compat": {"base_url": settings.openai_compat_base_url, "model": settings.openai_compat_text_model, "api_key_configured": provider_configured(settings.openai_compat_api_key)},
+        "router9": {"base_url": settings.router9_base_url, "model": settings.router9_text_model or "", "api_key_configured": provider_configured(settings.router9_api_key)},
     }
     for provider_id, item in base.items():
         configured = provider_settings[provider_id]
