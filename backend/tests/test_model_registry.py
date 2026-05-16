@@ -290,6 +290,29 @@ async def test_sync_ai_settings_persists_openai_compat_provider_config(db, monke
 
 
 @pytest.mark.anyio
+async def test_sync_ai_settings_persists_ocr_profile_without_name_error(db, monkeypatch):
+    settings = Settings(_env_file=None)
+    monkeypatch.setattr("app.services.admin_settings.get_settings", lambda: settings)
+    monkeypatch.setattr("app.services.model_registry.get_settings", lambda: settings)
+    await load_model_registry(db, settings)
+
+    await sync_ai_settings_to_registry(db, {
+        "version": 1,
+        "ocr": {
+            "provider": "nvidia",
+            "model": "nvidia/vision",
+            "max_image_mb": 7,
+        },
+    })
+
+    registry = await load_model_registry(db, settings)
+
+    assert registry.settings["ocr_max_image_mb"] == 7
+    assert registry.task_profiles["ocr"].provider_id == "nvidia"
+    assert registry.task_profiles["ocr"].model_id == "nvidia/vision"
+
+
+@pytest.mark.anyio
 async def test_ai_profiles_sync_to_registry_task_profiles(db):
     await load_model_registry(db, Settings(_env_file=None))
 

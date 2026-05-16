@@ -10,7 +10,7 @@ from app.core.config import Settings
 from app.services.ai_prompt import REASONING_SYSTEM_PROMPT, SCENE_EXTRACTION_SYSTEM_PROMPT, build_reasoning_prompt, build_scene_extraction_prompt
 from app.services.openrouter_client import OCR_SYSTEM_PROMPT, _strip_json_fences, _strip_text_fences
 from app.services.chat_response import extract_chat_message_content
-from app.services.provider_logging import format_provider_error, log_ocr_summary, log_provider_request, log_provider_response, log_scene_summary
+from app.services.provider_logging import format_provider_error, log_ocr_summary, log_provider_parse, log_provider_request, log_provider_response, log_scene_summary
 
 
 class OpenAICompatClient:
@@ -39,7 +39,7 @@ class OpenAICompatClient:
         content = await self._post_chat(payload, "scene", problem_chars=len(problem_text))
         try:
             scene_json = json.loads(_strip_json_fences(content))
-            log_scene_summary("openai_compat", scene_json)
+            log_scene_summary("openai_compat", scene_json, model=self.model)
             return scene_json
         except json.JSONDecodeError as error:
             raise RuntimeError(f"OpenAI-compatible trả về JSON không hợp lệ: {error.msg}") from error
@@ -61,6 +61,19 @@ class OpenAICompatClient:
         except json.JSONDecodeError as error:
             raise RuntimeError(f"OpenAI-compatible reasoning JSON không hợp lệ: {error.msg}") from error
 
+    async def check_connection(self) -> str:
+        if not self.model:
+            raise RuntimeError("Chưa chọn model OpenAI-compatible.")
+        payload = {
+            "model": self.model,
+            "messages": [
+                {"role": "user", "content": "Reply with OK only."},
+            ],
+            "temperature": 0,
+            "max_tokens": 16,
+        }
+        return await self._post_chat(payload, "check")
+
     async def ocr_image(self, image_data_url: str, model: str | None = None, system_prompt: str | None = None, user_text: str = "Trích xuất nguyên văn đề toán trong ảnh.") -> str:
         selected_model = model or self.model
         if not selected_model:
@@ -81,7 +94,7 @@ class OpenAICompatClient:
         }
         content = await self._post_chat(payload, "ocr", image_chars=len(image_data_url))
         text = _strip_text_fences(content)
-        log_ocr_summary("openai_compat", text)
+        log_ocr_summary("openai_compat", text, model=selected_model)
         return text
 
     async def _post_chat(self, payload: dict[str, Any], kind: str, **log_kwargs: Any) -> str:
@@ -98,7 +111,7 @@ class OpenAICompatClient:
         client = get_client(base_url, TIMEOUT_SCENE)
         response = await client.post(url, headers=headers, json=payload, timeout=TIMEOUT_SCENE)
         elapsed_ms = int((time.perf_counter() - started_at) * 1000)
-        log_provider_response("openai_compat", kind, response.status_code, elapsed_ms, len(response.text))
+        log_provider_response("openai_compat", kind, response.status_code, elapsed_ms, len(response.text), model=payload.get("model"))
         if response.status_code >= 400:
             raise RuntimeError(format_provider_error("OpenAI-compatible", response))
         try:
@@ -108,4 +121,5 @@ class OpenAICompatClient:
             raise RuntimeError("OpenAI-compatible response không đúng định dạng choices[0].message.content.") from error
         if not content.strip():
             raise RuntimeError("OpenAI-compatible không trả về nội dung.")
+        log_provider_parse("openai_compat", kind, payload.get("model"), len(content))
         return content

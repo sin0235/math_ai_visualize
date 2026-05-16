@@ -713,6 +713,28 @@ export function AdminAiProfilesForm({ value, aiSettings, defaults, onSave, onToa
     return options;
   }
 
+  function defaultModelForProvider(selectedProvider: string) {
+    if (selectedProvider === 'auto') return '';
+    return modelOptions(selectedProvider, '', [])[0]?.id ?? '';
+  }
+
+  function selectProfileProvider(kind: 'geometry' | 'solver' | 'ocr', selectedProvider: string) {
+    const nextModel = defaultModelForProvider(selectedProvider);
+    if (kind === 'geometry') {
+      setGeometryProvider(selectedProvider);
+      setGeometryModel(nextModel);
+      setGeometryFallbacks([]);
+    } else if (kind === 'solver') {
+      setSolverProvider(selectedProvider);
+      setSolverModel(nextModel);
+      setSolverFallbacks([]);
+    } else {
+      setOcrProvider(selectedProvider);
+      setOcrModel(nextModel);
+      setOcrFallbacks([]);
+    }
+  }
+
   function allProviderModelOptions(selectedModel: string, fallbackModels: string[] = []) {
     const seen = new Set<string>();
     const combined: Array<{ id: string; label: string }> = [];
@@ -746,11 +768,11 @@ export function AdminAiProfilesForm({ value, aiSettings, defaults, onSave, onToa
 
   return (
     <section className="admin-settings-section"><h4>Hồ sơ AI</h4><div className="admin-field-grid">
-      <label className="field-label">Provider hình học<select value={geometryProvider} onChange={(event) => setGeometryProvider(event.target.value)} disabled={saving}>{providerOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
+      <label className="field-label">Provider hình học<select value={geometryProvider} onChange={(event) => selectProfileProvider('geometry', event.target.value)} disabled={saving}>{providerOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
       <label className="field-label">Model hình học<select value={geometryModel} onChange={(event) => setGeometryModel(event.target.value)} disabled={saving}><option value="">Chọn model</option>{modelOptions(geometryProvider, geometryModel, geometryFallbacks).map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.label}</option>)}</select></label>
-      <label className="field-label">Provider diễn giải lời giải<select value={solverProvider} onChange={(event) => setSolverProvider(event.target.value)} disabled={saving}>{providerOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
+      <label className="field-label">Provider diễn giải lời giải<select value={solverProvider} onChange={(event) => selectProfileProvider('solver', event.target.value)} disabled={saving}>{providerOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
       <label className="field-label">Model diễn giải lời giải<select value={solverModel} onChange={(event) => setSolverModel(event.target.value)} disabled={saving}><option value="">Chọn model</option>{modelOptions(solverProvider, solverModel, solverFallbacks).map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.label}</option>)}</select></label>
-      <label className="field-label">Provider OCR<select value={ocrProvider} onChange={(event) => setOcrProvider(event.target.value)} disabled={saving}>{providerOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
+      <label className="field-label">Provider OCR<select value={ocrProvider} onChange={(event) => selectProfileProvider('ocr', event.target.value)} disabled={saving}>{providerOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
       <label className="field-label">Model OCR<select value={ocrModel} onChange={(event) => setOcrModel(event.target.value)} disabled={saving}><option value="">Chọn model</option>{modelOptions(ocrProvider, ocrModel, ocrFallbacks).map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.label}</option>)}</select></label>
     </div>
     <div className="admin-model-fallback-grid">

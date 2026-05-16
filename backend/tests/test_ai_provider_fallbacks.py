@@ -1,4 +1,5 @@
 import asyncio
+import json
 
 import httpx
 import pytest
@@ -12,6 +13,7 @@ from app.db.session import SQLiteClient, get_database
 from app.main import app
 from app.schemas.scene import AiModelInfo, OcrRequest, RenderRequest, RuntimeSettings
 from app.services.extractor import extract_scene, _provider_order
+from app.services.openai_compat_client import OpenAICompatClient
 from app.services.provider_logging import format_provider_error, redact_sensitive
 from app.services.solver_explainer import _call_explainer
 from app.services.router9_bootstrap import (
@@ -86,6 +88,30 @@ def test_provider_error_redaction_removes_secrets_and_image_data():
     assert "aGVsbG8=" not in message
     assert "abc" not in redacted
     assert "data:image/[REDACTED]" in message
+
+
+def test_openai_compat_provider_check_uses_small_chat_payload(monkeypatch):
+    captured = {}
+
+    async def fake_post_chat(self, payload, kind, **log_kwargs):
+        captured["payload"] = payload
+        captured["kind"] = kind
+        captured["log_kwargs"] = log_kwargs
+        return "OK"
+
+    monkeypatch.setattr(OpenAICompatClient, "_post_chat", fake_post_chat)
+
+    result = asyncio.run(
+        OpenAICompatClient(
+            Settings(_env_file=None, openai_compat_base_url="https://compat.test/v1", openai_compat_text_model="test-model")
+        ).check_connection()
+    )
+
+    assert result == "OK"
+    assert captured["kind"] == "check"
+    assert captured["payload"]["model"] == "test-model"
+    assert captured["payload"]["max_tokens"] == 16
+    assert "Vẽ điểm" not in json.dumps(captured["payload"], ensure_ascii=False)
 
 
 def test_provider_order_auto_skips_remote_providers_without_api_keys():

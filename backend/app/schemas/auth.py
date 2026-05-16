@@ -239,9 +239,17 @@ class AdminRouter9ModelSettings(AdminProviderModelSettings):
 class AdminOcrModelSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    provider: Literal["openrouter", "router9"] = "openrouter"
+    provider: str = Field(default="openrouter", max_length=64)
     model: str = Field(default="", max_length=MAX_MODEL_ID_CHARS)
     max_image_mb: int = Field(default=5, ge=1, le=32)
+
+    @field_validator("provider")
+    @classmethod
+    def validate_provider(cls, value: str) -> str:
+        provider = value.strip()
+        if provider not in ADMIN_OCR_PROVIDERS:
+            raise ValueError("Nhà cung cấp OCR không hợp lệ.")
+        return provider
 
 
 class SystemAiSettings(BaseModel):

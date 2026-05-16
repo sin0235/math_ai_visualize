@@ -23,18 +23,31 @@ _KEY_VALUE_RE = re.compile(r"(?i)(api[_-]?key|access[_-]?token|refresh[_-]?token
 
 
 def log_provider_request(provider: str, kind: str, url: str, model: Any, **metadata: Any) -> None:
+    meta_text = _metadata_text(metadata)
     logger.info(
-        "AI provider request",
+        "AI provider rq provider=%s kind=%s model=%s url=%s%s",
+        provider,
+        kind,
+        model or "<none>",
+        url,
+        meta_text,
         extra={"provider": provider, "kind": kind, "url": url, "model": model, **metadata},
     )
 
 
-def log_provider_response(provider: str, kind: str, status_code: int, elapsed_ms: int, response_chars: int) -> None:
+def log_provider_response(provider: str, kind: str, status_code: int, elapsed_ms: int, response_chars: int, model: Any = None) -> None:
     logger.info(
-        "AI provider response",
+        "AI provider rp provider=%s kind=%s model=%s status=%s elapsed_ms=%s response_chars=%s",
+        provider,
+        kind,
+        model or "<unknown>",
+        status_code,
+        elapsed_ms,
+        response_chars,
         extra={
             "provider": provider,
             "kind": kind,
+            "model": model,
             "status_code": status_code,
             "elapsed_ms": elapsed_ms,
             "response_chars": response_chars,
@@ -42,11 +55,18 @@ def log_provider_response(provider: str, kind: str, status_code: int, elapsed_ms
     )
 
 
-def log_scene_summary(provider: str, scene_json: dict[str, Any]) -> None:
+def log_scene_summary(provider: str, scene_json: dict[str, Any], model: Any = None) -> None:
     logger.info(
-        "AI scene parsed",
+        "AI provider parse provider=%s kind=scene model=%s renderer=%s topic=%s objects=%s",
+        provider,
+        model or "<unknown>",
+        scene_json.get("renderer"),
+        scene_json.get("topic"),
+        len(scene_json.get("objects", [])) if isinstance(scene_json.get("objects"), list) else None,
         extra={
             "provider": provider,
+            "kind": "scene",
+            "model": model,
             "renderer": scene_json.get("renderer"),
             "topic": scene_json.get("topic"),
             "objects_count": len(scene_json.get("objects", [])) if isinstance(scene_json.get("objects"), list) else None,
@@ -54,8 +74,25 @@ def log_scene_summary(provider: str, scene_json: dict[str, Any]) -> None:
     )
 
 
-def log_ocr_summary(provider: str, text: str) -> None:
-    logger.info("AI OCR parsed", extra={"provider": provider, "result_chars": len(text)})
+def log_ocr_summary(provider: str, text: str, model: Any = None) -> None:
+    logger.info(
+        "AI provider parse provider=%s kind=ocr model=%s result_chars=%s",
+        provider,
+        model or "<unknown>",
+        len(text),
+        extra={"provider": provider, "kind": "ocr", "model": model, "result_chars": len(text)},
+    )
+
+
+def log_provider_parse(provider: str, kind: str, model: Any, result_chars: int) -> None:
+    logger.info(
+        "AI provider parse provider=%s kind=%s model=%s result_chars=%s",
+        provider,
+        kind,
+        model or "<unknown>",
+        result_chars,
+        extra={"provider": provider, "kind": kind, "model": model, "result_chars": result_chars},
+    )
 
 
 def format_provider_error(provider: str, response: httpx.Response, limit: int = 500) -> str:
@@ -118,3 +155,14 @@ def _stringify(value: Any) -> str:
         return json.dumps(value, ensure_ascii=False)
     except TypeError:
         return str(value)
+
+
+def _metadata_text(metadata: dict[str, Any]) -> str:
+    if not metadata:
+        return ""
+    safe_items = []
+    for key, value in metadata.items():
+        if str(key).lower() in _SENSITIVE_KEYS:
+            continue
+        safe_items.append(f"{key}={truncate_text(redact_sensitive(value), 120)}")
+    return " " + " ".join(safe_items) if safe_items else ""

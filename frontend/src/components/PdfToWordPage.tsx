@@ -444,7 +444,7 @@ function MineruColabGuide({ onClose }: { onClose: () => void }) {
         <ol className="pdf-word-guide-steps">
           <li className="pdf-word-guide-inline-step">
             <strong>Mở notebook Colab.</strong>
-            <a href="https://colab.research.google.com/drive/1KC1hHv9eYoRjwKkrwXO-uHrAzEAw8ATY?usp=sharing" target="_blank" rel="noreferrer">
+            <a href="https://colab.research.google.com/github/sin0235/MinerU/blob/main/colab_pdf_to_word_cloudflare.ipynb" target="_blank" rel="noreferrer">
               Mở MinerU Colab
             </a>
           </li>

@@ -100,6 +100,7 @@ async def sync_ai_profiles_to_registry(db: DatabaseClient, value: dict, patch: d
 
 
 async def sync_ai_settings_to_registry(db: DatabaseClient, value: dict, patch: dict | None = None) -> None:
+    current_settings = get_settings()
     value = normalize_provider_defaults(value)
     patch = normalize_provider_defaults(patch) if patch is not None else None
     ai_settings = SystemAiSettings.model_validate(value)
@@ -119,7 +120,7 @@ async def sync_ai_settings_to_registry(db: DatabaseClient, value: dict, patch: d
         if provider.allowed_model_ids and default_model_id not in provider.allowed_model_ids:
             default_model_id = provider.allowed_model_ids[0]
         provider_patch = patch_data.get(provider_id) if isinstance(patch_data.get(provider_id), dict) else {}
-        env_key = (getattr(get_settings(), f"{provider_id}_api_key", None) or "").strip()
+        env_key = (getattr(current_settings, f"{provider_id}_api_key", None) or "").strip()
         await save_provider_config(db, provider_id, provider.base_url, default_model_id, api_key_configured=bool(provider.api_key or env_key))
         if "scanned_models" in provider_patch:
             await upsert_scanned_models(db, provider_id, [AiModelInfo.model_validate(model.model_dump() | {"provider": provider_id}) for model in provider.scanned_models])
@@ -136,7 +137,7 @@ async def sync_ai_settings_to_registry(db: DatabaseClient, value: dict, patch: d
         await set_model_setting(db, "openrouter_reasoning_enabled", ai_settings.openrouter_reasoning_enabled)
     if "ocr" in patch_keys:
         await set_model_setting(db, "ocr_max_image_mb", ai_settings.ocr.max_image_mb)
-        registry = await load_model_registry(db, settings)
+        registry = await load_model_registry(db, current_settings)
         fallbacks = registry.task_profiles.get("ocr").fallbacks if registry.task_profiles.get("ocr") else []
         await save_task_profile(db, "ocr", ai_settings.ocr.provider, ai_settings.ocr.model, fallbacks)
 

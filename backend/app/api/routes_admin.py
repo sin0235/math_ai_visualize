@@ -32,7 +32,7 @@ from app.schemas.auth import (
 from app.schemas.feedback import AdminFeedbackResponse, AdminFeedbackUpdateRequest
 from app.schemas.scene import MathScene, ModelScanRequest, RenderPayload
 from app.services.admin_settings import build_database_diagnostics, normalize_provider_defaults, sync_ai_profiles_to_registry, sync_ai_settings_to_registry
-from app.services.model_registry import resolve_effective_settings
+from app.services.model_registry import resolve_effective_settings, save_provider_check
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -331,19 +331,33 @@ async def admin_check_provider(
     db: DatabaseClient = Depends(get_database),
 ) -> dict:
     await enforce_rate_limit(db, http_request, admin, "admin_provider_check", 20, 60)
-    from app.services.extractor import _extract_with_provider
 
     settings = await resolve_effective_settings(db, request.runtime_settings)
-    test_problem = "Vẽ điểm A(0,0)."
     provider_aliases = {
         "ollama": "ollama_gpt_oss",
     }
     resolved_provider = provider_aliases.get(provider, provider)
     try:
-        await _extract_with_provider(resolved_provider, settings, test_problem, grade=None, reasoning_layer="off")
-        return {"status": "ok", "message": f"Kết nối tới {provider} thành công."}
+        await _check_provider_connection(resolved_provider, settings)
+        message = f"Kết nối tới {provider} thành công."
+        await save_provider_check(db, provider, "ok", message)
+        return {"status": "ok", "message": message}
     except Exception as error:
-        return {"status": "error", "message": str(error)}
+        message = str(error)
+        await save_provider_check(db, provider, "error", message)
+        return {"status": "error", "message": message}
+
+
+async def _check_provider_connection(provider: str, settings) -> None:
+    if provider == "openai_compat":
+        from app.services.openai_compat_client import OpenAICompatClient
+
+        await OpenAICompatClient(settings).check_connection()
+        return
+
+    from app.services.extractor import _extract_with_provider
+
+    await _extract_with_provider(provider, settings, "Vẽ điểm A(0,0).", grade=None, reasoning_layer="off")
 
 
 @router.get("/audit-logs", response_model=list[AuditLogResponse])
