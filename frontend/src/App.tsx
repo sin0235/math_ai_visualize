@@ -2097,14 +2097,28 @@ function buildModelOptions(settings: RuntimeSettings, defaults?: SettingsDefault
 }
 
 function modelIdsForProvider(providerDefaults: SettingsDefaults['openrouter'] | SettingsDefaults['nvidia'] | SettingsDefaults['ollama'] | SettingsDefaults['openai_compat'] | SettingsDefaults['router9'] | undefined, currentModel: string, defaults: SettingsDefaults | null | undefined, providerId: string) {
+  const ids: string[] = [];
+  const add = (modelId: string | null | undefined) => {
+    const id = String(modelId ?? '').trim();
+    if (id && !ids.includes(id)) ids.push(id);
+  };
   const registryModels = defaults?.registry_models?.filter((model) => model.provider_id === providerId && model.enabled) ?? [];
   if (registryModels.length > 0) {
     const visibleModels = registryModels.some((model) => model.allowed) ? registryModels.filter((model) => model.allowed) : registryModels;
-    return visibleModels.map((model) => model.id);
+    visibleModels.forEach((model) => add(model.id));
+    providerDefaults?.allowed_model_ids.forEach(add);
+    add(providerDefaults?.model);
+    add(currentModel);
+    return ids;
   }
-  if (!providerDefaults) return [currentModel].filter(Boolean) as string[];
-  if (providerDefaults.allowed_model_ids.length > 0) return providerDefaults.allowed_model_ids;
-  return [providerDefaults.model].filter(Boolean) as string[];
+  if (!providerDefaults) {
+    add(currentModel);
+    return ids;
+  }
+  if (providerDefaults.allowed_model_ids.length > 0) providerDefaults.allowed_model_ids.forEach(add);
+  else add(providerDefaults.model);
+  add(currentModel);
+  return ids;
 }
 
 function providerLabel(provider: 'openrouter' | 'nvidia' | 'ollama' | 'openai_compat') {

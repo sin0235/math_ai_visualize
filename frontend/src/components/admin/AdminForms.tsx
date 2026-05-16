@@ -706,15 +706,23 @@ export function AdminAiProfilesForm({ value, aiSettings, defaults, onSave, onToa
   }
 
   function modelOptions(selectedProvider: string, selectedModel: string, fallbackModels: string[] = []) {
+    if (selectedProvider === 'auto') {
+      return allProviderModelOptions(selectedModel, fallbackModels);
+    }
     const options = buildModelOptionsFromDefaults(providerDefaults(selectedProvider), selectedModel, fallbackModels, settingsDefaults, selectedProvider);
-    if (options.length > 0 || selectedProvider !== 'auto') return options;
-    // Khi provider là auto và không có models, tổng hợp từ tất cả providers đã cấu hình
+    return options;
+  }
+
+  function allProviderModelOptions(selectedModel: string, fallbackModels: string[] = []) {
     const seen = new Set<string>();
     const combined: Array<{ id: string; label: string }> = [];
     (['openrouter', 'nvidia', 'ollama', 'openai_compat', 'router9'] as const).forEach((provider) => {
       buildModelOptionsFromDefaults(settingsDefaults[provider], '', [], settingsDefaults, provider).forEach((option) => {
         if (!seen.has(option.id)) { seen.add(option.id); combined.push(option); }
       });
+    });
+    [...fallbackModels, selectedModel].filter(Boolean).forEach((id) => {
+      if (!seen.has(id)) { seen.add(id); combined.push({ id, label: id }); }
     });
     return combined;
   }

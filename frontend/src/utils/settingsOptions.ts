@@ -64,12 +64,7 @@ export function buildRegistryModelOptions(defaults: SettingsDefaults | null, pro
   const hasAllowlist = registryModels.some((model) => model.allowed);
   const visibleModels = hasAllowlist ? registryModels.filter((model) => model.allowed) : registryModels;
   const options = visibleModels.map((model) => ({ id: model.id, label: model.label || model.id }));
-  if (!hasAllowlist) {
-    [currentModel, ...extraModelIds].filter(Boolean).forEach((id) => {
-      if (!options.some((option) => option.id === id)) options.unshift({ id, label: id });
-    });
-  }
-  return options;
+  return mergeOptions(options, [currentModel, ...extraModelIds]);
 }
 
 export function buildModelOptionsFromDefaults(providerDefaults: ProviderSettingsDefaults | undefined, currentModel = '', extraModelIds: string[] = [], defaults?: SettingsDefaults | null, providerId?: string): Option[] {
