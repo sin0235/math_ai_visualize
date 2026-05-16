@@ -67,7 +67,8 @@ async def extract_text_from_image(
 ) -> OcrResult:
     validate_image_data_url(image_data_url)
     attempts: list[OcrAttempt] = []
-    selected_provider = resolve_ocr_provider(provider, model)
+    auto_selection = provider is None and model is None
+    selected_provider = "router9" if auto_selection and settings.router9_only else resolve_ocr_provider(provider, model)
     selected_model = normalize_model_for_provider(selected_provider, model)
     selected_models = _dedupe([selected_model or "", *[normalize_model_for_provider(selected_provider, fallback) or "" for fallback in fallback_models or []]])
     explicit_model = model is not None
@@ -84,7 +85,7 @@ async def extract_text_from_image(
         if settings.router9_only or explicit_model:
             raise RuntimeError(_format_ocr_failure("OCR 9router thất bại.", attempts, settings.router9_only))
 
-    if provider is None and model is None and settings.router9_api_key:
+    if auto_selection and selected_provider != "router9" and settings.router9_api_key:
         result = await _try_router9_ocr(image_data_url, settings, None, attempts, system_prompt, user_text)
         if result is not None:
             return result

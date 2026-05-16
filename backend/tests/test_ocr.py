@@ -294,6 +294,34 @@ def test_ocr_router9_only_rejects_openrouter_provider():
     assert "9router-only" in response.json()["detail"]["message"]
 
 
+def test_ocr_router9_only_auto_uses_router9(monkeypatch):
+    calls = []
+
+    async def fake_router9(self, image_data_url: str, model: str | None = None):
+        calls.append(("router9", model))
+        return "Đề từ 9router-only."
+
+    async def fake_openrouter(self, image_data_url: str, model: str | None = None):
+        calls.append(("openrouter", model))
+        return "Không nên gọi OpenRouter."
+
+    monkeypatch.setattr("app.services.router9_client.Router9Client.ocr_image", fake_router9)
+    monkeypatch.setattr("app.services.openrouter_client.OpenRouterClient.ocr_image", fake_openrouter)
+
+    response = TestClient(app).post(
+        "/api/ocr",
+        json={
+            "image_data_url": _IMAGE_DATA_URL,
+            "runtime_settings": {"router9": {"only_mode": True, "api_key": "router9-secret"}},
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["provider"] == "router9"
+    assert response.json()["text"] == "Đề từ 9router-only."
+    assert calls == [("router9", "codex-5.5-image")]
+
+
 def test_ocr_openrouter_fallback_reports_actual_model(monkeypatch):
     calls = []
 
