@@ -34,7 +34,15 @@ function formatLabelsForContext(preferThreeView: boolean): Record<ExportFormat, 
     jpg: { ...base.jpg, hint: 'Chụp đúng góc nhìn khung Three.js hiện tại.' },
     svg: {
       ...base.svg,
-      hint: 'Vector từ máy chủ (chiếu xéo cố định), không trùng góc nhìn 3D trên màn hình — ưu tiên PNG để khớp góc nhìn.',
+      hint: 'Nhúng ảnh chụp đúng góc nhìn hiện tại vào file SVG.',
+    },
+    'katex-html': {
+      label: 'Xuất HTML (.html)',
+      hint: 'Nhúng ảnh chụp đúng góc nhìn hiện tại vào trang HTML.',
+    },
+    tikz: {
+      ...base.tikz,
+      hint: 'TikZ chỉ hỗ trợ phép chiếu vector cố định cho hình 3D.',
     },
   };
 }
@@ -44,7 +52,10 @@ function exportLock(
   captureCurrentView: ThreeSceneImageCapture | null | undefined,
   preferCurrentViewCapture: boolean,
 ): { locked: boolean; reason?: string } {
-  if (format === 'png' || format === 'jpg') {
+  if (format === 'tikz' && preferCurrentViewCapture) {
+    return { locked: true, reason: 'TikZ chưa hỗ trợ giữ góc nhìn Three.js hiện tại. Hãy dùng PNG, JPG, SVG hoặc HTML.' };
+  }
+  if (format === 'png' || format === 'jpg' || (preferCurrentViewCapture && (format === 'svg' || format === 'katex-html'))) {
     const ready = typeof captureCurrentView === 'function';
     if (preferCurrentViewCapture && !ready) {
       return { locked: true, reason: 'Chưa sẵn sàng chụp góc nhìn — đợi hình Three.js hiển thị xong rồi thử lại.' };
@@ -125,7 +136,87 @@ async function getExportBlob(format: ExportFormat, scene: MathScene, advancedSet
     if (preferCurrentViewCapture) throw new Error('Chưa thể chụp góc nhìn hiện tại. Vui lòng chờ hình tải xong rồi thử lại.');
   }
 
+  if (preferCurrentViewCapture && typeof captureCurrentView === 'function' && (format === 'svg' || format === 'katex-html')) {
+    const imageBlob = await captureCurrentView('image/png');
+    const dataUrl = await blobToDataUrl(imageBlob);
+    const size = await imageSizeFromDataUrl(dataUrl);
+    if (format === 'svg') {
+      return {
+        blob: new Blob([buildCurrentViewSvg(scene, dataUrl, size)], { type: 'image/svg+xml;charset=utf-8' }),
+        filename: buildExportFilename(scene, format),
+      };
+    }
+    return {
+      blob: new Blob([buildCurrentViewHtml(scene, dataUrl, size)], { type: 'text/html;charset=utf-8' }),
+      filename: buildExportFilename(scene, format),
+    };
+  }
+
   return exportScene(format, scene, advancedSettings);
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ''));
+    reader.onerror = () => reject(reader.error ?? new Error('Không đọc được ảnh góc nhìn hiện tại.'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+function imageSizeFromDataUrl(dataUrl: string): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve({ width: img.naturalWidth || 1280, height: img.naturalHeight || 720 });
+    img.onerror = () => reject(new Error('Không đọc được kích thước ảnh góc nhìn hiện tại.'));
+    img.src = dataUrl;
+  });
+}
+
+function buildCurrentViewSvg(scene: MathScene, imageHref: string, size: { width: number; height: number }) {
+  const title = escapeXml(scene.problem_text || 'Hinh');
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size.width}" height="${size.height}" viewBox="0 0 ${size.width} ${size.height}" role="img" aria-label="${title}">
+  <title>${title}</title>
+  <image href="${imageHref}" x="0" y="0" width="${size.width}" height="${size.height}" preserveAspectRatio="xMidYMid meet"/>
+</svg>
+`;
+}
+
+function buildCurrentViewHtml(scene: MathScene, imageSrc: string, size: { width: number; height: number }) {
+  const title = escapeHtml(scene.problem_text || 'Hình');
+  const topic = escapeHtml(scene.topic.replace(/_/g, ' '));
+  return `<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${title}</title>
+  <style>
+    :root { color: #111827; background: #f8fafc; font-family: Arial, sans-serif; }
+    body { margin: 0; padding: 24px; }
+    main { max-width: ${Math.max(720, Math.min(size.width, 1200))}px; margin: 0 auto; }
+    h1 { font-size: 20px; margin: 0 0 8px; }
+    p { margin: 0 0 16px; color: #475569; }
+    img { width: 100%; height: auto; display: block; border: 1px solid #dbe3ef; background: #fff; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>${title}</h1>
+    <p>${topic} · ảnh chụp từ góc nhìn Three.js hiện tại</p>
+    <img src="${imageSrc}" width="${size.width}" height="${size.height}" alt="${title}" />
+  </main>
+</body>
+</html>
+`;
+}
+
+function escapeHtml(value: string) {
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function escapeXml(value: string) {
+  return escapeHtml(value).replace(/'/g, '&apos;');
 }
 
 export function ExportMenu({ scene, advancedSettings, onError, captureCurrentView, preferCurrentViewCapture }: ExportMenuProps): JSX.Element {
