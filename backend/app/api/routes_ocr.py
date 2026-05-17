@@ -29,7 +29,10 @@ async def ocr_image(
     settings = await resolve_effective_settings(db, request.runtime_settings)
     registry = await load_model_registry(db, settings)
     raw_ocr_profile = registry.task_profiles.get("ocr")
-    ocr_profile = resolve_task_profile(registry, "ocr", request.ocr_provider, request.ocr_model)
+    try:
+        ocr_profile = resolve_task_profile(registry, "ocr", request.ocr_provider, request.ocr_model)
+    except ValueError as error:
+        raise bad_request_from_error(error, "ocr_failed") from error
     apply_profile = should_apply_ocr_profile(settings, raw_ocr_profile, ocr_profile, request.ocr_provider, request.ocr_model)
     profile_provider = ocr_profile.provider_id if apply_profile else request.ocr_provider
     profile_model = ocr_profile.model_id if apply_profile else request.ocr_model

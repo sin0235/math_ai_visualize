@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from app.core.config import Settings
 from app.schemas.scene import OcrMode, OcrProvider
 from app.services.ai_fallback import openrouter_vision_candidates, provider_configured, router9_ocr_candidates
-from app.services.model_provider import normalize_model_for_provider, resolve_ocr_provider
+from app.services.model_provider import canonicalize_model_ref, normalize_model_for_provider, resolve_ocr_provider
 from app.services.nvidia_client import NvidiaClient
 from app.services.ollama_client import OllamaClient
 from app.services.openai_compat_client import OpenAICompatClient
@@ -69,7 +69,7 @@ async def extract_text_from_image(
     attempts: list[OcrAttempt] = []
     auto_selection = provider is None and model is None
     selected_provider = "router9" if auto_selection and settings.router9_only else resolve_ocr_provider(provider, model)
-    selected_model = normalize_model_for_provider(selected_provider, model)
+    selected_model = canonicalize_model_ref(selected_provider, model, strict=True, allow_auto=False).model_id if model else None
     selected_models = _dedupe([selected_model or "", *[normalize_model_for_provider(selected_provider, fallback) or "" for fallback in fallback_models or []]])
     explicit_model = model is not None
     system_prompt = DIAGRAM_OCR_SYSTEM_PROMPT if mode == "diagram" else None

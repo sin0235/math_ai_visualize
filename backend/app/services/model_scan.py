@@ -6,6 +6,18 @@ from app.core.config import Settings
 from app.schemas.scene import AiModelInfo, ModelScanProvider
 from app.services.openrouter_client import openrouter_api_base_url
 
+CAPABILITY_KEYS = (
+    "capabilities",
+    "supported_parameters",
+    "architecture",
+    "top_provider",
+    "input_modalities",
+    "output_modalities",
+    "modalities",
+    "per_request_limits",
+)
+OLLAMA_CAPABILITY_KEYS = ("details", "size", "digest", "modified_at")
+
 
 async def list_provider_models(settings: Settings, provider: ModelScanProvider) -> list[AiModelInfo]:
     api_key, base_url = _provider_connection(settings, provider)
@@ -164,6 +176,7 @@ def _parse_openai_style_models(provider: str, response: httpx.Response) -> list[
                 owned_by=_optional_str(item.get("owned_by")),
                 created=_optional_int(item.get("created")),
                 context_length=_extract_context_length(item),
+                capabilities=_extract_capabilities(item, CAPABILITY_KEYS),
             )
         )
     return sorted(models, key=lambda model: model.id.lower())
@@ -202,9 +215,24 @@ def _parse_ollama_tags(response: httpx.Response) -> list[AiModelInfo]:
                 owned_by=owned_by,
                 created=created,
                 context_length=_extract_context_length(item),
+                capabilities=_extract_capabilities(item, OLLAMA_CAPABILITY_KEYS),
             )
         )
     return sorted(models, key=lambda model: model.id.lower())
+
+
+def _extract_capabilities(item: dict[str, Any], keys: tuple[str, ...]) -> dict[str, Any]:
+    return {key: value for key in keys if (value := item.get(key)) is not None and _is_json_compatible(value)}
+
+
+def _is_json_compatible(value: Any) -> bool:
+    if value is None or isinstance(value, str | int | float | bool):
+        return True
+    if isinstance(value, list):
+        return all(_is_json_compatible(item) for item in value)
+    if isinstance(value, dict):
+        return all(isinstance(key, str) and _is_json_compatible(item) for key, item in value.items())
+    return False
 
 
 def _optional_str(value: Any) -> str | None:

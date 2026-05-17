@@ -154,6 +154,13 @@ const OPENROUTER_MODEL_PREFIXES = ['openrouter/', 'openai/', 'google/', 'anthrop
 const NVIDIA_MODEL_PREFIXES = ['nvidia/'] as const;
 const OLLAMA_MODEL_PREFIXES = ['ollama/'] as const;
 const OPENAI_COMPAT_MODEL_PREFIXES = ['openai_compat/', 'openai-compat/'] as const;
+const EXPLICIT_PROVIDER_PREFIXES: Record<OcrProvider, readonly string[]> = {
+  openrouter: ['openrouter/'],
+  router9: ['router9/'],
+  nvidia: NVIDIA_MODEL_PREFIXES,
+  ollama: OLLAMA_MODEL_PREFIXES,
+  openai_compat: OPENAI_COMPAT_MODEL_PREFIXES,
+};
 
 export function inferOcrProviderFromModelId(model: string): OcrProvider | null {
   const value = model.trim();
@@ -164,4 +171,33 @@ export function inferOcrProviderFromModelId(model: string): OcrProvider | null {
   if (OPENAI_COMPAT_MODEL_PREFIXES.some((prefix) => value.startsWith(prefix))) return 'openai_compat';
   if (OPENROUTER_MODEL_PREFIXES.some((prefix) => value.startsWith(prefix))) return 'openrouter';
   return null;
+}
+
+export function explicitProviderFromModelId(model: string): OcrProvider | null {
+  const value = model.trim();
+  if (!value) return null;
+  for (const [provider, prefixes] of Object.entries(EXPLICIT_PROVIDER_PREFIXES) as Array<[OcrProvider, readonly string[]]>) {
+    if (prefixes.some((prefix) => value.startsWith(prefix))) return provider;
+  }
+  return null;
+}
+
+export function normalizeModelForProvider(provider: string, model: string): string {
+  const value = model.trim();
+  if (provider === 'openrouter') return value.replace(/^openrouter\//, '');
+  if (provider === 'router9') return value.replace(/^router9\//, '');
+  if (provider === 'nvidia') return value.replace(/^nvidia\//, '');
+  if (provider === 'ollama') return value.replace(/^ollama\//, '');
+  if (provider === 'openai_compat') return value.replace(/^openai_compat\//, '').replace(/^openai-compat\//, '');
+  return value;
+}
+
+export function normalizeProviderModelSelection(provider: string, model: string) {
+  const selectedProvider = provider.trim();
+  const selectedModel = model.trim();
+  const explicitProvider = explicitProviderFromModelId(selectedModel);
+  if (explicitProvider && selectedProvider && explicitProvider !== selectedProvider) {
+    return { provider: explicitProvider, model: normalizeModelForProvider(explicitProvider, selectedModel), changed: true };
+  }
+  return { provider: selectedProvider, model: normalizeModelForProvider(selectedProvider, selectedModel), changed: false };
 }

@@ -33,6 +33,7 @@ from app.schemas.auth import (
 from app.schemas.feedback import AdminFeedbackResponse, AdminFeedbackUpdateRequest
 from app.schemas.scene import MathScene, ModelScanRequest, RenderPayload
 from app.services.admin_settings import build_database_diagnostics, normalize_provider_defaults, sync_ai_profiles_to_registry, sync_ai_settings_to_registry
+from app.services.model_provider import canonicalize_fallback_models, canonicalize_model_ref
 from app.services.model_registry import resolve_effective_settings, save_provider_check
 from app.services.provider_ping import ADMIN_PING_PROVIDERS, ping_provider
 
@@ -421,8 +422,14 @@ def validate_system_setting(key: str, value: dict) -> dict:
 def validate_ai_settings_rules(settings: SystemAiSettings) -> None:
     if settings.default_provider not in ADMIN_DEFAULT_PROVIDERS:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Nhà cung cấp mặc định không hợp lệ.")
+    for provider_id in ["openrouter", "nvidia", "ollama", "openai_compat", "router9"]:
+        provider_settings = getattr(settings, provider_id)
+        validate_provider_model_pair(provider_id, provider_settings.model)
+        for model_id in provider_settings.allowed_model_ids:
+            validate_provider_model_pair(provider_id, model_id)
     if settings.ocr.provider not in ADMIN_OCR_PROVIDERS:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Nhà cung cấp OCR không hợp lệ.")
+    validate_provider_model_pair(settings.ocr.provider, settings.ocr.model)
     if settings.router9.only_mode and not settings.router9.model and not settings.router9.allowed_model_ids:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Router9 only mode cần ít nhất một model Router9.")
 
@@ -431,6 +438,24 @@ def validate_ai_profiles_rules(profiles: SystemAiProfiles) -> None:
     for profile in [profiles.geometry_reasoning, profiles.solver_explanation, profiles.ocr]:
         if profile.provider not in ADMIN_DEFAULT_PROVIDERS:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Nhà cung cấp AI không hợp lệ.")
+        validate_provider_model_pair(profile.provider, profile.model)
+        validate_profile_fallbacks(profile.provider, profile.fallbacks)
+
+
+def validate_provider_model_pair(provider_id: str, model_id: str) -> None:
+    if not model_id:
+        return
+    try:
+        canonicalize_model_ref(provider_id, model_id, strict=True)
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)) from error
+
+
+def validate_profile_fallbacks(provider_id: str, fallbacks: list[str]) -> None:
+    try:
+        canonicalize_fallback_models(provider_id, fallbacks, strict=True)
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)) from error
 
 
 def build_user_update_audit_metadata(current: UserRecord, patch: dict) -> dict:

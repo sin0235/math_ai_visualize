@@ -205,6 +205,27 @@ def test_settings_defaults_reports_allowed_openrouter_default(settings_defaults_
     assert payload["openrouter"]["allowed_model_ids"] == ["allowed/model"]
 
 
+def test_settings_defaults_exposes_model_capabilities(settings_defaults_client):
+    from app.schemas.scene import AiModelInfo
+    from app.services.model_registry import upsert_scanned_models
+
+    asyncio.run(upsert_scanned_models(settings_defaults_client.db, "openrouter", [
+        AiModelInfo(
+            id="vision/model",
+            label="Vision model",
+            provider="openrouter",
+            capabilities={"input_modalities": ["text", "image"]},
+        )
+    ]))
+
+    response = settings_defaults_client.get("/api/settings/defaults")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["openrouter"]["scanned_models"][0]["capabilities"] == {"input_modalities": ["text", "image"]}
+    assert next(model for model in payload["registry_models"] if model["id"] == "vision/model")["capabilities"] == {"input_modalities": ["text", "image"]}
+
+
 def test_settings_defaults_reports_nvidia_ocr_profile(settings_defaults_client):
     from app.services.model_registry import save_provider_config, save_task_profile
 

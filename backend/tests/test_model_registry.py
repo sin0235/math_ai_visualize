@@ -168,6 +168,42 @@ async def test_explicit_provider_without_model_uses_that_provider_default(db):
     assert profile.model_id == "compat/default"
 
 
+@pytest.mark.anyio
+async def test_save_task_profile_rejects_provider_model_mismatch(db):
+    settings = Settings(_env_file=None)
+    await load_model_registry(db, settings)
+
+    with pytest.raises(ValueError, match="thuộc provider openrouter"):
+        await save_task_profile(db, "ocr", "router9", "openrouter/google/gemma-4-26b-a4b-it:free", [])
+
+
+@pytest.mark.anyio
+async def test_load_model_registry_canonicalizes_legacy_profile_mismatch(db):
+    settings = Settings(_env_file=None)
+    await load_model_registry(db, settings)
+    await save_provider_config(db, "router9", "https://router9.example/v1", "gh/gpt-5.2")
+    await save_provider_config(db, "openrouter", "https://openrouter.example/v1", "openrouter/google/gemma-4-26b-a4b-it:free")
+    await db.execute(
+        """
+        INSERT INTO ai_task_profiles (task, provider_id, model_id, fallbacks_json)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(task) DO UPDATE SET provider_id = excluded.provider_id, model_id = excluded.model_id, fallbacks_json = excluded.fallbacks_json
+        """,
+        ["ocr", "router9", "openrouter/google/gemma-4-26b-a4b-it:free", json.dumps(["openrouter/google/gemma-4-31b-it:free", "cc/codex-5.5-image"])],
+    )
+
+    registry = await load_model_registry(db, settings)
+    profile = resolve_task_profile(registry, "ocr")
+    row = await db.fetch_one("SELECT provider_id, model_id, fallbacks_json FROM ai_task_profiles WHERE task = ?", ["ocr"])
+
+    assert profile is not None
+    assert profile.provider_id == "openrouter"
+    assert profile.model_id == "google/gemma-4-26b-a4b-it:free"
+    assert row["provider_id"] == "openrouter"
+    assert row["model_id"] == "google/gemma-4-26b-a4b-it:free"
+    assert json.loads(row["fallbacks_json"]) == ["google/gemma-4-31b-it:free"]
+
+
 def test_validate_system_setting_normalizes_default_to_allowlist():
     from app.api.routes_admin import validate_system_setting
 
@@ -196,6 +232,20 @@ def test_validate_system_setting_removes_non_router9_only_mode():
     assert "only_mode" not in validated["openrouter"]
     assert "only_mode" not in validated["openai_compat"]
     assert validated["router9"]["only_mode"] is True
+
+
+def test_validate_system_setting_rejects_mismatched_provider_model():
+    from fastapi import HTTPException
+    from app.api.routes_admin import validate_system_setting
+
+    with pytest.raises(HTTPException) as error:
+        validate_system_setting("ai_profiles", {
+            "version": 1,
+            "ocr": {"provider": "router9", "model": "openrouter/google/gemma-4-26b-it:free"},
+        })
+
+    assert error.value.status_code == 422
+    assert "thuộc provider openrouter" in str(error.value.detail)
 
 
 @pytest.mark.anyio
@@ -246,6 +296,38 @@ async def test_sync_ai_settings_patch_only_updates_touched_provider(db):
 
     assert registry.providers["openrouter"].default_model_id == "new/openrouter"
     assert registry.providers["nvidia"].default_model_id == "old-nvidia"
+
+
+@pytest.mark.anyio
+async def test_scanned_model_capabilities_round_trip(db):
+    await load_model_registry(db, Settings(_env_file=None))
+    await upsert_scanned_models(db, "openrouter", [
+        AiModelInfo(
+            id="openrouter/vision-model",
+            label="Vision Model",
+            provider="openrouter",
+            context_length=128000,
+            capabilities={"input_modalities": ["text", "image"], "supported_parameters": ["temperature"]},
+        )
+    ])
+    await set_allowed_models(db, "openrouter", ["vision-model"])
+    await upsert_scanned_models(db, "openrouter", [
+        AiModelInfo(
+            id="openrouter/vision-model",
+            label="Vision Model Updated",
+            provider="openrouter",
+            context_length=128000,
+            capabilities={"input_modalities": ["text", "image"], "supported_parameters": ["temperature", "tools"]},
+        )
+    ])
+
+    registry = await load_model_registry(db, Settings(_env_file=None))
+    model = next(model for model in registry.models["openrouter"] if model.id == "vision-model")
+    scanned = next(model for model in registry.scanned_model_infos("openrouter") if model.id == "vision-model")
+
+    assert model.allowed is True
+    assert model.capabilities == {"input_modalities": ["text", "image"], "supported_parameters": ["temperature", "tools"]}
+    assert scanned.capabilities == model.capabilities
 
 
 @pytest.mark.anyio
@@ -397,10 +479,10 @@ async def test_ai_profiles_sync_to_registry_task_profiles(db):
     registry = await load_model_registry(db, Settings(_env_file=None))
 
     assert registry.task_profiles["render"].provider_id == "openrouter"
-    assert registry.task_profiles["render"].model_id == "openrouter/geometry"
-    assert registry.task_profiles["reasoning"].fallbacks == ["openrouter/fallback"]
+    assert registry.task_profiles["render"].model_id == "geometry"
+    assert registry.task_profiles["reasoning"].fallbacks == ["fallback"]
     assert registry.task_profiles["solver_explanation"].provider_id == "router9"
-    assert registry.task_profiles["solver_explanation"].model_id == "router9/solver"
+    assert registry.task_profiles["solver_explanation"].model_id == "solver"
 
 
 @pytest.mark.anyio

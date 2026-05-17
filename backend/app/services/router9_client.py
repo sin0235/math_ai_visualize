@@ -9,6 +9,7 @@ from app.schemas.scene import AiModelInfo
 from app.services.ai_prompt import REASONING_SYSTEM_PROMPT, SCENE_EXTRACTION_SYSTEM_PROMPT, build_reasoning_prompt, build_scene_extraction_prompt
 from app.services.chat_response import extract_chat_message_content
 from app.services.openrouter_client import OCR_SYSTEM_PROMPT
+from app.services.model_scan import CAPABILITY_KEYS, _extract_capabilities
 from app.services.provider_logging import format_provider_error, log_ocr_summary, log_provider_request, log_provider_response, log_scene_summary
 
 
@@ -213,6 +214,7 @@ def _parse_router9_models(data: list[Any]) -> list[AiModelInfo]:
                 owned_by=_optional_str(item.get("owned_by")),
                 created=_optional_int(item.get("created")),
                 context_length=_extract_context_length(item),
+                capabilities=_extract_capabilities(item, CAPABILITY_KEYS),
             )
         )
     return models

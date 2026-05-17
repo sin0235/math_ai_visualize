@@ -372,6 +372,20 @@ def test_ocr_explicit_model_does_not_try_fallback_model(monkeypatch):
     assert calls == ["vision/model"]
 
 
+def test_ocr_explicit_provider_rejects_cross_provider_model():
+    response = TestClient(app).post(
+        "/api/ocr",
+        json={
+            "image_data_url": _IMAGE_DATA_URL,
+            "ocr_provider": "router9",
+            "ocr_model": "openrouter/google/gemma-4-26b-it:free",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "thuộc provider openrouter" in response.json()["detail"]["message"]
+
+
 def test_ocr_enforces_daily_plan_limit(isolated_database, monkeypatch):
     async def fake_ocr_image(self, image_data_url: str, model: str | None = None):
         return "Đề từ OCR."

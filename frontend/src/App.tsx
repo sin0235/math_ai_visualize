@@ -25,7 +25,7 @@ import { normalizeMineruBaseUrl } from './api/mineru';
 import { getDefaultParamValues, patchGeogebraCommandsForScene, recomputeSceneWithParameters, recomputeThreeScene } from './utils/sceneParameters';
 import type { AdvancedRenderSettings, MathScene, RenderResponse, Renderer } from './types/scene';
 import { defaultRuntimeSettings, SETTINGS_STORAGE_VERSION, type OcrProvider, type RuntimeSettings, type SettingsDefaults, type UserBasicSettings } from './types/settings';
-import { inferOcrProviderFromModelId } from './utils/settingsOptions';
+import { normalizeProviderModelSelection } from './utils/settingsOptions';
 import logoUrl from '../img.svg';
 import './styles.css';
 
@@ -1805,15 +1805,8 @@ function mergeBackendDefaults(current: RuntimeSettings, defaults: SettingsDefaul
   const userWantsSystemOcrProvider = !String(current.ocr.provider ?? '').trim();
   const ocrProviderFromChoice = (current.ocr.provider || defaults.ocr.provider || 'openrouter') as OcrProvider;
   const ocrModel = userWantsSystemOcrProvider ? '' : current.ocr.model;
-  const inferred = inferOcrProviderFromModelId(ocrModel);
-  const rawModel = ocrModel.trim();
-  const ocrProviderEffective =
-    ocrProviderFromChoice === 'openrouter' && inferred === 'router9' && !rawModel.startsWith('openrouter/')
-      ? 'router9'
-      : ocrProviderFromChoice === 'router9' && inferred === 'openrouter'
-        ? 'openrouter'
-        : ocrProviderFromChoice;
-  const ocrProviderStored = userWantsSystemOcrProvider ? '' : ocrProviderEffective;
+  const normalizedOcr = normalizeProviderModelSelection(ocrProviderFromChoice, ocrModel);
+  const ocrProviderStored = (userWantsSystemOcrProvider ? '' : normalizedOcr.provider) as RuntimeSettings['ocr']['provider'];
 
   return {
     ...current,
@@ -1828,7 +1821,7 @@ function mergeBackendDefaults(current: RuntimeSettings, defaults: SettingsDefaul
     ocr: {
       ...current.ocr,
       provider: ocrProviderStored,
-      model: ocrModel,
+      model: normalizedOcr.model,
       max_image_mb: current.ocr.max_image_mb || defaults.ocr.max_image_mb,
     },
   };
@@ -1889,27 +1882,41 @@ function loadStoredSettings(saved: string): RuntimeSettings {
 }
 
 function loadRemoteSettings(settings: UserBasicSettings, current: RuntimeSettings): RuntimeSettings {
-  const next = { ...current, default_provider: settings.default_provider, ocr: { ...current.ocr, ...settings.ocr } };
+  const normalizedOcr = normalizeOcrSettings(settings.ocr);
+  const next: RuntimeSettings = { ...current, default_provider: settings.default_provider, ocr: { ...current.ocr, ...normalizedOcr } };
   const provider = settings.default_provider;
-  if (provider === 'openrouter' || provider === 'nvidia' || provider === 'ollama' || provider === 'openai_compat' || provider === 'router9') {
-    return dropApiKeys({ ...next, [provider]: { ...next[provider], model: settings.default_model } });
+  if (isRenderProvider(provider)) {
+    const normalizedDefault = normalizeProviderModelSelection(provider, settings.default_model);
+    const normalizedProvider = isRenderProvider(normalizedDefault.provider) ? normalizedDefault.provider : provider;
+    return dropApiKeys({ ...next, default_provider: normalizedProvider, [normalizedProvider]: { ...next[normalizedProvider], model: normalizedDefault.model } });
   }
   return dropApiKeys(next);
 }
 
 function toUserBasicSettings(settings: RuntimeSettings): UserBasicSettings {
+  const normalizedOcr = normalizeOcrSettings(settings.ocr);
   return {
     version: 2,
     default_provider: settings.default_provider,
     default_model: currentProviderModel(settings),
-    ocr: settings.ocr.provider.trim() ? settings.ocr : { ...settings.ocr, model: '' },
+    ocr: normalizedOcr,
   };
 }
 
 function currentProviderModel(settings: RuntimeSettings) {
   const provider = settings.default_provider;
-  if (provider === 'openrouter' || provider === 'nvidia' || provider === 'ollama' || provider === 'openai_compat' || provider === 'router9') return settings[provider].model;
+  if (isRenderProvider(provider)) return settings[provider].model;
   return '';
+}
+
+function isRenderProvider(provider: string): provider is 'openrouter' | 'nvidia' | 'ollama' | 'openai_compat' | 'router9' {
+  return provider === 'openrouter' || provider === 'nvidia' || provider === 'ollama' || provider === 'openai_compat' || provider === 'router9';
+}
+
+function normalizeOcrSettings(ocr: RuntimeSettings['ocr']): RuntimeSettings['ocr'] {
+  if (!ocr.provider.trim()) return { ...ocr, model: '' };
+  const normalized = normalizeProviderModelSelection(ocr.provider, ocr.model);
+  return { ...ocr, provider: normalized.provider as RuntimeSettings['ocr']['provider'], model: normalized.model };
 }
 
 function mergeRuntimeSettingsShape(rawSettings: Partial<RuntimeSettings>, base: RuntimeSettings = defaultRuntimeSettings): RuntimeSettings {
@@ -1925,6 +1932,7 @@ function mergeRuntimeSettingsShape(rawSettings: Partial<RuntimeSettings>, base: 
 }
 
 function sanitizeSettingsForStorage(settings: RuntimeSettings): RuntimeSettings {
+  const normalizedOcr = normalizeOcrSettings(settings.ocr);
   return {
     ...defaultRuntimeSettings,
     default_provider: settings.default_provider,
@@ -1933,7 +1941,7 @@ function sanitizeSettingsForStorage(settings: RuntimeSettings): RuntimeSettings 
     ollama: { ...defaultRuntimeSettings.ollama, model: settings.ollama.model, base_url: settings.ollama.base_url },
     openai_compat: { ...defaultRuntimeSettings.openai_compat, model: settings.openai_compat.model, base_url: settings.openai_compat.base_url },
     router9: { ...defaultRuntimeSettings.router9, model: settings.router9.model, base_url: settings.router9.base_url, only_mode: settings.router9.only_mode },
-    ocr: settings.ocr.provider.trim() ? settings.ocr : { ...settings.ocr, model: '' },
+    ocr: normalizedOcr,
   };
 }
 

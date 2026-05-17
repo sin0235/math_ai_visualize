@@ -389,7 +389,7 @@ def test_openai_compat_scan_models_uses_models_endpoint_without_api_key(monkeypa
 
         async def get(self, url: str, headers: dict[str, str], timeout=None):
             calls.append((url, headers, self.timeout))
-            return httpx.Response(200, json={"data": [{"id": "deepseek-chat", "owned_by": "deepseek"}]})
+            return httpx.Response(200, json={"data": [{"id": "deepseek-chat", "owned_by": "deepseek", "input_modalities": ["text", "image"], "supported_parameters": ["temperature"]}]})
 
     monkeypatch.setattr("app.services.http_pool.get_client", lambda *args, **kwargs: FakeAsyncClient(kwargs.get("timeout") or args[1] if len(args) > 1 else 20))
 
@@ -400,6 +400,7 @@ def test_openai_compat_scan_models_uses_models_endpoint_without_api_key(monkeypa
     assert calls[0][1] == {}
     assert models[0].id == "deepseek-chat"
     assert models[0].provider == "openai_compat"
+    assert models[0].capabilities == {"input_modalities": ["text", "image"], "supported_parameters": ["temperature"]}
 
 
 def test_openai_compat_scan_models_falls_back_to_v1_models(monkeypatch):
@@ -440,7 +441,7 @@ def test_router9_list_models_uses_openai_compatible_models_endpoint(monkeypatch)
             calls.append((url, headers))
             return httpx.Response(
                 200,
-                json={"data": [{"id": "cc/claude-opus-4-6", "owned_by": "claude-code", "context_length": 200000}]},
+                json={"data": [{"id": "cc/claude-opus-4-6", "owned_by": "claude-code", "context_length": 200000, "capabilities": {"vision": True}, "modalities": ["text", "image"]}]},
             )
 
     monkeypatch.setattr("app.services.http_pool.get_client", lambda *args, **kwargs: FakeAsyncClient(kwargs.get("timeout") or args[1] if len(args) > 1 else 20))
@@ -451,6 +452,7 @@ def test_router9_list_models_uses_openai_compatible_models_endpoint(monkeypatch)
     assert calls[0][1]["Authorization"] == "Bearer secret"
     assert models[0].id == "cc/claude-opus-4-6"
     assert models[0].context_length == 200000
+    assert models[0].capabilities == {"capabilities": {"vision": True}, "modalities": ["text", "image"]}
 
 
 def test_router9_chat_payload_avoids_response_format(monkeypatch):

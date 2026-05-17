@@ -8,10 +8,18 @@ from pydantic import ValidationError
 
 from app.core.config import Settings, get_settings, merge_runtime_settings
 from app.db.session import DatabaseClient
+from app.repositories.model_registry import ModelRegistryRepository
 from app.schemas.auth import SystemAiSettings
 from app.schemas.scene import AiModelInfo, RuntimeSettings
 from app.services.ai_fallback import provider_configured
-from app.services.model_provider import infer_provider_from_model, normalize_model_for_provider
+from app.services.model_provider import (
+    canonical_provider_id,
+    canonicalize_fallback_models,
+    canonicalize_legacy_model_ref,
+    canonicalize_model_ref,
+    infer_provider_from_model,
+    normalize_model_for_provider,
+)
 
 PROVIDER_LABELS = {
     "openrouter": "OpenRouter",
@@ -42,6 +50,7 @@ class ModelRegistryItem:
     label: str
     owned_by: str | None = None
     context_length: int | None = None
+    capabilities: dict[str, Any] = field(default_factory=dict)
     enabled: bool = True
     allowed: bool = False
     source: str = "scan"
@@ -75,7 +84,7 @@ class ModelRegistry:
 
     def scanned_model_infos(self, provider_id: str) -> list[AiModelInfo]:
         return [
-            AiModelInfo(id=model.id, label=model.label, provider=provider_id, owned_by=model.owned_by, context_length=model.context_length)
+            AiModelInfo(id=model.id, label=model.label, provider=provider_id, owned_by=model.owned_by, context_length=model.context_length, capabilities=model.capabilities)
             for model in self.models.get(provider_id, []) if model.enabled
         ]
 
@@ -83,15 +92,17 @@ class ModelRegistry:
 async def load_model_registry(db: DatabaseClient, settings: Settings | None = None) -> ModelRegistry:
     settings = settings or get_settings()
     try:
+        repo = ModelRegistryRepository(db)
         await seed_model_registry(db, settings)
-        provider_rows = await db.fetch_all("SELECT * FROM ai_providers ORDER BY id")
+        await ensure_model_registry_canonical(db)
+        provider_rows = await repo.list_providers()
     except RuntimeError as error:
         if "no such table" not in str(error).lower():
             raise
         return registry_from_settings(settings)
-    model_rows = await db.fetch_all("SELECT * FROM ai_models ORDER BY provider_id, label COLLATE NOCASE, id COLLATE NOCASE")
-    profile_rows = await db.fetch_all("SELECT * FROM ai_task_profiles ORDER BY task")
-    setting_rows = await db.fetch_all("SELECT key, value_json FROM ai_model_settings")
+    model_rows = await repo.list_models()
+    profile_rows = await repo.list_task_profiles()
+    setting_rows = await repo.list_model_settings()
 
     providers = {
         str(row["id"]): ProviderRegistryItem(
@@ -116,6 +127,7 @@ async def load_model_registry(db: DatabaseClient, settings: Settings | None = No
             label=str(row["label"] or row["id"]),
             owned_by=row.get("owned_by"),
             context_length=int(row["context_length"]) if row.get("context_length") is not None else None,
+            capabilities=_json_dict(row.get("capabilities_json")),
             enabled=bool(row["enabled"]),
             allowed=bool(row["allowed"]),
             source=str(row["source"] or "scan"),
@@ -131,24 +143,18 @@ async def load_model_registry(db: DatabaseClient, settings: Settings | None = No
         for row in profile_rows
     }
     registry_settings = {str(row["key"]): _json_value(row["value_json"]) for row in setting_rows}
-    return ModelRegistry(providers=providers, models=models, task_profiles=profiles, settings=registry_settings, legacy_used=await _has_legacy_ai_settings(db))
+    return ModelRegistry(providers=providers, models=models, task_profiles=profiles, settings=registry_settings, legacy_used=await repo.has_legacy_ai_settings())
 
 
 async def seed_model_registry(db: DatabaseClient, settings: Settings) -> None:
-    existing = await db.fetch_one("SELECT 1 FROM ai_providers LIMIT 1")
-    if existing is not None:
+    repo = ModelRegistryRepository(db)
+    if await repo.has_any_provider():
         await ensure_task_profiles(db, settings)
         return
     legacy = await load_legacy_ai_settings(db)
     provider_data = _provider_seed_data(settings, legacy)
     for provider_id, data in provider_data.items():
-        await db.execute(
-            """
-            INSERT OR REPLACE INTO ai_providers (id, label, base_url, default_model_id, api_key_configured, enabled)
-            VALUES (?, ?, ?, ?, ?, 1)
-            """,
-            [provider_id, PROVIDER_LABELS[provider_id], data["base_url"], data["model"], int(data["api_key_configured"])],
-        )
+        await repo.insert_seed_provider(provider_id, PROVIDER_LABELS[provider_id], data["base_url"], data["model"], bool(data["api_key_configured"]))
         for model in data["models"]:
             await upsert_model(db, provider_id, model, allowed=model.id in data["allowed_model_ids"], source="legacy" if legacy else "env")
     router9_only = legacy.router9.only_mode if legacy else settings.router9_only
@@ -168,11 +174,11 @@ async def seed_model_registry(db: DatabaseClient, settings: Settings) -> None:
 
 
 async def load_legacy_ai_settings(db: DatabaseClient) -> SystemAiSettings | None:
-    row = await db.fetch_one("SELECT value_json FROM system_settings WHERE key = ?", ["ai_settings"])
-    if row is None:
+    value_json = await ModelRegistryRepository(db).load_legacy_ai_settings_json()
+    if value_json is None:
         return None
     try:
-        value = json.loads(str(row["value_json"]))
+        value = json.loads(value_json)
         if not isinstance(value, dict):
             return None
         return SystemAiSettings.model_validate(value)
@@ -226,10 +232,12 @@ def settings_from_registry(settings: Settings, registry: ModelRegistry) -> Setti
     elif isinstance(default_provider, str) and default_provider not in {"", "auto", "mock"}:
         data["ai_provider"] = "auto"
     for provider_id, provider in registry.providers.items():
-        if provider.base_url:
+        env_api_key = (getattr(settings, f"{provider_id}_api_key", "") or "").strip()
+        keep_env_connection = provider_id == "openai_compat" and env_api_key and not provider.api_key_configured
+        if provider.base_url and not keep_env_connection:
             data[f"{provider_id}_base_url"] = provider.base_url
         default_model_id = effective_provider_default_model(registry, provider_id, provider.default_model_id)
-        if default_model_id:
+        if default_model_id and not keep_env_connection:
             key = "router9_text_model" if provider_id == "router9" else f"{provider_id}_text_model"
             data[key] = default_model_id
     data["router9_only"] = bool(registry.settings.get("router9_only", settings.router9_only))
@@ -251,123 +259,60 @@ def settings_from_registry(settings: Settings, registry: ModelRegistry) -> Setti
 
 
 async def upsert_scanned_models(db: DatabaseClient, provider_id: str, models: list[AiModelInfo]) -> None:
-    existing_allowed = {
-        str(row["id"])
-        for row in await db.fetch_all("SELECT id FROM ai_models WHERE provider_id = ? AND allowed = 1", [provider_id])
-    }
+    provider_id = canonical_provider_id(provider_id) or provider_id
+    canonical_models = [_canonical_model_info(provider_id, model) for model in models]
+    repo = ModelRegistryRepository(db)
+    existing_allowed = await repo.enabled_allowed_model_ids(provider_id)
     await ensure_provider(db, provider_id)
-    existing_scanned = {
-        str(row["id"])
-        for row in await db.fetch_all("SELECT id FROM ai_models WHERE provider_id = ? AND source = 'scan'", [provider_id])
-    }
-    scanned_ids = {model.id for model in models if model.id}
+    existing_scanned = await repo.scanned_model_ids(provider_id)
+    scanned_ids = {model.id for model in canonical_models if model.id}
     for stale_id in existing_scanned - scanned_ids:
-        await db.execute(
-            """
-            UPDATE ai_models
-            SET enabled = 0, allowed = 0, updated_at = CURRENT_TIMESTAMP
-            WHERE provider_id = ? AND source = 'scan' AND id = ?
-            """,
-            [provider_id, stale_id],
-        )
-    for model in models:
+        await repo.disable_scanned_model(provider_id, stale_id)
+    for model in canonical_models:
         await upsert_model(db, provider_id, model, allowed=model.id in existing_allowed, source="scan")
 
 
 async def upsert_model(db: DatabaseClient, provider_id: str, model: AiModelInfo, allowed: bool, source: str) -> None:
-    await db.execute(
-        """
-        INSERT INTO ai_models (provider_id, id, label, owned_by, context_length, source, enabled, allowed, last_seen_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, 1, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-        ON CONFLICT(provider_id, id) DO UPDATE SET
-          label = excluded.label,
-          owned_by = excluded.owned_by,
-          context_length = excluded.context_length,
-          source = excluded.source,
-          enabled = 1,
-          last_seen_at = CURRENT_TIMESTAMP,
-          updated_at = CURRENT_TIMESTAMP
-        """,
-        [provider_id, model.id, model.label or model.id, model.owned_by, model.context_length, source, int(allowed)],
-    )
+    provider_id = canonical_provider_id(provider_id) or provider_id
+    model = _canonical_model_info(provider_id, model)
+    await ModelRegistryRepository(db).upsert_model(provider_id, model, allowed, source)
 
 
 async def set_allowed_models(db: DatabaseClient, provider_id: str, model_ids: list[str]) -> None:
+    provider_id = canonical_provider_id(provider_id) or provider_id
+    repo = ModelRegistryRepository(db)
     await ensure_provider(db, provider_id)
-    await db.execute("UPDATE ai_models SET allowed = 0 WHERE provider_id = ?", [provider_id])
-    for model_id in dict.fromkeys(model_ids):
-        await db.execute(
-            """
-            INSERT INTO ai_models (provider_id, id, label, source, enabled, allowed, updated_at)
-            VALUES (?, ?, ?, 'manual', 1, 1, CURRENT_TIMESTAMP)
-            ON CONFLICT(provider_id, id) DO UPDATE SET allowed = 1, enabled = 1, updated_at = CURRENT_TIMESTAMP
-            """,
-            [provider_id, model_id, model_id],
-        )
+    await repo.clear_allowed_models(provider_id)
+    canonical_ids = []
+    for model_id in model_ids:
+        ref = canonicalize_model_ref(provider_id, model_id, strict=True, allow_auto=False)
+        if ref.model_id not in canonical_ids:
+            canonical_ids.append(ref.model_id)
+    for model_id in canonical_ids:
+        await repo.allow_model(provider_id, model_id)
 
 
 async def save_provider_config(db: DatabaseClient, provider_id: str, base_url: str, default_model_id: str, enabled: bool = True, api_key_configured: bool | None = None) -> None:
-    if api_key_configured is None:
-        await db.execute(
-            """
-            INSERT INTO ai_providers (id, label, base_url, default_model_id, enabled, updated_at)
-            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            ON CONFLICT(id) DO UPDATE SET
-              base_url = excluded.base_url,
-              default_model_id = excluded.default_model_id,
-              enabled = excluded.enabled,
-              updated_at = CURRENT_TIMESTAMP
-            """,
-            [provider_id, PROVIDER_LABELS.get(provider_id, provider_id), base_url, default_model_id, int(enabled)],
-        )
-        return
-    await db.execute(
-        """
-        INSERT INTO ai_providers (id, label, base_url, default_model_id, api_key_configured, enabled, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-        ON CONFLICT(id) DO UPDATE SET
-          base_url = excluded.base_url,
-          default_model_id = excluded.default_model_id,
-          api_key_configured = excluded.api_key_configured,
-          enabled = excluded.enabled,
-          updated_at = CURRENT_TIMESTAMP
-        """,
-        [provider_id, PROVIDER_LABELS.get(provider_id, provider_id), base_url, default_model_id, int(api_key_configured), int(enabled)],
-    )
+    provider_id = canonical_provider_id(provider_id) or provider_id
+    default_model_id = canonicalize_model_ref(provider_id, default_model_id, strict=True, allow_auto=False).model_id if default_model_id else ""
+    await ModelRegistryRepository(db).upsert_provider(provider_id, PROVIDER_LABELS.get(provider_id, provider_id), base_url, default_model_id, enabled, api_key_configured)
 
 
 async def save_provider_check(db: DatabaseClient, provider_id: str, status: str, message: str) -> None:
     await ensure_provider(db, provider_id)
-    await db.execute(
-        "UPDATE ai_providers SET last_checked_at = CURRENT_TIMESTAMP, last_check_status = ?, last_check_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-        [status, message[:1000], provider_id],
-    )
+    await ModelRegistryRepository(db).update_provider_check(provider_id, status, message)
 
 
 async def save_task_profile(db: DatabaseClient, task: str, provider_id: str, model_id: str, fallbacks: list[str]) -> None:
-    await db.execute(
-        """
-        INSERT INTO ai_task_profiles (task, provider_id, model_id, fallbacks_json, updated_at)
-        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-        ON CONFLICT(task) DO UPDATE SET
-          provider_id = excluded.provider_id,
-          model_id = excluded.model_id,
-          fallbacks_json = excluded.fallbacks_json,
-          updated_at = CURRENT_TIMESTAMP
-        """,
-        [task, provider_id, model_id, json.dumps(fallbacks)],
-    )
+    ref = canonicalize_model_ref(provider_id, model_id, strict=True)
+    provider_id = ref.provider_id
+    model_id = ref.model_id
+    fallbacks, _ = canonicalize_fallback_models(provider_id, fallbacks, strict=True)
+    await ModelRegistryRepository(db).upsert_task_profile(task, provider_id, model_id, fallbacks)
 
 
 async def set_model_setting(db: DatabaseClient, key: str, value: Any) -> None:
-    await db.execute(
-        """
-        INSERT INTO ai_model_settings (key, value_json, updated_at)
-        VALUES (?, ?, CURRENT_TIMESTAMP)
-        ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = CURRENT_TIMESTAMP
-        """,
-        [key, json.dumps(value)],
-    )
+    await ModelRegistryRepository(db).set_model_setting(key, value)
 
 
 async def ensure_task_profiles(db: DatabaseClient, settings: Settings) -> None:
@@ -377,21 +322,47 @@ async def ensure_task_profiles(db: DatabaseClient, settings: Settings) -> None:
         "solver_explanation": (settings.ai_provider, "", []),
         "ocr": ("router9" if settings.router9_ocr_model else "openrouter", settings.router9_ocr_model or settings.openrouter_vision_model, []),
     }
+    repo = ModelRegistryRepository(db)
     for task, (provider_id, model_id, fallbacks) in defaults.items():
-        existing = await db.fetch_one("SELECT 1 FROM ai_task_profiles WHERE task = ?", [task])
-        if existing is None:
+        if not await repo.task_profile_exists(task):
             await save_task_profile(db, task, provider_id, model_id, fallbacks)
 
 
 async def ensure_provider(db: DatabaseClient, provider_id: str) -> None:
-    await db.execute(
-        "INSERT OR IGNORE INTO ai_providers (id, label) VALUES (?, ?)",
-        [provider_id, PROVIDER_LABELS.get(provider_id, provider_id)],
-    )
+    provider_id = canonical_provider_id(provider_id) or provider_id
+    await ModelRegistryRepository(db).ensure_provider(provider_id, PROVIDER_LABELS.get(provider_id, provider_id))
 
 
-async def _has_legacy_ai_settings(db: DatabaseClient) -> bool:
-    return await db.fetch_one("SELECT 1 FROM system_settings WHERE key = ?", ["ai_settings"]) is not None
+def _canonical_model_info(provider_id: str, model: AiModelInfo) -> AiModelInfo:
+    ref = canonicalize_model_ref(provider_id, model.id, strict=True, allow_auto=False)
+    label = model.label or model.id
+    if label == model.id:
+        label = ref.model_id
+    return model.model_copy(update={"provider": provider_id, "id": ref.model_id, "label": label})
+
+
+async def ensure_model_registry_canonical(db: DatabaseClient) -> None:
+    repo = ModelRegistryRepository(db)
+    rows = await repo.canonical_task_profile_rows()
+    warnings: list[str] = []
+    changed = 0
+    for row in rows:
+        task = str(row["task"])
+        provider_id = str(row["provider_id"] or "auto")
+        model_id = str(row["model_id"] or "")
+        fallbacks = _json_list(row.get("fallbacks_json"))
+        ref = canonicalize_legacy_model_ref(provider_id, model_id)
+        canonical_fallbacks, fallback_warnings = canonicalize_fallback_models(ref.provider_id, fallbacks, strict=False)
+        canonical_model_id = model_id if task == "ocr" and provider_id == ref.provider_id and model_id.startswith(f"{ref.provider_id}/") else ref.model_id
+        if ref.warning:
+            warnings.append(f"{task}: {ref.warning}")
+        warnings.extend(f"{task}: {warning}" for warning in fallback_warnings)
+        if ref.provider_id != provider_id or canonical_model_id != model_id or canonical_fallbacks != fallbacks:
+            await repo.update_task_profile(task, ref.provider_id, canonical_model_id, canonical_fallbacks)
+            changed += 1
+    if changed or warnings:
+        await set_model_setting(db, "last_canonicalization_report", {"changed_profiles": changed, "warnings": warnings[:50]})
+    await set_model_setting(db, "model_registry_schema_version", 2)
 
 
 def _provider_seed_data(settings: Settings, legacy: SystemAiSettings | None) -> dict[str, dict[str, Any]]:
@@ -447,6 +418,7 @@ def registry_from_settings(settings: Settings) -> ModelRegistry:
                 label=model.label,
                 owned_by=model.owned_by,
                 context_length=model.context_length,
+                capabilities=model.capabilities,
                 allowed=model.id in data["allowed_model_ids"],
                 source="env",
             )
@@ -524,35 +496,34 @@ def effective_provider_default_model(registry: ModelRegistry, provider_id: str, 
 def resolve_task_profile(registry: ModelRegistry, task: str, preferred_provider: str | None = None, preferred_model: str | None = None) -> TaskProfile | None:
     profile = registry.task_profiles.get(task)
     preferred_provider_id = normalize_registry_provider_id(preferred_provider)
-    profile_provider = profile.provider_id if profile else ""
-    if preferred_model:
-        raw_model_id = preferred_model
-    elif preferred_provider_id and preferred_provider_id not in {"auto", "mock"}:
-        raw_model_id = profile.model_id if profile and profile_provider == preferred_provider_id else ""
-    else:
-        raw_model_id = profile.model_id if profile else ""
-    inferred_provider = infer_provider_from_model(raw_model_id)
+    profile_provider = normalize_registry_provider_id(profile.provider_id) if profile else "auto"
     if preferred_provider_id:
         provider_id = preferred_provider_id
-    elif inferred_provider and profile and profile.provider_id in {"auto", inferred_provider}:
-        provider_id = inferred_provider
-    elif inferred_provider and (profile is None or not profile.provider_id):
-        provider_id = inferred_provider
     else:
-        provider_id = profile.provider_id if profile else "auto"
+        provider_id = profile_provider or "auto"
     if provider_id == "auto":
         default_provider = registry.settings.get("default_provider")
         provider_id = default_provider if isinstance(default_provider, str) and provider_is_enabled(registry, default_provider) else "auto"
     if provider_id == "auto" or not provider_is_enabled(registry, provider_id):
         return None
+
+    raw_model_id = ""
+    if preferred_model:
+        raw_model_id = canonicalize_model_ref(provider_id, preferred_model, strict=True, allow_auto=False).model_id
+    elif profile and not preferred_provider_id:
+        raw_model_id = profile.model_id
+    elif profile and profile_provider == provider_id:
+        raw_model_id = profile.model_id
+
     model_id = normalize_model_for_provider(provider_id, raw_model_id) or ""
     if not model_id:
         provider = registry.providers.get(provider_id)
         model_id = effective_provider_default_model(registry, provider_id, provider.default_model_id if provider else "")
     if model_id and not model_is_allowed(registry, provider_id, model_id):
         model_id = effective_provider_default_model(registry, provider_id, "")
-    fallbacks = [normalize_model_for_provider(provider_id, model) or "" for model in (profile.fallbacks if profile else [])]
-    fallbacks = [model for model in fallbacks if model_is_allowed(registry, provider_id, model)]
+    fallbacks = []
+    if profile and profile_provider == provider_id:
+        fallbacks = [model for model in profile.fallbacks if model_is_allowed(registry, provider_id, model)]
     return TaskProfile(task, provider_id, model_id, fallbacks)
 
 
@@ -573,6 +544,11 @@ def _json_value(value: Any) -> Any:
         return json.loads(str(value))
     except json.JSONDecodeError:
         return None
+
+
+def _json_dict(value: Any) -> dict[str, Any]:
+    parsed = _json_value(value)
+    return parsed if isinstance(parsed, dict) else {}
 
 
 def _json_list(value: Any) -> list[str]:

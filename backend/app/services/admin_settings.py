@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from app.core.config import get_settings
@@ -7,6 +8,7 @@ from app.db.session import DatabaseClient
 from app.repositories.admin import AdminRepository
 from app.schemas.auth import SystemAiProfiles, SystemAiSettings
 from app.schemas.scene import AiModelInfo
+from app.services.model_provider import normalize_provider_defaults
 from app.services.model_registry import (
     load_model_registry,
     save_provider_config,
@@ -139,26 +141,18 @@ async def sync_ai_settings_to_registry(db: DatabaseClient, value: dict, patch: d
         await set_model_setting(db, "ocr_max_image_mb", ai_settings.ocr.max_image_mb)
         registry = await load_model_registry(db, current_settings)
         fallbacks = registry.task_profiles.get("ocr").fallbacks if registry.task_profiles.get("ocr") else []
-        await save_task_profile(db, "ocr", ai_settings.ocr.provider, ai_settings.ocr.model, fallbacks)
-
-
-def normalize_provider_defaults(value: dict | None) -> dict | None:
-    if value is None:
-        return None
-    normalized = dict(value)
-    for provider_id in ("openrouter", "nvidia", "ollama", "openai_compat", "router9"):
-        provider = normalized.get(provider_id)
-        if not isinstance(provider, dict):
-            continue
-        provider_normalized = dict(provider)
-        if provider_id != "router9":
-            provider_normalized.pop("only_mode", None)
-        allowed = provider_normalized.get("allowed_model_ids")
-        model = provider_normalized.get("model")
-        if isinstance(allowed, list) and allowed and isinstance(model, str) and model and model not in allowed:
-            provider_normalized["model"] = str(allowed[0])
-        normalized[provider_id] = provider_normalized
-    return normalized
+        await db.execute(
+            """
+            INSERT INTO ai_task_profiles (task, provider_id, model_id, fallbacks_json, updated_at)
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(task) DO UPDATE SET
+              provider_id = excluded.provider_id,
+              model_id = excluded.model_id,
+              fallbacks_json = excluded.fallbacks_json,
+              updated_at = CURRENT_TIMESTAMP
+            """,
+            ["ocr", ai_settings.ocr.provider, ai_settings.ocr.model, json.dumps(fallbacks)],
+        )
 
 
 def _parse_setting_value(value: str) -> dict:

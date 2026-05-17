@@ -230,6 +230,7 @@ class AiModelInfo(BaseModel):
     owned_by: str | None = None
     created: int | None = None
     context_length: int | None = None
+    capabilities: dict[str, Any] = Field(default_factory=dict)
 
 
 ModelScanProvider = Literal["openrouter", "openai_compat", "nvidia", "ollama"]
@@ -353,6 +354,7 @@ class RegistryModelDefaults(BaseModel):
     label: str
     owned_by: str | None = None
     context_length: int | None = None
+    capabilities: dict[str, Any] = Field(default_factory=dict)
     enabled: bool
     allowed: bool
     source: str

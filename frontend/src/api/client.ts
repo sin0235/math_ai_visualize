@@ -1,6 +1,6 @@
 import type { AdvancedRenderSettings, MathScene, RenderResponse, Renderer } from '../types/scene';
 import type { OcrProvider, RuntimeSettings, ScannedModelInfo, SettingsDefaults, UserBasicSettings } from '../types/settings';
-import { inferOcrProviderFromModelId } from '../utils/settingsOptions';
+import { normalizeProviderModelSelection } from '../utils/settingsOptions';
 import { buildExportFilename, type ExportFormatKey } from '../utils/exportFilename';
 
 export interface OcrResponse {
@@ -517,34 +517,26 @@ export async function renderProblem(
   }, 'Không thể dựng hình.');
 }
 
-function effectiveOcrProviderForRequest(settings: RuntimeSettings): OcrProvider | undefined {
-  if (settings.router9.only_mode) return 'router9';
-  const explicit = settings.ocr.provider.trim();
-  const raw = settings.ocr.model.trim();
-  const inferred = inferOcrProviderFromModelId(settings.ocr.model);
-  if (explicit) {
-    const chosen = explicit as OcrProvider;
-    if (chosen === 'openrouter' && inferred === 'router9' && !raw.startsWith('openrouter/')) {
-      return 'router9';
-    }
-    if (chosen === 'router9' && inferred === 'openrouter') {
-      return 'openrouter';
-    }
-    return chosen;
+function effectiveOcrSelectionForRequest(settings: RuntimeSettings): { provider?: OcrProvider; model?: string } {
+  if (settings.router9.only_mode) {
+    return { provider: 'router9', model: normalizeProviderModelSelection('router9', settings.ocr.model).model || undefined };
   }
-  return undefined;
+  const explicit = settings.ocr.provider.trim();
+  if (!explicit) return { provider: undefined, model: undefined };
+  const normalized = normalizeProviderModelSelection(explicit, settings.ocr.model);
+  return { provider: normalized.provider as OcrProvider, model: normalized.model || undefined };
 }
 
 export async function ocrImage(imageDataUrl: string, runtimeSettings: RuntimeSettings, mode: 'problem' | 'diagram' = 'problem'): Promise<OcrResponse> {
-  const ocrProvider = effectiveOcrProviderForRequest(runtimeSettings);
+  const ocrSelection = effectiveOcrSelectionForRequest(runtimeSettings);
   return requestJson('/api/ocr', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
     body: JSON.stringify({
       image_data_url: imageDataUrl,
-      ocr_provider: ocrProvider,
-      ocr_model: ocrProvider ? runtimeSettings.ocr.model.trim() || undefined : undefined,
+      ocr_provider: ocrSelection.provider,
+      ocr_model: ocrSelection.provider ? ocrSelection.model : undefined,
       mode,
       runtime_settings: compactRuntimeSettings(runtimeSettings),
     }),
