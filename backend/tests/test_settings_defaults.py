@@ -75,6 +75,25 @@ def test_cors_defaults_target_local_dev_origins():
 
 
 
+def test_production_requires_secure_cookie_and_strict_origin_checks():
+    with pytest.raises(ValueError, match="SESSION_COOKIE_SECURE"):
+        Settings(_env_file=None, environment="production", allow_missing_origin_for_cookie_mutations=False)
+
+    with pytest.raises(ValueError, match="ALLOW_MISSING_ORIGIN"):
+        Settings(_env_file=None, environment="production", session_cookie_secure=True)
+
+    settings = Settings(
+        _env_file=None,
+        environment="production",
+        session_cookie_secure=True,
+        allow_missing_origin_for_cookie_mutations=False,
+    )
+
+    assert settings.session_cookie_secure is True
+    assert settings.allow_missing_origin_for_cookie_mutations is False
+
+
+
 def test_settings_defaults_route_hides_api_keys(monkeypatch):
     settings = Settings(
         _env_file=None,

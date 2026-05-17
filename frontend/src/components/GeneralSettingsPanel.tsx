@@ -95,6 +95,10 @@ export function GeneralSettingsPanel({ value, defaults, onChange, onReset }: Gen
             <p className="field-hint">Tùy chọn cách đọc đề bài từ ảnh chụp hoặc ảnh dán từ clipboard.</p>
           </div>
 
+          <div className="warning-box">
+            Ảnh OCR và nội dung trích xuất có thể được gửi tới provider đã chọn. Không dùng ảnh chứa dữ liệu cá nhân hoặc đề thi không được phép chia sẻ.
+          </div>
+
           <label className="field-label">
             Provider OCR mặc định
             <select value={value.ocr.provider} onChange={(event) => updateOcr('provider', event.target.value as OcrProviderChoice)}>

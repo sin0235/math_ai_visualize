@@ -106,6 +106,10 @@ export function SettingsPanel({ value, defaults, onChange, onReset, onForgetApiK
                 />
               </label>
 
+              <div className="warning-box">
+                API key override được gửi qua backend khi gọi provider. Base URL tuỳ chỉnh có thể nhận prompt, ảnh/OCR và key của bạn.
+              </div>
+
               <label className="field-label">
                 Model override
                 {scannableProviders.has(provider) && value[provider].scanned_models.length > 0 ? (

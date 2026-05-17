@@ -1,3 +1,4 @@
+from ipaddress import ip_address, ip_network
 from urllib.parse import urlparse
 
 from fastapi import Cookie, Depends, HTTPException, Request, status
@@ -81,8 +82,9 @@ async def enforce_rate_limit(
     name: str,
     limit: int,
     window_seconds: int,
+    settings: Settings | None = None,
 ) -> None:
-    subject = f"user:{user.id}" if user is not None else f"ip:{request.client.host if request.client else 'unknown'}"
+    subject = f"user:{user.id}" if user is not None else f"ip:{client_ip(request, settings)}"
     result = await RateLimitRepository(db).hit(f"endpoint:{name}:{subject}", limit, window_seconds)
     if result.allowed:
         return
@@ -99,3 +101,44 @@ def origin_allowed(source: str, allowed_origins: list[str]) -> bool:
         return False
     source_origin = f"{parsed_source.scheme}://{parsed_source.netloc}"
     return "*" in allowed_origins or source_origin in allowed_origins
+
+
+def client_ip(request: Request, settings: Settings | None = None) -> str:
+    current_settings = settings or get_settings()
+    peer = request.client.host if request.client else "unknown"
+    if not peer_is_trusted_proxy(peer, current_settings.trusted_proxy_ips):
+        return peer[:64]
+    for header_name in ("x-forwarded-for", "x-real-ip"):
+        header_value = request.headers.get(header_name)
+        if not header_value:
+            continue
+        forwarded = first_valid_forwarded_ip(header_value)
+        if forwarded:
+            return forwarded[:64]
+    return peer[:64]
+
+
+def peer_is_trusted_proxy(peer: str, trusted_proxy_ips: list[str]) -> bool:
+    try:
+        peer_ip = ip_address(peer)
+    except ValueError:
+        return False
+    for value in trusted_proxy_ips:
+        try:
+            if peer_ip in ip_network(value, strict=False):
+                return True
+        except ValueError:
+            continue
+    return False
+
+
+def first_valid_forwarded_ip(header_value: str) -> str | None:
+    for value in header_value.split(","):
+        candidate = value.strip()
+        if not candidate:
+            continue
+        try:
+            return str(ip_address(candidate))
+        except ValueError:
+            continue
+    return None

@@ -6,7 +6,7 @@ from sqlite3 import IntegrityError
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import RedirectResponse
 
-from app.api.deps import get_current_user, require_trusted_origin
+from app.api.deps import client_ip as resolve_client_ip, get_current_user, require_trusted_origin
 from app.core.config import Settings, get_settings
 from app.db.models import SessionRecord, UserRecord
 from app.db.session import DatabaseClient, get_database
@@ -470,11 +470,8 @@ async def audit(
     await AdminRepository(db).audit(actor_user_id, action, target_type, target_id, payload)
 
 
-def client_ip(request: Request) -> str:
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",", 1)[0].strip()[:64]
-    return (request.client.host if request.client else "unknown")[:64]
+def client_ip(request: Request, settings: Settings | None = None) -> str:
+    return resolve_client_ip(request, settings)
 
 
 def email_hash(email: str) -> str:

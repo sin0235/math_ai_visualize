@@ -4,7 +4,9 @@ from typing import Any
 
 from fastapi import APIRouter, Depends
 
+from app.api.deps import require_admin_user
 from app.core.config import get_settings
+from app.db.models import UserRecord
 from app.db.session import DatabaseClient, get_database
 from app.services.model_registry import load_model_registry
 
@@ -17,7 +19,7 @@ def health_check() -> dict[str, str]:
 
 
 @router.get("/health/detail")
-async def detailed_health(db: DatabaseClient = Depends(get_database)) -> dict[str, Any]:
+async def detailed_health(_: UserRecord = Depends(require_admin_user), db: DatabaseClient = Depends(get_database)) -> dict[str, Any]:
     settings = get_settings()
     database = await _database_status(db)
     providers = await _provider_status(db)
@@ -37,7 +39,16 @@ async def ai_status(db: DatabaseClient = Depends(get_database)) -> dict[str, Any
     return {
         "provider": settings.ai_provider,
         "router9_only": bool(registry.settings.get("router9_only", settings.router9_only)),
-        "providers": await _provider_status(db),
+        "providers": [
+            {
+                "id": provider.id,
+                "label": provider.label,
+                "enabled": provider.enabled,
+                "allowed_model_count": len(registry.allowed_model_ids(provider.id)),
+                "model_count": len(registry.models.get(provider.id, [])),
+            }
+            for provider in registry.providers.values()
+        ],
     }
 
 

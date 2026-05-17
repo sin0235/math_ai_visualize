@@ -1,9 +1,12 @@
+import logging
 from pathlib import Path
 
 import aiosqlite
 
 from app.core.config import Settings
 from app.db.session import D1Client, DatabaseClient, SQLiteClient
+
+logger = logging.getLogger(__name__)
 
 
 async def apply_migrations(db: DatabaseClient, settings: Settings) -> None:
@@ -17,6 +20,8 @@ async def apply_migrations(db: DatabaseClient, settings: Settings) -> None:
 
 async def apply_sqlite_migrations(db: SQLiteClient) -> None:
     migrations_dir = migrations_path()
+    migrations = sorted(migrations_dir.glob("*.sql"))
+    warn_duplicate_migration_prefixes(migrations)
     async with aiosqlite.connect(db.path) as connection:
         await connection.execute("PRAGMA foreign_keys = ON")
         await connection.execute(
@@ -27,7 +32,7 @@ async def apply_sqlite_migrations(db: SQLiteClient) -> None:
             )
             """
         )
-        for migration in sorted(migrations_dir.glob("*.sql")):
+        for migration in migrations:
             cursor = await connection.execute("SELECT 1 FROM schema_migrations WHERE filename = ?", [migration.name])
             if await cursor.fetchone():
                 continue
@@ -37,6 +42,8 @@ async def apply_sqlite_migrations(db: SQLiteClient) -> None:
 
 
 async def apply_d1_migrations(db: D1Client) -> None:
+    migrations = sorted(migrations_path().glob("*.sql"))
+    warn_duplicate_migration_prefixes(migrations)
     await db.execute(
         """
         CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -45,7 +52,7 @@ async def apply_d1_migrations(db: D1Client) -> None:
         )
         """
     )
-    for migration in sorted(migrations_path().glob("*.sql")):
+    for migration in migrations:
         if await db.fetch_one("SELECT 1 FROM schema_migrations WHERE filename = ?", [migration.name]):
             continue
         for statement in split_sql_statements(migration.read_text(encoding="utf-8")):
@@ -55,6 +62,18 @@ async def apply_d1_migrations(db: D1Client) -> None:
 
 def migrations_path() -> Path:
     return Path(__file__).resolve().parents[3] / "migrations"
+
+
+def warn_duplicate_migration_prefixes(migrations: list[Path]) -> None:
+    by_prefix: dict[str, list[str]] = {}
+    for migration in migrations:
+        prefix = migration.name.split("_", 1)[0]
+        if prefix.isdigit():
+            by_prefix.setdefault(prefix, []).append(migration.name)
+    duplicates = {prefix: names for prefix, names in by_prefix.items() if len(names) > 1}
+    if duplicates:
+        details = "; ".join(f"{prefix}: {', '.join(names)}" for prefix, names in sorted(duplicates.items()))
+        logger.warning("Duplicate migration numeric prefixes found: %s", details)
 
 
 def split_sql_statements(script: str) -> list[str]:

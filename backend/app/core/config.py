@@ -9,6 +9,7 @@ from app.schemas.scene import RuntimeSettings
 
 class Settings(BaseSettings):
     app_name: str = "Hinh Math Renderer"
+    environment: Literal["development", "test", "production"] = "development"
     cors_origins: list[str] = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
@@ -75,6 +76,7 @@ class Settings(BaseSettings):
     google_oauth_client_secret: str | None = None
     google_oauth_redirect_uri: str = "https://math-renderer-api.sin-studio.tech/api/auth/google/callback"
     allow_missing_origin_for_cookie_mutations: bool = True
+    trusted_proxy_ips: list[str] = []
     cas_repair_enabled: bool = False
     cas_repair_max_iterations: int = 2
     cas_repair_min_severity: Literal["warning", "error"] = "warning"
@@ -85,6 +87,10 @@ class Settings(BaseSettings):
     def validate_cookie_settings(self) -> "Settings":
         if self.session_cookie_samesite == "none" and not self.session_cookie_secure:
             raise ValueError("SESSION_COOKIE_SAMESITE=none requires SESSION_COOKIE_SECURE=true")
+        if self.environment == "production" and not self.session_cookie_secure:
+            raise ValueError("ENVIRONMENT=production requires SESSION_COOKIE_SECURE=true")
+        if self.environment == "production" and self.allow_missing_origin_for_cookie_mutations:
+            raise ValueError("ENVIRONMENT=production requires ALLOW_MISSING_ORIGIN_FOR_COOKIE_MUTATIONS=false")
         return self
 
 

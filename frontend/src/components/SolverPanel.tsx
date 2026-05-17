@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { solveProblem, type SolveResponse, type SolveStep } from '../api/client';
 import type { RuntimeSettings } from '../types/settings';
 import type { MathScene } from '../types/scene';
-import { KatexSpan, sympyToLatex } from './KatexSpan';
+import { KatexSpan, normalizeLatexForKatex, sympyToLatex } from './KatexSpan';
 
 interface SolverPanelProps {
   scene: MathScene;
@@ -11,28 +11,9 @@ interface SolverPanelProps {
 }
 
 function normalizeSolverLatex(input?: string | null): string {
-  if (!input) return '';
-  let tex = input.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
-  if (!tex) return '';
-  tex = tex
-    .replace(/^\s*(Công thức|Thế số|Kết quả)\s*:\s*/i, '')
-    .replace(/−/g, '-')
-    .replace(/×/g, '\\times ')
-    .replace(/·/g, '\\cdot ');
-
-  // Convert unicode norm bars (∥v∥) into KaTeX-friendly form.
-  tex = tex.replace(/∥\s*([^∥]+?)\s*∥/g, '\\left\\|$1\\right\\|');
-
-  // Heuristic: convert malformed "a |b|" to \frac{|b|}{a}
-  // (often returned by model when backslashes are stripped).
-  const absFracMatch = tex.match(/^\s*([0-9]+(?:\.[0-9]+)?)\s*[|∣]\s*([^|∣]+)\s*[|∣]\s*$/);
-  if (absFracMatch && !tex.includes('\\frac')) {
-    const denominator = absFracMatch[1];
-    const numerator = absFracMatch[2].trim();
-    tex = `\\frac{\\left|${numerator}\\right|}{${denominator}}`;
-  }
-  return tex;
+  return input ? normalizeLatexForKatex(input) : '';
 }
+
 
 function normalizeComparableText(input?: string | null): string {
   return (input ?? '')

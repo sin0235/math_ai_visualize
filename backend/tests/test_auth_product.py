@@ -1,8 +1,10 @@
 import asyncio
 
 import pytest
+from fastapi import Request
 from fastapi.testclient import TestClient
 
+from app.api.deps import client_ip
 from app.core.config import Settings, get_settings
 from app.db.migrations import apply_sqlite_migrations
 from app.db.session import SQLiteClient, get_database
@@ -20,6 +22,28 @@ def test_bcrypt_hashing_does_not_emit_backend_version_traceback(capsys):
 
     assert pwd_context.verify("StrongPass123", password_hash)
     assert "error reading bcrypt version" not in capsys.readouterr().err
+
+
+def make_request(peer: str, headers: list[tuple[bytes, bytes]]) -> Request:
+    return Request({"type": "http", "method": "GET", "path": "/", "headers": headers, "client": (peer, 12345)})
+
+
+def test_client_ip_ignores_forwarded_headers_without_trusted_proxy():
+    request = make_request("10.0.0.10", [(b"x-forwarded-for", b"203.0.113.10")])
+
+    assert client_ip(request, Settings(_env_file=None)) == "10.0.0.10"
+
+
+def test_client_ip_uses_forwarded_header_from_trusted_proxy():
+    request = make_request("10.0.0.10", [(b"x-forwarded-for", b"203.0.113.10, 10.0.0.1")])
+
+    assert client_ip(request, Settings(_env_file=None, trusted_proxy_ips=["10.0.0.0/24"])) == "203.0.113.10"
+
+
+def test_client_ip_falls_back_when_forwarded_header_is_malformed():
+    request = make_request("10.0.0.10", [(b"x-forwarded-for", b"not an ip")])
+
+    assert client_ip(request, Settings(_env_file=None, trusted_proxy_ips=["10.0.0.10"])) == "10.0.0.10"
 
 
 @pytest.fixture()

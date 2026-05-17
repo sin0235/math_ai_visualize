@@ -365,6 +365,10 @@ export function PdfToWordPage({
               </label>
             </div>
 
+            <div className="warning-box">
+              File PDF sẽ được tải lên dịch vụ MinerU tại link xử lý đang chọn. Chỉ dùng endpoint bạn tin tưởng và tránh gửi tài liệu chứa thông tin nhạy cảm.
+            </div>
+
             <details className="pdf-word-advanced-options" open={!activeApiBaseUrl}>
               <summary>Tuỳ chọn nâng cao</summary>
               <label className="field-label">

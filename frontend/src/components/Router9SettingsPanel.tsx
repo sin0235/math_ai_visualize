@@ -105,6 +105,9 @@ export function Router9SettingsPanel({ value, defaults, onChange, onForgetApiKey
             Base URL override
             <input type="url" value={router9.base_url} onChange={(event) => updateRouter9({ base_url: event.target.value })} placeholder={defaults?.router9.base_url || 'Backend default'} />
           </label>
+          <div className="warning-box">
+            API key override được gửi qua backend khi gọi 9router. Nếu đổi Base URL, prompt, OCR content và key có thể được gửi tới endpoint đó.
+          </div>
           <label className="checkbox-label settings-checkbox">
             <input type="checkbox" checked={router9.only_mode} onChange={(event) => updateRouter9({ only_mode: event.target.checked })} />
             9router only: chỉ hiển thị và chỉ gọi các model 9router đã chọn
