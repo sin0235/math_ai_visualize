@@ -173,6 +173,7 @@ export default function App() {
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
   const toolsMenuRef = useRef<HTMLDivElement | null>(null);
   const renderToolsMenuRef = useRef<HTMLDivElement | null>(null);
+  const ocrInFlightRef = useRef(false);
   const editorButtonDragRef = useRef<{ pointerId: number; startY: number; startTop: number; moved: boolean } | null>(null);
 
   function navigateTo(view: AppView, replace = false) {
@@ -413,6 +414,7 @@ export default function App() {
     preferredRenderer?: Renderer,
     mode: 'problem' | 'diagram' = 'problem',
   ) {
+    if (ocrInFlightRef.current) return;
     if (!user) {
       showNotification('Cần đăng nhập', 'Vui lòng đăng nhập trước khi dùng OCR.', [], 'warning');
       navigateTo('login');
@@ -435,6 +437,7 @@ export default function App() {
       return;
     }
 
+    ocrInFlightRef.current = true;
     setOcrLoading(true);
     try {
       const imageDataUrl = await fileToDataUrl(file);
@@ -448,6 +451,7 @@ export default function App() {
       const apiError = toApiError(caught, 'Không thể OCR ảnh đề bài.');
       showApiError('OCR thất bại', apiError, 'Hãy kiểm tra ảnh có rõ chữ không, model OCR đã chọn có hỗ trợ ảnh không, hoặc thử provider/model khác.');
     } finally {
+      ocrInFlightRef.current = false;
       setOcrLoading(false);
     }
   }
