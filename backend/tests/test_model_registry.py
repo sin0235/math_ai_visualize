@@ -249,6 +249,31 @@ def test_validate_system_setting_rejects_mismatched_provider_model():
 
 
 @pytest.mark.anyio
+async def test_sync_ai_settings_accepts_scanned_model_capabilities(db):
+    await load_model_registry(db, Settings(_env_file=None))
+
+    await sync_ai_settings_to_registry(db, {
+        "version": 1,
+        "openrouter": {
+            "base_url": "https://openrouter.ai/api/v1",
+            "model": "vision/model",
+            "scanned_models": [{
+                "id": "vision/model",
+                "label": "Vision model",
+                "provider": "openrouter",
+                "capabilities": {"input_modalities": ["text", "image"]},
+            }],
+            "allowed_model_ids": ["vision/model"],
+        },
+    })
+
+    registry = await load_model_registry(db, Settings(_env_file=None))
+    model = next(model for model in registry.models["openrouter"] if model.id == "vision/model")
+
+    assert model.capabilities == {"input_modalities": ["text", "image"]}
+
+
+@pytest.mark.anyio
 async def test_sync_ai_settings_normalizes_nvidia_default_to_allowlist(db):
     await load_model_registry(db, Settings(_env_file=None))
 

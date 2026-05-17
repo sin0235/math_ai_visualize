@@ -142,6 +142,7 @@ class StoredModelInfo(BaseModel):
     owned_by: str | None = Field(default=None, max_length=256)
     created: int | None = None
     context_length: int | None = None
+    capabilities: dict[str, Any] = Field(default_factory=dict)
 
 
 class StoredProviderSettings(BaseModel):
