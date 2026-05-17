@@ -62,6 +62,24 @@ async def test_collect_openai_chat_stream_concatenates_delta_content():
 
 
 @pytest.mark.anyio
+async def test_collect_openai_chat_stream_raises_on_sse_error_event():
+    client = FakeClient(FakeStreamResponse([
+        ": connected",
+        "event: error",
+        'data: {"status":502,"error":"upstream failed"}',
+    ]))
+
+    with pytest.raises(RuntimeError, match="upstream failed"):
+        await collect_openai_chat_stream(
+            client,
+            "https://example.test/chat/completions",
+            headers={},
+            payload={"model": "m"},
+            timeout=httpx.Timeout(10),
+        )
+
+
+@pytest.mark.anyio
 async def test_collect_openai_chat_stream_raises_with_error_body():
     client = FakeClient(FakeStreamResponse([], status_code=503, body=b"upstream timeout"))
 
