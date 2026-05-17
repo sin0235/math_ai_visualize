@@ -6,6 +6,7 @@ import httpx
 from app.core.config import Settings
 from app.services.ai_prompt import REASONING_SYSTEM_PROMPT, SCENE_EXTRACTION_SYSTEM_PROMPT, build_reasoning_prompt, build_scene_extraction_prompt
 from app.services.chat_response import extract_chat_message_content
+from app.services.chat_stream import collect_openai_chat_stream
 from app.services.provider_logging import format_provider_error, log_ocr_summary, log_provider_request, log_provider_response, log_scene_summary
 
 
@@ -56,14 +57,14 @@ class OpenRouterClient:
         started_at = time.perf_counter()
         log_provider_request("openrouter", "scene", url, payload["model"], problem_chars=len(problem_text), reasoning=self.reasoning_enabled)
         client = get_client(base_url, TIMEOUT_SCENE)
-        response = await client.post(url, headers=headers, json=payload, timeout=TIMEOUT_SCENE)
+        try:
+            content, response_chars = await collect_openai_chat_stream(client, url, headers=headers, payload=payload, timeout=TIMEOUT_SCENE)
+        except httpx.HTTPStatusError as error:
+            elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+            log_provider_response("openrouter", "scene", error.response.status_code, elapsed_ms, len(error.response.text), payload["model"])
+            raise RuntimeError(_format_openrouter_error(error.response)) from error
         elapsed_ms = int((time.perf_counter() - started_at) * 1000)
-        log_provider_response("openrouter", "scene", response.status_code, elapsed_ms, len(response.text))
-        if response.status_code >= 400:
-            raise RuntimeError(_format_openrouter_error(response))
-
-        message = _extract_message(response)
-        content = extract_chat_message_content(message)
+        log_provider_response("openrouter", "scene", 200, elapsed_ms, response_chars, payload["model"])
         if not content.strip():
             raise RuntimeError("OpenRouter không trả về nội dung JSON trong choices[0].message.content.")
         try:

@@ -458,9 +458,9 @@ def test_router9_list_models_uses_openai_compatible_models_endpoint(monkeypatch)
 def test_router9_chat_payload_avoids_response_format(monkeypatch):
     payloads = []
 
-    class FakeAsyncClient:
-        def __init__(self, timeout: int) -> None:
-            self.timeout = timeout
+    class FakeStreamResponse:
+        status_code = 200
+        request = httpx.Request("POST", "http://localhost:20128/v1/chat/completions")
 
         async def __aenter__(self):
             return self
@@ -468,20 +468,17 @@ def test_router9_chat_payload_avoids_response_format(monkeypatch):
         async def __aexit__(self, exc_type, exc, tb):
             return None
 
-        async def post(self, url: str, headers: dict[str, str], json: dict, timeout=None):
+        async def aiter_lines(self):
+            yield 'data: {"choices":[{"delta":{"content":"{\\\"problem_text\\\":\\\"x\\\",\\\"renderer\\\":\\\"geogebra_2d\\\",\\\"objects\\\":[],\\\"view\\\":{\\\"dimension\\\":\\\"2d\\\"}}"}}]}'
+            yield "data: [DONE]"
+
+    class FakeAsyncClient:
+        def __init__(self, timeout: int) -> None:
+            self.timeout = timeout
+
+        def stream(self, method: str, url: str, headers: dict[str, str], json: dict, timeout=None):
             payloads.append((url, headers, json))
-            return httpx.Response(
-                200,
-                json={
-                    "choices": [
-                        {
-                            "message": {
-                                "content": '{"problem_text":"x","renderer":"geogebra_2d","objects":[],"view":{"dimension":"2d"}}'
-                            }
-                        }
-                    ]
-                },
-            )
+            return FakeStreamResponse()
 
     monkeypatch.setattr("app.services.http_pool.get_client", lambda *args, **kwargs: FakeAsyncClient(kwargs.get("timeout") or args[1] if len(args) > 1 else 20))
 
@@ -491,7 +488,7 @@ def test_router9_chat_payload_avoids_response_format(monkeypatch):
 
     assert payloads[0][0] == "http://localhost:20128/v1/chat/completions"
     assert payloads[0][2]["model"] == "cc/claude-opus-4-6"
-    assert payloads[0][2]["stream"] is False
+    assert payloads[0][2]["stream"] is True
     assert "response_format" not in payloads[0][2]
     assert scene["renderer"] == "geogebra_2d"
 
