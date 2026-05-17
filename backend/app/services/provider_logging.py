@@ -55,6 +55,23 @@ def log_provider_response(provider: str, kind: str, status_code: int, elapsed_ms
     )
 
 
+def log_provider_http_error(provider: str, kind: str, response: httpx.Response, model: Any = None, limit: int = 1200) -> None:
+    logger.warning(
+        "AI provider error provider=%s kind=%s model=%s status=%s body=%s",
+        provider,
+        kind,
+        model or "<unknown>",
+        response.status_code,
+        format_provider_error(provider, response, limit),
+        extra={
+            "provider": provider,
+            "kind": kind,
+            "model": model,
+            "status_code": response.status_code,
+        },
+    )
+
+
 def log_scene_summary(provider: str, scene_json: dict[str, Any], model: Any = None) -> None:
     logger.info(
         "AI provider parse provider=%s kind=scene model=%s renderer=%s topic=%s objects=%s",

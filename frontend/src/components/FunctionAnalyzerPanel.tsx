@@ -7,6 +7,7 @@ import type { MathScene } from '../types/scene';
 interface FunctionAnalyzerPanelProps {
   initialExpression?: string;
   onOpenGuide?: () => void;
+  onWarnings?: (warnings: string[]) => void;
 }
 
 const EXAMPLE_GROUPS = [
@@ -47,7 +48,7 @@ const TRANSFORM_LABEL_TEX: Record<string, string> = {
   reflect_y: 'g(x)=f(-x)',
 };
 
-export function FunctionAnalyzerPanel({ initialExpression = '', onOpenGuide }: FunctionAnalyzerPanelProps) {
+export function FunctionAnalyzerPanel({ initialExpression = '', onOpenGuide, onWarnings }: FunctionAnalyzerPanelProps) {
   const [expression, setExpression] = useState(initialExpression);
   const [loading, setLoading] = useState(false);
   const [ocrLoading, setOcrLoading] = useState(false);
@@ -144,6 +145,7 @@ export function FunctionAnalyzerPanel({ initialExpression = '', onOpenGuide }: F
       if (res.error) setError(res.error);
       else {
         setResult(res);
+        if (!options?.slider) onWarnings?.(res.warnings);
       }
     } catch (e: unknown) {
       if (requestId === analyzeRequestRef.current) setError(e instanceof Error ? e.message : 'Lỗi không xác định.');
@@ -171,6 +173,7 @@ export function FunctionAnalyzerPanel({ initialExpression = '', onOpenGuide }: F
       if (res.error) setError(res.error);
       else {
         setResult(res);
+        onWarnings?.(res.warnings);
       }
     } catch (e: unknown) {
       if (requestId === analyzeRequestRef.current) setError(e instanceof Error ? e.message : 'Lỗi OCR không xác định.');
@@ -575,8 +578,6 @@ function AnalysisResult({ result, toolControls }: { result: AnalyzeResponse; too
             </div>
           </div>
 
-          {result.ocr_text && <div className="sp-info">OCR: {result.ocr_text}</div>}
-          {result.warnings.length > 0 && <div className="sp-warnings">{result.warnings.map((w, i) => <div key={i} className="sp-warning">{w}</div>)}</div>}
         </div>
       </div>
     </div>

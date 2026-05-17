@@ -672,9 +672,9 @@ def _profile_model_candidates(profile: Any, provider: str, settings: Settings, p
     provider = _normalize_provider_alias(provider) or provider
     candidates = _provider_model_candidates(provider, settings, preferred_ai_model)
     profile_provider = _normalize_provider_alias(profile.provider_id) if profile is not None else None
-    if profile is None or provider != profile_provider:
-        return candidates
-    return _dedupe([*(model or "" for model in candidates), *profile.fallbacks])
+    if profile is not None and provider == profile_provider:
+        candidates = [*(model or "" for model in candidates), *profile.fallbacks]
+    return _dedupe_model_candidates(provider, candidates)
 
 
 def _render_attempt_warnings(attempts: list[RenderAttempt]) -> list[str]:
@@ -720,6 +720,19 @@ def _dedupe(providers: list[str]) -> list[str]:
             continue
         seen.add(provider)
         ordered.append(provider)
+    return ordered
+
+
+def _dedupe_model_candidates(provider: str, models: list[str | None]) -> list[str | None]:
+    seen: set[str] = set()
+    ordered: list[str | None] = []
+    for model in models:
+        normalized = explicit_model_for_provider(provider, model) if model else model
+        key = normalized or ""
+        if key in seen:
+            continue
+        seen.add(key)
+        ordered.append(normalized)
     return ordered
 
 

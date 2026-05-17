@@ -10,7 +10,7 @@ from app.services.ai_prompt import REASONING_SYSTEM_PROMPT, SCENE_EXTRACTION_SYS
 from app.services.chat_response import extract_chat_message_content
 from app.services.openrouter_client import OCR_SYSTEM_PROMPT
 from app.services.model_scan import CAPABILITY_KEYS, _extract_capabilities
-from app.services.provider_logging import format_provider_error, log_ocr_summary, log_provider_request, log_provider_response, log_scene_summary
+from app.services.provider_logging import format_provider_error, log_ocr_summary, log_provider_http_error, log_provider_request, log_provider_response, log_scene_summary
 
 
 class Router9Client:
@@ -176,8 +176,9 @@ class Router9Client:
             client = get_client(base_url, timeout or TIMEOUT_SCENE)
             response = await client.post(url, headers=headers, json=payload, timeout=timeout or TIMEOUT_SCENE)
             elapsed_ms = int((time.perf_counter() - started_at) * 1000)
-            log_provider_response("9router", kind, response.status_code, elapsed_ms, len(response.text))
+            log_provider_response("9router", kind, response.status_code, elapsed_ms, len(response.text), payload.get("model"))
             if response.status_code >= 400:
+                log_provider_http_error("9router", kind, response, payload.get("model"))
                 raise RuntimeError(_format_router9_error(response))
             return response
         except httpx.HTTPError as error:

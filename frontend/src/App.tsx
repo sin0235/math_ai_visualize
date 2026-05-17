@@ -753,6 +753,11 @@ export default function App() {
     );
   }
 
+  function showAnalyzerWarnings(warnings: string[]) {
+    if (warnings.length === 0) return;
+    showNotification('Phân tích có lưu ý', 'Kết quả đã được tạo, nhưng có một số lưu ý cần kiểm tra.', warnings, 'warning');
+  }
+
   async function handleConnectPoints(start: string, end: string) {
     if (!result?.scene || editorSaving) return;
     if (start === end) {
@@ -1210,7 +1215,7 @@ export default function App() {
         )}
         {activeView === 'analyzer' && (
           <div className="analyzer-standalone-wrap">
-            <FunctionAnalyzerPanel onOpenGuide={() => navigateTo('analyzer-guide')} />
+            <FunctionAnalyzerPanel onOpenGuide={() => navigateTo('analyzer-guide')} onWarnings={showAnalyzerWarnings} />
           </div>
         )}
         {activeView === 'simulation' && <CalculusSimulationPage />}
