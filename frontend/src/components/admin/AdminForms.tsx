@@ -444,15 +444,23 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave, onToast }
   function addManualModel(provider: (typeof providers)[number]) {
     const modelId = (manualModelInputs[provider] ?? '').trim();
     if (!modelId) return;
-    const providerValue = draft[provider];
-    updateProvider(provider, {
-      scanned_models: providerValue.scanned_models.some((modelItem: any) => modelItem.id === modelId)
+    setDraft((current) => {
+      const providerValue = current[provider];
+      const scanned_models = providerValue.scanned_models.some((modelItem: any) => modelItem.id === modelId)
         ? providerValue.scanned_models
-        : [...providerValue.scanned_models, { id: modelId, label: modelId, provider }],
-      allowed_model_ids: providerValue.allowed_model_ids.includes(modelId)
+        : [...providerValue.scanned_models, { id: modelId, label: modelId, provider }];
+      const allowed_model_ids = providerValue.allowed_model_ids.includes(modelId)
         ? providerValue.allowed_model_ids
-        : [...providerValue.allowed_model_ids, modelId],
-      model: providerValue.model || modelId,
+        : [...providerValue.allowed_model_ids, modelId];
+      return {
+        ...current,
+        [provider]: normalizeDefaultModel({
+          ...providerValue,
+          scanned_models,
+          allowed_model_ids,
+          model: providerValue.model || modelId,
+        }),
+      };
     });
     setManualModelInputs((current) => ({ ...current, [provider]: '' }));
   }

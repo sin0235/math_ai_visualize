@@ -40,7 +40,7 @@ TIMEOUT_FAST = httpx.Timeout(
 )
 TIMEOUT_MODELS = httpx.Timeout(
     connect=_CONNECT_TIMEOUT,
-    read=60.0,
+    read=300.0,
     write=_DEFAULT_WRITE_TIMEOUT,
     pool=_POOL_TIMEOUT,
 )

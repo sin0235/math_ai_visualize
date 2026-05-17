@@ -77,7 +77,7 @@ async def _get_openai_models(provider: str, headers: dict[str, str], normalized_
             raise RuntimeError(_format_scan_error(provider, response))
         return response
     except httpx.TimeoutException as error:
-        raise RuntimeError(f"{provider} models request quá chậm; gateway không trả trong 20 giây.") from error
+        raise RuntimeError(f"{provider} models request quá chậm; gateway không trả trong 300 giây.") from error
     except httpx.HTTPError as error:
         message = str(error) or error.__class__.__name__
         raise RuntimeError(f"{provider} models request lỗi: {message}") from error
@@ -145,7 +145,7 @@ async def _fetch_ollama_models(settings: Settings, api_key: str | None, base_url
         if response.status_code >= 400:
             raise RuntimeError(_format_scan_error("ollama", response))
     except httpx.TimeoutException as error:
-        raise RuntimeError("ollama models request quá chậm; gateway không trả trong 20 giây.") from error
+        raise RuntimeError("ollama models request quá chậm; gateway không trả trong 300 giây.") from error
     except httpx.HTTPError as error:
         message = str(error) or error.__class__.__name__
         raise RuntimeError(f"ollama models request lỗi: {message}") from error
