@@ -35,6 +35,7 @@ app/repositories/admin.py
 app/repositories/auth.py
 app/repositories/feedback.py
 app/repositories/history.py
+app/repositories/model_registry.py
 app/repositories/user_settings.py
 app/schemas/__init__.py
 app/schemas/auth.py
@@ -70,6 +71,8 @@ app/services/openai_compat_client.py
 app/services/openrouter_client.py
 app/services/problem_variants.py
 app/services/provider_logging.py
+app/services/provider_ping.py
+app/services/r2_storage.py
 app/services/renderer_router.py
 app/services/router9_bootstrap.py
 app/services/router9_client.py
@@ -95,9 +98,11 @@ tests/test_exports.py
 tests/test_expression_eval.py
 tests/test_extractor_pipeline.py
 tests/test_feedback.py
+tests/test_function_analyzer.py
 tests/test_geometry_engine.py
 tests/test_geometry_nsimplify.py
 tests/test_history_repository.py
+tests/test_model_provider.py
 tests/test_model_registry.py
 tests/test_ocr.py
 tests/test_scene_output_normalization.py
