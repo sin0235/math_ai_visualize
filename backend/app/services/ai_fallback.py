@@ -78,6 +78,10 @@ def explicit_model_for_provider(provider: str, model: str | None) -> str | None:
         if model.startswith(("openrouter/", "nvidia/", "ollama/", "openai_compat/", "openai-compat/")):
             return None
         return normalize_model_for_provider(provider, model)
+    if provider == "nvidia" and model:
+        if model.startswith(("openrouter/", "router9/", "ollama/", "openai_compat/", "openai-compat/")):
+            return None
+        return normalize_model_for_provider(provider, model)
     inferred = infer_provider_from_model(model)
     if inferred and inferred != provider:
         return None

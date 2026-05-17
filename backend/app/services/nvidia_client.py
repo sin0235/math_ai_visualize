@@ -7,7 +7,7 @@ from app.core.config import Settings
 from app.services.ai_prompt import REASONING_SYSTEM_PROMPT, SCENE_EXTRACTION_SYSTEM_PROMPT, build_reasoning_prompt, build_scene_extraction_prompt
 from app.services.chat_response import extract_chat_message_content
 from app.services.openrouter_client import OCR_SYSTEM_PROMPT
-from app.services.provider_logging import format_provider_error, log_ocr_summary, log_provider_request, log_provider_response, log_scene_summary
+from app.services.provider_logging import format_provider_error, log_ocr_summary, log_provider_http_error, log_provider_request, log_provider_response, log_scene_summary
 
 
 class NvidiaClient:
@@ -68,8 +68,9 @@ class NvidiaClient:
             client = get_client(self.settings.nvidia_base_url.rstrip("/"), TIMEOUT_SCENE)
             response = await client.post(url, headers=headers, json=payload, timeout=TIMEOUT_SCENE)
             elapsed_ms = int((time.perf_counter() - started_at) * 1000)
-            log_provider_response("nvidia", "scene", response.status_code, elapsed_ms, len(response.text))
+            log_provider_response("nvidia", "scene", response.status_code, elapsed_ms, len(response.text), payload["model"])
             if response.status_code >= 400:
+                log_provider_http_error("nvidia", "scene", response, payload["model"])
                 raise RuntimeError(_format_nvidia_error(response))
         except httpx.HTTPError as error:
             message = str(error) or error.__class__.__name__
@@ -119,8 +120,9 @@ class NvidiaClient:
             client = get_client(self.settings.nvidia_base_url.rstrip("/"), TIMEOUT_REASONING)
             response = await client.post(url, headers=headers, json=payload, timeout=TIMEOUT_REASONING)
             elapsed_ms = int((time.perf_counter() - started_at) * 1000)
-            log_provider_response("nvidia", "reasoning", response.status_code, elapsed_ms, len(response.text))
+            log_provider_response("nvidia", "reasoning", response.status_code, elapsed_ms, len(response.text), payload["model"])
             if response.status_code >= 400:
+                log_provider_http_error("nvidia", "reasoning", response, payload["model"])
                 raise RuntimeError(_format_nvidia_error(response))
         except httpx.HTTPError as error:
             message = str(error) or error.__class__.__name__
@@ -172,8 +174,9 @@ class NvidiaClient:
             client = get_client(self.settings.nvidia_base_url.rstrip("/"), TIMEOUT_OCR)
             response = await client.post(url, headers=headers, json=payload, timeout=TIMEOUT_OCR)
             elapsed_ms = int((time.perf_counter() - started_at) * 1000)
-            log_provider_response("nvidia", "ocr", response.status_code, elapsed_ms, len(response.text))
+            log_provider_response("nvidia", "ocr", response.status_code, elapsed_ms, len(response.text), payload["model"])
             if response.status_code >= 400:
+                log_provider_http_error("nvidia", "ocr", response, payload["model"])
                 raise RuntimeError(_format_nvidia_error(response))
         except httpx.HTTPError as error:
             message = str(error) or error.__class__.__name__

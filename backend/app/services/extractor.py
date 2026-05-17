@@ -672,6 +672,8 @@ def _profile_model_candidates(profile: Any, provider: str, settings: Settings, p
     provider = _normalize_provider_alias(provider) or provider
     candidates = _provider_model_candidates(provider, settings, preferred_ai_model)
     profile_provider = _normalize_provider_alias(profile.provider_id) if profile is not None else None
+    if preferred_ai_model:
+        return _dedupe_model_candidates(provider, candidates)
     if profile is not None and provider == profile_provider:
         candidates = [*(model or "" for model in candidates), *profile.fallbacks]
     return _dedupe_model_candidates(provider, candidates)
