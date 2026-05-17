@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass
 
 from app.core.config import Settings
-from app.services.model_provider import infer_provider_from_model, normalize_model_for_provider
+from app.services.model_provider import explicit_provider_from_model, normalize_model_for_provider
 from app.services.provider_logging import redact_sensitive
 from app.services.router9_bootstrap import select_router9_ocr_model_ids_from_ids, select_router9_render_model_ids_from_ids
 
@@ -74,16 +74,10 @@ def text_model_candidates(provider: str, settings: Settings, explicit_model: str
 
 
 def explicit_model_for_provider(provider: str, model: str | None) -> str | None:
-    if provider == "router9" and model:
-        if model.startswith(("openrouter/", "nvidia/", "ollama/", "openai_compat/", "openai-compat/")):
-            return None
+    if not model:
         return normalize_model_for_provider(provider, model)
-    if provider == "nvidia" and model:
-        if model.startswith(("openrouter/", "router9/", "ollama/", "openai_compat/", "openai-compat/")):
-            return None
-        return normalize_model_for_provider(provider, model)
-    inferred = infer_provider_from_model(model)
-    if inferred and inferred != provider:
+    explicit_provider = explicit_provider_from_model(model)
+    if explicit_provider and explicit_provider != provider:
         return None
     return normalize_model_for_provider(provider, model)
 

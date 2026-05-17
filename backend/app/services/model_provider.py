@@ -110,7 +110,6 @@ def _model_id_from_item(model: object) -> str:
 def _model_belongs_to_provider(provider_id: str, model_id: str) -> bool:
     inferred = explicit_provider_from_model(model_id)
     return inferred is None or inferred == provider_id
-    return normalized
 
 
 def normalize_model_for_provider(provider: str, model: str | None) -> str | None:
