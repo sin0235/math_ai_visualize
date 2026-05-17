@@ -42,7 +42,6 @@ OPENAI_COMPAT_MODEL_PREFIXES = ("openai_compat/", "openai-compat/")
 EXPLICIT_PROVIDER_PREFIXES = {
     "router9": ("router9/",),
     "openrouter": ("openrouter/",),
-    "nvidia": ("nvidia/",),
     "ollama": ("ollama/",),
     "openai_compat": ("openai_compat/", "openai-compat/"),
 }

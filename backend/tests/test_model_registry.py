@@ -324,6 +324,19 @@ async def test_sync_ai_settings_patch_only_updates_touched_provider(db):
 
 
 @pytest.mark.anyio
+async def test_openrouter_scan_accepts_vendor_namespaced_models(db):
+    await load_model_registry(db, Settings(_env_file=None))
+
+    await upsert_scanned_models(db, "openrouter", [
+        AiModelInfo(id="nvidia/llama-3.3-nemotron-super-49b-v1.5", label="Nemotron", provider="openrouter"),
+    ])
+
+    registry = await load_model_registry(db, Settings(_env_file=None))
+
+    assert any(model.id == "nvidia/llama-3.3-nemotron-super-49b-v1.5" for model in registry.models["openrouter"])
+
+
+@pytest.mark.anyio
 async def test_scanned_model_capabilities_round_trip(db):
     await load_model_registry(db, Settings(_env_file=None))
     await upsert_scanned_models(db, "openrouter", [
