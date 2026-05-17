@@ -78,14 +78,7 @@ interface ProblemInputProps {
   router9Only: boolean;
   onProblemTextChange: (next: string) => void;
   onSelectedModelKeyChange: (next: string) => void;
-  onOcrImage: (
-    file: File,
-    preferredAiProvider?: string,
-    preferredAiModel?: string,
-    advancedSettings?: AdvancedRenderSettings,
-    preferredRenderer?: Renderer,
-    mode?: 'problem' | 'diagram',
-  ) => void;
+  onOcrImage: (file: File, mode?: 'problem' | 'diagram') => void;
   onOcrClipboardImage: () => void;
   onOpenRouter9Settings: () => void;
   onSubmit: (
@@ -139,14 +132,7 @@ export function ProblemInput({
   function pickImageFile(files: FileList | null, mode: 'problem' | 'diagram' = 'problem') {
     const file = Array.from(files ?? []).find((item) => item.type.startsWith('image/'));
     if (file) {
-      onOcrImage(
-        file,
-        selectedModel?.provider,
-        selectedModel?.modelId,
-        advancedSettings,
-        preferredRenderer === 'auto' ? undefined : preferredRenderer,
-        mode,
-      );
+      onOcrImage(file, mode);
     }
   }
 
@@ -170,13 +156,7 @@ export function ProblemInput({
     const file = imageItem?.getAsFile();
     if (!file) return;
     event.preventDefault();
-    onOcrImage(
-      file,
-      selectedModel?.provider,
-      selectedModel?.modelId,
-      advancedSettings,
-      preferredRenderer === 'auto' ? undefined : preferredRenderer,
-    );
+    onOcrImage(file);
   }
 
   function handleTextAreaDoubleClick(event: MouseEvent<HTMLTextAreaElement>) {

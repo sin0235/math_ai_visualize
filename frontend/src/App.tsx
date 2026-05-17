@@ -408,10 +408,6 @@ export default function App() {
 
   async function handleOcrImage(
     file: File,
-    preferredAiProvider?: string,
-    preferredAiModel?: string,
-    advancedSettings?: AdvancedRenderSettings,
-    preferredRenderer?: Renderer,
     mode: 'problem' | 'diagram' = 'problem',
   ) {
     if (ocrInFlightRef.current) return;
@@ -442,11 +438,7 @@ export default function App() {
     try {
       const imageDataUrl = await fileToDataUrl(file);
       const response = await ocrImage(imageDataUrl, runtimeSettings, mode);
-      const nextProblemText = response.text.trim();
-      setProblemText(nextProblemText);
-      if (nextProblemText) {
-        await handleSubmit(nextProblemText, preferredAiProvider, preferredAiModel, advancedSettings, preferredRenderer);
-      }
+      setProblemText(response.text.trim());
     } catch (caught) {
       const apiError = toApiError(caught, 'Không thể OCR ảnh đề bài.');
       showApiError('OCR thất bại', apiError, 'Hãy kiểm tra ảnh có rõ chữ không, model OCR đã chọn có hỗ trợ ảnh không, hoặc thử provider/model khác.');
