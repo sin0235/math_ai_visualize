@@ -201,7 +201,7 @@ async def test_load_model_registry_canonicalizes_legacy_profile_mismatch(db):
     assert profile.model_id == "google/gemma-4-26b-a4b-it:free"
     assert row["provider_id"] == "openrouter"
     assert row["model_id"] == "google/gemma-4-26b-a4b-it:free"
-    assert json.loads(row["fallbacks_json"]) == ["google/gemma-4-31b-it:free"]
+    assert json.loads(row["fallbacks_json"]) == ["google/gemma-4-31b-it:free", "cc/codex-5.5-image"]
 
 
 def test_validate_system_setting_normalizes_default_to_allowlist():
@@ -502,25 +502,43 @@ async def test_sync_ai_settings_persists_ocr_profile_without_name_error(db, monk
 
 
 @pytest.mark.anyio
+async def test_ai_profiles_auto_provider_accepts_cross_provider_fallbacks(db):
+    await load_model_registry(db, Settings(_env_file=None))
+
+    await sync_ai_profiles_to_registry(db, {
+        "version": 1,
+        "geometry_reasoning": {"provider": "auto", "model": "", "fallbacks": ["openai/gpt-oss-120b:free"]},
+    }, {
+        "geometry_reasoning": {"provider": "auto", "model": "", "fallbacks": ["openai/gpt-oss-120b:free"]},
+    })
+
+    registry = await load_model_registry(db, Settings(_env_file=None))
+
+    assert registry.task_profiles["render"].provider_id == "auto"
+    assert registry.task_profiles["render"].fallbacks == ["openai/gpt-oss-120b:free"]
+
+
+@pytest.mark.anyio
 async def test_ai_profiles_sync_to_registry_task_profiles(db):
     await load_model_registry(db, Settings(_env_file=None))
 
     await sync_ai_profiles_to_registry(db, {
         "version": 1,
-        "geometry_reasoning": {"provider": "openrouter", "model": "openrouter/geometry", "fallbacks": ["openrouter/fallback"]},
-        "solver_explanation": {"provider": "router9", "model": "router9/solver", "fallbacks": ["router9/fallback"]},
+        "geometry_reasoning": {"provider": "openrouter", "model": "openrouter/geometry", "fallbacks": ["openrouter/fallback", "router9/fallback"]},
+        "solver_explanation": {"provider": "router9", "model": "router9/solver", "fallbacks": ["router9/fallback", "openrouter/fallback"]},
     }, {
-        "geometry_reasoning": {"provider": "openrouter", "model": "openrouter/geometry", "fallbacks": ["openrouter/fallback"]},
-        "solver_explanation": {"provider": "router9", "model": "router9/solver", "fallbacks": ["router9/fallback"]},
+        "geometry_reasoning": {"provider": "openrouter", "model": "openrouter/geometry", "fallbacks": ["openrouter/fallback", "router9/fallback"]},
+        "solver_explanation": {"provider": "router9", "model": "router9/solver", "fallbacks": ["router9/fallback", "openrouter/fallback"]},
     })
 
     registry = await load_model_registry(db, Settings(_env_file=None))
 
     assert registry.task_profiles["render"].provider_id == "openrouter"
     assert registry.task_profiles["render"].model_id == "geometry"
-    assert registry.task_profiles["reasoning"].fallbacks == ["fallback"]
+    assert registry.task_profiles["reasoning"].fallbacks == ["fallback", "router9/fallback"]
     assert registry.task_profiles["solver_explanation"].provider_id == "router9"
     assert registry.task_profiles["solver_explanation"].model_id == "solver"
+    assert registry.task_profiles["solver_explanation"].fallbacks == ["fallback", "openrouter/fallback"]
 
 
 @pytest.mark.anyio

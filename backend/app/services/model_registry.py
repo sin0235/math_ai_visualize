@@ -304,6 +304,10 @@ async def save_provider_check(db: DatabaseClient, provider_id: str, status: str,
 
 
 async def save_task_profile(db: DatabaseClient, task: str, provider_id: str, model_id: str, fallbacks: list[str]) -> None:
+    if provider_id == "auto" and not model_id:
+        fallbacks, _ = canonicalize_fallback_models(provider_id, fallbacks, strict=True)
+        await ModelRegistryRepository(db).upsert_task_profile(task, provider_id, "", fallbacks)
+        return
     ref = canonicalize_model_ref(provider_id, model_id, strict=True)
     provider_id = ref.provider_id
     model_id = ref.model_id
@@ -522,9 +526,32 @@ def resolve_task_profile(registry: ModelRegistry, task: str, preferred_provider:
     if model_id and not model_is_allowed(registry, provider_id, model_id):
         model_id = effective_provider_default_model(registry, provider_id, "")
     fallbacks = []
-    if profile and profile_provider == provider_id:
-        fallbacks = [model for model in profile.fallbacks if model_is_allowed(registry, provider_id, model)]
+    if profile:
+        fallbacks = _resolve_profile_fallbacks(registry, profile.fallbacks, provider_id)
     return TaskProfile(task, provider_id, model_id, fallbacks)
+
+
+def _resolve_profile_fallbacks(registry: ModelRegistry, fallbacks: list[str], primary_provider_id: str) -> list[str]:
+    resolved: list[str] = []
+    for fallback in fallbacks:
+        provider_id, model_id = _fallback_provider_model(fallback, primary_provider_id)
+        if model_id and model_is_allowed(registry, provider_id, model_id):
+            value = model_id if provider_id == primary_provider_id else f"{provider_id}/{model_id}"
+            if value not in resolved:
+                resolved.append(value)
+    return resolved
+
+
+def _fallback_provider_model(fallback: str, primary_provider_id: str) -> tuple[str, str]:
+    provider_id = primary_provider_id
+    model_id = fallback
+    for candidate in ("openrouter", "nvidia", "ollama", "openai_compat", "router9"):
+        prefix = f"{candidate}/"
+        if fallback.startswith(prefix):
+            provider_id = candidate
+            model_id = fallback.removeprefix(prefix)
+            break
+    return provider_id, normalize_model_for_provider(provider_id, model_id) or ""
 
 
 def normalize_registry_provider_id(provider_id: str | None) -> str | None:

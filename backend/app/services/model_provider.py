@@ -175,24 +175,20 @@ def canonicalize_fallback_models(provider: str, fallbacks: list[str], *, strict:
     provider_id = canonical_provider_id(provider) or provider
     canonical: list[str] = []
     warnings: list[str] = []
+    if provider_id == "auto":
+        for fallback in fallbacks:
+            model_id = (fallback or "").strip()
+            if model_id and model_id not in canonical:
+                canonical.append(model_id)
+        return canonical, warnings
     for fallback in fallbacks:
         if not fallback or not fallback.strip():
             continue
-        try:
-            ref = canonicalize_model_ref(provider_id, fallback, strict=strict, allow_auto=False)
-        except ValueError:
-            if strict:
-                raise
-            warnings.append(f"Bỏ fallback không cùng provider {provider_id}: {fallback}")
-            continue
-        if ref.provider_id != provider_id or _looks_like_other_provider_model(provider_id, fallback):
-            if strict:
-                raise ValueError(f"Fallback {fallback} không thuộc provider {provider_id}.")
-            warnings.append(f"Bỏ fallback không cùng provider {provider_id}: {fallback}")
-            continue
-        if ref.model_id not in canonical:
-            canonical.append(ref.model_id)
-        if ref.warning:
+        ref = canonicalize_model_ref(provider_id, fallback, strict=False, allow_auto=False)
+        fallback_id = ref.model_id if ref.provider_id == provider_id else f"{ref.provider_id}/{ref.model_id}"
+        if fallback_id not in canonical:
+            canonical.append(fallback_id)
+        if ref.warning and not fallback_id.startswith(f"{ref.provider_id}/"):
             warnings.append(ref.warning)
     return canonical, warnings
 

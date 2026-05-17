@@ -56,13 +56,15 @@ def test_canonicalize_legacy_model_ref_repairs_provider_model_mismatch():
     assert ref.warning
 
 
-def test_canonicalize_fallback_models_rejects_cross_provider_fallback():
-    with pytest.raises(ValueError, match="thuộc provider openrouter"):
-        canonicalize_fallback_models("router9", ["cc/codex-5.5-image", "openrouter/google/gemma"])
+def test_canonicalize_fallback_models_allows_any_model_for_auto_provider():
+    models, warnings = canonicalize_fallback_models("auto", ["openai/gpt-oss-120b:free", "nvidia/nemotron"])
+
+    assert models == ["openai/gpt-oss-120b:free", "nvidia/nemotron"]
+    assert warnings == []
 
 
-def test_canonicalize_fallback_models_lenient_drops_cross_provider_fallback():
-    models, warnings = canonicalize_fallback_models("router9", ["router9/cc/codex-5.5-image", "openrouter/google/gemma"], strict=False)
+def test_canonicalize_fallback_models_keeps_cross_provider_fallbacks():
+    models, warnings = canonicalize_fallback_models("router9", ["router9/cc/codex-5.5-image", "openrouter/google/gemma"])
 
-    assert models == ["cc/codex-5.5-image"]
-    assert warnings
+    assert models == ["cc/codex-5.5-image", "openrouter/google/gemma"]
+    assert warnings == []

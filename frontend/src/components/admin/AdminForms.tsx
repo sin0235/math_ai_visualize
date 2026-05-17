@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import type { AdminPlanResponse } from '../../api/client';
 import {
   AdminProviderModelSettings,
@@ -13,7 +13,7 @@ import {
   checkAdminProvider,
   checkAllAdminProviders,
 } from '../../api/client';
-import { buildModelOptionsFromDefaults, buildProviderOptions, buildRegistryModelOptions, planLabel, providerLabels } from '../../utils/settingsOptions';
+import { buildModelOptionsFromDefaults, buildProviderOptions, planLabel, providerLabels } from '../../utils/settingsOptions';
 import type { ProviderSettingsDefaults, SettingsDefaults } from '../../types/settings';
 
 // --- Utility Functions ---
@@ -724,22 +724,25 @@ export function AdminAiProfilesForm({ value, aiSettings, defaults, onSave, onToa
   const [ocrFallbacks, setOcrFallbacks] = useState<string[]>(ocr.fallbacks);
   const [saving, setSaving] = useState(false);
   const settingsDefaults = mergeAdminProfileDefaults(defaults, adminSettingsToDefaults(aiSettings));
-  const providerOptions = buildProviderOptions(settingsDefaults, false);
+  const providerOptions = useMemo(() => buildProviderOptions(settingsDefaults, false).filter((option) => option.id !== 'auto'), [settingsDefaults]);
 
   useEffect(() => {
     const nextGeometry = getAiTaskProfile(value.geometry_reasoning);
     const nextSolver = getAiTaskProfile(value.solver_explanation);
     const nextOcr = getAiTaskProfile(value.ocr);
-    setGeometryProvider(nextGeometry.provider);
-    setGeometryModel(nextGeometry.model);
+    const geometryProvider = defaultProfileProvider(nextGeometry.provider);
+    const solverProvider = defaultProfileProvider(nextSolver.provider);
+    const ocrProvider = defaultProfileProvider(nextOcr.provider);
+    setGeometryProvider(geometryProvider);
+    setGeometryModel(nextGeometry.provider === 'auto' ? defaultModelForProvider(geometryProvider) : nextGeometry.model);
     setGeometryFallbacks(nextGeometry.fallbacks);
-    setSolverProvider(nextSolver.provider);
-    setSolverModel(nextSolver.model);
+    setSolverProvider(solverProvider);
+    setSolverModel(nextSolver.provider === 'auto' ? defaultModelForProvider(solverProvider) : nextSolver.model);
     setSolverFallbacks(nextSolver.fallbacks);
-    setOcrProvider(nextOcr.provider);
-    setOcrModel(nextOcr.model);
+    setOcrProvider(ocrProvider);
+    setOcrModel(nextOcr.provider === 'auto' ? defaultModelForProvider(ocrProvider) : nextOcr.model);
     setOcrFallbacks(nextOcr.fallbacks);
-  }, [value]);
+  }, [value, providerOptions]);
 
   function providerDefaults(selectedProvider: string): ProviderSettingsDefaults | undefined {
     if (selectedProvider === 'openrouter' || selectedProvider === 'nvidia' || selectedProvider === 'ollama' || selectedProvider === 'openai_compat' || selectedProvider === 'router9') return settingsDefaults[selectedProvider];
@@ -753,25 +756,13 @@ export function AdminAiProfilesForm({ value, aiSettings, defaults, onSave, onToa
     return buildModelOptionsFromDefaults(providerDefaults(selectedProvider), selectedModel, fallbackModels, settingsDefaults, selectedProvider);
   }
 
-  function fallbackModelOptions(selectedProvider: string, selectedModel: string, fallbackModels: string[] = []) {
-    if (selectedProvider === 'auto') {
-      return allProviderModelOptions(selectedModel, fallbackModels);
-    }
-    const defaultsForProvider = providerDefaults(selectedProvider);
-    const ids = [
-      ...(settingsDefaults ? buildRegistryModelOptions(settingsDefaults, selectedProvider).map((option) => option.id) : []),
-      ...(defaultsForProvider?.allowed_model_ids ?? []),
-      ...(defaultsForProvider?.scanned_models.map((model) => model.id) ?? []),
-      defaultsForProvider?.model ?? '',
-      selectedModel,
-      ...fallbackModels,
-    ];
-    const byId = new Map<string, { id: string; label: string }>();
-    ids.filter(Boolean).forEach((id) => {
-      const scanned = defaultsForProvider?.scanned_models.find((model) => model.id === id);
-      if (!byId.has(id)) byId.set(id, { id, label: scanned?.label ?? id });
-    });
-    return [...byId.values()];
+  function fallbackModelOptions(_selectedProvider: string, selectedModel: string, fallbackModels: string[] = []) {
+    return allProviderModelOptions(selectedModel, fallbackModels);
+  }
+
+  function defaultProfileProvider(selectedProvider: string) {
+    if (selectedProvider !== 'auto') return selectedProvider;
+    return providerOptions[0]?.id ?? 'openrouter';
   }
 
   function defaultModelForProvider(selectedProvider: string) {
@@ -800,7 +791,15 @@ export function AdminAiProfilesForm({ value, aiSettings, defaults, onSave, onToa
     const seen = new Set<string>();
     const combined: Array<{ id: string; label: string }> = [];
     (['openrouter', 'nvidia', 'ollama', 'openai_compat', 'router9'] as const).forEach((provider) => {
-      buildModelOptionsFromDefaults(settingsDefaults[provider], '', [], settingsDefaults, provider).forEach((option) => {
+      const providerDefaults = settingsDefaults[provider];
+      const registryAllowed = settingsDefaults.registry_models
+        ?.filter((model) => model.provider_id === provider && model.enabled && model.allowed)
+        .map((model) => ({ id: model.id, label: model.label || model.id })) ?? [];
+      const allowedIds = providerDefaults.allowed_model_ids.map((id) => {
+        const scanned = providerDefaults.scanned_models.find((model) => model.id === id);
+        return { id, label: scanned?.label ?? id };
+      });
+      [...registryAllowed, ...allowedIds].forEach((option) => {
         if (!seen.has(option.id)) { seen.add(option.id); combined.push(option); }
       });
     });
