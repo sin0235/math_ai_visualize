@@ -82,11 +82,35 @@ def normalize_provider_defaults(value: dict | None) -> dict | None:
         provider_normalized = dict(provider)
         if provider_id != "router9":
             provider_normalized.pop("only_mode", None)
+        scanned = provider_normalized.get("scanned_models")
+        if isinstance(scanned, list):
+            provider_normalized["scanned_models"] = [model for model in scanned if _model_belongs_to_provider(provider_id, _model_id_from_item(model))]
+        allowed = provider_normalized.get("allowed_model_ids")
+        if isinstance(allowed, list):
+            provider_normalized["allowed_model_ids"] = [str(model_id) for model_id in allowed if _model_belongs_to_provider(provider_id, str(model_id))]
         allowed = provider_normalized.get("allowed_model_ids")
         model = provider_normalized.get("model")
+        if isinstance(model, str) and model and not _model_belongs_to_provider(provider_id, model):
+            provider_normalized["model"] = ""
+            model = ""
         if isinstance(allowed, list) and allowed and isinstance(model, str) and model and model not in allowed:
             provider_normalized["model"] = str(allowed[0])
         normalized[provider_id] = provider_normalized
+    return normalized
+
+
+def _model_id_from_item(model: object) -> str:
+    if isinstance(model, str):
+        return model
+    if isinstance(model, dict):
+        value = model.get("id")
+        return value if isinstance(value, str) else ""
+    return ""
+
+
+def _model_belongs_to_provider(provider_id: str, model_id: str) -> bool:
+    inferred = explicit_provider_from_model(model_id)
+    return inferred is None or inferred == provider_id
     return normalized
 
 

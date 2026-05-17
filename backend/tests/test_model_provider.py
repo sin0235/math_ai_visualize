@@ -1,6 +1,6 @@
 import pytest
 
-from app.services.model_provider import canonicalize_fallback_models, canonicalize_legacy_model_ref, canonicalize_model_ref
+from app.services.model_provider import canonicalize_fallback_models, canonicalize_legacy_model_ref, canonicalize_model_ref, normalize_provider_defaults
 
 
 def test_canonicalize_model_ref_strips_matching_provider_prefix():
@@ -24,6 +24,23 @@ def test_canonicalize_model_ref_does_not_treat_vendor_namespace_as_provider_pref
 
     assert ref.provider_id == "nvidia"
     assert ref.model_id == "qwen/qwen3-coder-480b-a35b-instruct"
+
+
+def test_normalize_provider_defaults_drops_cross_provider_models():
+    value = normalize_provider_defaults({
+        "openrouter": {
+            "model": "nvidia/nemotron-3-super-120b-a12b:free",
+            "scanned_models": [
+                {"id": "nvidia/nemotron-3-super-120b-a12b:free", "label": "bad", "provider": "openrouter"},
+                {"id": "openai/gpt-oss-120b:free", "label": "ok", "provider": "openrouter"},
+            ],
+            "allowed_model_ids": ["nvidia/nemotron-3-super-120b-a12b:free", "openai/gpt-oss-120b:free"],
+        }
+    })
+
+    assert value["openrouter"]["model"] == ""
+    assert value["openrouter"]["allowed_model_ids"] == ["openai/gpt-oss-120b:free"]
+    assert [model["id"] for model in value["openrouter"]["scanned_models"]] == ["openai/gpt-oss-120b:free"]
 
 
 def test_canonicalize_model_ref_rejects_provider_model_mismatch():
