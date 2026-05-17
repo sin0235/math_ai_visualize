@@ -52,7 +52,7 @@ def test_validate_image_data_url_rejects_non_images():
         raise AssertionError("Expected non-image data URL to be rejected")
 
 
-def test_resolve_ocr_provider_treats_9router_namespaces_as_router9():
+def test_resolve_ocr_provider_does_not_infer_from_vendor_namespaces():
     for model in [
         "gh/gpt-5.2",
         "cc/codex-5.5-image",
@@ -64,14 +64,15 @@ def test_resolve_ocr_provider_treats_9router_namespaces_as_router9():
         "openAI-ds/deepseek-v4-vision",
         "kc/anthropic/claude-sonnet-4-20250514",
     ]:
-        assert resolve_ocr_provider(None, model) == "router9"
+        assert resolve_ocr_provider(None, model) == "openrouter"
+    assert resolve_ocr_provider("router9", "gh/gpt-5.2") == "router9"
 
 
 def test_resolve_ocr_provider_supports_all_admin_providers():
     assert resolve_ocr_provider("nvidia", None) == "nvidia"
     assert resolve_ocr_provider("ollama", None) == "ollama"
     assert resolve_ocr_provider("openai_compat", None) == "openai_compat"
-    assert resolve_ocr_provider(None, "nvidia/model") == "nvidia"
+    assert resolve_ocr_provider(None, "nvidia/model") == "openrouter"
     assert resolve_ocr_provider(None, "ollama/llava") == "ollama"
     assert resolve_ocr_provider(None, "openai_compat/vision") == "openai_compat"
 

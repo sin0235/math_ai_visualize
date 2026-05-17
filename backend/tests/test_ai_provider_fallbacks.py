@@ -540,24 +540,26 @@ def test_render_stops_after_invalid_ai_response(monkeypatch):
     assert any("AI đã phản hồi nhưng scene không hợp lệ" in warning for warning in warnings)
 
 
-def test_render_uses_profile_fallback_models(monkeypatch):
+def test_render_profile_fallback_models_are_used_only_without_explicit_model(monkeypatch):
     from app.services.model_registry import TaskProfile
     from app.services.extractor import _profile_model_candidates
 
     profile = TaskProfile("render", "router9", "cx/gpt-5.5", ["gh/gemini-3.1-pro-preview"])
     settings = Settings(_env_file=None, router9_api_key="secret", router9_allowed_models=["cx/gpt-5.5", "gh/gemini-3.1-pro-preview"])
 
-    assert _profile_model_candidates(profile, "router9", settings, "cx/gpt-5.5") == ["cx/gpt-5.5", "gh/gemini-3.1-pro-preview"]
+    assert _profile_model_candidates(profile, "router9", settings, None) == ["cx/gpt-5.5", "gh/gemini-3.1-pro-preview"]
+    assert _profile_model_candidates(profile, "router9", settings, "cx/gpt-5.5") == ["cx/gpt-5.5"]
 
 
-def test_render_uses_profile_fallback_models_for_provider_alias(monkeypatch):
+def test_render_profile_fallback_models_for_provider_alias_require_no_explicit_model(monkeypatch):
     from app.services.model_registry import TaskProfile
     from app.services.extractor import _profile_model_candidates
 
     profile = TaskProfile("render", "ollama", "gpt-oss:120b", ["gpt-oss:20b"])
     settings = Settings(_env_file=None, ollama_text_model="gpt-oss:120b")
 
-    assert _profile_model_candidates(profile, "ollama_gpt_oss", settings, "gpt-oss:120b") == ["gpt-oss:120b", "gpt-oss:20b"]
+    assert _profile_model_candidates(profile, "ollama_gpt_oss", settings, None) == ["gpt-oss:120b", "gpt-oss:20b"]
+    assert _profile_model_candidates(profile, "ollama_gpt_oss", settings, "gpt-oss:120b") == ["gpt-oss:120b"]
 
 
 def test_openrouter_base_url_normalizes_missing_api_segment():
@@ -792,7 +794,7 @@ def test_render_explicit_model_does_not_fallback_to_other_providers(monkeypatch)
     assert "nvidia/" not in str(error.value)
 
 
-def test_render_explicit_model_uses_configured_profile_fallbacks_only(monkeypatch):
+def test_render_explicit_model_ignores_configured_profile_fallbacks(monkeypatch):
     from app.services.model_registry import ModelRegistry, ModelRegistryItem, ProviderRegistryItem, TaskProfile
 
     calls = []
@@ -854,17 +856,17 @@ def test_render_explicit_model_uses_configured_profile_fallbacks_only(monkeypatc
         },
     })
 
-    scene, warnings = asyncio.run(extract_scene(
-        "x",
-        preferred_ai_provider="openai_compat",
-        preferred_ai_model="deepseek-v4-flash",
-        runtime_settings=runtime_settings,
-        db=object(),
-    ))
+    with pytest.raises(RuntimeError) as error:
+        asyncio.run(extract_scene(
+            "x",
+            preferred_ai_provider="openai_compat",
+            preferred_ai_model="deepseek-v4-flash",
+            runtime_settings=runtime_settings,
+            db=object(),
+        ))
 
-    assert scene.topic == "unknown"
-    assert calls == [("openai_compat", "deepseek-v4-flash"), ("openai_compat", "deepseek-v4-fallback")]
-    assert any("AI fallback: openai_compat/deepseek-v4-flash" in warning for warning in warnings)
+    assert calls == [("openai_compat", "deepseek-v4-flash")]
+    assert "Không fallback sang provider ngoài lựa chọn" in str(error.value)
 
 
 def test_render_explicit_ollama_alias_uses_ollama_provider(monkeypatch):

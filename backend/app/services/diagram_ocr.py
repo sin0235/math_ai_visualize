@@ -21,7 +21,7 @@ from app.core.config import Settings
 from app.services.ai_fallback import Attempt, format_attempts, openrouter_vision_candidates, provider_configured, router9_ocr_candidates
 from app.services.ocr import validate_image_data_url
 from app.services.chat_response import extract_chat_message_content
-from app.services.model_provider import infer_provider_from_model, normalize_model_for_provider
+from app.services.model_provider import explicit_provider_from_model, normalize_model_for_provider
 from app.services.openrouter_client import _build_headers, _extract_message, _format_openrouter_error, _strip_text_fences, openrouter_api_base_url
 from app.services.provider_logging import log_provider_request, log_provider_response
 from app.services.router9_client import Router9Client
@@ -61,10 +61,11 @@ async def describe_diagram(
     validate_image_data_url(image_data_url)
     attempts: list[Attempt] = []
 
-    explicit_provider = infer_provider_from_model(explicit_model)
+    explicit_provider = explicit_provider_from_model(explicit_model)
 
     if explicit_provider != "router9" and provider_configured(settings.openrouter_api_key):
-        for model in openrouter_vision_candidates(settings, explicit_model if explicit_provider != "router9" else None):
+        openrouter_model = normalize_model_for_provider("openrouter", explicit_model) if explicit_provider == "openrouter" else explicit_model
+        for model in openrouter_vision_candidates(settings, openrouter_model):
             try:
                 description = await _call_openrouter_vision(image_data_url, settings, model)
                 return DiagramOcrResult(description=description, provider="openrouter", model=model)
@@ -72,7 +73,8 @@ async def describe_diagram(
                 attempts.append(Attempt("openrouter", model, "diagram_ocr", str(error)))
 
     if explicit_provider != "openrouter" and provider_configured(settings.router9_api_key):
-        for model in router9_ocr_candidates(settings, normalize_model_for_provider("router9", explicit_model)):
+        router9_model = normalize_model_for_provider("router9", explicit_model) if explicit_provider == "router9" else None
+        for model in router9_ocr_candidates(settings, router9_model):
             try:
                 client = Router9Client(settings, model=model)
                 description = await client.ocr_image(image_data_url, model, system_prompt=DIAGRAM_OCR_SYSTEM_PROMPT, user_text="Hãy mô tả hình hình học trong ảnh thành một đoạn văn đề bài tiếng Việt.")

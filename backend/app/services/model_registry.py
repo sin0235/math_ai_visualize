@@ -17,7 +17,6 @@ from app.services.model_provider import (
     canonicalize_fallback_models,
     canonicalize_legacy_model_ref,
     canonicalize_model_ref,
-    infer_provider_from_model,
     normalize_model_for_provider,
 )
 

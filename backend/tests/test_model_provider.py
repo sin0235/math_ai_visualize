@@ -1,6 +1,7 @@
 import pytest
 
-from app.services.model_provider import canonicalize_fallback_models, canonicalize_legacy_model_ref, canonicalize_model_ref, normalize_provider_defaults
+from app.services.ai_fallback import explicit_model_for_provider
+from app.services.model_provider import canonicalize_fallback_models, canonicalize_legacy_model_ref, canonicalize_model_ref, normalize_provider_defaults, resolve_ocr_provider
 
 
 def test_canonicalize_model_ref_strips_matching_provider_prefix():
@@ -63,8 +64,33 @@ def test_canonicalize_fallback_models_allows_any_model_for_auto_provider():
     assert warnings == []
 
 
+def test_canonicalize_fallback_models_keeps_vendor_namespace_for_primary_provider():
+    models, warnings = canonicalize_fallback_models("openrouter", ["nvidia/nemotron-3-super-120b-a12b:free"])
+
+    assert models == ["nvidia/nemotron-3-super-120b-a12b:free"]
+    assert warnings == []
+
+
 def test_canonicalize_fallback_models_keeps_cross_provider_fallbacks():
     models, warnings = canonicalize_fallback_models("router9", ["router9/cc/codex-5.5-image", "openrouter/google/gemma"])
 
     assert models == ["cc/codex-5.5-image", "openrouter/google/gemma"]
     assert warnings == []
+
+
+def test_explicit_model_for_provider_keeps_vendor_namespaces_under_selected_provider():
+    assert explicit_model_for_provider("nvidia", "qwen/qwen3-coder-480b-a35b-instruct") == "qwen/qwen3-coder-480b-a35b-instruct"
+    assert explicit_model_for_provider("openrouter", "nvidia/nemotron-3-super-120b-a12b:free") == "nvidia/nemotron-3-super-120b-a12b:free"
+    assert explicit_model_for_provider("router9", "gh/claude-haiku-4.5") == "gh/claude-haiku-4.5"
+
+
+def test_explicit_model_for_provider_rejects_only_app_qualified_mismatch():
+    assert explicit_model_for_provider("nvidia", "openrouter/qwen/qwen3-next-80b-a3b-instruct:free") is None
+    assert explicit_model_for_provider("openrouter", "router9/cx/gpt-5.5") is None
+
+
+def test_resolve_ocr_provider_only_infers_app_qualified_prefixes():
+    assert resolve_ocr_provider(None, "router9/gh/gpt-5.2") == "router9"
+    assert resolve_ocr_provider(None, "openrouter/google/gemini-flash") == "openrouter"
+    assert resolve_ocr_provider(None, "gh/gpt-5.2") == "openrouter"
+    assert resolve_ocr_provider("router9", "gh/gpt-5.2") == "router9"

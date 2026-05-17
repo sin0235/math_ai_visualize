@@ -21,46 +21,12 @@ class CanonicalModelRef:
     warning: str | None = None
 
 
-ROUTER9_MODEL_PREFIXES = (
-    "router9/",
-    "gh/",
-    "cc/",
-    "cx/",
-    "oc/",
-    "kr/",
-    "cf/",
-    "claude-ds/",
-    "openAI-ds/",
-    "kc/",
-    "github/",
-    "codex-",
-)
-OPENROUTER_MODEL_PREFIXES = ("openrouter/", "openai/", "google/", "anthropic/", "meta-llama/", "mistralai/", "qwen/")
-NVIDIA_MODEL_PREFIXES = ("nvidia/",)
-OLLAMA_MODEL_PREFIXES = ("ollama/",)
-OPENAI_COMPAT_MODEL_PREFIXES = ("openai_compat/", "openai-compat/")
 EXPLICIT_PROVIDER_PREFIXES = {
     "router9": ("router9/",),
     "openrouter": ("openrouter/",),
     "ollama": ("ollama/",),
     "openai_compat": ("openai_compat/", "openai-compat/"),
 }
-
-
-def infer_provider_from_model(model: str | None) -> str | None:
-    if not model:
-        return None
-    if model.startswith(ROUTER9_MODEL_PREFIXES):
-        return "router9"
-    if model.startswith(NVIDIA_MODEL_PREFIXES):
-        return "nvidia"
-    if model.startswith(OLLAMA_MODEL_PREFIXES):
-        return "ollama"
-    if model.startswith(OPENAI_COMPAT_MODEL_PREFIXES):
-        return "openai_compat"
-    if model.startswith(OPENROUTER_MODEL_PREFIXES):
-        return "openrouter"
-    return None
 
 
 def canonical_provider_id(provider: str | None) -> str | None:
@@ -192,18 +158,10 @@ def canonicalize_fallback_models(provider: str, fallbacks: list[str], *, strict:
     return canonical, warnings
 
 
-def _looks_like_other_provider_model(provider_id: str, model: str) -> bool:
-    inferred = infer_provider_from_model(model)
-    if inferred is None:
-        return False
-    inferred = canonical_provider_id(inferred) or inferred
-    return inferred != provider_id
-
-
 def resolve_ocr_provider(provider: OcrProvider | None, model: str | None) -> OcrProvider:
     if provider is not None:
         return provider
-    inferred = infer_provider_from_model(model)
-    if inferred in {"router9", "openrouter", "nvidia", "ollama", "openai_compat"}:
-        return inferred
+    explicit_provider = explicit_provider_from_model(model)
+    if explicit_provider in {"router9", "openrouter", "ollama", "openai_compat"}:
+        return explicit_provider
     return "openrouter"
