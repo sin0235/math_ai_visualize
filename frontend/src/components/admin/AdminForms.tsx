@@ -13,7 +13,7 @@ import {
   checkAdminProvider,
   checkAllAdminProviders,
 } from '../../api/client';
-import { buildModelOptionsFromDefaults, buildProviderOptions, planLabel, providerLabels } from '../../utils/settingsOptions';
+import { buildModelOptionsFromDefaults, buildProviderOptions, buildRegistryModelOptions, planLabel, providerLabels } from '../../utils/settingsOptions';
 import type { ProviderSettingsDefaults, SettingsDefaults } from '../../types/settings';
 
 // --- Utility Functions ---
@@ -750,8 +750,28 @@ export function AdminAiProfilesForm({ value, aiSettings, defaults, onSave, onToa
     if (selectedProvider === 'auto') {
       return allProviderModelOptions(selectedModel, fallbackModels);
     }
-    const options = buildModelOptionsFromDefaults(providerDefaults(selectedProvider), selectedModel, fallbackModels, settingsDefaults, selectedProvider);
-    return options;
+    return buildModelOptionsFromDefaults(providerDefaults(selectedProvider), selectedModel, fallbackModels, settingsDefaults, selectedProvider);
+  }
+
+  function fallbackModelOptions(selectedProvider: string, selectedModel: string, fallbackModels: string[] = []) {
+    if (selectedProvider === 'auto') {
+      return allProviderModelOptions(selectedModel, fallbackModels);
+    }
+    const defaultsForProvider = providerDefaults(selectedProvider);
+    const ids = [
+      ...(settingsDefaults ? buildRegistryModelOptions(settingsDefaults, selectedProvider).map((option) => option.id) : []),
+      ...(defaultsForProvider?.allowed_model_ids ?? []),
+      ...(defaultsForProvider?.scanned_models.map((model) => model.id) ?? []),
+      defaultsForProvider?.model ?? '',
+      selectedModel,
+      ...fallbackModels,
+    ];
+    const byId = new Map<string, { id: string; label: string }>();
+    ids.filter(Boolean).forEach((id) => {
+      const scanned = defaultsForProvider?.scanned_models.find((model) => model.id === id);
+      if (!byId.has(id)) byId.set(id, { id, label: scanned?.label ?? id });
+    });
+    return [...byId.values()];
   }
 
   function defaultModelForProvider(selectedProvider: string) {
@@ -817,9 +837,9 @@ export function AdminAiProfilesForm({ value, aiSettings, defaults, onSave, onToa
       <label className="field-label">Model OCR<select value={ocrModel} onChange={(event) => setOcrModel(event.target.value)} disabled={saving}><option value="">Chọn model</option>{modelOptions(ocrProvider, ocrModel, ocrFallbacks).map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.label}</option>)}</select></label>
     </div>
     <div className="admin-model-fallback-grid">
-      <ModelFallbackChecklist title="Model dự phòng hình học" options={modelOptions(geometryProvider, geometryModel, geometryFallbacks)} selected={geometryFallbacks} onToggle={(modelId, checked) => updateFallbacks('geometry', modelId, checked)} disabled={saving} />
-      <ModelFallbackChecklist title="Model dự phòng diễn giải lời giải" options={modelOptions(solverProvider, solverModel, solverFallbacks)} selected={solverFallbacks} onToggle={(modelId, checked) => updateFallbacks('solver', modelId, checked)} disabled={saving} />
-      <ModelFallbackChecklist title="Model dự phòng OCR" options={modelOptions(ocrProvider, ocrModel, ocrFallbacks)} selected={ocrFallbacks} onToggle={(modelId, checked) => updateFallbacks('ocr', modelId, checked)} disabled={saving} />
+      <ModelFallbackChecklist title="Model dự phòng hình học" options={fallbackModelOptions(geometryProvider, geometryModel, geometryFallbacks)} selected={geometryFallbacks} onToggle={(modelId, checked) => updateFallbacks('geometry', modelId, checked)} disabled={saving} />
+      <ModelFallbackChecklist title="Model dự phòng diễn giải lời giải" options={fallbackModelOptions(solverProvider, solverModel, solverFallbacks)} selected={solverFallbacks} onToggle={(modelId, checked) => updateFallbacks('solver', modelId, checked)} disabled={saving} />
+      <ModelFallbackChecklist title="Model dự phòng OCR" options={fallbackModelOptions(ocrProvider, ocrModel, ocrFallbacks)} selected={ocrFallbacks} onToggle={(modelId, checked) => updateFallbacks('ocr', modelId, checked)} disabled={saving} />
     </div>
     <button type="button" className="secondary-button" onClick={() => void saveProfiles()} disabled={saving} aria-busy={saving}>{saving ? 'Đang lưu...' : 'Lưu hồ sơ AI'}</button></section>
   );
