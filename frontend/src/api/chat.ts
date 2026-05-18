@@ -107,10 +107,8 @@ export async function createChatWebSocket(): Promise<WebSocket> {
 }
 
 function chatWsBaseUrl() {
-  if (!API_BASE_URL) {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    return `${protocol}//${window.location.host}`;
-  }
+  const explicitWsUrl = import.meta.env.VITE_WS_BASE_URL?.trim().replace(/\/$/, '');
+  if (explicitWsUrl) return explicitWsUrl;
   if (API_BASE_URL.startsWith('http://')) return API_BASE_URL.replace(/^http:/, 'ws:');
   if (API_BASE_URL.startsWith('https://')) return API_BASE_URL.replace(/^https:/, 'wss:');
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
