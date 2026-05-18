@@ -10,12 +10,13 @@ from app.api.routes_diagram import router as diagram_router
 from app.api.routes_export import router as export_router
 from app.api.routes_feedback import router as feedback_router
 from app.api.routes_health import router as health_router
+from app.api.routes_function_analysis import router as function_analysis_router
 from app.api.routes_history import router as history_router
 from app.api.routes_ocr import router as ocr_router
 from app.api.routes_render import router as render_router
 from app.api.routes_settings import router as settings_router
-from app.api.routes_user_settings import router as user_settings_router
 from app.api.routes_solve import router as solve_router
+from app.api.routes_user_settings import router as user_settings_router
 from app.core.config import get_settings
 from app.core.logging import configure_logging
 from app.db.migrations import apply_migrations
@@ -59,3 +60,4 @@ app.include_router(feedback_router)
 app.include_router(settings_router)
 app.include_router(user_settings_router)
 app.include_router(solve_router)
+app.include_router(function_analysis_router)

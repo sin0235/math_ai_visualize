@@ -130,9 +130,6 @@ async def sync_ai_settings_to_registry(db: DatabaseClient, value: dict, patch: d
             await set_allowed_models(db, provider_id, provider.allowed_model_ids)
     if "default_provider" in patch_keys:
         await set_model_setting(db, "default_provider", ai_settings.default_provider)
-        await save_task_profile(db, "render", ai_settings.default_provider, "", [])
-        await save_task_profile(db, "reasoning", ai_settings.default_provider, "", [])
-        await save_task_profile(db, "solver_explanation", ai_settings.default_provider, "", [])
     if "router9" in patch_keys:
         await set_model_setting(db, "router9_only", ai_settings.router9.only_mode)
     if "openrouter_reasoning_enabled" in patch_keys:

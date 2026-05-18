@@ -8,6 +8,8 @@ from botocore.client import Config
 from fastapi import UploadFile
 
 from app.core.config import Settings
+from app.db.session import DatabaseClient
+from app.repositories.uploads import UploadRepository
 
 SUPPORTED_IMAGE_TYPES = {"image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"}
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
@@ -21,9 +23,63 @@ class StoredImage:
     data_url: str
     size: int
     public_url: str | None = None
+    storage_key: str | None = None
 
 
 async def read_upload_image(upload: UploadFile, settings: Settings) -> StoredImage:
+    filename, content_type, body = await read_upload_body(upload)
+    encoded = base64.b64encode(body).decode("ascii")
+    return StoredImage(
+        file_id=hashlib.sha256(body).hexdigest(),
+        filename=filename,
+        content_type=content_type,
+        data_url=f"data:{content_type};base64,{encoded}",
+        size=len(body),
+    )
+
+
+async def save_upload_image(upload: UploadFile, settings: Settings, db: DatabaseClient, user_id: str | None = None) -> StoredImage:
+    filename, content_type, body = await read_upload_body(upload)
+    encoded = base64.b64encode(body).decode("ascii")
+    digest = hashlib.sha256(body).hexdigest()
+    storage_key = store_file_if_configured(body, filename, content_type, settings)
+    record = await UploadRepository(db).create(
+        user_id,
+        filename,
+        content_type,
+        len(body),
+        digest,
+        encoded,
+        storage_key,
+        public_url(settings, storage_key) if storage_key else None,
+    )
+    return StoredImage(
+        file_id=record.id,
+        filename=record.filename,
+        content_type=record.content_type,
+        data_url=record.data_url,
+        size=record.size,
+        public_url=record.public_url,
+        storage_key=record.storage_key,
+    )
+
+
+async def load_upload_image(db: DatabaseClient, file_id: str) -> StoredImage | None:
+    record = await UploadRepository(db).load(file_id)
+    if record is None:
+        return None
+    return StoredImage(
+        file_id=record.id,
+        filename=record.filename,
+        content_type=record.content_type,
+        data_url=record.data_url,
+        size=record.size,
+        public_url=record.public_url,
+        storage_key=record.storage_key,
+    )
+
+
+async def read_upload_body(upload: UploadFile) -> tuple[str, str, bytes]:
     content_type = (upload.content_type or "").lower()
     if content_type not in SUPPORTED_IMAGE_TYPES:
         raise ValueError("File OCR phải là ảnh PNG/JPEG/WebP/GIF.")
@@ -31,16 +87,13 @@ async def read_upload_image(upload: UploadFile, settings: Settings) -> StoredIma
     if len(body) > MAX_IMAGE_BYTES:
         raise ValueError("Ảnh OCR vượt quá giới hạn 5MB.")
     filename = upload.filename or "ocr-image"
-    object_key = store_file(body, filename, content_type, settings)
-    encoded = base64.b64encode(body).decode("ascii")
-    return StoredImage(
-        file_id=object_key,
-        filename=filename,
-        content_type=content_type,
-        data_url=f"data:{content_type};base64,{encoded}",
-        size=len(body),
-        public_url=public_url(settings, object_key),
-    )
+    return filename, content_type, body
+
+
+def store_file_if_configured(body: bytes, filename: str, content_type: str, settings: Settings) -> str | None:
+    if not all([settings.r2_account_id, settings.r2_access_key_id, settings.r2_secret_access_key, settings.r2_bucket_name]):
+        return None
+    return store_file(body, filename, content_type, settings)
 
 
 def store_file(body: bytes, filename: str, content_type: str, settings: Settings) -> str:

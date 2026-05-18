@@ -502,6 +502,32 @@ async def test_sync_ai_settings_persists_ocr_profile_without_name_error(db, monk
 
 
 @pytest.mark.anyio
+async def test_sync_ai_settings_default_provider_preserves_task_profiles(db):
+    await load_model_registry(db, Settings(_env_file=None))
+    await save_task_profile(db, "render", "openrouter", "openrouter/render", ["router9/render-fallback"])
+    await save_task_profile(db, "reasoning", "openrouter", "openrouter/reasoning", [])
+    await save_task_profile(db, "solver_explanation", "router9", "router9/solver", [])
+
+    await sync_ai_settings_to_registry(db, {
+        "version": 1,
+        "default_provider": "nvidia",
+    }, {
+        "default_provider": "nvidia",
+    })
+
+    registry = await load_model_registry(db, Settings(_env_file=None))
+
+    assert registry.settings["default_provider"] == "nvidia"
+    assert registry.task_profiles["render"].provider_id == "openrouter"
+    assert registry.task_profiles["render"].model_id == "render"
+    assert registry.task_profiles["render"].fallbacks == ["router9/render-fallback"]
+    assert registry.task_profiles["reasoning"].provider_id == "openrouter"
+    assert registry.task_profiles["reasoning"].model_id == "reasoning"
+    assert registry.task_profiles["solver_explanation"].provider_id == "router9"
+    assert registry.task_profiles["solver_explanation"].model_id == "solver"
+
+
+@pytest.mark.anyio
 async def test_ai_profiles_auto_provider_accepts_cross_provider_fallbacks(db):
     await load_model_registry(db, Settings(_env_file=None))
 

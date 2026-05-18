@@ -19,10 +19,14 @@ import { CalculusSimulationPage } from './components/CalculusSimulationPage';
 import { GeoGebraLabPage } from './components/GeoGebraLabPage';
 import { PdfToWordPage } from './components/PdfToWordPage';
 import { KatexSpan } from './components/KatexSpan';
+import { AboutPage, AccessDeniedPage, AnalyzerGuidePage, GuidePage, HistoryPage, HistoryPanel, MobileRendererWarning, isGeometryMobileWarningView } from './components/AppPages';
+import { NotificationStack } from './components/NotificationStack';
+import { useNotifications } from './hooks/useNotifications';
 import { ExportMenuItems } from './components/ExportMenu';
 import { ProblemVariantTool } from './components/DiagramTools';
 import { normalizeMineruBaseUrl } from './api/mineru';
 import { getDefaultParamValues, patchGeogebraCommandsForScene, recomputeSceneWithParameters, recomputeThreeScene } from './utils/sceneParameters';
+import { clamp, findPoint, hasSegment, nextPointName, projectPointToSegment, round, type Vec3 } from './utils/sceneEditing';
 import type { AdvancedRenderSettings, MathScene, RenderResponse, Renderer } from './types/scene';
 import { defaultRuntimeSettings, SETTINGS_STORAGE_VERSION, type OcrProvider, type RuntimeSettings, type SettingsDefaults, type UserBasicSettings } from './types/settings';
 import { normalizeProviderModelSelection } from './utils/settingsOptions';
@@ -38,19 +42,6 @@ const MINERU_API_BASE_URL = normalizeMineruBaseUrl(import.meta.env.VITE_MINERU_A
 
 type AppView = 'home' | 'render' | 'analyzer' | 'analyzer-guide' | 'simulation' | 'geogebra-lab' | 'pdf-to-word' | 'history' | 'guide' | 'about' | 'privacy-policy' | 'terms' | 'login' | 'settings' | 'admin' | 'account' | 'feedback' | 'reset-password' | 'verify-email';
 type EditTool = 'move' | 'connect' | 'project_to_segment' | 'add_point';
-type Vec3 = { x: number; y: number; z: number };
-type Notification = {
-  id: number;
-  kind: 'error' | 'warning' | 'info';
-  title: string;
-  message: string;
-  details: string[];
-  action?: {
-    label: string;
-    href?: string;
-    onClick?: () => void;
-  };
-};
 type BackendStatus = {
   state: 'checking' | 'online' | 'offline';
   appName?: string;
@@ -149,7 +140,7 @@ export default function App() {
   const [selectedRenderModelKey, setSelectedRenderModelKey] = useState('');
   const [settingsDefaults, setSettingsDefaults] = useState<SettingsDefaults | null>(null);
   const [backendStatus, setBackendStatus] = useState<BackendStatus>({ state: 'checking' });
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const { notifications, showNotification, dismissNotification, showApiError, showWarnings, showAnalyzerWarnings } = useNotifications();
   const [mobileWarningDismissed, setMobileWarningDismissed] = useState(readMobileWarningDismissed);
   const [sceneEditorOpen, setSceneEditorOpen] = useState(false);
   const [renderToolsOpen, setRenderToolsOpen] = useState(false);
@@ -316,12 +307,6 @@ export default function App() {
     }, 600);
     return () => window.clearTimeout(timer);
   }, [runtimeSettings, user, remoteSettingsHydrated]);
-
-  useEffect(() => {
-    if (notifications.length === 0) return;
-    const timers = notifications.map((item) => window.setTimeout(() => dismissNotification(item.id), 10000));
-    return () => timers.forEach(window.clearTimeout);
-  }, [notifications]);
 
   useEffect(() => {
     setEditorButtonTop(clamp(window.innerHeight * 0.55, 84, window.innerHeight - 88));
@@ -722,36 +707,6 @@ export default function App() {
       }),
     };
     await handleSceneEdit(editedScene);
-  }
-
-  function showNotification(title: string, message: string, details: string[] = [], kind: Notification['kind'] = 'error', action?: Notification['action']) {
-    const id = Date.now() + Math.floor(Math.random() * 1000);
-    setNotifications((current) => [...current.slice(-2), { id, kind, title, message: friendlyMessage(message), details: friendlyDetails(details), action }]);
-  }
-
-  function dismissNotification(id: number) {
-    setNotifications((current) => current.filter((item) => item.id !== id));
-  }
-
-  function showApiError(title: string, error: ApiError, fallbackSuggestion: string) {
-    const details = error.details.length > 0 ? error.details : [fallbackSuggestion];
-    showNotification(errorTitle(title, error.message), error.message, details, 'error');
-  }
-
-  function showWarnings(warnings: string[]) {
-    if (warnings.length === 0) return;
-    const usedMock = warnings.some((warning) => warning.includes('đang dùng mock extractor'));
-    showNotification(
-      'Đã dựng hình với lưu ý',
-      usedMock ? 'Hình đã được tạo, nhưng hệ thống phải dùng phương án dự phòng.' : 'Hình đã được tạo, nhưng một số lần gọi model trước đó bị lỗi.',
-      warnings,
-      'warning',
-    );
-  }
-
-  function showAnalyzerWarnings(warnings: string[]) {
-    if (warnings.length === 0) return;
-    showNotification('Phân tích có lưu ý', 'Kết quả đã được tạo, nhưng có một số lưu ý cần kiểm tra.', warnings, 'warning');
   }
 
   async function handleConnectPoints(start: string, end: string) {
@@ -1421,391 +1376,10 @@ export default function App() {
   );
 }
 
-function AccessDeniedPage({ user, onHome, onLogin }: { user: UserResponse | null; onHome: () => void; onLogin: () => void }) {
-  return (
-    <section className="product-page-card">
-      <span className="home-eyebrow">Không thể mở trang</span>
-      <h2>Bạn không có quyền truy cập khu vực này.</h2>
-      <p>{user ? 'Tài khoản hiện tại không có quyền sử dụng trang này.' : 'Vui lòng đăng nhập bằng tài khoản được cấp quyền để tiếp tục.'}</p>
-      <div className="home-actions">
-        <button type="button" onClick={onHome}>Về trang chủ</button>
-        {!user && <button type="button" className="secondary-button" onClick={onLogin}>Đăng nhập</button>}
-      </div>
-    </section>
-  );
-}
-
-function GuidePage({ onOpenAnalyzerGuide }: { onOpenAnalyzerGuide: () => void }) {
-  const guideSteps = [
-    { title: 'Nhập đề bài', text: 'Gõ đề hình học tiếng Việt, dán dữ liệu tọa độ hoặc kéo thả ảnh đề bài vào khu vực OCR.' },
-    { title: 'Chọn cách hiển thị', text: 'Dùng GeoGebra cho Oxy, đồ thị hàm số; dùng Three.js cho hình học không gian hoặc mô hình 3D.' },
-    { title: 'Dựng hình', text: 'Hệ thống chuyển đề bài thành hình có cấu trúc để bạn kiểm tra trực quan.' },
-    { title: 'Tinh chỉnh', text: 'Kéo điểm, chỉnh scene hoặc dựng lại bằng mô tả rõ hơn khi hình chưa đúng ý.' },
-  ];
-  const promptTips = [
-    'Nêu rõ hệ tọa độ: Oxy, Oxyz hoặc hình học không gian.',
-    'Đặt tên điểm, đường, mặt phẳng nhất quán: A(1,2), B(4,5), mặt phẳng (P).',
-    'Tách yêu cầu dựng hình và yêu cầu hiển thị nếu đề dài.',
-    'Với OCR, kiểm tra lại ký hiệu toán học trước khi bấm dựng hình.',
-  ];
-
-  return (
-    <section className="guide-page">
-      <div className="guide-hero">
-        <h2>Bắt đầu dựng hình toán học trong vài bước.</h2>
-      </div>
-
-      <div className="guide-grid">
-        {guideSteps.map((step, index) => (
-          <article className="guide-card" key={step.title}>
-            <span>0{index + 1}</span>
-            <h3>{step.title}</h3>
-            <p>{step.text}</p>
-          </article>
-        ))}
-      </div>
-
-      <div className="guide-columns">
-        <section>
-          <h3>Thử nhanh với ví dụ này</h3>
-          <p>Trong mặt phẳng Oxy, cho A(0,0), B(4,0), C(1,3). Dựng tam giác ABC, vẽ đường cao từ C xuống AB và ghi tên chân đường cao H.</p>
-        </section>
-        <section>
-          <h3>Mẹo viết đề bài</h3>
-          <ul>
-            {promptTips.map((tip) => <li key={tip}>{tip}</li>)}
-          </ul>
-        </section>
-        <section className="guide-renderer-section">
-          <h3>Khi nào dùng renderer nào?</h3>
-          <div className="guide-renderer-grid">
-            <article>
-              <h4>GeoGebra 2D</h4>
-              <p>Phù hợp cho bài toán trên mặt phẳng Oxy: đồ thị hàm số, đường thẳng, đường tròn, tam giác, tứ giác và các quan hệ đồng quy - song song - vuông góc.</p>
-              <ul>
-                <li>Dùng khi đề chỉ có tọa độ 2D hoặc ký hiệu nằm trên mặt phẳng.</li>
-                <li>Thích hợp để khảo sát hàm số, xem giao điểm, cực trị và tiệm cận.</li>
-                <li>Nên chọn nếu bạn cần hình rõ, nhanh và dễ chỉnh các điểm phẳng.</li>
-              </ul>
-            </article>
-            <article>
-              <h4>GeoGebra 3D / Three.js</h4>
-              <p>Phù hợp cho bài toán không gian Oxyz: khối đa diện, mặt phẳng, đường thẳng chéo nhau, giao tuyến, khoảng cách và góc trong không gian.</p>
-              <ul>
-                <li>Dùng khi đề có tọa độ 3D, mặt phẳng (P), đường thẳng d hoặc hình chóp/lăng trụ.</li>
-                <li>Hữu ích khi cần xoay góc nhìn để kiểm tra quan hệ hình học khó thấy ở 2D.</li>
-                <li>Nên chọn Three.js khi muốn thao tác trực quan mạnh hơn với mô hình 3D.</li>
-              </ul>
-            </article>
-          </div>
-          <button type="button" className="guide-analyzer-label" onClick={onOpenAnalyzerGuide}>
-            <span>Hướng dẫn khảo sát hàm số</span>
-            <span className="guide-analyzer-label-arrow" aria-hidden="true">→</span>
-          </button>
-        </section>
-      </div>
-    </section>
-  );
-}
-
-function AnalyzerGuidePage({ onOpenGeneralGuide }: { onOpenGeneralGuide: () => void }) {
-  const formulaGroups = [
-    {
-      title: 'Toán tử cơ bản',
-      rows: [
-        { raw: '2*x, x*(x-1)', tex: '2x,\\; x(x-1)', note: 'Dùng * để nhân tường minh.' },
-        { raw: '(x^2-1)/(x-2)', tex: '\\frac{x^2-1}{x-2}' },
-        { raw: 'x^3 - 3*x + 2', tex: 'x^3-3x+2', note: 'Lũy thừa dùng dấu ^.' },
-        { raw: 'pi, E', tex: '\\pi,\\; e' },
-      ],
-    },
-    {
-      title: 'Hàm thường gặp',
-      rows: [
-        { raw: 'sqrt(x^2+1), abs(x)', tex: '\\sqrt{x^2+1},\\; |x|' },
-        { raw: 'exp(x), ln(x), log(x)', tex: 'e^x,\\; \\ln(x),\\; \\ln(x)' },
-        { raw: 'log(x,2), log(x,10)', tex: '\\log_2(x),\\; \\log_{10}(x)', note: 'Log cơ số bất kỳ: log(x,a).' },
-        { raw: 'sin(x), cos(x), tan(x)', tex: '\\sin(x),\\; \\cos(x),\\; \\tan(x)' },
-        { raw: 'asin(x), acos(x), atan(x)', tex: '\\arcsin(x),\\; \\arccos(x),\\; \\arctan(x)' },
-        { raw: 'sinh(x), cosh(x), tanh(x)', tex: '\\sinh(x),\\; \\cosh(x),\\; \\tanh(x)' },
-      ],
-    },
-    {
-      title: 'Hàm hỗ trợ',
-      rows: [
-        { raw: 'floor(x), ceil(x)', tex: '\\lfloor x \\rfloor,\\; \\lceil x \\rceil' },
-        { raw: 'sign(x), Min(a,b), Max(a,b)', tex: '\\operatorname{sign}(x),\\; \\min(a,b),\\; \\max(a,b)' },
-        { raw: 'Piecewise((x^2, x<0), (x, x>=0))', tex: '\\begin{cases}x^2,&x<0\\\\x,&x\\ge 0\\end{cases}' },
-      ],
-    },
-  ];
-
-  return (
-    <section className="analyzer-guide-page">
-      <div className="analyzer-guide-hero">
-        <div className="analyzer-guide-hero-head">
-          <h2>Hướng dẫn chi tiết cách nhập công thức và dùng OCR</h2>
-          <button type="button" className="analyzer-guide-label" onClick={onOpenGeneralGuide}>
-            <span>Hướng dẫn vẽ hình</span>
-            <span className="analyzer-guide-label-arrow" aria-hidden="true">→</span>
-          </button>
-        </div>
-      </div>
-
-      <div className="analyzer-guide-grid">
-        {formulaGroups.map((group) => (
-          <article key={group.title} className="analyzer-guide-card">
-            <h3>{group.title}</h3>
-            <div className="analyzer-guide-table">
-              {group.rows.map((row) => (
-                <div key={row.raw} className="analyzer-guide-row">
-                  <code>{row.raw}</code>
-                  <KatexSpan tex={row.tex} className="analyzer-guide-katex" />
-                  {row.note && <p>{row.note}</p>}
-                </div>
-              ))}
-            </div>
-          </article>
-        ))}
-      </div>
-
-      <div className="analyzer-guide-ocr">
-        <article>
-          <h3>OCR từ clipboard (dán ảnh)</h3>
-          <ol>
-            <li>Chụp/copy ảnh đề vào clipboard.</li>
-            <li>Tại ô nhập hàm, bấm chuột phải để kích hoạt đọc ảnh từ clipboard.</li>
-            <li>Nếu không có ảnh trong clipboard, hệ thống tự mở hộp chọn tệp ảnh.</li>
-          </ol>
-        </article>
-        <article>
-          <h3>OCR từ tệp ảnh</h3>
-          <ol>
-            <li>Bấm nút đính kèm ảnh (icon kẹp giấy) cạnh ô nhập.</li>
-            <li>Chọn ảnh từ máy hoặc camera điện thoại.</li>
-            <li>Kiểm tra lại biểu thức sau OCR rồi bấm “Phân tích”.</li>
-          </ol>
-        </article>
-      </div>
-    </section>
-  );
-}
-
-
-function AboutPage({ onStart, onGuide }: { onStart: () => void; onGuide: () => void }) {
-  const features = [
-    { title: 'Kiến trúc Phân tích & Suy luận', text: 'Quy trình xử lý đa tầng: Hệ thống phân tích giả thiết (Reasoning) trước khi thực thi lệnh vẽ, giúp tối ưu hóa độ chính xác và giảm thiểu sai sót hình học.' },
-    { title: 'Tương tác Đồ họa Đa nền tảng', text: 'Kết hợp sức mạnh của GeoGebra cho toán học phẳng và Three.js cho mô phỏng không gian 3D, mang lại trải nghiệm tương tác mượt mà và trực quan.' },
-    { title: 'Cấu trúc Scene JSON Linh hoạt', text: 'Hình vẽ không chỉ là ảnh tĩnh mà là một thực thể có cấu trúc (Scene-as-Code), cho phép người dùng can thiệp, kéo thả và tinh chỉnh từng đối tượng.' },
-  ];
-
-  return (
-    <section className="about-page">
-      <div className="about-hero">
-        <span className="home-eyebrow">Về dự án</span>
-        <h2>Số hóa hình học với độ chính xác tuyệt đối.</h2>
-        <p>AI Math Renderer là một nền tảng tiên phong kết hợp giữa Trí tuệ nhân tạo và các công cụ tính toán hình học (CAS). Chúng tôi hướng tới việc đơn giản hóa quy trình xây dựng học liệu toán học, giúp giáo viên và học sinh tiết kiệm hàng giờ làm việc thủ công.</p>
-        <div className="home-actions">
-          <button type="button" onClick={onStart}>Truy cập Workspace</button>
-          <button type="button" className="secondary-button" onClick={onGuide}>Tài liệu hướng dẫn</button>
-        </div>
-      </div>
-
-      <div className="about-grid">
-        {features.map((feature) => (
-          <article key={feature.title}>
-            <h3>{feature.title}</h3>
-            <p>{feature.text}</p>
-          </article>
-        ))}
-      </div>
-
-      <section className="about-section">
-        <div>
-          <span>Triết lý phát triển</span>
-          <h3>Trợ lý kỹ thuật đắc lực, không chỉ là công cụ vẽ hình.</h3>
-        </div>
-        <p>Áp dụng tư duy <strong>"Infrastructure as Code"</strong> vào toán học, chúng tôi biến các đề bài trừu tượng thành dữ liệu có cấu trúc. AI đóng vai trò là một cộng tác viên thông minh, giúp bạn hiện thực hóa các ý tưởng hình học, khảo sát đồ thị phức tạp và kiểm chứng các giả thiết toán học một cách khoa học nhất.</p>
-      </section>
-    </section>
-  );
-}
-
-
-function HistoryPage({ user, items, loading, openingId, onOpen, onDelete, onLogin, onWorkspace }: { user: UserResponse | null; items: RenderHistoryItem[]; loading: boolean; openingId: string | null; onOpen: (id: string) => void; onDelete: (id: string) => void; onLogin: () => void; onWorkspace: () => void }) {
-  if (!user) {
-    return (
-      <section className="product-page-card">
-        <span className="home-eyebrow">Lịch sử cá nhân</span>
-        <h2>Đăng nhập để lưu và mở lại các lần dựng hình.</h2>
-        <p>Lịch sử render chỉ được lưu cho tài khoản đã đăng nhập, giúp bạn tiếp tục chỉnh hình ở các phiên sau.</p>
-        <button type="button" onClick={onLogin}>Đăng nhập</button>
-      </section>
-    );
-  }
-
-  return (
-    <section className="product-page-card">
-      <div className="page-title-row">
-        <div>
-          <span className="home-eyebrow">Lịch sử workspace</span>
-          <h2>Lịch sử dựng hình của bạn</h2>
-          <p>Mở lại đề bài, scene và renderer đã lưu từ các lần render trước.</p>
-        </div>
-        <button type="button" onClick={onWorkspace}>Dựng hình mới</button>
-      </div>
-      <HistoryPanel items={items} loading={loading} openingId={openingId} onOpen={onOpen} onDelete={onDelete} />
-    </section>
-  );
-}
-
-
-function MetricCard({ label, value, suffix = '' }: { label: string; value: number; suffix?: string }) {
-  return (
-    <article className="admin-metric-card">
-      <span>{label}</span>
-      <strong>{value.toLocaleString('vi-VN')}{suffix}</strong>
-    </article>
-  );
-}
-
-function HistoryPanel({ items, loading, openingId, onOpen, onDelete }: { items: RenderHistoryItem[]; loading: boolean; openingId: string | null; onOpen: (id: string) => void; onDelete: (id: string) => void }) {
-  return (
-    <section className="history-panel">
-      <div className="history-panel-header">
-        <strong>Lịch sử dựng hình</strong>
-        <span>{loading ? 'Đang tải...' : `${items.length} mục`}</span>
-      </div>
-      {items.length === 0 ? (
-        <p>Các lượt render mới sau khi đăng nhập sẽ được lưu vào hệ thống.</p>
-      ) : (
-        <div className="history-list">
-          {items.map((item) => {
-            const opening = openingId === item.id;
-            return (
-              <article className={`history-item${opening ? ' opening' : ''}`} key={item.id}>
-                <button type="button" onClick={() => onOpen(item.id)} disabled={opening} aria-busy={opening}>
-                  <span className="history-item-copy">
-                    <strong>{item.problem_text}</strong>
-                    <span>{formatHistoryDate(item.created_at)} · {historySourceLabel(item.source_type)}{item.renderer ? ` · ${item.renderer}` : ''}{item.model ? ` · ${item.model}` : ''}</span>
-                  </span>
-                  {opening && <span className="history-opening-indicator" aria-hidden="true"><span className="sp-spinner" /></span>}
-                </button>
-                <button type="button" className="history-delete" onClick={() => onDelete(item.id)} disabled={opening} aria-label="Xoá lịch sử">×</button>
-              </article>
-            );
-          })}
-        </div>
-      )}
-    </section>
-  );
-}
-
-function formatHistoryDate(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' });
-}
-
-function historySourceLabel(sourceType: string) {
-  if (sourceType === 'scene_edit') return 'chỉnh hình';
-  if (sourceType === 'ocr') return 'OCR';
-  return 'đề bài';
-}
-
-function isGeometryMobileWarningView(view: AppView) {
-  return view === 'render' || view === 'simulation' || view === 'geogebra-lab';
-}
-
-function MobileRendererWarning({ dismissed, onDismiss }: { dismissed: boolean; onDismiss: () => void }) {
-  if (dismissed) return null;
-  return (
-    <aside className="mobile-renderer-warning" role="dialog" aria-modal="true" aria-labelledby="mobile-renderer-warning-title">
-      <section className="mobile-renderer-warning-card">
-        <h2 id="mobile-renderer-warning-title">Xoay ngang để thao tác dễ hơn</h2>
-        <p>Trên điện thoại, các công cụ dựng hình và vùng vẽ cần nhiều chiều ngang để chạm chính xác hơn.</p>
-        <p>Bạn vẫn có thể tiếp tục dùng màn hình dọc nếu chỉ muốn xem nhanh kết quả.</p>
-        <button type="button" className="primary-button" onClick={onDismiss}>Tiếp tục dùng dọc</button>
-      </section>
-    </aside>
-  );
-}
-
-function NotificationStack({ notifications, onDismiss }: { notifications: Notification[]; onDismiss: (id: number) => void }) {
-  if (notifications.length === 0) return null;
-  return (
-    <div className="notification-stack" role="region" aria-label="Thông báo" aria-live="polite">
-      {notifications.map((notification) => (
-        <section className={`notification-card ${notification.kind}`} key={notification.id} role="status">
-          <div className="notification-header">
-            <strong>{notification.title}</strong>
-            <button type="button" className="notification-close" onClick={() => onDismiss(notification.id)} aria-label="Đóng thông báo">×</button>
-          </div>
-          <p>{notification.message}</p>
-          {notification.action && (
-            notification.action.href ? (
-              <a className="notification-action" href={notification.action.href}>{notification.action.label}</a>
-            ) : (
-              <button type="button" className="notification-action" onClick={notification.action.onClick}>{notification.action.label}</button>
-            )
-          )}
-          {notification.details.length > 0 && (
-            <details className="notification-details">
-              <summary>Chi tiết và hướng dẫn</summary>
-              <ul>
-                {notification.details.map((detail) => <li key={detail}>{detail}</li>)}
-              </ul>
-            </details>
-          )}
-        </section>
-      ))}
-    </div>
-  );
-}
-
 function toApiError(caught: unknown, fallback: string): ApiError {
   if (caught instanceof ApiError) return caught;
   if (caught instanceof Error) return new ApiError(caught.message || fallback);
   return new ApiError(fallback);
-}
-
-function friendlyMessage(message: string) {
-  const text = message.trim();
-  if (!text) return 'Có lỗi xảy ra. Hãy thử lại hoặc đổi cấu hình model.';
-  if (/MAINTENANCE_MODE|bảo trì/i.test(text)) return text.replace(/^\[MAINTENANCE_MODE\]\s*/, '') || 'Hệ thống đang bảo trì. Vui lòng quay lại sau.';
-  if (/PLAN_QUOTA_EXCEEDED|hạn mức.*gói/i.test(text)) return text.replace(/^\[PLAN_QUOTA_EXCEEDED\]\s*/, '') || 'Bạn đã hết hạn mức sử dụng hôm nay của gói hiện tại.';
-  if (/Không kết nối được backend|Failed to fetch|NetworkError|ERR_|ECONNREFUSED|Load failed|fetch failed|timeout|timed out|Request quá lâu|quá tải/i.test(text)) return 'Hệ thống đang quá tải do lượng người dùng tăng cao. Vui lòng thử lại sau ít phút.';
-  if (/quota|rate limit|429/i.test(text)) return 'Hệ thống đang nhận quá nhiều yêu cầu. Vui lòng thử lại sau ít phút.';
-  if (/api key|unauthorized|401|403|forbidden/i.test(text)) return 'Hệ thống chưa sẵn sàng xử lý yêu cầu này. Vui lòng thử lại sau hoặc liên hệ quản trị viên.';
-  if (/model.*not found|not found.*model/i.test(text)) return 'Dịch vụ tạo hình hiện chưa sẵn sàng. Vui lòng thử lại sau ít phút.';
-  if (/validation|field required|Input should/i.test(text)) return 'Dữ liệu hình chưa hợp lệ. Hãy thử dựng lại hoặc chỉnh hình đơn giản hơn.';
-  return text.length > 220 ? `${text.slice(0, 217)}...` : text;
-}
-
-function errorTitle(fallback: string, message: string) {
-  if (/MAINTENANCE_MODE|bảo trì/i.test(message)) return 'Hệ thống đang bảo trì';
-  if (/PLAN_QUOTA_EXCEEDED|hạn mức.*gói/i.test(message)) return 'Bạn đã hết hạn mức gói';
-  if (/Không kết nối được backend|Failed to fetch|NetworkError|ERR_|ECONNREFUSED|Load failed|fetch failed|timeout|timed out|Request quá lâu|quá tải/i.test(message)) return 'Hệ thống đang quá tải';
-  return fallback;
-}
-
-function friendlyDetails(details: string[]) {
-  if (details.length === 0) return [];
-  return details.map((detail) => friendlyDetail(detail)).filter(Boolean).slice(0, 6);
-}
-
-function friendlyDetail(detail: string) {
-  const text = detail.trim();
-  if (!text) return '';
-  if (/mock extractor/i.test(text)) return 'AI provider hiện không sẵn sàng nên hệ thống dùng hình mẫu dự phòng.';
-  if (/Không kết nối được backend|Failed to fetch|NetworkError|ERR_|ECONNREFUSED|Load failed|fetch failed|timeout|timed out|Request quá lâu|quá tải/i.test(text)) return '';
-  if (/Đã thử:|provider|router9|openrouter|nvidia|ollama/i.test(text)) return 'Dịch vụ AI hiện chưa sẵn sàng, hệ thống sẽ thử lại khi bạn gửi yêu cầu mới.';
-  if (/api key|unauthorized|401|403|forbidden/i.test(text)) return 'Hệ thống cần quản trị viên kiểm tra lại cấu hình dịch vụ.';
-  if (/PLAN_QUOTA_EXCEEDED|hạn mức.*gói/i.test(text)) return text.replace(/^\[PLAN_QUOTA_EXCEEDED\]\s*/, '') || 'Chờ sang ngày mới hoặc nâng cấp gói để có thêm lượt sử dụng.';
-  if (/MAINTENANCE_MODE|bảo trì/i.test(text)) return text.replace(/^\[MAINTENANCE_MODE\]\s*/, '') || 'Hệ thống đang tạm bảo trì, vui lòng quay lại sau.';
-  if (/quota|rate limit|429/i.test(text)) return 'Hệ thống đang nhận quá nhiều yêu cầu. Vui lòng thử lại sau ít phút.';
-  if (/not found|404/i.test(text)) return 'Dịch vụ tạo hình hiện chưa sẵn sàng. Vui lòng thử lại sau ít phút.';
-  return text.length > 240 ? `${text.slice(0, 237)}...` : text;
 }
 
 function mergeBackendDefaults(current: RuntimeSettings, defaults: SettingsDefaults): RuntimeSettings {
@@ -2002,62 +1576,6 @@ function dropStoredProviderOverrides(settings: RuntimeSettings) {
     settings[provider].allowed_model_ids = [];
   }
   settings.router9.only_mode = false;
-}
-
-function hasSegment(scene: MathScene, start: string, end: string) {
-  return scene.objects.some((obj) => {
-    if (obj.type !== 'segment') return false;
-    const [a, b] = obj.points;
-    return (a === start && b === end) || (a === end && b === start);
-  });
-}
-
-function findPoint(scene: MathScene, name: string): Vec3 | null {
-  const point = scene.objects.find((obj) => (obj.type === 'point_2d' || obj.type === 'point_3d') && obj.name === name);
-  if (!point || (point.type !== 'point_2d' && point.type !== 'point_3d')) return null;
-  return { x: point.x, y: point.y, z: point.type === 'point_3d' ? point.z : 0 };
-}
-
-function projectPointToSegment(point: Vec3, start: Vec3, end: Vec3): Vec3 {
-  const direction = sub(end, start);
-  const size = dot(direction, direction);
-  if (size <= 1e-9) return start;
-  const t = Math.max(0, Math.min(1, dot(sub(point, start), direction) / size));
-  return add(start, scale(direction, t));
-}
-
-function nextPointName(scene: MathScene) {
-  const used = new Set(scene.objects.map((obj) => ('name' in obj && typeof obj.name === 'string' ? obj.name : null)).filter(Boolean));
-  for (const name of 'ABCDEFGHIJKLMNOPQRSTUVWXYZ') {
-    if (!used.has(name)) return name;
-  }
-  let index = 1;
-  while (used.has(`P${index}`)) index += 1;
-  return `P${index}`;
-}
-
-function sub(a: Vec3, b: Vec3): Vec3 {
-  return { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z };
-}
-
-function add(a: Vec3, b: Vec3): Vec3 {
-  return { x: a.x + b.x, y: a.y + b.y, z: a.z + b.z };
-}
-
-function scale(v: Vec3, s: number): Vec3 {
-  return { x: v.x * s, y: v.y * s, z: v.z * s };
-}
-
-function dot(a: Vec3, b: Vec3) {
-  return a.x * b.x + a.y * b.y + a.z * b.z;
-}
-
-function round(value: number) {
-  return Math.round(value * 1_000_000) / 1_000_000;
-}
-
-function clamp(value: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, value));
 }
 
 function fileToDataUrl(file: File): Promise<string> {
