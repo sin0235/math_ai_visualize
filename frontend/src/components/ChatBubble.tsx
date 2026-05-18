@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type PointerEvent } from 'react';
 import { ApiError, createChatWebSocket, getChatConversation, markChatRead, sendChatMessage, type ChatConversationResponse, type ChatMessageResponse, type ChatWsEvent, type UserResponse } from '../api/client';
 
 interface ChatBubbleProps {
@@ -15,12 +15,14 @@ export function ChatBubble({ user, onToast }: ChatBubbleProps) {
   const [sending, setSending] = useState(false);
   const [connected, setConnected] = useState(false);
   const [unread, setUnread] = useState(0);
+  const [bubbleBottom, setBubbleBottom] = useState(92);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectRef = useRef<number | null>(null);
   const openRef = useRef(open);
   const conversationRef = useRef(conversation);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const dragRef = useRef<{ pointerId: number; startY: number; startBottom: number; moved: boolean } | null>(null);
 
   useEffect(() => { openRef.current = open; }, [open]);
   useEffect(() => { conversationRef.current = conversation; }, [conversation]);
@@ -139,12 +141,35 @@ export function ChatBubble({ user, onToast }: ChatBubbleProps) {
   }
 
   function toggleOpen() {
+    if (dragRef.current?.moved) return;
     setOpen((value) => {
       const next = !value;
       if (next) setUnread(0);
       if (next && conversationRef.current) void markChatRead(conversationRef.current.id).catch(() => undefined);
       return next;
     });
+  }
+
+  function handleBubblePointerDown(event: PointerEvent<HTMLButtonElement>) {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragRef.current = { pointerId: event.pointerId, startY: event.clientY, startBottom: bubbleBottom, moved: false };
+  }
+
+  function handleBubblePointerMove(event: PointerEvent<HTMLButtonElement>) {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const delta = drag.startY - event.clientY;
+    if (Math.abs(delta) > 4) drag.moved = true;
+    setBubbleBottom(clamp(drag.startBottom + delta, 18, window.innerHeight - 96));
+  }
+
+  function handleBubblePointerUp(event: PointerEvent<HTMLButtonElement>) {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    window.setTimeout(() => {
+      dragRef.current = null;
+    }, 0);
   }
 
   function resizeTextarea() {
@@ -155,7 +180,7 @@ export function ChatBubble({ user, onToast }: ChatBubbleProps) {
   }
 
   return (
-    <div className={`chat-bubble ${open ? 'is-open' : ''}`}>
+    <div className={`chat-bubble ${open ? 'is-open' : ''}`} style={{ bottom: bubbleBottom }}>
       {open && (
         <section className="chat-panel" aria-label="Chat với admin">
           <header className="chat-panel-header">
@@ -202,12 +227,37 @@ export function ChatBubble({ user, onToast }: ChatBubbleProps) {
           )}
         </section>
       )}
-      <button type="button" className="chat-bubble-button" onClick={toggleOpen} aria-label="Chat với admin">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5A3.5 3.5 0 0 1 7.5 2h9A3.5 3.5 0 0 1 20 5.5v7A3.5 3.5 0 0 1 16.5 16H11l-5.2 4.2A.8.8 0 0 1 4.5 19.6V16A3.5 3.5 0 0 1 1 12.5v-7Z" fill="currentColor" /></svg>
+      <button
+        type="button"
+        className="chat-bubble-button"
+        onPointerDown={handleBubblePointerDown}
+        onPointerMove={handleBubblePointerMove}
+        onPointerUp={handleBubblePointerUp}
+        onClick={toggleOpen}
+        aria-label="Chat với admin"
+      >
+        <svg viewBox="0 0 1024 940" aria-hidden="true">
+          <g fill="#ffffff" stroke="#000000" strokeWidth="28" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M760 325C902 350 1008 468 1008 610C1008 698 966 776 901 826L1007 925L842 846C803 864 760 874 714 874C594 874 491 804 449 704C419 632 422 550 457 481C507 380 626 302 760 325Z" />
+            <path d="M410 14C630 14 809 191 809 409C809 627 630 804 410 804C348 804 289 791 236 766L14 880L117 646C51 578 14 494 14 409C14 191 190 14 410 14Z" />
+          </g>
+          <g fill="none" stroke="#000000" strokeWidth="24" strokeLinecap="round">
+            <line x1="214" y1="284" x2="610" y2="284" />
+            <line x1="130" y1="414" x2="696" y2="414" />
+            <line x1="214" y1="542" x2="610" y2="542" />
+            <line x1="807" y1="519" x2="858" y2="519" />
+            <line x1="775" y1="617" x2="926" y2="617" />
+            <line x1="721" y1="715" x2="858" y2="715" />
+          </g>
+        </svg>
         {unread > 0 && <span className="chat-unread-badge">{unread > 9 ? '9+' : unread}</span>}
       </button>
     </div>
   );
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
 }
 
 function formatChatTime(value: string) {
