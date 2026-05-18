@@ -715,6 +715,33 @@ def calculate_pyramid_volume(points: dict[str, Vec3], apex: str, base_points: li
     )
 
 
+def calculate_prism_volume(points: dict[str, Vec3], top_points: list[str], base_points: list[str]) -> dict[str, Any]:
+    label = f"{''.join(top_points)}.{''.join(base_points)}"
+    result = _calculation_result("volume_prism", f"V({label})", [*top_points, *base_points])
+    if len(top_points) < 3 or len(base_points) < 3:
+        return _with_warning(result, "Cần hai đáy có ít nhất 3 điểm để tính thể tích khối lăng trụ.")
+    missing = _missing_points(points, [*top_points, *base_points])
+    if missing:
+        return _with_warning(result, f"Điểm {', '.join(missing)} không có trong scene.")
+    area_result = calculate_polygon_area(points, base_points)
+    if area_result["status"] != "ok":
+        return _with_warning(result, "Không tính được diện tích đáy.")
+    plane_data = _plane_data_from_names(points, base_points)
+    if plane_data is None:
+        return _with_warning(result, "Đáy suy biến nên không tính được chiều cao.")
+    plane_point, normal = plane_data
+    heights = [abs(_dot(normal, _sub(points[name], plane_point))) for name in top_points]
+    height = sum(heights) / len(heights)
+    volume = area_result["result_value"] * height
+    return _complete_result(
+        result,
+        volume,
+        "V=S_{đáy}\\cdot h",
+        f"{_fmt(area_result['result_value'])}\\cdot{_fmt(height)}",
+        "volume",
+    )
+
+
 def calculate_vector_dot(points: dict[str, Vec3], edge_1: tuple[str, str], edge_2: tuple[str, str]) -> dict[str, Any]:
     a, b = edge_1
     c, d = edge_2

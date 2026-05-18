@@ -1014,7 +1014,7 @@ export default function App() {
       </header>
 
       <NotificationStack notifications={notifications} onDismiss={dismissNotification} />
-      {activeView === 'render' && <MobileRendererWarning dismissed={mobileWarningDismissed} onDismiss={dismissMobileWarning} />}
+      {isGeometryMobileWarningView(activeView) && <MobileRendererWarning dismissed={mobileWarningDismissed} onDismiss={dismissMobileWarning} />}
 
       <main className="app-shell">
         {activeView === 'home' && (
@@ -1709,13 +1709,20 @@ function historySourceLabel(sourceType: string) {
   return 'đề bài';
 }
 
+function isGeometryMobileWarningView(view: AppView) {
+  return view === 'render' || view === 'simulation' || view === 'geogebra-lab';
+}
+
 function MobileRendererWarning({ dismissed, onDismiss }: { dismissed: boolean; onDismiss: () => void }) {
   if (dismissed) return null;
   return (
-    <aside className="mobile-renderer-warning" role="status" aria-live="polite">
-      <strong>Lưu ý khi dùng điện thoại</strong>
-      <span>Math renderer hiển thị tốt nhất trên desktop. Trên di động, hãy lướt xuống sau khi dựng hình để xem kết quả.</span>
-      <button type="button" onClick={onDismiss}>Bỏ qua</button>
+    <aside className="mobile-renderer-warning" role="dialog" aria-modal="true" aria-labelledby="mobile-renderer-warning-title">
+      <section className="mobile-renderer-warning-card">
+        <h2 id="mobile-renderer-warning-title">Xoay ngang để thao tác dễ hơn</h2>
+        <p>Trên điện thoại, các công cụ dựng hình và vùng vẽ cần nhiều chiều ngang để chạm chính xác hơn.</p>
+        <p>Bạn vẫn có thể tiếp tục dùng màn hình dọc nếu chỉ muốn xem nhanh kết quả.</p>
+        <button type="button" className="primary-button" onClick={onDismiss}>Tiếp tục dùng dọc</button>
+      </section>
     </aside>
   );
 }

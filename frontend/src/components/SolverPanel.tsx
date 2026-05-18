@@ -14,6 +14,84 @@ function normalizeSolverLatex(input?: string | null): string {
   return input ? normalizeLatexForKatex(input) : '';
 }
 
+function normalizeSolverQuestionInput(input: string): string {
+  let question = input
+    .trim()
+    .replace(/[​-‍﻿]/g, '')
+    .replace(/[（）]/g, (char) => char === '（' ? '(' : ')')
+    .replace(/[，、]/g, ',')
+    .replace(/[−–—]/g, '-')
+    .replace(/[✕*]/g, '×')
+    .replace(/[·•]/g, '.')
+    .replace(/\s+/g, ' ');
+  question = question.replace(/\b(?:k\/c|kc|khoang\s+cach|khoảng\s+cách)\b/gi, 'd');
+  question = question.replace(/\b(?:den|đến|toi|tới|tu|từ|cua|của)\b/gi, ' ');
+  question = question.replace(/\b(?:mp|mat\s+phang|mặt\s+phẳng)\s+([A-Za-z](?:\s*[A-Za-z0-9']\s*){2,})/gi, (_, value: string) => `(${compactPointSequenceText(value)})`);
+  question = question.replace(/\b(?:dien\s+tich|diện\s+tích)\s+([A-Za-z](?:\s*[A-Za-z0-9']\s*){2,})/gi, (_, value: string) => `S(${compactPointSequenceText(value)})`);
+  question = question.replace(/\b(?:the\s+tich|thể\s+tích)\s+([A-Za-z][A-Za-z0-9']*(?:\s*\.\s*)?[A-Za-z](?:\s*[A-Za-z0-9']\s*){2,})/gi, (_, value: string) => `V(${compactSolidText(value)})`);
+  question = question.replace(/\b([dDsSvV])\s*\(/g, (_, name: string) => `${name.toLowerCase() === 'd' ? 'd' : name.toUpperCase()}(`);
+  question = normalizeParenthesizedGeometry(question);
+  question = question.replace(/\bd\s+([A-Za-z](?:[0-9]+|')?)\s+(\([A-Za-z0-9'\s]+\)|[A-Za-z](?:\s*[A-Za-z0-9']\s*){1,})/gi, (_, point: string, target: string) => `d(${point.toUpperCase()},${normalizeDistanceTargetText(target)})`);
+  question = question.replace(/\s+/g, ' ').trim();
+  return question.replace(/\bgoc\b/gi, 'góc');
+}
+
+function compactPointSequenceText(value: string): string {
+  return Array.from(value.matchAll(/[A-Za-z](?:[0-9]+|')?/g)).map((match) => match[0].toUpperCase()).join('');
+}
+
+function normalizeDistanceTargetText(value: string): string {
+  const target = value.trim();
+  if (target.startsWith('(') && target.endsWith(')')) return `(${compactPointSequenceText(target.slice(1, -1))})`;
+  return compactPointSequenceText(target);
+}
+
+function compactSolidText(value: string): string {
+  const cleaned = value.trim().replace(/\s+/g, '');
+  if (cleaned.includes('.')) {
+    const [left, right] = cleaned.split('.', 2);
+    return `${compactPointSequenceText(left)}.${compactPointSequenceText(right)}`;
+  }
+  const compact = compactPointSequenceText(value);
+  return compact.length >= 4 ? `${compact[0]}.${compact.slice(1)}` : compact;
+}
+
+function normalizeParenthesizedGeometry(input: string): string {
+  let output = '';
+  let index = 0;
+  while (index < input.length) {
+    if (input[index] !== '(') {
+      output += input[index];
+      index += 1;
+      continue;
+    }
+    const end = findMatchingParen(input, index);
+    if (end === -1) {
+      output += input[index];
+      index += 1;
+      continue;
+    }
+    let inner = normalizeParenthesizedGeometry(input.slice(index + 1, end));
+    if (/^[A-Za-z0-9'\s.]+$/.test(inner)) {
+      inner = inner.includes('.') ? compactSolidText(inner) : compactPointSequenceText(inner);
+    }
+    output += `(${inner})`;
+    index = end + 1;
+  }
+  return output;
+}
+
+function findMatchingParen(input: string, openIndex: number): number {
+  let depth = 0;
+  for (let index = openIndex; index < input.length; index += 1) {
+    if (input[index] === '(') depth += 1;
+    if (input[index] === ')') {
+      depth -= 1;
+      if (depth === 0) return index;
+    }
+  }
+  return -1;
+}
 
 function normalizeComparableText(input?: string | null): string {
   return (input ?? '')
@@ -51,6 +129,11 @@ function buildExamples(scene: MathScene) {
   const edge = base.length >= 2 ? `${base[0]}${base[1]}` : '';
   const secondEdge = base.length >= 4 ? `${base[2]}${base[3]}` : edge;
   const plane = base.length >= 3 ? `(${base.join('')})` : '';
+  const top = base.map((name) => `${name}'`);
+  const hasMatchingTop = top.length >= 3 && top.every((name) => pointNames.includes(name));
+  const volumeExample = hasMatchingTop
+    ? `V(${top.join('')}.${base.join('')})`
+    : apex && base.length >= 3 && !base.includes(apex) ? `V(${apex}.${base.join('')})` : '';
   const examples = [
     pointNames.length >= 2 ? `d(${pointNames[0]},${pointNames[1]})` : '',
     apex && edge && !edge.includes(apex) ? `d(${apex},${edge})` : '',
@@ -58,24 +141,26 @@ function buildExamples(scene: MathScene) {
     edge && secondEdge && edge !== secondEdge ? `Góc giữa ${edge} và ${secondEdge}` : '',
     apex && edge && plane && !base.includes(apex) ? `Góc giữa ${apex}${base[0]} và ${plane}` : '',
     base.length >= 3 ? `S(${base.join('')})` : '',
-    apex && base.length >= 3 && !base.includes(apex) ? `V(${apex}.${base.join('')})` : '',
+    volumeExample,
   ].filter(Boolean);
   return Array.from(new Set(examples));
 }
 
 export function SolverPanel({ scene, runtimeSettings, onHighlight }: SolverPanelProps) {
-  const examples = buildExamples(scene);
   const [question, setQuestion] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<SolveResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeStep, setActiveStep] = useState<number | null>(null);
+  const [formulaHelpOpen, setFormulaHelpOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const cacheRef = useRef<Map<string, SolveResponse>>(new Map());
   const sceneCacheKey = useMemo(() => JSON.stringify(scene), [scene]);
+  const normalizedQuestion = normalizeSolverQuestionInput(question);
+  const showNormalizedQuestion = Boolean(question.trim()) && normalizedQuestion !== question.trim();
 
   async function handleSolve() {
-    const trimmedQuestion = question.trim();
+    const trimmedQuestion = normalizedQuestion;
     if (!trimmedQuestion) return;
     const cacheKey = `${sceneCacheKey}\n${trimmedQuestion}`;
     setLoading(true);
@@ -135,6 +220,8 @@ export function SolverPanel({ scene, runtimeSettings, onHighlight }: SolverPanel
           placeholder="Nhập câu hỏi, ví dụ: d(A,(BCD))"
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
+          onFocus={() => setFormulaHelpOpen(true)}
+          onClick={() => setFormulaHelpOpen(true)}
           onKeyDown={(e) => { if (e.key === 'Enter') void handleSolve(); }}
           disabled={loading}
           autoComplete="off"
@@ -154,19 +241,36 @@ export function SolverPanel({ scene, runtimeSettings, onHighlight }: SolverPanel
         </button>
       </div>
 
-      {/* Example chips */}
-      <div className="sp-chips">
-        {examples.map((q) => (
-          <button
-            key={q}
-            type="button"
-            className="sp-chip"
-            onClick={() => { setQuestion(q); inputRef.current?.focus(); }}
-          >
-            {q}
-          </button>
-        ))}
-      </div>
+      {showNormalizedQuestion && (
+        <div className="sp-normalized-hint">Sẽ hiểu là: <code>{normalizedQuestion}</code></div>
+      )}
+
+      <div className="sp-input-help">Ví dụ: d(A,B), d(A,BC), d(A,(BCD)), góc giữa AB và CD, S(ABC), V(S.ABCD)</div>
+
+      {formulaHelpOpen && (
+        <div className="sp-formula-help">
+          <div className="sp-formula-help-head">
+            <strong>Công thức mẫu</strong>
+            <button type="button" onClick={() => setFormulaHelpOpen(false)} aria-label="Đóng công thức mẫu">×</button>
+          </div>
+          <div className="sp-formula-grid">
+            {[
+              ['Khoảng cách điểm-điểm', 'd(A,B)'],
+              ['Khoảng cách điểm-đường', 'd(A,BC)'],
+              ['Khoảng cách điểm-mặt', 'd(A,(BCD))'],
+              ['Góc hai đường', 'góc giữa AB và CD'],
+              ['Diện tích đa giác', 'S(ABC)'],
+              ['Thể tích chóp', 'V(S.ABCD)'],
+              ['Thể tích lăng trụ', "V(A'B'C'D'.ABCD)"],
+            ].map(([label, sample]) => (
+              <button key={sample} type="button" onClick={() => { setQuestion(sample); inputRef.current?.focus(); }}>
+                <span>{label}</span>
+                <code>{sample}</code>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Error */}
       {error && (

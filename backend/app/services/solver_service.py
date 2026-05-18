@@ -18,6 +18,7 @@ from app.services.geometry_engine import (
     calculate_point_plane_reflection,
     calculate_point_point_distance,
     calculate_polygon_area,
+    calculate_prism_volume,
     calculate_pyramid_volume,
     calculate_tetrahedron_volume,
     calculate_vector_cross,
@@ -120,10 +121,93 @@ _COPLANAR_RE = re.compile(r"đồng\s*phẳng|coplanar", re.IGNORECASE)
 _POINT_RE = r"[A-Z](?:[0-9]+|')?"
 
 
+def normalize_solver_question(question: str) -> str:
+    q = question.strip()
+    if not q:
+        return ""
+    replacements = {
+        "​": "",
+        "‌": "",
+        "‍": "",
+        "（": "(",
+        "）": ")",
+        "，": ",",
+        "、": ",",
+        "−": "-",
+        "–": "-",
+        "—": "-",
+        "✕": "×",
+        "*": "×",
+        "·": ".",
+        "•": ".",
+    }
+    for old, new in replacements.items():
+        q = q.replace(old, new)
+    q = re.sub(r"\s+", " ", q).strip()
+    q = re.sub(r"\b(?:k/c|kc|khoang\s+cach|khoảng\s+cách)\b", "d", q, flags=re.IGNORECASE)
+    q = re.sub(r"\b(?:den|đến|toi|tới|tu|từ|cua|của)\b", " ", q, flags=re.IGNORECASE)
+    q = re.sub(r"\b(?:mp|mat\s+phang|mặt\s+phẳng)\s+([A-Za-z](?:\s*[A-Za-z0-9']\s*){2,})", lambda m: f"({ _compact_point_sequence_text(m.group(1)) })", q, flags=re.IGNORECASE)
+    q = re.sub(r"\b(?:dien\s+tich|diện\s+tích)\s+([A-Za-z](?:\s*[A-Za-z0-9']\s*){2,})", lambda m: f"S({_compact_point_sequence_text(m.group(1))})", q, flags=re.IGNORECASE)
+    q = re.sub(r"\b(?:the\s+tich|thể\s+tích)\s+([A-Za-z][A-Za-z0-9']*(?:\s*\.\s*)?[A-Za-z](?:\s*[A-Za-z0-9']\s*){2,})", lambda m: f"V({_compact_solid_text(m.group(1))})", q, flags=re.IGNORECASE)
+    q = re.sub(r"\b([dDsSvV])\s*\(", lambda m: f"{m.group(1).upper()}(" if m.group(1).lower() in {"s", "v"} else "d(", q)
+    q = _normalize_parenthesized_geometry(q)
+    q = re.sub(r"\bd\s+([A-Za-z](?:[0-9]+|')?)\s+(\([A-Za-z0-9'\s]+\)|[A-Za-z](?:\s*[A-Za-z0-9']\s*){1,})", lambda m: f"d({m.group(1).upper()},{_normalize_distance_target_text(m.group(2))})", q, flags=re.IGNORECASE)
+    q = _uppercase_geometry_tokens(q)
+    q = re.sub(r"\s+", " ", q).strip()
+    q = re.sub(r"\bGOC\b", "góc", q, flags=re.IGNORECASE)
+    return q
+
+
+def _normalize_distance_target_text(value: str) -> str:
+    target = value.strip()
+    if target.startswith("(") and target.endswith(")"):
+        return f"({_compact_point_sequence_text(target[1:-1])})"
+    return _compact_point_sequence_text(target)
+
+
+def _uppercase_geometry_tokens(value: str) -> str:
+    return re.sub(r"\b([A-Za-z](?:[0-9]+|')?)\s*-\s*([A-Za-z](?:[0-9]+|')?)\b", lambda m: f"{m.group(1).upper()}-{m.group(2).upper()}", value)
+
+
+def _compact_point_sequence_text(value: str) -> str:
+    return "".join(re.findall(r"[A-Za-z](?:[0-9]+|')?", value)).upper()
+
+
+def _compact_solid_text(value: str) -> str:
+    cleaned = value.strip().replace(" ", "")
+    if "." in cleaned:
+        left, right = cleaned.split(".", 1)
+        return f"{_compact_point_sequence_text(left)}.{_compact_point_sequence_text(right)}"
+    compact = _compact_point_sequence_text(value)
+    return f"{compact[0]}.{compact[1:]}" if len(compact) >= 4 else compact
+
+
+def _normalize_parenthesized_geometry(question: str) -> str:
+    result: list[str] = []
+    index = 0
+    while index < len(question):
+        char = question[index]
+        if char != "(":
+            result.append(char)
+            index += 1
+            continue
+        end = _find_matching_paren(question, index)
+        if end is None:
+            result.append(char)
+            index += 1
+            continue
+        inner = _normalize_parenthesized_geometry(question[index + 1:end])
+        if re.fullmatch(r"[A-Za-z0-9'\s.]+", inner):
+            inner = _compact_solid_text(inner) if "." in inner else _compact_point_sequence_text(inner)
+        result.append(f"({inner})")
+        index = end + 1
+    return "".join(result)
+
+
 def solve(scene_dict: dict, question: str) -> SolverResult:
     pts = _point_map(scene_dict)
     warnings: list[str] = []
-    q = question.strip()
+    q = normalize_solver_question(question)
 
     if _EQUATION_RE.search(q):
         return _solve_equation(pts, q, warnings)
@@ -303,10 +387,12 @@ def _solve_vector(pts: dict[str, Vec3], question: str, warnings: list[str]) -> S
 def _solve_volume(pts: dict[str, Vec3], question: str, warnings: list[str]) -> SolverResult:
     solid = _parse_solid_after_marker(question, "V") or _parse_solid_text(question)
     if solid and len(solid) == 2:
-        apex_or_base, base = solid
-        if len(apex_or_base) == 1 and len(base) >= 3:
-            return _result_from_calculation(question, calculate_pyramid_volume(pts, apex_or_base[0], base), pts)
-        names = [*apex_or_base, *base]
+        top_or_apex, base = solid
+        if len(top_or_apex) == 1 and len(base) >= 3:
+            return _result_from_calculation(question, calculate_pyramid_volume(pts, top_or_apex[0], base), pts)
+        if len(top_or_apex) >= 3 and len(base) >= 3:
+            return _result_from_calculation(question, calculate_prism_volume(pts, top_or_apex, base), pts)
+        names = [*top_or_apex, *base]
         if len(names) >= 4:
             return _result_from_calculation(question, calculate_tetrahedron_volume(pts, names[:4]), pts)
 
@@ -629,11 +715,11 @@ def _parse_edges(question: str) -> list[tuple[str, str]]:
 
 def _parse_plane_refs(question: str) -> list[list[str]]:
     refs: list[list[str]] = []
-    for raw in re.findall(r"\(([A-Z0-9']{3,})\)", question):
+    for raw in re.findall(r"\(([A-Z0-9'\s]{3,})\)", question):
         refs.append(_split_point_sequence(raw))
-    for raw in re.findall(r"mặt(?:\s+phẳng)?\s+([A-Z0-9']{3,})", question, flags=re.IGNORECASE):
+    for raw in re.findall(r"(?:mp|mat\s+phang|mặt(?:\s+phẳng)?)\s+([A-Z0-9'\s]{3,})", question, flags=re.IGNORECASE):
         refs.append(_split_point_sequence(raw))
-    return refs
+    return [ref for ref in refs if len(ref) >= 3]
 
 
 def _parse_points(question: str) -> list[str]:
@@ -682,14 +768,37 @@ def _find_face_points(scene_dict: dict, question: str) -> list[str] | None:
 
 
 def _inside_function(question: str, name: str) -> str | None:
-    match = re.search(rf"\b{name}\s*\(([^)]*)\)", question, flags=re.IGNORECASE)
-    return match.group(1).strip() if match else None
+    match = re.search(rf"\b{name}\s*\(", question, flags=re.IGNORECASE)
+    if not match:
+        return None
+    open_index = match.end() - 1
+    close_index = _find_matching_paren(question, open_index)
+    if close_index is None:
+        return None
+    return question[open_index + 1:close_index].strip()
+
+
+def _find_matching_paren(value: str, open_index: int) -> int | None:
+    depth = 0
+    for index in range(open_index, len(value)):
+        if value[index] == "(":
+            depth += 1
+        elif value[index] == ")":
+            depth -= 1
+            if depth == 0:
+                return index
+    return None
 
 
 def _split_two_operands(value: str) -> tuple[str, str]:
-    if "," in value:
-        left, right = value.split(",", 1)
-        return left.strip(), right.strip()
+    depth = 0
+    for index, char in enumerate(value):
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth = max(0, depth - 1)
+        elif char == "," and depth == 0:
+            return value[:index].strip(), value[index + 1:].strip()
     parts = value.split()
     if len(parts) >= 2:
         return parts[0], parts[1]
@@ -717,7 +826,7 @@ def _parse_plane_token(token: str) -> list[str] | None:
     cleaned = token.strip()
     if cleaned.startswith("(") and cleaned.endswith(")"):
         cleaned = cleaned[1:-1]
-    cleaned = re.sub(r"^mặt\s+", "", cleaned, flags=re.IGNORECASE).strip()
+    cleaned = re.sub(r"^(?:mp|mat\s+phang|mặt(?:\s+phẳng)?)\s+", "", cleaned, flags=re.IGNORECASE).strip()
     points = _split_point_sequence(cleaned)
     return points if len(points) >= 3 else None
 

@@ -5581,44 +5581,46 @@ pre {
     display: none;
   }
 
-  .mobile-renderer-warning {
-    position: fixed;
-    inset: 0;
-    z-index: 300;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
-    background: rgba(15, 23, 42, 0.62);
-    backdrop-filter: blur(8px);
-  }
+  @media (orientation: portrait) {
+    .mobile-renderer-warning {
+      position: fixed;
+      inset: 0;
+      z-index: 300;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      background: rgba(15, 23, 42, 0.62);
+      backdrop-filter: blur(8px);
+    }
 
-  .mobile-renderer-warning-card {
-    width: min(420px, 100%);
-    border: 1px solid #e5e7eb;
-    border-radius: 24px;
-    padding: 22px;
-    background: #ffffff;
-    color: #111827;
-    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.28);
-  }
+    .mobile-renderer-warning-card {
+      width: min(420px, 100%);
+      border: 1px solid #e5e7eb;
+      border-radius: 24px;
+      padding: 22px;
+      background: #ffffff;
+      color: #111827;
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.28);
+    }
 
-  .mobile-renderer-warning-card h2 {
-    margin: 0 0 10px;
-    font-size: 1.2rem;
-  }
+    .mobile-renderer-warning-card h2 {
+      margin: 0 0 10px;
+      font-size: 1.2rem;
+    }
 
-  .mobile-renderer-warning-card p {
-    margin: 0 0 10px;
-    color: #475569;
-    line-height: 1.5;
-  }
+    .mobile-renderer-warning-card p {
+      margin: 0 0 10px;
+      color: #475569;
+      line-height: 1.5;
+    }
 
-  .mobile-renderer-warning-card .primary-button {
-    width: 100%;
-    max-width: 100%;
-    margin-top: 8px;
-    white-space: normal;
+    .mobile-renderer-warning-card .primary-button {
+      width: 100%;
+      max-width: 100%;
+      margin-top: 8px;
+      white-space: normal;
+    }
   }
 
   .mobile-scroll-notice {
@@ -5643,6 +5645,17 @@ pre {
   .header-nav {
     overflow-x: auto;
     min-width: 0;
+  }
+
+  .tools-dropdown {
+    position: fixed;
+    top: 64px;
+    left: 12px;
+    right: 12px;
+    z-index: 180;
+    width: auto;
+    max-height: calc(100dvh - 80px);
+    overflow-y: auto;
   }
 
   .nav-item {
@@ -6519,6 +6532,101 @@ pre {
   box-shadow: none;
 }
 .sp-input::placeholder { color: var(--ink-4); }
+
+.sp-normalized-hint,
+.sp-input-help {
+  margin-top: -6px;
+  color: var(--ink-4);
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.sp-normalized-hint code {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 2px 6px;
+  background: var(--surface-2);
+  color: var(--ink);
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font-size: 0.74rem;
+  overflow-wrap: anywhere;
+}
+
+.sp-formula-help {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px;
+  background: var(--paper);
+  box-shadow: var(--shadow-subtle);
+}
+
+.sp-formula-help-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.sp-formula-help-head strong {
+  color: var(--ink);
+  font-size: 0.85rem;
+}
+
+.sp-formula-help-head button {
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0;
+  background: var(--surface);
+  color: var(--ink-3);
+  cursor: pointer;
+}
+
+.sp-formula-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.sp-formula-grid button {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 9px;
+  background: var(--surface);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.sp-formula-grid button:hover {
+  border-color: var(--ink-2);
+  background: var(--paper);
+}
+
+.sp-formula-grid span {
+  color: var(--ink-4);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.sp-formula-grid code {
+  color: var(--ink);
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font-size: 0.78rem;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 560px) {
+  .sp-formula-grid {
+    grid-template-columns: 1fr;
+  }
+}
 
 /* Answer */
 .sp-answer {
