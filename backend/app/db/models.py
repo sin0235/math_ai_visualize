@@ -185,3 +185,11 @@ class ChatMessageRecord:
     sender_role: str
     body: str
     created_at: str
+    message_type: str = "text"
+    image_url: str | None = None
+    image_public_id: str | None = None
+    image_width: int | None = None
+    image_height: int | None = None
+    image_bytes: int | None = None
+    image_format: str | None = None
+    image_original_name: str | None = None

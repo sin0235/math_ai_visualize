@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type PointerEvent } from 'react';
-import { ApiError, createChatWebSocket, getChatConversation, markChatRead, sendChatMessage, type ChatConversationResponse, type ChatMessageResponse, type ChatWsEvent, type UserResponse } from '../api/client';
+import { ApiError, createChatWebSocket, getChatConversation, markChatRead, sendChatImage, sendChatMessage, type ChatConversationResponse, type ChatMessageResponse, type ChatWsEvent, type UserResponse } from '../api/client';
 
-type LocalChatMessage = ChatMessageResponse & { local_status?: 'sending' | 'sent' | 'error'; retry_body?: string };
+type LocalChatMessage = ChatMessageResponse & { local_status?: 'sending' | 'sent' | 'error'; retry_body?: string; retry_file?: File };
 
 interface ChatBubbleProps {
   user: UserResponse | null;
@@ -13,6 +13,8 @@ export function ChatBubble({ user, onToast }: ChatBubbleProps) {
   const [conversation, setConversation] = useState<ChatConversationResponse | null>(null);
   const [messages, setMessages] = useState<LocalChatMessage[]>([]);
   const [input, setInput] = useState('');
+  const [selectedImage, setSelectedImage] = useState<File | null>(null);
+  const [selectedImagePreview, setSelectedImagePreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [connected, setConnected] = useState(false);
@@ -25,6 +27,7 @@ export function ChatBubble({ user, onToast }: ChatBubbleProps) {
   const conversationRef = useRef(conversation);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const dragRef = useRef<{ pointerId: number; startY: number; startBottom: number; moved: boolean } | null>(null);
   const typingTimeoutRef = useRef<number | null>(null);
   const stopTypingTimeoutRef = useRef<number | null>(null);
@@ -57,6 +60,12 @@ export function ChatBubble({ user, onToast }: ChatBubbleProps) {
   useEffect(() => {
     resizeTextarea();
   }, [input, open]);
+
+  useEffect(() => {
+    return () => {
+      if (selectedImagePreview) URL.revokeObjectURL(selectedImagePreview);
+    };
+  }, [selectedImagePreview]);
 
   async function ensureConversation() {
     if (!user) {
@@ -109,7 +118,7 @@ export function ChatBubble({ user, onToast }: ChatBubbleProps) {
     if (event.type === 'message.created') {
       if (conversationRef.current && event.conversation_id !== conversationRef.current.id) return;
       setConversation(event.conversation);
-      setMessages((current) => current.some((item) => item.id === event.message.id) ? current : [...current, event.message]);
+      setMessages((current) => mergeIncomingMessage(current, event.message));
       if (event.message.sender_role === 'admin') {
         if (openRef.current) {
           void markChatRead(event.conversation_id).catch(() => undefined);
@@ -136,22 +145,23 @@ export function ChatBubble({ user, onToast }: ChatBubbleProps) {
       return;
     }
     const body = input.trim();
-    if (!body || sending) return;
+    if ((!body && !selectedImage) || sending) return;
     const activeConversation = conversation ?? (await getChatConversation()).conversation;
     setConversation(activeConversation);
     const localId = `local-${Date.now()}`;
-    const pending: LocalChatMessage = { id: localId, conversation_id: activeConversation.id, sender_user_id: user.id, sender_role: 'user', body, created_at: new Date().toISOString(), local_status: 'sending', retry_body: body };
+    const pending: LocalChatMessage = { id: localId, conversation_id: activeConversation.id, sender_user_id: user.id, sender_role: 'user', body, created_at: new Date().toISOString(), local_status: 'sending', retry_body: body, retry_file: selectedImage ?? undefined, message_type: selectedImage ? 'image' : 'text', image_url: selectedImagePreview };
     setMessages((current) => [...current, pending]);
     setSending(true);
     try {
-      const message = await sendChatMessage(activeConversation.id, body);
+      const message = selectedImage ? await sendChatImage(activeConversation.id, selectedImage, body) : await sendChatMessage(activeConversation.id, body);
       setMessages((current) => current.map((item) => item.id === localId ? { ...message, local_status: 'sent' } : item));
       setInput('');
+      clearSelectedImage();
       sendTyping(false);
       window.requestAnimationFrame(resizeTextarea);
     } catch (caught) {
       setMessages((current) => current.map((item) => item.id === localId ? { ...item, local_status: 'error' } : item));
-      const message = caught instanceof ApiError ? caught.message : 'Không thể gửi tin nhắn.';
+      const message = caught instanceof ApiError ? caught.message : selectedImage ? 'Không thể gửi ảnh.' : 'Không thể gửi tin nhắn.';
       onToast('Chat admin', message, 'error');
     } finally {
       setSending(false);
@@ -222,6 +232,17 @@ export function ChatBubble({ user, onToast }: ChatBubbleProps) {
     stopTypingTimeoutRef.current = window.setTimeout(() => sendTyping(false), 1200);
   }
 
+  function handleImageSelect(file: File | null) {
+    if (selectedImagePreview) URL.revokeObjectURL(selectedImagePreview);
+    setSelectedImage(file);
+    setSelectedImagePreview(file ? URL.createObjectURL(file) : null);
+  }
+
+  function clearSelectedImage() {
+    handleImageSelect(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }
+
   return (
     <div className={`chat-bubble ${open ? 'is-open' : ''}`} style={{ bottom: bubbleBottom }}>
       {open && (
@@ -238,7 +259,7 @@ export function ChatBubble({ user, onToast }: ChatBubbleProps) {
             {!loading && messages.length === 0 && <p className="chat-empty">Gửi câu hỏi cho admin. Bạn sẽ nhận phản hồi tại đây.</p>}
             {messages.map((message) => (
               <div key={message.id} className={`chat-message ${message.sender_role === 'admin' ? 'from-admin' : 'from-user'}`}>
-                <p>{message.body}</p>
+                <ChatMessageContent message={message} />
                 <time>{message.local_status ? sendStatusText(message.local_status) : formatChatTime(message.created_at)}</time>
                 {message.local_status === 'error' && <button type="button" className="chat-retry-button" onClick={() => void retryMessage(message)}>Gửi lại</button>}
               </div>
@@ -250,6 +271,14 @@ export function ChatBubble({ user, onToast }: ChatBubbleProps) {
             <div className="chat-closed">Cuộc trò chuyện đã đóng.</div>
           ) : (
             <form className="chat-input-row" onSubmit={(event) => { event.preventDefault(); void handleSend(); }}>
+              {selectedImagePreview && (
+                <div className="chat-image-preview">
+                  <img src={selectedImagePreview} alt="Ảnh chuẩn bị gửi" />
+                  <button type="button" onClick={clearSelectedImage} aria-label="Bỏ ảnh">×</button>
+                </div>
+              )}
+              <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="sr-only" onChange={(event) => handleImageSelect(event.target.files?.[0] ?? null)} />
+              <button type="button" className="chat-attach-button" onClick={() => fileInputRef.current?.click()} aria-label="Đính kèm ảnh"><AttachFileIcon /></button>
               <textarea
                 ref={textareaRef}
                 value={input}
@@ -265,7 +294,7 @@ export function ChatBubble({ user, onToast }: ChatBubbleProps) {
                 placeholder="Nhập tin nhắn..."
                 rows={1}
               />
-              <button type="submit" className="chat-send-button" disabled={!input.trim() || sending} aria-label="Gửi tin nhắn">
+              <button type="submit" className="chat-send-button" disabled={(!input.trim() && !selectedImage) || sending} aria-label="Gửi tin nhắn">
                 {sending ? <span aria-hidden="true">...</span> : <SendIcon />}
               </button>
             </form>
@@ -301,6 +330,27 @@ export function ChatBubble({ user, onToast }: ChatBubbleProps) {
   );
 }
 
+
+function ChatMessageContent({ message }: { message: ChatMessageResponse }) {
+  return (
+    <>
+      {message.image_url && (
+        <a className="chat-message-image-link" href={message.image_url} target="_blank" rel="noopener noreferrer">
+          <img className="chat-message-image" src={message.image_url} alt={message.image_original_name ?? 'Ảnh trong chat'} />
+        </a>
+      )}
+      {message.body && <p>{message.body}</p>}
+    </>
+  );
+}
+
+function mergeIncomingMessage(current: LocalChatMessage[], incoming: ChatMessageResponse) {
+  if (current.some((item) => item.id === incoming.id)) return current;
+  const pendingIndex = current.findIndex((item) => item.local_status === 'sending' && item.sender_role === incoming.sender_role && item.conversation_id === incoming.conversation_id && item.body === incoming.body);
+  if (pendingIndex === -1) return [...current, incoming];
+  return current.map((item, index) => index === pendingIndex ? { ...incoming, local_status: 'sent' } : item);
+}
+
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
 }
@@ -315,6 +365,14 @@ function sendStatusText(status: NonNullable<LocalChatMessage['local_status']>) {
   if (status === 'sending') return 'Đang gửi...';
   if (status === 'error') return 'Gửi lỗi';
   return 'Đã gửi';
+}
+
+function AttachFileIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M6 12.2 13.9 4.3a4.2 4.2 0 0 1 5.9 5.9L10.9 19a5.8 5.8 0 0 1-8.2-8.2l9.7-9.7" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
 }
 
 function SendIcon() {

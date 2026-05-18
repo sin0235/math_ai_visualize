@@ -41,6 +41,7 @@ import {
   getAdminChatConversations,
   getAdminChatConversation,
   sendAdminChatMessage,
+  sendAdminChatImage,
   markAdminChatRead,
   closeAdminChatConversation,
   createChatWebSocket
@@ -74,6 +75,14 @@ interface AdminConsoleProps {
   onBackToApp: () => void;
   onOpenRenderJobDetail: (detail: AdminRenderHistoryDetail) => void;
   onToast: AdminToast;
+}
+
+function AttachFileIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M6 12.2 13.9 4.3a4.2 4.2 0 0 1 5.9 5.9L10.9 19a5.8 5.8 0 0 1-8.2-8.2l9.7-9.7" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
 }
 
 function SendIcon() {
@@ -152,6 +161,8 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
   const [chatFilters, setChatFilters] = useState<{ status?: string; q?: string }>({ status: 'open' });
   const [filteringChat, setFilteringChat] = useState(false);
   const [chatReply, setChatReply] = useState('');
+  const [adminSelectedImage, setAdminSelectedImage] = useState<File | null>(null);
+  const [adminSelectedImagePreview, setAdminSelectedImagePreview] = useState<string | null>(null);
   const [sendingChat, setSendingChat] = useState(false);
   const [chatConnected, setChatConnected] = useState(false);
   const [userTypingConversationId, setUserTypingConversationId] = useState<string | null>(null);
@@ -162,6 +173,7 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
   const adminTypingStopTimeoutRef = useRef<number | null>(null);
   const adminTypingSentRef = useRef(false);
   const adminReplyTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const adminFileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     selectedChatConversationRef.current = selectedChatConversation;
@@ -170,6 +182,12 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
   useEffect(() => {
     resizeAdminReplyTextarea();
   }, [chatReply, selectedChatConversation?.id]);
+
+  useEffect(() => {
+    return () => {
+      if (adminSelectedImagePreview) URL.revokeObjectURL(adminSelectedImagePreview);
+    };
+  }, [adminSelectedImagePreview]);
 
   // Audit log filters
   const [localAuditLogFilters, setLocalAuditLogFilters] = useState<AdminAuditLogFilters>({});
@@ -491,17 +509,18 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
 
   const sendChatReply = async () => {
     const body = chatReply.trim();
-    if (!body || !selectedChatConversation || sendingChat) return;
+    if ((!body && !adminSelectedImage) || !selectedChatConversation || sendingChat) return;
     setSendingChat(true);
     try {
-      const message = await sendAdminChatMessage(selectedChatConversation.id, body);
+      const message = adminSelectedImage ? await sendAdminChatImage(selectedChatConversation.id, adminSelectedImage, body) : await sendAdminChatMessage(selectedChatConversation.id, body);
       setChatMessages((current) => current.some((item) => item.id === message.id) ? current : [...current, message]);
       setChatReply('');
+      clearAdminSelectedImage();
       sendAdminTyping(false);
       window.requestAnimationFrame(resizeAdminReplyTextarea);
       setAuditLogs(await getAdminAuditLogs(localAuditLogFilters));
     } catch (error) {
-      onToast('Chat', getErrorMessage(error, 'Không thể gửi phản hồi.'), 'error');
+      onToast('Chat', getErrorMessage(error, adminSelectedImage ? 'Không thể gửi ảnh.' : 'Không thể gửi phản hồi.'), 'error');
     } finally {
       setSendingChat(false);
     }
@@ -577,6 +596,17 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
     if (!textarea) return;
     textarea.style.height = '0px';
     textarea.style.height = `${Math.min(textarea.scrollHeight, 132)}px`;
+  }
+
+  function handleAdminImageSelect(file: File | null) {
+    if (adminSelectedImagePreview) URL.revokeObjectURL(adminSelectedImagePreview);
+    setAdminSelectedImage(file);
+    setAdminSelectedImagePreview(file ? URL.createObjectURL(file) : null);
+  }
+
+  function clearAdminSelectedImage() {
+    handleAdminImageSelect(null);
+    if (adminFileInputRef.current) adminFileInputRef.current.value = '';
   }
 
   const onSearchAuditLogs = async (filters: AdminAuditLogFilters) => {
@@ -882,7 +912,7 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
                   {chatConversations.map((conversation) => (
                     <button key={conversation.id} type="button" className={selectedChatConversation?.id === conversation.id ? 'active' : ''} onClick={() => void selectChatConversation(conversation)}>
                       <strong>{conversation.user_email ?? conversation.user_id}</strong>
-                      <span>{conversation.latest_message?.body ?? 'Chưa có tin nhắn'}</span>
+                      <span>{latestChatPreview(conversation.latest_message)}</span>
                       <small>{conversation.status} · {formatHistoryDate(conversation.last_message_at)}</small>
                       {conversation.unread_count > 0 && <em>{conversation.unread_count}</em>}
                     </button>
@@ -897,11 +927,19 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
                         <button type="button" className="secondary-button" disabled={selectedChatConversation.status === 'closed'} onClick={() => void closeChat()}>Đóng</button>
                       </div>
                       <div className="admin-chat-messages">
-                        {chatMessages.map((message) => <div key={message.id} className={`admin-chat-message ${message.sender_role === 'admin' ? 'from-admin' : 'from-user'}`}><p>{message.body}</p><time>{formatHistoryDate(message.created_at)}</time></div>)}
+                        {chatMessages.map((message) => <div key={message.id} className={`admin-chat-message ${message.sender_role === 'admin' ? 'from-admin' : 'from-user'}`}><ChatMessageContent message={message} /><time>{formatHistoryDate(message.created_at)}</time></div>)}
                         {userTypingConversationId === selectedChatConversation.id && <div className="chat-typing-indicator admin-chat-typing">Người dùng đang nhập...</div>}
                       </div>
                       {selectedChatConversation.status === 'open' ? (
                         <form className="admin-chat-reply" onSubmit={(event) => { event.preventDefault(); void sendChatReply(); }}>
+                          {adminSelectedImagePreview && (
+                            <div className="chat-image-preview admin-chat-image-preview">
+                              <img src={adminSelectedImagePreview} alt="Ảnh chuẩn bị gửi" />
+                              <button type="button" onClick={clearAdminSelectedImage} aria-label="Bỏ ảnh">×</button>
+                            </div>
+                          )}
+                          <input ref={adminFileInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="sr-only" onChange={(event) => handleAdminImageSelect(event.target.files?.[0] ?? null)} />
+                          <button type="button" className="chat-attach-button admin-chat-attach-button" onClick={() => adminFileInputRef.current?.click()} aria-label="Đính kèm ảnh"><AttachFileIcon /></button>
                           <textarea
                             ref={adminReplyTextareaRef}
                             value={chatReply}
@@ -917,7 +955,7 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
                             rows={1}
                             maxLength={2000}
                           />
-                          <button type="submit" className="admin-chat-send-button" disabled={!chatReply.trim() || sendingChat} aria-label="Gửi phản hồi">
+                          <button type="submit" className="admin-chat-send-button" disabled={(!chatReply.trim() && !adminSelectedImage) || sendingChat} aria-label="Gửi phản hồi">
                             {sendingChat ? <span aria-hidden="true">...</span> : <SendIcon />}
                           </button>
                         </form>
@@ -1183,6 +1221,26 @@ function AdminAuditLogRow({ log }: { log: AuditLogResponse }) {
       {hasObjectKeys(log.metadata) && <AdminDetails title="Metadata" value={log.metadata} />}
     </article>
   );
+}
+
+
+function ChatMessageContent({ message }: { message: ChatMessageResponse }) {
+  return (
+    <>
+      {message.image_url && (
+        <a className="chat-message-image-link" href={message.image_url} target="_blank" rel="noopener noreferrer">
+          <img className="chat-message-image" src={message.image_url} alt={message.image_original_name ?? 'Ảnh trong chat'} />
+        </a>
+      )}
+      {message.body && <p>{message.body}</p>}
+    </>
+  );
+}
+
+function latestChatPreview(message?: ChatMessageResponse | null) {
+  if (!message) return 'Chưa có tin nhắn';
+  if (message.body) return message.body;
+  return message.message_type === 'image' ? 'Ảnh' : 'Chưa có tin nhắn';
 }
 
 function getErrorMessage(error: unknown, fallback: string) {

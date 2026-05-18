@@ -2,6 +2,7 @@ import { API_BASE_URL, cleanText, queryString, requestJson } from './core';
 
 export type ChatStatus = 'open' | 'closed';
 export type ChatSenderRole = 'user' | 'admin' | 'system';
+export type ChatMessageType = 'text' | 'image';
 
 export interface ChatMessageResponse {
   id: string;
@@ -10,6 +11,14 @@ export interface ChatMessageResponse {
   sender_role: ChatSenderRole;
   body: string;
   created_at: string;
+  message_type: ChatMessageType;
+  image_url?: string | null;
+  image_public_id?: string | null;
+  image_width?: number | null;
+  image_height?: number | null;
+  image_bytes?: number | null;
+  image_format?: string | null;
+  image_original_name?: string | null;
 }
 
 export interface ChatConversationResponse {
@@ -68,6 +77,18 @@ export async function sendChatMessage(conversationId: string, body: string): Pro
   }, 'Không thể gửi tin nhắn.');
 }
 
+export async function sendChatImage(conversationId: string, file: File, caption?: string): Promise<ChatMessageResponse> {
+  const formData = new FormData();
+  formData.set('file', file);
+  const cleanCaption = cleanText(caption ?? '');
+  if (cleanCaption) formData.set('caption', cleanCaption);
+  return requestJson(`/api/chat/conversations/${encodeURIComponent(conversationId)}/messages/image`, {
+    method: 'POST',
+    credentials: 'include',
+    body: formData,
+  }, 'Không thể gửi ảnh.');
+}
+
 export async function markChatRead(conversationId: string): Promise<ChatConversationResponse> {
   return requestJson(`/api/chat/conversations/${encodeURIComponent(conversationId)}/read`, { method: 'POST', credentials: 'include' }, 'Không thể đánh dấu đã đọc.');
 }
@@ -91,6 +112,18 @@ export async function sendAdminChatMessage(conversationId: string, body: string)
     credentials: 'include',
     body: JSON.stringify({ body: cleanText(body) ?? '' }),
   }, 'Không thể gửi tin nhắn admin.');
+}
+
+export async function sendAdminChatImage(conversationId: string, file: File, caption?: string): Promise<ChatMessageResponse> {
+  const formData = new FormData();
+  formData.set('file', file);
+  const cleanCaption = cleanText(caption ?? '');
+  if (cleanCaption) formData.set('caption', cleanCaption);
+  return requestJson(`/api/admin/chat/conversations/${encodeURIComponent(conversationId)}/messages/image`, {
+    method: 'POST',
+    credentials: 'include',
+    body: formData,
+  }, 'Không thể gửi ảnh admin.');
 }
 
 export async function markAdminChatRead(conversationId: string): Promise<ChatConversationResponse> {

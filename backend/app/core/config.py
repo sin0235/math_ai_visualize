@@ -56,6 +56,11 @@ class Settings(BaseSettings):
     r2_bucket_name: str | None = None
     r2_public_base_url: str | None = None
     r2_upload_prefix: str = "uploads"
+    cloudinary_cloud_name: str | None = None
+    cloudinary_api_key: str | None = None
+    cloudinary_api_secret: str | None = None
+    cloudinary_chat_folder: str = "hinh/chat"
+    chat_image_max_mb: int = 5
     auto_apply_sqlite_migrations: bool = True
     auto_apply_d1_migrations: bool = False
     session_cookie_secure: bool = False

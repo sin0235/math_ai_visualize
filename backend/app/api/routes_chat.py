@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, WebSocket, status
 
 from app.api.deps import enforce_rate_limit, origin_allowed, require_active_user, require_admin_user, require_trusted_origin
 from app.core.config import Settings, get_settings
@@ -9,6 +9,7 @@ from app.repositories.auth import UserRepository
 from app.repositories.chat import ChatRepository
 from app.schemas.chat import ChatConversationDetailResponse, ChatConversationResponse, ChatMessageCreateRequest, ChatMessageResponse, ChatWsTicketResponse
 from app.services.chat_ws import chat_ws_manager, chat_ws_tickets
+from app.services.cloudinary_uploads import CloudinaryUploadError, upload_chat_image
 
 router = APIRouter(tags=["chat"])
 
@@ -49,6 +50,32 @@ async def send_chat_message(
     if conversation.status != "open":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Cuộc trò chuyện đã đóng.")
     message = await repo.create_message(conversation.id, user.id, "user", request.body)
+    updated = await repo.find_conversation(conversation.id) or conversation
+    payload = {"type": "message.created", "conversation_id": conversation.id, "message": message_response(message).model_dump(), "conversation": conversation_response(updated).model_dump()}
+    await chat_ws_manager.broadcast_conversation_event(conversation.user_id, payload)
+    return message_response(message)
+
+
+@router.post("/api/chat/conversations/{conversation_id}/messages/image", response_model=ChatMessageResponse, dependencies=[Depends(require_trusted_origin)])
+async def send_chat_image_message(
+    conversation_id: str,
+    raw_request: Request,
+    caption: str | None = Form(default=None, max_length=2000),
+    file: UploadFile = File(...),
+    user: UserRecord = Depends(require_active_user),
+    db: DatabaseClient = Depends(get_database),
+    settings: Settings = Depends(get_settings),
+) -> ChatMessageResponse:
+    await enforce_rate_limit(db, raw_request, user, "chat_user_image_send", 10, 60)
+    repo = ChatRepository(db)
+    conversation = await require_user_conversation(repo, conversation_id, user.id)
+    if conversation.status != "open":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Cuộc trò chuyện đã đóng.")
+    try:
+        image = await upload_chat_image(file, settings, conversation.id)
+    except CloudinaryUploadError as error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
+    message = await repo.create_image_message(conversation.id, user.id, "user", clean_caption(caption), image.secure_url, image.public_id, image.width, image.height, image.bytes, image.format, file.filename)
     updated = await repo.find_conversation(conversation.id) or conversation
     payload = {"type": "message.created", "conversation_id": conversation.id, "message": message_response(message).model_dump(), "conversation": conversation_response(updated).model_dump()}
     await chat_ws_manager.broadcast_conversation_event(conversation.user_id, payload)
@@ -123,6 +150,36 @@ async def admin_send_chat_message(
     message = await repo.create_message(conversation.id, admin.id, "admin", request.body)
     updated = await repo.find_conversation(conversation.id) or conversation
     await AdminRepository(db).audit(admin.id, "admin.chat.reply", "chat_conversation", conversation.id, {"message_id": message.id, "body_length": len(request.body)})
+    payload = {"type": "message.created", "conversation_id": conversation.id, "message": message_response(message).model_dump(), "conversation": conversation_response(updated).model_dump()}
+    await chat_ws_manager.broadcast_conversation_event(conversation.user_id, payload)
+    return message_response(message)
+
+
+@router.post("/api/admin/chat/conversations/{conversation_id}/messages/image", response_model=ChatMessageResponse, dependencies=[Depends(require_trusted_origin)])
+async def admin_send_chat_image_message(
+    conversation_id: str,
+    raw_request: Request,
+    caption: str | None = Form(default=None, max_length=2000),
+    file: UploadFile = File(...),
+    admin: UserRecord = Depends(require_admin_user),
+    db: DatabaseClient = Depends(get_database),
+    settings: Settings = Depends(get_settings),
+) -> ChatMessageResponse:
+    await enforce_rate_limit(db, raw_request, admin, "admin_chat_image_send", 20, 60)
+    repo = ChatRepository(db)
+    conversation = await repo.find_conversation(conversation_id)
+    if conversation is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy cuộc trò chuyện.")
+    if conversation.status != "open":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Cuộc trò chuyện đã đóng.")
+    try:
+        image = await upload_chat_image(file, settings, conversation.id)
+    except CloudinaryUploadError as error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
+    await repo.assign_admin_if_empty(conversation.id, admin.id)
+    message = await repo.create_image_message(conversation.id, admin.id, "admin", clean_caption(caption), image.secure_url, image.public_id, image.width, image.height, image.bytes, image.format, file.filename)
+    updated = await repo.find_conversation(conversation.id) or conversation
+    await AdminRepository(db).audit(admin.id, "admin.chat.image", "chat_conversation", conversation.id, {"message_id": message.id, "image_public_id": image.public_id, "image_bytes": image.bytes})
     payload = {"type": "message.created", "conversation_id": conversation.id, "message": message_response(message).model_dump(), "conversation": conversation_response(updated).model_dump()}
     await chat_ws_manager.broadcast_conversation_event(conversation.user_id, payload)
     return message_response(message)
@@ -230,4 +287,16 @@ def message_response(message: ChatMessageRecord) -> ChatMessageResponse:
         sender_role=message.sender_role,  # type: ignore[arg-type]
         body=message.body,
         created_at=message.created_at,
+        message_type=message.message_type,  # type: ignore[arg-type]
+        image_url=message.image_url,
+        image_public_id=message.image_public_id,
+        image_width=message.image_width,
+        image_height=message.image_height,
+        image_bytes=message.image_bytes,
+        image_format=message.image_format,
+        image_original_name=message.image_original_name,
     )
+
+
+def clean_caption(value: str | None) -> str:
+    return (value or "").strip()[:2000]

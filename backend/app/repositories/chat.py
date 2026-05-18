@@ -61,7 +61,15 @@ class ChatRepository:
                 lm.sender_user_id AS latest_sender_user_id,
                 lm.sender_role AS latest_sender_role,
                 lm.body AS latest_body,
-                lm.created_at AS latest_created_at
+                lm.created_at AS latest_created_at,
+                lm.message_type AS latest_message_type,
+                lm.image_url AS latest_image_url,
+                lm.image_public_id AS latest_image_public_id,
+                lm.image_width AS latest_image_width,
+                lm.image_height AS latest_image_height,
+                lm.image_bytes AS latest_image_bytes,
+                lm.image_format AS latest_image_format,
+                lm.image_original_name AS latest_image_original_name
             FROM chat_conversations c
             LEFT JOIN users u ON u.id = c.user_id
             LEFT JOIN chat_messages lm ON lm.id = (
@@ -109,11 +117,41 @@ class ChatRepository:
         message_id = str(uuid4())
         await self.db.execute(
             """
-            INSERT INTO chat_messages (id, conversation_id, sender_user_id, sender_role, body)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO chat_messages (id, conversation_id, sender_user_id, sender_role, body, message_type)
+            VALUES (?, ?, ?, ?, ?, 'text')
             """,
             [message_id, conversation_id, sender_user_id, sender_role, body],
         )
+        return await self._after_message_created(conversation_id, message_id)
+
+    async def create_image_message(
+        self,
+        conversation_id: str,
+        sender_user_id: str,
+        sender_role: str,
+        caption: str,
+        image_url: str,
+        image_public_id: str,
+        image_width: int | None,
+        image_height: int | None,
+        image_bytes: int | None,
+        image_format: str | None,
+        image_original_name: str | None,
+    ) -> ChatMessageRecord:
+        message_id = str(uuid4())
+        await self.db.execute(
+            """
+            INSERT INTO chat_messages (
+                id, conversation_id, sender_user_id, sender_role, body, message_type,
+                image_url, image_public_id, image_width, image_height, image_bytes, image_format, image_original_name
+            )
+            VALUES (?, ?, ?, ?, ?, 'image', ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [message_id, conversation_id, sender_user_id, sender_role, caption, image_url, image_public_id, image_width, image_height, image_bytes, image_format, image_original_name],
+        )
+        return await self._after_message_created(conversation_id, message_id)
+
+    async def _after_message_created(self, conversation_id: str, message_id: str) -> ChatMessageRecord:
         await self.db.execute(
             "UPDATE chat_conversations SET last_message_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             [conversation_id],
@@ -180,8 +218,16 @@ def message_from_row(row: DbRow) -> ChatMessageRecord:
         conversation_id=str(row["conversation_id"]),
         sender_user_id=str(row["sender_user_id"]),
         sender_role=str(row["sender_role"]),
-        body=str(row["body"]),
+        body=str(row["body"] or ""),
         created_at=str(row["created_at"]),
+        message_type=str(row.get("message_type") or "text"),
+        image_url=str(row["image_url"]) if row.get("image_url") is not None else None,
+        image_public_id=str(row["image_public_id"]) if row.get("image_public_id") is not None else None,
+        image_width=int(row["image_width"]) if row.get("image_width") is not None else None,
+        image_height=int(row["image_height"]) if row.get("image_height") is not None else None,
+        image_bytes=int(row["image_bytes"]) if row.get("image_bytes") is not None else None,
+        image_format=str(row["image_format"]) if row.get("image_format") is not None else None,
+        image_original_name=str(row["image_original_name"]) if row.get("image_original_name") is not None else None,
     )
 
 
@@ -193,6 +239,14 @@ def latest_message_from_row(row: DbRow) -> ChatMessageRecord | None:
         conversation_id=str(row["latest_conversation_id"]),
         sender_user_id=str(row["latest_sender_user_id"]),
         sender_role=str(row["latest_sender_role"]),
-        body=str(row["latest_body"]),
+        body=str(row["latest_body"] or ""),
         created_at=str(row["latest_created_at"]),
+        message_type=str(row.get("latest_message_type") or "text"),
+        image_url=str(row["latest_image_url"]) if row.get("latest_image_url") is not None else None,
+        image_public_id=str(row["latest_image_public_id"]) if row.get("latest_image_public_id") is not None else None,
+        image_width=int(row["latest_image_width"]) if row.get("latest_image_width") is not None else None,
+        image_height=int(row["latest_image_height"]) if row.get("latest_image_height") is not None else None,
+        image_bytes=int(row["latest_image_bytes"]) if row.get("latest_image_bytes") is not None else None,
+        image_format=str(row["latest_image_format"]) if row.get("latest_image_format") is not None else None,
+        image_original_name=str(row["latest_image_original_name"]) if row.get("latest_image_original_name") is not None else None,
     )

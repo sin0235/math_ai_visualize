@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field, field_validator
 
 ChatStatus = Literal["open", "closed"]
 ChatSenderRole = Literal["user", "admin", "system"]
+ChatMessageType = Literal["text", "image"]
 
 
 class ChatMessageCreateRequest(BaseModel):
@@ -22,6 +23,14 @@ class ChatMessageResponse(BaseModel):
     sender_role: ChatSenderRole
     body: str
     created_at: str
+    message_type: ChatMessageType = "text"
+    image_url: str | None = None
+    image_public_id: str | None = None
+    image_width: int | None = None
+    image_height: int | None = None
+    image_bytes: int | None = None
+    image_format: str | None = None
+    image_original_name: str | None = None
 
 
 class ChatConversationResponse(BaseModel):
