@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AdminConsole } from './components/admin/AdminConsole';
 import { ApiError, changePassword, deleteRenderHistory, forgotPassword, getCurrentUser, getHealth, getRenderHistory, getRenderHistoryDetail, getSessions, getSettingsDefaults, getUserSettings, login, loginWithGoogle, logout, ocrImage, register, renderEditedScene, renderProblem, resendVerification, resetPassword, revokeOtherSessions, revokeSession, saveUserSettings, updateProfile, verifyEmail, type AdminRenderHistoryDetail, type RenderHistoryItem, type SessionResponse, type UserResponse } from './api/client';
 import { defaultAdvancedSettings, ProblemInput, type ModelOption } from './components/ProblemInput';
@@ -330,6 +330,10 @@ export default function App() {
   useEffect(() => {
     if (sidebarTool !== 'solver') setHighlightedObjects([]);
   }, [sidebarTool]);
+
+  const handleThreeImageCaptureReady = useCallback((capture: ThreeSceneImageCapture | null) => {
+    setThreeImageCapture(() => capture);
+  }, []);
 
   // Reset slider values khi scene mới được dựng
   useEffect(() => {
@@ -1084,7 +1088,7 @@ export default function App() {
             {result && <button type="button" className="mobile-scroll-notice" onClick={scrollToResult}>↓ Xem hình vừa dựng</button>}
             <div className="result-area" ref={resultAnchorRef}>
               <div className="render-stage">
-                <RendererPanel result={effectiveResult} threeInteraction={threeInteraction} onGeoGebraPointChange={handlePointDragEnd} highlightedObjects={highlightedObjects} saving={editorSaving} onThreeImageCaptureReady={(capture) => setThreeImageCapture(() => capture)} />
+                <RendererPanel result={effectiveResult} threeInteraction={threeInteraction} onGeoGebraPointChange={handlePointDragEnd} highlightedObjects={highlightedObjects} saving={editorSaving} onThreeImageCaptureReady={handleThreeImageCaptureReady} />
                 {effectiveResult?.scene && (
                   <div ref={renderToolsMenuRef} className="render-tools-floating" style={{ top: editorButtonTop }}>
                     <button
