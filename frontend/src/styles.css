@@ -11907,3 +11907,27 @@ button.analyzer-guide-label:hover {
 .admin-chat-reply {
   grid-template-columns: 36px minmax(0, 1fr) 36px !important;
 }
+
+.chat-input-row > .chat-attach-button,
+.admin-chat-reply > .chat-attach-button {
+  width: 32px !important;
+  min-width: 32px !important;
+}
+
+.chat-input-row > .chat-attach-button svg,
+.admin-chat-reply > .chat-attach-button svg {
+  width: 20px !important;
+  height: 20px !important;
+  min-width: 20px !important;
+  min-height: 20px !important;
+}
+
+.chat-input-row > .chat-attach-button svg path,
+.admin-chat-reply > .chat-attach-button svg path {
+  stroke-width: 2 !important;
+}
+
+.chat-input-row,
+.admin-chat-reply {
+  grid-template-columns: 32px minmax(0, 1fr) 36px !important;
+}
