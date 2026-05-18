@@ -162,3 +162,26 @@ class FeedbackRecord:
     admin_note: str | None = None
     resolved_at: str | None = None
     resolved_by: str | None = None
+
+
+@dataclass(frozen=True)
+class ChatConversationRecord:
+    id: str
+    user_id: str
+    status: str
+    last_message_at: str
+    created_at: str
+    updated_at: str
+    assigned_admin_id: str | None = None
+    user_last_read_at: str | None = None
+    admin_last_read_at: str | None = None
+
+
+@dataclass(frozen=True)
+class ChatMessageRecord:
+    id: str
+    conversation_id: str
+    sender_user_id: str
+    sender_role: str
+    body: str
+    created_at: str

@@ -5,6 +5,7 @@ import { defaultAdvancedSettings, ProblemInput, type ModelOption } from './compo
 import { GeneralSettingsPanel } from './components/GeneralSettingsPanel';
 import { AccountPage } from './components/AccountPage';
 import { FeedbackPage } from './components/FeedbackPage';
+import { ChatBubble } from './components/ChatBubble';
 import { HomePage } from './components/HomePage';
 import { LoginPage } from './components/LoginPage';
 import { ResetPasswordPage } from './components/ResetPasswordPage';
@@ -38,6 +39,8 @@ const MOBILE_WARNING_STORAGE_KEY = 'hinh-mobile-warning-dismissed';
 const MOBILE_BREAKPOINT_QUERY = '(max-width: 900px)';
 const DEVELOPER_GITHUB_URL = 'https://github.com/sin0235';
 const CONTACT_EMAIL = 'support@sin-studio.tech';
+const CONTACT_ZALO_PHONE = '0347952503';
+const CONTACT_ZALO_URL = `https://zalo.me/${CONTACT_ZALO_PHONE}`;
 const MINERU_API_BASE_URL = normalizeMineruBaseUrl(import.meta.env.VITE_MINERU_API_BASE_URL);
 
 type AppView = 'home' | 'render' | 'analyzer' | 'analyzer-guide' | 'simulation' | 'geogebra-lab' | 'pdf-to-word' | 'history' | 'guide' | 'about' | 'privacy-policy' | 'terms' | 'login' | 'settings' | 'admin' | 'account' | 'feedback' | 'reset-password' | 'verify-email';
@@ -83,6 +86,23 @@ function FooterNavIcon({ children }: { children: React.ReactNode }) {
   );
 }
 
+function ZaloIcon() {
+  return (
+    <svg className="footer-nav-icon footer-nav-icon--zalo" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="14 12 44 42" aria-hidden="true">
+      <path
+        d="M18 20C18 16.7 20.7 14 24 14H48C51.3 14 54 16.7 54 20V36C54 39.3 51.3 42 48 42H33L24 50L26 42H24C20.7 42 18 39.3 18 36Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.8"
+        strokeLinejoin="round"
+      />
+      <text x="36" y="32" textAnchor="middle" fontFamily="Arial, Helvetica, sans-serif" fontSize="11" fontWeight="700" letterSpacing="0.5" fill="currentColor">
+        Zalo
+      </text>
+    </svg>
+  );
+}
+
 function FooterNavButton({ onClick, children, icon }: { onClick: () => void; children: React.ReactNode; icon: React.ReactNode }) {
   return (
     <button type="button" className="footer-nav-link" onClick={onClick}>
@@ -104,19 +124,23 @@ function CloseIcon() {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>;
 }
 
-function FooterNavMailLink({
+function FooterNavLink({
   href,
   title,
+  target,
+  rel,
   children,
   icon,
 }: {
   href: string;
   title?: string;
+  target?: string;
+  rel?: string;
   children: React.ReactNode;
   icon: React.ReactNode;
 }) {
   return (
-    <a href={href} className="footer-nav-link" title={title}>
+    <a href={href} className="footer-nav-link" title={title} target={target} rel={rel}>
       {icon}
       <span className="footer-nav-label">{children}</span>
     </a>
@@ -973,6 +997,7 @@ export default function App() {
       </header>
 
       <NotificationStack notifications={notifications} onDismiss={dismissNotification} />
+      <ChatBubble user={user} onToast={(title, message, kind = 'info') => showNotification(title, message, [], kind)} />
       {isGeometryMobileWarningView(activeView) && <MobileRendererWarning dismissed={mobileWarningDismissed} onDismiss={dismissMobileWarning} />}
 
       <main className="app-shell">
@@ -1256,7 +1281,7 @@ export default function App() {
               <img src={logoUrl} alt="AI Math Renderer" />
               <strong>AI Math Renderer</strong>
             </div>
-            <p>Biến đề bài tiếng Việt, ảnh chụp và dữ liệu tọa độ thành hình GeoGebra/Three.js để học, giảng dạy và kiểm tra lời giải trực quan.</p>
+            <p>Hệ sinh thái AI Toán học: Dựng hình GeoGebra/Three.js từ ngôn ngữ tự nhiên, khảo sát hàm số, mô phỏng 2D/3D, và thực hành GeoGebra Lab đa năng.</p>
           </div>
           <nav className="footer-nav" aria-label="Footer navigation">
             <div>
@@ -1303,27 +1328,26 @@ export default function App() {
                 onClick={() => navigateTo('feedback')}
                 icon={
                   <FooterNavIcon>
-                    <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+                    <rect x="5" y="3" width="14" height="18" rx="2.5" />
+                    <path d="M9 7h6" />
+                    <path d="M8 11h8" />
+                    <path d="M8 15h5" />
+                    <path d="m14.5 17 1.5 1.5 3-3" />
                   </FooterNavIcon>
                 }
               >
                 Góp ý
               </FooterNavButton>
-              <FooterNavButton
-                onClick={() => showNotification('Báo lỗi', 'Kênh GitHub issue sẽ được bổ sung khi repository public.', [], 'info')}
-                icon={
-                  <svg className="footer-nav-icon footer-nav-icon--github" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-                    <path
-                      fill="currentColor"
-                      stroke="none"
-                      d="M12 .5C5.65.5.5 5.65.5 12c0 5.1 3.29 9.43 7.86 10.96.58.11.79-.25.79-.56 0-.28-.01-1.02-.01-2.04-3.2.69-3.87-1.55-3.87-1.55-.52-1.33-1.28-1.68-1.28-1.68-1.05-.72.08-.71.08-.71 1.16.08 1.77 1.2 1.77 1.2 1.03 1.77 2.72 1.26 3.38.96.1-.75.4-1.26.73-1.55-2.55-.29-5.23-1.28-5.23-5.74 0-1.27.45-2.31 1.2-3.12-.12-.3-.52-1.52.11-3.18 0 0 .98-.31 3.2 1.2a11.14 11.14 0 0 1 5.8 0c2.22-1.51 3.19-1.2 3.19-1.2.64 1.66.24 2.88.12 3.18.75.81 1.19 1.85 1.19 3.12 0 4.48-2.69 5.44-5.26 5.73.42.36.79 1.08.79 2.18 0 1.57-.01 2.84-.01 3.23 0 .31.21.68.8.56A10.48 10.48 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5z"
-                    />
-                  </svg>
-                }
+              <FooterNavLink
+                href={CONTACT_ZALO_URL}
+                title={`Zalo ${CONTACT_ZALO_PHONE}`}
+                target="_blank"
+                rel="noreferrer"
+                icon={<ZaloIcon />}
               >
-                Báo lỗi GitHub
-              </FooterNavButton>
-              <FooterNavMailLink
+                Zalo
+              </FooterNavLink>
+              <FooterNavLink
                 href={`mailto:${CONTACT_EMAIL}`}
                 title={CONTACT_EMAIL}
                 icon={
@@ -1334,7 +1358,7 @@ export default function App() {
                 }
               >
                 Liên hệ
-              </FooterNavMailLink>
+              </FooterNavLink>
             </div>
             <div>
               <strong>Pháp lý</strong>

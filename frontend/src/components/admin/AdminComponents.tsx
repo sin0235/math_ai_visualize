@@ -14,7 +14,7 @@ export function formatHistoryDate(value: string) {
   return date.toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' });
 }
 
-export type AdminIconName = 'overview' | 'users' | 'renders' | 'models' | 'settings' | 'audit' | 'active' | 'admin' | 'warning' | 'chart' | 'back' | 'refresh';
+export type AdminIconName = 'overview' | 'users' | 'renders' | 'models' | 'settings' | 'audit' | 'chat' | 'active' | 'admin' | 'warning' | 'chart' | 'back' | 'refresh';
 
 export function AdminIcon({ name }: { name: AdminIconName }) {
   const common = { fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
@@ -26,6 +26,7 @@ export function AdminIcon({ name }: { name: AdminIconName }) {
       {name === 'models' && <><path {...common} d="M12 2v4" /><path {...common} d="M12 18v4" /><path {...common} d="M4.93 4.93l2.83 2.83" /><path {...common} d="m16.24 16.24 2.83 2.83" /><path {...common} d="M2 12h4" /><path {...common} d="M18 12h4" /><circle {...common} cx="12" cy="12" r="4" /></>}
       {name === 'settings' && <><path {...common} d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" /><path {...common} d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6 1.65 1.65 0 0 0 10 3.09V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.14.31.23.65.25 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></>}
       {name === 'audit' && <><path {...common} d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path {...common} d="M14 2v6h6" /><path {...common} d="M9 15l2 2 4-5" /></>}
+      {name === 'chat' && <><path {...common} d="M21 12a8 8 0 0 1-8 8H7l-4 2 1.5-4.5A8 8 0 1 1 21 12Z" /><path {...common} d="M8 11h8" /><path {...common} d="M8 15h5" /></>}
       {name === 'active' && <><path {...common} d="M22 12h-4l-3 8-6-16-3 8H2" /></>}
       {name === 'admin' && <><path {...common} d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><path {...common} d="m9 12 2 2 4-5" /></>}
       {name === 'warning' && <><path {...common} d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><path {...common} d="M12 9v4" /><path {...common} d="M12 17h.01" /></>}

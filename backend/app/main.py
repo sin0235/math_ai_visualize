@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes_admin import router as admin_router
 from app.api.routes_ai_models import router as ai_models_router
 from app.api.routes_auth import router as auth_router
+from app.api.routes_chat import router as chat_router
 from app.api.routes_diagram import router as diagram_router
 from app.api.routes_export import router as export_router
 from app.api.routes_feedback import router as feedback_router
@@ -50,6 +51,7 @@ app.add_middleware(
 app.include_router(admin_router)
 app.include_router(ai_models_router)
 app.include_router(auth_router)
+app.include_router(chat_router)
 app.include_router(health_router)
 app.include_router(history_router)
 app.include_router(ocr_router)
