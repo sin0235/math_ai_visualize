@@ -997,7 +997,7 @@ export default function App() {
       </header>
 
       <NotificationStack notifications={notifications} onDismiss={dismissNotification} />
-      <ChatBubble user={user} onToast={(title, message, kind = 'info') => showNotification(title, message, [], kind)} />
+      {user?.role !== 'admin' && <ChatBubble user={user} onToast={(title, message, kind = 'info') => showNotification(title, message, [], kind)} />}
       {isGeometryMobileWarningView(activeView) && <MobileRendererWarning dismissed={mobileWarningDismissed} onDismiss={dismissMobileWarning} />}
 
       <main className="app-shell">

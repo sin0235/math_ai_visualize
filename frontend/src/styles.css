@@ -11436,3 +11436,211 @@ button.analyzer-guide-label:hover {
   width: 48px;
   height: 44px;
 }
+
+.chat-typing-indicator {
+  align-self: flex-start;
+  color: var(--ink-4);
+  font-size: 12px;
+  padding: 6px 10px;
+}
+
+.admin-chat-typing {
+  margin-top: -2px;
+}
+
+.chat-retry-button {
+  margin-top: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-decoration: underline;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.admin-nav-badge {
+  margin-left: auto;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--accent-fg);
+  display: grid;
+  place-items: center;
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.admin-chat-list button.active,
+.admin-chat-list button.active:hover {
+  background: var(--ink);
+  color: var(--accent-fg);
+  box-shadow: inset 3px 0 0 var(--line-2);
+}
+
+.admin-chat-list button.active strong,
+.admin-chat-list button.active span,
+.admin-chat-list button.active small {
+  color: var(--accent-fg);
+}
+
+.admin-chat-thread {
+  min-height: 560px;
+}
+
+.admin-chat-messages {
+  scroll-behavior: smooth;
+}
+
+.admin-chat-reply {
+  grid-template-columns: 1fr 44px;
+  align-items: end;
+}
+
+.admin-chat-reply button {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  overflow: hidden;
+  text-indent: -999px;
+  position: relative;
+  background: transparent;
+  color: var(--ink);
+}
+
+.admin-chat-reply button::after {
+  content: '';
+  position: absolute;
+  inset: 12px;
+  background: currentColor;
+  clip-path: polygon(0 43%, 100% 0, 66% 100%, 46% 58%);
+}
+
+.admin-chat-reply button:hover,
+.admin-chat-reply button:active {
+  background: transparent;
+  color: var(--ink);
+  transform: none;
+}
+
+.admin-chat-reply {
+  grid-template-columns: 1fr 36px;
+  align-items: end;
+  gap: 8px;
+  padding: 12px;
+  background: #fbfbfa;
+}
+
+.admin-chat-reply textarea {
+  min-height: 38px;
+  max-height: 132px;
+  overflow-y: auto;
+  resize: none;
+  line-height: 1.42;
+  padding: 9px 11px;
+}
+
+.admin-chat-reply .admin-chat-send-button {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  box-shadow: none;
+  text-indent: 0;
+  display: grid;
+  place-items: center;
+  align-self: end;
+  position: static;
+}
+
+.admin-chat-reply .admin-chat-send-button::after {
+  content: none;
+}
+
+.admin-chat-send-button svg {
+  width: 18px;
+  height: 18px;
+  transform: translate(1px, -1px);
+}
+
+.admin-chat-reply .admin-chat-send-button:hover,
+.admin-chat-reply .admin-chat-send-button:active {
+  background: transparent;
+  color: var(--ink);
+  transform: none;
+}
+
+.admin-chat-reply .admin-chat-send-button:disabled {
+  background: transparent;
+  color: var(--ink-4);
+  opacity: 0.45;
+}
+
+.admin-chat-list button.active,
+.admin-chat-list button.active:hover {
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: inset 3px 0 0 var(--ink);
+}
+
+.admin-chat-list button.active strong {
+  color: var(--ink);
+}
+
+.admin-chat-list button.active span {
+  color: var(--ink-3);
+}
+
+.admin-chat-list button.active small {
+  color: var(--ink-4);
+}
+
+.chat-runtime-status {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 6px;
+}
+
+.chat-runtime-status i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  background: #eab308;
+  box-shadow: 0 0 0 3px rgba(234, 179, 8, 0.14);
+}
+
+.chat-runtime-status.is-online i {
+  background: #16a34a;
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.14);
+}
+
+.chat-runtime-status.is-connecting i {
+  background: #eab308;
+  box-shadow: 0 0 0 3px rgba(234, 179, 8, 0.14);
+}
+
+.chat-runtime-status.is-offline i {
+  background: #dc2626;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.14);
+}
+
+.admin-chat-list button strong {
+  color: var(--ink);
+}
+
+.admin-chat-list button span {
+  color: var(--ink-3);
+}
+
+.admin-chat-list button small {
+  color: var(--ink-4);
+}

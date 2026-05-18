@@ -76,6 +76,15 @@ interface AdminConsoleProps {
   onToast: AdminToast;
 }
 
+function SendIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4 12 20 4l-5.4 16-3.1-6.5L4 12Z" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M11.5 13.5 20 4" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function AdminToolbarRefreshButton({ loading, onClick }: { loading: boolean; onClick: () => void }) {
   return (
     <button
@@ -145,11 +154,22 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
   const [chatReply, setChatReply] = useState('');
   const [sendingChat, setSendingChat] = useState(false);
   const [chatConnected, setChatConnected] = useState(false);
+  const [userTypingConversationId, setUserTypingConversationId] = useState<string | null>(null);
+  const [chatSoundEnabled, setChatSoundEnabled] = useState(true);
   const selectedChatConversationRef = useRef<ChatConversationResponse | null>(null);
+  const adminChatWsRef = useRef<WebSocket | null>(null);
+  const userTypingTimeoutRef = useRef<number | null>(null);
+  const adminTypingStopTimeoutRef = useRef<number | null>(null);
+  const adminTypingSentRef = useRef(false);
+  const adminReplyTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
     selectedChatConversationRef.current = selectedChatConversation;
   }, [selectedChatConversation]);
+
+  useEffect(() => {
+    resizeAdminReplyTextarea();
+  }, [chatReply, selectedChatConversation?.id]);
 
   // Audit log filters
   const [localAuditLogFilters, setLocalAuditLogFilters] = useState<AdminAuditLogFilters>({});
@@ -262,6 +282,7 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
     async function connect() {
       try {
         ws = await createChatWebSocket();
+        adminChatWsRef.current = ws;
         ws.onopen = () => setChatConnected(true);
         ws.onclose = () => {
           setChatConnected(false);
@@ -279,6 +300,8 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
     return () => {
       closed = true;
       if (reconnectTimer) window.clearTimeout(reconnectTimer);
+      if (userTypingTimeoutRef.current) window.clearTimeout(userTypingTimeoutRef.current);
+      if (adminTypingStopTimeoutRef.current) window.clearTimeout(adminTypingStopTimeoutRef.current);
       ws?.close();
     };
   }, []);
@@ -474,6 +497,8 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
       const message = await sendAdminChatMessage(selectedChatConversation.id, body);
       setChatMessages((current) => current.some((item) => item.id === message.id) ? current : [...current, message]);
       setChatReply('');
+      sendAdminTyping(false);
+      window.requestAnimationFrame(resizeAdminReplyTextarea);
       setAuditLogs(await getAdminAuditLogs(localAuditLogFilters));
     } catch (error) {
       onToast('Chat', getErrorMessage(error, 'Không thể gửi phản hồi.'), 'error');
@@ -502,18 +527,56 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
       return;
     }
     if (event.type === 'message.created') {
-      setChatConversations((current) => upsertConversation(current, event.conversation));
-      setSelectedChatConversation((current) => current?.id === event.conversation_id ? event.conversation : current);
+      const selected = selectedChatConversationRef.current;
+      const isSelected = selected?.id === event.conversation_id;
+      const nextConversation = isSelected ? { ...event.conversation, unread_count: 0 } : event.conversation;
+      setChatConversations((current) => upsertConversation(current, nextConversation));
+      setSelectedChatConversation((current) => current?.id === event.conversation_id ? nextConversation : current);
       setChatMessages((current) => {
-        if (selectedChatConversationRef.current?.id !== event.conversation_id) return current;
+        if (!isSelected) return current;
         return current.some((item) => item.id === event.message.id) ? current : [...current, event.message];
       });
-      if (event.message.sender_role === 'user') onToast('Chat', `Tin nhắn mới từ ${event.conversation.user_email ?? 'người dùng'}.`, 'info');
+      if (isSelected && event.message.sender_role === 'user') void markAdminChatRead(event.conversation_id).catch(() => undefined);
+      if (event.message.sender_role === 'user') {
+        if (chatSoundEnabled) playChatNotificationSound();
+        if (!isSelected) onToast('Chat', `Tin nhắn mới từ ${event.conversation.user_email ?? 'người dùng'}.`, 'info');
+      }
     }
     if (event.type === 'conversation.updated' || event.type === 'conversation.read') {
       setChatConversations((current) => upsertConversation(current, event.conversation));
       setSelectedChatConversation((current) => current?.id === event.conversation_id ? event.conversation : current);
     }
+    if (event.type === 'typing' && event.role === 'user') {
+      setUserTypingConversationId(event.is_typing ? event.conversation_id : null);
+      if (userTypingTimeoutRef.current) window.clearTimeout(userTypingTimeoutRef.current);
+      if (event.is_typing) userTypingTimeoutRef.current = window.setTimeout(() => setUserTypingConversationId(null), 2500);
+    }
+  }
+
+  function sendAdminTyping(isTyping: boolean) {
+    const conversation = selectedChatConversationRef.current;
+    if (!conversation || adminChatWsRef.current?.readyState !== WebSocket.OPEN) return;
+    if (adminTypingSentRef.current === isTyping) return;
+    adminTypingSentRef.current = isTyping;
+    adminChatWsRef.current.send(JSON.stringify({ type: 'typing', conversation_id: conversation.id, target_user_id: conversation.user_id, is_typing: isTyping }));
+  }
+
+  function handleChatReplyChange(value: string) {
+    setChatReply(value);
+    if (!value.trim()) {
+      sendAdminTyping(false);
+      return;
+    }
+    sendAdminTyping(true);
+    if (adminTypingStopTimeoutRef.current) window.clearTimeout(adminTypingStopTimeoutRef.current);
+    adminTypingStopTimeoutRef.current = window.setTimeout(() => sendAdminTyping(false), 1200);
+  }
+
+  function resizeAdminReplyTextarea() {
+    const textarea = adminReplyTextareaRef.current;
+    if (!textarea) return;
+    textarea.style.height = '0px';
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 132)}px`;
   }
 
   const onSearchAuditLogs = async (filters: AdminAuditLogFilters) => {
@@ -547,6 +610,7 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
   const renderModelOptions = distinctOptions(renderJobs.map((job) => job.model), aiModelIds.map((id) => ({ id, label: id })));
   const renderRendererOptions = distinctOptions(renderJobs.map((job) => job.renderer), rendererOptions);
   const renderSourceFilterOptions = distinctOptions(renderJobs.map((job) => job.source_type), renderSourceOptions);
+  const chatUnreadCount = chatConversations.reduce((total, item) => total + (item.unread_count || 0), 0);
   const auditActionOptions = distinctOptions(auditLogs.map((log) => log.action));
   const auditTargetOptions = distinctOptions(auditLogs.map((log) => log.target_type));
   const dailyActivity = buildDailyActivity(summary?.daily_stats ?? []);
@@ -577,7 +641,7 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
           <AdminNavButton active={activeSection === 'plans'} onClick={() => setActiveSection('plans')} icon="users" label="Gói người dùng" />
           <AdminNavButton active={activeSection === 'settings'} onClick={() => setActiveSection('settings')} icon="settings" label="Database" />
           <AdminNavButton active={activeSection === 'feedback'} onClick={() => setActiveSection('feedback')} icon="audit" label="Góp ý" />
-          <AdminNavButton active={activeSection === 'chat'} onClick={() => setActiveSection('chat')} icon="chat" label="Chat" />
+          <AdminNavButton active={activeSection === 'chat'} onClick={() => setActiveSection('chat')} icon="chat" label="Chat" badge={chatUnreadCount} />
           <AdminNavButton active={activeSection === 'audit'} onClick={() => setActiveSection('audit')} icon="audit" label="Nhật ký kiểm toán" />
         </nav>
         <div className="admin-sidebar-footer"><small>{user.email}</small><button type="button" className="secondary-button admin-button-with-icon" onClick={onBackToApp}><AdminIcon name="back" />Trang người dùng</button></div>
@@ -797,7 +861,7 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
             <header className="admin-page-header">
               <div>
                 <h2>Chat hỗ trợ</h2>
-                <p className="field-hint">Realtime: {chatConnected ? 'đang kết nối' : 'mất kết nối'}</p>
+                <p className={`field-hint chat-runtime-status ${chatConnected ? 'is-online' : 'is-connecting'}`}><i aria-hidden="true" />Realtime: {chatConnected ? 'đang kết nối' : 'đang kết nối lại'}</p>
               </div>
               <AdminToolbarRefreshButton loading={loading} onClick={() => void refreshActiveSection(true)} />
             </header>
@@ -811,6 +875,7 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
                 </select>
                 <button type="submit" className="secondary-button" disabled={filteringChat}>{filteringChat ? 'Đang lọc...' : 'Lọc chat'}</button>
                 <button type="button" className="secondary-button" onClick={() => { const next = { status: 'open' }; setChatFilters(next); void onSearchChat(next); }}>Xoá lọc</button>
+                <button type="button" className="secondary-button" onClick={() => setChatSoundEnabled((value) => !value)}>{chatSoundEnabled ? 'Tắt âm báo' : 'Bật âm báo'}</button>
               </form>
               <div className="admin-chat-layout">
                 <div className="admin-chat-list">
@@ -833,11 +898,28 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
                       </div>
                       <div className="admin-chat-messages">
                         {chatMessages.map((message) => <div key={message.id} className={`admin-chat-message ${message.sender_role === 'admin' ? 'from-admin' : 'from-user'}`}><p>{message.body}</p><time>{formatHistoryDate(message.created_at)}</time></div>)}
+                        {userTypingConversationId === selectedChatConversation.id && <div className="chat-typing-indicator admin-chat-typing">Người dùng đang nhập...</div>}
                       </div>
                       {selectedChatConversation.status === 'open' ? (
                         <form className="admin-chat-reply" onSubmit={(event) => { event.preventDefault(); void sendChatReply(); }}>
-                          <textarea value={chatReply} onChange={(event) => setChatReply(event.target.value)} placeholder="Trả lời người dùng..." rows={3} maxLength={2000} />
-                          <button type="submit" disabled={!chatReply.trim() || sendingChat}>{sendingChat ? 'Đang gửi...' : 'Gửi phản hồi'}</button>
+                          <textarea
+                            ref={adminReplyTextareaRef}
+                            value={chatReply}
+                            onChange={(event) => handleChatReplyChange(event.target.value)}
+                            onInput={resizeAdminReplyTextarea}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter' && !event.shiftKey) {
+                                event.preventDefault();
+                                void sendChatReply();
+                              }
+                            }}
+                            placeholder="Trả lời người dùng..."
+                            rows={1}
+                            maxLength={2000}
+                          />
+                          <button type="submit" className="admin-chat-send-button" disabled={!chatReply.trim() || sendingChat} aria-label="Gửi phản hồi">
+                            {sendingChat ? <span aria-hidden="true">...</span> : <SendIcon />}
+                          </button>
                         </form>
                       ) : <p className="field-hint">Cuộc trò chuyện đã đóng.</p>}
                     </>
@@ -1105,6 +1187,24 @@ function AdminAuditLogRow({ log }: { log: AuditLogResponse }) {
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback;
+}
+
+function playChatNotificationSound() {
+  const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AudioContextClass) return;
+  const context = new AudioContextClass();
+  const oscillator = context.createOscillator();
+  const gain = context.createGain();
+  oscillator.type = 'sine';
+  oscillator.frequency.setValueAtTime(720, context.currentTime);
+  oscillator.frequency.exponentialRampToValueAtTime(920, context.currentTime + 0.12);
+  gain.gain.setValueAtTime(0.0001, context.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.08, context.currentTime + 0.02);
+  gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.18);
+  oscillator.connect(gain);
+  gain.connect(context.destination);
+  oscillator.start();
+  oscillator.stop(context.currentTime + 0.2);
 }
 
 function upsertConversation(current: ChatConversationResponse[], conversation: ChatConversationResponse) {

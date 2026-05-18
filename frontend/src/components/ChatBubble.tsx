@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type PointerEvent } from 'react';
 import { ApiError, createChatWebSocket, getChatConversation, markChatRead, sendChatMessage, type ChatConversationResponse, type ChatMessageResponse, type ChatWsEvent, type UserResponse } from '../api/client';
 
+type LocalChatMessage = ChatMessageResponse & { local_status?: 'sending' | 'sent' | 'error'; retry_body?: string };
+
 interface ChatBubbleProps {
   user: UserResponse | null;
   onToast: (title: string, message: string, kind?: 'error' | 'info' | 'warning') => void;
@@ -9,11 +11,12 @@ interface ChatBubbleProps {
 export function ChatBubble({ user, onToast }: ChatBubbleProps) {
   const [open, setOpen] = useState(false);
   const [conversation, setConversation] = useState<ChatConversationResponse | null>(null);
-  const [messages, setMessages] = useState<ChatMessageResponse[]>([]);
+  const [messages, setMessages] = useState<LocalChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [connected, setConnected] = useState(false);
+  const [adminTyping, setAdminTyping] = useState(false);
   const [unread, setUnread] = useState(0);
   const [bubbleBottom, setBubbleBottom] = useState(92);
   const wsRef = useRef<WebSocket | null>(null);
@@ -23,6 +26,9 @@ export function ChatBubble({ user, onToast }: ChatBubbleProps) {
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const dragRef = useRef<{ pointerId: number; startY: number; startBottom: number; moved: boolean } | null>(null);
+  const typingTimeoutRef = useRef<number | null>(null);
+  const stopTypingTimeoutRef = useRef<number | null>(null);
+  const sentTypingRef = useRef(false);
 
   useEffect(() => { openRef.current = open; }, [open]);
   useEffect(() => { conversationRef.current = conversation; }, [conversation]);
@@ -32,6 +38,8 @@ export function ChatBubble({ user, onToast }: ChatBubbleProps) {
     void connectWs();
     return () => {
       if (reconnectRef.current) window.clearTimeout(reconnectRef.current);
+      if (typingTimeoutRef.current) window.clearTimeout(typingTimeoutRef.current);
+      if (stopTypingTimeoutRef.current) window.clearTimeout(stopTypingTimeoutRef.current);
       wsRef.current?.close();
     };
   }, [user?.id, user?.role]);
@@ -81,10 +89,9 @@ export function ChatBubble({ user, onToast }: ChatBubbleProps) {
       wsRef.current = ws;
       ws.onopen = () => setConnected(true);
       ws.onclose = () => {
-        setConnected(false);
         reconnectRef.current = window.setTimeout(() => void connectWs(), 2500);
       };
-      ws.onerror = () => setConnected(false);
+      ws.onerror = () => undefined;
       ws.onmessage = (event) => handleWsMessage(event.data);
     } catch {
       setConnected(false);
@@ -115,6 +122,12 @@ export function ChatBubble({ user, onToast }: ChatBubbleProps) {
     if (event.type === 'conversation.updated' || event.type === 'conversation.read') {
       if (!conversationRef.current || event.conversation_id === conversationRef.current.id) setConversation(event.conversation);
     }
+    if (event.type === 'typing' && event.role === 'admin') {
+      if (conversationRef.current && event.conversation_id !== conversationRef.current.id) return;
+      setAdminTyping(event.is_typing);
+      if (typingTimeoutRef.current) window.clearTimeout(typingTimeoutRef.current);
+      if (event.is_typing) typingTimeoutRef.current = window.setTimeout(() => setAdminTyping(false), 2500);
+    }
   }
 
   async function handleSend() {
@@ -126,18 +139,30 @@ export function ChatBubble({ user, onToast }: ChatBubbleProps) {
     if (!body || sending) return;
     const activeConversation = conversation ?? (await getChatConversation()).conversation;
     setConversation(activeConversation);
+    const localId = `local-${Date.now()}`;
+    const pending: LocalChatMessage = { id: localId, conversation_id: activeConversation.id, sender_user_id: user.id, sender_role: 'user', body, created_at: new Date().toISOString(), local_status: 'sending', retry_body: body };
+    setMessages((current) => [...current, pending]);
     setSending(true);
     try {
       const message = await sendChatMessage(activeConversation.id, body);
-      setMessages((current) => current.some((item) => item.id === message.id) ? current : [...current, message]);
+      setMessages((current) => current.map((item) => item.id === localId ? { ...message, local_status: 'sent' } : item));
       setInput('');
+      sendTyping(false);
       window.requestAnimationFrame(resizeTextarea);
     } catch (caught) {
+      setMessages((current) => current.map((item) => item.id === localId ? { ...item, local_status: 'error' } : item));
       const message = caught instanceof ApiError ? caught.message : 'Không thể gửi tin nhắn.';
       onToast('Chat admin', message, 'error');
     } finally {
       setSending(false);
     }
+  }
+
+  async function retryMessage(message: LocalChatMessage) {
+    if (!message.retry_body || sending) return;
+    setMessages((current) => current.filter((item) => item.id !== message.id));
+    setInput(message.retry_body);
+    window.setTimeout(() => void handleSend(), 0);
   }
 
   function toggleOpen() {
@@ -179,6 +204,24 @@ export function ChatBubble({ user, onToast }: ChatBubbleProps) {
     textarea.style.height = `${Math.min(textarea.scrollHeight, 118)}px`;
   }
 
+  function sendTyping(isTyping: boolean) {
+    if (!conversationRef.current || wsRef.current?.readyState !== WebSocket.OPEN) return;
+    if (sentTypingRef.current === isTyping) return;
+    sentTypingRef.current = isTyping;
+    wsRef.current.send(JSON.stringify({ type: 'typing', conversation_id: conversationRef.current.id, is_typing: isTyping }));
+  }
+
+  function handleInputChange(value: string) {
+    setInput(value);
+    if (!value.trim()) {
+      sendTyping(false);
+      return;
+    }
+    sendTyping(true);
+    if (stopTypingTimeoutRef.current) window.clearTimeout(stopTypingTimeoutRef.current);
+    stopTypingTimeoutRef.current = window.setTimeout(() => sendTyping(false), 1200);
+  }
+
   return (
     <div className={`chat-bubble ${open ? 'is-open' : ''}`} style={{ bottom: bubbleBottom }}>
       {open && (
@@ -186,7 +229,7 @@ export function ChatBubble({ user, onToast }: ChatBubbleProps) {
           <header className="chat-panel-header">
             <div>
               <strong>Chat với admin</strong>
-              <span>{connected ? 'Đang kết nối realtime' : 'Mất kết nối realtime'}</span>
+              <span className={`chat-runtime-status ${connected ? 'is-online' : 'is-connecting'}`}><i aria-hidden="true" />{connected ? 'Realtime đã kết nối' : 'Đang kết nối realtime...'}</span>
             </div>
             <button type="button" onClick={() => setOpen(false)} aria-label="Đóng chat">×</button>
           </header>
@@ -196,9 +239,11 @@ export function ChatBubble({ user, onToast }: ChatBubbleProps) {
             {messages.map((message) => (
               <div key={message.id} className={`chat-message ${message.sender_role === 'admin' ? 'from-admin' : 'from-user'}`}>
                 <p>{message.body}</p>
-                <time>{formatChatTime(message.created_at)}</time>
+                <time>{message.local_status ? sendStatusText(message.local_status) : formatChatTime(message.created_at)}</time>
+                {message.local_status === 'error' && <button type="button" className="chat-retry-button" onClick={() => void retryMessage(message)}>Gửi lại</button>}
               </div>
             ))}
+            {adminTyping && <div className="chat-typing-indicator">Admin đang nhập...</div>}
             <div ref={messagesEndRef} />
           </div>
           {conversation?.status === 'closed' ? (
@@ -208,7 +253,7 @@ export function ChatBubble({ user, onToast }: ChatBubbleProps) {
               <textarea
                 ref={textareaRef}
                 value={input}
-                onChange={(event) => setInput(event.target.value)}
+                onChange={(event) => handleInputChange(event.target.value)}
                 onInput={resizeTextarea}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter' && !event.shiftKey) {
@@ -264,6 +309,12 @@ function formatChatTime(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+}
+
+function sendStatusText(status: NonNullable<LocalChatMessage['local_status']>) {
+  if (status === 'sending') return 'Đang gửi...';
+  if (status === 'error') return 'Gửi lỗi';
+  return 'Đã gửi';
 }
 
 function SendIcon() {

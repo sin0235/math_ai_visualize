@@ -47,8 +47,8 @@ export function MetricCard({ label, value, suffix = '', variant = 'default', ico
   );
 }
 
-export function AdminNavButton({ active, label, icon, onClick }: { active: boolean; label: string; icon: AdminIconName; onClick: () => void }) {
-  return <button type="button" className={active ? 'active' : ''} onClick={onClick}><AdminIcon name={icon} /><span>{label}</span></button>;
+export function AdminNavButton({ active, label, icon, badge, onClick }: { active: boolean; label: string; icon: AdminIconName; badge?: number; onClick: () => void }) {
+  return <button type="button" className={active ? 'active' : ''} onClick={onClick}><AdminIcon name={icon} /><span>{label}</span>{badge ? <em className="admin-nav-badge">{badge > 99 ? '99+' : badge}</em> : null}</button>;
 }
 
 export function AdminDetails({ title, value }: { title: string; value: unknown }) {

@@ -48,6 +48,7 @@ export type ChatWsEvent =
   | { type: 'message.created'; conversation_id: string; message: ChatMessageResponse; conversation: ChatConversationResponse }
   | { type: 'conversation.updated'; conversation_id: string; conversation: ChatConversationResponse }
   | { type: 'conversation.read'; conversation_id: string; reader_role: 'user' | 'admin'; conversation: ChatConversationResponse }
+  | { type: 'typing'; conversation_id: string; user_id: string; role: 'user' | 'admin'; is_typing: boolean }
   | { type: 'pong' };
 
 export async function getChatConversation(): Promise<ChatConversationDetailResponse> {

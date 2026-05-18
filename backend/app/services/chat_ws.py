@@ -74,8 +74,21 @@ class ChatWebSocketManager:
         try:
             while True:
                 message = await websocket.receive_json()
-                if isinstance(message, dict) and message.get("type") == "ping":
+                if not isinstance(message, dict):
+                    continue
+                if message.get("type") == "ping":
                     await self._safe_send(websocket, {"type": "pong"})
+                if message.get("type") == "typing":
+                    conversation_id = str(message.get("conversation_id") or "")
+                    target_user_id = str(message.get("target_user_id") or "")
+                    is_typing = bool(message.get("is_typing"))
+                    if not conversation_id:
+                        continue
+                    payload = {"type": "typing", "conversation_id": conversation_id, "user_id": user.id, "role": user.role, "is_typing": is_typing}
+                    if user.role == "admin" and target_user_id:
+                        await self.send_to_user(target_user_id, payload)
+                    elif user.role != "admin":
+                        await self.send_to_admins(payload)
         except WebSocketDisconnect:
             self.disconnect(user, websocket)
 
