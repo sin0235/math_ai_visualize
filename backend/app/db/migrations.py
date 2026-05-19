@@ -8,14 +8,20 @@ from app.db.session import D1Client, DatabaseClient, SQLiteClient
 
 logger = logging.getLogger(__name__)
 
+LEGACY_DUPLICATE_MIGRATION_PREFIXES = {
+    "0008": {"0008_firebase_auth.sql", "0008_model_management.sql"},
+}
+
 
 async def apply_migrations(db: DatabaseClient, settings: Settings) -> None:
     if isinstance(db, SQLiteClient):
         if settings.auto_apply_sqlite_migrations:
             await apply_sqlite_migrations(db)
+            await ensure_chat_image_columns(db)
         return
     if isinstance(db, D1Client) and settings.auto_apply_d1_migrations:
         await apply_d1_migrations(db)
+        await ensure_chat_image_columns(db)
 
 
 async def apply_sqlite_migrations(db: SQLiteClient) -> None:
@@ -56,8 +62,35 @@ async def apply_d1_migrations(db: D1Client) -> None:
         if await db.fetch_one("SELECT 1 FROM schema_migrations WHERE filename = ?", [migration.name]):
             continue
         for statement in split_sql_statements(migration.read_text(encoding="utf-8")):
-            await db.execute(statement)
+            try:
+                await db.execute(statement)
+            except RuntimeError as error:
+                if "duplicate column name" not in str(error).lower():
+                    raise
         await db.execute("INSERT INTO schema_migrations (filename) VALUES (?)", [migration.name])
+
+
+async def ensure_chat_image_columns(db: DatabaseClient) -> None:
+    existing_rows = await db.fetch_all("PRAGMA table_info(chat_messages)")
+    existing = {str(row["name"]) for row in existing_rows}
+    columns = {
+        "message_type": "TEXT NOT NULL DEFAULT 'text'",
+        "image_url": "TEXT",
+        "image_public_id": "TEXT",
+        "image_width": "INTEGER",
+        "image_height": "INTEGER",
+        "image_bytes": "INTEGER",
+        "image_format": "TEXT",
+        "image_original_name": "TEXT",
+    }
+    for name, definition in columns.items():
+        if name in existing:
+            continue
+        try:
+            await db.execute(f"ALTER TABLE chat_messages ADD COLUMN {name} {definition}")
+        except RuntimeError as error:
+            if "duplicate column name" not in str(error).lower():
+                raise
 
 
 def migrations_path() -> Path:
@@ -70,7 +103,11 @@ def warn_duplicate_migration_prefixes(migrations: list[Path]) -> None:
         prefix = migration.name.split("_", 1)[0]
         if prefix.isdigit():
             by_prefix.setdefault(prefix, []).append(migration.name)
-    duplicates = {prefix: names for prefix, names in by_prefix.items() if len(names) > 1}
+    duplicates = {
+        prefix: names
+        for prefix, names in by_prefix.items()
+        if len(names) > 1 and set(names) != LEGACY_DUPLICATE_MIGRATION_PREFIXES.get(prefix)
+    }
     if duplicates:
         details = "; ".join(f"{prefix}: {', '.join(names)}" for prefix, names in sorted(duplicates.items()))
         logger.warning("Duplicate migration numeric prefixes found: %s", details)
