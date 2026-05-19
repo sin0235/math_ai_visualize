@@ -250,7 +250,7 @@ export function ChatBubble({ user, onToast }: ChatBubbleProps) {
           <header className="chat-panel-header">
             <div>
               <strong>Chat với admin</strong>
-              <span className={`chat-runtime-status ${connected ? 'is-online' : 'is-connecting'}`}><i aria-hidden="true" />{connected ? 'Realtime đã kết nối' : 'Đang kết nối realtime...'}</span>
+              <span className={`chat-runtime-status ${connected ? 'is-online' : 'is-connecting'}`}><i aria-hidden="true" />{connected ? 'Connected' : 'Connecting...'}</span>
             </div>
             <button type="button" onClick={() => setOpen(false)} aria-label="Đóng chat">×</button>
           </header>

@@ -71,7 +71,10 @@ export function HomePage({ backendStatus, onOpenLogin }: HomePageProps) {
           <div className="home-trust-strip" aria-label="Điểm nổi bật">
             {trustSignals.map((item) => <span key={item}>{item}</span>)}
           </div>
-          <button type="button" className="home-login-link" onClick={onOpenLogin}>Đăng nhập để đồng bộ dữ liệu và trải nghiệm đầy đủ tính năng.</button>
+          <div className="home-actions">
+            <button type="button" className="home-primary-action" onClick={onOpenLogin}>Bắt đầu dựng hình</button>
+            <span>Đăng nhập để đồng bộ lịch sử, OCR và xuất bản tài liệu.</span>
+          </div>
           <div className="home-outcome-strip" aria-label="Giá trị cốt lõi">
             {learningOutcomes.map((item) => (
               <div key={item.value}>

@@ -100,7 +100,7 @@ export function ThreeGeometryView({ scene, interaction, embedded = false, highli
     <div className="three-view">
       <Canvas gl={{ preserveDrawingBuffer: true }} camera={{ position: [5, 4, 6], fov: 48 }} className="three-canvas" style={{ display: 'block' }}>
         <SceneImageCaptureBridge onReady={onImageCaptureReady} />
-        <color attach="background" args={["#f8fbff"]} />
+        <color attach="background" args={["#f6f6f4"]} />
         <ambientLight intensity={0.7} />
         <directionalLight position={[6, 10, 6]} intensity={0.85} />
         <OrbitControls makeDefault target={[0, 0, 0]} enabled={controlsEnabled} mouseButtons={controlsMouseButtons} />
@@ -313,10 +313,10 @@ function OxyzAxes({ hideOriginLabel = false }: { hideOriginLabel?: boolean }) {
       <Line points={[[0, axisLen, 0], [-arrowLen * 0.5, axisLen - arrowLen, 0]]} color="#2a9d8f" lineWidth={2} />
       <LabelText position={[0, axisLen + 0.3, 0]} fontSize={0.32} color="#2a9d8f" anchorX="center">y</LabelText>
 
-      <Line points={[[0, 0, 0], [0, 0, axisLen]]} color="#2563eb" lineWidth={2} />
-      <Line points={[[0, 0, axisLen], [0, arrowLen * 0.5, axisLen - arrowLen]]} color="#2563eb" lineWidth={2} />
-      <Line points={[[0, 0, axisLen], [0, -arrowLen * 0.5, axisLen - arrowLen]]} color="#2563eb" lineWidth={2} />
-      <LabelText position={[0, 0, axisLen + 0.3]} fontSize={0.32} color="#2563eb" anchorX="center">z</LabelText>
+      <Line points={[[0, 0, 0], [0, 0, axisLen]]} color="#111111" lineWidth={2} />
+      <Line points={[[0, 0, axisLen], [0, arrowLen * 0.5, axisLen - arrowLen]]} color="#111111" lineWidth={2} />
+      <Line points={[[0, 0, axisLen], [0, -arrowLen * 0.5, axisLen - arrowLen]]} color="#111111" lineWidth={2} />
+      <LabelText position={[0, 0, axisLen + 0.3]} fontSize={0.32} color="#111111" anchorX="center">z</LabelText>
 
       {!hideOriginLabel && <LabelText position={[-0.25, -0.25, 0]} fontSize={0.28} color="#475569" anchorX="right">O</LabelText>}
     </group>
@@ -603,7 +603,7 @@ function Segments({ scene, frame, interaction }: ThreeGeometryViewProps & { fram
         const styleDashed = segment.style === 'dashed' || segment.style === 'dotted';
         const dashed = dynamicHidden || styleDashed;
         const isHighlighted = highlighted.includes(startName) && highlighted.includes(endName);
-        const baseColor = segment.color ?? (dynamicHidden ? '#8b95a7' : '#1d3557');
+        const baseColor = segment.color ?? (dynamicHidden ? '#8b95a7' : '#111111');
         const color = isHighlighted ? '#f97316' : baseColor;
         const lineWidth = isHighlighted
           ? Math.max(segment.line_width ?? 3, 6)
@@ -709,7 +709,7 @@ function ComputedMeasurements({ scene }: ThreeGeometryViewProps) {
               </mesh>
               <mesh position={[end.x, end.y, end.z]}>
                 <sphereGeometry args={[0.07, 16, 16]} />
-                <meshStandardMaterial color="#2563eb" />
+                <meshStandardMaterial color="#111111" />
               </mesh>
               <LabelText position={[mid.x, mid.y + 0.2, mid.z]} fontSize={0.22} color="#b45309" anchorX="center" anchorY="middle" fontWeight={700}>
                 {label}
@@ -940,7 +940,7 @@ function DraggablePoint({ name, displayName, point, coordText, labelOffset, fram
         <sphereGeometry args={[hovered || isDragging || isSelected || isConnectSource || isConnectHover ? 0.13 : 0.08, 16, 16]} />
         <meshStandardMaterial color={pointColor({ isSelected, isDragging, isConnectSource, isConnectHover, hovered })} />
       </mesh>
-      <LabelText position={[labelOffset.x, labelOffset.y, labelOffset.z]} fontSize={0.28} color="#1d3557" anchorX="center" anchorY="middle" fontWeight={700}>
+      <LabelText position={[labelOffset.x, labelOffset.y, labelOffset.z]} fontSize={0.28} color="#111111" anchorX="center" anchorY="middle" fontWeight={700}>
         {displayName}
       </LabelText>
       {showCoords && (
@@ -1030,8 +1030,8 @@ function ConnectPreview({ scene, start, end }: { scene: ThreeScene; start: strin
 
 function pointColor({ isSelected, isDragging, isConnectSource, isConnectHover, hovered }: { isSelected: boolean; isDragging: boolean; isConnectSource: boolean; isConnectHover: boolean; hovered: boolean }) {
   if (isConnectHover) return '#f97316';
-  if (isConnectSource) return '#2563eb';
-  if (isSelected) return '#2563eb';
+  if (isConnectSource) return '#111111';
+  if (isSelected) return '#111111';
   if (isDragging) return '#111111';
   if (hovered) return '#f97316';
   return '#e63946';

@@ -41,7 +41,7 @@ export function RendererPanel({ result, threeInteraction, onGeoGebraPointChange,
       <div className="empty-state-content">
         <GeometryIllustration />
         <h2>Không có dữ liệu renderer phù hợp</h2>
-        <p>Hãy thử chọn công cụ vẽ khác trong phần tùy chọn nâng cao.</p>
+        <p>Thử chọn GeoGebra 2D, GeoGebra 3D hoặc Three.js trong Tùy chọn nâng cao rồi dựng lại.</p>
       </div>
     </div>
   );
@@ -53,7 +53,7 @@ function EmptyState() {
       <div className="empty-state-content">
         <GeometryIllustration />
         <h2>Chưa có hình dựng</h2>
-        <p>Nhập đề bài hoặc chọn một đề mẫu bên trái để bắt đầu.</p>
+        <p>Nhập đề bài, dán ảnh hoặc chọn đề mẫu để bắt đầu dựng hình.</p>
       </div>
     </div>
   );

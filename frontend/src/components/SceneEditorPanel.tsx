@@ -28,8 +28,8 @@ type LineLike = Line2D | Line3D | Segment;
 type VectorLike = Vector2D | Vector3D;
 type Vec3 = { x: number; y: number; z: number };
 
-const lineColor = '#1d3557';
-const vectorColor = '#f97316';
+const lineColor = '#111111';
+const vectorColor = '#525252';
 
 export function SceneEditorPanel({
   scene,

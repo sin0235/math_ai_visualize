@@ -749,7 +749,7 @@ export default function App() {
       ...result.scene,
       objects: [
         ...result.scene.objects,
-        { type: 'segment', points: [start, end], hidden: false, color: '#1d3557', line_width: 3, style: 'solid' },
+        { type: 'segment', points: [start, end], hidden: false, color: '#111111', line_width: 3, style: 'solid' },
       ],
     };
     await handleSceneEdit(editedScene);
@@ -784,7 +784,7 @@ export default function App() {
       objects: [
         ...result.scene.objects,
         { type: 'point_3d', name: newName, x: round(newPoint.x), y: round(newPoint.y), z: round(newPoint.z) },
-        { type: 'segment', points: [pointToSegmentSource, newName], hidden: false, color: '#1d3557', line_width: 3, style: 'solid' },
+        { type: 'segment', points: [pointToSegmentSource, newName], hidden: false, color: '#111111', line_width: 3, style: 'solid' },
       ],
     };
 

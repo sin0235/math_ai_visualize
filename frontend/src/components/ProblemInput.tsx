@@ -143,13 +143,6 @@ export function ProblemInput({
     pickImageFile(event.dataTransfer.files);
   }
 
-  function handleDiagramDrop(event: DragEvent<HTMLElement>) {
-    event.preventDefault();
-    if (busy) return;
-    setDragActive(false);
-    pickImageFile(event.dataTransfer.files, 'diagram');
-  }
-
   function handlePaste(event: React.ClipboardEvent<HTMLTextAreaElement>) {
     if (busy) return;
     const imageItem = Array.from(event.clipboardData.items).find((item) => item.type.startsWith('image/'));
@@ -172,30 +165,22 @@ export function ProblemInput({
     onOcrClipboardImage();
   }
 
+  function openImagePicker(mode: 'problem' | 'diagram') {
+    fileInputRef.current?.setAttribute('data-ocr-mode', mode);
+    fileInputRef.current?.click();
+  }
+
   return (
     <form className="panel problem-form" onSubmit={handleSubmit}>
       <div>
         <div className="panel-title">Nhập mô tả</div>
-        <details className="ocr-image-panel">
-          <summary>OCR hình → hình</summary>
-          <p className="field-hint">Chọn ảnh để tái dựng hình trong ảnh.</p>
-          <button
-            type="button"
-            className={`ocr-image-drop-target ${dragActive ? 'drag-active' : ''}`.trim()}
-            disabled={busy}
-            onClick={() => {
-              fileInputRef.current?.setAttribute('data-ocr-mode', 'diagram');
-              fileInputRef.current?.click();
-            }}
-            onDragOver={(event) => {
-              event.preventDefault();
-              if (!busy) setDragActive(true);
-            }}
-            onDragLeave={() => { if (!busy) setDragActive(false); }}
-            onDrop={handleDiagramDrop}
-          >
-            Kéo thả ảnh vào đây hoặc bấm để chọn ảnh
-          </button>
+        <details className="ocr-actions-panel">
+          <summary>Nhập bằng ảnh / OCR</summary>
+          <div className="ocr-action-row" aria-label="Thao tác nhập bằng hình ảnh">
+            <button type="button" disabled={busy} onClick={() => openImagePicker('problem')}>Tải ảnh đề bài</button>
+            <button type="button" disabled={busy} onClick={onOcrClipboardImage}>Dán ảnh</button>
+            <button type="button" disabled={busy} onClick={() => openImagePicker('diagram')}>OCR hình</button>
+          </div>
         </details>
       </div>
       <div
@@ -232,7 +217,7 @@ export function ProblemInput({
             maxLength={2000}
             placeholder="Ví dụ: Cho tam giác ABC vuông tại A, AB = 3, AC = 4. Vẽ đường trung tuyến AM."
           />
-          {!busy && !problemText.trim() && <div className="ocr-empty-hint">Double click để đính ảnh, chuột phải để paste ảnh vừa crop, hoặc kéo-thả/paste ảnh vào đây.</div>}
+          {!busy && !problemText.trim() && <div className="ocr-empty-hint">Bạn có thể gõ đề, kéo-thả ảnh hoặc paste ảnh trực tiếp vào khung này.</div>}
           {ocrError && <div className="ocr-error">{ocrError}</div>}
           <div className="char-counter">{problemText.length}/2000 ký tự</div>
         {busy && (

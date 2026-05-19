@@ -27,11 +27,11 @@ function OrbitingElements() {
       <group ref={ringRef}>
         <mesh>
           <torusGeometry args={[3.2, 0.015, 16, 100]} />
-          <meshBasicMaterial color="#a5b4fc" transparent opacity={0.24} />
+          <meshBasicMaterial color="#111111" transparent opacity={0.14} />
         </mesh>
         <mesh rotation={[Math.PI / 2.5, 0, 0]}>
           <torusGeometry args={[3.8, 0.01, 16, 100]} />
-          <meshBasicMaterial color="#f9a8d4" transparent opacity={0.18} />
+          <meshBasicMaterial color="#525252" transparent opacity={0.1} />
         </mesh>
       </group>
       
@@ -47,7 +47,7 @@ function OrbitingElements() {
 
 function PolyhedronFaces() {
   const groupRef = useRef<THREE.Group>(null);
-  const palette = ['#a5b4fc', '#f9a8d4', '#99f6e4', '#fde68a', '#bfdbfe', '#fecdd3', '#c4b5fd', '#bbf7d0', '#fed7aa', '#ddd6fe'];
+  const palette = ['#111111', '#262626', '#3f3f3f', '#525252', '#737373', '#8a8a8a', '#a3a3a3', '#c9c9c2', '#eeeeeb', '#ffffff'];
   const geometry = useMemo(() => {
     const shape = new THREE.IcosahedronGeometry(2.05, 0);
     shape.clearGroups();
@@ -100,7 +100,7 @@ function BackgroundParticles() {
       const yFactor = -10 + Math.random() * 20;
       const zFactor = -10 + Math.random() * 20;
       const type = Math.floor(Math.random() * 3); // 0: octa, 1: sphere, 2: cube
-      temp.push({ t, factor, speed, xFactor, yFactor, zFactor, type, color: Math.random() > 0.5 ? '#c4b5fd' : '#bfdbfe' });
+      temp.push({ t, factor, speed, xFactor, yFactor, zFactor, type, color: Math.random() > 0.5 ? '#525252' : '#a3a3a3' });
     }
     return temp;
   }, [count]);
@@ -146,8 +146,8 @@ function Scene() {
   return (
     <>
       <ambientLight intensity={0.58} />
-      <spotLight ref={lightRef} position={[15, 15, 15]} angle={0.2} penumbra={1} intensity={10} color="#c4b5fd" />
-      <pointLight position={[-15, -15, -15]} intensity={5} color="#f9a8d4" />
+      <spotLight ref={lightRef} position={[15, 15, 15]} angle={0.2} penumbra={1} intensity={10} color="#ffffff" />
+      <pointLight position={[-15, -15, -15]} intensity={5} color="#d4d4d4" />
       
       <Sparkles count={80} scale={12} size={2} speed={0.5} opacity={0.4} color="#ffffff" />
       
@@ -176,10 +176,10 @@ function Scene() {
         fadeDistance={25}
         fadeStrength={5}
         sectionSize={1.5}
-        sectionColor="#c4b5fd"
+        sectionColor="#737373"
         sectionThickness={2}
         cellSize={0.75}
-        cellColor="#bfdbfe"
+        cellColor="#d4d4d4"
         cellThickness={1}
         position={[0, -2.5, 0]}
       />
@@ -199,7 +199,7 @@ function Scene() {
       
       {/* Visual Axis Indicator */}
       <GizmoHelper alignment="bottom-right" margin={[80, 80]}>
-        <GizmoViewport axisColors={['#ef4444', '#22c55e', '#3b82f6']} labelColor="white" />
+        <GizmoViewport axisColors={['#111111', '#525252', '#a3a3a3']} labelColor="white" />
       </GizmoHelper>
     </>
   );

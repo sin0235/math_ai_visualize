@@ -35,8 +35,8 @@ type CrossSectionProps = {
 export function RevolutionThreeView(props: SurfaceProps) {
   return (
     <div className="csim-three-card">
-      <Canvas camera={{ position: [5, 3.2, 5.4], fov: 45 }} gl={{ antialias: true, alpha: false }} dpr={[1, 2]} className="csim-three-canvas" onCreated={({ gl }) => gl.setClearColor('#f8fbff', 1)}>
-        <color attach="background" args={["#f8fbff"]} />
+      <Canvas camera={{ position: [5, 3.2, 5.4], fov: 45 }} gl={{ antialias: true, alpha: false }} dpr={[1, 2]} className="csim-three-canvas" onCreated={({ gl }) => gl.setClearColor('#f6f6f4', 1)}>
+        <color attach="background" args={["#f6f6f4"]} />
         <ambientLight intensity={0.9} />
         <directionalLight position={[5, 8, 6]} intensity={1.1} />
         <OrbitControls makeDefault target={[0, 0, 0]} />
@@ -50,8 +50,8 @@ export function RevolutionThreeView(props: SurfaceProps) {
 export function CrossSectionThreeView(props: CrossSectionProps) {
   return (
     <div className="csim-three-card">
-      <Canvas camera={{ position: [5.5, 4.2, 6], fov: 45 }} gl={{ antialias: true, alpha: false }} dpr={[1, 2]} className="csim-three-canvas" onCreated={({ gl }) => gl.setClearColor('#f8fbff', 1)}>
-        <color attach="background" args={["#f8fbff"]} />
+      <Canvas camera={{ position: [5.5, 4.2, 6], fov: 45 }} gl={{ antialias: true, alpha: false }} dpr={[1, 2]} className="csim-three-canvas" onCreated={({ gl }) => gl.setClearColor('#f6f6f4', 1)}>
+        <color attach="background" args={["#f6f6f4"]} />
         <ambientLight intensity={0.9} />
         <directionalLight position={[5, 8, 6]} intensity={1.1} />
         <OrbitControls makeDefault target={[0, 0, 0]} />
@@ -75,7 +75,7 @@ function RevolutionScene({ f, g, a, b, sweep, sliceX, visibleDisks = 0, totalDis
       {showSurface && (
         <>
           <mesh geometry={outerGeometry}>
-            <meshStandardMaterial color="#2563eb" opacity={0.42} transparent side={THREE.DoubleSide} roughness={0.45} />
+            <meshStandardMaterial color="#111111" opacity={0.42} transparent side={THREE.DoubleSide} roughness={0.45} />
           </mesh>
           {innerGeometry && (
             <mesh geometry={innerGeometry}>
@@ -311,7 +311,7 @@ function Axes3D() {
       </lineSegments>
       <Text position={[3.15, 0, 0]} fontSize={0.22} color="#e11d48">x</Text>
       <Text position={[0, 2.55, 0]} fontSize={0.22} color="#16a34a">y</Text>
-      <Text position={[0, 0, 2.55]} fontSize={0.22} color="#2563eb">z</Text>
+      <Text position={[0, 0, 2.55]} fontSize={0.22} color="#111111">z</Text>
     </group>
   );
 }
