@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     openrouter_reasoning_enabled: bool = False
     openrouter_http_referer: str | None = None
     openrouter_x_title: str = "Hinh Math Renderer"
+    openai_api_key: str | None = None
     opencode_nemotron_model: str = "oc/nemotron-3-super-free"
     nvidia_api_key: str | None = None
     nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
@@ -87,6 +88,12 @@ class Settings(BaseSettings):
     cas_repair_min_severity: Literal["warning", "error"] = "warning"
 
     model_config = SettingsConfigDict(env_file=(".env", "backend/.env"), env_file_encoding="utf-8", extra="ignore")
+
+    @model_validator(mode="after")
+    def apply_openai_compat_defaults(self) -> "Settings":
+        if not self.openai_compat_api_key:
+            self.openai_compat_api_key = _clean_optional_text(getattr(self, "openai_api_key", None))
+        return self
 
     @model_validator(mode="after")
     def validate_cookie_settings(self) -> "Settings":

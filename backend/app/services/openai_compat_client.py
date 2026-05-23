@@ -105,7 +105,7 @@ class OpenAICompatClient:
                 f"OpenAI-compatible endpoint ({base_url}) cần API key nhưng chưa được cấu hình. "
                 "Hãy thêm OPENAI_COMPAT_API_KEY hoặc chọn provider khác."
             )
-        url = f"{base_url}/chat/completions"
+        url = f"{_normalize_openai_compat_base_url(base_url)}/chat/completions"
         headers = {"Content-Type": "application/json"}
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
@@ -128,6 +128,17 @@ class OpenAICompatClient:
             raise RuntimeError("OpenAI-compatible không trả về nội dung.")
         log_provider_parse("openai_compat", kind, payload.get("model"), len(content))
         return content
+
+
+def _normalize_openai_compat_base_url(base_url: str) -> str:
+    base = base_url.rstrip("/")
+    if base.endswith("/chat/completions"):
+        return base.removesuffix("/chat/completions")
+    if base.endswith("/completions"):
+        return base.removesuffix("/completions")
+    if not base.endswith("/v1"):
+        return f"{base}/v1"
+    return base
 
 
 def _requires_api_key(base_url: str) -> bool:
