@@ -54,7 +54,7 @@ export function VerifyEmailPage({ token, email, onVerifyEmail, onBackWorkspace, 
         <h2>Mở khóa workspace bằng mã OTP</h2>
         <p className="field-hint auth-flow-copy">
           {token
-            ? <>Nhập mã 6 chữ số đã gửi tới {email ? <strong>{email}</strong> : 'email đăng ký của bạn'}. Mã này giúp kích hoạt lịch sử dựng hình và cấu hình cá nhân.</>
+            ? <>Nhập mã 6 chữ số đã gửi tới {email ? <strong>{email}</strong> : 'email đăng ký của bạn'}. Mã này giúp kích hoạt lịch sử dựng hình.</>
             : 'Liên kết xác minh không hợp lệ hoặc thiếu token. Hãy mở lại email xác minh mới nhất.'}
         </p>
         {token && (

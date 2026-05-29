@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AdminConsole } from './components/admin/AdminConsole';
-import { ApiError, changePassword, deleteRenderHistory, forgotPassword, getCurrentUser, getHealth, getRenderHistory, getRenderHistoryDetail, getSessions, getSettingsDefaults, getUserSettings, login, loginWithGoogle, logout, ocrImage, register, renderEditedScene, renderProblem, resendVerification, resetPassword, revokeOtherSessions, revokeSession, saveUserSettings, updateProfile, verifyEmail, type AdminRenderHistoryDetail, type RenderHistoryItem, type SessionResponse, type UserResponse } from './api/client';
+import { ApiError, changePassword, deleteRenderHistory, forgotPassword, getCurrentUser, getHealth, getRenderHistory, getRenderHistoryDetail, getSessions, getSettingsDefaults, login, loginWithGoogle, logout, ocrImage, register, renderEditedScene, renderProblem, resendVerification, resetPassword, revokeOtherSessions, revokeSession, updateProfile, verifyEmail, type AdminRenderHistoryDetail, type RenderHistoryItem, type SessionResponse, type UserResponse } from './api/client';
 import { defaultAdvancedSettings, ProblemInput, type ModelOption, type TierKey } from './components/ProblemInput';
-import { GeneralSettingsPanel } from './components/GeneralSettingsPanel';
 import { AccountPage } from './components/AccountPage';
 import { FeedbackPage } from './components/FeedbackPage';
 import { ChatBubble } from './components/ChatBubble';
@@ -29,12 +28,10 @@ import { normalizeMineruBaseUrl } from './api/mineru';
 import { getDefaultParamValues, patchGeogebraCommandsForScene, recomputeSceneWithParameters, recomputeThreeScene } from './utils/sceneParameters';
 import { clamp, findPoint, hasSegment, nextPointName, projectPointToSegment, round, type Vec3 } from './utils/sceneEditing';
 import type { AdvancedRenderSettings, MathScene, RenderResponse, Renderer } from './types/scene';
-import { defaultRuntimeSettings, SETTINGS_STORAGE_VERSION, type OcrProvider, type RuntimeSettings, type SettingsDefaults, type UserBasicSettings } from './types/settings';
-import { normalizeProviderModelSelection } from './utils/settingsOptions';
+import { defaultRuntimeSettings, type RuntimeSettings, type SettingsDefaults } from './types/settings';
 import logoUrl from '../img.svg';
 import './styles.css';
 
-const SETTINGS_STORAGE_KEY = 'hinh-runtime-settings';
 const MOBILE_WARNING_STORAGE_KEY = 'hinh-mobile-warning-dismissed';
 const MOBILE_BREAKPOINT_QUERY = '(max-width: 900px)';
 const DEVELOPER_GITHUB_URL = 'https://github.com/sin0235';
@@ -43,7 +40,7 @@ const CONTACT_ZALO_PHONE = '0347952503';
 const CONTACT_ZALO_URL = `https://zalo.me/${CONTACT_ZALO_PHONE}`;
 const MINERU_API_BASE_URL = normalizeMineruBaseUrl(import.meta.env.VITE_MINERU_API_BASE_URL);
 
-type AppView = 'home' | 'render' | 'analyzer' | 'analyzer-guide' | 'simulation' | 'geogebra-lab' | 'pdf-to-word' | 'history' | 'guide' | 'about' | 'privacy-policy' | 'terms' | 'login' | 'settings' | 'admin' | 'account' | 'feedback' | 'reset-password' | 'verify-email';
+type AppView = 'home' | 'render' | 'analyzer' | 'analyzer-guide' | 'simulation' | 'geogebra-lab' | 'pdf-to-word' | 'history' | 'guide' | 'about' | 'privacy-policy' | 'terms' | 'login' | 'admin' | 'account' | 'feedback' | 'reset-password' | 'verify-email';
 type EditTool = 'move' | 'connect' | 'project_to_segment' | 'add_point';
 type BackendStatus = {
   state: 'checking' | 'online' | 'offline';
@@ -64,7 +61,6 @@ const viewPaths: Record<AppView, string> = {
   'privacy-policy': '/privacy-policy',
   terms: '/terms',
   login: '/login',
-  settings: '/settings',
   admin: '/admin',
   account: '/account',
   feedback: '/feedback',
@@ -74,6 +70,7 @@ const viewPaths: Record<AppView, string> = {
 
 function pathToView(pathname: string): AppView {
   const normalized = pathname.replace(/\/+$/, '') || '/';
+  if (normalized === '/settings') return 'render';
   const match = Object.entries(viewPaths).find(([, path]) => path === normalized);
   return match ? match[0] as AppView : 'home';
 }
@@ -181,7 +178,6 @@ export default function App() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [openingHistoryId, setOpeningHistoryId] = useState<string | null>(null);
-  const [remoteSettingsHydrated, setRemoteSettingsHydrated] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [toolsMenuOpen, setToolsMenuOpen] = useState(false);
   const resultAnchorRef = useRef<HTMLDivElement | null>(null);
@@ -205,16 +201,6 @@ export default function App() {
     }
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
-
-  useEffect(() => {
-    try {
-      const saved = window.localStorage.getItem(SETTINGS_STORAGE_KEY);
-      if (!saved) return;
-      setRuntimeSettings(loadStoredSettings(saved));
-    } catch {
-      // Keep defaults when local storage is invalid.
-    }
   }, []);
 
   useEffect(() => {
@@ -252,7 +238,7 @@ export default function App() {
         if (cancelled) return;
         setBackendStatus({ state: 'online', appName: health.app });
         setSettingsDefaults(defaults);
-        setRuntimeSettings((current) => mergeBackendDefaults(current, defaults));
+        setRuntimeSettings(runtimeSettingsFromAdminDefaults(defaults));
       })
       .catch(() => {
         if (cancelled) return;
@@ -266,13 +252,15 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    window.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify({ version: SETTINGS_STORAGE_VERSION, settings: sanitizeSettingsForStorage(runtimeSettings) }));
-  }, [runtimeSettings]);
+    if (!settingsDefaults) return;
+    setRuntimeSettings(runtimeSettingsFromAdminDefaults(settingsDefaults));
+  }, [settingsDefaults]);
 
   useEffect(() => {
-    if (!settingsDefaults || !remoteSettingsHydrated) return;
-    setRuntimeSettings((current) => mergeBackendDefaults(current, settingsDefaults));
-  }, [settingsDefaults, remoteSettingsHydrated]);
+    if (window.location.pathname.replace(/\/+$/, '') === '/settings') {
+      navigateTo('render', true);
+    }
+  }, []);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -316,21 +304,12 @@ export default function App() {
       .catch(() => {
         if (!cancelled) {
           setUser(null);
-          setRemoteSettingsHydrated(true);
         }
       });
     return () => {
       cancelled = true;
     };
   }, []);
-
-  useEffect(() => {
-    if (!user || !remoteSettingsHydrated) return;
-    const timer = window.setTimeout(() => {
-      saveUserSettings(toUserBasicSettings(runtimeSettings)).catch(() => undefined);
-    }, 600);
-    return () => window.clearTimeout(timer);
-  }, [runtimeSettings, user, remoteSettingsHydrated]);
 
   useEffect(() => {
     setEditorButtonTop(clamp(window.innerHeight * 0.55, 84, window.innerHeight - 88));
@@ -476,10 +455,6 @@ export default function App() {
     }
   }
 
-  function resetSettings() {
-    setRuntimeSettings(defaultRuntimeSettings);
-  }
-
   function dismissMobileWarning() {
     setMobileWarningDismissed(true);
     try {
@@ -503,17 +478,14 @@ export default function App() {
     setHistoryItems([]);
     setHistoryOpen(false);
     setAccountMenuOpen(false);
-    setRemoteSettingsHydrated(true);
   }
 
   async function applyAuthenticatedUser(nextUser: UserResponse) {
-    setRemoteSettingsHydrated(false);
     setUser(nextUser);
     await loadRemoteWorkspace(nextUser);
   }
 
   function applyAuthenticatedUserInBackground(nextUser: UserResponse) {
-    setRemoteSettingsHydrated(false);
     setUser(nextUser);
     void loadRemoteWorkspace(nextUser);
   }
@@ -626,20 +598,7 @@ export default function App() {
   }
 
   async function loadRemoteWorkspace(_: UserResponse) {
-    try {
-      const [remoteSettings] = await Promise.all([
-        getUserSettings().catch(() => null),
-        refreshHistory(),
-      ]);
-      const savedSettings = remoteSettings?.settings;
-      if (savedSettings) {
-        setRuntimeSettings((current) => loadRemoteSettings(savedSettings, current));
-      } else {
-        await saveUserSettings(toUserBasicSettings(runtimeSettings));
-      }
-    } finally {
-      setRemoteSettingsHydrated(true);
-    }
+    await refreshHistory();
   }
 
   async function refreshHistory() {
@@ -921,7 +880,7 @@ export default function App() {
           )}
           {user ? (
             <div className="account-menu" ref={accountMenuRef}>
-              <button type="button" className={`account-menu-trigger ${activeView === 'history' || activeView === 'settings' || activeView === 'account' || activeView === 'feedback' ? 'active' : ''}`} aria-haspopup="menu" aria-expanded={accountMenuOpen} onClick={() => setAccountMenuOpen((open) => !open)}>
+              <button type="button" className={`account-menu-trigger ${activeView === 'history' || activeView === 'account' || activeView === 'feedback' ? 'active' : ''}`} aria-haspopup="menu" aria-expanded={accountMenuOpen} onClick={() => setAccountMenuOpen((open) => !open)}>
                 <span className="account-avatar" aria-hidden="true">{(user.display_name || user.email).slice(0, 1).toUpperCase()}</span>
                 <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
                 <span className="sr-only">Mở menu tài khoản</span>
@@ -937,13 +896,6 @@ export default function App() {
                     }}>
                       <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"></path><path d="M3 3v6h6"></path><path d="M12 7v5l3 2"></path></svg>
                       Lịch sử
-                    </button>
-                    <button type="button" role="menuitem" onClick={() => {
-                      setAccountMenuOpen(false);
-                      navigateTo('settings');
-                    }}>
-                      <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0A1.65 1.65 0 0 0 10.91 3H11a2 2 0 1 1 4 0h.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0A1.65 1.65 0 0 0 21 10.91V11a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-                      Cài đặt chung
                     </button>
                     <button type="button" role="menuitem" onClick={() => {
                       setAccountMenuOpen(false);
@@ -1184,7 +1136,7 @@ export default function App() {
             modelOptions={modelOptions}
             runtimeSettings={runtimeSettings}
             router9Only={settingsDefaults?.router9.only_mode ?? false}
-            onOpenSettings={() => navigateTo(user?.role === 'admin' ? 'admin' : 'settings')}
+            onOpenSettings={() => navigateTo(user?.role === 'admin' ? 'admin' : 'render')}
           />
         )}
         {activeView === 'analyzer-guide' && <AnalyzerGuidePage onOpenGeneralGuide={() => navigateTo('guide')} />}
@@ -1249,11 +1201,6 @@ export default function App() {
         )}
         {activeView === 'verify-email' && (
           <VerifyEmailPage token={authToken} email={pendingVerificationEmail} onVerifyEmail={handleVerifyEmail} onBackWorkspace={() => navigateTo('render')} onBackLogin={() => navigateTo('login')} onToast={(title, message, kind = 'info') => showNotification(title, message, [], kind)} />
-        )}
-        {activeView === 'settings' && (
-          <section className="settings-page">
-            <GeneralSettingsPanel value={runtimeSettings} defaults={settingsDefaults} onChange={setRuntimeSettings} onReset={resetSettings} />
-          </section>
         )}
       </main>
       <footer className="app-footer">
@@ -1388,64 +1335,6 @@ function toApiError(caught: unknown, fallback: string): ApiError {
   return new ApiError(fallback);
 }
 
-function mergeBackendDefaults(current: RuntimeSettings, defaults: SettingsDefaults): RuntimeSettings {
-  const openrouter = mergeProviderDefaults(current.openrouter, defaults.openrouter, 'openrouter');
-  const nvidia = mergeProviderDefaults(current.nvidia, defaults.nvidia, 'nvidia');
-  const ollama = mergeProviderDefaults(current.ollama, defaults.ollama, 'ollama');
-  const openai_compat = mergeProviderDefaults(current.openai_compat, defaults.openai_compat, 'openai_compat');
-  const router9 = mergeProviderDefaults(current.router9, defaults.router9, 'router9');
-  const userWantsSystemOcrProvider = !String(current.ocr.provider ?? '').trim();
-  const ocrProviderFromChoice = (current.ocr.provider || defaults.ocr.provider || 'openrouter') as OcrProvider;
-  const ocrModel = userWantsSystemOcrProvider ? '' : current.ocr.model;
-  const normalizedOcr = normalizeProviderModelSelection(ocrProviderFromChoice, ocrModel);
-  const ocrProviderStored = (userWantsSystemOcrProvider ? '' : normalizedOcr.provider) as RuntimeSettings['ocr']['provider'];
-
-  return {
-    ...current,
-    openrouter,
-    nvidia,
-    ollama,
-    openai_compat,
-    router9: {
-      ...router9,
-      only_mode: current.router9.only_mode,
-    },
-    ocr: {
-      ...current.ocr,
-      provider: ocrProviderStored,
-      model: normalizedOcr.model,
-      max_image_mb: current.ocr.max_image_mb || defaults.ocr.max_image_mb,
-    },
-  };
-}
-
-function mergeProviderDefaults<Provider extends 'openrouter' | 'nvidia' | 'ollama' | 'openai_compat' | 'router9'>(
-  current: RuntimeSettings[Provider],
-  defaults: SettingsDefaults[Provider],
-  provider: Provider,
-): RuntimeSettings[Provider] {
-  const visibleModelIds = modelIdsForProvider(defaults, '', null, provider);
-  let model = current.model.trim();
-  if (model && defaults.model && model === defaults.model) model = '';
-  if (model && visibleModelIds.length > 0 && !visibleModelIds.includes(model)) model = '';
-  const currentBaseUrl = isLegacyLocalOpenAICompatBase(provider, current.base_url) ? '' : current.base_url;
-  const base_url = currentBaseUrl.trim() && currentBaseUrl.trim().replace(/\/$/, '') !== defaults.base_url.trim().replace(/\/$/, '')
-    ? currentBaseUrl
-    : '';
-
-  return {
-    ...current,
-    base_url,
-    model,
-    scanned_models: current.scanned_models,
-    allowed_model_ids: current.allowed_model_ids.filter((id) => !visibleModelIds.length || visibleModelIds.includes(id)),
-  };
-}
-
-function isLegacyLocalOpenAICompatBase(provider: string, baseUrl: string) {
-  return provider === 'openai_compat' && baseUrl.trim().replace(/\/$/, '') === 'http://localhost:8080/v1';
-}
-
 function readMobileWarningDismissed() {
   try {
     return window.localStorage.getItem(MOBILE_WARNING_STORAGE_KEY) === 'true';
@@ -1454,134 +1343,34 @@ function readMobileWarningDismissed() {
   }
 }
 
-function loadStoredSettings(saved: string): RuntimeSettings {
-  const parsed = JSON.parse(saved) as { version?: number; settings?: Partial<RuntimeSettings> } & Partial<RuntimeSettings>;
-  const next = mergeRuntimeSettingsShape(parsed.settings ?? parsed);
-
-  if ((parsed.version ?? 0) < 5 && next.ocr.provider === 'openrouter' && !next.ocr.model.trim()) {
-    next.ocr.provider = '';
-  }
-
-  if (parsed.version !== SETTINGS_STORAGE_VERSION) {
-    dropLegacyDefaults(next);
-  }
-  if ((parsed.version ?? 0) < 7) {
-    dropStoredProviderOverrides(next);
-  }
-  dropLegacyOcrDefaults(next);
-
-  return dropApiKeys(next);
-}
-
-function loadRemoteSettings(settings: UserBasicSettings, current: RuntimeSettings): RuntimeSettings {
-  const normalizedOcr = normalizeOcrSettings(settings.ocr);
-  const next: RuntimeSettings = { ...current, default_provider: settings.default_provider, ocr: { ...current.ocr, ...normalizedOcr } };
-  const provider = settings.default_provider;
-  if (isRenderProvider(provider)) {
-    const normalizedDefault = normalizeProviderModelSelection(provider, settings.default_model);
-    const normalizedProvider = isRenderProvider(normalizedDefault.provider) ? normalizedDefault.provider : provider;
-    return dropApiKeys({ ...next, default_provider: normalizedProvider, [normalizedProvider]: { ...next[normalizedProvider], model: normalizedDefault.model } });
-  }
-  return dropApiKeys(next);
-}
-
-function toUserBasicSettings(settings: RuntimeSettings): UserBasicSettings {
-  const normalizedOcr = normalizeOcrSettings(settings.ocr);
-  return {
-    version: 2,
-    default_provider: settings.default_provider,
-    default_model: currentProviderModel(settings),
-    ocr: normalizedOcr,
-  };
-}
-
-function currentProviderModel(settings: RuntimeSettings) {
-  const provider = settings.default_provider;
-  if (isRenderProvider(provider)) return settings[provider].model;
-  return '';
-}
-
-function isRenderProvider(provider: string): provider is 'openrouter' | 'nvidia' | 'ollama' | 'openai_compat' | 'router9' {
-  return provider === 'openrouter' || provider === 'nvidia' || provider === 'ollama' || provider === 'openai_compat' || provider === 'router9';
-}
-
-function normalizeOcrSettings(ocr: RuntimeSettings['ocr']): RuntimeSettings['ocr'] {
-  if (!ocr.provider.trim()) return { ...ocr, model: '' };
-  const normalized = normalizeProviderModelSelection(ocr.provider, ocr.model);
-  return { ...ocr, provider: normalized.provider as RuntimeSettings['ocr']['provider'], model: normalized.model };
-}
-
-function mergeRuntimeSettingsShape(rawSettings: Partial<RuntimeSettings>, base: RuntimeSettings = defaultRuntimeSettings): RuntimeSettings {
-  return {
-    ...base,
-    ...rawSettings,
-    openrouter: { ...base.openrouter, ...rawSettings.openrouter },
-    nvidia: { ...base.nvidia, ...rawSettings.nvidia },
-    ollama: { ...base.ollama, ...rawSettings.ollama },
-    router9: { ...base.router9, ...rawSettings.router9 },
-    ocr: { ...base.ocr, ...rawSettings.ocr },
-  };
-}
-
-function sanitizeSettingsForStorage(settings: RuntimeSettings): RuntimeSettings {
-  const normalizedOcr = normalizeOcrSettings(settings.ocr);
+function runtimeSettingsFromAdminDefaults(defaults: SettingsDefaults): RuntimeSettings {
   return {
     ...defaultRuntimeSettings,
-    default_provider: settings.default_provider,
-    openrouter: { ...defaultRuntimeSettings.openrouter, model: settings.openrouter.model, base_url: settings.openrouter.base_url },
-    nvidia: { ...defaultRuntimeSettings.nvidia, model: settings.nvidia.model, base_url: settings.nvidia.base_url },
-    ollama: { ...defaultRuntimeSettings.ollama, model: settings.ollama.model, base_url: settings.ollama.base_url },
-    openai_compat: { ...defaultRuntimeSettings.openai_compat, model: settings.openai_compat.model, base_url: settings.openai_compat.base_url },
-    router9: { ...defaultRuntimeSettings.router9, model: settings.router9.model, base_url: settings.router9.base_url, only_mode: settings.router9.only_mode },
-    ocr: normalizedOcr,
+    default_provider: defaults.default_provider,
+    openrouter: providerSettingsFromAdminDefaults(defaults.openrouter),
+    nvidia: providerSettingsFromAdminDefaults(defaults.nvidia),
+    ollama: providerSettingsFromAdminDefaults(defaults.ollama),
+    openai_compat: providerSettingsFromAdminDefaults(defaults.openai_compat),
+    router9: {
+      ...providerSettingsFromAdminDefaults(defaults.router9),
+      only_mode: defaults.router9.only_mode,
+    },
+    ocr: { ...defaults.ocr },
+    openrouter_http_referer: defaults.openrouter.http_referer ?? '',
+    openrouter_x_title: defaults.openrouter.x_title,
+    openrouter_reasoning_enabled: defaults.openrouter.reasoning_enabled,
   };
 }
 
-function dropApiKeys(settings: RuntimeSettings): RuntimeSettings {
-  return sanitizeSettingsForStorage(settings);
-}
-
-function dropLegacyDefaults(settings: RuntimeSettings) {
-  const legacyProviderDefaults = {
-    openrouter: { base_url: 'https://openrouter.ai/api/v1', model: 'openrouter/nvidia/nemotron-3-super-120b-a12b:free' },
-    nvidia: { base_url: 'https://integrate.api.nvidia.com/v1', model: 'qwen/qwen3-coder-480b-a35b-instruct' },
-    ollama: { base_url: 'https://ollama.com/v1', model: 'gpt-oss:120b' },
-    router9: { base_url: 'http://localhost:20128/v1', model: '' },
+function providerSettingsFromAdminDefaults(defaults: SettingsDefaults['openrouter'] | SettingsDefaults['nvidia'] | SettingsDefaults['ollama'] | SettingsDefaults['openai_compat'] | SettingsDefaults['router9']) {
+  return {
+    ...defaultRuntimeSettings.openrouter,
+    base_url: defaults.base_url,
+    model: defaults.model ?? '',
+    scanned_models: defaults.scanned_models,
+    allowed_model_ids: defaults.allowed_model_ids,
+    last_scanned_at: '',
   };
-
-  for (const provider of ['openrouter', 'nvidia', 'ollama', 'router9'] as const) {
-    if (settings[provider].base_url === legacyProviderDefaults[provider].base_url) {
-      settings[provider].base_url = '';
-    }
-    if (settings[provider].model === legacyProviderDefaults[provider].model) {
-      settings[provider].model = '';
-    }
-  }
-
-  dropLegacyOcrDefaults(settings);
-  if (settings.openrouter_x_title === 'Hinh Math Renderer') {
-    settings.openrouter_x_title = '';
-  }
-}
-
-function dropLegacyOcrDefaults(settings: RuntimeSettings) {
-  if (!settings.ocr.provider.trim()) {
-    settings.ocr.model = '';
-    return;
-  }
-  if (settings.ocr.model === 'qwen/qwen2.5-vl-72b-instruct:free' || settings.ocr.model === 'google/gemma-4-26b-a4b-it:free') {
-    settings.ocr.model = '';
-  }
-}
-
-function dropStoredProviderOverrides(settings: RuntimeSettings) {
-  for (const provider of ['openrouter', 'nvidia', 'ollama', 'openai_compat', 'router9'] as const) {
-    settings[provider].base_url = '';
-    settings[provider].model = '';
-    settings[provider].scanned_models = [];
-    settings[provider].allowed_model_ids = [];
-  }
-  settings.router9.only_mode = false;
 }
 
 function fileToDataUrl(file: File): Promise<string> {

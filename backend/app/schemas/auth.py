@@ -6,7 +6,6 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, mo
 from app.schemas.scene import MAX_BASE_URL_CHARS, MAX_MODEL_ID_CHARS, MathScene, RenderPayload
 
 MAX_STORED_MODELS = 1000
-MAX_SETTINGS_JSON_CHARS = 80_000
 PLAN_ID_PATTERN = re.compile(r"^[a-z][a-z0-9_+-]{0,63}$")
 ADMIN_AI_PROVIDERS = {"openrouter", "nvidia", "ollama", "openai_compat", "router9"}
 ADMIN_DEFAULT_PROVIDERS = ADMIN_AI_PROVIDERS | {"auto"}
@@ -145,64 +144,6 @@ class StoredModelInfo(BaseModel):
     capabilities: dict[str, Any] = Field(default_factory=dict)
 
 
-class StoredProviderSettings(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    api_key: Literal[""] = ""
-    base_url: str = Field(default="", max_length=MAX_BASE_URL_CHARS)
-    model: str = Field(default="", max_length=MAX_MODEL_ID_CHARS)
-    scanned_models: list[StoredModelInfo] = Field(default_factory=list, max_length=MAX_STORED_MODELS)
-    last_scanned_at: str = Field(default="", max_length=64)
-
-    @field_validator("api_key", mode="before")
-    @classmethod
-    def strip_api_key(cls, _: object) -> str:
-        return ""
-
-
-class StoredRouter9Settings(StoredProviderSettings):
-    only_mode: bool = False
-    allowed_model_ids: list[str] = Field(default_factory=list, max_length=MAX_STORED_MODELS)
-
-    @field_validator("allowed_model_ids")
-    @classmethod
-    def validate_allowed_models(cls, values: list[str]) -> list[str]:
-        return [value[:MAX_MODEL_ID_CHARS] for value in values]
-
-
-class StoredOcrSettings(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    provider: Literal["", "openrouter", "router9"] = ""
-    model: str = Field(default="", max_length=MAX_MODEL_ID_CHARS)
-    max_image_mb: int = Field(default=5, ge=1, le=32)
-
-
-class StoredRuntimeSettings(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    version: int = 1
-    default_provider: str = Field(default="auto", max_length=64)
-    openrouter: StoredProviderSettings = Field(default_factory=StoredProviderSettings)
-    nvidia: StoredProviderSettings = Field(default_factory=StoredProviderSettings)
-    ollama: StoredProviderSettings = Field(default_factory=StoredProviderSettings)
-    openai_compat: StoredProviderSettings = Field(default_factory=StoredProviderSettings)
-    router9: StoredRouter9Settings = Field(default_factory=StoredRouter9Settings)
-    ocr: StoredOcrSettings = Field(default_factory=StoredOcrSettings)
-    openrouter_http_referer: str = Field(default="", max_length=MAX_BASE_URL_CHARS)
-    openrouter_x_title: str = Field(default="", max_length=256)
-    openrouter_reasoning_enabled: bool = False
-
-
-class UserBasicSettings(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    version: int = 2
-    default_provider: str = Field(default="auto", max_length=64)
-    default_model: str = Field(default="", max_length=MAX_MODEL_ID_CHARS)
-    ocr: StoredOcrSettings = Field(default_factory=StoredOcrSettings)
-
-
 class AdminProviderModelSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -303,12 +244,8 @@ class RenderHistoryDetail(RenderHistoryItem):
 
 
 class UserSettingsResponse(BaseModel):
-    settings: UserBasicSettings | None = None
-    updated_at: str | None = None
-
-
-class UserSettingsRequest(BaseModel):
-    settings: UserBasicSettings
+    settings: None = None
+    updated_at: None = None
 
 
 class PlanQuotaSettings(BaseModel):

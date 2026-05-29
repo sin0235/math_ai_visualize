@@ -65,7 +65,7 @@ export function LoginPage({ logoUrl, user, authLoading, onOpenWorkspace, onToast
       }
       if (mode === 'login') {
         await onLogin(cleanEmail, password);
-        onToast('Đăng nhập', 'Đăng nhập thành công. Lịch sử dựng hình và cấu hình cá nhân đã được bật.', 'info');
+        onToast('Đăng nhập', 'Đăng nhập thành công. Lịch sử dựng hình đã được bật.', 'info');
         return;
       }
       if (password.length < 10) {

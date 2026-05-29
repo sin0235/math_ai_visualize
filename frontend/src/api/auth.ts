@@ -1,4 +1,3 @@
-import type { UserBasicSettings } from '../types/settings';
 import { apiUrl, cleanText, requestJson, requestVoid } from './core';
 
 export interface UserResponse {
@@ -30,11 +29,6 @@ export interface SessionResponse {
   ip_address?: string | null;
   user_agent?: string | null;
   current: boolean;
-}
-
-export interface UserSettingsResponse {
-  settings?: UserBasicSettings | null;
-  updated_at?: string | null;
 }
 
 export type FeedbackStatus = 'pending' | 'received' | 'accepted';
@@ -161,19 +155,6 @@ export async function logout(): Promise<void> {
 export async function loginWithGoogle(): Promise<AuthResponse> {
   window.location.href = getGoogleOAuthStartUrl();
   throw new Error('Đang chuyển tới Google OAuth.');
-}
-
-export async function getUserSettings(): Promise<UserSettingsResponse> {
-  return requestJson('/api/user/settings', { credentials: 'include' }, 'Không thể tải cấu hình cá nhân.');
-}
-
-export async function saveUserSettings(settings: UserBasicSettings): Promise<UserSettingsResponse> {
-  return requestJson('/api/user/settings', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'include',
-    body: JSON.stringify({ settings }),
-  }, 'Không thể lưu cấu hình cá nhân.');
 }
 
 export async function getFeedbackStatus(): Promise<FeedbackStatusResponse> {

@@ -46,13 +46,6 @@ export interface RuntimeSettings {
   openrouter_reasoning_enabled: boolean;
 }
 
-export interface UserBasicSettings {
-  version: number;
-  default_provider: string;
-  default_model: string;
-  ocr: OcrSettings;
-}
-
 export interface ProviderSettingsDefaults {
   api_key_configured: boolean;
   base_url: string;
@@ -147,8 +140,6 @@ export interface SettingsDefaults {
   registry_legacy_ai_settings_present?: boolean;
   feature_flags?: FeatureFlagsDefaults;
 }
-
-export const SETTINGS_STORAGE_VERSION = 7;
 
 export const defaultRuntimeSettings: RuntimeSettings = {
   default_provider: 'auto',
