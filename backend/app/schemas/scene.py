@@ -395,11 +395,9 @@ class SettingsDefaultsResponse(BaseModel):
 class RenderRequest(BaseModel):
     problem_text: str = Field(min_length=1, max_length=MAX_PROBLEM_TEXT_CHARS)
     grade: int | None = Field(default=None, ge=10, le=12)
-    preferred_ai_provider: AiProvider | None = None
-    preferred_ai_model: str | None = Field(default=None, max_length=MAX_MODEL_ID_CHARS)
+    tier: Literal["tier1", "tier2", "tier3"] = Field(default="tier1")
     preferred_renderer: Renderer | None = None
     advanced_settings: AdvancedRenderSettings = Field(default_factory=AdvancedRenderSettings)
-    runtime_settings: RuntimeSettings | None = None
 
 
 class SceneRenderRequest(BaseModel):

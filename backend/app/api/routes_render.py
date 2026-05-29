@@ -30,19 +30,14 @@ async def render_problem(
 ) -> RenderResponse:
     await enforce_rate_limit(db, http_request, user, "render", 20 if user else 8, 60)
     await enforce_render_access(db, user)
-    log_render_choice(request)
     try:
         response = await asyncio.wait_for(build_problem_render_response(request, db), timeout=RENDER_TIMEOUT_SECONDS)
     except TimeoutError as error:
         raise api_error(
             status.HTTP_504_GATEWAY_TIMEOUT,
-            f"Render vượt quá {RENDER_TIMEOUT_SECONDS}s trước khi provider trả kết quả.",
+            f"Render vượt quá {RENDER_TIMEOUT_SECONDS}s.",
             "TIMEOUT",
-            [
-                "Thử lại sau vài giây hoặc đổi sang model nhẹ hơn.",
-                "Tắt reasoning layer hoặc giảm số model fallback nếu đang bật nhiều model.",
-                "Kiểm tra provider/model đang chọn có phản hồi ổn định không.",
-            ],
+            ["Thử lại sau hoặc chọn tier thấp hơn (tier1 nhanh hơn tier3)."],
         ) from error
     except (RuntimeError, ValueError, KeyError) as error:
         payload = render_error_payload(error)
@@ -51,30 +46,16 @@ async def render_problem(
         await RenderHistoryRepository(db).create(
             user.id,
             request.problem_text,
-            request.preferred_ai_provider,
-            request.preferred_ai_model,
+            None,  # preferred_ai_provider → None
+            None,  # preferred_ai_model → None
             response,
             render_request_json=json.dumps(sanitize_request_dump(request), ensure_ascii=False),
             advanced_settings_json=request.advanced_settings.model_dump_json(),
-            runtime_settings_json=json.dumps(sanitize_runtime_settings(request.runtime_settings), ensure_ascii=False),
+            runtime_settings_json=None,  # runtime_settings → None
             source_type="problem",
             renderer=response.scene.renderer,
         )
     return response
-
-
-def log_render_choice(request: RenderRequest) -> None:
-    runtime = request.runtime_settings
-    logger.info(
-        "Render request choice preferred_provider=%s preferred_model=%s runtime_default=%s runtime_openai_compat_model=%s runtime_router9_model=%s runtime_openrouter_model=%s runtime_nvidia_model=%s",
-        request.preferred_ai_provider or "<none>",
-        request.preferred_ai_model or "<none>",
-        runtime.default_provider if runtime else "<none>",
-        runtime.openai_compat.model if runtime and runtime.openai_compat else "<none>",
-        runtime.router9.model if runtime and runtime.router9 else "<none>",
-        runtime.openrouter.model if runtime and runtime.openrouter else "<none>",
-        runtime.nvidia.model if runtime and runtime.nvidia else "<none>",
-    )
 
 
 async def build_problem_render_response(request: RenderRequest, db: DatabaseClient) -> RenderResponse:
@@ -85,10 +66,8 @@ async def build_problem_render_response(request: RenderRequest, db: DatabaseClie
     scene, warnings = await extract_scene(
         request.problem_text,
         request.grade,
-        request.preferred_ai_provider,
-        request.preferred_ai_model,
+        request.tier,
         request.advanced_settings,
-        request.runtime_settings,
         db=db,
     )
     if request.preferred_renderer is not None:
@@ -188,24 +167,5 @@ def sanitize_request_dump(request: RenderRequest | SceneRenderRequest) -> dict:
     return data
 
 
-def sanitize_runtime_settings(runtime_settings: object) -> dict | None:
-    if runtime_settings is None or not hasattr(runtime_settings, "model_dump"):
-        return None
-    sanitized = sanitize_public_runtime_settings(runtime_settings)
-    return sanitized.model_dump(mode="json", exclude_none=True) if sanitized is not None else None
-
-
-def sanitize_public_runtime_settings(runtime_settings: object):
-    if runtime_settings is None or not hasattr(runtime_settings, "model_dump"):
-        return None
-    data = runtime_settings.model_dump(mode="json")
-    return type(runtime_settings).model_validate(
-        {
-            "default_provider": data.get("default_provider"),
-            "openrouter": {"model": (data.get("openrouter") or {}).get("model")},
-            "nvidia": {"model": (data.get("nvidia") or {}).get("model")},
-            "ollama": {"model": (data.get("ollama") or {}).get("model")},
-            "openai_compat": {"model": (data.get("openai_compat") or {}).get("model")},
-            "router9": {"model": (data.get("router9") or {}).get("model")},
-        }
-    )
+def sanitize_request_dump(request: RenderRequest) -> dict:
+    return request.model_dump(mode="json", exclude={"advanced_settings"})

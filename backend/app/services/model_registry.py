@@ -530,6 +530,41 @@ def resolve_task_profile(registry: ModelRegistry, task: str, preferred_provider:
     return TaskProfile(task, provider_id, model_id, fallbacks)
 
 
+def resolve_tier_profile(
+    registry: ModelRegistry,
+    task: str,
+    tier: str,
+) -> TaskProfile | None:
+    """
+    Resolve task profile với tier cụ thể.
+    Trả về profile từ `{task}_{tier}`.
+    """
+    task_key = f"{task}_{tier}"
+    profile = registry.task_profiles.get(task_key)
+    if not profile:
+        return None
+
+    provider_id = profile.provider_id
+    if provider_id == "auto":
+        default_provider = registry.settings.get("default_provider")
+        provider_id = default_provider if isinstance(default_provider, str) and provider_is_enabled(registry, default_provider) else None
+
+    if not provider_id or not provider_is_enabled(registry, provider_id):
+        return None
+
+    model_id = profile.model_id
+    if not model_id:
+        provider = registry.providers.get(provider_id)
+        model_id = effective_provider_default_model(registry, provider_id, provider.default_model_id if provider else "")
+
+    if model_id and not model_is_allowed(registry, provider_id, model_id):
+        model_id = effective_provider_default_model(registry, provider_id, "")
+
+    fallbacks = _resolve_profile_fallbacks(registry, profile.fallbacks, provider_id)
+
+    return TaskProfile(task_key, provider_id, model_id, fallbacks)
+
+
 def _resolve_profile_fallbacks(registry: ModelRegistry, fallbacks: list[str], primary_provider_id: str) -> list[str]:
     resolved: list[str] = []
     for fallback in fallbacks:
