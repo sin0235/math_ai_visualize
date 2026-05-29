@@ -9451,7 +9451,7 @@ button.analyzer-guide-label:hover {
   --trig-viz-h: min(400px, 32vw);
   position: relative;
   display: grid;
-  grid-template-columns: minmax(360px, 1fr) minmax(520px, 1.12fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.12fr);
   gap: clamp(10px, 1.4vw, 16px);
   align-items: start;
 }

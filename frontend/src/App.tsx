@@ -361,6 +361,28 @@ export default function App() {
       }
     : undefined;
 
+  // Khi thao tác workspace (render/OCR) thất bại, request có thể fail ở tầng mạng khiến
+  // không nhận được response 503 MAINTENANCE_MODE. Endpoint settings/defaults không bị
+  // enforce_enabled chặn nên vẫn cho biết trạng thái bảo trì thực tế để báo đúng cho người dùng.
+  async function reportWorkspaceError(title: string, apiError: ApiError, fallbackSuggestion: string) {
+    try {
+      const fresh = await getSettingsDefaults();
+      if (fresh.feature_flags?.maintenance_mode) {
+        setSettingsDefaults(fresh);
+        showNotification(
+          'Hệ thống đang bảo trì',
+          fresh.feature_flags.maintenance_message || 'Hệ thống đang tạm bảo trì, vui lòng quay lại sau.',
+          [],
+          'warning',
+        );
+        return;
+      }
+    } catch {
+      // Không lấy được trạng thái bảo trì thì giữ nguyên thông báo lỗi gốc bên dưới.
+    }
+    showApiError(title, apiError, fallbackSuggestion);
+  }
+
   async function handleOcrClipboardImage() {
     if (!navigator.clipboard?.read) {
       const message = 'Trình duyệt chưa hỗ trợ đọc ảnh từ clipboard.';
@@ -380,7 +402,7 @@ export default function App() {
       showNotification('OCR thất bại', message);
     } catch (caught) {
       const apiError = toApiError(caught, 'Không đọc được ảnh từ clipboard.');
-      showApiError('OCR thất bại', apiError, 'Hãy kiểm tra ảnh có rõ chữ không, model OCR đã chọn có hỗ trợ ảnh không, hoặc thử provider/model khác.');
+      await reportWorkspaceError('OCR thất bại', apiError, 'Hãy kiểm tra ảnh có rõ chữ không, model OCR đã chọn có hỗ trợ ảnh không, hoặc thử provider/model khác.');
     }
   }
 
@@ -419,7 +441,7 @@ export default function App() {
       setProblemText(response.text.trim());
     } catch (caught) {
       const apiError = toApiError(caught, 'Không thể OCR ảnh đề bài.');
-      showApiError('OCR thất bại', apiError, 'Hãy kiểm tra ảnh có rõ chữ không, model OCR đã chọn có hỗ trợ ảnh không, hoặc thử provider/model khác.');
+      await reportWorkspaceError('OCR thất bại', apiError, 'Hãy kiểm tra ảnh có rõ chữ không, model OCR đã chọn có hỗ trợ ảnh không, hoặc thử provider/model khác.');
     } finally {
       ocrInFlightRef.current = false;
       setOcrLoading(false);
@@ -449,7 +471,7 @@ export default function App() {
       showWarnings(response.warnings);
     } catch (caught) {
       const apiError = toApiError(caught, 'Không thể dựng hình từ đề bài này.');
-      showApiError('Dựng hình thất bại', apiError, 'Hãy thử mức độ chất lượng khác hoặc viết đề bài rõ hơn.');
+      await reportWorkspaceError('Dựng hình thất bại', apiError, 'Hãy thử mức độ chất lượng khác hoặc viết đề bài rõ hơn.');
     } finally {
       setLoading(false);
     }
