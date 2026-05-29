@@ -35,7 +35,7 @@ type CrossSectionProps = {
 export function RevolutionThreeView(props: SurfaceProps) {
   return (
     <div className="csim-three-card">
-      <Canvas camera={{ position: [6.4, 4.1, 6.9], fov: 45 }} gl={{ antialias: true, alpha: false }} dpr={[1, 2]} className="csim-three-canvas" onCreated={({ gl }) => gl.setClearColor('#f6f6f4', 1)}>
+      <Canvas camera={{ position: [5, 3.2, 5.4], fov: 45 }} gl={{ antialias: true, alpha: false }} dpr={[1, 2]} className="csim-three-canvas" onCreated={({ gl }) => gl.setClearColor('#f6f6f4', 1)}>
         <color attach="background" args={["#f6f6f4"]} />
         <ambientLight intensity={0.9} />
         <directionalLight position={[5, 8, 6]} intensity={1.1} />
