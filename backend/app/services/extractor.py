@@ -6,7 +6,7 @@ from typing import Any, Callable
 
 from pydantic import ValidationError
 
-from app.core.config import Settings
+from app.core.config import Settings, get_settings
 from app.schemas.scene import AdvancedRenderSettings, MathScene, RuntimeSettings, SceneView
 from app.db.session import DatabaseClient
 from app.services.ai_fallback import explicit_model_for_provider, provider_configured, text_model_candidates
