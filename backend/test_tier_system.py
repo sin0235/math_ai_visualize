@@ -10,7 +10,7 @@ async def test_tier_system():
     print("=== TEST 1: Schema validation ===")
     from fastapi import HTTPException
 
-    from app.schemas.auth import SystemAiTierProfiles, SystemSettingRequest
+    from app.schemas.auth import SystemAiProfiles, SystemAiTierProfiles, SystemSettingRequest
     from app.schemas.scene import RenderRequest
 
     profiles = SystemAiTierProfiles(
@@ -90,7 +90,7 @@ async def test_tier_system():
     print("✓ Migration cleanup: removed non-render tier rows")
 
     print("\n=== TEST 3: Service layer ===")
-    from app.services.admin_settings import sync_ai_tier_profiles_to_registry
+    from app.services.admin_settings import sync_ai_profiles_to_registry, sync_ai_tier_profiles_to_registry
 
     await sync_ai_tier_profiles_to_registry(db, legacy_profiles.model_dump(), None)
     rows = await db.fetch_all("SELECT task, provider_id, model_id, fallbacks_json FROM ai_task_profiles WHERE task LIKE '%tier%' ORDER BY task")
@@ -108,6 +108,22 @@ async def test_tier_system():
     assert tier2["model_id"] == "balanced-model"
     assert json.loads(tier2["fallbacks_json"]) == ["support-model"]
     print("✓ Sync: default_model is stored as tier primary model")
+
+    await sync_ai_profiles_to_registry(
+        db,
+        SystemAiProfiles(
+            version=1,
+            geometry_reasoning={"provider": "router9", "model": "reasoning-model", "fallbacks": ["should-not-render"]},
+        ).model_dump(),
+        None,
+    )
+    render_profile = await db.fetch_one("SELECT task FROM ai_task_profiles WHERE task = 'render'")
+    reasoning_profile = await db.fetch_one("SELECT provider_id, model_id, fallbacks_json FROM ai_task_profiles WHERE task = 'reasoning'")
+    assert render_profile is None
+    assert reasoning_profile["provider_id"] == "router9"
+    assert reasoning_profile["model_id"] == "reasoning-model"
+    assert json.loads(reasoning_profile["fallbacks_json"]) == []
+    print("✓ Sync: AI geometry profile does not create or override render profile")
 
     print("\n=== TEST 4: API validation ===")
     from app.api.routes_admin import validate_ai_tier_profiles_rules

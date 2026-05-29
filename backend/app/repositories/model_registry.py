@@ -38,6 +38,9 @@ class ModelRegistryRepository:
             """
         )
 
+    async def delete_legacy_render_profile(self) -> None:
+        await self.db.execute("DELETE FROM ai_task_profiles WHERE task = 'render'")
+
     async def list_model_settings(self) -> list[Any]:
         return await self.db.fetch_all("SELECT key, value_json FROM ai_model_settings")
 

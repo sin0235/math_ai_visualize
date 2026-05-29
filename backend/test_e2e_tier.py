@@ -78,6 +78,7 @@ async def test_e2e():
     await db.execute("INSERT INTO ai_models (provider_id, id, label, enabled, allowed) VALUES ('router9', 'test-model-fast', 'Fast Model', 1, 1)")
     await db.execute("INSERT INTO ai_models (provider_id, id, label, enabled, allowed) VALUES ('router9', 'test-model-balanced', 'Balanced Model', 1, 1)")
     await db.execute("INSERT INTO ai_models (provider_id, id, label, enabled, allowed) VALUES ('router9', 'test-model-best', 'Best Model', 1, 1)")
+    await db.execute("INSERT INTO ai_models (provider_id, id, label, enabled, allowed) VALUES ('openrouter', 'wrong-render', 'Wrong Render', 1, 1)")
 
     # Chạy migration
     migration_sql = (Path(__file__).resolve().parents[1] / 'migrations/0009_ai_tier_profiles.sql').read_text()
@@ -130,8 +131,36 @@ async def test_e2e():
     assert not any(task.startswith("reasoning_tier") or task.startswith("solver_explanation_tier") for task in registry.task_profiles)
     print("✓ Tier2 resolves only render model pool; reasoning/solver tier profiles absent\n")
 
+    print("5. Runtime settings keep render on tier candidates...")
+    await db.execute("INSERT INTO ai_task_profiles (task, provider_id, model_id, fallbacks_json) VALUES ('render', 'openrouter', 'wrong-render', '[]')")
+    from app.schemas.scene import AdvancedRenderSettings, RuntimeSettings
+    from app.services import extractor as extractor_module
+
+    calls: list[tuple[str, str | None]] = []
+    original_extract = extractor_module._extract_with_provider
+
+    async def fake_extract(provider, settings, problem_text, grade, reasoning_layer, preferred_ai_model=None, **kwargs):
+        calls.append((provider, preferred_ai_model))
+        return extractor_module.extract_scene_mock(problem_text, grade).model_dump(mode="json")
+
+    extractor_module._extract_with_provider = fake_extract
+    try:
+        await extractor_module.extract_scene(
+            "Cho tam giác ABC",
+            tier="tier2",
+            advanced_settings=AdvancedRenderSettings(reasoning_layer="off"),
+            db=db,
+            runtime_settings=RuntimeSettings(default_provider="openrouter"),
+        )
+    finally:
+        extractor_module._extract_with_provider = original_extract
+
+    assert calls and calls[0] == ("router9", "test-model-balanced")
+    assert await db.fetch_one("SELECT task FROM ai_task_profiles WHERE task = 'render'") is None
+    print("✓ Runtime settings do not bypass tier model; legacy render profile cleaned\n")
+
     # Test RenderRequest schema
-    print("5. Test RenderRequest schema...")
+    print("6. Test RenderRequest schema...")
     from app.schemas.scene import RenderRequest
 
     # Test với tier1
@@ -152,7 +181,7 @@ async def test_e2e():
     print()
 
     # Test extract_scene signature (không gọi thật vì cần API key)
-    print("6. Test extract_scene signature...")
+    print("7. Test extract_scene signature...")
     from app.services.extractor import extract_scene
     import inspect
 

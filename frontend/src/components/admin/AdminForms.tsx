@@ -774,7 +774,6 @@ export function AdminAiProfilesForm({ value, aiSettings, defaults, onSave, onToa
   const solver = getAiTaskProfile(value.solver_explanation);
   const ocr = getAiTaskProfile(value.ocr);
   const [geometryModel, setGeometryModel] = useState(formatProfileModelId(geometry.provider, geometry.model));
-  const [geometryFallbacks, setGeometryFallbacks] = useState<string[]>(geometry.fallbacks);
   const [solverModel, setSolverModel] = useState(formatProfileModelId(solver.provider, solver.model));
   const [solverFallbacks, setSolverFallbacks] = useState<string[]>(solver.fallbacks);
   const [ocrModel, setOcrModel] = useState(formatProfileModelId(ocr.provider, ocr.model));
@@ -787,7 +786,6 @@ export function AdminAiProfilesForm({ value, aiSettings, defaults, onSave, onToa
     const nextSolver = getAiTaskProfile(value.solver_explanation);
     const nextOcr = getAiTaskProfile(value.ocr);
     setGeometryModel(formatProfileModelId(nextGeometry.provider, nextGeometry.model));
-    setGeometryFallbacks(nextGeometry.fallbacks);
     setSolverModel(formatProfileModelId(nextSolver.provider, nextSolver.model));
     setSolverFallbacks(nextSolver.fallbacks);
     setOcrModel(formatProfileModelId(nextOcr.provider, nextOcr.model));
@@ -824,8 +822,8 @@ export function AdminAiProfilesForm({ value, aiSettings, defaults, onSave, onToa
     return combined;
   }
 
-  function updateFallbacks(kind: 'geometry' | 'solver' | 'ocr', modelId: string, checked: boolean) {
-    const setter = kind === 'geometry' ? setGeometryFallbacks : kind === 'solver' ? setSolverFallbacks : setOcrFallbacks;
+  function updateFallbacks(kind: 'solver' | 'ocr', modelId: string, checked: boolean) {
+    const setter = kind === 'solver' ? setSolverFallbacks : setOcrFallbacks;
     setter((current) => checked ? [...new Set([...current, modelId])] : current.filter((item) => item !== modelId));
   }
 
@@ -835,7 +833,7 @@ export function AdminAiProfilesForm({ value, aiSettings, defaults, onSave, onToa
       const geometry = parseProfileModelId(geometryModel);
       const solver = parseProfileModelId(solverModel);
       const ocr = parseProfileModelId(ocrModel);
-      await onSave({ version: 1, geometry_reasoning: { provider: geometry.provider, model: geometry.model, fallbacks: geometryFallbacks }, solver_explanation: { provider: solver.provider, model: solver.model, fallbacks: solverFallbacks }, ocr: { provider: ocr.provider, model: ocr.model, fallbacks: ocrFallbacks } });
+      await onSave({ version: 1, geometry_reasoning: { provider: geometry.provider, model: geometry.model, fallbacks: [] }, solver_explanation: { provider: solver.provider, model: solver.model, fallbacks: solverFallbacks }, ocr: { provider: ocr.provider, model: ocr.model, fallbacks: ocrFallbacks } });
       onToast?.('Hồ sơ AI', 'Đã lưu hồ sơ AI.', 'info');
     } catch (error) {
       onToast?.('Hồ sơ AI', getErrorMessage(error, 'Không thể lưu hồ sơ AI.'), 'error');
@@ -846,12 +844,11 @@ export function AdminAiProfilesForm({ value, aiSettings, defaults, onSave, onToa
 
   return (
     <section className="admin-settings-section"><h4>Hồ sơ AI</h4><div className="admin-field-grid">
-      <label className="field-label">Model hình học<select value={geometryModel} onChange={(event) => setGeometryModel(event.target.value)} disabled={saving}><option value="">Chọn model từ allowlist</option>{modelOptions(geometryModel, geometryFallbacks).map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.label}</option>)}</select></label>
+      <label className="field-label">Model hình học<select value={geometryModel} onChange={(event) => setGeometryModel(event.target.value)} disabled={saving}><option value="">Chọn model từ allowlist</option>{modelOptions(geometryModel).map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.label}</option>)}</select></label>
       <label className="field-label">Model diễn giải lời giải<select value={solverModel} onChange={(event) => setSolverModel(event.target.value)} disabled={saving}><option value="">Chọn model từ allowlist</option>{modelOptions(solverModel, solverFallbacks).map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.label}</option>)}</select></label>
       <label className="field-label">Model OCR<select value={ocrModel} onChange={(event) => setOcrModel(event.target.value)} disabled={saving}><option value="">Chọn model từ allowlist</option>{modelOptions(ocrModel, ocrFallbacks).map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.label}</option>)}</select></label>
     </div>
     <div className="admin-model-fallback-grid">
-      <ModelFallbackChecklist title="Model dự phòng hình học" options={fallbackModelOptions(geometryModel, geometryFallbacks)} selected={geometryFallbacks} onToggle={(modelId, checked) => updateFallbacks('geometry', modelId, checked)} disabled={saving} />
       <ModelFallbackChecklist title="Model dự phòng diễn giải lời giải" options={fallbackModelOptions(solverModel, solverFallbacks)} selected={solverFallbacks} onToggle={(modelId, checked) => updateFallbacks('solver', modelId, checked)} disabled={saving} />
       <ModelFallbackChecklist title="Model dự phòng OCR" options={fallbackModelOptions(ocrModel, ocrFallbacks)} selected={ocrFallbacks} onToggle={(modelId, checked) => updateFallbacks('ocr', modelId, checked)} disabled={saving} />
     </div>

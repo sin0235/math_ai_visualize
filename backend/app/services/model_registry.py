@@ -175,7 +175,6 @@ async def seed_model_registry(db: DatabaseClient, settings: Settings) -> None:
     ocr_provider = legacy.ocr.provider if legacy else ("router9" if settings.router9_ocr_model else "openrouter")
     ocr_model = legacy.ocr.model if legacy else (settings.router9_ocr_model or settings.openrouter_vision_model)
     for task in TIERED_TASKS:
-        await save_task_profile(db, task, default_provider, "", [])
         for tier in TIER_KEYS:
             await save_task_profile(db, f"{task}_{tier}", default_provider, "", [])
     await save_task_profile(db, "ocr", ocr_provider, ocr_model or "", [])
@@ -329,7 +328,6 @@ async def set_model_setting(db: DatabaseClient, key: str, value: Any) -> None:
 
 async def ensure_task_profiles(db: DatabaseClient, settings: Settings) -> None:
     defaults = {
-        "render": (settings.ai_provider, "", []),
         "reasoning": (settings.ai_provider, "", []),
         "solver_explanation": (settings.ai_provider, "", []),
         "ocr": ("router9" if settings.router9_ocr_model else "openrouter", settings.router9_ocr_model or settings.openrouter_vision_model, []),
@@ -339,6 +337,7 @@ async def ensure_task_profiles(db: DatabaseClient, settings: Settings) -> None:
             defaults[f"{task}_{tier}"] = (settings.ai_provider, "", [])
     repo = ModelRegistryRepository(db)
     await repo.delete_unsupported_tier_profiles()
+    await repo.delete_legacy_render_profile()
     for task, (provider_id, model_id, fallbacks) in defaults.items():
         if not await repo.task_profile_exists(task):
             await save_task_profile(db, task, provider_id, model_id, fallbacks)
@@ -443,7 +442,6 @@ def registry_from_settings(settings: Settings) -> ModelRegistry:
         for provider_id, data in seed.items()
     }
     task_profiles = {
-        "render": TaskProfile("render", settings.ai_provider, "", []),
         "reasoning": TaskProfile("reasoning", settings.ai_provider, "", []),
         "solver_explanation": TaskProfile("solver_explanation", settings.ai_provider, "", []),
         "ocr": TaskProfile("ocr", "router9" if settings.router9_ocr_model else "openrouter", settings.router9_ocr_model or settings.openrouter_vision_model, []),

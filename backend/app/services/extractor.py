@@ -93,7 +93,7 @@ async def extract_scene(
 
     scene_sys_prompt, reasoning_sys_prompt = await get_system_prompts(db)
 
-    legacy_override = preferred_ai_provider is not None or preferred_ai_model is not None or runtime_settings is not None
+    legacy_override = preferred_ai_provider is not None or preferred_ai_model is not None
     if not legacy_override:
         render_candidates = resolve_render_tier_candidates(registry, tier)
         reasoning_profile = resolve_task_profile(registry, "reasoning")

@@ -1384,7 +1384,7 @@ function adminAiProfilesValue(value: unknown, defaults: SettingsDefaults | null)
   const data = value && typeof value === 'object' ? value as Record<string, unknown> : {};
   const profiles = defaults?.registry_task_profiles ?? [];
   const byTask = Object.fromEntries(profiles.map((profile) => [profile.task, profile]));
-  const geometry = byTask.reasoning ?? byTask.render;
+  const geometry = byTask.reasoning;
   const solver = byTask.solver_explanation;
   const ocr = byTask.ocr;
   if (Object.keys(data).length === 0) {
