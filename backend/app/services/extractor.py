@@ -19,7 +19,7 @@ from app.services.openrouter_client import OpenRouterClient
 from app.services.router9_bootstrap import select_router9_render_model_ids_from_ids
 from app.services.router9_client import Router9Client
 from app.services.provider_logging import redact_sensitive
-from app.services.model_registry import load_model_registry, registry_from_settings, resolve_effective_settings, resolve_task_profile, resolve_tier_profile
+from app.services.model_registry import load_model_registry, registry_from_settings, resolve_effective_settings, resolve_render_tier_candidates, resolve_task_profile
 from app.services.solid_presets import equilateral_triangle, rectangular_box, square_pyramid, triangular_prism, triangular_pyramid
 
 _HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
@@ -94,31 +94,26 @@ async def extract_scene(
     scene_sys_prompt, reasoning_sys_prompt = await get_system_prompts(db)
 
     legacy_override = preferred_ai_provider is not None or preferred_ai_model is not None or runtime_settings is not None
-    render_profile = None if legacy_override else resolve_tier_profile(registry, "render", tier)
-    reasoning_profile = None if legacy_override else resolve_tier_profile(registry, "reasoning", tier)
-
-    if render_profile is not None:
+    if not legacy_override:
+        render_candidates = resolve_render_tier_candidates(registry, tier)
+        reasoning_profile = resolve_task_profile(registry, "reasoning")
+        reasoning_provider = _normalize_provider_alias(reasoning_profile.provider_id) if reasoning_profile else None
+        reasoning_model = reasoning_profile.model_id if reasoning_profile else None
         reasoning_plan: dict | None = None
-        if use_two_stage and reasoning_profile:
-            reasoning_plan = await _run_reasoning_stage_with_tier(
+        if use_two_stage:
+            reasoning_plan = await _run_reasoning_stage(
                 settings, problem_text, grade,
-                reasoning_profile,
+                reasoning_provider, reasoning_model,
                 warnings, system_prompt=reasoning_sys_prompt,
             )
             if reasoning_plan is not None:
                 warnings.append("Đã hoàn thành tầng suy luận (reasoning layer).")
 
-        provider = render_profile.provider_id
-        models = [render_profile.model_id] if render_profile.model_id else []
-        models.extend(render_profile.fallbacks)
-        if not models:
+        if not render_candidates:
             warnings.append(f"Tier {tier} chưa có model khả dụng; đang dùng mock extractor.")
             return extract_scene_mock(problem_text, grade), warnings
 
-        for model in models:
-            if not model:
-                continue
-
+        for candidate in render_candidates:
             remaining = _render_budget_remaining(started_at)
             if remaining < _RENDER_MIN_ATTEMPT_SECONDS:
                 raise RuntimeError(_format_tier_render_failure(f"Tier {tier} đã gần hết thời gian.", attempts))
@@ -127,9 +122,9 @@ async def extract_scene(
             try:
                 scene_json = await asyncio.wait_for(
                     _extract_with_provider(
-                        provider, settings, problem_text, grade,
+                        candidate.provider_id, settings, problem_text, grade,
                         render_settings.reasoning_layer,
-                        preferred_ai_model=model,
+                        preferred_ai_model=candidate.model_id,
                         reasoning_plan=reasoning_plan,
                         system_prompt=scene_sys_prompt,
                     ),
@@ -140,12 +135,12 @@ async def extract_scene(
                 warnings.extend(cas_warnings)
                 return scene, warnings
             except TimeoutError:
-                attempts.append(RenderAttempt(provider, model, f"timeout after {attempt_timeout:.0f}s"))
+                attempts.append(RenderAttempt(candidate.provider_id, candidate.model_id, f"timeout after {attempt_timeout:.0f}s"))
             except (RuntimeError, ValidationError, ValueError, KeyError) as error:
-                attempts.append(RenderAttempt(provider, model, str(error)))
+                attempts.append(RenderAttempt(candidate.provider_id, candidate.model_id, str(error)))
             except Exception as error:
                 message = str(error) or error.__class__.__name__
-                attempts.append(RenderAttempt(provider, model, message))
+                attempts.append(RenderAttempt(candidate.provider_id, candidate.model_id, message))
 
         warnings.extend(_render_attempt_warnings(attempts))
         raise RuntimeError(_format_tier_render_failure(f"Tất cả model trong tier {tier} đều lỗi.", attempts))
@@ -863,40 +858,6 @@ async def _reason_with_provider(provider: str, settings: Settings, problem_text:
     if provider == "openrouter_gpt_oss":
         return await OpenRouterClient(settings, model="openai/gpt-oss-120b:free", reasoning_enabled=True).reason_about_problem(problem_text, grade, system_prompt=system_prompt)
     raise RuntimeError(f"Provider không hỗ trợ reasoning: {provider}")
-
-
-async def _run_reasoning_stage_with_tier(
-    settings: Settings,
-    problem_text: str,
-    grade: int | None,
-    reasoning_profile: Any,
-    warnings: list[str],
-    system_prompt: str | None = None,
-) -> dict | None:
-    """Chạy reasoning stage với tier profile (không fallback cross-provider)"""
-    from app.services.model_registry import TaskProfile
-
-    if not isinstance(reasoning_profile, TaskProfile):
-        return None
-
-    provider = reasoning_profile.provider_id
-    models = [reasoning_profile.model_id] if reasoning_profile.model_id else []
-    models.extend(reasoning_profile.fallbacks)
-
-    for model in models:
-        if not model:
-            continue
-        try:
-            result = await asyncio.wait_for(
-                _reason_with_provider(provider, settings, problem_text, grade, model, system_prompt),
-                timeout=_REASONING_TOTAL_TIMEOUT_SECONDS,
-            )
-            return result
-        except Exception:
-            continue
-
-    warnings.append("Reasoning layer lỗi, tiếp tục với render trực tiếp.")
-    return None
 
 
 def _format_tier_render_failure(message: str, attempts: list[RenderAttempt]) -> str:

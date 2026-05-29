@@ -1,9 +1,8 @@
 """
 End-to-end test cho hệ thống 3-tier model AI
-Test với FastAPI TestClient (không cần start server thật)
+Test render-only tier profile flow without starting the server
 """
 import asyncio
-import json
 from pathlib import Path
 
 async def test_e2e():
@@ -62,6 +61,15 @@ async def test_e2e():
         )
     ''')
 
+    await db.execute('''
+        CREATE TABLE system_settings (
+          key TEXT PRIMARY KEY,
+          value_json TEXT NOT NULL,
+          updated_by TEXT,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
     # Seed providers
     await db.execute("INSERT INTO ai_providers (id, label, enabled) VALUES ('router9', '9router', 1)")
     await db.execute("INSERT INTO ai_providers (id, label, enabled) VALUES ('openrouter', 'OpenRouter', 1)")
@@ -90,22 +98,10 @@ async def test_e2e():
     from app.schemas.auth import SystemAiTierProfiles
 
     profiles = SystemAiTierProfiles(
-        version=2,
-        render={
-            'tier1': {'tier': 'tier1', 'provider': 'router9', 'model': 'test-model-fast', 'fallbacks': []},
-            'tier2': {'tier': 'tier2', 'provider': 'router9', 'model': 'test-model-balanced', 'fallbacks': ['test-model-fast']},
-            'tier3': {'tier': 'tier3', 'provider': 'router9', 'model': 'test-model-best', 'fallbacks': ['test-model-balanced']},
-        },
-        reasoning={
-            'tier1': {'tier': 'tier1', 'provider': 'router9', 'model': 'test-model-fast', 'fallbacks': []},
-            'tier2': {'tier': 'tier2', 'provider': 'router9', 'model': 'test-model-balanced', 'fallbacks': []},
-            'tier3': {'tier': 'tier3', 'provider': 'router9', 'model': 'test-model-best', 'fallbacks': []},
-        },
-        solver_explanation={
-            'tier1': {'tier': 'tier1', 'provider': 'router9', 'model': 'test-model-fast', 'fallbacks': []},
-            'tier2': {'tier': 'tier2', 'provider': 'router9', 'model': 'test-model-balanced', 'fallbacks': []},
-            'tier3': {'tier': 'tier3', 'provider': 'router9', 'model': 'test-model-best', 'fallbacks': []},
-        }
+        version=3,
+        tier1={"tier": "tier1", "models": ["router9/test-model-fast"]},
+        tier2={"tier": "tier2", "models": ["router9/test-model-balanced", "router9/test-model-fast"]},
+        tier3={"tier": "tier3", "models": ["router9/test-model-best"]},
     )
 
     await sync_ai_tier_profiles_to_registry(db, profiles.model_dump(), None)
@@ -115,13 +111,27 @@ async def test_e2e():
     print("3. Verify tier profiles in database...")
     rows = await db.fetch_all("SELECT task, provider_id, model_id, fallbacks_json FROM ai_task_profiles WHERE task LIKE '%tier%' ORDER BY task")
     print(f"✓ Found {len(rows)} tier profiles in database")
+    assert len(rows) == 3
+    assert [row["task"] for row in rows] == ["render_tier1", "render_tier2", "render_tier3"]
     for row in rows[:3]:
         print(f"  {row['task']}: provider={row['provider_id']}, model={row['model_id']}")
 
     print()
 
+    print("4. Resolve render tier candidates...")
+    from app.services.model_registry import load_model_registry, resolve_render_tier_candidates
+
+    registry = await load_model_registry(db)
+    tier2_candidates = resolve_render_tier_candidates(registry, "tier2")
+    assert [(item.provider_id, item.model_id) for item in tier2_candidates] == [
+        ("router9", "test-model-balanced"),
+        ("router9", "test-model-fast"),
+    ]
+    assert not any(task.startswith("reasoning_tier") or task.startswith("solver_explanation_tier") for task in registry.task_profiles)
+    print("✓ Tier2 resolves only render model pool; reasoning/solver tier profiles absent\n")
+
     # Test RenderRequest schema
-    print("4. Test RenderRequest schema...")
+    print("5. Test RenderRequest schema...")
     from app.schemas.scene import RenderRequest
 
     # Test với tier1
@@ -142,7 +152,7 @@ async def test_e2e():
     print()
 
     # Test extract_scene signature (không gọi thật vì cần API key)
-    print("5. Test extract_scene signature...")
+    print("6. Test extract_scene signature...")
     from app.services.extractor import extract_scene
     import inspect
 

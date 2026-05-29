@@ -1,6 +1,6 @@
 """
 Test script cho hệ thống 3-tier model AI
-Kiểm tra toàn bộ luồng từ schema → service → API
+Kiểm tra luồng render-only từ schema -> DB migration -> service -> API
 """
 import asyncio
 import json
@@ -8,31 +8,36 @@ from pathlib import Path
 
 async def test_tier_system():
     print("=== TEST 1: Schema validation ===")
-    from app.schemas.auth import SystemAiTierProfiles, AiTierProfile
+    from fastapi import HTTPException
+
+    from app.schemas.auth import SystemAiTierProfiles
     from app.schemas.scene import RenderRequest
 
-    # Test tier profiles schema
     profiles = SystemAiTierProfiles(
-        version=2,
-        render={
-            'tier1': {'tier': 'tier1', 'provider': 'router9', 'model': 'fast-model', 'fallbacks': []},
-            'tier2': {'tier': 'tier2', 'provider': 'router9', 'model': 'balanced-model', 'fallbacks': ['fast-model']},
-            'tier3': {'tier': 'tier3', 'provider': 'router9', 'model': 'best-model', 'fallbacks': ['balanced-model']},
-        },
-        reasoning={
-            'tier1': {'tier': 'tier1', 'provider': 'auto', 'model': '', 'fallbacks': []},
-            'tier2': {'tier': 'tier2', 'provider': 'auto', 'model': '', 'fallbacks': []},
-            'tier3': {'tier': 'tier3', 'provider': 'auto', 'model': '', 'fallbacks': []},
-        },
-        solver_explanation={
-            'tier1': {'tier': 'tier1', 'provider': 'auto', 'model': '', 'fallbacks': []},
-            'tier2': {'tier': 'tier2', 'provider': 'auto', 'model': '', 'fallbacks': []},
-            'tier3': {'tier': 'tier3', 'provider': 'auto', 'model': '', 'fallbacks': []},
-        }
+        version=3,
+        tier1={"tier": "tier1", "models": ["router9/fast-model"]},
+        tier2={"tier": "tier2", "models": ["router9/balanced-model"]},
+        tier3={"tier": "tier3", "models": ["router9/best-model"]},
     )
-    print(f"✓ SystemAiTierProfiles: render.tier2.model={profiles.render.tier2.model}")
+    print(f"✓ SystemAiTierProfiles: tier2.models={profiles.tier2.models}")
 
-    # Test RenderRequest schema
+    legacy_profiles = SystemAiTierProfiles.model_validate({
+        "version": 2,
+        "render": {
+            "tier1": {"tier": "tier1", "provider": "router9", "model": "fast-model", "fallbacks": []},
+            "tier2": {"tier": "tier2", "provider": "router9", "model": "balanced-model", "fallbacks": ["fast-model"]},
+            "tier3": {"tier": "tier3", "provider": "router9", "model": "best-model", "fallbacks": ["balanced-model"]},
+        },
+        "reasoning": {
+            "tier1": {"tier": "tier1", "provider": "router9", "model": "should-not-sync", "fallbacks": []},
+        },
+        "solver_explanation": {
+            "tier1": {"tier": "tier1", "provider": "router9", "model": "should-not-sync", "fallbacks": []},
+        },
+    })
+    assert legacy_profiles.tier2.models == ["router9/balanced-model", "router9/fast-model"]
+    print("✓ Legacy schema migrates only render tiers")
+
     req = RenderRequest(problem_text="Cho tam giác ABC", grade=10, tier="tier1")
     print(f"✓ RenderRequest: tier={req.tier}, no preferred_ai_provider/model")
 
@@ -67,55 +72,62 @@ async def test_tier_system():
                 raise
 
     rows = await db.fetch_all('SELECT task, tier FROM ai_task_profiles ORDER BY task')
-    print(f"✓ Migration: seeded {len(rows)} tier profiles")
+    assert [row["task"] for row in rows] == ["render_tier1", "render_tier2", "render_tier3"]
+    print(f"✓ Migration: seeded {len(rows)} render tier profiles")
+
+    await db.execute("INSERT INTO ai_task_profiles (task, provider_id, model_id, fallbacks_json, tier) VALUES ('reasoning_tier1', 'router9', 'bad', '[]', 'tier1')")
+    await db.execute("INSERT INTO ai_task_profiles (task, provider_id, model_id, fallbacks_json, tier) VALUES ('solver_explanation_tier1', 'router9', 'bad', '[]', 'tier1')")
+    cleanup_sql = (Path(__file__).resolve().parents[1] / 'migrations/0018_render_only_tier_profiles.sql').read_text()
+    for statement in [s.strip() for s in re.split(r';\s*(?=\n|$)', cleanup_sql) if s.strip()]:
+        await db.execute(statement)
+    rows = await db.fetch_all("SELECT task FROM ai_task_profiles WHERE task LIKE '%tier%' ORDER BY task")
+    assert [row["task"] for row in rows] == ["render_tier1", "render_tier2", "render_tier3"]
+    print("✓ Migration cleanup: removed non-render tier rows")
 
     print("\n=== TEST 3: Service layer ===")
     from app.services.admin_settings import sync_ai_tier_profiles_to_registry
 
-    # Sync tier profiles
-    await sync_ai_tier_profiles_to_registry(db, profiles.model_dump(), None)
-    rows = await db.fetch_all("SELECT task, provider_id, model_id FROM ai_task_profiles WHERE task LIKE '%tier%' ORDER BY task")
-    print(f"✓ Sync: {len(rows)} profiles synced")
-    for row in rows[:3]:
-        print(f"  {row['task']}: provider={row['provider_id']}, model={row['model_id']}")
-
-    # Test resolve_tier_profile (skip vì cần full registry setup)
-    print("✓ Resolve: skipped (requires full registry)")
+    await sync_ai_tier_profiles_to_registry(db, legacy_profiles.model_dump(), None)
+    rows = await db.fetch_all("SELECT task, provider_id, model_id, fallbacks_json FROM ai_task_profiles WHERE task LIKE '%tier%' ORDER BY task")
+    assert len(rows) == 3
+    assert all(row["task"].startswith("render_tier") for row in rows)
+    tier2 = next(row for row in rows if row["task"] == "render_tier2")
+    assert tier2["provider_id"] == "router9"
+    assert tier2["model_id"] == "balanced-model"
+    assert json.loads(tier2["fallbacks_json"]) == ["fast-model"]
+    print(f"✓ Sync: {len(rows)} render-only tier profiles synced")
 
     print("\n=== TEST 4: API validation ===")
     from app.api.routes_admin import validate_ai_tier_profiles_rules
 
-    try:
-        validate_ai_tier_profiles_rules(profiles)
-        print("✓ Validation: tier profiles valid")
-    except Exception as e:
-        print(f"✗ Validation failed: {e}")
+    validate_ai_tier_profiles_rules(profiles)
+    print("✓ Validation: render tier profiles valid")
 
-    # Test validation: tier không có model sẽ dùng provider/model mặc định
+    empty_profiles = SystemAiTierProfiles(version=3)
+    validate_ai_tier_profiles_rules(empty_profiles)
+    print("✓ Validation: accepts empty tier as render default fallback")
+
+    duplicate_profiles = SystemAiTierProfiles(
+        version=3,
+        tier1={"tier": "tier1", "models": ["router9/fast-model"]},
+        tier2={"tier": "tier2", "models": ["router9/fast-model"]},
+        tier3={"tier": "tier3", "models": []},
+    )
     try:
-        bad_profiles = SystemAiTierProfiles(
-            version=2,
-            render={
-                'tier1': {'tier': 'tier1', 'provider': 'auto', 'model': '', 'fallbacks': []},  # Không có model
-                'tier2': {'tier': 'tier2', 'provider': 'auto', 'model': '', 'fallbacks': []},
-                'tier3': {'tier': 'tier3', 'provider': 'auto', 'model': '', 'fallbacks': []},
-            },
-            reasoning={
-                'tier1': {'tier': 'tier1', 'provider': 'auto', 'model': '', 'fallbacks': []},
-                'tier2': {'tier': 'tier2', 'provider': 'auto', 'model': '', 'fallbacks': []},
-                'tier3': {'tier': 'tier3', 'provider': 'auto', 'model': '', 'fallbacks': []},
-            },
-            solver_explanation={
-                'tier1': {'tier': 'tier1', 'provider': 'auto', 'model': '', 'fallbacks': []},
-                'tier2': {'tier': 'tier2', 'provider': 'auto', 'model': '', 'fallbacks': []},
-                'tier3': {'tier': 'tier3', 'provider': 'auto', 'model': '', 'fallbacks': []},
-            }
-        )
-        validate_ai_tier_profiles_rules(bad_profiles)
-        print("✓ Validation: accepts empty tier as default-model profile")
-    except Exception as e:
-        print(f"✗ Validation should accept empty tier defaults - {str(e)[:80]}")
-        raise
+        validate_ai_tier_profiles_rules(duplicate_profiles)
+        raise AssertionError("Duplicate tier model should be rejected")
+    except HTTPException:
+        print("✓ Validation: duplicate model across tiers rejected")
+
+    ambiguous_profiles = SystemAiTierProfiles(
+        version=3,
+        tier1={"tier": "tier1", "models": ["fast-model"]},
+    )
+    try:
+        validate_ai_tier_profiles_rules(ambiguous_profiles)
+        raise AssertionError("Unprefixed tier model should be rejected")
+    except HTTPException:
+        print("✓ Validation: unprefixed tier model rejected")
 
     test_db.unlink()
     print("\n=== ALL TESTS PASSED ===")

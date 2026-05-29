@@ -399,53 +399,87 @@ class SystemAiProfiles(BaseModel):
 
 
 class AiTierProfile(BaseModel):
-    """Cấu hình model cho một tier cụ thể"""
+    """Nhóm model dựng hình cho một tier cụ thể."""
     model_config = ConfigDict(extra="forbid")
 
     tier: Literal["tier1", "tier2", "tier3"]
-    provider: str = Field(default="auto", max_length=64)
-    model: str = Field(default="", max_length=MAX_MODEL_ID_CHARS)
-    fallbacks: list[str] = Field(default_factory=list, max_length=MAX_STORED_MODELS)
+    models: list[str] = Field(default_factory=list, max_length=MAX_STORED_MODELS)
 
-    @field_validator("provider")
+    @model_validator(mode="before")
     @classmethod
-    def validate_provider(cls, value: str) -> str:
-        provider = value.strip()
-        if provider not in ADMIN_DEFAULT_PROVIDERS:
-            raise ValueError("Nhà cung cấp AI không hợp lệ.")
-        return provider
+    def migrate_legacy_profile(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        if "models" in value:
+            return value
+        provider = str(value.get("provider") or "auto").strip()
+        models: list[str] = []
+        model = str(value.get("model") or "").strip()
+        if model:
+            models.append(_format_tier_model_ref(provider, model))
+        fallbacks = value.get("fallbacks")
+        if isinstance(fallbacks, list):
+            models.extend(_format_tier_model_ref(provider, str(item).strip()) for item in fallbacks)
+        return {"tier": value.get("tier"), "models": models}
 
-    @field_validator("model")
+    @field_validator("models")
     @classmethod
-    def clean_model(cls, value: str) -> str:
-        return value.strip()
-
-    @field_validator("fallbacks")
-    @classmethod
-    def validate_fallbacks(cls, values: list[str]) -> list[str]:
+    def validate_models(cls, values: list[str]) -> list[str]:
         cleaned = [value.strip() for value in values]
         if any(not value for value in cleaned):
-            raise ValueError("Danh sách fallback không được chứa giá trị trống.")
-        return cleaned
+            raise ValueError("Danh sách model tier không được chứa giá trị trống.")
+        primary_provider = _tier_provider_from_model(cleaned[0]) if cleaned else None
+        deduped: list[str] = []
+        for value in cleaned:
+            if primary_provider and _tier_provider_from_model(value) is None:
+                value = f"{primary_provider}/{value}"
+            if value not in deduped:
+                deduped.append(value)
+        return deduped
 
 
-class AiTaskTierProfiles(BaseModel):
-    """Cấu hình 3 tier cho một task"""
+class SystemAiTierProfiles(BaseModel):
+    """Cấu hình tier model chỉ cho tác vụ dựng hình."""
     model_config = ConfigDict(extra="forbid")
 
+    version: int = 3
     tier1: AiTierProfile = Field(default_factory=lambda: AiTierProfile(tier="tier1"))
     tier2: AiTierProfile = Field(default_factory=lambda: AiTierProfile(tier="tier2"))
     tier3: AiTierProfile = Field(default_factory=lambda: AiTierProfile(tier="tier3"))
 
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_legacy_task_shape(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        if any(tier in value for tier in ("tier1", "tier2", "tier3")):
+            return value
+        render = value.get("render")
+        if not isinstance(render, dict):
+            return value
+        migrated: dict[str, Any] = {"version": 3}
+        for tier in ("tier1", "tier2", "tier3"):
+            migrated[tier] = render.get(tier, {"tier": tier, "models": []})
+        return migrated
 
-class SystemAiTierProfiles(BaseModel):
-    """Cấu hình tier cho các task hỗ trợ tier (không bao gồm OCR)"""
-    model_config = ConfigDict(extra="forbid")
 
-    version: int = 2
-    render: AiTaskTierProfiles = Field(default_factory=AiTaskTierProfiles)
-    reasoning: AiTaskTierProfiles = Field(default_factory=AiTaskTierProfiles)
-    solver_explanation: AiTaskTierProfiles = Field(default_factory=AiTaskTierProfiles)
+def _format_tier_model_ref(provider: str, model: str) -> str:
+    if not model:
+        return ""
+    if _tier_provider_from_model(model) is not None:
+        return model
+    if provider in {"openrouter", "nvidia", "ollama", "openai_compat", "router9"}:
+        return f"{provider}/{model}"
+    return model
+
+
+def _tier_provider_from_model(model: str) -> str | None:
+    for provider in ("openrouter", "nvidia", "ollama", "openai_compat", "router9"):
+        if model.startswith(f"{provider}/"):
+            return provider
+    if model.startswith("openai-compat/"):
+        return "openai_compat"
+    return None
 
 
 class AdminSummaryResponse(BaseModel):

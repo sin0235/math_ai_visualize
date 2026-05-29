@@ -28,7 +28,7 @@ PROVIDER_LABELS = {
     "router9": "9router",
 }
 TIER_KEYS = ("tier1", "tier2", "tier3")
-TIERED_TASKS = ("render", "reasoning", "solver_explanation")
+TIERED_TASKS = ("render",)
 
 
 @dataclass(frozen=True)
@@ -64,6 +64,12 @@ class TaskProfile:
     provider_id: str
     model_id: str
     fallbacks: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class TierModelCandidate:
+    provider_id: str
+    model_id: str
 
 
 @dataclass(frozen=True)
@@ -541,39 +547,44 @@ def resolve_task_profile(registry: ModelRegistry, task: str, preferred_provider:
     return TaskProfile(task, provider_id, model_id, fallbacks)
 
 
-def resolve_tier_profile(
-    registry: ModelRegistry,
-    task: str,
-    tier: str,
-) -> TaskProfile | None:
-    """
-    Resolve task profile với tier cụ thể.
-    Trả về profile từ `{task}_{tier}`.
-    """
-    task_key = f"{task}_{tier}"
-    profile = registry.task_profiles.get(task_key) or registry.task_profiles.get(task)
-    if not profile:
-        return None
+def resolve_render_tier_candidates(registry: ModelRegistry, tier: str) -> list[TierModelCandidate]:
+    profile = registry.task_profiles.get(f"render_{tier}")
+    if profile is None:
+        base_profile = resolve_task_profile(registry, "render")
+        return _task_profile_candidates(registry, base_profile) if base_profile else []
+    candidates = _task_profile_candidates(registry, profile)
+    if candidates:
+        return candidates
+    base_profile = resolve_task_profile(registry, "render")
+    return _task_profile_candidates(registry, base_profile) if base_profile else []
 
+
+def _task_profile_candidates(registry: ModelRegistry, profile: TaskProfile | None) -> list[TierModelCandidate]:
+    if profile is None:
+        return []
     provider_id = normalize_registry_provider_id(profile.provider_id)
     if provider_id == "auto":
         default_provider = registry.settings.get("default_provider")
         provider_id = default_provider if isinstance(default_provider, str) and provider_is_enabled(registry, default_provider) else None
-
     if not provider_id or not provider_is_enabled(registry, provider_id):
-        return None
+        return []
 
-    model_id = profile.model_id
+    candidates: list[TierModelCandidate] = []
+
+    model_id = normalize_model_for_provider(provider_id, profile.model_id) or ""
     if not model_id:
         provider = registry.providers.get(provider_id)
         model_id = effective_provider_default_model(registry, provider_id, provider.default_model_id if provider else "")
+    if model_id and model_is_allowed(registry, provider_id, model_id):
+        candidates.append(TierModelCandidate(provider_id, model_id))
 
-    if model_id and not model_is_allowed(registry, provider_id, model_id):
-        model_id = effective_provider_default_model(registry, provider_id, "")
-
-    fallbacks = _resolve_profile_fallbacks(registry, profile.fallbacks, provider_id, same_provider_only=True)
-
-    return TaskProfile(task_key, provider_id, model_id, fallbacks)
+    for fallback in profile.fallbacks:
+        fallback_provider, fallback_model = _fallback_provider_model(fallback, provider_id)
+        if fallback_model and model_is_allowed(registry, fallback_provider, fallback_model):
+            candidate = TierModelCandidate(fallback_provider, fallback_model)
+            if candidate not in candidates:
+                candidates.append(candidate)
+    return candidates
 
 
 def _resolve_profile_fallbacks(registry: ModelRegistry, fallbacks: list[str], primary_provider_id: str, *, same_provider_only: bool = False) -> list[str]:

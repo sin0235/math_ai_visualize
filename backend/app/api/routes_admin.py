@@ -34,7 +34,7 @@ from app.schemas.auth import (
 from app.schemas.feedback import AdminFeedbackResponse, AdminFeedbackUpdateRequest
 from app.schemas.scene import MathScene, ModelScanRequest, RenderPayload
 from app.services.admin_settings import build_database_diagnostics, normalize_provider_defaults, sync_ai_profiles_to_registry, sync_ai_settings_to_registry, sync_ai_tier_profiles_to_registry
-from app.services.model_provider import canonicalize_fallback_models, canonicalize_model_ref
+from app.services.model_provider import canonicalize_fallback_models, canonicalize_model_ref, explicit_provider_from_model
 from app.services.model_registry import resolve_effective_settings, save_provider_check
 from app.services.provider_ping import ADMIN_PING_PROVIDERS, ping_provider
 
@@ -449,22 +449,29 @@ def validate_ai_profiles_rules(profiles: SystemAiProfiles) -> None:
 
 
 def validate_ai_tier_profiles_rules(profiles: SystemAiTierProfiles) -> None:
-    """Validate tier profiles.
-
-    Empty model/fallback values are valid: the resolver then uses the selected
-    provider's default model, or the system default provider when provider=auto.
-    """
-    for task_name in ["render", "reasoning", "solver_explanation"]:
-        task_tiers = getattr(profiles, task_name)
-        for tier_name in ["tier1", "tier2", "tier3"]:
-            tier_profile = getattr(task_tiers, tier_name)
-            if tier_profile.provider not in ADMIN_DEFAULT_PROVIDERS:
+    """Validate render-only tier model pools."""
+    seen: dict[str, str] = {}
+    for tier_name in ["tier1", "tier2", "tier3"]:
+        tier_profile = getattr(profiles, tier_name)
+        for model_ref in tier_profile.models:
+            provider_id = explicit_provider_from_model(model_ref)
+            if provider_id is None:
                 raise HTTPException(
                     status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail=f"Nhà cung cấp AI không hợp lệ cho {task_name}.{tier_name}."
+                    detail=f"Model tier phải có dạng provider/model: {model_ref}",
                 )
-            validate_provider_model_pair(tier_profile.provider, tier_profile.model)
-            validate_profile_fallbacks(tier_profile.provider, tier_profile.fallbacks)
+            try:
+                ref = canonicalize_model_ref(provider_id, model_ref, strict=True, allow_auto=False)
+            except ValueError as error:
+                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)) from error
+            canonical = f"{ref.provider_id}/{ref.model_id}"
+            previous_tier = seen.get(canonical)
+            if previous_tier and previous_tier != tier_name:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"Model {canonical} đã nằm trong {previous_tier}, không thể chọn lại ở {tier_name}.",
+                )
+            seen[canonical] = tier_name
 
 
 def validate_provider_model_pair(provider_id: str, model_id: str) -> None:

@@ -277,6 +277,31 @@ function parseProfileModelId(value: string) {
   return { provider: 'openrouter', model: modelId };
 }
 
+function hasAdminProviderPrefix(modelId: string) {
+  return ['openrouter/', 'nvidia/', 'ollama/', 'openai_compat/', 'openai-compat/', 'router9/'].some((prefix) => modelId.startsWith(prefix));
+}
+
+function formatProfileFallbackModelId(provider: string, model: string) {
+  if (!model) return '';
+  return hasAdminProviderPrefix(model) ? model : formatProfileModelId(provider, model);
+}
+
+function adminProviderFromPrefixedModel(modelId: string) {
+  for (const provider of ['openrouter', 'nvidia', 'ollama', 'openai_compat', 'router9'] as const) {
+    if (modelId.startsWith(`${provider}/`)) return provider;
+  }
+  if (modelId.startsWith('openai-compat/')) return 'openai_compat';
+  return '';
+}
+
+function normalizeTierModelRefs(models: string[]) {
+  const primaryProvider = models.map(adminProviderFromPrefixedModel).find(Boolean) || '';
+  return models
+    .map((modelId) => modelId.trim())
+    .filter(Boolean)
+    .map((modelId) => hasAdminProviderPrefix(modelId) || !primaryProvider ? modelId : `${primaryProvider}/${modelId}`);
+}
+
 // --- Form Components ---
 
 export function AdminAiSettingsForm({ value, defaults, saving, onSave, onToast }: { value: Record<string, unknown>; defaults: SettingsDefaults | null; saving: boolean; onSave: (patch: Record<string, unknown>) => Promise<void>; onToast?: AdminToast }) {
@@ -840,12 +865,6 @@ function ModelFallbackChecklist({ title, options, selected, onToggle, disabled }
   );
 }
 
-const TIER_TASKS = [
-  { key: 'render', label: 'Dựng hình' },
-  { key: 'reasoning', label: 'Suy luận' },
-  { key: 'solver_explanation', label: 'Diễn giải lời giải' },
-] as const;
-
 const AI_PROFILE_PROVIDERS = ['openrouter', 'nvidia', 'ollama', 'openai_compat', 'router9'] as const;
 
 const TIER_LEVELS = [
@@ -854,47 +873,46 @@ const TIER_LEVELS = [
   { key: 'tier3', label: 'Tối đa' },
 ] as const;
 
-type TierTaskKey = (typeof TIER_TASKS)[number]['key'];
 type TierLevelKey = (typeof TIER_LEVELS)[number]['key'];
 
-function getTierProfile(value: unknown, tier: TierLevelKey) {
+function getTierModels(value: unknown, tier: TierLevelKey) {
   const data = value && typeof value === 'object' ? value as Record<string, unknown> : {};
-  const profile = getAiTaskProfile(data[tier]);
-  return { ...profile, tier };
+  const direct = data[tier];
+  if (direct && typeof direct === 'object') {
+    const directData = direct as Record<string, unknown>;
+    if (Array.isArray(directData.models)) return normalizeTierModelRefs(directData.models.map(String));
+    const directProfile = getAiTaskProfile(direct);
+    return [
+      formatProfileModelId(directProfile.provider, directProfile.model),
+      ...directProfile.fallbacks.map((model) => formatProfileFallbackModelId(directProfile.provider, model)),
+    ].filter(Boolean);
+  }
+  const legacyRender = data.render && typeof data.render === 'object' ? data.render as Record<string, unknown> : {};
+  const legacyProfile = getAiTaskProfile(legacyRender[tier]);
+  const legacyModels = [
+    formatProfileModelId(legacyProfile.provider, legacyProfile.model),
+    ...legacyProfile.fallbacks.map((model) => formatProfileFallbackModelId(legacyProfile.provider, model)),
+  ];
+  return legacyModels.filter(Boolean);
 }
 
 export function AdminAiTierProfilesForm({ value, aiSettings, defaults, onSave, onToast }: { value: Record<string, unknown>; aiSettings: Record<string, unknown>; defaults?: SettingsDefaults | null; onSave: (value: Record<string, unknown>) => Promise<void>; onToast?: AdminToast }) {
-  // State: model va fallbacks cho moi cap task-tier (9 cap)
-  const [models, setModels] = useState<Record<string, string>>({});
-  const [fallbacks, setFallbacks] = useState<Record<string, string[]>>({});
+  const [tierModels, setTierModels] = useState<Record<TierLevelKey, string[]>>({ tier1: [], tier2: [], tier3: [] });
   const [saving, setSaving] = useState(false);
   const settingsDefaults = mergeAdminProfileDefaults(defaults, adminSettingsToDefaults(aiSettings));
 
   function buildStateFromValue(source: Record<string, unknown>) {
-    const nextModels: Record<string, string> = {};
-    const nextFallbacks: Record<string, string[]> = {};
-    for (const task of TIER_TASKS) {
-      for (const level of TIER_LEVELS) {
-        const profile = getTierProfile(source[task.key], level.key);
-        const stateKey = `${task.key}_${level.key}`;
-        nextModels[stateKey] = formatProfileModelId(profile.provider, profile.model);
-        nextFallbacks[stateKey] = profile.fallbacks;
-      }
-    }
-    return { nextModels, nextFallbacks };
+    return Object.fromEntries(TIER_LEVELS.map((level) => [level.key, getTierModels(source, level.key)])) as Record<TierLevelKey, string[]>;
   }
 
   useEffect(() => {
-    const { nextModels, nextFallbacks } = buildStateFromValue(value);
-    setModels(nextModels);
-    setFallbacks(nextFallbacks);
+    setTierModels(buildStateFromValue(value));
   }, [value]);
 
-  function allProviderModelOptions(selectedModel: string, fallbackModels: string[] = [], providerFilter?: (typeof AI_PROFILE_PROVIDERS)[number] | null) {
+  function allProviderModelOptions(selectedModels: string[] = []) {
     const seen = new Set<string>();
     const combined: Array<{ id: string; label: string }> = [];
-    const providers = providerFilter ? AI_PROFILE_PROVIDERS.filter((provider) => provider === providerFilter) : AI_PROFILE_PROVIDERS;
-    providers.forEach((provider) => {
+    AI_PROFILE_PROVIDERS.forEach((provider) => {
       const providerDefaults = settingsDefaults[provider];
       const registryAllowed = settingsDefaults.registry_models
         ?.filter((model) => model.provider_id === provider && model.enabled && model.allowed)
@@ -907,58 +925,33 @@ export function AdminAiTierProfilesForm({ value, aiSettings, defaults, onSave, o
         if (!seen.has(option.id)) { seen.add(option.id); combined.push(option); }
       });
     });
-    [...fallbackModels, selectedModel].filter(Boolean).forEach((id) => {
-      if (providerFilter && parseProfileModelId(id).provider !== providerFilter) return;
+    selectedModels.filter(Boolean).forEach((id) => {
       if (!seen.has(id)) { seen.add(id); combined.push({ id, label: id }); }
     });
     return combined;
   }
 
-  function setModel(stateKey: string, modelId: string) {
-    setModels((current) => ({ ...current, [stateKey]: modelId }));
-    setFallbacks((current) => {
-      const selectedProvider = modelId ? parseProfileModelId(modelId).provider : null;
-      const nextFallbacks = selectedProvider
-        ? (current[stateKey] ?? []).filter((id) => parseProfileModelId(id).provider === selectedProvider)
-        : [];
-      return { ...current, [stateKey]: nextFallbacks };
+  function toggleTierModel(tier: TierLevelKey, modelId: string, checked: boolean) {
+    setTierModels((current) => {
+      const next: Record<TierLevelKey, string[]> = {
+        tier1: current.tier1.filter((id) => id !== modelId),
+        tier2: current.tier2.filter((id) => id !== modelId),
+        tier3: current.tier3.filter((id) => id !== modelId),
+      };
+      if (checked) next[tier] = [...next[tier], modelId];
+      return next;
     });
   }
 
-  function toggleFallback(stateKey: string, modelId: string, checked: boolean) {
-    const selectedModel = models[stateKey] ?? '';
-    if (!selectedModel) return;
-    const selectedProvider = parseProfileModelId(selectedModel).provider;
-    if (parseProfileModelId(modelId).provider !== selectedProvider) return;
-    setFallbacks((current) => {
-      const existing = current[stateKey] ?? [];
-      const next = checked ? [...new Set([...existing, modelId])] : existing.filter((item) => item !== modelId);
-      return { ...current, [stateKey]: next };
-    });
+  function allSelectedModels() {
+    return [...tierModels.tier1, ...tierModels.tier2, ...tierModels.tier3];
   }
 
   async function saveTierProfiles() {
     setSaving(true);
     try {
-      const payload: Record<string, unknown> = { version: 2 };
-      for (const task of TIER_TASKS) {
-        const taskValue: Record<string, unknown> = {};
-        for (const level of TIER_LEVELS) {
-          const stateKey = `${task.key}_${level.key}`;
-          const selectedModel = models[stateKey] ?? '';
-          const parsed = parseProfileModelId(selectedModel);
-          const selectedFallbacks = selectedModel
-            ? (fallbacks[stateKey] ?? []).filter((id) => parseProfileModelId(id).provider === parsed.provider)
-            : [];
-          taskValue[level.key] = {
-            tier: level.key,
-            provider: selectedModel ? parsed.provider : 'auto',
-            model: selectedModel ? parsed.model : '',
-            fallbacks: selectedFallbacks,
-          };
-        }
-        payload[task.key] = taskValue;
-      }
+      const payload: Record<string, unknown> = { version: 3 };
+      for (const level of TIER_LEVELS) payload[level.key] = { tier: level.key, models: tierModels[level.key] };
       await onSave(payload);
       onToast?.('Tier model', 'Đã lưu cấu hình tier.', 'info');
     } catch (error) {
@@ -970,47 +963,20 @@ export function AdminAiTierProfilesForm({ value, aiSettings, defaults, onSave, o
 
   return (
     <section className="admin-settings-section">
-      <h4>Cấu hình tier model</h4>
-      <p className="field-hint">Mỗi tác vụ có 3 mức chất lượng. Khi model chính lỗi, hệ thống chỉ thử các model dự phòng trong cùng tier. OCR không dùng tier (cấu hình ở Hồ sơ AI).</p>
-      {TIER_TASKS.map((task) => (
-        <div key={task.key} className="admin-tier-task">
-          <h5>{task.label}</h5>
-          <div className="admin-field-grid">
-            {TIER_LEVELS.map((level) => {
-              const stateKey = `${task.key}_${level.key}`;
-              const selectedModel = models[stateKey] ?? '';
-              return (
-                <label key={level.key} className="field-label">
-                  {level.label}
-                  <select value={selectedModel} onChange={(event) => setModel(stateKey, event.target.value)} disabled={saving}>
-                    <option value="">Dùng model mặc định</option>
-                    {allProviderModelOptions(selectedModel, fallbacks[stateKey] ?? []).map((modelItem) => (
-                      <option key={modelItem.id} value={modelItem.id}>{modelItem.label}</option>
-                    ))}
-                  </select>
-                </label>
-              );
-            })}
-          </div>
-          <div className="admin-model-fallback-grid">
-            {TIER_LEVELS.map((level) => {
-              const stateKey = `${task.key}_${level.key}`;
-              const selectedModel = models[stateKey] ?? '';
-              const selectedProvider = selectedModel ? parseProfileModelId(selectedModel).provider as (typeof AI_PROFILE_PROVIDERS)[number] : null;
-              return (
-                <ModelFallbackChecklist
-                  key={level.key}
-                  title={`Dự phòng ${level.label.toLowerCase()}`}
-                  options={selectedProvider ? allProviderModelOptions(selectedModel, fallbacks[stateKey] ?? [], selectedProvider) : []}
-                  selected={fallbacks[stateKey] ?? []}
-                  onToggle={(modelId, checked) => toggleFallback(stateKey, modelId, checked)}
-                  disabled={saving || !selectedModel}
-                />
-              );
-            })}
-          </div>
-        </div>
-      ))}
+      <h4>Tier model dựng hình</h4>
+      <p className="field-hint">Tier chỉ áp dụng cho tác vụ dựng hình. Mỗi model allowlist chỉ nằm trong một tier; tick model ở tier mới sẽ tự chuyển model khỏi tier cũ.</p>
+      <div className="admin-model-fallback-grid">
+        {TIER_LEVELS.map((level) => (
+          <ModelFallbackChecklist
+            key={level.key}
+            title={`${level.label} (${tierModels[level.key].length})`}
+            options={allProviderModelOptions(allSelectedModels())}
+            selected={tierModels[level.key]}
+            onToggle={(modelId, checked) => toggleTierModel(level.key, modelId, checked)}
+            disabled={saving}
+          />
+        ))}
+      </div>
       <button type="button" className="secondary-button" onClick={() => void saveTierProfiles()} disabled={saving} aria-busy={saving}>{saving ? 'Đang lưu...' : 'Lưu cấu hình tier'}</button>
     </section>
   );

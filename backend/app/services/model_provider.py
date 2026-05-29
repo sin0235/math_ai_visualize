@@ -24,6 +24,7 @@ class CanonicalModelRef:
 EXPLICIT_PROVIDER_PREFIXES = {
     "router9": ("router9/",),
     "openrouter": ("openrouter/",),
+    "nvidia": ("nvidia/",),
     "ollama": ("ollama/",),
     "openai_compat": ("openai_compat/", "openai-compat/"),
 }

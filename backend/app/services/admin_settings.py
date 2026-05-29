@@ -102,27 +102,21 @@ async def sync_ai_profiles_to_registry(db: DatabaseClient, value: dict, patch: d
 
 
 async def sync_ai_tier_profiles_to_registry(db: DatabaseClient, value: dict, patch: dict | None = None) -> None:
-    """Đồng bộ tier profiles từ admin UI vào ai_task_profiles (không bao gồm OCR)"""
+    """Đồng bộ tier model dựng hình từ admin UI vào ai_task_profiles."""
     from app.schemas.auth import SystemAiTierProfiles
 
     profiles = SystemAiTierProfiles.model_validate(value)
-    patch_keys = set(patch or value)
 
-    for task_name in ["render", "reasoning", "solver_explanation"]:
-        if task_name not in patch_keys:
-            continue
-
-        task_tiers = getattr(profiles, task_name)
-        for tier_name in ["tier1", "tier2", "tier3"]:
-            tier_profile = getattr(task_tiers, tier_name)
-            task_key = f"{task_name}_{tier_name}"
-            await save_task_profile(
-                db,
-                task_key,
-                tier_profile.provider,
-                tier_profile.model,
-                tier_profile.fallbacks
-            )
+    for tier_name in ["tier1", "tier2", "tier3"]:
+        tier_profile = getattr(profiles, tier_name)
+        primary = tier_profile.models[0] if tier_profile.models else ""
+        await save_task_profile(
+            db,
+            f"render_{tier_name}",
+            "auto",
+            primary,
+            tier_profile.models[1:],
+        )
 
 
 async def sync_ai_settings_to_registry(db: DatabaseClient, value: dict, patch: dict | None = None) -> None:

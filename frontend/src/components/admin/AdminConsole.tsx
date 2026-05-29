@@ -1323,21 +1323,61 @@ function adminAiSettingsValue(value: Record<string, unknown>, defaults: Settings
 
 function adminAiTierProfilesValue(value: unknown, defaults: SettingsDefaults | null) {
   const data = value && typeof value === 'object' ? value as Record<string, unknown> : {};
-  if (Object.keys(data).length > 0) return data;
+  if (Object.keys(data).length > 0) {
+    if ('tier1' in data || 'tier2' in data || 'tier3' in data) return data;
+    const legacyRender = data.render && typeof data.render === 'object' ? data.render as Record<string, unknown> : {};
+    return {
+      version: 3,
+      tier1: legacyTierValue(legacyRender.tier1, 'tier1'),
+      tier2: legacyTierValue(legacyRender.tier2, 'tier2'),
+      tier3: legacyTierValue(legacyRender.tier3, 'tier3'),
+    };
+  }
   const profiles = defaults?.registry_task_profiles ?? [];
   const byTask = Object.fromEntries(profiles.map((profile) => [profile.task, profile]));
-  const result: Record<string, unknown> = { version: 2 };
-  for (const task of ['render', 'reasoning', 'solver_explanation']) {
-    const tiers: Record<string, unknown> = {};
-    for (const tier of ['tier1', 'tier2', 'tier3']) {
-      const profile = byTask[`${task}_${tier}`];
-      tiers[tier] = profile
-        ? { tier, provider: profile.provider_id, model: profile.model_id, fallbacks: profile.fallbacks }
-        : { tier, provider: 'auto', model: '', fallbacks: [] };
-    }
-    result[task] = tiers;
+  const result: Record<string, unknown> = { version: 3 };
+  for (const tier of ['tier1', 'tier2', 'tier3']) {
+    const profile = byTask[`render_${tier}`];
+    result[tier] = profile
+      ? { tier, models: taskProfileModels(profile.provider_id, profile.model_id, profile.fallbacks) }
+      : { tier, models: [] };
   }
   return result;
+}
+
+function legacyTierValue(value: unknown, tier: string) {
+  const profile = value && typeof value === 'object' ? value as Record<string, unknown> : {};
+  const provider = typeof profile.provider === 'string' ? profile.provider : 'auto';
+  const model = typeof profile.model === 'string' ? profile.model : '';
+  const fallbacks = Array.isArray(profile.fallbacks) ? profile.fallbacks.map(String) : [];
+  return { tier, models: taskProfileModels(provider, model, fallbacks) };
+}
+
+function taskProfileModels(provider: string, model: string, fallbacks: string[]) {
+  const models: string[] = [];
+  if (model) models.push(formatAdminTierModelRef(provider, model));
+  for (const fallback of fallbacks) {
+    const modelRef = formatAdminTierFallbackModelRef(provider, fallback);
+    if (modelRef && !models.includes(modelRef)) models.push(modelRef);
+  }
+  return models;
+}
+
+function formatAdminTierModelRef(provider: string, model: string) {
+  if (!model) return '';
+  if (provider === 'openrouter' || provider === 'nvidia' || provider === 'ollama' || provider === 'openai_compat' || provider === 'router9') {
+    return model.startsWith(`${provider}/`) ? model : `${provider}/${model}`;
+  }
+  return model;
+}
+
+function formatAdminTierFallbackModelRef(provider: string, model: string) {
+  if (!model) return '';
+  return hasAdminTierProviderPrefix(model) ? model : formatAdminTierModelRef(provider, model);
+}
+
+function hasAdminTierProviderPrefix(model: string) {
+  return ['openrouter/', 'nvidia/', 'ollama/', 'openai_compat/', 'openai-compat/', 'router9/'].some((prefix) => model.startsWith(prefix));
 }
 
 function adminAiProfilesValue(value: unknown, defaults: SettingsDefaults | null) {
