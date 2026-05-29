@@ -6,7 +6,7 @@ from typing import Any, Callable
 
 from pydantic import ValidationError
 
-from app.core.config import Settings
+from app.core.config import Settings, get_settings
 from app.schemas.scene import AdvancedRenderSettings, MathScene, RuntimeSettings, SceneView
 from app.db.session import DatabaseClient
 from app.services.ai_fallback import explicit_model_for_provider, provider_configured, text_model_candidates
@@ -19,7 +19,7 @@ from app.services.openrouter_client import OpenRouterClient
 from app.services.router9_bootstrap import select_router9_render_model_ids_from_ids
 from app.services.router9_client import Router9Client
 from app.services.provider_logging import redact_sensitive
-from app.services.model_registry import load_model_registry, resolve_effective_settings, resolve_task_profile
+from app.services.model_registry import load_model_registry, resolve_effective_settings, resolve_task_profile, resolve_tier_profile
 from app.services.solid_presets import equilateral_triangle, rectangular_box, square_pyramid, triangular_prism, triangular_pyramid
 
 _HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
@@ -72,23 +72,25 @@ async def _build_render_settings(db: DatabaseClient | None, runtime_settings: Ru
 async def extract_scene(
     problem_text: str,
     grade: int | None = None,
-    preferred_ai_provider: str | None = None,
-    preferred_ai_model: str | None = None,
+    tier: str = "tier1",
     advanced_settings: AdvancedRenderSettings | None = None,
-    runtime_settings: RuntimeSettings | None = None,
     db: DatabaseClient | None = None,
 ) -> tuple[MathScene, list[str]]:
-    settings = await _build_render_settings(db, runtime_settings)
+    """
+    Trích xuất scene từ problem text với tier cụ thể.
+    XÓA: preferred_ai_provider, preferred_ai_model, runtime_settings
+    THÊM: tier (mặc định tier1)
+    """
+    settings = get_settings()
     registry = await load_model_registry(db, settings) if db is not None else None
-    preferred_provider = _normalize_provider_alias(preferred_ai_provider)
-    request_model = preferred_ai_model
-    has_explicit_model_choice = bool(preferred_provider and request_model)
-    render_profile = resolve_task_profile(registry, "render", preferred_ai_provider, preferred_ai_model) if registry else None
-    reasoning_profile = None if has_explicit_model_choice else resolve_task_profile(registry, "reasoning", preferred_ai_provider, preferred_ai_model) if registry else None
-    render_provider = preferred_provider if has_explicit_model_choice else _normalize_provider_alias(render_profile.provider_id) if render_profile else preferred_provider
-    render_model = request_model if has_explicit_model_choice else render_profile.model_id if render_profile else preferred_ai_model
-    reasoning_provider = preferred_provider if has_explicit_model_choice else _normalize_provider_alias(reasoning_profile.provider_id) if reasoning_profile else preferred_provider
-    reasoning_model = request_model if has_explicit_model_choice else reasoning_profile.model_id if reasoning_profile else preferred_ai_model
+
+    # Load profile theo tier
+    render_profile = resolve_tier_profile(registry, "render", tier) if registry else None
+    reasoning_profile = resolve_tier_profile(registry, "reasoning", tier) if registry else None
+
+    if not render_profile:
+        raise RuntimeError(f"Tier {tier} chưa được cấu hình cho task render.")
+
     render_settings = advanced_settings or AdvancedRenderSettings()
     warnings: list[str] = []
     attempts: list[RenderAttempt] = []
@@ -99,6 +101,56 @@ async def extract_scene(
     scene_sys_prompt, reasoning_sys_prompt = await get_system_prompts(db)
 
     # --- TẦNG 1: Suy luận (nếu bật) ---
+    reasoning_plan: dict | None = None
+    if use_two_stage and reasoning_profile:
+        reasoning_plan = await _run_reasoning_stage_with_tier(
+            settings, problem_text, grade,
+            reasoning_profile,
+            warnings, system_prompt=reasoning_sys_prompt,
+        )
+        if reasoning_plan is not None:
+            warnings.append("Đã hoàn thành tầng suy luận (reasoning layer).")
+
+    # --- TẦNG 2: Trích xuất scene ---
+    # Chỉ thử các model trong tier profile (provider + model + fallbacks)
+    provider = render_profile.provider_id
+    models = [render_profile.model_id] if render_profile.model_id else []
+    models.extend(render_profile.fallbacks)
+
+    for model in models:
+        if not model:
+            continue
+
+        remaining = _render_budget_remaining(started_at)
+        if remaining < _RENDER_MIN_ATTEMPT_SECONDS:
+            raise RuntimeError(_format_tier_render_failure(f"Tier {tier} đã gần hết thời gian.", attempts))
+
+        attempt_timeout = min(remaining, _RENDER_MAX_ATTEMPT_SECONDS)
+        try:
+            scene_json = await asyncio.wait_for(
+                _extract_with_provider(
+                    provider, settings, problem_text, grade,
+                    render_settings.reasoning_layer,
+                    preferred_ai_model=model,
+                    reasoning_plan=reasoning_plan,
+                    system_prompt=scene_sys_prompt,
+                ),
+                timeout=attempt_timeout,
+            )
+            warnings.extend(_render_attempt_warnings(attempts))
+            scene, cas_warnings = build_scene_with_cas_fix(scene_json)
+            warnings.extend(cas_warnings)
+            return scene, warnings
+        except TimeoutError:
+            attempts.append(RenderAttempt(provider, model, f"timeout after {attempt_timeout:.0f}s"))
+        except (RuntimeError, ValidationError, ValueError, KeyError) as error:
+            attempts.append(RenderAttempt(provider, model, str(error)))
+        except Exception as error:
+            message = str(error) or error.__class__.__name__
+            attempts.append(RenderAttempt(provider, model, message))
+
+    warnings.extend(_render_attempt_warnings(attempts))
+    raise RuntimeError(_format_tier_render_failure(f"Tất cả model trong tier {tier} đều lỗi.", attempts))
     reasoning_plan: dict | None = None
     if use_two_stage:
         reasoning_plan = await _run_reasoning_stage(
@@ -803,3 +855,46 @@ async def _reason_with_provider(provider: str, settings: Settings, problem_text:
     if provider == "openrouter_gpt_oss":
         return await OpenRouterClient(settings, model="openai/gpt-oss-120b:free", reasoning_enabled=True).reason_about_problem(problem_text, grade, system_prompt=system_prompt)
     raise RuntimeError(f"Provider không hỗ trợ reasoning: {provider}")
+
+
+async def _run_reasoning_stage_with_tier(
+    settings: Settings,
+    problem_text: str,
+    grade: int | None,
+    reasoning_profile: Any,
+    warnings: list[str],
+    system_prompt: str | None = None,
+) -> dict | None:
+    """Chạy reasoning stage với tier profile (không fallback cross-provider)"""
+    from app.services.model_registry import TaskProfile
+
+    if not isinstance(reasoning_profile, TaskProfile):
+        return None
+
+    provider = reasoning_profile.provider_id
+    models = [reasoning_profile.model_id] if reasoning_profile.model_id else []
+    models.extend(reasoning_profile.fallbacks)
+
+    for model in models:
+        if not model:
+            continue
+        try:
+            result = await asyncio.wait_for(
+                _reason_with_provider(provider, settings, problem_text, grade, model, system_prompt),
+                timeout=_REASONING_TOTAL_TIMEOUT_SECONDS,
+            )
+            return result
+        except Exception:
+            continue
+
+    warnings.append("Reasoning layer lỗi, tiếp tục với render trực tiếp.")
+    return None
+
+
+def _format_tier_render_failure(message: str, attempts: list[RenderAttempt]) -> str:
+    """Format lỗi khi tier render thất bại"""
+    if not attempts:
+        return message
+    attempt_summary = " | ".join(attempt.warning() for attempt in attempts)
+    return f"{message}\n\nCác lần thử: {attempt_summary}"
+

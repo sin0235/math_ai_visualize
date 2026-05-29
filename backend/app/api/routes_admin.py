@@ -22,6 +22,7 @@ from app.schemas.auth import (
     AdminUserUpdateRequest,
     AuditLogResponse,
     SystemAiProfiles,
+    SystemAiTierProfiles,
     SystemAiPrompts,
     SystemAiSettings,
     SystemFeatureFlags,
@@ -32,7 +33,7 @@ from app.schemas.auth import (
 )
 from app.schemas.feedback import AdminFeedbackResponse, AdminFeedbackUpdateRequest
 from app.schemas.scene import MathScene, ModelScanRequest, RenderPayload
-from app.services.admin_settings import build_database_diagnostics, normalize_provider_defaults, sync_ai_profiles_to_registry, sync_ai_settings_to_registry
+from app.services.admin_settings import build_database_diagnostics, normalize_provider_defaults, sync_ai_profiles_to_registry, sync_ai_settings_to_registry, sync_ai_tier_profiles_to_registry
 from app.services.model_provider import canonicalize_fallback_models, canonicalize_model_ref
 from app.services.model_registry import resolve_effective_settings, save_provider_check
 from app.services.provider_ping import ADMIN_PING_PROVIDERS, ping_provider
@@ -321,6 +322,8 @@ async def admin_save_system_setting(
         await sync_ai_settings_to_registry(db, value, request.value)
     if request.key == "ai_profiles":
         await sync_ai_profiles_to_registry(db, value, request.value)
+    if request.key == "ai_tier_profiles":
+        await sync_ai_tier_profiles_to_registry(db, value, request.value)
     await repo.audit(admin.id, "admin.system_settings.update", "system_setting", request.key, {"key": request.key})
     return SystemSettingResponse(key=setting.key, value=parse_setting_value(setting.value_json), updated_by=setting.updated_by, updated_at=setting.updated_at)
 
@@ -403,6 +406,7 @@ def validate_system_setting(key: str, value: dict) -> dict:
         "ai_settings": SystemAiSettings,
         "feature_flags": SystemFeatureFlags,
         "ai_profiles": SystemAiProfiles,
+        "ai_tier_profiles": SystemAiTierProfiles,
         "ai_prompts": SystemAiPrompts,
     }
     schema = schemas.get(key)
@@ -416,6 +420,8 @@ def validate_system_setting(key: str, value: dict) -> dict:
         validate_ai_settings_rules(SystemAiSettings.model_validate(validated))
     if key == "ai_profiles":
         validate_ai_profiles_rules(SystemAiProfiles.model_validate(validated))
+    if key == "ai_tier_profiles":
+        validate_ai_tier_profiles_rules(SystemAiTierProfiles.model_validate(validated))
     return validated
 
 
@@ -440,6 +446,28 @@ def validate_ai_profiles_rules(profiles: SystemAiProfiles) -> None:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Nhà cung cấp AI không hợp lệ.")
         validate_provider_model_pair(profile.provider, profile.model)
         validate_profile_fallbacks(profile.provider, profile.fallbacks)
+
+
+def validate_ai_tier_profiles_rules(profiles: SystemAiTierProfiles) -> None:
+    """Validate tier profiles: mỗi tier phải có ít nhất 1 model"""
+    for task_name in ["render", "reasoning", "solver_explanation"]:
+        task_tiers = getattr(profiles, task_name)
+        for tier_name in ["tier1", "tier2", "tier3"]:
+            tier_profile = getattr(task_tiers, tier_name)
+            if tier_profile.provider not in ADMIN_DEFAULT_PROVIDERS:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"Nhà cung cấp AI không hợp lệ cho {task_name}.{tier_name}."
+                )
+            validate_provider_model_pair(tier_profile.provider, tier_profile.model)
+            validate_profile_fallbacks(tier_profile.provider, tier_profile.fallbacks)
+
+            # Validate: mỗi tier phải có ít nhất 1 model
+            if not tier_profile.model and not tier_profile.fallbacks:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"Tier {tier_name} của task {task_name} phải có ít nhất 1 model (model hoặc fallbacks)."
+                )
 
 
 def validate_provider_model_pair(provider_id: str, model_id: str) -> None:
