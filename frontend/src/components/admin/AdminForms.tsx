@@ -281,11 +281,6 @@ function hasAdminProviderPrefix(modelId: string) {
   return ['openrouter/', 'nvidia/', 'ollama/', 'openai_compat/', 'openai-compat/', 'router9/'].some((prefix) => modelId.startsWith(prefix));
 }
 
-function formatProfileFallbackModelId(provider: string, model: string) {
-  if (!model) return '';
-  return hasAdminProviderPrefix(model) ? model : formatProfileModelId(provider, model);
-}
-
 function adminProviderFromPrefixedModel(modelId: string) {
   for (const provider of ['openrouter', 'nvidia', 'ollama', 'openai_compat', 'router9'] as const) {
     if (modelId.startsWith(`${provider}/`)) return provider;
@@ -300,6 +295,19 @@ function normalizeTierModelRefs(models: string[]) {
     .map((modelId) => modelId.trim())
     .filter(Boolean)
     .map((modelId) => hasAdminProviderPrefix(modelId) || !primaryProvider ? modelId : `${primaryProvider}/${modelId}`);
+}
+
+function normalizeTierState(state: Record<TierLevelKey, string[]>) {
+  const used = new Set<string>();
+  const normalized: Record<TierLevelKey, string[]> = { tier1: [], tier2: [], tier3: [] };
+  for (const level of TIER_LEVELS) {
+    for (const modelId of normalizeTierModelRefs(state[level.key])) {
+      if (used.has(modelId)) continue;
+      used.add(modelId);
+      normalized[level.key].push(modelId);
+    }
+  }
+  return normalized;
 }
 
 // --- Form Components ---
@@ -884,14 +892,12 @@ function getTierModels(value: unknown, tier: TierLevelKey) {
     const directProfile = getAiTaskProfile(direct);
     return [
       formatProfileModelId(directProfile.provider, directProfile.model),
-      ...directProfile.fallbacks.map((model) => formatProfileFallbackModelId(directProfile.provider, model)),
     ].filter(Boolean);
   }
   const legacyRender = data.render && typeof data.render === 'object' ? data.render as Record<string, unknown> : {};
   const legacyProfile = getAiTaskProfile(legacyRender[tier]);
   const legacyModels = [
     formatProfileModelId(legacyProfile.provider, legacyProfile.model),
-    ...legacyProfile.fallbacks.map((model) => formatProfileFallbackModelId(legacyProfile.provider, model)),
   ];
   return legacyModels.filter(Boolean);
 }
@@ -902,7 +908,8 @@ export function AdminAiTierProfilesForm({ value, aiSettings, defaults, onSave, o
   const settingsDefaults = mergeAdminProfileDefaults(defaults, adminSettingsToDefaults(aiSettings));
 
   function buildStateFromValue(source: Record<string, unknown>) {
-    return Object.fromEntries(TIER_LEVELS.map((level) => [level.key, getTierModels(source, level.key)])) as Record<TierLevelKey, string[]>;
+    const state = Object.fromEntries(TIER_LEVELS.map((level) => [level.key, getTierModels(source, level.key)])) as Record<TierLevelKey, string[]>;
+    return normalizeTierState(state);
   }
 
   useEffect(() => {
@@ -950,9 +957,11 @@ export function AdminAiTierProfilesForm({ value, aiSettings, defaults, onSave, o
   async function saveTierProfiles() {
     setSaving(true);
     try {
+      const normalized = normalizeTierState(tierModels);
       const payload: Record<string, unknown> = { version: 3 };
-      for (const level of TIER_LEVELS) payload[level.key] = { tier: level.key, models: tierModels[level.key] };
+      for (const level of TIER_LEVELS) payload[level.key] = { tier: level.key, models: normalized[level.key] };
       await onSave(payload);
+      setTierModels(normalized);
       onToast?.('Tier model', 'Đã lưu cấu hình tier.', 'info');
     } catch (error) {
       onToast?.('Tier model', getErrorMessage(error, 'Không thể lưu cấu hình tier.'), 'error');

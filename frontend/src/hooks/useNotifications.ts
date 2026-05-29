@@ -65,7 +65,7 @@ function friendlyMessage(message: string) {
   if (/quota|rate limit|429/i.test(text)) return 'Hệ thống đang nhận quá nhiều yêu cầu. Vui lòng thử lại sau ít phút.';
   if (/api key|unauthorized|401|403|forbidden/i.test(text)) return 'Hệ thống chưa sẵn sàng xử lý yêu cầu này. Vui lòng thử lại sau hoặc liên hệ quản trị viên.';
   if (/model.*not found|not found.*model/i.test(text)) return 'Dịch vụ tạo hình hiện chưa sẵn sàng. Vui lòng thử lại sau ít phút.';
-  if (/validation|field required|Input should/i.test(text)) return 'Dữ liệu hình chưa hợp lệ. Hãy thử dựng lại hoặc chỉnh hình đơn giản hơn.';
+  if (/validation|field required|Input should/i.test(text)) return 'Dữ liệu gửi lên chưa hợp lệ. Vui lòng kiểm tra lại các trường.';
   return text.length > 220 ? `${text.slice(0, 217)}...` : text;
 }
 

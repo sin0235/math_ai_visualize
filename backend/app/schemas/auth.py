@@ -417,9 +417,6 @@ class AiTierProfile(BaseModel):
         model = str(value.get("model") or "").strip()
         if model:
             models.append(_format_tier_model_ref(provider, model))
-        fallbacks = value.get("fallbacks")
-        if isinstance(fallbacks, list):
-            models.extend(_format_tier_model_ref(provider, str(item).strip()) for item in fallbacks)
         return {"tier": value.get("tier"), "models": models}
 
     @field_validator("models")

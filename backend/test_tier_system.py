@@ -35,8 +35,8 @@ async def test_tier_system():
             "tier1": {"tier": "tier1", "provider": "router9", "model": "should-not-sync", "fallbacks": []},
         },
     })
-    assert legacy_profiles.tier2.models == ["router9/balanced-model", "router9/fast-model"]
-    print("✓ Legacy schema migrates only render tiers")
+    assert legacy_profiles.tier2.models == ["router9/balanced-model"]
+    print("✓ Legacy schema migrates only render tier primary models")
 
     req = RenderRequest(problem_text="Cho tam giác ABC", grade=10, tier="tier1")
     print(f"✓ RenderRequest: tier={req.tier}, no preferred_ai_provider/model")
@@ -94,7 +94,7 @@ async def test_tier_system():
     tier2 = next(row for row in rows if row["task"] == "render_tier2")
     assert tier2["provider_id"] == "router9"
     assert tier2["model_id"] == "balanced-model"
-    assert json.loads(tier2["fallbacks_json"]) == ["fast-model"]
+    assert json.loads(tier2["fallbacks_json"]) == []
     print(f"✓ Sync: {len(rows)} render-only tier profiles synced")
 
     print("\n=== TEST 4: API validation ===")
@@ -102,6 +102,8 @@ async def test_tier_system():
 
     validate_ai_tier_profiles_rules(profiles)
     print("✓ Validation: render tier profiles valid")
+    validate_ai_tier_profiles_rules(legacy_profiles)
+    print("✓ Validation: legacy fallback duplicates are ignored")
 
     empty_profiles = SystemAiTierProfiles(version=3)
     validate_ai_tier_profiles_rules(empty_profiles)

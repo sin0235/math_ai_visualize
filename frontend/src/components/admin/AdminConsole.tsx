@@ -1349,8 +1349,7 @@ function legacyTierValue(value: unknown, tier: string) {
   const profile = value && typeof value === 'object' ? value as Record<string, unknown> : {};
   const provider = typeof profile.provider === 'string' ? profile.provider : 'auto';
   const model = typeof profile.model === 'string' ? profile.model : '';
-  const fallbacks = Array.isArray(profile.fallbacks) ? profile.fallbacks.map(String) : [];
-  return { tier, models: taskProfileModels(provider, model, fallbacks) };
+  return { tier, models: taskProfileModels(provider, model, []) };
 }
 
 function taskProfileModels(provider: string, model: string, fallbacks: string[]) {
