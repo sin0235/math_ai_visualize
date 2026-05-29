@@ -9062,15 +9062,6 @@ button.analyzer-guide-label:hover {
   white-space: nowrap;
 }
 
-.csim-playbar-formula {
-  min-width: 0;
-  color: var(--ink-3);
-  font-size: 0.8rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .csim-playbar-actions,
 .csim-playbar-status {
   display: flex;
