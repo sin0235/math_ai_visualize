@@ -1339,8 +1339,8 @@ function adminAiTierProfilesValue(value: unknown, defaults: SettingsDefaults | n
   for (const tier of ['tier1', 'tier2', 'tier3']) {
     const profile = byTask[`render_${tier}`];
     result[tier] = profile
-      ? { tier, models: taskProfileModels(profile.provider_id, profile.model_id, profile.fallbacks) }
-      : { tier, models: [] };
+      ? { tier, default_model: formatAdminTierModelRef(profile.provider_id, profile.model_id), models: taskProfileModels(profile.provider_id, profile.model_id, profile.fallbacks) }
+      : { tier, default_model: '', models: [] };
   }
   return result;
 }
@@ -1349,7 +1349,8 @@ function legacyTierValue(value: unknown, tier: string) {
   const profile = value && typeof value === 'object' ? value as Record<string, unknown> : {};
   const provider = typeof profile.provider === 'string' ? profile.provider : 'auto';
   const model = typeof profile.model === 'string' ? profile.model : '';
-  return { tier, models: taskProfileModels(provider, model, []) };
+  const defaultModel = formatAdminTierModelRef(provider, model);
+  return { tier, default_model: defaultModel, models: defaultModel ? [defaultModel] : [] };
 }
 
 function taskProfileModels(provider: string, model: string, fallbacks: string[]) {

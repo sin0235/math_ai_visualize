@@ -338,6 +338,7 @@ async def ensure_task_profiles(db: DatabaseClient, settings: Settings) -> None:
         for tier in TIER_KEYS:
             defaults[f"{task}_{tier}"] = (settings.ai_provider, "", [])
     repo = ModelRegistryRepository(db)
+    await repo.delete_unsupported_tier_profiles()
     for task, (provider_id, model_id, fallbacks) in defaults.items():
         if not await repo.task_profile_exists(task):
             await save_task_profile(db, task, provider_id, model_id, fallbacks)
@@ -549,17 +550,10 @@ def resolve_task_profile(registry: ModelRegistry, task: str, preferred_provider:
 
 def resolve_render_tier_candidates(registry: ModelRegistry, tier: str) -> list[TierModelCandidate]:
     profile = registry.task_profiles.get(f"render_{tier}")
-    if profile is None:
-        base_profile = resolve_task_profile(registry, "render")
-        return _task_profile_candidates(registry, base_profile) if base_profile else []
-    candidates = _task_profile_candidates(registry, profile)
-    if candidates:
-        return candidates
-    base_profile = resolve_task_profile(registry, "render")
-    return _task_profile_candidates(registry, base_profile) if base_profile else []
+    return _tier_profile_candidates(registry, profile)
 
 
-def _task_profile_candidates(registry: ModelRegistry, profile: TaskProfile | None) -> list[TierModelCandidate]:
+def _tier_profile_candidates(registry: ModelRegistry, profile: TaskProfile | None) -> list[TierModelCandidate]:
     if profile is None:
         return []
     provider_id = normalize_registry_provider_id(profile.provider_id)
@@ -572,9 +566,6 @@ def _task_profile_candidates(registry: ModelRegistry, profile: TaskProfile | Non
     candidates: list[TierModelCandidate] = []
 
     model_id = normalize_model_for_provider(provider_id, profile.model_id) or ""
-    if not model_id:
-        provider = registry.providers.get(provider_id)
-        model_id = effective_provider_default_model(registry, provider_id, provider.default_model_id if provider else "")
     if model_id and model_is_allowed(registry, provider_id, model_id):
         candidates.append(TierModelCandidate(provider_id, model_id))
 

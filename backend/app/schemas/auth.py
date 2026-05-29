@@ -403,6 +403,7 @@ class AiTierProfile(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     tier: Literal["tier1", "tier2", "tier3"]
+    default_model: str = Field(default="", max_length=MAX_MODEL_ID_CHARS)
     models: list[str] = Field(default_factory=list, max_length=MAX_STORED_MODELS)
 
     @model_validator(mode="before")
@@ -410,14 +411,24 @@ class AiTierProfile(BaseModel):
     def migrate_legacy_profile(cls, value: Any) -> Any:
         if not isinstance(value, dict):
             return value
-        if "models" in value:
-            return value
         provider = str(value.get("provider") or "auto").strip()
         models: list[str] = []
+        default_model = str(value.get("default_model") or "").strip()
         model = str(value.get("model") or "").strip()
-        if model:
-            models.append(_format_tier_model_ref(provider, model))
-        return {"tier": value.get("tier"), "models": models}
+        if default_model:
+            default_model = _format_tier_model_ref(provider, default_model)
+        elif model:
+            default_model = _format_tier_model_ref(provider, model)
+        if isinstance(value.get("models"), list):
+            models.extend(str(item).strip() for item in value["models"])
+        elif default_model:
+            models.append(default_model)
+        return {"tier": value.get("tier"), "default_model": default_model, "models": models}
+
+    @field_validator("default_model")
+    @classmethod
+    def validate_default_model(cls, value: str) -> str:
+        return value.strip()
 
     @field_validator("models")
     @classmethod
@@ -433,6 +444,22 @@ class AiTierProfile(BaseModel):
             if value not in deduped:
                 deduped.append(value)
         return deduped
+
+    @model_validator(mode="after")
+    def align_default_model(self) -> "AiTierProfile":
+        if not self.default_model and self.models:
+            self.default_model = self.models[0]
+        if self.default_model:
+            default_model = self.default_model
+            provider = _tier_provider_from_model(default_model)
+            if provider is None and self.models:
+                model_provider = _tier_provider_from_model(self.models[0])
+                if model_provider is not None:
+                    default_model = f"{model_provider}/{default_model}"
+            if default_model not in self.models:
+                self.models = [default_model, *self.models]
+            self.default_model = default_model
+        return self
 
 
 class SystemAiTierProfiles(BaseModel):
@@ -554,7 +581,7 @@ class SystemSettingResponse(BaseModel):
 
 
 class SystemSettingRequest(BaseModel):
-    key: Literal["ai_settings", "plan_settings", "feature_flags", "ai_profiles", "ai_prompts"]
+    key: Literal["ai_settings", "plan_settings", "feature_flags", "ai_profiles", "ai_tier_profiles", "ai_prompts"]
     value: dict = Field(default_factory=dict)
 
 

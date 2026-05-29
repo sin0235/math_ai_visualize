@@ -99,9 +99,9 @@ async def test_e2e():
 
     profiles = SystemAiTierProfiles(
         version=3,
-        tier1={"tier": "tier1", "models": ["router9/test-model-fast"]},
-        tier2={"tier": "tier2", "models": ["router9/test-model-balanced", "router9/test-model-fast"]},
-        tier3={"tier": "tier3", "models": ["router9/test-model-best"]},
+        tier1={"tier": "tier1", "default_model": "router9/test-model-fast", "models": ["router9/test-model-fast"]},
+        tier2={"tier": "tier2", "default_model": "router9/test-model-balanced", "models": ["router9/test-model-fast", "router9/test-model-balanced"]},
+        tier3={"tier": "tier3", "default_model": "router9/test-model-best", "models": ["router9/test-model-best"]},
     )
 
     await sync_ai_tier_profiles_to_registry(db, profiles.model_dump(), None)

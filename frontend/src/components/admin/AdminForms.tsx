@@ -289,23 +289,33 @@ function adminProviderFromPrefixedModel(modelId: string) {
   return '';
 }
 
-function normalizeTierModelRefs(models: string[]) {
-  const primaryProvider = models.map(adminProviderFromPrefixedModel).find(Boolean) || '';
+function normalizeTierModelRefs(models: string[], preferredProvider = '') {
+  const primaryProvider = preferredProvider || models.map(adminProviderFromPrefixedModel).find(Boolean) || '';
   return models
     .map((modelId) => modelId.trim())
     .filter(Boolean)
     .map((modelId) => hasAdminProviderPrefix(modelId) || !primaryProvider ? modelId : `${primaryProvider}/${modelId}`);
 }
 
-function normalizeTierState(state: Record<TierLevelKey, string[]>) {
+function normalizeTierState(state: TierState): TierState {
   const used = new Set<string>();
-  const normalized: Record<TierLevelKey, string[]> = { tier1: [], tier2: [], tier3: [] };
+  const normalized: TierState = {
+    tier1: { defaultModel: '', models: [] },
+    tier2: { defaultModel: '', models: [] },
+    tier3: { defaultModel: '', models: [] },
+  };
   for (const level of TIER_LEVELS) {
-    for (const modelId of normalizeTierModelRefs(state[level.key])) {
+    const preferredProvider = state[level.key].models.map(adminProviderFromPrefixedModel).find(Boolean) || adminProviderFromPrefixedModel(state[level.key].defaultModel);
+    const defaultModel = normalizeTierModelRefs([state[level.key].defaultModel], preferredProvider)[0] || '';
+    const orderedModels = normalizeTierModelRefs([defaultModel, ...state[level.key].models], preferredProvider);
+    for (const modelId of orderedModels) {
       if (used.has(modelId)) continue;
       used.add(modelId);
-      normalized[level.key].push(modelId);
+      normalized[level.key].models.push(modelId);
     }
+    normalized[level.key].defaultModel = defaultModel && normalized[level.key].models.includes(defaultModel)
+      ? defaultModel
+      : normalized[level.key].models[0] || '';
   }
   return normalized;
 }
@@ -882,38 +892,49 @@ const TIER_LEVELS = [
 ] as const;
 
 type TierLevelKey = (typeof TIER_LEVELS)[number]['key'];
+type TierModelState = { defaultModel: string; models: string[] };
+type TierState = Record<TierLevelKey, TierModelState>;
 
-function getTierModels(value: unknown, tier: TierLevelKey) {
+function emptyTierState(): TierState {
+  return {
+    tier1: { defaultModel: '', models: [] },
+    tier2: { defaultModel: '', models: [] },
+    tier3: { defaultModel: '', models: [] },
+  };
+}
+
+function getTierState(value: unknown, tier: TierLevelKey): TierModelState {
   const data = value && typeof value === 'object' ? value as Record<string, unknown> : {};
   const direct = data[tier];
   if (direct && typeof direct === 'object') {
     const directData = direct as Record<string, unknown>;
-    if (Array.isArray(directData.models)) return normalizeTierModelRefs(directData.models.map(String));
+    if (Array.isArray(directData.models)) {
+      const models = normalizeTierModelRefs(directData.models.map(String));
+      const defaultModel = normalizeTierModelRefs([getStringValue(directData.default_model, '')], models.map(adminProviderFromPrefixedModel).find(Boolean) || '')[0] || models[0] || '';
+      return { defaultModel, models };
+    }
     const directProfile = getAiTaskProfile(direct);
-    return [
-      formatProfileModelId(directProfile.provider, directProfile.model),
-    ].filter(Boolean);
+    const defaultModel = formatProfileModelId(directProfile.provider, directProfile.model);
+    return { defaultModel, models: defaultModel ? [defaultModel] : [] };
   }
   const legacyRender = data.render && typeof data.render === 'object' ? data.render as Record<string, unknown> : {};
   const legacyProfile = getAiTaskProfile(legacyRender[tier]);
-  const legacyModels = [
-    formatProfileModelId(legacyProfile.provider, legacyProfile.model),
-  ];
-  return legacyModels.filter(Boolean);
+  const defaultModel = formatProfileModelId(legacyProfile.provider, legacyProfile.model);
+  return { defaultModel, models: defaultModel ? [defaultModel] : [] };
 }
 
 export function AdminAiTierProfilesForm({ value, aiSettings, defaults, onSave, onToast }: { value: Record<string, unknown>; aiSettings: Record<string, unknown>; defaults?: SettingsDefaults | null; onSave: (value: Record<string, unknown>) => Promise<void>; onToast?: AdminToast }) {
-  const [tierModels, setTierModels] = useState<Record<TierLevelKey, string[]>>({ tier1: [], tier2: [], tier3: [] });
+  const [tierState, setTierState] = useState<TierState>(emptyTierState());
   const [saving, setSaving] = useState(false);
   const settingsDefaults = mergeAdminProfileDefaults(defaults, adminSettingsToDefaults(aiSettings));
 
   function buildStateFromValue(source: Record<string, unknown>) {
-    const state = Object.fromEntries(TIER_LEVELS.map((level) => [level.key, getTierModels(source, level.key)])) as Record<TierLevelKey, string[]>;
+    const state = Object.fromEntries(TIER_LEVELS.map((level) => [level.key, getTierState(source, level.key)])) as TierState;
     return normalizeTierState(state);
   }
 
   useEffect(() => {
-    setTierModels(buildStateFromValue(value));
+    setTierState(buildStateFromValue(value));
   }, [value]);
 
   function allProviderModelOptions(selectedModels: string[] = []) {
@@ -939,29 +960,55 @@ export function AdminAiTierProfilesForm({ value, aiSettings, defaults, onSave, o
   }
 
   function toggleTierModel(tier: TierLevelKey, modelId: string, checked: boolean) {
-    setTierModels((current) => {
-      const next: Record<TierLevelKey, string[]> = {
-        tier1: current.tier1.filter((id) => id !== modelId),
-        tier2: current.tier2.filter((id) => id !== modelId),
-        tier3: current.tier3.filter((id) => id !== modelId),
+    setTierState((current) => {
+      const next: TierState = {
+        tier1: { ...current.tier1, models: current.tier1.models.filter((id) => id !== modelId) },
+        tier2: { ...current.tier2, models: current.tier2.models.filter((id) => id !== modelId) },
+        tier3: { ...current.tier3, models: current.tier3.models.filter((id) => id !== modelId) },
       };
-      if (checked) next[tier] = [...next[tier], modelId];
-      return next;
+      for (const level of TIER_LEVELS) {
+        if (next[level.key].defaultModel === modelId) next[level.key].defaultModel = '';
+      }
+      if (checked) {
+        next[tier].models = [...next[tier].models, modelId];
+        if (!next[tier].defaultModel) next[tier].defaultModel = modelId;
+      }
+      return normalizeTierState(next);
+    });
+  }
+
+  function selectTierDefault(tier: TierLevelKey, modelId: string) {
+    setTierState((current) => {
+      const next: TierState = {
+        tier1: { ...current.tier1, models: current.tier1.models.filter((id) => id !== modelId) },
+        tier2: { ...current.tier2, models: current.tier2.models.filter((id) => id !== modelId) },
+        tier3: { ...current.tier3, models: current.tier3.models.filter((id) => id !== modelId) },
+      };
+      if (!modelId) {
+        next[tier].defaultModel = '';
+        return normalizeTierState(next);
+      }
+      for (const level of TIER_LEVELS) {
+        if (next[level.key].defaultModel === modelId) next[level.key].defaultModel = '';
+      }
+      next[tier].models = [modelId, ...next[tier].models];
+      next[tier].defaultModel = modelId;
+      return normalizeTierState(next);
     });
   }
 
   function allSelectedModels() {
-    return [...tierModels.tier1, ...tierModels.tier2, ...tierModels.tier3];
+    return TIER_LEVELS.flatMap((level) => tierState[level.key].models);
   }
 
   async function saveTierProfiles() {
     setSaving(true);
     try {
-      const normalized = normalizeTierState(tierModels);
+      const normalized = normalizeTierState(tierState);
       const payload: Record<string, unknown> = { version: 3 };
-      for (const level of TIER_LEVELS) payload[level.key] = { tier: level.key, models: normalized[level.key] };
+      for (const level of TIER_LEVELS) payload[level.key] = { tier: level.key, default_model: normalized[level.key].defaultModel, models: normalized[level.key].models };
       await onSave(payload);
-      setTierModels(normalized);
+      setTierState(normalized);
       onToast?.('Tier model', 'Đã lưu cấu hình tier.', 'info');
     } catch (error) {
       onToast?.('Tier model', getErrorMessage(error, 'Không thể lưu cấu hình tier.'), 'error');
@@ -973,19 +1020,30 @@ export function AdminAiTierProfilesForm({ value, aiSettings, defaults, onSave, o
   return (
     <section className="admin-settings-section">
       <h4>Tier model dựng hình</h4>
-      <p className="field-hint">Tier chỉ áp dụng cho tác vụ dựng hình. Mỗi model allowlist chỉ nằm trong một tier; tick model ở tier mới sẽ tự chuyển model khỏi tier cũ.</p>
-      <div className="admin-model-fallback-grid">
-        {TIER_LEVELS.map((level) => (
-          <ModelFallbackChecklist
-            key={level.key}
-            title={`${level.label} (${tierModels[level.key].length})`}
-            options={allProviderModelOptions(allSelectedModels())}
-            selected={tierModels[level.key]}
-            onToggle={(modelId, checked) => toggleTierModel(level.key, modelId, checked)}
-            disabled={saving}
-          />
-        ))}
-      </div>
+      <p className="field-hint">Tier chỉ áp dụng cho tác vụ dựng hình. Mỗi tier có model mặc định riêng và một pool model riêng; model đã nằm ở tier này sẽ tự rời tier khác.</p>
+      {TIER_LEVELS.map((level) => (
+        <div key={level.key} className="admin-tier-task">
+          <h5>{level.label}</h5>
+          <div className="admin-field-grid">
+            <label className="field-label">
+              Model mặc định
+              <select value={tierState[level.key].defaultModel} onChange={(event) => selectTierDefault(level.key, event.target.value)} disabled={saving}>
+                <option value="">Chưa chọn model mặc định</option>
+                {allProviderModelOptions(allSelectedModels()).map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.label}</option>)}
+              </select>
+            </label>
+          </div>
+          <div className="admin-model-fallback-grid">
+            <ModelFallbackChecklist
+              title={`Pool model ${level.label.toLowerCase()} (${tierState[level.key].models.length})`}
+              options={allProviderModelOptions(allSelectedModels())}
+              selected={tierState[level.key].models}
+              onToggle={(modelId, checked) => toggleTierModel(level.key, modelId, checked)}
+              disabled={saving}
+            />
+          </div>
+        </div>
+      ))}
       <button type="button" className="secondary-button" onClick={() => void saveTierProfiles()} disabled={saving} aria-busy={saving}>{saving ? 'Đang lưu...' : 'Lưu cấu hình tier'}</button>
     </section>
   );

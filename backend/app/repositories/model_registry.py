@@ -23,6 +23,21 @@ class ModelRegistryRepository:
     async def list_task_profiles(self) -> list[Any]:
         return await self.db.fetch_all("SELECT * FROM ai_task_profiles ORDER BY task")
 
+    async def delete_unsupported_tier_profiles(self) -> None:
+        await self.db.execute(
+            """
+            DELETE FROM ai_task_profiles
+            WHERE task IN (
+              'reasoning_tier1',
+              'reasoning_tier2',
+              'reasoning_tier3',
+              'solver_explanation_tier1',
+              'solver_explanation_tier2',
+              'solver_explanation_tier3'
+            )
+            """
+        )
+
     async def list_model_settings(self) -> list[Any]:
         return await self.db.fetch_all("SELECT key, value_json FROM ai_model_settings")
 

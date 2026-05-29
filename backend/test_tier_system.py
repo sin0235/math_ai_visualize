@@ -10,16 +10,17 @@ async def test_tier_system():
     print("=== TEST 1: Schema validation ===")
     from fastapi import HTTPException
 
-    from app.schemas.auth import SystemAiTierProfiles
+    from app.schemas.auth import SystemAiTierProfiles, SystemSettingRequest
     from app.schemas.scene import RenderRequest
 
     profiles = SystemAiTierProfiles(
         version=3,
-        tier1={"tier": "tier1", "models": ["router9/fast-model"]},
-        tier2={"tier": "tier2", "models": ["router9/balanced-model"]},
-        tier3={"tier": "tier3", "models": ["router9/best-model"]},
+        tier1={"tier": "tier1", "default_model": "router9/fast-model", "models": ["router9/fast-model"]},
+        tier2={"tier": "tier2", "default_model": "router9/balanced-model", "models": ["router9/balanced-model", "router9/support-model"]},
+        tier3={"tier": "tier3", "default_model": "router9/best-model", "models": ["router9/best-model"]},
     )
-    print(f"✓ SystemAiTierProfiles: tier2.models={profiles.tier2.models}")
+    assert profiles.tier2.default_model == "router9/balanced-model"
+    print(f"✓ SystemAiTierProfiles: tier2.default={profiles.tier2.default_model}, models={profiles.tier2.models}")
 
     legacy_profiles = SystemAiTierProfiles.model_validate({
         "version": 2,
@@ -36,10 +37,14 @@ async def test_tier_system():
         },
     })
     assert legacy_profiles.tier2.models == ["router9/balanced-model"]
+    assert legacy_profiles.tier2.default_model == "router9/balanced-model"
     print("✓ Legacy schema migrates only render tier primary models")
 
     req = RenderRequest(problem_text="Cho tam giác ABC", grade=10, tier="tier1")
     print(f"✓ RenderRequest: tier={req.tier}, no preferred_ai_provider/model")
+    setting_req = SystemSettingRequest(key="ai_tier_profiles", value=profiles.model_dump())
+    assert setting_req.key == "ai_tier_profiles"
+    print("✓ SystemSettingRequest accepts ai_tier_profiles")
 
     print("\n=== TEST 2: Database migration ===")
     from app.db.session import SQLiteClient
@@ -97,6 +102,13 @@ async def test_tier_system():
     assert json.loads(tier2["fallbacks_json"]) == []
     print(f"✓ Sync: {len(rows)} render-only tier profiles synced")
 
+    await sync_ai_tier_profiles_to_registry(db, profiles.model_dump(), None)
+    tier2 = await db.fetch_one("SELECT provider_id, model_id, fallbacks_json FROM ai_task_profiles WHERE task = 'render_tier2'")
+    assert tier2["provider_id"] == "router9"
+    assert tier2["model_id"] == "balanced-model"
+    assert json.loads(tier2["fallbacks_json"]) == ["support-model"]
+    print("✓ Sync: default_model is stored as tier primary model")
+
     print("\n=== TEST 4: API validation ===")
     from app.api.routes_admin import validate_ai_tier_profiles_rules
 
@@ -111,8 +123,8 @@ async def test_tier_system():
 
     duplicate_profiles = SystemAiTierProfiles(
         version=3,
-        tier1={"tier": "tier1", "models": ["router9/fast-model"]},
-        tier2={"tier": "tier2", "models": ["router9/fast-model"]},
+        tier1={"tier": "tier1", "default_model": "router9/fast-model", "models": ["router9/fast-model"]},
+        tier2={"tier": "tier2", "default_model": "router9/fast-model", "models": ["router9/fast-model"]},
         tier3={"tier": "tier3", "models": []},
     )
     try:

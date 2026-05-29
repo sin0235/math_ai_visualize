@@ -106,16 +106,20 @@ async def sync_ai_tier_profiles_to_registry(db: DatabaseClient, value: dict, pat
     from app.schemas.auth import SystemAiTierProfiles
 
     profiles = SystemAiTierProfiles.model_validate(value)
+    from app.repositories.model_registry import ModelRegistryRepository
+
+    await ModelRegistryRepository(db).delete_unsupported_tier_profiles()
 
     for tier_name in ["tier1", "tier2", "tier3"]:
         tier_profile = getattr(profiles, tier_name)
-        primary = tier_profile.models[0] if tier_profile.models else ""
+        primary = tier_profile.default_model or (tier_profile.models[0] if tier_profile.models else "")
+        fallbacks = [model for model in tier_profile.models if model != primary]
         await save_task_profile(
             db,
             f"render_{tier_name}",
             "auto",
             primary,
-            tier_profile.models[1:],
+            fallbacks,
         )
 
 
