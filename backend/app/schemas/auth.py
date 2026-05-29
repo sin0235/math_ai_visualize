@@ -11,7 +11,7 @@ PLAN_ID_PATTERN = re.compile(r"^[a-z][a-z0-9_+-]{0,63}$")
 ADMIN_AI_PROVIDERS = {"openrouter", "nvidia", "ollama", "openai_compat", "router9"}
 ADMIN_DEFAULT_PROVIDERS = ADMIN_AI_PROVIDERS | {"auto"}
 ADMIN_OCR_PROVIDERS = {"openrouter", "router9", "nvidia", "ollama", "openai_compat"}
-SYSTEM_SETTING_KEYS = {"ai_settings", "plan_settings", "feature_flags", "ai_profiles", "ai_prompts"}
+SYSTEM_SETTING_KEYS = {"ai_settings", "plan_settings", "feature_flags", "ai_profiles", "ai_tier_profiles", "ai_prompts"}
 
 
 WEAK_PASSWORDS = {"password", "password123", "12345678", "123456789", "qwerty123", "admin12345"}
@@ -396,6 +396,56 @@ class SystemAiProfiles(BaseModel):
     geometry_reasoning: AiTaskProfile = Field(default_factory=AiTaskProfile)
     solver_explanation: AiTaskProfile = Field(default_factory=AiTaskProfile)
     ocr: AiTaskProfile = Field(default_factory=AiTaskProfile)
+
+
+class AiTierProfile(BaseModel):
+    """Cấu hình model cho một tier cụ thể"""
+    model_config = ConfigDict(extra="forbid")
+
+    tier: Literal["tier1", "tier2", "tier3"]
+    provider: str = Field(default="auto", max_length=64)
+    model: str = Field(default="", max_length=MAX_MODEL_ID_CHARS)
+    fallbacks: list[str] = Field(default_factory=list, max_length=MAX_STORED_MODELS)
+
+    @field_validator("provider")
+    @classmethod
+    def validate_provider(cls, value: str) -> str:
+        provider = value.strip()
+        if provider not in ADMIN_DEFAULT_PROVIDERS:
+            raise ValueError("Nhà cung cấp AI không hợp lệ.")
+        return provider
+
+    @field_validator("model")
+    @classmethod
+    def clean_model(cls, value: str) -> str:
+        return value.strip()
+
+    @field_validator("fallbacks")
+    @classmethod
+    def validate_fallbacks(cls, values: list[str]) -> list[str]:
+        cleaned = [value.strip() for value in values]
+        if any(not value for value in cleaned):
+            raise ValueError("Danh sách fallback không được chứa giá trị trống.")
+        return cleaned
+
+
+class AiTaskTierProfiles(BaseModel):
+    """Cấu hình 3 tier cho một task"""
+    model_config = ConfigDict(extra="forbid")
+
+    tier1: AiTierProfile = Field(default_factory=lambda: AiTierProfile(tier="tier1"))
+    tier2: AiTierProfile = Field(default_factory=lambda: AiTierProfile(tier="tier2"))
+    tier3: AiTierProfile = Field(default_factory=lambda: AiTierProfile(tier="tier3"))
+
+
+class SystemAiTierProfiles(BaseModel):
+    """Cấu hình tier cho các task hỗ trợ tier (không bao gồm OCR)"""
+    model_config = ConfigDict(extra="forbid")
+
+    version: int = 2
+    render: AiTaskTierProfiles = Field(default_factory=AiTaskTierProfiles)
+    reasoning: AiTaskTierProfiles = Field(default_factory=AiTaskTierProfiles)
+    solver_explanation: AiTaskTierProfiles = Field(default_factory=AiTaskTierProfiles)
 
 
 class AdminSummaryResponse(BaseModel):
