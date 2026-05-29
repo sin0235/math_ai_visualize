@@ -72,7 +72,7 @@ async def test_e2e():
     await db.execute("INSERT INTO ai_models (provider_id, id, label, enabled, allowed) VALUES ('router9', 'test-model-best', 'Best Model', 1, 1)")
 
     # Chạy migration
-    migration_sql = Path('migrations/0009_ai_tier_profiles.sql').read_text()
+    migration_sql = (Path(__file__).resolve().parents[1] / 'migrations/0009_ai_tier_profiles.sql').read_text()
     import re
     statements = [s.strip() for s in re.split(r';\s*(?=\n|$)', migration_sql) if s.strip()]
     for statement in statements:
@@ -150,7 +150,7 @@ async def test_e2e():
     params = list(sig.parameters.keys())
     expected = ['problem_text', 'grade', 'tier', 'advanced_settings', 'db']
 
-    if params == expected:
+    if params[:len(expected)] == expected:
         print(f"✓ extract_scene signature: {params}")
     else:
         print(f"✗ extract_scene signature mismatch")

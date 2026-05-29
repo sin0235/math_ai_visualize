@@ -26,6 +26,14 @@ export interface ModelOption {
   modelId?: string;
 }
 
+export type TierKey = 'tier1' | 'tier2' | 'tier3';
+
+const tierOptions: Array<{ value: TierKey; label: string; description: string }> = [
+  { value: 'tier1', label: 'Tiêu chuẩn', description: 'Nhanh, phù hợp với hầu hết bài toán.' },
+  { value: 'tier2', label: 'Nâng cao', description: 'Cân bằng giữa tốc độ và chất lượng.' },
+  { value: 'tier3', label: 'Tối đa', description: 'Chất lượng cao nhất, xử lý chậm hơn.' },
+];
+
 const examples = [
   {
     tag: '2D',
@@ -73,18 +81,14 @@ interface ProblemInputProps {
   ocrLoading: boolean;
   ocrError: string | null;
   problemText: string;
-  modelOptions: ModelOption[];
-  selectedModelKey: string;
-  router9Only: boolean;
+  tier: TierKey;
   onProblemTextChange: (next: string) => void;
-  onSelectedModelKeyChange: (next: string) => void;
+  onTierChange: (next: TierKey) => void;
   onOcrImage: (file: File, mode?: 'problem' | 'diagram') => void;
   onOcrClipboardImage: () => void;
-  onOpenRouter9Settings: () => void;
   onSubmit: (
     problemText: string,
-    preferredAiProvider?: string,
-    preferredAiModel?: string,
+    tier: TierKey,
     advancedSettings?: AdvancedRenderSettings,
     preferredRenderer?: Renderer,
   ) => void;
@@ -95,23 +99,19 @@ export function ProblemInput({
   ocrLoading,
   ocrError,
   problemText,
-  modelOptions,
-  selectedModelKey,
-  router9Only,
+  tier,
   onProblemTextChange,
-  onSelectedModelKeyChange,
+  onTierChange,
   onOcrImage,
   onOcrClipboardImage,
-  onOpenRouter9Settings,
   onSubmit,
 }: ProblemInputProps) {
   const [preferredRenderer, setPreferredRenderer] = useState<'auto' | Renderer>('auto');
   const [advancedSettings, setAdvancedSettings] = useState<AdvancedRenderSettings>(defaultAdvancedSettings);
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const selectedModel = modelOptions.find((option) => option.key === selectedModelKey);
   const busy = loading || ocrLoading;
-  const submitDisabled = busy || modelOptions.length === 0;
+  const submitDisabled = busy;
 
   function updateAdvancedSettings(next: Partial<AdvancedRenderSettings>) {
     setAdvancedSettings((current) => ({ ...current, ...next }));
@@ -119,11 +119,9 @@ export function ProblemInput({
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    if (!selectedModel) return;
     onSubmit(
       problemText,
-      selectedModel.provider,
-      selectedModel.modelId,
+      tier,
       advancedSettings,
       preferredRenderer === 'auto' ? undefined : preferredRenderer,
     );
@@ -227,26 +225,23 @@ export function ProblemInput({
           </div>
         )}
       </div>
+      <label className="field-label">
+        <span title="Chọn mức độ chất lượng AI dùng để phân tích đề và dựng hình">Mức độ chất lượng</span>
+        <select
+          value={tier}
+          title={tierOptions.find((option) => option.value === tier)?.description ?? ''}
+          onChange={(event) => onTierChange(event.target.value as TierKey)}
+        >
+          {tierOptions.map((option) => (
+            <option key={option.value} value={option.value} title={option.description}>{option.label}</option>
+          ))}
+        </select>
+        <span className="field-hint">{tierOptions.find((option) => option.value === tier)?.description}</span>
+      </label>
       <button disabled={submitDisabled || !problemText.trim()} type="submit" className="submit-button submit-button-sticky">
         {(loading || ocrLoading) && <Spinner />}
         {ocrLoading ? 'Đang đọc ảnh...' : loading ? 'Đang dựng hình...' : 'Dựng hình'}
       </button>
-      <label className="field-label">
-        <span title="Chọn provider/model AI dùng để phân tích đề và dựng hình">Chọn AI Model</span>
-        <select
-          value={selectedModelKey}
-          title={selectedModel?.description ?? ''}
-          disabled={modelOptions.length === 0}
-          onChange={(event) => onSelectedModelKeyChange(event.target.value)}
-        >
-          {modelOptions.map((option) => (
-            <option key={option.key} value={option.key} title={option.description}>{option.label}</option>
-          ))}
-        </select>
-        {router9Only && modelOptions.length === 0 && (
-          <button type="button" className="link-button" onClick={onOpenRouter9Settings}>Quét/chọn model 9router trước khi dựng hình</button>
-        )}
-      </label>
       <details className="advanced-settings">
         <summary title="Các tùy chọn này không di chuyển điểm đã được đề bài xác định.">Tùy chọn nâng cao</summary>
         <label className="field-label">

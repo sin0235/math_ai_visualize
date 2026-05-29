@@ -93,11 +93,9 @@ export async function deleteRenderHistory(id: string): Promise<void> {
 
 export async function renderProblem(
   problemText: string,
-  preferredAiProvider?: string,
-  preferredAiModel?: string,
+  tier: 'tier1' | 'tier2' | 'tier3' = 'tier1',
   advancedSettings?: AdvancedRenderSettings,
   preferredRenderer?: Renderer,
-  runtimeSettings?: RuntimeSettings,
 ): Promise<RenderResponse> {
   return requestJson('/api/render', {
     method: 'POST',
@@ -105,11 +103,9 @@ export async function renderProblem(
     credentials: 'include',
     body: JSON.stringify({
       problem_text: problemText,
-      preferred_ai_provider: preferredAiProvider,
-      preferred_ai_model: preferredAiModel,
+      tier,
       preferred_renderer: preferredRenderer,
       advanced_settings: advancedSettings,
-      runtime_settings: compactRuntimeSettings(runtimeSettings),
     }),
   }, 'Không thể dựng hình.');
 }

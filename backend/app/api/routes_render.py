@@ -46,12 +46,12 @@ async def render_problem(
         await RenderHistoryRepository(db).create(
             user.id,
             request.problem_text,
-            None,  # preferred_ai_provider → None
-            None,  # preferred_ai_model → None
+            request.preferred_ai_provider,
+            request.preferred_ai_model,
             response,
             render_request_json=json.dumps(sanitize_request_dump(request), ensure_ascii=False),
             advanced_settings_json=request.advanced_settings.model_dump_json(),
-            runtime_settings_json=None,  # runtime_settings → None
+            runtime_settings_json=None,
             source_type="problem",
             renderer=response.scene.renderer,
         )
@@ -69,6 +69,9 @@ async def build_problem_render_response(request: RenderRequest, db: DatabaseClie
         request.tier,
         request.advanced_settings,
         db=db,
+        preferred_ai_provider=request.preferred_ai_provider,
+        preferred_ai_model=request.preferred_ai_model,
+        runtime_settings=request.runtime_settings,
     )
     if request.preferred_renderer is not None:
         scene.renderer = request.preferred_renderer
@@ -155,17 +158,9 @@ def render_error_payload(error: Exception) -> dict:
         "code": "RENDER_FAILED",
         "message": "Không thể dựng hình từ đề bài này.",
         "debug_message": message,
-        "suggestions": ["Kiểm tra đề bài và model dựng hình đã chọn.", "Thử provider/model khác hoặc viết đề bài rõ hơn."],
+        "suggestions": ["Kiểm tra đề bài và cấu hình tier model.", "Thử mức chất lượng khác hoặc viết đề bài rõ hơn."],
     }
 
 
 def sanitize_request_dump(request: RenderRequest | SceneRenderRequest) -> dict:
-    data = request.model_dump(mode="json")
-    runtime_settings = data.get("runtime_settings")
-    if isinstance(runtime_settings, dict):
-        data["runtime_settings"] = sanitize_runtime_settings(request.runtime_settings if isinstance(request, RenderRequest) else None)
-    return data
-
-
-def sanitize_request_dump(request: RenderRequest) -> dict:
-    return request.model_dump(mode="json", exclude={"advanced_settings"})
+    return request.model_dump(mode="json", exclude={"advanced_settings", "runtime_settings"})

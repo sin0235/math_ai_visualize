@@ -64,7 +64,7 @@ export function GeneralSettingsPanel({ value, defaults, onChange, onReset }: Gen
       <div className="settings-grid settings-grid-balanced">
         <div className="settings-stack">
           <section className="panel settings-section">
-            <div className="panel-title">Tùy chỉnh render</div>
+            <div className="panel-title">AI phụ trợ</div>
             <label className="field-label">
               Provider mặc định
               <select value={value.default_provider} onChange={(event) => updateField('default_provider', event.target.value)}>
@@ -79,7 +79,7 @@ export function GeneralSettingsPanel({ value, defaults, onChange, onReset }: Gen
                 {currentProviderModel(value) && !providerModelOptions.some((model) => model.id === currentProviderModel(value)) && <option value={currentProviderModel(value)}>{currentProviderModel(value)}</option>}
                 {providerModelOptions.map((model) => <option key={model.id} value={model.id}>{model.label}</option>)}
               </select>
-              <span className="field-hint">Liên hệ quản trị viên nếu bạn cần thêm model.</span>
+              <span className="field-hint">Dùng cho các công cụ không thuộc luồng dựng hình 3-tier.</span>
             </label>
           </section>
 

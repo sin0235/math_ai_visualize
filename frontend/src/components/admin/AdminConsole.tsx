@@ -59,6 +59,7 @@ import {
   AdminPlanSettingsForm, 
   AdminFeatureFlagsForm, 
   AdminAiProfilesForm,
+  AdminAiTierProfilesForm,
   AdminAiPromptsForm,
 } from './AdminForms';
 import { distinctOptions, planLabel, providerLabels, rendererOptions, renderSourceOptions } from '../../utils/settingsOptions';
@@ -431,7 +432,7 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
           : [...prev, updated]
       );
       if (key === 'ai_settings') setAiSettings(updated.value);
-      if (key === 'ai_settings' || key === 'ai_profiles') setSettingsDefaults(await getSettingsDefaults());
+      if (key === 'ai_settings' || key === 'ai_profiles' || key === 'ai_tier_profiles') setSettingsDefaults(await getSettingsDefaults());
     } catch (error) {
       throw error;
     }
@@ -826,6 +827,7 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
             <section className="admin-panel admin-panel-full">
             <AdminAiSettingsForm value={adminAiSettingsValue(aiSettings, settingsDefaults)} defaults={settingsDefaults} saving={savingAiSettings} onSave={saveAiSettingsPatch} onToast={onToast} />
             <AdminAiProfilesForm value={adminAiProfilesValue(settings.find((item) => item.key === 'ai_profiles')?.value, settingsDefaults)} aiSettings={aiSettings} defaults={settingsDefaults} onSave={(value) => saveAdminSystemSetting('ai_profiles', value)} onToast={onToast} />
+            <AdminAiTierProfilesForm value={adminAiTierProfilesValue(settings.find((item) => item.key === 'ai_tier_profiles')?.value, settingsDefaults)} aiSettings={aiSettings} defaults={settingsDefaults} onSave={(value) => saveAdminSystemSetting('ai_tier_profiles', value)} onToast={onToast} />
             <AdminAiPromptsForm value={settings.find((item) => item.key === 'ai_prompts')?.value ?? {}} onSave={(value) => saveAdminSystemSetting('ai_prompts', value)} onToast={onToast} />
           </section>
           </>
@@ -1317,6 +1319,25 @@ function adminAiSettingsValue(value: Record<string, unknown>, defaults: Settings
     };
   });
   return next;
+}
+
+function adminAiTierProfilesValue(value: unknown, defaults: SettingsDefaults | null) {
+  const data = value && typeof value === 'object' ? value as Record<string, unknown> : {};
+  if (Object.keys(data).length > 0) return data;
+  const profiles = defaults?.registry_task_profiles ?? [];
+  const byTask = Object.fromEntries(profiles.map((profile) => [profile.task, profile]));
+  const result: Record<string, unknown> = { version: 2 };
+  for (const task of ['render', 'reasoning', 'solver_explanation']) {
+    const tiers: Record<string, unknown> = {};
+    for (const tier of ['tier1', 'tier2', 'tier3']) {
+      const profile = byTask[`${task}_${tier}`];
+      tiers[tier] = profile
+        ? { tier, provider: profile.provider_id, model: profile.model_id, fallbacks: profile.fallbacks }
+        : { tier, provider: 'auto', model: '', fallbacks: [] };
+    }
+    result[task] = tiers;
+  }
+  return result;
 }
 
 function adminAiProfilesValue(value: unknown, defaults: SettingsDefaults | null) {

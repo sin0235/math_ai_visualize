@@ -27,6 +27,8 @@ PROVIDER_LABELS = {
     "openai_compat": "OpenAI-compatible",
     "router9": "9router",
 }
+TIER_KEYS = ("tier1", "tier2", "tier3")
+TIERED_TASKS = ("render", "reasoning", "solver_explanation")
 
 
 @dataclass(frozen=True)
@@ -166,9 +168,10 @@ async def seed_model_registry(db: DatabaseClient, settings: Settings) -> None:
     await set_model_setting(db, "default_provider", default_provider)
     ocr_provider = legacy.ocr.provider if legacy else ("router9" if settings.router9_ocr_model else "openrouter")
     ocr_model = legacy.ocr.model if legacy else (settings.router9_ocr_model or settings.openrouter_vision_model)
-    await save_task_profile(db, "render", default_provider, "", [])
-    await save_task_profile(db, "reasoning", default_provider, "", [])
-    await save_task_profile(db, "solver_explanation", default_provider, "", [])
+    for task in TIERED_TASKS:
+        await save_task_profile(db, task, default_provider, "", [])
+        for tier in TIER_KEYS:
+            await save_task_profile(db, f"{task}_{tier}", default_provider, "", [])
     await save_task_profile(db, "ocr", ocr_provider, ocr_model or "", [])
 
 
@@ -325,6 +328,9 @@ async def ensure_task_profiles(db: DatabaseClient, settings: Settings) -> None:
         "solver_explanation": (settings.ai_provider, "", []),
         "ocr": ("router9" if settings.router9_ocr_model else "openrouter", settings.router9_ocr_model or settings.openrouter_vision_model, []),
     }
+    for task in TIERED_TASKS:
+        for tier in TIER_KEYS:
+            defaults[f"{task}_{tier}"] = (settings.ai_provider, "", [])
     repo = ModelRegistryRepository(db)
     for task, (provider_id, model_id, fallbacks) in defaults.items():
         if not await repo.task_profile_exists(task):
@@ -429,15 +435,20 @@ def registry_from_settings(settings: Settings) -> ModelRegistry:
         ]
         for provider_id, data in seed.items()
     }
+    task_profiles = {
+        "render": TaskProfile("render", settings.ai_provider, "", []),
+        "reasoning": TaskProfile("reasoning", settings.ai_provider, "", []),
+        "solver_explanation": TaskProfile("solver_explanation", settings.ai_provider, "", []),
+        "ocr": TaskProfile("ocr", "router9" if settings.router9_ocr_model else "openrouter", settings.router9_ocr_model or settings.openrouter_vision_model, []),
+    }
+    for task in TIERED_TASKS:
+        for tier in TIER_KEYS:
+            task_key = f"{task}_{tier}"
+            task_profiles[task_key] = TaskProfile(task_key, settings.ai_provider, "", [])
     return ModelRegistry(
         providers=providers,
         models=models,
-        task_profiles={
-            "render": TaskProfile("render", settings.ai_provider, "", []),
-            "reasoning": TaskProfile("reasoning", settings.ai_provider, "", []),
-            "solver_explanation": TaskProfile("solver_explanation", settings.ai_provider, "", []),
-            "ocr": TaskProfile("ocr", "router9" if settings.router9_ocr_model else "openrouter", settings.router9_ocr_model or settings.openrouter_vision_model, []),
-        },
+        task_profiles=task_profiles,
         settings={
             "router9_only": settings.router9_only,
             "openrouter_reasoning_enabled": settings.openrouter_reasoning_enabled,
@@ -540,11 +551,11 @@ def resolve_tier_profile(
     Trả về profile từ `{task}_{tier}`.
     """
     task_key = f"{task}_{tier}"
-    profile = registry.task_profiles.get(task_key)
+    profile = registry.task_profiles.get(task_key) or registry.task_profiles.get(task)
     if not profile:
         return None
 
-    provider_id = profile.provider_id
+    provider_id = normalize_registry_provider_id(profile.provider_id)
     if provider_id == "auto":
         default_provider = registry.settings.get("default_provider")
         provider_id = default_provider if isinstance(default_provider, str) and provider_is_enabled(registry, default_provider) else None
@@ -560,15 +571,17 @@ def resolve_tier_profile(
     if model_id and not model_is_allowed(registry, provider_id, model_id):
         model_id = effective_provider_default_model(registry, provider_id, "")
 
-    fallbacks = _resolve_profile_fallbacks(registry, profile.fallbacks, provider_id)
+    fallbacks = _resolve_profile_fallbacks(registry, profile.fallbacks, provider_id, same_provider_only=True)
 
     return TaskProfile(task_key, provider_id, model_id, fallbacks)
 
 
-def _resolve_profile_fallbacks(registry: ModelRegistry, fallbacks: list[str], primary_provider_id: str) -> list[str]:
+def _resolve_profile_fallbacks(registry: ModelRegistry, fallbacks: list[str], primary_provider_id: str, *, same_provider_only: bool = False) -> list[str]:
     resolved: list[str] = []
     for fallback in fallbacks:
         provider_id, model_id = _fallback_provider_model(fallback, primary_provider_id)
+        if same_provider_only and provider_id != primary_provider_id:
+            continue
         if model_id and model_is_allowed(registry, provider_id, model_id):
             value = model_id if provider_id == primary_provider_id else f"{provider_id}/{model_id}"
             if value not in resolved:

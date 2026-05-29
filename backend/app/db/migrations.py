@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 
 LEGACY_DUPLICATE_MIGRATION_PREFIXES = {
     "0008": {"0008_firebase_auth.sql", "0008_model_management.sql"},
+    "0009": {"0009_ai_tier_profiles.sql", "0009_feedback.sql"},
 }
 
 
@@ -42,7 +43,12 @@ async def apply_sqlite_migrations(db: SQLiteClient) -> None:
             cursor = await connection.execute("SELECT 1 FROM schema_migrations WHERE filename = ?", [migration.name])
             if await cursor.fetchone():
                 continue
-            await connection.executescript(migration.read_text(encoding="utf-8"))
+            for statement in split_sql_statements(migration.read_text(encoding="utf-8")):
+                try:
+                    await connection.execute(statement)
+                except aiosqlite.OperationalError as error:
+                    if "duplicate column name" not in str(error).lower():
+                        raise
             await connection.execute("INSERT INTO schema_migrations (filename) VALUES (?)", [migration.name])
         await connection.commit()
 

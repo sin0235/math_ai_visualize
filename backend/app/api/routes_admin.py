@@ -449,7 +449,11 @@ def validate_ai_profiles_rules(profiles: SystemAiProfiles) -> None:
 
 
 def validate_ai_tier_profiles_rules(profiles: SystemAiTierProfiles) -> None:
-    """Validate tier profiles: mỗi tier phải có ít nhất 1 model"""
+    """Validate tier profiles.
+
+    Empty model/fallback values are valid: the resolver then uses the selected
+    provider's default model, or the system default provider when provider=auto.
+    """
     for task_name in ["render", "reasoning", "solver_explanation"]:
         task_tiers = getattr(profiles, task_name)
         for tier_name in ["tier1", "tier2", "tier3"]:
@@ -461,13 +465,6 @@ def validate_ai_tier_profiles_rules(profiles: SystemAiTierProfiles) -> None:
                 )
             validate_provider_model_pair(tier_profile.provider, tier_profile.model)
             validate_profile_fallbacks(tier_profile.provider, tier_profile.fallbacks)
-
-            # Validate: mỗi tier phải có ít nhất 1 model
-            if not tier_profile.model and not tier_profile.fallbacks:
-                raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail=f"Tier {tier_name} của task {task_name} phải có ít nhất 1 model (model hoặc fallbacks)."
-                )
 
 
 def validate_provider_model_pair(provider_id: str, model_id: str) -> None:

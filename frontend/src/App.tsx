@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AdminConsole } from './components/admin/AdminConsole';
 import { ApiError, changePassword, deleteRenderHistory, forgotPassword, getCurrentUser, getHealth, getRenderHistory, getRenderHistoryDetail, getSessions, getSettingsDefaults, getUserSettings, login, loginWithGoogle, logout, ocrImage, register, renderEditedScene, renderProblem, resendVerification, resetPassword, revokeOtherSessions, revokeSession, saveUserSettings, updateProfile, verifyEmail, type AdminRenderHistoryDetail, type RenderHistoryItem, type SessionResponse, type UserResponse } from './api/client';
-import { defaultAdvancedSettings, ProblemInput, type ModelOption } from './components/ProblemInput';
+import { defaultAdvancedSettings, ProblemInput, type ModelOption, type TierKey } from './components/ProblemInput';
 import { GeneralSettingsPanel } from './components/GeneralSettingsPanel';
 import { AccountPage } from './components/AccountPage';
 import { FeedbackPage } from './components/FeedbackPage';
@@ -161,7 +161,7 @@ export default function App() {
   const [pointPlacementPlane, setPointPlacementPlane] = useState<PointPlacementPlane>('xy');
   const [pointPlacementDepth, setPointPlacementDepth] = useState('0');
   const [runtimeSettings, setRuntimeSettings] = useState<RuntimeSettings>(defaultRuntimeSettings);
-  const [selectedRenderModelKey, setSelectedRenderModelKey] = useState('');
+  const [renderTier, setRenderTier] = useState<TierKey>('tier1');
   const [settingsDefaults, setSettingsDefaults] = useState<SettingsDefaults | null>(null);
   const [backendStatus, setBackendStatus] = useState<BackendStatus>({ state: 'checking' });
   const { notifications, showNotification, dismissNotification, showApiError, showWarnings, showAnalyzerWarnings } = useNotifications();
@@ -366,20 +366,6 @@ export default function App() {
   }, [result, paramValues]);
 
   const modelOptions = buildModelOptions(runtimeSettings, settingsDefaults);
-  const defaultRenderModelKey = defaultModelKeyForSettings(runtimeSettings, modelOptions);
-  const previousDefaultRenderModelKeyRef = useRef(defaultRenderModelKey);
-  useEffect(() => {
-    const previousDefaultKey = previousDefaultRenderModelKeyRef.current;
-    const selectedKey = selectedRenderModelKey || defaultRenderModelKey;
-    if (!modelOptions.some((option) => option.key === selectedKey)) {
-      setSelectedRenderModelKey(defaultRenderModelKey);
-    } else if (defaultRenderModelKey !== previousDefaultKey && selectedKey === previousDefaultKey) {
-      setSelectedRenderModelKey(defaultRenderModelKey);
-    } else if (!selectedRenderModelKey && defaultRenderModelKey) {
-      setSelectedRenderModelKey(defaultRenderModelKey);
-    }
-    previousDefaultRenderModelKeyRef.current = defaultRenderModelKey;
-  }, [defaultRenderModelKey, modelOptions, selectedRenderModelKey]);
   const threeInteraction = effectiveResult?.scene.renderer === 'threejs_3d'
     ? {
         mode: editTool,
@@ -463,8 +449,7 @@ export default function App() {
 
   async function handleSubmit(
     problemText: string,
-    preferredAiProvider?: string,
-    preferredAiModel?: string,
+    tier: TierKey,
     advancedSettings?: AdvancedRenderSettings,
     preferredRenderer?: Renderer,
   ) {
@@ -478,14 +463,14 @@ export default function App() {
     setEditTool('move');
     setLastAdvancedSettings(advancedSettings ?? defaultAdvancedSettings);
     try {
-      const response = await renderProblem(problemText, preferredAiProvider, preferredAiModel, advancedSettings, preferredRenderer, runtimeSettings);
+      const response = await renderProblem(problemText, tier, advancedSettings, preferredRenderer);
       setResult(response);
       if (user) void refreshHistory();
       scrollToResultOnMobile();
       showWarnings(response.warnings);
     } catch (caught) {
       const apiError = toApiError(caught, 'Không thể dựng hình từ đề bài này.');
-      showApiError('Dựng hình thất bại', apiError, 'Hãy thử chọn model khác, kiểm tra API key/quota, hoặc viết đề bài rõ hơn.');
+      showApiError('Dựng hình thất bại', apiError, 'Hãy thử mức độ chất lượng khác hoặc viết đề bài rõ hơn.');
     } finally {
       setLoading(false);
     }
@@ -1037,14 +1022,11 @@ export default function App() {
                     ocrLoading={ocrLoading}
                     ocrError={null}
                     problemText={problemText}
-                    modelOptions={modelOptions}
-                    selectedModelKey={selectedRenderModelKey || defaultRenderModelKey}
-                    router9Only={settingsDefaults?.router9.only_mode ?? false}
+                    tier={renderTier}
                     onProblemTextChange={setProblemText}
-                    onSelectedModelKeyChange={setSelectedRenderModelKey}
+                    onTierChange={setRenderTier}
                     onOcrImage={handleOcrImage}
                     onOcrClipboardImage={handleOcrClipboardImage}
-                    onOpenRouter9Settings={() => navigateTo(user?.role === 'admin' ? 'admin' : 'settings')}
                     onSubmit={handleSubmit}
                   />
                   {user && (
@@ -1658,20 +1640,6 @@ function buildModelOptions(settings: RuntimeSettings, defaults?: SettingsDefault
     { key: 'default:auto', provider: 'auto', label: 'Mặc định hệ thống', description: 'Tự động dùng provider/model và fallback do admin cấu hình.' },
     ...providerOptions,
   ];
-}
-
-function defaultModelKeyForSettings(settings: RuntimeSettings, options: ModelOption[]) {
-  const provider = normalizeRenderProvider(settings.default_provider);
-  if (provider) {
-    const model = settings[provider].model.trim();
-    if (model) {
-      const exact = options.find((option) => option.provider === provider && option.modelId === model);
-      if (exact) return exact.key;
-    }
-    const providerDefault = options.find((option) => option.key === `default:${provider}`);
-    if (providerDefault) return providerDefault.key;
-  }
-  return options[0]?.key ?? '';
 }
 
 type RenderProviderKey = 'openrouter' | 'nvidia' | 'ollama' | 'openai_compat' | 'router9';

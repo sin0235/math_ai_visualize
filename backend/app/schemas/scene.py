@@ -398,6 +398,11 @@ class RenderRequest(BaseModel):
     tier: Literal["tier1", "tier2", "tier3"] = Field(default="tier1")
     preferred_renderer: Renderer | None = None
     advanced_settings: AdvancedRenderSettings = Field(default_factory=AdvancedRenderSettings)
+    # Deprecated compatibility fields. The current UI sends `tier`; keeping these
+    # optional prevents older clients and tests from failing on request parsing.
+    preferred_ai_provider: str | None = Field(default=None, max_length=64)
+    preferred_ai_model: str | None = Field(default=None, max_length=MAX_MODEL_ID_CHARS)
+    runtime_settings: RuntimeSettings | None = None
 
 
 class SceneRenderRequest(BaseModel):

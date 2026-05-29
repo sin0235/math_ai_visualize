@@ -55,7 +55,7 @@ async def test_tier_system():
     ''')
 
     # Chạy migration
-    migration_sql = Path('migrations/0009_ai_tier_profiles.sql').read_text()
+    migration_sql = (Path(__file__).resolve().parents[1] / 'migrations/0009_ai_tier_profiles.sql').read_text()
     # Split và chạy từng statement
     import re
     statements = [s.strip() for s in re.split(r';\s*(?=\n|$)', migration_sql) if s.strip()]
@@ -91,7 +91,7 @@ async def test_tier_system():
     except Exception as e:
         print(f"✗ Validation failed: {e}")
 
-    # Test validation: tier không có model
+    # Test validation: tier không có model sẽ dùng provider/model mặc định
     try:
         bad_profiles = SystemAiTierProfiles(
             version=2,
@@ -112,9 +112,10 @@ async def test_tier_system():
             }
         )
         validate_ai_tier_profiles_rules(bad_profiles)
-        print("✗ Validation: should have failed for empty tier")
+        print("✓ Validation: accepts empty tier as default-model profile")
     except Exception as e:
-        print(f"✓ Validation: correctly rejected empty tier - {str(e)[:80]}")
+        print(f"✗ Validation should accept empty tier defaults - {str(e)[:80]}")
+        raise
 
     test_db.unlink()
     print("\n=== ALL TESTS PASSED ===")
