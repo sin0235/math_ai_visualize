@@ -452,7 +452,7 @@ def test_ocr_route_uses_env_openrouter_key_with_registry_ocr_profile(monkeypatch
     assert payloads[0][2]["model"] == "gh/gpt-5.2"
 
 
-def test_ocr_route_ignores_empty_registry_ocr_profile(monkeypatch, isolated_database):
+def test_ocr_route_uses_provider_default_for_empty_registry_ocr_profile(monkeypatch, isolated_database):
     from app.services.model_registry import load_model_registry, save_provider_config, save_task_profile
 
     settings = Settings(
@@ -482,8 +482,8 @@ def test_ocr_route_ignores_empty_registry_ocr_profile(monkeypatch, isolated_data
     response = TestClient(app).post("/api/ocr", json={"image_data_url": _IMAGE_DATA_URL})
 
     assert response.status_code == 200
-    assert response.json()["model"] == "env/vision"
-    assert payloads[0]["model"] == "env/vision"
+    assert response.json()["model"] == "admin/text"
+    assert payloads[0]["model"] == "admin/text"
 
 
 def test_ocr_route_uses_profile_fallback_models(monkeypatch, isolated_database):
