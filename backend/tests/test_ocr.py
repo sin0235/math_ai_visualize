@@ -1,4 +1,5 @@
 import asyncio
+import json
 
 import httpx
 import pytest
@@ -452,7 +453,47 @@ def test_ocr_route_uses_env_openrouter_key_with_registry_ocr_profile(monkeypatch
     assert payloads[0][2]["model"] == "gh/gpt-5.2"
 
 
-def test_ocr_route_ignores_empty_registry_ocr_profile(monkeypatch, isolated_database):
+def test_ocr_route_uses_admin_stored_router9_key_and_profile(monkeypatch, isolated_database):
+    settings = Settings(_env_file=None, sqlite_path=isolated_database.path)
+    app.dependency_overrides[get_settings] = lambda: settings
+    monkeypatch.setattr("app.api.routes_ocr.get_settings", lambda: settings)
+    monkeypatch.setattr("app.services.model_registry.get_settings", lambda: settings)
+    admin_ai_settings = {
+        "version": 1,
+        "router9": {
+            "api_key": "router9-secret",
+            "base_url": "https://api.9router.com/v1",
+            "model": "gh/gpt-5-mini",
+            "allowed_model_ids": ["gh/gpt-5-mini"],
+        },
+        "ocr": {"provider": "router9", "model": "gh/gpt-5-mini", "max_image_mb": 5},
+    }
+    asyncio.run(
+        isolated_database.execute(
+            "INSERT INTO system_settings (key, value_json) VALUES (?, ?)",
+            ["ai_settings", json.dumps(admin_ai_settings)],
+        )
+    )
+    calls = []
+
+    async def fake_router9(self, image_data_url: str, model: str | None = None):
+        calls.append((self.settings.router9_api_key, model))
+        return "Đề OCR từ 9router."
+
+    async def fake_openrouter(self, image_data_url: str, model: str | None = None):
+        raise AssertionError("Không nên fallback sang OpenRouter khi admin đã cấu hình OCR 9router.")
+
+    monkeypatch.setattr("app.services.router9_client.Router9Client.ocr_image", fake_router9)
+    monkeypatch.setattr("app.services.openrouter_client.OpenRouterClient.ocr_image", fake_openrouter)
+
+    response = TestClient(app).post("/api/ocr", json={"image_data_url": _IMAGE_DATA_URL})
+
+    assert response.status_code == 200
+    assert response.json()["provider"] == "router9"
+    assert response.json()["model"] == "gh/gpt-5-mini"
+    assert calls == [("router9-secret", "gh/gpt-5-mini")]
+
+def test_ocr_route_uses_provider_default_for_empty_registry_ocr_profile(monkeypatch, isolated_database):
     from app.services.model_registry import load_model_registry, save_provider_config, save_task_profile
 
     settings = Settings(
@@ -482,8 +523,8 @@ def test_ocr_route_ignores_empty_registry_ocr_profile(monkeypatch, isolated_data
     response = TestClient(app).post("/api/ocr", json={"image_data_url": _IMAGE_DATA_URL})
 
     assert response.status_code == 200
-    assert response.json()["model"] == "env/vision"
-    assert payloads[0]["model"] == "env/vision"
+    assert response.json()["model"] == "admin/text"
+    assert payloads[0]["model"] == "admin/text"
 
 
 def test_ocr_route_uses_profile_fallback_models(monkeypatch, isolated_database):

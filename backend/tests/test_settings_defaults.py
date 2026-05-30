@@ -259,6 +259,19 @@ def test_settings_defaults_reports_nvidia_ocr_profile(settings_defaults_client):
     assert payload["ocr"]["model"] == "vision"
 
 
+def test_settings_defaults_uses_provider_default_for_empty_ocr_profile(settings_defaults_client):
+    from app.services.model_registry import save_provider_config, save_task_profile
+
+    asyncio.run(save_provider_config(settings_defaults_client.db, "nvidia", "https://integrate.api.nvidia.com/v1", "nvidia/admin-vision", api_key_configured=True))
+    asyncio.run(save_task_profile(settings_defaults_client.db, "ocr", "nvidia", "", []))
+
+    response = settings_defaults_client.get("/api/settings/defaults")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ocr"] == {"provider": "nvidia", "model": "admin-vision", "max_image_mb": 5}
+
+
 def test_settings_defaults_normalizes_raw_openrouter_model_to_allowlist(settings_defaults_client):
     asyncio.run(settings_defaults_client.db.execute(
         """
