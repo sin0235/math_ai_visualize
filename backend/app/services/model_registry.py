@@ -197,7 +197,9 @@ async def resolve_effective_settings(db: DatabaseClient | None, runtime_settings
     settings = get_settings()
     if db is not None:
         registry = await load_model_registry(db, settings)
+        admin_settings = await load_legacy_ai_settings(db)
         settings = settings_from_registry(settings, registry)
+        settings = settings_from_admin_ai_settings(settings, admin_settings, registry)
     return merge_runtime_settings(settings, runtime_settings)
 
 
