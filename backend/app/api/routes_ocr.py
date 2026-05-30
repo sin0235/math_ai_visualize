@@ -80,23 +80,24 @@ def enforce_enabled(flags: SystemFeatureFlags) -> None:
         raise api_error(status.HTTP_403_FORBIDDEN, "Tính năng OCR đang tạm tắt.", "OCR_DISABLED")
 
 
-def should_apply_ocr_profile(settings, raw_profile, profile, requested_provider, requested_model) -> bool:
+def should_apply_ocr_profile(_settings, raw_profile, profile, requested_provider, requested_model) -> bool:
     if raw_profile is None or profile is None or requested_provider or requested_model:
         return False
-    if not raw_profile.model_id:
+    if not (profile.provider_id and profile.provider_id != "auto" and profile.model_id):
         return False
     env_settings = get_settings()
-    if profile.provider_id == "openrouter" and profile.model_id == env_settings.openrouter_vision_model:
-        return False
-    if profile.provider_id == "router9" and profile.model_id in {env_settings.router9_ocr_model, env_settings.router9_text_model}:
-        return False
-    if profile.provider_id == "nvidia" and profile.model_id == env_settings.nvidia_text_model:
-        return False
-    if profile.provider_id == "ollama" and profile.model_id == env_settings.ollama_text_model:
-        return False
-    if profile.provider_id == "openai_compat" and profile.model_id == env_settings.openai_compat_text_model:
-        return False
-    return bool(profile.provider_id and profile.provider_id != "auto")
+    if raw_profile.model_id:
+        if profile.provider_id == "openrouter" and profile.model_id == env_settings.openrouter_vision_model:
+            return False
+        if profile.provider_id == "router9" and profile.model_id in {env_settings.router9_ocr_model, env_settings.router9_text_model}:
+            return False
+        if profile.provider_id == "nvidia" and profile.model_id == env_settings.nvidia_text_model:
+            return False
+        if profile.provider_id == "ollama" and profile.model_id == env_settings.ollama_text_model:
+            return False
+        if profile.provider_id == "openai_compat" and profile.model_id == env_settings.openai_compat_text_model:
+            return False
+    return True
 
 
 def sanitize_public_runtime_settings(runtime_settings: object):

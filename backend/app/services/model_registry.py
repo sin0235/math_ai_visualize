@@ -509,7 +509,12 @@ def effective_provider_default_model(registry: ModelRegistry, provider_id: str, 
     if model_is_enabled(registry, provider_id, default_model_id):
         return default_model_id
     enabled_model_ids = registry.enabled_model_ids(provider_id)
-    return enabled_model_ids[0] if enabled_model_ids else ""
+    if enabled_model_ids:
+        return enabled_model_ids[0]
+    # Admin-entered provider defaults are stored on ai_providers before a model scan
+    # creates ai_models rows. Treat that database default as usable so OCR and
+    # profile resolution do not silently fall back to env OpenRouter vision values.
+    return default_model_id or ""
 
 
 def resolve_task_profile(registry: ModelRegistry, task: str, preferred_provider: str | None = None, preferred_model: str | None = None) -> TaskProfile | None:
