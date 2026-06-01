@@ -5085,6 +5085,12 @@ button:disabled {
   background: #f8fafc;
 }
 
+.turnstile-widget {
+  display: flex;
+  justify-content: center;
+  min-height: 65px;
+}
+
 .legal-consent-row {
   display: grid;
   grid-template-columns: auto 1fr;

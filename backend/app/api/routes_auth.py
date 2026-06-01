@@ -40,8 +40,10 @@ from app.schemas.auth import (
     VerifyEmailRequest,
 )
 from app.services.email import send_password_reset_email, send_verification_email
+from app.services.email_guard import is_disposable_email
 from app.services.google_oauth import build_google_authorization_url, exchange_google_code, fetch_google_userinfo, google_oauth_configured
 from app.services.system_settings import load_feature_flags
+from app.services.turnstile import enforce_turnstile
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -67,8 +69,13 @@ async def register(
     settings: Settings = Depends(get_settings),
 ) -> AuthResponse:
     await enforce_rate_limit(db, f"auth:register:ip:{client_ip(raw_request)}", 10, 3600)
+    await enforce_rate_limit(db, f"auth:register:ip-daily:{client_ip(raw_request)}", settings.register_ip_daily_limit, 86400)
     await enforce_rate_limit(db, f"auth:register:email:{normalize_email(str(request.email))}", 3, 3600)
+    flags = await load_feature_flags(db)
+    await enforce_turnstile(flags, settings, request.turnstile_token, client_ip(raw_request))
     email = normalize_email(str(request.email))
+    if is_disposable_email(email):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email dùng một lần không được chấp nhận. Vui lòng dùng email cá nhân hoặc tổ chức.")
     users = UserRepository(db)
     if await users.find_by_email(email):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email này đã được đăng ký.")
@@ -186,6 +193,8 @@ async def login(
     email = normalize_email(str(request.email))
     await enforce_rate_limit(db, f"auth:login:ip:{client_ip(raw_request)}", 20, 15 * 60)
     await enforce_rate_limit(db, f"auth:login:email:{email}", 8, 15 * 60)
+    flags = await load_feature_flags(db)
+    await enforce_turnstile(flags, settings, request.turnstile_token, client_ip(raw_request))
     users = UserRepository(db)
     user = await users.find_by_email(email)
     if user is None:
@@ -252,6 +261,8 @@ async def forgot_password(request: ForgotPasswordRequest, raw_request: Request, 
     await enforce_rate_limit(db, f"auth:forgot:ip:{client_ip(raw_request)}", EMAIL_SEND_IP_LIMIT, EMAIL_SEND_WINDOW_SECONDS)
     await enforce_rate_limit(db, f"auth:forgot:email:{email}", EMAIL_SEND_EMAIL_LIMIT, EMAIL_SEND_WINDOW_SECONDS)
     await enforce_rate_limit(db, f"auth:forgot:cooldown:email:{email}", 1, EMAIL_SEND_COOLDOWN_SECONDS)
+    flags = await load_feature_flags(db)
+    await enforce_turnstile(flags, settings, request.turnstile_token, client_ip(raw_request))
     user = await UserRepository(db).find_by_email(email)
     if user and user.status == "active":
         _, token = await AuthTokenRepository(db).create(user.id, TOKEN_PURPOSE_PASSWORD_RESET, 60, client_ip(raw_request), raw_request.headers.get("user-agent"))

@@ -88,6 +88,8 @@ async def get_settings_defaults(db: DatabaseClient = Depends(get_database)) -> S
             google_oauth_enabled=feature_flags.google_oauth_enabled,
             ocr_enabled=feature_flags.ocr_enabled,
             render_enabled=feature_flags.render_enabled,
+            turnstile_enabled=bool(feature_flags.turnstile_enabled and settings.turnstile_secret_key and settings.turnstile_site_key),
+            turnstile_site_key=settings.turnstile_site_key if feature_flags.turnstile_enabled and settings.turnstile_secret_key and settings.turnstile_site_key else None,
         ),
     )
 

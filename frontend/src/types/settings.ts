@@ -123,6 +123,8 @@ export interface FeatureFlagsDefaults {
   google_oauth_enabled: boolean;
   ocr_enabled: boolean;
   render_enabled: boolean;
+  turnstile_enabled: boolean;
+  turnstile_site_key?: string | null;
 }
 
 export interface SettingsDefaults {

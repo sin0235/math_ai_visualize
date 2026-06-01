@@ -33,6 +33,7 @@ class PasswordPolicyMixin(BaseModel):
 class AuthRequest(PasswordPolicyMixin):
     email: EmailStr
     password: str = Field(min_length=10, max_length=256)
+    turnstile_token: str | None = Field(default=None, max_length=4096)
 
     @field_validator("password")
     @classmethod
@@ -60,10 +61,12 @@ class RegisterRequest(AuthRequest):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=1, max_length=256)
+    turnstile_token: str | None = Field(default=None, max_length=4096)
 
 
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
+    turnstile_token: str | None = Field(default=None, max_length=4096)
 
 
 class ResetPasswordRequest(PasswordPolicyMixin):
@@ -287,6 +290,7 @@ class SystemFeatureFlags(BaseModel):
     google_oauth_enabled: bool = True
     ocr_enabled: bool = True
     render_enabled: bool = True
+    turnstile_enabled: bool = False
 
 
 class AiTaskProfile(BaseModel):

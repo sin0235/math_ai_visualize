@@ -512,10 +512,10 @@ export default function App() {
     void loadRemoteWorkspace(nextUser);
   }
 
-  async function handleLogin(email: string, password: string) {
+  async function handleLogin(email: string, password: string, turnstileToken?: string) {
     setAuthLoading(true);
     try {
-      const response = await login(email, password);
+      const response = await login(email, password, turnstileToken);
       applyAuthenticatedUserInBackground(response.user);
       setPendingVerificationEmail('');
       navigateTo(response.user.role === 'admin' ? 'admin' : 'render');
@@ -536,10 +536,10 @@ export default function App() {
     }
   }
 
-  async function handleRegister(email: string, password: string, displayName: string | undefined, acceptPrivacyPolicy: boolean, acceptTerms: boolean) {
+  async function handleRegister(email: string, password: string, displayName: string | undefined, acceptPrivacyPolicy: boolean, acceptTerms: boolean, turnstileToken?: string) {
     setAuthLoading(true);
     try {
-      const response = await register(email, password, displayName, acceptPrivacyPolicy, acceptTerms);
+      const response = await register(email, password, displayName, acceptPrivacyPolicy, acceptTerms, turnstileToken);
       if (response.user.email_verified_at) {
         await applyAuthenticatedUser(response.user);
         navigateTo('render');
@@ -566,8 +566,8 @@ export default function App() {
     }
   }
 
-  async function handleForgotPassword(email: string) {
-    const response = await forgotPassword(email);
+  async function handleForgotPassword(email: string, turnstileToken?: string) {
+    const response = await forgotPassword(email, turnstileToken);
     return response.message;
   }
 
@@ -1193,6 +1193,8 @@ export default function App() {
             onOpenAccount={() => navigateTo('account')}
             onOpenPrivacyPolicy={() => navigateTo('privacy-policy')}
             onOpenTerms={() => navigateTo('terms')}
+            turnstileEnabled={settingsDefaults?.feature_flags?.turnstile_enabled ?? false}
+            turnstileSiteKey={settingsDefaults?.feature_flags?.turnstile_site_key ?? null}
           />
         )}
         {activeView === 'feedback' && (

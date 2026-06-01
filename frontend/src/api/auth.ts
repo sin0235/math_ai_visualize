@@ -58,16 +58,16 @@ export async function getCurrentUser(): Promise<AuthResponse> {
   return requestJson('/api/auth/me', { credentials: 'include' }, 'Không thể đọc phiên đăng nhập.');
 }
 
-export async function login(email: string, password: string): Promise<AuthResponse> {
+export async function login(email: string, password: string, turnstileToken?: string): Promise<AuthResponse> {
   return requestJson('/api/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email, password, turnstile_token: turnstileToken }),
   }, 'Không thể đăng nhập.');
 }
 
-export async function register(email: string, password: string, displayName: string | undefined, acceptPrivacyPolicy: boolean, acceptTerms: boolean): Promise<AuthResponse> {
+export async function register(email: string, password: string, displayName: string | undefined, acceptPrivacyPolicy: boolean, acceptTerms: boolean, turnstileToken?: string): Promise<AuthResponse> {
   return requestJson('/api/auth/register', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -78,16 +78,17 @@ export async function register(email: string, password: string, displayName: str
       display_name: displayName ? cleanText(displayName) : undefined,
       accept_privacy_policy: acceptPrivacyPolicy,
       accept_terms: acceptTerms,
+      turnstile_token: turnstileToken,
     }),
   }, 'Không thể tạo tài khoản.');
 }
 
-export async function forgotPassword(email: string): Promise<MessageResponse> {
+export async function forgotPassword(email: string, turnstileToken?: string): Promise<MessageResponse> {
   return requestJson('/api/auth/forgot-password', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ email }),
+    body: JSON.stringify({ email, turnstile_token: turnstileToken }),
   }, 'Không thể gửi yêu cầu đặt lại mật khẩu.');
 }
 

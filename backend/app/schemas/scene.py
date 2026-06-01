@@ -374,6 +374,8 @@ class FeatureFlagsDefaults(BaseModel):
     google_oauth_enabled: bool = True
     ocr_enabled: bool = True
     render_enabled: bool = True
+    turnstile_enabled: bool = False
+    turnstile_site_key: str | None = None
 
 
 class SettingsDefaultsResponse(BaseModel):

@@ -81,6 +81,9 @@ class Settings(BaseSettings):
     google_oauth_client_id: str | None = None
     google_oauth_client_secret: str | None = None
     google_oauth_redirect_uri: str = "https://math-renderer-api.sin-studio.tech/api/auth/google/callback"
+    turnstile_secret_key: str | None = None
+    turnstile_site_key: str | None = None
+    register_ip_daily_limit: int = 20
     allow_missing_origin_for_cookie_mutations: bool = True
     trusted_proxy_ips: list[str] = []
     cas_repair_enabled: bool = False

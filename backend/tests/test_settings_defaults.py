@@ -158,6 +158,8 @@ def test_settings_defaults_exposes_public_feature_flags(settings_defaults_client
         "google_oauth_enabled": False,
         "ocr_enabled": True,
         "render_enabled": False,
+        "turnstile_enabled": False,
+        "turnstile_site_key": None,
     }
 
 

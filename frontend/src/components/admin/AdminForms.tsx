@@ -746,12 +746,13 @@ export function AdminFeatureFlagsForm({ value, onSave, onToast }: { value: Recor
   const [googleOAuth, setGoogleOAuth] = useState(value.google_oauth_enabled !== false);
   const [ocr, setOcr] = useState(value.ocr_enabled !== false);
   const [render, setRender] = useState(value.render_enabled !== false);
+  const [turnstile, setTurnstile] = useState(value.turnstile_enabled === true);
   const [saving, setSaving] = useState(false);
 
   async function saveFlags() {
     setSaving(true);
     try {
-      await onSave({ version: 1, maintenance_mode: maintenanceMode, maintenance_message: message, google_oauth_enabled: googleOAuth, ocr_enabled: ocr, render_enabled: render });
+      await onSave({ version: 1, maintenance_mode: maintenanceMode, maintenance_message: message, google_oauth_enabled: googleOAuth, ocr_enabled: ocr, render_enabled: render, turnstile_enabled: turnstile });
     } catch (error) {
       onToast?.('Cờ tính năng', getErrorMessage(error, 'Không thể lưu cờ tính năng.'), 'error');
     } finally {
@@ -765,6 +766,7 @@ export function AdminFeatureFlagsForm({ value, onSave, onToast }: { value: Recor
       <label className="checkbox-label"><input type="checkbox" checked={render} onChange={(event) => setRender(event.target.checked)} disabled={saving} /> Cho phép dựng hình</label>
       <label className="checkbox-label"><input type="checkbox" checked={ocr} onChange={(event) => setOcr(event.target.checked)} disabled={saving} /> Cho phép OCR</label>
       <label className="checkbox-label"><input type="checkbox" checked={googleOAuth} onChange={(event) => setGoogleOAuth(event.target.checked)} disabled={saving} /> Cho phép đăng nhập Google</label>
+      <label className="checkbox-label"><input type="checkbox" checked={turnstile} onChange={(event) => setTurnstile(event.target.checked)} disabled={saving} /> Bật xác minh Turnstile</label>
     </div><label className="field-label">Thông báo bảo trì<textarea rows={3} value={message} onChange={(event) => setMessage(event.target.value)} disabled={saving} /></label><button type="button" className="secondary-button" onClick={() => void saveFlags()} disabled={saving} aria-busy={saving}>{saving ? 'Đang lưu...' : 'Lưu cờ tính năng'}</button></section>
   );
 }

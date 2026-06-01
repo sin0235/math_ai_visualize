@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 
 import type { UserResponse } from '../api/client';
 
@@ -10,19 +10,21 @@ interface LoginPageProps {
   authLoading: boolean;
   onOpenWorkspace: () => void;
   onToast: (title: string, message: string, kind?: ToastKind) => void;
-  onLogin: (email: string, password: string) => Promise<void>;
+  onLogin: (email: string, password: string, turnstileToken?: string) => Promise<void>;
   onGoogleLogin: () => Promise<void>;
-  onRegister: (email: string, password: string, displayName: string | undefined, acceptPrivacyPolicy: boolean, acceptTerms: boolean) => Promise<void>;
-  onForgotPassword: (email: string) => Promise<string>;
+  onRegister: (email: string, password: string, displayName: string | undefined, acceptPrivacyPolicy: boolean, acceptTerms: boolean, turnstileToken?: string) => Promise<void>;
+  onForgotPassword: (email: string, turnstileToken?: string) => Promise<string>;
   onLogout: () => Promise<void>;
   onOpenAccount: () => void;
   onOpenPrivacyPolicy: () => void;
   onOpenTerms: () => void;
+  turnstileEnabled?: boolean;
+  turnstileSiteKey?: string | null;
 }
 
 type AuthMode = 'login' | 'register' | 'forgot';
 
-export function LoginPage({ logoUrl, user, authLoading, onOpenWorkspace, onToast, onLogin, onGoogleLogin, onRegister, onForgotPassword, onLogout, onOpenAccount, onOpenPrivacyPolicy, onOpenTerms }: LoginPageProps) {
+export function LoginPage({ logoUrl, user, authLoading, onOpenWorkspace, onToast, onLogin, onGoogleLogin, onRegister, onForgotPassword, onLogout, onOpenAccount, onOpenPrivacyPolicy, onOpenTerms, turnstileEnabled = false, turnstileSiteKey = null }: LoginPageProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -32,6 +34,15 @@ export function LoginPage({ logoUrl, user, authLoading, onOpenWorkspace, onToast
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [acceptPrivacyPolicy, setAcceptPrivacyPolicy] = useState(false);
   const [acceptTerms, setAcceptTerms] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState('');
+  const [turnstileNonce, setTurnstileNonce] = useState(0);
+
+  const showTurnstile = turnstileEnabled && !!turnstileSiteKey && !user;
+
+  function resetTurnstile() {
+    setTurnstileToken('');
+    setTurnstileNonce((value) => value + 1);
+  }
 
   function switchMode(nextMode: AuthMode) {
     setMode(nextMode);
@@ -39,6 +50,7 @@ export function LoginPage({ logoUrl, user, authLoading, onOpenWorkspace, onToast
     setConfirmPassword('');
     setShowPassword(false);
     setShowConfirmPassword(false);
+    if (showTurnstile) resetTurnstile();
     if (nextMode !== 'register') {
       setDisplayName('');
       setAcceptPrivacyPolicy(false);
@@ -54,8 +66,12 @@ export function LoginPage({ logoUrl, user, authLoading, onOpenWorkspace, onToast
       return;
     }
     try {
+      if (showTurnstile && !turnstileToken) {
+        onToast(mode === 'login' ? 'Đăng nhập' : mode === 'register' ? 'Tạo tài khoản' : 'Quên mật khẩu', 'Vui lòng hoàn tất xác minh con người trước khi tiếp tục.', 'error');
+        return;
+      }
       if (mode === 'forgot') {
-        const text = await onForgotPassword(cleanEmail);
+        const text = await onForgotPassword(cleanEmail, turnstileToken || undefined);
         onToast('Quên mật khẩu', text, 'info');
         return;
       }
@@ -64,7 +80,7 @@ export function LoginPage({ logoUrl, user, authLoading, onOpenWorkspace, onToast
         return;
       }
       if (mode === 'login') {
-        await onLogin(cleanEmail, password);
+        await onLogin(cleanEmail, password, turnstileToken || undefined);
         onToast('Đăng nhập', 'Đăng nhập thành công. Lịch sử dựng hình đã được bật.', 'info');
         return;
       }
@@ -80,13 +96,14 @@ export function LoginPage({ logoUrl, user, authLoading, onOpenWorkspace, onToast
         onToast('Tạo tài khoản', 'Bạn cần đồng ý Chính sách bảo mật và Điều khoản sử dụng để tạo tài khoản.', 'error');
         return;
       }
-      await onRegister(cleanEmail, password, displayName.trim() || undefined, acceptPrivacyPolicy, acceptTerms);
+      await onRegister(cleanEmail, password, displayName.trim() || undefined, acceptPrivacyPolicy, acceptTerms, turnstileToken || undefined);
       onToast('Tạo tài khoản', 'Tạo tài khoản thành công. Nhập mã OTP trong email để kích hoạt workspace.', 'info');
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : 'Không thể xử lý đăng nhập.';
       const title = mode === 'register' ? 'Tạo tài khoản' : mode === 'forgot' ? 'Quên mật khẩu' : 'Đăng nhập';
       const hint = /xác minh email|verify/i.test(message) ? `${message} Hãy kiểm tra hộp thư hoặc dùng trang tài khoản để gửi lại email xác minh.` : message;
       onToast(title, hint, 'error');
+      if (showTurnstile) resetTurnstile();
     }
   }
 
@@ -190,6 +207,9 @@ export function LoginPage({ logoUrl, user, authLoading, onOpenWorkspace, onToast
                   </label>
                 </div>
               )}
+              {showTurnstile && turnstileSiteKey && (
+                <TurnstileWidget siteKey={turnstileSiteKey} nonce={turnstileNonce} onToken={setTurnstileToken} />
+              )}
               <button type="submit" className="auth-primary-button" disabled={authLoading}>{authLoading ? 'Đang xử lý...' : mode === 'login' ? 'Đăng nhập' : mode === 'register' ? 'Tạo tài khoản' : 'Gửi liên kết đặt lại mật khẩu'}</button>
               <div className="auth-secondary-links">
                 {mode === 'login' && (
@@ -242,6 +262,85 @@ function PasswordToggleButton({ visible, onToggle }: { visible: boolean; onToggl
       )}
     </button>
   );
+}
+
+let turnstileScriptPromise: Promise<void> | null = null;
+
+function loadTurnstileScript(): Promise<void> {
+  if (window.turnstile) return Promise.resolve();
+  if (turnstileScriptPromise) return turnstileScriptPromise;
+
+  turnstileScriptPromise = new Promise((resolve, reject) => {
+    const existing = document.querySelector<HTMLScriptElement>('script[data-turnstile]');
+    const script = existing ?? document.createElement('script');
+
+    const cleanup = () => {
+      script.removeEventListener('load', handleLoad);
+      script.removeEventListener('error', handleError);
+    };
+    const handleLoad = () => {
+      cleanup();
+      if (window.turnstile) {
+        resolve();
+      } else {
+        turnstileScriptPromise = null;
+        reject(new Error('Turnstile đã tải nhưng không khởi tạo được.'));
+      }
+    };
+    const handleError = () => {
+      cleanup();
+      turnstileScriptPromise = null;
+      reject(new Error('Không tải được Turnstile.'));
+    };
+
+    script.addEventListener('load', handleLoad);
+    script.addEventListener('error', handleError);
+
+    if (!existing) {
+      script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+      script.async = true;
+      script.defer = true;
+      script.dataset.turnstile = 'true';
+      document.head.appendChild(script);
+    } else if (window.turnstile) {
+      handleLoad();
+    }
+  });
+
+  return turnstileScriptPromise;
+}
+
+function TurnstileWidget({ siteKey, nonce, onToken }: { siteKey: string; nonce: number; onToken: (token: string) => void }) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  // Render lại widget khi nonce đổi (reset sau submit hoặc khi chuyển chế độ) hoặc khi site key thay đổi.
+  useEffect(() => {
+    let widgetId: string | undefined;
+    let cancelled = false;
+    onToken('');
+
+    loadTurnstileScript()
+      .then(() => {
+        if (cancelled || !containerRef.current || !window.turnstile) return;
+        containerRef.current.innerHTML = '';
+        widgetId = window.turnstile.render(containerRef.current, {
+          sitekey: siteKey,
+          callback: (token: string) => onToken(token),
+          'error-callback': () => onToken(''),
+          'expired-callback': () => onToken(''),
+        });
+      })
+      .catch(() => {
+        if (!cancelled) onToken('');
+      });
+
+    return () => {
+      cancelled = true;
+      if (widgetId && window.turnstile) window.turnstile.remove(widgetId);
+    };
+  }, [siteKey, nonce, onToken]);
+
+  return <div className="turnstile-widget" ref={containerRef} />;
 }
 
 function LoginGeometryIllustration() {
