@@ -14,6 +14,7 @@ import type { ThreeSceneImageCapture } from './components/ThreeGeometryView';
 import { SceneEditorPanel, type PointPlacementPlane } from './components/SceneEditorPanel';
 import { PrivacyPolicyPage, TermsPage } from './components/LegalPages';
 import { SolverPanel } from './components/SolverPanel';
+import { AlgebraSolverPage } from './components/AlgebraSolverPage';
 import { FunctionAnalyzerPanel } from './components/FunctionAnalyzerPanel';
 import { CalculusSimulationPage } from './components/CalculusSimulationPage';
 import { GeoGebraLabPage } from './components/GeoGebraLabPage';
@@ -40,7 +41,7 @@ const CONTACT_ZALO_PHONE = '0347952503';
 const CONTACT_ZALO_URL = `https://zalo.me/${CONTACT_ZALO_PHONE}`;
 const MINERU_API_BASE_URL = normalizeMineruBaseUrl(import.meta.env.VITE_MINERU_API_BASE_URL);
 
-type AppView = 'home' | 'render' | 'analyzer' | 'analyzer-guide' | 'simulation' | 'geogebra-lab' | 'pdf-to-word' | 'history' | 'guide' | 'about' | 'privacy-policy' | 'terms' | 'login' | 'admin' | 'account' | 'feedback' | 'reset-password' | 'verify-email';
+type AppView = 'home' | 'render' | 'analyzer' | 'algebra-solver' | 'analyzer-guide' | 'simulation' | 'geogebra-lab' | 'pdf-to-word' | 'history' | 'guide' | 'about' | 'privacy-policy' | 'terms' | 'login' | 'admin' | 'account' | 'feedback' | 'reset-password' | 'verify-email';
 type EditTool = 'move' | 'connect' | 'project_to_segment' | 'add_point';
 type BackendStatus = {
   state: 'checking' | 'online' | 'offline';
@@ -51,6 +52,7 @@ const viewPaths: Record<AppView, string> = {
   home: '/',
   render: '/render',
   analyzer: '/analyzer',
+  'algebra-solver': '/algebra-solver',
   'analyzer-guide': '/analyzer/guide',
   simulation: '/simulation',
   'geogebra-lab': '/geogebra-lab',
@@ -847,7 +849,7 @@ export default function App() {
         </div>
         <nav className="header-nav">
           <div className="tools-menu" ref={toolsMenuRef}>
-            <button type="button" className={`nav-item ${activeView === 'render' || activeView === 'analyzer' || activeView === 'analyzer-guide' || activeView === 'simulation' || activeView === 'geogebra-lab' || activeView === 'pdf-to-word' ? 'active' : ''}`} aria-haspopup="menu" aria-expanded={toolsMenuOpen} onClick={() => setToolsMenuOpen((open) => !open)}>
+            <button type="button" className={`nav-item ${activeView === 'render' || activeView === 'analyzer' || activeView === 'algebra-solver' || activeView === 'analyzer-guide' || activeView === 'simulation' || activeView === 'geogebra-lab' || activeView === 'pdf-to-word' ? 'active' : ''}`} aria-haspopup="menu" aria-expanded={toolsMenuOpen} onClick={() => setToolsMenuOpen((open) => !open)}>
               <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3v18"></path><path d="M3 12h18"></path><path d="M5 5l14 14"></path><path d="M19 5L5 19"></path></svg>
               Công cụ
               <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
@@ -867,6 +869,13 @@ export default function App() {
                 }}>
                   <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
                   <span><strong>Khảo sát hàm</strong><small>Đồ thị, đạo hàm, cực trị</small></span>
+                </button>
+                <button type="button" role="menuitem" className={activeView === 'algebra-solver' ? 'active' : ''} onClick={() => {
+                  setToolsMenuOpen(false);
+                  navigateTo('algebra-solver');
+                }}>
+                  <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 7h16"></path><path d="M4 12h10"></path><path d="M4 17h16"></path><path d="M17 10l3 3-3 3"></path></svg>
+                  <span><strong>Solver đại số</strong><small>Phương trình, bất phương trình có kiểm chứng</small></span>
                 </button>
                 <button type="button" role="menuitem" className={activeView === 'simulation' ? 'active' : ''} onClick={() => {
                   setToolsMenuOpen(false);
@@ -1150,6 +1159,7 @@ export default function App() {
             <FunctionAnalyzerPanel onOpenGuide={() => navigateTo('analyzer-guide')} onWarnings={showAnalyzerWarnings} />
           </div>
         )}
+        {activeView === 'algebra-solver' && <AlgebraSolverPage />}
         {activeView === 'simulation' && <CalculusSimulationPage />}
         {activeView === 'geogebra-lab' && <GeoGebraLabPage />}
         {activeView === 'pdf-to-word' && (
