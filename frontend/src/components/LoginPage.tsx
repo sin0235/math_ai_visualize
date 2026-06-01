@@ -38,6 +38,7 @@ export function LoginPage({ logoUrl, user, authLoading, onOpenWorkspace, onToast
   const [turnstileNonce, setTurnstileNonce] = useState(0);
 
   const showTurnstile = turnstileEnabled && !!turnstileSiteKey && !user;
+  const turnstileSubmitBlocked = showTurnstile && !turnstileToken;
 
   function resetTurnstile() {
     setTurnstileToken('');
@@ -208,9 +209,12 @@ export function LoginPage({ logoUrl, user, authLoading, onOpenWorkspace, onToast
                 </div>
               )}
               {showTurnstile && turnstileSiteKey && (
-                <TurnstileWidget siteKey={turnstileSiteKey} nonce={turnstileNonce} onToken={setTurnstileToken} />
+                <div className="turnstile-auth-gate">
+                  <TurnstileWidget siteKey={turnstileSiteKey} nonce={turnstileNonce} onToken={setTurnstileToken} />
+                  {!turnstileToken && <span className="input-hint">Hoàn tất xác minh con người để bật nút tiếp tục.</span>}
+                </div>
               )}
-              <button type="submit" className="auth-primary-button" disabled={authLoading}>{authLoading ? 'Đang xử lý...' : mode === 'login' ? 'Đăng nhập' : mode === 'register' ? 'Tạo tài khoản' : 'Gửi liên kết đặt lại mật khẩu'}</button>
+              <button type="submit" className="auth-primary-button" disabled={authLoading || turnstileSubmitBlocked}>{authLoading ? 'Đang xử lý...' : mode === 'login' ? 'Đăng nhập' : mode === 'register' ? 'Tạo tài khoản' : 'Gửi liên kết đặt lại mật khẩu'}</button>
               <div className="auth-secondary-links">
                 {mode === 'login' && (
                   <span>Chưa có tài khoản? <button type="button" onClick={() => switchMode('register')}>Tạo tài khoản</button></span>

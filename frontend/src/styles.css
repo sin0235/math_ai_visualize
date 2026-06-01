@@ -5085,6 +5085,12 @@ button:disabled {
   background: #f8fafc;
 }
 
+.turnstile-auth-gate {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+}
+
 .turnstile-widget {
   display: flex;
   justify-content: center;
