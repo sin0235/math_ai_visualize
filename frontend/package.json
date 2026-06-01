@@ -15,6 +15,7 @@
     "katex": "^0.16.45",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-mathquill": "^1.0.4",
     "three": "^0.168.0"
   },
   "devDependencies": {

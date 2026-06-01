@@ -1,12 +1,14 @@
 import { useState } from 'react';
-import { ApiError, solveAlgebra, type AlgebraSolveResponse, type AlgebraTopic } from '../api/client';
+import { ApiError, solveAlgebra, type AlgebraInputFormat, type AlgebraSolveResponse, type AlgebraTopic } from '../api/client';
 
 type AlgebraDomain = 'R' | 'C' | 'N' | 'Z';
-import { AlgebraInput } from './algebra-solver/AlgebraInput';
+import { AlgebraInput, type AlgebraInputMode } from './algebra-solver/AlgebraInput';
 import { AlgebraLoadingResult, AlgebraResult, EmptyAlgebraResult } from './algebra-solver/AlgebraResult';
 
 export function AlgebraSolverPage() {
-  const [input, setInput] = useState('x^2 - 5*x + 6 = 0');
+  const [input, setInput] = useState('Giải phương trình x bình phương - 5x + 6 bằng 0');
+  const [inputMode, setInputMode] = useState<AlgebraInputMode>('natural');
+  const [inputFormat, setInputFormat] = useState<AlgebraInputFormat>('auto');
   const [topic, setTopic] = useState<AlgebraTopic>('auto');
   const [domain, setDomain] = useState<AlgebraDomain>('R');
   const [variables, setVariables] = useState('x');
@@ -22,6 +24,7 @@ export function AlgebraSolverPage() {
     try {
       const response = await solveAlgebra({
         input: cleanInput,
+        input_format: inputFormat,
         topic,
         domain,
         variables: variables.split(',').map((item) => item.trim()).filter(Boolean),
@@ -40,11 +43,15 @@ export function AlgebraSolverPage() {
       <div className="algebra-workspace">
         <AlgebraInput
           input={input}
+          inputFormat={inputFormat}
+          inputMode={inputMode}
           topic={topic}
           domain={domain}
           variables={variables}
           loading={loading}
           onInputChange={setInput}
+          onInputFormatChange={setInputFormat}
+          onInputModeChange={setInputMode}
           onTopicChange={setTopic}
           onDomainChange={setDomain}
           onVariablesChange={setVariables}

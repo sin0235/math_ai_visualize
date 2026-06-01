@@ -29,6 +29,7 @@ def normalize_algebra_input(raw: str) -> str:
     text = _replace_latex_log_base(text)
     text = _replace_latex_commands(text)
     text = text.replace("^", "**")
+    text = re.sub(r"\s*(<=|>=|!=|=|<|>)\s*", r"\1", text)
     text = re.sub(r"\s+", " ", text).strip()
     return text
 
@@ -65,7 +66,9 @@ def _replace_latex_sqrt(text: str) -> str:
 
 
 def _replace_latex_log_base(text: str) -> str:
-    return re.sub(r"\\log_\{?([^{}\s]+)\}?\s*\(?([^\s()]+)\)?", r"log(\2, \1)", text)
+    text = re.sub(r"\\log_\{?([A-Za-z0-9]+)\}?\s*\\left\(([^()]+)\\right\)", r"log(\2, \1)", text)
+    text = re.sub(r"\\log_\{?([A-Za-z0-9]+)\}?\s*\(([^()]+)\)", r"log(\2, \1)", text)
+    return re.sub(r"\\log_\{?([A-Za-z0-9]+)\}?\s*([A-Za-z0-9]+)", r"log(\2, \1)", text)
 
 
 def _replace_latex_commands(text: str) -> str:
@@ -79,6 +82,9 @@ def _replace_latex_commands(text: str) -> str:
         r"\\pi": "pi",
         r"\\cdot": "*",
         r"\\times": "*",
+        r"\\le\b": "<=",
+        r"\\ge\b": ">=",
+        r"\\ne\b": "!=",
         r"\\leq": "<=",
         r"\\geq": ">=",
         r"\\neq": "!=",

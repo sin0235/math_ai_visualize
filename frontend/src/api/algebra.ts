@@ -3,14 +3,32 @@ import { requestJson } from './core';
 export type AlgebraTopic = 'auto' | 'equation' | 'inequality' | 'exponential_log' | 'trigonometry' | 'complex' | 'sequence' | 'combinatorics_probability' | 'system' | 'parameter';
 export type AlgebraStatus = 'solved' | 'partial' | 'unsupported' | 'error';
 export type AlgebraVerificationStatus = 'verified' | 'partially_verified' | 'failed' | 'skipped';
+export type AlgebraInputFormat = 'auto' | 'plain' | 'latex' | 'structured';
 
 export interface AlgebraSolveRequest {
   input: string;
-  input_format?: 'auto' | 'plain' | 'latex' | 'structured';
+  input_format?: AlgebraInputFormat;
   topic?: AlgebraTopic;
   variables?: string[];
   parameters?: string[];
   domain?: 'R' | 'C' | 'N' | 'Z';
+}
+
+export interface AlgebraInputChip {
+  kind: 'intent' | 'format' | 'topic' | 'domain' | 'variable' | 'expression' | 'relation' | 'system';
+  label: string;
+  value: string;
+}
+
+export interface AlgebraInputInterpretation {
+  detected_format: 'plain' | 'latex' | 'natural_vi' | 'mixed' | 'structured';
+  source: 'raw' | 'rule_based_vi' | 'latex_normalizer' | 'structured_ui';
+  canonical_input: string;
+  topic_hint: AlgebraTopic;
+  variables: string[];
+  domain: 'R' | 'C' | 'N' | 'Z';
+  chips: AlgebraInputChip[];
+  warnings: string[];
 }
 
 export interface AlgebraSolutionValue {
@@ -54,6 +72,7 @@ export interface AlgebraSolveStep {
 export interface AlgebraSolveResponse {
   input: string;
   normalized_input: string;
+  input_interpretation?: AlgebraInputInterpretation | null;
   topic: string;
   problem_type: string;
   status: AlgebraStatus;

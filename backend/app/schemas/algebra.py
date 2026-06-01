@@ -21,6 +21,7 @@ AlgebraTopic = Literal[
 AlgebraStatus = Literal["solved", "partial", "unsupported", "error"]
 VerificationStatus = Literal["verified", "partially_verified", "failed", "skipped"]
 VerificationCheckStatus = Literal["pass", "fail", "warn", "skip"]
+InputChipKind = Literal["intent", "format", "topic", "domain", "variable", "expression", "relation", "system"]
 
 
 class AlgebraInterval(BaseModel):
@@ -37,6 +38,23 @@ class AlgebraSolveOptions(BaseModel):
     max_solutions: int = 50
     prefer_exact: bool = True
     grade_level: Literal["C3"] = "C3"
+
+
+class AlgebraInputChip(BaseModel):
+    kind: InputChipKind
+    label: str
+    value: str
+
+
+class AlgebraInputInterpretation(BaseModel):
+    detected_format: Literal["plain", "latex", "natural_vi", "mixed", "structured"] = "plain"
+    source: Literal["raw", "rule_based_vi", "latex_normalizer", "structured_ui"] = "raw"
+    canonical_input: str
+    topic_hint: AlgebraTopic = "auto"
+    variables: list[str] = Field(default_factory=list)
+    domain: Literal["R", "C", "N", "Z"] = "R"
+    chips: list[AlgebraInputChip] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
 
 
 class AlgebraSolveRequest(BaseModel):
@@ -91,6 +109,7 @@ class AlgebraVerificationReport(BaseModel):
 class AlgebraSolveResponse(BaseModel):
     input: str
     normalized_input: str
+    input_interpretation: AlgebraInputInterpretation | None = None
     topic: str
     problem_type: str
     status: AlgebraStatus

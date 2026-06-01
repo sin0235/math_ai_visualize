@@ -9,9 +9,18 @@ def classify_algebra_problem(problem: ParsedAlgebraProblem) -> str:
     if len(problem.relations) > 1:
         return "system"
     if problem.relation is None:
+        if problem.topic != "auto":
+            return problem.topic
+        normalized = problem.normalized_input.strip()
+        if normalized.startswith(("arithmetic(", "arithmetic_sum(", "geometric(", "geometric_sum(")):
+            return "sequence"
+        if normalized.startswith(("C(", "A(", "binomial(", "factorial(", "coefficient(")) or normalized.endswith("!"):
+            return "combinatorics_probability"
+        if normalized.startswith(("quadratic_double_root(", "quadratic_has_two_roots(", "quadratic_has_real_root(", "quadratic_no_real_root(", "quadratic_positive_all(")):
+            return "parameter"
         if problem.expression is not None and (problem.expression.has(sp.I) or problem.domain == "C"):
             return "complex"
-        return problem.topic if problem.topic != "auto" else "expression"
+        return "expression"
     expression = problem.relation.lhs - problem.relation.rhs
     if expression.has(sp.I) or problem.domain == "C":
         return "complex"

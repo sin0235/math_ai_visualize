@@ -38,6 +38,19 @@ export function AlgebraResult({ result }: { result: AlgebraSolveResponse }) {
         <p>{result.answer}</p>
       </div>
 
+      {result.input_interpretation && (
+        <section className="algebra-result-card algebra-interpretation-card">
+          <span>Input interpretation</span>
+          <h3>Hệ thống hiểu đề bài như sau</h3>
+          <KatexSpan tex={result.input_interpretation.canonical_input} className="algebra-katex" />
+          <div className="algebra-interpretation-chips">
+            {result.input_interpretation.chips.map((chip) => (
+              <span key={`${chip.kind}-${chip.label}-${chip.value}`} title={chip.value}>{chip.label}: {chip.value}</span>
+            ))}
+          </div>
+        </section>
+      )}
+
       <div className="algebra-result-grid">
         <InfoList title="Điều kiện/giả thiết" items={result.assumptions} empty="Chưa phát hiện điều kiện đặc biệt." />
         <InfoList title="Cảnh báo" items={[...result.warnings, ...result.errors]} empty="Không có cảnh báo." />

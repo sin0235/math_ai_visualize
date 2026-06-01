@@ -11914,7 +11914,7 @@ button.analyzer-guide-label:hover {
 .algebra-empty-result,
 .algebra-result-card {
   border: 1px solid #e5e7eb;
-  border-radius: 22px;
+  border-radius: 8px;
   background: rgba(255, 255, 255, 0.96);
   box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
 }
@@ -11958,7 +11958,7 @@ button.analyzer-guide-label:hover {
 .algebra-input-panel input {
   width: 100%;
   border: 1px solid #d4d4d8;
-  border-radius: 14px;
+  border-radius: 8px;
   padding: 12px 14px;
   font: inherit;
   background: #fff;
@@ -11969,6 +11969,86 @@ button.analyzer-guide-label:hover {
   resize: vertical;
   min-height: 128px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.algebra-mode-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  background: #eff6ff;
+}
+
+.algebra-mode-tabs button {
+  border: 0;
+  border-radius: 6px;
+  padding: 9px 10px;
+  background: transparent;
+  color: #1e40af;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.algebra-mode-tabs button.active {
+  background: #fff;
+  color: #111827;
+  box-shadow: 0 1px 4px rgba(30, 64, 175, 0.16);
+}
+
+.algebra-math-field-wrap {
+  gap: 8px;
+}
+
+.algebra-math-field {
+  width: 100%;
+  min-height: 72px;
+  border: 1px solid #d4d4d8;
+  border-radius: 8px;
+  padding: 14px;
+  background: #fff;
+  color: #111827;
+  font-size: 1.1rem;
+  overflow-x: auto;
+}
+
+.algebra-math-field.mq-focused {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.13);
+}
+
+.algebra-math-toolbar {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.algebra-math-toolbar button {
+  min-height: 34px;
+  border: 1px solid #bfdbfe;
+  border-radius: 7px;
+  background: #f8fafc;
+  color: #1d4ed8;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.algebra-input-preview {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 12px;
+  background: #f8fafc;
+}
+
+.algebra-input-preview > span {
+  color: #64748b;
+  font-size: 0.78rem;
+  font-weight: 850;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
 }
 
 .algebra-option-grid {
@@ -11985,7 +12065,7 @@ button.analyzer-guide-label:hover {
 
 .algebra-examples button {
   border: 1px solid #dbeafe;
-  border-radius: 999px;
+  border-radius: 7px;
   background: #eff6ff;
   color: #1d4ed8;
   padding: 8px 11px;
@@ -12088,9 +12168,36 @@ button.analyzer-guide-label:hover {
 .algebra-check,
 .algebra-step-card {
   border: 1px solid #e5e7eb;
-  border-radius: 16px;
+  border-radius: 8px;
   padding: 12px;
   background: #f8fafc;
+}
+
+.algebra-interpretation-card {
+  display: grid;
+  gap: 10px;
+}
+
+.algebra-interpretation-card h3 {
+  margin: 0;
+}
+
+.algebra-interpretation-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.algebra-interpretation-chips span {
+  max-width: 100%;
+  border: 1px solid #dbeafe;
+  border-radius: 7px;
+  padding: 7px 9px;
+  background: #eff6ff;
+  color: #1e40af;
+  font-size: 0.82rem;
+  font-weight: 800;
+  overflow-wrap: anywhere;
 }
 
 .algebra-check.pass {
@@ -12164,5 +12271,9 @@ button.analyzer-guide-label:hover {
 
   .algebra-result-header {
     flex-direction: column;
+  }
+
+  .algebra-math-toolbar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
