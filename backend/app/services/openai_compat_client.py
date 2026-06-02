@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from typing import Any
 
@@ -133,6 +134,22 @@ class OpenAICompatClient:
             raise RuntimeError(f"OpenAI-compatible response không có nội dung assistant đọc được. shape={shape}")
         log_provider_parse("openai_compat", kind, payload.get("model"), len(content))
         return content
+
+
+def _log_openai_compat_parse_error(kind: str, model: Any, message: Any, response_chars: int | None = None) -> None:
+    """Log parse diagnostics without letting observability break fallback flow."""
+    try:
+        from app.services.provider_logging import log_provider_parse_error
+
+        log_provider_parse_error("openai_compat", kind, model, message, response_chars=response_chars)
+    except Exception as error:  # pragma: no cover - defensive logging guard
+        logging.getLogger("app.services.ai_providers").warning(
+            "AI provider parse error logging failed provider=openai_compat kind=%s model=%s error=%s",
+            kind,
+            model or "<unknown>",
+            str(error) or error.__class__.__name__,
+            extra={"provider": "openai_compat", "kind": kind, "model": model},
+        )
 
 
 def _normalize_openai_compat_base_url(base_url: str) -> str:
