@@ -9,9 +9,11 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Request
 
 from app.api.deps import enforce_rate_limit, require_active_user, require_trusted_origin
+from app.api.routes_ocr import enforce_ocr_access
 from app.api.routes_render import enforce_render_access
 from app.db.models import UserRecord
 from app.db.session import DatabaseClient, get_database
+from app.repositories.admin import AdminRepository
 from app.schemas.scene import (
     DiagramOcrRequest,
     DiagramOcrResponse,
@@ -38,7 +40,7 @@ async def diagram_ocr(
     db: DatabaseClient = Depends(get_database),
 ) -> DiagramOcrResponse:
     await enforce_rate_limit(db, http_request, user, "diagram_ocr", 12 if user else 4, 60)
-    await enforce_render_access(db, user)
+    await enforce_ocr_access(db, user)
     settings = await resolve_effective_settings(db, request.runtime_settings)
     try:
         result = await extract_text_from_image(
@@ -49,6 +51,7 @@ async def diagram_ocr(
         )
     except (RuntimeError, ValueError) as error:
         raise bad_request_from_error(error, "diagram_ocr_failed") from error
+    await AdminRepository(db).record_user_usage_event(user.id, "ocr", {"source": "diagram_ocr", "provider": result.provider, "model": result.model})
     return DiagramOcrResponse(
         description=result.text,
         provider=result.provider,
@@ -80,6 +83,11 @@ async def problem_variants(
         )
     except (RuntimeError, ValueError) as error:
         raise bad_request_from_error(error, "problem_variants_failed") from error
+    await AdminRepository(db).record_user_usage_event(
+        user.id,
+        "problem_variants",
+        {"count": request.count, "provider": result.provider, "model": result.model},
+    )
     return ProblemVariantsResponse(
         variants=result.variants,
         provider=result.provider,

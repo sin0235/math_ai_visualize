@@ -136,6 +136,16 @@ class AdminRepository:
         )
         return int((row or {}).get("count") or 0)
 
+    async def count_user_usage_events_since_any(self, user_id: str, event_types: list[str], since_iso: str) -> int:
+        if not event_types:
+            return 0
+        placeholders = ", ".join("?" for _ in event_types)
+        row = await self.db.fetch_one(
+            f"SELECT COUNT(*) AS count FROM usage_events WHERE user_id = ? AND event_type IN ({placeholders}) AND created_at >= ?",
+            [user_id, *event_types, since_iso],
+        )
+        return int((row or {}).get("count") or 0)
+
     async def record_user_usage_event(self, user_id: str, event_type: str, metadata: dict | None = None) -> None:
         await self.db.execute(
             "INSERT INTO usage_events (id, user_id, event_type, metadata_json) VALUES (?, ?, ?, ?)",

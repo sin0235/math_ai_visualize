@@ -19,6 +19,7 @@ router = APIRouter(prefix="/api", tags=["render"])
 logger = logging.getLogger("app.services.ai_providers")
 
 RENDER_TIMEOUT_SECONDS = 310
+RENDER_AI_USAGE_EVENT_TYPES = ["algebra_ai", "problem_variants", "solver_ai"]
 
 
 @router.post("/render", response_model=RenderResponse, dependencies=[Depends(require_trusted_origin)])
@@ -135,7 +136,8 @@ async def enforce_render_access(db: DatabaseClient, user: UserRecord | None) -> 
     if plan is None or plan.daily_render_limit is None:
         return
     since = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
-    used = await AdminRepository(db).count_user_render_jobs_since(user.id, since)
+    used = await repo.count_user_render_jobs_since(user.id, since)
+    used += await repo.count_user_usage_events_since_any(user.id, RENDER_AI_USAGE_EVENT_TYPES, since)
     if used >= plan.daily_render_limit:
         raise api_error(
             status.HTTP_429_TOO_MANY_REQUESTS,

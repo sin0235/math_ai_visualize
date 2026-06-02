@@ -7,6 +7,7 @@ export interface AdvancedRenderSettings {
   reasoning_layer: ReasoningLayerMode;
   show_coordinates?: boolean | null;
   auto_segments_from_faces: boolean;
+  verify_scene: boolean;
   graph_intersections: boolean;
   show_axes?: boolean | null;
   show_grid?: boolean | null;

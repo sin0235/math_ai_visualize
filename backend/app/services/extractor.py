@@ -131,7 +131,7 @@ async def extract_scene(
                     timeout=attempt_timeout,
                 )
                 warnings.extend(_render_attempt_warnings(attempts))
-                scene, cas_warnings = build_scene_with_cas_fix(scene_json)
+                scene, cas_warnings = build_scene_with_cas_fix(scene_json, verify=render_settings.verify_scene)
                 warnings.extend(cas_warnings)
                 return scene, warnings
             except TimeoutError:
@@ -205,7 +205,7 @@ async def extract_scene(
                     )
                 warnings.extend(_render_attempt_warnings(attempts))
                 try:
-                    scene, cas_warnings = build_scene_with_cas_fix(scene_json)
+                    scene, cas_warnings = build_scene_with_cas_fix(scene_json, verify=render_settings.verify_scene)
                 except (ValidationError, ValueError, KeyError) as error:
                     attempts.append(RenderAttempt(provider, model or _provider_model(provider, settings), str(error)))
                     warnings.extend(_render_attempt_warnings(attempts))
@@ -301,6 +301,7 @@ def normalize_scene_json(scene_json: dict) -> dict:
 def build_scene_with_cas_fix(
     scene_json: dict,
     *,
+    verify: bool = True,
     repair_llm: Callable[[str], str] | None = None,
     repair_max_iterations: int = 2,
     repair_min_severity: str = "warning",
@@ -334,8 +335,13 @@ def build_scene_with_cas_fix(
     report = validate_and_repair(scene)
     scene = report.scene
 
-    scene, inference_issues = infer_point_coordinates(scene)
-    fixed_scene, issues = auto_fix_scene(scene)
+    if verify:
+        scene, inference_issues = infer_point_coordinates(scene)
+        fixed_scene, issues = auto_fix_scene(scene)
+    else:
+        inference_issues = []
+        issues = []
+        fixed_scene = scene
 
     warnings: list[str] = []
     for msg in pre_warnings:
@@ -344,8 +350,10 @@ def build_scene_with_cas_fix(
     for issue in [*inference_issues, *issues]:
         prefix = "Đã tự sửa" if issue.auto_fixed else "Cảnh báo CAS"
         warnings.append(f"[CAS] {prefix} ({issue.relation_type}): {issue.description}")
+    if not verify:
+        warnings.append("[CAS] Đã tắt kiểm chứng quan hệ hình học để dựng hình nhanh hơn.")
 
-    if repair_llm is not None:
+    if verify and repair_llm is not None:
         from app.services.cas_repair import repair_scene_iteratively
 
         unresolved = [i for i in issues if not i.auto_fixed]

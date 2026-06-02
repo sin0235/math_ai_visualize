@@ -40,6 +40,9 @@ export function AlgebraSolverPage() {
         topic: payloadTopic,
         domain,
         variables: variables.split(',').map((item) => item.trim()).filter(Boolean),
+        options: {
+          use_ai_extraction: inputMode === 'natural' && !sequenceInput,
+        },
       });
       setResult(response);
     } catch (caught) {

@@ -195,6 +195,7 @@ class AdvancedRenderSettings(BaseModel):
     reasoning_layer: ReasoningLayerMode = "off"
     show_coordinates: bool | None = None
     auto_segments_from_faces: bool = True
+    verify_scene: bool = True
     graph_intersections: bool = False
     show_axes: bool | None = None
     show_grid: bool | None = None

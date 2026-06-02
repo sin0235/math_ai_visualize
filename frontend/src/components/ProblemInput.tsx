@@ -7,6 +7,7 @@ export const defaultAdvancedSettings: AdvancedRenderSettings = {
   reasoning_layer: 'off',
   show_coordinates: null,
   auto_segments_from_faces: true,
+  verify_scene: true,
   graph_intersections: false,
   show_axes: null,
   show_grid: null,
@@ -310,6 +311,14 @@ export function ProblemInput({
             onChange={(event) => updateAdvancedSettings({ auto_segments_from_faces: event.target.checked })}
           />
           Tự động thêm cạnh từ các mặt
+        </label>
+        <label className="checkbox-label">
+          <input
+            type="checkbox"
+            checked={advancedSettings.verify_scene}
+            onChange={(event) => updateAdvancedSettings({ verify_scene: event.target.checked })}
+          />
+          Kiểm chứng quan hệ hình học
         </label>
         <label className="checkbox-label">
           <input

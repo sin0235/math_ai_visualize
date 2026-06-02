@@ -8,8 +8,10 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 
 from app.api.deps import enforce_rate_limit, require_active_user, require_trusted_origin
+from app.api.routes_render import enforce_render_access
 from app.db.models import UserRecord
 from app.db.session import DatabaseClient, get_database
+from app.repositories.admin import AdminRepository
 from app.schemas.scene import MAX_PROBLEM_TEXT_CHARS, RuntimeSettings
 from app.services.api_errors import bad_request_from_error
 from app.services.model_registry import load_model_registry, resolve_effective_settings, resolve_task_profile
@@ -53,6 +55,8 @@ async def solve_problem(
     from app.services.solver_service import solve
 
     await enforce_rate_limit(db, http_request, user, "solve", 30 if user else 10, 60)
+    await enforce_render_access(db, user)
+    used_ai = False
     try:
         result = solve(request.scene, request.question)
         settings = await resolve_effective_settings(db, request.runtime_settings)
@@ -62,9 +66,12 @@ async def solve_problem(
             from app.services.solver_explainer import explain_solver_result
 
             result = await explain_solver_result(result, request.scene, settings, solver_profile)
+            used_ai = True
     except Exception as e:
         raise bad_request_from_error(e, "solve_failed") from e
 
+    if used_ai:
+        await AdminRepository(db).record_user_usage_event(user.id, "solver_ai", {"source": "geometry_solve"})
     return SolveResponse(
         question=result.question,
         answer=result.answer,

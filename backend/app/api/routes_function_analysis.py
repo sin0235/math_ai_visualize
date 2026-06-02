@@ -5,10 +5,13 @@ API routes for:
 """
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 
-from app.api.deps import require_trusted_origin
+from app.api.deps import enforce_rate_limit, require_active_user, require_trusted_origin
+from app.api.routes_ocr import enforce_ocr_access
+from app.db.models import UserRecord
 from app.db.session import DatabaseClient, get_database
+from app.repositories.admin import AdminRepository
 from app.schemas.analysis import AnalyzeOcrRequest, AnalyzeRequest, AnalyzeResponse, CriticalPoint, VariationRow
 from app.schemas.scene import MAX_PROBLEM_TEXT_CHARS
 from app.services.api_errors import api_error
@@ -50,12 +53,16 @@ async def analyze_function_endpoint(request: AnalyzeRequest) -> AnalyzeResponse:
 @router.post("/analyze/ocr", response_model=AnalyzeResponse, dependencies=[Depends(require_trusted_origin)])
 async def analyze_from_ocr(
     request: AnalyzeOcrRequest,
+    http_request: Request,
+    user: UserRecord = Depends(require_active_user),
     db: DatabaseClient = Depends(get_database),
 ) -> AnalyzeResponse:
     from app.services.function_analyzer import analyze_function
     from app.services.function_graph_builder import build_function_graph
     from app.services.ocr import extract_text_from_image
 
+    await enforce_rate_limit(db, http_request, user, "analyze_ocr", 12, 60)
+    await enforce_ocr_access(db, user)
     settings = await resolve_effective_settings(db, request.runtime_settings)
     registry = await load_model_registry(db, settings)
     ocr_profile = resolve_task_profile(registry, "ocr")
@@ -83,6 +90,7 @@ async def analyze_from_ocr(
     except Exception as e:
         raise api_error(400, f"Lỗi khi phân tích ảnh: {e}", "ANALYZE_OCR_FAILED") from e
 
+    await AdminRepository(db).record_user_usage_event(user.id, "ocr", {"source": "analyze_ocr"})
     return _analysis_response(expression, data)
 
 
