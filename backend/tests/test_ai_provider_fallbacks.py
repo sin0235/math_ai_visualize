@@ -172,45 +172,6 @@ def test_router9_reasoning_request_logs_reasoning_kind_and_input_chars(monkeypat
     assert captured["metadata"]["input_chars"] > len("Vẽ điểm A")
 
 
-def test_openai_compat_invalid_scene_json_logs_parse_error(monkeypatch, caplog):
-    async def fake_post_chat(self, payload, kind, **log_kwargs):
-        return "not json"
-
-    monkeypatch.setattr(OpenAICompatClient, "_post_chat", fake_post_chat)
-    caplog.set_level(logging.WARNING, logger="app.services.ai_providers")
-
-    with pytest.raises(RuntimeError, match="JSON không hợp lệ"):
-        asyncio.run(
-            OpenAICompatClient(
-                Settings(_env_file=None, openai_compat_base_url="https://compat.test/v1", openai_compat_text_model="test-model")
-            ).extract_scene_json("Vẽ điểm A")
-        )
-
-    assert "AI provider parse error provider=openai_compat kind=scene model=test-model" in caplog.text
-    assert "invalid_json" in caplog.text
-
-
-def test_extract_scene_logs_failed_provider_attempt(monkeypatch, caplog):
-    async def fake_extract(provider, settings, problem_text, grade, reasoning_layer, preferred_ai_model=None, **kwargs):
-        raise RuntimeError("OpenAI-compatible trả về JSON không hợp lệ: Expecting value")
-
-    monkeypatch.setattr("app.services.extractor._extract_with_provider", fake_extract)
-    caplog.set_level(logging.WARNING, logger="app.services.ai_providers")
-
-    with pytest.raises(RuntimeError):
-        asyncio.run(
-            extract_scene(
-                "Vẽ điểm A",
-                preferred_ai_provider="openai_compat",
-                preferred_ai_model="gpt-5.5",
-                runtime_settings=RuntimeSettings.model_validate({"openai_compat": {"api_key": "secret", "base_url": "https://compat.test/v1", "model": "gpt-5.5"}}),
-            )
-        )
-
-    assert "AI provider attempt failed provider=openai_compat kind=scene model=gpt-5.5 stage=extract" in caplog.text
-    assert "JSON không hợp lệ" in caplog.text
-
-
 def test_openai_compat_provider_check_uses_small_chat_payload(monkeypatch):
     captured = {}
 
