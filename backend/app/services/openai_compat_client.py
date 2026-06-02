@@ -9,6 +9,7 @@ import httpx
 
 from app.core.config import Settings
 from app.services.ai_prompt import REASONING_SYSTEM_PROMPT, SCENE_EXTRACTION_SYSTEM_PROMPT, build_reasoning_prompt, build_scene_extraction_prompt
+from app.services import provider_logging as provider_logging_service
 from app.services.openrouter_client import OCR_SYSTEM_PROMPT, _strip_json_fences, _strip_text_fences
 from app.services.chat_response import extract_chat_message_content
 from app.services.provider_logging import chat_message_input_chars, format_provider_error, log_ocr_summary, log_provider_parse, log_provider_request, log_provider_response, log_scene_summary
