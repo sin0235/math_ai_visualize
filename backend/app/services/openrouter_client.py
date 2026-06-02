@@ -72,6 +72,7 @@ class OpenRouterClient:
             log_scene_summary("openrouter", scene_json)
             return scene_json
         except json.JSONDecodeError as error:
+            log_provider_parse_error("openrouter", "scene", payload["model"], f"invalid_json: {error.msg}", response_chars=len(content))
             raise RuntimeError(f"OpenRouter trả về JSON không hợp lệ: {error.msg}") from error
 
     async def reason_about_problem(self, problem_text: str, grade: int | None = None, system_prompt: str | None = None) -> dict:
@@ -113,6 +114,7 @@ class OpenRouterClient:
         try:
             return json.loads(_strip_json_fences(content))
         except json.JSONDecodeError as error:
+            log_provider_parse_error("openrouter", "reasoning", payload["model"], f"invalid_json: {error.msg}", response_chars=len(content))
             raise RuntimeError(f"OpenRouter reasoning JSON không hợp lệ: {error.msg}") from error
 
     async def ocr_image(self, image_data_url: str, model: str | None = None, system_prompt: str | None = None, user_text: str = "Trích xuất nguyên văn đề toán trong ảnh.") -> str:

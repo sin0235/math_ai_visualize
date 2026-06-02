@@ -42,6 +42,7 @@ class OpenAICompatClient:
             log_scene_summary("openai_compat", scene_json, model=self.model)
             return scene_json
         except json.JSONDecodeError as error:
+            log_provider_parse_error("openai_compat", "scene", self.model, f"invalid_json: {error.msg}", response_chars=len(content))
             raise RuntimeError(f"OpenAI-compatible trả về JSON không hợp lệ: {error.msg}") from error
 
     async def reason_about_problem(self, problem_text: str, grade: int | None = None, system_prompt: str | None = None) -> dict:
@@ -59,6 +60,7 @@ class OpenAICompatClient:
         try:
             return json.loads(_strip_json_fences(content))
         except json.JSONDecodeError as error:
+            log_provider_parse_error("openai_compat", "reasoning", self.model, f"invalid_json: {error.msg}", response_chars=len(content))
             raise RuntimeError(f"OpenAI-compatible reasoning JSON không hợp lệ: {error.msg}") from error
 
     async def check_connection(self) -> str:

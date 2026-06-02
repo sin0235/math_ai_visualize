@@ -133,6 +133,25 @@ def log_ocr_summary(provider: str, text: str, model: Any = None) -> None:
     )
 
 
+def log_provider_parse_error(provider: str, kind: str, model: Any, message: Any, response_chars: int | None = None, limit: int = 500) -> None:
+    sanitized = truncate_text(redact_sensitive(message), limit)
+    logger.warning(
+        "AI provider parse error provider=%s kind=%s model=%s response_chars=%s error=%s",
+        provider,
+        kind,
+        model or "<unknown>",
+        response_chars if response_chars is not None else "<unknown>",
+        sanitized,
+        extra={
+            "provider": provider,
+            "kind": kind,
+            "model": model,
+            "response_chars": response_chars,
+            "error": sanitized,
+        },
+    )
+
+
 def log_provider_parse(provider: str, kind: str, model: Any, result_chars: int) -> None:
     logger.info(
         "AI provider parse provider=%s kind=%s model=%s result_chars=%s",

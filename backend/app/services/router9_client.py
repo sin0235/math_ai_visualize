@@ -94,6 +94,7 @@ class Router9Client:
             log_scene_summary("9router", scene_json)
             return scene_json
         except json.JSONDecodeError as error:
+            log_provider_parse_error("9router", "scene", self.model, f"invalid_json: {error.msg}", response_chars=len(content))
             raise RuntimeError(f"9router trả về JSON không hợp lệ: {error.msg}") from error
 
     async def reason_about_problem(self, problem_text: str, grade: int | None = None, system_prompt: str | None = None) -> dict:
@@ -126,6 +127,7 @@ class Router9Client:
         try:
             return json.loads(_strip_json_fences(content))
         except json.JSONDecodeError as error:
+            log_provider_parse_error("9router", "reasoning", self.model, f"invalid_json: {error.msg}", response_chars=len(content))
             raise RuntimeError(f"9router reasoning JSON không hợp lệ: {error.msg}") from error
 
     async def ocr_image(self, image_data_url: str, model: str | None = None, system_prompt: str | None = None, user_text: str = "Trích xuất nguyên văn đề toán trong ảnh.") -> str:
