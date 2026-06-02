@@ -1,6 +1,6 @@
 import { requestJson } from './core';
 
-export type AlgebraTopic = 'auto' | 'equation' | 'inequality' | 'exponential_log' | 'trigonometry' | 'complex' | 'sequence' | 'combinatorics_probability' | 'system' | 'parameter';
+export type AlgebraTopic = 'auto' | 'equation' | 'inequality' | 'exponential_log' | 'trigonometry' | 'complex' | 'sequence' | 'combinatorics_probability' | 'system' | 'parameter' | 'calculus_derivative' | 'calculus_limit' | 'calculus_integral';
 export type AlgebraStatus = 'solved' | 'partial' | 'unsupported' | 'error';
 export type AlgebraVerificationStatus = 'verified' | 'partially_verified' | 'failed' | 'skipped';
 export type AlgebraInputFormat = 'auto' | 'plain' | 'latex' | 'structured';
@@ -72,6 +72,9 @@ export interface AlgebraSolveStep {
   index: number;
   title: string;
   explanation: string;
+  short_explanation?: string | null;
+  detail_level?: 'brief' | 'standard' | 'detailed';
+  method?: string | null;
   goal?: string | null;
   why?: string | null;
   rule?: string | null;

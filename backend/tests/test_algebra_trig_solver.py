@@ -10,6 +10,8 @@ def test_trig_solver_solves_sine_on_default_interval():
     assert result.solution_set.kind == "finite"
     assert {value.text for value in result.solution_set.values} == {"pi/6", "5*pi/6"}
     assert result.verification.status == "verified"
+    assert [step.title for step in result.steps[:3]] == ["Đưa về phương trình lượng giác cơ bản", "Viết nghiệm theo chu kỳ", "Lọc nghiệm trên khoảng chuẩn"]
+    assert all(step.kind != "normalize" for step in result.steps)
 
 
 def test_trig_solver_solves_cos_double_angle_on_default_interval():
@@ -18,3 +20,4 @@ def test_trig_solver_solves_cos_double_angle_on_default_interval():
     assert result.status == "solved"
     assert result.solution_set.kind == "finite"
     assert {value.text for value in result.solution_set.values} == {"0", "pi"}
+    assert "Lọc nghiệm trên khoảng chuẩn" in [step.title for step in result.steps]

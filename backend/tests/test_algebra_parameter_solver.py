@@ -11,6 +11,8 @@ def test_parameter_solver_finds_quadratic_double_root_condition():
     assert "1" in result.solution_set.text
     assert "-1" in result.solution_set.text
     assert result.verification.status == "verified"
+    assert [step.title for step in result.steps[:2]] == ["Tính biệt thức Delta", "Lập điều kiện theo tham số"]
+    assert all(step.kind != "normalize" for step in result.steps)
 
 
 def test_parameter_solver_finds_quadratic_two_distinct_roots_condition():

@@ -12,6 +12,8 @@ def test_equation_solver_solves_quadratic():
     assert result.steps
     assert all(step.kind != "normalize" for step in result.steps)
     assert all(step.kind != "domain" for step in result.steps)
+    assert result.steps[0].title == "Chọn phương pháp phân tích nhân tử"
+    assert result.steps[0].method == "factor"
     assert "Phân tích nhân tử" in [step.title for step in result.steps]
     factor_step = next(step for step in result.steps if step.title == "Cho từng nhân tử bằng 0")
     assert factor_step.rule == "Quy tắc tích bằng 0"
@@ -71,13 +73,17 @@ def test_equation_solver_filters_extraneous_sqrt_solution():
     assert result.status == "solved"
     assert {value.text for value in result.solution_set.values} == {"3"}
     assert result.verification.status == "verified"
-    filter_step = next(step for step in result.steps if step.title == "Lọc nghiệm theo điều kiện gốc")
+    titles = [step.title for step in result.steps]
+    assert titles[0] == "Chọn phương pháp xử lý căn"
+    assert titles[1:4] == ["Điều kiện căn thức", "Cô lập căn", "Bình phương hai vế"]
+    filter_step = next(step for step in result.steps if step.title == "Lọc nghiệm ngoại lai")
     assert filter_step.why
-    assert filter_step.rule == "Thử lại nghiệm vào phương trình gốc"
+    assert filter_step.rule == "Thử lại nghiệm sau bình phương"
     assert filter_step.check
-    radical_step = next(step for step in result.steps if step.title == "Khử căn thức")
-    assert "liên hợp" in radical_step.rule
-    assert radical_step.pitfall and "Bình phương" in radical_step.pitfall
+    assert "x=0" in filter_step.after_latex
+    assert "\\text{loại}" in filter_step.after_latex
+    square_step = next(step for step in result.steps if step.title == "Bình phương hai vế")
+    assert square_step.pitfall and "Bình phương" in square_step.pitfall
 
 
 def test_equation_solver_splits_factored_denominator_assumptions():
@@ -85,3 +91,72 @@ def test_equation_solver_splits_factored_denominator_assumptions():
 
     assert "x - 1 khác 0" in result.assumptions
     assert "x + 2 khác 0" in result.assumptions
+
+
+def test_equation_solver_keeps_original_rational_domain_after_simplification():
+    result = solve_algebra(AlgebraSolveRequest(input="(x^2-1)/(x-1)=0"))
+
+    assert result.status == "solved"
+    assert {value.text for value in result.solution_set.values} == {"-1"}
+    assert "x - 1 khác 0" in result.assumptions
+    titles = [step.title for step in result.steps]
+    assert "Quy đồng và khử mẫu" in titles
+    assert "Lọc nghiệm theo điều kiện gốc" in titles
+    zero_product_step = next(step for step in result.steps if step.title == "Cho từng nhân tử bằng 0")
+    assert "x=1" in zero_product_step.after_latex
+    filter_step = next(step for step in result.steps if step.title == "Lọc nghiệm theo điều kiện gốc")
+    assert filter_step.result_latex == r"\left\{-1\right\}"
+
+
+def test_equation_solver_explains_cubic_by_rational_root_and_division():
+    result = solve_algebra(AlgebraSolveRequest(input="x^3 - 6*x^2 + 11*x - 6 = 0"))
+
+    assert result.status == "solved"
+    assert {value.text for value in result.solution_set.values} == {"1", "2", "3"}
+    assert result.answer_latex == r"\left\{1, 2, 3\right\}"
+    titles = [step.title for step in result.steps]
+    assert "Thử nghiệm hữu tỉ" in titles
+    assert "Chia đa thức" in titles
+    assert "Viết lại thành tích" in titles
+    zero_product_step = next(step for step in result.steps if step.title == "Cho từng nhân tử bằng 0")
+    assert zero_product_step.after_latex
+    assert "\n" in zero_product_step.after_latex
+    assert "\\quadx" not in zero_product_step.after_latex
+
+
+def test_equation_solver_explains_biquadratic_substitution():
+    result = solve_algebra(AlgebraSolveRequest(input="x^4 - 5*x^2 + 4 = 0"))
+
+    assert result.status == "solved"
+    assert {value.text for value in result.solution_set.values} == {"-2", "-1", "1", "2"}
+    titles = [step.title for step in result.steps]
+    assert titles[0] == "Chọn phương pháp đặt ẩn phụ"
+    assert titles[1:4] == ["Đặt ẩn phụ", "Giải phương trình theo ẩn phụ", "Trả về ẩn ban đầu"]
+    substitution_step = next(step for step in result.steps if step.title == "Đặt ẩn phụ")
+    assert "t=x^2" in substitution_step.after_latex
+    back_step = next(step for step in result.steps if step.title == "Trả về ẩn ban đầu")
+    assert "x^{2} = 1" in back_step.after_latex
+    assert "\\quadx" not in back_step.after_latex
+
+
+def test_equation_solver_explains_double_radical_by_two_squarings():
+    result = solve_algebra(AlgebraSolveRequest(input="sqrt(x+1)+sqrt(x-2)=3"))
+
+    assert result.status == "solved"
+    assert {value.text for value in result.solution_set.values} == {"3"}
+    titles = [step.title for step in result.steps]
+    assert titles[0] == "Chọn phương pháp xử lý căn"
+    assert titles[1:7] == [
+        "Điều kiện căn thức",
+        "Cô lập căn thứ nhất",
+        "Bình phương lần một",
+        "Cô lập căn còn lại",
+        "Bình phương lần hai",
+        "Giải phương trình sau bình phương",
+    ]
+    first_square = next(step for step in result.steps if step.title == "Bình phương lần một")
+    assert "\\sqrt{x - 2}" in first_square.after_latex
+    second_square = next(step for step in result.steps if step.title == "Bình phương lần hai")
+    assert "\\sqrt" not in second_square.after_latex
+    filter_step = next(step for step in result.steps if step.title == "Lọc nghiệm ngoại lai")
+    assert "S=\\left\\{3\\right\\}" in filter_step.after_latex

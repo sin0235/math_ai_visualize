@@ -10,6 +10,8 @@ def test_system_solver_solves_linear_two_by_two():
     assert "x = 2" in result.answer
     assert "y = 1" in result.answer
     assert result.verification.status == "verified"
+    assert [step.title for step in result.steps[:3]] == ["Viết hệ dạng chuẩn", "Khử một ẩn", "Thế ngược tìm ẩn còn lại"]
+    assert all(step.kind != "normalize" for step in result.steps)
 
 
 def test_system_solver_detects_system_with_auto_topic():

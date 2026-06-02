@@ -9,6 +9,7 @@ from app.services.algebra.ai_extraction import extract_algebra_request_with_ai
 from app.services.algebra.classifier import classify_algebra_problem
 from app.services.algebra.interpreter import interpret_algebra_input
 from app.services.algebra.parser import AlgebraParseError, ParsedAlgebraProblem, parse_algebra_problem
+from app.services.algebra.solvers.calculus_solver import solve_calculus
 from app.services.algebra.solvers.combinatorics_probability_solver import solve_combinatorics_probability
 from app.services.algebra.solvers.complex_solver import solve_complex
 from app.services.algebra.solvers.equation_solver import solve_equation
@@ -58,6 +59,9 @@ def solve_algebra_deterministic(request: AlgebraSolveRequest) -> AlgebraSolveRes
     if requested_topic == "parameter":
         problem = _raw_problem(request, interpretation.canonical_input, variables, domain, requested_topic)
         return _with_interpretation(solve_parameter(problem), request.input, interpretation)
+    if requested_topic in {"calculus_derivative", "calculus_limit", "calculus_integral"}:
+        problem = _raw_problem(request, interpretation.canonical_input, variables, domain, requested_topic)
+        return _with_interpretation(solve_calculus(problem), request.input, interpretation)
     try:
         problem = parse_algebra_problem(interpretation.canonical_input, topic=requested_topic, variables=variables, domain=domain)
     except AlgebraParseError as exc:
@@ -91,6 +95,8 @@ def solve_algebra_deterministic(request: AlgebraSolveRequest) -> AlgebraSolveRes
         return _with_interpretation(solve_sequence(problem), request.input, interpretation)
     if topic == "parameter":
         return _with_interpretation(solve_parameter(problem), request.input, interpretation)
+    if topic in {"calculus_derivative", "calculus_limit", "calculus_integral"}:
+        return _with_interpretation(solve_calculus(problem), request.input, interpretation)
     return _with_interpretation(AlgebraSolveResponse(
         input=request.input,
         normalized_input=problem.normalized_input,

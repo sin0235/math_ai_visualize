@@ -4,6 +4,7 @@ import sympy as sp
 
 from app.schemas.algebra import AlgebraSolveStep
 from app.services.algebra.parser import ParsedAlgebraProblem
+from app.services.algebra.transformations import AlgebraTechnique
 
 
 def normalize_step(problem: ParsedAlgebraProblem) -> AlgebraSolveStep:
@@ -40,6 +41,25 @@ def domain_step(index: int, assumptions: list[str]) -> AlgebraSolveStep:
         pitfall="Không được bỏ qua điều kiện này khi kết luận; nhiều nghiệm ngoại lai xuất hiện vì quên kiểm tra điều kiện.",
         check="Mỗi nghiệm tìm được ở cuối bài phải được đối chiếu với các điều kiện trên." if has_assumptions else "Nếu không có mẫu số, căn chẵn hoặc logarit theo biến, ta có thể tiếp tục với miền đã chọn.",
         kind="domain",
+        confidence="symbolic",
+    )
+
+
+def method_step(index: int, technique: AlgebraTechnique) -> AlgebraSolveStep:
+    return AlgebraSolveStep(
+        index=index,
+        title=technique.title,
+        explanation=technique.reason,
+        short_explanation=technique.reason,
+        detail_level="brief",
+        method=technique.key,
+        goal="Chọn hướng biến đổi chính trước khi giải.",
+        why=technique.reason,
+        rule=technique.rule,
+        operation=technique.operation,
+        after_latex=technique.latex,
+        check="Các bước sau phải đi đúng phương pháp đã chọn và vẫn kiểm tra lại với đề gốc.",
+        kind="transform",
         confidence="symbolic",
     )
 

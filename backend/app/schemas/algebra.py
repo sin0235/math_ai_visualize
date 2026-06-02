@@ -17,6 +17,9 @@ AlgebraTopic = Literal[
     "combinatorics_probability",
     "system",
     "parameter",
+    "calculus_derivative",
+    "calculus_limit",
+    "calculus_integral",
 ]
 AlgebraStatus = Literal["solved", "partial", "unsupported", "error"]
 VerificationStatus = Literal["verified", "partially_verified", "failed", "skipped"]
@@ -74,6 +77,9 @@ class AlgebraSolveStep(BaseModel):
     index: int
     title: str
     explanation: str
+    short_explanation: str | None = None
+    detail_level: Literal["brief", "standard", "detailed"] = "standard"
+    method: str | None = None
     goal: str | None = None
     why: str | None = None
     rule: str | None = None

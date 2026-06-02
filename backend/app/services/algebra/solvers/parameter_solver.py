@@ -7,7 +7,7 @@ import sympy as sp
 
 from app.schemas.algebra import AlgebraSolutionSet, AlgebraSolveResponse, AlgebraSolveStep, AlgebraVerificationCheck, AlgebraVerificationReport
 from app.services.algebra.parser import ParsedAlgebraProblem
-from app.services.algebra.steps import conclusion_step, normalize_step
+from app.services.algebra.steps import conclusion_step
 
 
 @dataclass(frozen=True)
@@ -22,7 +22,7 @@ class QuadraticTemplate:
 
 def solve_parameter(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
     normalized = problem.normalized_input.strip()
-    steps = [normalize_step(problem)]
+    steps: list[AlgebraSolveStep] = []
     try:
         template = _parse_quadratic_template(normalized)
         condition, explanation, latex = _solve_quadratic_template(template)
@@ -32,9 +32,28 @@ def solve_parameter(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
     condition_text = sp.sstr(condition)
     condition_latex = sp.latex(condition)
     steps.append(AlgebraSolveStep(
+        index=1,
+        title="Tính biệt thức Delta",
+        explanation="Với bài toán tham số bậc hai, trước hết tính Delta theo tham số.",
+        goal="Đưa điều kiện nghiệm về điều kiện của Delta.",
+        why="Số nghiệm thực của phương trình bậc hai được quyết định bởi dấu của Delta.",
+        rule="Biệt thức bậc hai",
+        operation="Tính Delta = b^2 - 4ac từ các hệ số a, b, c.",
+        expression=_quadratic_expression_text(template),
+        expression_latex=_quadratic_equation_latex(template),
+        result=sp.sstr(template.b ** 2 - 4 * template.a * template.c),
+        result_latex=latex,
+        kind="transform",
+        confidence="symbolic",
+    ))
+    steps.append(AlgebraSolveStep(
         index=2,
         title="Lập điều kiện theo tham số",
         explanation=explanation,
+        goal="Tìm các giá trị tham số làm bài toán thỏa yêu cầu.",
+        why="Mỗi yêu cầu như nghiệm kép, hai nghiệm phân biệt hay vô nghiệm tương ứng với một điều kiện về Delta.",
+        rule="Điều kiện nghiệm bậc hai",
+        operation="Đổi yêu cầu của đề thành bất phương trình hoặc phương trình theo tham số.",
         expression=_quadratic_expression_text(template),
         expression_latex=latex,
         result=condition_text,
@@ -195,6 +214,11 @@ def _actual_property(template: QuadraticTemplate, parameter_value: int) -> bool:
 def _quadratic_expression_text(template: QuadraticTemplate) -> str:
     expression = template.a * template.variable ** 2 + template.b * template.variable + template.c
     return sp.sstr(sp.expand(expression))
+
+
+def _quadratic_equation_latex(template: QuadraticTemplate) -> str:
+    expression = template.a * template.variable ** 2 + template.b * template.variable + template.c
+    return sp.latex(sp.Eq(sp.expand(expression), 0, evaluate=False))
 
 
 def _unsupported(problem: ParsedAlgebraProblem, message: str) -> AlgebraSolveResponse:

@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { ApiError, solveAlgebra, type AlgebraInputFormat, type AlgebraSolveResponse, type AlgebraTopic } from '../api/client';
+import { AlgebraInput, type AlgebraInputMode, type SequenceDraft } from './algebra-solver/AlgebraInput';
+import { AlgebraLoadingResult, AlgebraResult, EmptyAlgebraResult } from './algebra-solver/AlgebraResult';
 
 type AlgebraDomain = 'R' | 'C' | 'N' | 'Z';
-import { AlgebraInput, type AlgebraInputMode } from './algebra-solver/AlgebraInput';
-import { AlgebraLoadingResult, AlgebraResult, EmptyAlgebraResult } from './algebra-solver/AlgebraResult';
 
 export function AlgebraSolverPage() {
   const [input, setInput] = useState('Giải phương trình x bình phương - 5x + 6 bằng 0');
@@ -15,16 +15,26 @@ export function AlgebraSolverPage() {
   const [result, setResult] = useState<AlgebraSolveResponse | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [sequenceDraft, setSequenceDraft] = useState<SequenceDraft>({
+    kind: 'arithmetic',
+    target: 'term',
+    u1: '2',
+    d: '3',
+    q: '2',
+    n: '10',
+  });
 
   async function handleSubmit() {
     const cleanInput = input.trim();
-    if (!cleanInput || loading) return;
+    const sequenceInput = topic === 'sequence' ? sequenceInputFromDraft(sequenceDraft) : '';
+    const payloadInput = sequenceInput || cleanInput;
+    if (!payloadInput || loading) return;
     setLoading(true);
     setError('');
     try {
       const response = await solveAlgebra({
-        input: cleanInput,
-        input_format: inputFormat,
+        input: payloadInput,
+        input_format: sequenceInput ? 'structured' : inputFormat,
         topic,
         domain,
         variables: variables.split(',').map((item) => item.trim()).filter(Boolean),
@@ -55,6 +65,8 @@ export function AlgebraSolverPage() {
           onTopicChange={setTopic}
           onDomainChange={setDomain}
           onVariablesChange={setVariables}
+          sequenceDraft={sequenceDraft}
+          onSequenceDraftChange={setSequenceDraft}
           onSubmit={handleSubmit}
         />
         <div className="algebra-result-wrap">
@@ -64,4 +76,14 @@ export function AlgebraSolverPage() {
       </div>
     </section>
   );
+}
+
+function sequenceInputFromDraft(draft: SequenceDraft) {
+  if (!draft.u1.trim() || !draft.n.trim()) return '';
+  if (draft.kind === 'arithmetic') {
+    if (!draft.d.trim()) return '';
+    return `${draft.target === 'sum' ? 'arithmetic_sum' : 'arithmetic'}(u1=${draft.u1.trim()},d=${draft.d.trim()},n=${draft.n.trim()})`;
+  }
+  if (!draft.q.trim()) return '';
+  return `${draft.target === 'sum' ? 'geometric_sum' : 'geometric'}(u1=${draft.u1.trim()},q=${draft.q.trim()},n=${draft.n.trim()})`;
 }

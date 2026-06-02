@@ -69,6 +69,34 @@ def test_interpreter_converts_vietnamese_sequence_to_structured_input():
     assert interpretation.topic_hint == "sequence"
 
 
+def test_interpreter_converts_sequence_term_index_to_structured_input():
+    interpretation = interpret_algebra_input(AlgebraSolveRequest(input="Cấp số cộng u1=2 d=3 tìm u10"))
+
+    assert interpretation.canonical_input == "arithmetic(u1=2,d=3,n=10)"
+    assert interpretation.topic_hint == "sequence"
+
+
+def test_interpreter_converts_sequence_sum_text_to_structured_input():
+    interpretation = interpret_algebra_input(AlgebraSolveRequest(input="Tính tổng 10 số hạng đầu của cấp số nhân u1=3 q=2"))
+
+    assert interpretation.canonical_input == "geometric_sum(u1=3,q=2,n=10)"
+    assert interpretation.topic_hint == "sequence"
+
+
+def test_interpreter_detects_arithmetic_sequence_from_list():
+    interpretation = interpret_algebra_input(AlgebraSolveRequest(input="dãy 2,5,8,... tìm số hạng thứ 20"))
+
+    assert interpretation.canonical_input == "arithmetic(u1=2,d=3,n=20)"
+    assert interpretation.topic_hint == "sequence"
+
+
+def test_interpreter_detects_geometric_sum_from_list():
+    interpretation = interpret_algebra_input(AlgebraSolveRequest(input="dãy 3,6,12,... tính S5"))
+
+    assert interpretation.canonical_input == "geometric_sum(u1=3,q=2,n=5)"
+    assert interpretation.topic_hint == "sequence"
+
+
 def test_parser_parses_equation():
     problem = parse_algebra_problem("x^2 - 5*x + 6 = 0")
     assert problem.topic == "equation"

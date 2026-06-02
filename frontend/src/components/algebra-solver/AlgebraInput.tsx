@@ -1,67 +1,76 @@
 import { useRef, useState } from 'react';
 import { addStyles, EditableMathField } from 'react-mathquill';
 import type { AlgebraInputFormat, AlgebraTopic } from '../../api/client';
+import { KatexSpan } from '../KatexSpan';
 
 addStyles();
 
 type AlgebraDomain = 'R' | 'C' | 'N' | 'Z';
 export type AlgebraInputMode = 'natural' | 'math';
+export interface SequenceDraft {
+  kind: 'arithmetic' | 'geometric';
+  target: 'term' | 'sum';
+  u1: string;
+  d: string;
+  q: string;
+  n: string;
+}
 
 const MATH_SNIPPET_GROUPS = [
   {
     title: 'Đa thức',
-    label: 'x²',
+    tex: 'x^2',
     items: [
-      { label: 'a⁄b', title: 'Phân thức', action: 'frac' },
-      { label: 'ⁿ√a', title: 'Căn bậc n', action: 'nthRoot' },
-      { label: 'aⁿ', title: 'Lũy thừa', action: 'power' },
-      { label: 'logₐ', title: 'Loga', action: 'log' },
-      { label: 'ln', title: 'Ln', action: 'ln' },
-      { label: '|a|', title: 'Abs', action: 'abs' },
+      { tex: '\\frac{a}{b}', title: 'Phân thức', action: 'frac' },
+      { tex: '\\sqrt[n]{a}', title: 'Căn bậc n', action: 'nthRoot' },
+      { tex: 'a^{n}', title: 'Lũy thừa', action: 'power' },
+      { tex: '\\log_{a}', title: 'Loga', action: 'log' },
+      { tex: '\\ln', title: 'Ln', action: 'ln' },
+      { tex: '\\left|a\\right|', title: 'Abs', action: 'abs' },
     ],
   },
   {
     title: 'Đạo hàm và phương trình',
-    label: '∫',
+    tex: '\\int',
     items: [
-      { label: 'd/dx', title: 'Đạo hàm', action: 'derivative' },
-      { label: '∫', title: 'Tích phân', action: 'integral' },
-      { label: 'Σ', title: 'Tổng', action: 'sum' },
-      { label: 'Π', title: 'Tích', action: 'product' },
-      { label: 'lim', title: 'Giới hạn', action: 'limit' },
-      { label: '{2', title: 'Hệ 2 ẩn', action: 'system2' },
-      { label: '{3', title: 'Hệ 3 ẩn', action: 'system3' },
-      { label: '=0', title: 'Phương trình', action: 'equation' },
+      { tex: '\\frac{d}{dx}', title: 'Đạo hàm', action: 'derivative' },
+      { tex: '\\int', title: 'Tích phân', action: 'integral' },
+      { tex: '\\sum', title: 'Tổng', action: 'sum' },
+      { tex: '\\prod', title: 'Tích', action: 'product' },
+      { tex: '\\lim', title: 'Giới hạn', action: 'limit' },
+      { tex: '\\begin{cases}\\square\\\\\\square\\end{cases}', title: 'Hệ 2 ẩn', action: 'system2' },
+      { tex: '\\begin{cases}\\square\\\\\\square\\\\\\square\\end{cases}', title: 'Hệ 3 ẩn', action: 'system3' },
+      { tex: '=0', title: 'Phương trình', action: 'equation' },
     ],
   },
   {
     title: 'Lượng giác',
-    label: 'sin',
+    tex: '\\sin',
     items: [
-      { label: 'sin', title: 'Sin', action: 'sin' },
-      { label: 'cos', title: 'Cos', action: 'cos' },
-      { label: 'tan', title: 'Tan', action: 'tan' },
-      { label: 'cot', title: 'Cot', action: 'cot' },
-      { label: 'sin⁻¹', title: 'Arcsin', action: 'asin' },
-      { label: 'cos⁻¹', title: 'Arccos', action: 'acos' },
-      { label: 'tan⁻¹', title: 'Arctan', action: 'atan' },
-      { label: 'cot⁻¹', title: 'Arccot', action: 'acot' },
+      { tex: '\\sin', title: 'Sin', action: 'sin' },
+      { tex: '\\cos', title: 'Cos', action: 'cos' },
+      { tex: '\\tan', title: 'Tan', action: 'tan' },
+      { tex: '\\cot', title: 'Cot', action: 'cot' },
+      { tex: '\\sin^{-1}', title: 'Arcsin', action: 'asin' },
+      { tex: '\\cos^{-1}', title: 'Arccos', action: 'acos' },
+      { tex: '\\tan^{-1}', title: 'Arctan', action: 'atan' },
+      { tex: '\\cot^{-1}', title: 'Arccot', action: 'acot' },
     ],
   },
   {
     title: 'Phép tính',
-    label: '≥',
+    tex: '\\ge',
     items: [
-      { label: '>', title: 'Lớn hơn', action: 'gt' },
-      { label: '<', title: 'Bé hơn', action: 'lt' },
-      { label: '≥', title: 'Lớn hơn hoặc bằng', action: 'ge' },
-      { label: '≤', title: 'Bé hơn hoặc bằng', action: 'le' },
-      { label: '=', title: 'Bằng', action: 'eq' },
-      { label: '≠', title: 'Khác', action: 'ne' },
-      { label: '+', title: 'Cộng', action: 'plus' },
-      { label: '−', title: 'Trừ', action: 'minus' },
-      { label: '×', title: 'Nhân', action: 'times' },
-      { label: '÷', title: 'Chia', action: 'divide' },
+      { tex: '>', title: 'Lớn hơn', action: 'gt' },
+      { tex: '<', title: 'Bé hơn', action: 'lt' },
+      { tex: '\\ge', title: 'Lớn hơn hoặc bằng', action: 'ge' },
+      { tex: '\\le', title: 'Bé hơn hoặc bằng', action: 'le' },
+      { tex: '=', title: 'Bằng', action: 'eq' },
+      { tex: '\\ne', title: 'Khác', action: 'ne' },
+      { tex: '+', title: 'Cộng', action: 'plus' },
+      { tex: '-', title: 'Trừ', action: 'minus' },
+      { tex: '\\times', title: 'Nhân', action: 'times' },
+      { tex: '\\div', title: 'Chia', action: 'divide' },
     ],
   },
 ] as const;
@@ -82,6 +91,8 @@ export function AlgebraInput({
   onTopicChange,
   onDomainChange,
   onVariablesChange,
+  sequenceDraft,
+  onSequenceDraftChange,
   onSubmit,
 }: {
   input: string;
@@ -97,9 +108,12 @@ export function AlgebraInput({
   onTopicChange: (value: AlgebraTopic) => void;
   onDomainChange: (value: AlgebraDomain) => void;
   onVariablesChange: (value: string) => void;
+  sequenceDraft: SequenceDraft;
+  onSequenceDraftChange: (value: SequenceDraft) => void;
   onSubmit: () => void;
 }) {
   const [activeSnippetGroup, setActiveSnippetGroup] = useState(0);
+  const suggestedTopic = suggestTopic(input);
   const mathFieldRef = useRef<{
     cmd: (command: string) => void;
     write: (latex: string) => void;
@@ -121,11 +135,26 @@ export function AlgebraInput({
     else if (action === 'log') mathField.write('\\log_{}\\left(\\right)');
     else if (action === 'ln') mathField.write('\\ln\\left(\\right)');
     else if (action === 'abs') mathField.write('\\left|\\right|');
-    else if (action === 'derivative') mathField.write('\\frac{d}{dx}\\left(\\right)');
-    else if (action === 'integral') mathField.write('\\int_{}^{}\\left(\\right)dx');
+    else if (action === 'derivative') {
+      onInputModeChange('natural');
+      onInputFormatChange('auto');
+      onTopicChange('calculus_derivative');
+      onInputChange('derivative(expr=x^2,var=x)');
+    }
+    else if (action === 'integral') {
+      onInputModeChange('natural');
+      onInputFormatChange('auto');
+      onTopicChange('calculus_integral');
+      onInputChange('integral(expr=x^2,var=x)');
+    }
     else if (action === 'sum') mathField.write('\\sum_{}^{}');
     else if (action === 'product') mathField.write('\\prod_{}^{}');
-    else if (action === 'limit') mathField.write('\\lim_{x\\to 0}');
+    else if (action === 'limit') {
+      onInputModeChange('natural');
+      onInputFormatChange('auto');
+      onTopicChange('calculus_limit');
+      onInputChange('limit(expr=(x^2-1)/(x-1),var=x,to=1)');
+    }
     else if (action === 'system2') {
       onTopicChange('system');
       onVariablesChange('x,y');
@@ -162,13 +191,16 @@ export function AlgebraInput({
       <div className="algebra-panel-heading">
         <span>Bộ giải đại số</span>
         <h2>Nhập bài toán</h2>
-        <p>Gõ tiếng Việt tự nhiên hoặc nhập trực tiếp công thức; hệ thống sẽ diễn giải, giải và kiểm chứng kết quả.</p>
       </div>
 
       <div className="algebra-mode-tabs" role="tablist" aria-label="Chế độ nhập">
         <button type="button" className={inputMode === 'natural' ? 'active' : ''} onClick={() => { onInputModeChange('natural'); onInputFormatChange('auto'); }} disabled={loading}>Tiếng Việt</button>
         <button type="button" className={inputMode === 'math' ? 'active' : ''} onClick={() => { onInputModeChange('math'); onInputFormatChange('latex'); }} disabled={loading}>Công thức</button>
       </div>
+
+      {topic === 'sequence' && (
+        <SequenceBuilder draft={sequenceDraft} loading={loading} onChange={onSequenceDraftChange} />
+      )}
 
       {inputMode === 'math' ? (
         <div className="field-label algebra-math-field-wrap">
@@ -194,6 +226,12 @@ export function AlgebraInput({
         </label>
       )}
 
+      {suggestedTopic && topic !== suggestedTopic && (
+        <button type="button" className="algebra-topic-suggestion" onClick={() => onTopicChange(suggestedTopic)} disabled={loading}>
+          Gợi ý dạng bài: {topicLabel(suggestedTopic)}
+        </button>
+      )}
+
       <div className="algebra-math-toolbar" aria-label="Chèn ô công thức">
         <div className="algebra-snippet-tabs" role="tablist" aria-label="Nhóm công thức">
           {MATH_SNIPPET_GROUPS.map((group, index) => (
@@ -208,13 +246,15 @@ export function AlgebraInput({
               onClick={() => setActiveSnippetGroup(index)}
               disabled={loading}
             >
-              {group.label}
+              <KatexSpan tex={group.tex} className="algebra-snippet-katex" />
             </button>
           ))}
         </div>
         <div className="algebra-snippet-grid" role="tabpanel">
           {MATH_SNIPPET_GROUPS[activeSnippetGroup].items.map((snippet) => (
-            <button type="button" key={snippet.title} title={snippet.title} aria-label={snippet.title} onClick={() => insertMathSnippet(snippet.action)} disabled={loading}>{snippet.label}</button>
+            <button type="button" key={snippet.title} title={snippet.title} aria-label={snippet.title} onClick={() => insertMathSnippet(snippet.action)} disabled={loading}>
+              <KatexSpan tex={snippet.tex} className="algebra-snippet-katex" />
+            </button>
           ))}
         </div>
       </div>
@@ -233,6 +273,9 @@ export function AlgebraInput({
             <option value="sequence">Cấp số</option>
             <option value="combinatorics_probability">Tổ hợp-xác suất</option>
             <option value="parameter">Tham số</option>
+            <option value="calculus_derivative">Đạo hàm</option>
+            <option value="calculus_limit">Giới hạn</option>
+            <option value="calculus_integral">Tích phân</option>
           </select>
         </label>
         <label className="field-label">
@@ -256,9 +299,77 @@ export function AlgebraInput({
         />
       </label>
 
-      <button type="button" className="auth-primary-button algebra-submit" onClick={onSubmit} disabled={loading || !input.trim()}>
+      <button type="button" className="auth-primary-button algebra-submit" onClick={onSubmit} disabled={loading || (!input.trim() && topic !== 'sequence')}>
         {loading ? 'Đang giải...' : 'Giải bài'}
       </button>
+    </section>
+  );
+}
+
+function suggestTopic(input: string): AlgebraTopic | null {
+  const text = input.trim().toLowerCase();
+  if (!text) return null;
+  if (/[<>≤≥]|\\le|\\ge/.test(text)) return 'inequality';
+  if (text.includes(';')) return 'system';
+  if (/sin|cos|tan|cot|\\sin|\\cos|\\tan|\\cot/.test(text)) return 'trigonometry';
+  if (/log|ln|\\log|\\ln|\^\(/.test(text)) return 'exponential_log';
+  if (/derivative|đạo hàm|dao ham|d\/dx/.test(text)) return 'calculus_derivative';
+  if (/limit|giới hạn|gioi han|lim/.test(text)) return 'calculus_limit';
+  if (/integral|tích phân|tich phan|nguyên hàm|nguyen ham/.test(text)) return 'calculus_integral';
+  if (/quadratic_/.test(text)) return 'parameter';
+  if (/u_?1|cấp số|cap so|arithmetic|geometric/.test(text)) return 'sequence';
+  return null;
+}
+
+function topicLabel(topic: AlgebraTopic) {
+  if (topic === 'inequality') return 'Bất phương trình';
+  if (topic === 'system') return 'Hệ phương trình';
+  if (topic === 'trigonometry') return 'Lượng giác';
+  if (topic === 'exponential_log') return 'Mũ-log';
+  if (topic === 'parameter') return 'Tham số';
+  if (topic === 'sequence') return 'Cấp số';
+  if (topic === 'calculus_derivative') return 'Đạo hàm';
+  if (topic === 'calculus_limit') return 'Giới hạn';
+  if (topic === 'calculus_integral') return 'Tích phân';
+  return 'Tự nhận dạng';
+}
+
+function SequenceBuilder({ draft, loading, onChange }: { draft: SequenceDraft; loading: boolean; onChange: (value: SequenceDraft) => void }) {
+  function update(patch: Partial<SequenceDraft>) {
+    onChange({ ...draft, ...patch });
+  }
+
+  return (
+    <section className="algebra-sequence-builder" aria-label="Điền nhanh cấp số">
+      <div className="algebra-segmented-row" role="group" aria-label="Loại cấp số">
+        <button type="button" className={draft.kind === 'arithmetic' ? 'active' : ''} onClick={() => update({ kind: 'arithmetic' })} disabled={loading}>Cấp số cộng</button>
+        <button type="button" className={draft.kind === 'geometric' ? 'active' : ''} onClick={() => update({ kind: 'geometric' })} disabled={loading}>Cấp số nhân</button>
+      </div>
+      <div className="algebra-segmented-row" role="group" aria-label="Cần tính">
+        <button type="button" className={draft.target === 'term' ? 'active' : ''} onClick={() => update({ target: 'term' })} disabled={loading}>Tính uₙ</button>
+        <button type="button" className={draft.target === 'sum' ? 'active' : ''} onClick={() => update({ target: 'sum' })} disabled={loading}>Tính Sₙ</button>
+      </div>
+      <div className="algebra-sequence-grid">
+        <label className="field-label">
+          u₁
+          <input value={draft.u1} onChange={(event) => update({ u1: event.target.value })} disabled={loading} inputMode="decimal" />
+        </label>
+        {draft.kind === 'arithmetic' ? (
+          <label className="field-label">
+            d
+            <input value={draft.d} onChange={(event) => update({ d: event.target.value })} disabled={loading} inputMode="decimal" />
+          </label>
+        ) : (
+          <label className="field-label">
+            q
+            <input value={draft.q} onChange={(event) => update({ q: event.target.value })} disabled={loading} inputMode="decimal" />
+          </label>
+        )}
+        <label className="field-label">
+          n
+          <input value={draft.n} onChange={(event) => update({ n: event.target.value })} disabled={loading} inputMode="numeric" />
+        </label>
+      </div>
     </section>
   );
 }

@@ -11953,7 +11953,7 @@ button.analyzer-guide-label:hover {
 .algebra-panel-heading span,
 .algebra-eyebrow {
   color: var(--ink-3);
-  font-weight: 720;
+  font-weight: 600;
   font-size: 0.74rem;
   text-transform: uppercase;
 }
@@ -11963,7 +11963,7 @@ button.analyzer-guide-label:hover {
   margin: 6px 0 8px;
   color: var(--ink);
   font-size: clamp(1.3rem, 3vw, 1.8rem);
-  font-weight: 760;
+  font-weight: 600;
   line-height: 1.12;
   text-wrap: balance;
 }
@@ -12020,7 +12020,7 @@ button.analyzer-guide-label:hover {
   padding: 9px 10px;
   background: transparent;
   color: var(--ink-3);
-  font-weight: 700;
+  font-weight: 560;
   cursor: pointer;
 }
 
@@ -12028,6 +12028,37 @@ button.analyzer-guide-label:hover {
   background: var(--paper);
   color: var(--ink);
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
+}
+
+.algebra-quick-examples {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.algebra-quick-examples button,
+.algebra-topic-suggestion {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 9px 10px;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 540;
+  line-height: 1.25;
+  cursor: pointer;
+}
+
+.algebra-quick-examples button:hover,
+.algebra-topic-suggestion:hover {
+  border-color: var(--ink);
+}
+
+.algebra-topic-suggestion {
+  width: 100%;
+  text-align: left;
 }
 
 .algebra-math-field-wrap {
@@ -12086,7 +12117,7 @@ button.analyzer-guide-label:hover {
   color: var(--ink-3);
   font-family: inherit;
   font-size: 0.92rem;
-  font-weight: 620;
+  font-weight: 520;
   line-height: 1;
   cursor: pointer;
 }
@@ -12094,7 +12125,7 @@ button.analyzer-guide-label:hover {
 .algebra-snippet-tabs button.active {
   background: var(--paper);
   color: var(--ink);
-  font-weight: 680;
+  font-weight: 560;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.1);
 }
 
@@ -12115,7 +12146,7 @@ button.analyzer-guide-label:hover {
   color: var(--ink);
   font-family: inherit;
   font-size: 0.92rem;
-  font-weight: 620;
+  font-weight: 520;
   line-height: 1;
   cursor: pointer;
 }
@@ -12123,6 +12154,25 @@ button.analyzer-guide-label:hover {
 .algebra-snippet-grid button:hover:not(:disabled),
 .algebra-snippet-tabs button:hover:not(:disabled) {
   background: var(--surface-2);
+}
+
+.algebra-snippet-katex {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 100%;
+  color: inherit;
+  line-height: 1;
+}
+
+.algebra-snippet-katex .katex {
+  font-size: 1em;
+  color: inherit;
+  white-space: nowrap;
+}
+
+.algebra-snippet-katex .katex-display {
+  margin: 0;
 }
 
 .algebra-snippet-tabs button.active:hover:not(:disabled) {
@@ -12141,7 +12191,7 @@ button.analyzer-guide-label:hover {
 .algebra-input-preview > span {
   color: var(--ink-3);
   font-size: 0.76rem;
-  font-weight: 700;
+  font-weight: 560;
   text-transform: uppercase;
 }
 
@@ -12151,9 +12201,50 @@ button.analyzer-guide-label:hover {
   gap: 12px;
 }
 
+.algebra-sequence-builder {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  background: var(--surface);
+}
+
+.algebra-segmented-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--paper);
+}
+
+.algebra-segmented-row button {
+  border: 0;
+  border-radius: calc(var(--radius-md) - 3px);
+  padding: 9px 10px;
+  background: transparent;
+  color: var(--ink-3);
+  font: inherit;
+  font-weight: 560;
+  cursor: pointer;
+}
+
+.algebra-segmented-row button.active {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.algebra-sequence-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
 .algebra-submit {
   width: 100%;
-  font-weight: 680;
+  font-weight: 560;
 }
 
 .algebra-result-wrap {
@@ -12179,7 +12270,7 @@ button.analyzer-guide-label:hover {
 }
 
 .algebra-empty-result strong {
-  font-weight: 760;
+  font-weight: 600;
 }
 
 .algebra-empty-result span {
@@ -12215,7 +12306,7 @@ button.analyzer-guide-label:hover {
   margin: 0;
   color: var(--ink-3);
   font-size: 0.78rem;
-  font-weight: 900;
+  font-weight: 680;
   line-height: 1.3;
   text-transform: uppercase;
   text-wrap: balance;
@@ -12275,7 +12366,7 @@ button.analyzer-guide-label:hover {
 .algebra-step-card {
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  padding: 12px;
+  padding: 12px 14px;
   background: var(--surface);
   min-width: 0;
 }
@@ -12335,7 +12426,7 @@ button.analyzer-guide-label:hover {
   background: var(--paper);
   color: var(--ink-3);
   font-size: 0.74rem;
-  font-weight: 760;
+  font-weight: 600;
   line-height: 1.25;
   overflow-wrap: anywhere;
 }
@@ -12350,7 +12441,7 @@ button.analyzer-guide-label:hover {
   background: var(--ink);
   color: var(--paper);
   font-size: 0.78rem;
-  font-weight: 900;
+  font-weight: 680;
 }
 
 .algebra-transform-row {
@@ -12365,12 +12456,11 @@ button.analyzer-guide-label:hover {
 .algebra-transform-row > div {
   width: 100%;
   min-width: 0;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  padding: 10px;
-  background: var(--paper);
-  overflow-x: auto;
-  overflow-y: hidden;
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--paper) 78%, var(--surface));
+  overflow: visible;
 }
 
 .algebra-formula-lines {
@@ -12381,10 +12471,11 @@ button.analyzer-guide-label:hover {
 
 .algebra-formula-line {
   display: flex;
+  align-items: center;
   justify-content: center;
+  width: 100%;
   min-width: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
+  overflow: visible;
   text-align: center;
 }
 
@@ -12392,7 +12483,7 @@ button.analyzer-guide-label:hover {
   justify-self: center;
   color: var(--ink-3);
   font-size: 1.15rem;
-  font-weight: 850;
+  font-weight: 650;
   line-height: 1;
 }
 
@@ -12408,7 +12499,7 @@ button.analyzer-guide-label:hover {
 .algebra-formula-row > span:first-child {
   color: var(--ink-3);
   font-size: 0.82rem;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .algebra-katex {
@@ -12416,6 +12507,7 @@ button.analyzer-guide-label:hover {
   max-width: 100%;
   overflow: visible;
   text-align: center;
+  line-height: 1.55;
 }
 
 .algebra-katex .katex,
@@ -12433,6 +12525,8 @@ button.analyzer-guide-label:hover {
 @media (max-width: 960px) {
   .algebra-workspace,
   .algebra-result-grid,
+  .algebra-sequence-grid,
+  .algebra-quick-examples,
   .algebra-option-grid {
     grid-template-columns: 1fr;
   }

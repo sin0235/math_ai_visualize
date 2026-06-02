@@ -18,6 +18,12 @@ def classify_algebra_problem(problem: ParsedAlgebraProblem) -> str:
             return "combinatorics_probability"
         if normalized.startswith(("quadratic_double_root(", "quadratic_has_two_roots(", "quadratic_has_real_root(", "quadratic_no_real_root(", "quadratic_positive_all(")):
             return "parameter"
+        if normalized.startswith("derivative("):
+            return "calculus_derivative"
+        if normalized.startswith("limit("):
+            return "calculus_limit"
+        if normalized.startswith("integral("):
+            return "calculus_integral"
         if problem.expression is not None and (problem.expression.has(sp.I) or problem.domain == "C"):
             return "complex"
         return "expression"

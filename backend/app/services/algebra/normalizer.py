@@ -35,6 +35,9 @@ _STRUCTURED_PREFIXES = (
     "quadratic_has_real_root(",
     "quadratic_no_real_root(",
     "quadratic_positive_all(",
+    "derivative(",
+    "limit(",
+    "integral(",
 )
 
 

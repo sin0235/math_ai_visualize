@@ -11,6 +11,9 @@ export function AlgebraStepList({ steps }: { steps: AlgebraSolveStep[] }) {
             <span className="algebra-step-index">{step.index}</span>
             <div>
               <strong>{step.title}</strong>
+              {(step.method || step.rule) && (
+                <span className="algebra-step-rule">{step.rule || step.method}</span>
+              )}
             </div>
           </div>
           {(step.before_latex || step.after_latex) && (
@@ -40,7 +43,7 @@ export function AlgebraStepList({ steps }: { steps: AlgebraSolveStep[] }) {
               </div>
             )
           )}
-          <p>{step.explanation}</p>
+          <p>{step.short_explanation || step.explanation}</p>
         </article>
       ))}
     </div>
@@ -48,7 +51,7 @@ export function AlgebraStepList({ steps }: { steps: AlgebraSolveStep[] }) {
 }
 
 function FormulaLines({ tex }: { tex: string }) {
-  const lines = tex.split('\n').map((line) => line.trim()).filter(Boolean);
+  const lines = splitFormulaLines(tex);
   return (
     <div className="algebra-formula-lines">
       {lines.map((line, index) => (
@@ -58,4 +61,12 @@ function FormulaLines({ tex }: { tex: string }) {
       ))}
     </div>
   );
+}
+
+function splitFormulaLines(tex: string) {
+  const normalized = tex
+    .replace(/^\\begin\{aligned\}/, '')
+    .replace(/\\end\{aligned\}$/, '')
+    .replace(/\\\\/g, '\n');
+  return normalized.split('\n').map((line) => line.trim()).filter(Boolean);
 }

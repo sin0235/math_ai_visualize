@@ -22,7 +22,7 @@ Schema bắt buộc:
 {
   "input": string,
   "input_format": "plain" | "structured",
-  "topic": "equation" | "inequality" | "exponential_log" | "trigonometry" | "complex" | "sequence" | "combinatorics_probability" | "system" | "parameter",
+  "topic": "equation" | "inequality" | "exponential_log" | "trigonometry" | "complex" | "sequence" | "combinatorics_probability" | "system" | "parameter" | "calculus_derivative" | "calculus_limit" | "calculus_integral",
   "variables": [string],
   "parameters": [string],
   "domain": "R" | "C" | "N" | "Z",
@@ -37,6 +37,7 @@ Quy tắc:
    - tổ hợp: C(10,3), A(5,2), factorial(5), coefficient((1+x)^5,x,3)
    - cấp số: arithmetic(u1=2,d=3,n=10), arithmetic_sum(...), geometric(...), geometric_sum(...)
    - tham số: quadratic_double_root(a=1,b=-2*m,c=1,var=x,param=m), quadratic_has_two_roots(...), quadratic_has_real_root(...), quadratic_no_real_root(...), quadratic_positive_all(...)
+   - giải tích: derivative(expr=x^2,var=x), limit(expr=(x^2-1)/(x-1),var=x,to=1), integral(expr=2*x,var=x,a=0,b=1)
 3. Nếu đề hỏi "tìm m để phương trình bậc hai có nghiệm kép", dùng quadratic_double_root.
 4. Nếu đề hỏi "có hai nghiệm phân biệt", dùng quadratic_has_two_roots.
 5. Nếu đề hỏi "có nghiệm thực", dùng quadratic_has_real_root.

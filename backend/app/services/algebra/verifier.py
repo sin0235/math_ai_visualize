@@ -42,10 +42,32 @@ def verify_solution_set(problem: ParsedAlgebraProblem, solution_set: sp.Set) -> 
     return AlgebraVerificationReport(status="verified" if solution_set is not sp.EmptySet else "partially_verified", checks=checks, method=["solveset"])
 
 
+def verify_inequality_solution_set(problem: ParsedAlgebraProblem, solution_set: sp.Set, samples: list[sp.Expr]) -> AlgebraVerificationReport:
+    base = verify_solution_set(problem, solution_set)
+    if problem.relation is None:
+        return base
+    checks = list(base.checks)
+    for sample in samples[:8]:
+        in_set = _point_in_solution_set(solution_set, sample)
+        relation_ok = _check_relation(problem.relation, problem.variable, sample)
+        checks.append(AlgebraVerificationCheck(
+            name="inequality_sample",
+            status="pass" if in_set == relation_ok else "fail",
+            detail=(
+                f"Thử {problem.variable} = {sp.sstr(sample)}: "
+                f"{'thuộc' if in_set else 'không thuộc'} tập nghiệm và "
+                f"bất phương trình gốc {'đúng' if relation_ok else 'sai'}."
+            ),
+            latex=rf"{sp.latex(problem.variable)}={sp.latex(sample)}",
+        ))
+    status = "verified" if checks and all(check.status != "fail" for check in checks) else "failed"
+    return AlgebraVerificationReport(status=status, checks=checks, method=["solveset", "sample_substitution"])
+
+
 def _domain_checks(problem: ParsedAlgebraProblem, solutions: list[sp.Expr]) -> list[AlgebraVerificationCheck]:
     if problem.relation is None:
         return []
-    expression = sp.simplify(problem.relation.lhs - problem.relation.rhs)
+    expression = problem.relation.lhs - problem.relation.rhs
     variable = problem.variable
     checks: list[AlgebraVerificationCheck] = []
     domain_expressions = _domain_expressions(expression, variable)
@@ -103,5 +125,12 @@ def _check_relation(relation: sp.Relational, variable: sp.Symbol, value: sp.Expr
         if simplified is sp.S.false:
             return False
         return bool(simplified)
+    except Exception:
+        return False
+
+
+def _point_in_solution_set(solution_set: sp.Set, point: sp.Expr) -> bool:
+    try:
+        return bool(solution_set.contains(point))
     except Exception:
         return False
