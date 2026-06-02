@@ -60,7 +60,7 @@ def integral_steps(expression: sp.Expr, variable: sp.Symbol, antiderivative: sp.
     )
     steps.append(technique)
     if lower is not None and upper is not None:
-        steps.append(_definite_integral_step(len(steps) + 1, variable, antiderivative, result, lower, upper))
+        steps.append(_definite_integral_step(len(steps) + 1, expression, variable, antiderivative, result, lower, upper))
     return steps
 
 
@@ -627,7 +627,40 @@ def _trig_identity_integral_step(index: int, expression: sp.Expr, variable: sp.S
     )
 
 
-def _definite_integral_step(index: int, variable: sp.Symbol, antiderivative: sp.Expr, result: sp.Expr, lower: sp.Expr, upper: sp.Expr) -> AlgebraSolveStep:
+def _definite_integral_step(index: int, expression: sp.Expr, variable: sp.Symbol, antiderivative: sp.Expr, result: sp.Expr, lower: sp.Expr, upper: sp.Expr) -> AlgebraSolveStep:
+    singularities = _integral_singularities(expression, variable, lower, upper)
+    if singularities:
+        singular_latex = ", ".join(sp.latex(value) for value in singularities)
+        if len(singularities) == 1 and sp.simplify(singularities[0] - lower) == 0:
+            before_latex = rf"\lim_{{t\to {sp.latex(lower)}^+}}\int_t^{{{sp.latex(upper)}}}{sp.latex(expression)}\,d{sp.latex(variable)}"
+            after_latex = rf"\lim_{{t\to {sp.latex(lower)}^+}}\left({sp.latex(antiderivative.subs(variable, upper))}-\left({sp.latex(antiderivative.subs(variable, sp.Symbol('t')))}\right)\right)={sp.latex(result)}"
+        elif len(singularities) == 1 and sp.simplify(singularities[0] - upper) == 0:
+            before_latex = rf"\lim_{{t\to {sp.latex(upper)}^-}}\int_{{{sp.latex(lower)}}}^t {sp.latex(expression)}\,d{sp.latex(variable)}"
+            after_latex = rf"\lim_{{t\to {sp.latex(upper)}^-}}\left({sp.latex(antiderivative.subs(variable, sp.Symbol('t')))}-\left({sp.latex(antiderivative.subs(variable, lower))}\right)\right)={sp.latex(result)}"
+        else:
+            point = singularities[0]
+            before_latex = rf"\int_{{{sp.latex(lower)}}}^{{{sp.latex(upper)}}}{sp.latex(expression)}\,d{sp.latex(variable)},\quad {sp.latex(variable)}={sp.latex(point)}"
+            after_latex = rf"\lim_{{t\to {sp.latex(point)}^-}}\int_{{{sp.latex(lower)}}}^t f({sp.latex(variable)})\,d{sp.latex(variable)}+\lim_{{t\to {sp.latex(point)}^+}}\int_t^{{{sp.latex(upper)}}} f({sp.latex(variable)})\,d{sp.latex(variable)}={sp.latex(result)}"
+        return AlgebraSolveStep(
+            index=index,
+            title="Xử lý tích phân suy rộng",
+            explanation=f"Biểu thức không xác định tại {sp.sstr(variable)} = {', '.join(sp.sstr(value) for value in singularities)}, nên phải tính bằng giới hạn một phía.",
+            short_explanation="Có điểm làm mẫu bằng 0 trong/cạnh khoảng, nên dùng giới hạn suy rộng.",
+            detail_level="detailed",
+            method="improper_integral",
+            goal="Tính đúng tích phân xác định có điểm gián đoạn.",
+            why="Không được thay cận trực tiếp tại điểm làm hàm số không xác định.",
+            rule="Tích phân suy rộng",
+            operation="Thay cận gây gián đoạn bằng biến t rồi lấy giới hạn một phía.",
+            before_latex=before_latex,
+            after_latex=after_latex,
+            pitfall="Nếu giới hạn một phía phân kỳ thì tích phân suy rộng phân kỳ.",
+            check=f"Các điểm cần kiểm tra trong/cạnh khoảng: {singular_latex}.",
+            result=sp.sstr(result),
+            result_latex=sp.latex(result),
+            kind="solve",
+            confidence="verified",
+        )
     return AlgebraSolveStep(
         index=index,
         title="Thay cận tích phân",
@@ -648,6 +681,24 @@ def _definite_integral_step(index: int, variable: sp.Symbol, antiderivative: sp.
         kind="solve",
         confidence="verified",
     )
+
+
+def _integral_singularities(expression: sp.Expr, variable: sp.Symbol, lower: sp.Expr, upper: sp.Expr) -> list[sp.Expr]:
+    denominator = sp.denom(sp.together(expression))
+    if denominator == 1 or not denominator.has(variable):
+        return []
+    try:
+        roots = sp.solve(sp.Eq(denominator, 0), variable)
+    except Exception:
+        return []
+    singularities: list[sp.Expr] = []
+    for root in roots:
+        try:
+            if bool(sp.simplify(root >= lower)) and bool(sp.simplify(root <= upper)):
+                singularities.append(sp.simplify(root))
+        except Exception:
+            continue
+    return sorted(set(singularities), key=sp.default_sort_key)
 
 
 def _is_chain_expression(expression: sp.Expr, variable: sp.Symbol) -> bool:

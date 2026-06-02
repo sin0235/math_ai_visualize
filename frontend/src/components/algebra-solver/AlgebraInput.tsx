@@ -18,7 +18,7 @@ export interface SequenceDraft {
 
 const MATH_SNIPPET_GROUPS = [
   {
-    title: 'Đa thức',
+    title: 'Đại số & Tổ hợp',
     tex: 'x^2',
     items: [
       { tex: '\\frac{a}{b}', title: 'Phân thức', action: 'frac' },
@@ -27,10 +27,13 @@ const MATH_SNIPPET_GROUPS = [
       { tex: '\\log_{a}', title: 'Loga', action: 'log' },
       { tex: '\\ln', title: 'Ln', action: 'ln' },
       { tex: '\\left|a\\right|', title: 'Abs', action: 'abs' },
+      { tex: '!', title: 'Giai thừa', action: 'factorial' },
+      { tex: 'C_n^k', title: 'Tổ hợp', action: 'combination' },
+      { tex: 'A_n^k', title: 'Chỉnh hợp', action: 'permutation' },
     ],
   },
   {
-    title: 'Đạo hàm và phương trình',
+    title: 'Giải tích & PT',
     tex: '\\int',
     items: [
       { tex: '\\frac{d}{dx}', title: 'Đạo hàm', action: 'derivative' },
@@ -44,7 +47,7 @@ const MATH_SNIPPET_GROUPS = [
     ],
   },
   {
-    title: 'Lượng giác',
+    title: 'Lượng giác & Hình',
     tex: '\\sin',
     items: [
       { tex: '\\sin', title: 'Sin', action: 'sin' },
@@ -55,10 +58,12 @@ const MATH_SNIPPET_GROUPS = [
       { tex: '\\cos^{-1}', title: 'Arccos', action: 'acos' },
       { tex: '\\tan^{-1}', title: 'Arctan', action: 'atan' },
       { tex: '\\cot^{-1}', title: 'Arccot', action: 'acot' },
+      { tex: '^\\circ', title: 'Độ', action: 'degree' },
+      { tex: '\\vec{v}', title: 'Vector', action: 'vector' },
     ],
   },
   {
-    title: 'Phép tính',
+    title: 'Ký hiệu & Logic',
     tex: '\\ge',
     items: [
       { tex: '>', title: 'Lớn hơn', action: 'gt' },
@@ -67,10 +72,27 @@ const MATH_SNIPPET_GROUPS = [
       { tex: '\\le', title: 'Bé hơn hoặc bằng', action: 'le' },
       { tex: '=', title: 'Bằng', action: 'eq' },
       { tex: '\\ne', title: 'Khác', action: 'ne' },
+      { tex: '\\approx', title: 'Xấp xỉ', action: 'approx' },
       { tex: '+', title: 'Cộng', action: 'plus' },
       { tex: '-', title: 'Trừ', action: 'minus' },
+      { tex: '\\pm', title: 'Cộng trừ', action: 'pm' },
       { tex: '\\times', title: 'Nhân', action: 'times' },
       { tex: '\\div', title: 'Chia', action: 'divide' },
+      { tex: '\\pi', title: 'Pi', action: 'pi' },
+      { tex: 'e', title: 'Cơ số e', action: 'e' },
+      { tex: '\\infty', title: 'Vô cùng', action: 'infty' },
+      { tex: '+\\infty', title: 'Dương vô cùng', action: 'posInfty' },
+      { tex: '-\\infty', title: 'Âm vô cùng', action: 'negInfty' },
+      { tex: '\\in', title: 'Thuộc', action: 'in' },
+      { tex: '\\notin', title: 'Không thuộc', action: 'notin' },
+      { tex: '\\subset', title: 'Tập con', action: 'subset' },
+      { tex: '\\cup', title: 'Hợp', action: 'cup' },
+      { tex: '\\cap', title: 'Giao', action: 'cap' },
+      { tex: '\\emptyset', title: 'Rỗng', action: 'emptyset' },
+      { tex: '\\forall', title: 'Với mọi', action: 'forall' },
+      { tex: '\\exists', title: 'Tồn tại', action: 'exists' },
+      { tex: '\\Rightarrow', title: 'Suy ra', action: 'Rightarrow' },
+      { tex: '\\Leftrightarrow', title: 'Tương đương', action: 'Leftrightarrow' },
     ],
   },
 ] as const;
@@ -135,6 +157,7 @@ export function AlgebraInput({
     else if (action === 'log') mathField.write('\\log_{}\\left(\\right)');
     else if (action === 'ln') mathField.write('\\ln\\left(\\right)');
     else if (action === 'abs') mathField.write('\\left|\\right|');
+    else if (action === 'vector') mathField.write('\\vec{}');
     else if (action === 'derivative') {
       onTopicChange('calculus_derivative');
       mathField.write('\\frac{d}{dx}\\left(\\right)');
@@ -152,12 +175,12 @@ export function AlgebraInput({
     else if (action === 'system2') {
       onTopicChange('system');
       onVariablesChange('x,y');
-      mathField.write('\\begin{cases} x+y=0 \\\\ x-y=0 \\end{cases}');
+      mathField.write('x+y=0; x-y=0');
     }
     else if (action === 'system3') {
       onTopicChange('system');
       onVariablesChange('x,y,z');
-      mathField.write('\\begin{cases} x+y+z=0 \\\\ x-y=0 \\\\ y-z=0 \\end{cases}');
+      mathField.write('x+y+z=0; x-y=0; y-z=0');
     }
     else if (action === 'equation') mathField.write('x=0');
     else if (action === 'sin') mathField.write('\\sin\\left(\\right)');
@@ -168,16 +191,37 @@ export function AlgebraInput({
     else if (action === 'acos') mathField.write('\\cos^{-1}\\left(\\right)');
     else if (action === 'atan') mathField.write('\\tan^{-1}\\left(\\right)');
     else if (action === 'acot') mathField.write('\\cot^{-1}\\left(\\right)');
+    else if (action === 'degree') mathField.write('^{\\circ}');
     else if (action === 'gt') mathField.write('>');
     else if (action === 'lt') mathField.write('<');
     else if (action === 'ge') mathField.write('\\ge ');
     else if (action === 'le') mathField.write('\\le ');
     else if (action === 'eq') mathField.write('=');
     else if (action === 'ne') mathField.write('\\ne ');
+    else if (action === 'approx') mathField.write('\\approx ');
     else if (action === 'plus') mathField.write('+');
     else if (action === 'minus') mathField.write('-');
+    else if (action === 'pm') mathField.write('\\pm ');
     else if (action === 'times') mathField.write('\\cdot ');
     else if (action === 'divide') mathField.write('/');
+    else if (action === 'pi') mathField.write('\\pi ');
+    else if (action === 'e') mathField.write('e');
+    else if (action === 'infty') mathField.write('\\infty ');
+    else if (action === 'posInfty') mathField.write('+\\infty ');
+    else if (action === 'negInfty') mathField.write('-\\infty ');
+    else if (action === 'in') mathField.write('\\in ');
+    else if (action === 'notin') mathField.write('\\notin ');
+    else if (action === 'subset') mathField.write('\\subset ');
+    else if (action === 'cup') mathField.write('\\cup ');
+    else if (action === 'cap') mathField.write('\\cap ');
+    else if (action === 'emptyset') mathField.write('\\emptyset ');
+    else if (action === 'forall') mathField.write('\\forall ');
+    else if (action === 'exists') mathField.write('\\exists ');
+    else if (action === 'Rightarrow') mathField.write('\\Rightarrow ');
+    else if (action === 'Leftrightarrow') mathField.write('\\Leftrightarrow ');
+    else if (action === 'factorial') mathField.write('!');
+    else if (action === 'combination') mathField.write('C_{}^{}');
+    else if (action === 'permutation') mathField.write('A_{}^{}');
   }
 
   return (
@@ -303,13 +347,13 @@ export function AlgebraInput({
 function suggestTopic(input: string): AlgebraTopic | null {
   const text = input.trim().toLowerCase();
   if (!text) return null;
+  if (/derivative|đạo hàm|dao ham|d\/dx|\\frac\{d\}\{d[a-z]\}/.test(text)) return 'calculus_derivative';
+  if (/limit|giới hạn|gioi han|lim|\\lim/.test(text)) return 'calculus_limit';
+  if (/integral|tích phân|tich phan|nguyên hàm|nguyen ham|\\int/.test(text)) return 'calculus_integral';
   if (/[<>≤≥]|\\le|\\ge/.test(text)) return 'inequality';
   if (text.includes(';')) return 'system';
   if (/sin|cos|tan|cot|\\sin|\\cos|\\tan|\\cot/.test(text)) return 'trigonometry';
   if (/log|ln|\\log|\\ln|\^\(/.test(text)) return 'exponential_log';
-  if (/derivative|đạo hàm|dao ham|d\/dx/.test(text)) return 'calculus_derivative';
-  if (/limit|giới hạn|gioi han|lim/.test(text)) return 'calculus_limit';
-  if (/integral|tích phân|tich phan|nguyên hàm|nguyen ham/.test(text)) return 'calculus_integral';
   if (/quadratic_/.test(text)) return 'parameter';
   if (/u_?1|cấp số|cap so|arithmetic|geometric/.test(text)) return 'sequence';
   return null;

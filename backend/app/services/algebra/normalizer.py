@@ -48,6 +48,7 @@ def normalize_algebra_input(raw: str) -> str:
         text = text.replace(source, target)
     text = _replace_superscripts(text)
     text = unicodedata.normalize("NFKC", text)
+    text = _replace_latex_calculus(text)
     text = _replace_subscript_log_base(text)
     text = _replace_latex_cases(text)
     text = _replace_latex_frac(text)
@@ -59,6 +60,108 @@ def normalize_algebra_input(raw: str) -> str:
     text = re.sub(r"\s*(<=|>=|!=|=|<|>)\s*", r"\1", text)
     text = re.sub(r"\s+", " ", text).strip()
     return text
+
+
+def _replace_latex_calculus(text: str) -> str:
+    stripped = text.strip()
+    if not stripped.startswith("\\"):
+        return text
+    return _latex_derivative_template(stripped) or _latex_integral_template(stripped) or _latex_limit_template(stripped) or text
+
+
+def _latex_derivative_template(text: str) -> str | None:
+    match = re.match(r"\\frac\s*\{\s*d\s*\}\s*\{\s*d\s*([A-Za-z])\s*\}", text)
+    if not match:
+        return None
+    variable = match.group(1)
+    arg_start = _skip_spaces_and_latex_left(text, match.end())
+    expression, arg_end = _read_group_or_token(text, arg_start)
+    if expression is None:
+        expression = text[arg_start:].strip()
+        arg_end = len(text)
+    if text[arg_end:].strip():
+        return None
+    expression = _clean_latex_group(expression)
+    if not expression:
+        return None
+    return f"derivative(expr={expression},var={variable})"
+
+
+def _latex_integral_template(text: str) -> str | None:
+    if not text.startswith("\\int"):
+        return None
+    index = len("\\int")
+    lower: str | None = None
+    upper: str | None = None
+    index = _skip_spaces(text, index)
+    if index < len(text) and text[index] == "_":
+        lower, index = _read_script_value(text, index + 1)
+        index = _skip_spaces(text, index)
+    if index < len(text) and text[index] == "^":
+        upper, index = _read_script_value(text, index + 1)
+        index = _skip_spaces(text, index)
+    body = text[index:].strip()
+    body = re.sub(r"\\[,;!]\s*", " ", body).strip()
+    match = re.match(r"(.+?)(?:\\[,;!]\s*|\s*)d\s*([A-Za-z])\s*$", body)
+    if match:
+        expression = match.group(1).strip()
+        variable = match.group(2)
+    else:
+        expression = body
+        variable = "x"
+    expression = _clean_latex_group(expression)
+    if not expression:
+        return None
+    if lower is not None and upper is not None and lower.strip() and upper.strip():
+        return f"integral(expr={expression},var={variable},a={_clean_latex_group(lower)},b={_clean_latex_group(upper)})"
+    return f"integral(expr={expression},var={variable})"
+
+
+def _latex_limit_template(text: str) -> str | None:
+    if not text.startswith("\\lim"):
+        return None
+    index = len("\\lim")
+    index = _skip_spaces(text, index)
+    if index >= len(text) or text[index] != "_":
+        return None
+    subscript, index = _read_script_value(text, index + 1)
+    if subscript is None:
+        return None
+    subscript = _clean_latex_group(subscript)
+    target = re.match(r"\s*([A-Za-z])\s*\\to\s*(.+?)\s*$", subscript)
+    if not target:
+        return None
+    variable, point = target.groups()
+    arg_start = _skip_spaces_and_latex_left(text, index)
+    expression, arg_end = _read_group_or_token(text, arg_start)
+    if expression is None:
+        expression = text[arg_start:].strip()
+        arg_end = len(text)
+    if text[arg_end:].strip():
+        return None
+    expression = _clean_latex_group(expression)
+    if not expression:
+        return None
+    return f"limit(expr={expression},var={variable},to={_clean_latex_group(point)})"
+
+
+def _read_script_value(text: str, start: int) -> tuple[str | None, int]:
+    index = _skip_spaces(text, start)
+    if index < len(text) and text[index] == "{":
+        return _read_braced(text, index)
+    end = index
+    while end < len(text) and not text[end].isspace() and text[end] not in "^_":
+        end += 1
+    if end == index:
+        return None, start
+    return text[index:end], end
+
+
+def _skip_spaces(text: str, start: int) -> int:
+    index = start
+    while index < len(text) and text[index].isspace():
+        index += 1
+    return index
 
 
 def is_structured_algebra_input(text: str) -> bool:

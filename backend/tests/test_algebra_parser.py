@@ -37,6 +37,22 @@ def test_normalizer_handles_latex_cases_system():
     assert normalize_algebra_input(r"\begin{cases}x+y=0\\x-y=0\end{cases}") == "x+y=0; x-y=0"
 
 
+def test_normalizer_converts_latex_calculus_templates():
+    assert normalize_algebra_input(r"\frac{d}{dx}\left(\frac{x^2-2x}{x-1}\right)") == "derivative(expr=((x**2-2x)/(x-1)),var=x)"
+    assert normalize_algebra_input(r"\int_1^2 \frac{x^2-2x}{x-1} dx") == "integral(expr=((x**2-2x)/(x-1)),var=x,a=1,b=2)"
+    assert normalize_algebra_input(r"\lim_{x\to0}\left(\frac{\sin(x)}{x}\right)") == "limit(expr=((sin(x))/(x)),var=x,to=0)"
+
+
+def test_interpreter_uses_structured_latex_calculus_as_canonical_input():
+    derivative = interpret_algebra_input(AlgebraSolveRequest(input=r"\frac{d}{dx}\left(\frac{x^2-2x}{x-1}\right)", input_format="latex"))
+    integral = interpret_algebra_input(AlgebraSolveRequest(input=r"\int_1^2 \frac{x^2-2x}{x-1} dx", input_format="latex"))
+
+    assert derivative.canonical_input == "derivative(expr=((x**2-2*x)/(x-1)),var=x)"
+    assert derivative.topic_hint == "calculus_derivative"
+    assert integral.canonical_input == "integral(expr=((x**2-2*x)/(x-1)),var=x,a=1,b=2)"
+    assert integral.topic_hint == "calculus_integral"
+
+
 def test_interpreter_converts_vietnamese_equation_to_canonical_input():
     interpretation = interpret_algebra_input(AlgebraSolveRequest(input="Giải phương trình x bình phương - 5x + 6 bằng 0"))
     assert interpretation.detected_format == "mixed"

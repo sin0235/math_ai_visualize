@@ -96,3 +96,16 @@ def test_calculus_integral_explains_advanced_techniques():
     assert any(step.method == "integration_by_parts" for step in by_parts.steps)
     assert any(step.method == "partial_fractions" for step in partial.steps)
     assert any(step.method == "trig_identity_integral" for step in trig.steps)
+
+
+def test_calculus_solver_accepts_latex_derivative_and_definite_integral():
+    derivative = solve_algebra(AlgebraSolveRequest(input=r"\frac{d}{dx}\left(\frac{x^2-2x}{x-1}\right)", input_format="latex", topic="auto"))
+    integral = solve_algebra(AlgebraSolveRequest(input=r"\int_1^2 \frac{x^2-2x}{x-1} dx", input_format="latex", topic="auto"))
+
+    assert derivative.status == "solved"
+    assert derivative.topic == "calculus_derivative"
+    assert any(step.method == "quotient_rule" for step in derivative.steps)
+    assert integral.status == "solved"
+    assert integral.topic == "calculus_integral"
+    assert any(step.method == "improper_integral" for step in integral.steps)
+    assert integral.answer_latex == r"-\infty"

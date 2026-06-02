@@ -21,6 +21,9 @@ def interpret_algebra_input(request: AlgebraSolveRequest) -> AlgebraInputInterpr
     is_structured = is_structured_algebra_input(canonical)
     canonical = canonical.strip() if is_structured else _clean_canonical(canonical)
     normalized_preview = normalize_algebra_input(canonical)
+    if not is_structured and is_structured_algebra_input(normalized_preview):
+        canonical = normalized_preview
+        is_structured = True
     topic_hint = request.topic if request.topic != "auto" else _detect_topic(raw, normalized_preview)
     variables = request.variables or _detect_variables(raw, normalized_preview, topic_hint)
     domain = _detect_domain(raw, request.domain, topic_hint)
