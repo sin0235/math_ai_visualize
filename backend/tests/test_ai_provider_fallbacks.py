@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 
 import httpx
 import pytest
@@ -92,6 +93,182 @@ def test_provider_error_redaction_removes_secrets_and_image_data():
     assert "aGVsbG8=" not in message
     assert "abc" not in redacted
     assert "data:image/[REDACTED]" in message
+
+
+def test_chat_message_input_chars_counts_prompt_and_multimodal_content():
+    from app.services.provider_logging import chat_message_input_chars
+
+    messages = [
+        {"role": "system", "content": "system prompt"},
+        {"role": "user", "content": "user prompt"},
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "ocr hint"},
+                {"type": "image_url", "image_url": {"url": "data:image/png;base64,abcd"}},
+            ],
+        },
+    ]
+
+    assert chat_message_input_chars(messages) == len("system prompt") + len("user prompt") + len("ocr hint") + len("data:image/png;base64,abcd")
+
+
+def test_openai_compat_request_logs_full_input_chars(monkeypatch):
+    captured = {}
+
+    class FakeClient:
+        async def post(self, url, headers, json, timeout):
+            captured["payload"] = json
+            return httpx.Response(200, json={"choices": [{"message": {"content": "OK"}}]})
+
+    def fake_log_provider_request(provider, kind, url, model, **metadata):
+        captured["metadata"] = metadata
+
+    monkeypatch.setattr("app.services.http_pool.get_client", lambda *args: FakeClient())
+    monkeypatch.setattr("app.services.openai_compat_client.log_provider_request", fake_log_provider_request)
+
+    asyncio.run(
+        OpenAICompatClient(
+            Settings(_env_file=None, openai_compat_base_url="https://compat.test/v1", openai_compat_text_model="test-model", openai_compat_api_key="secret")
+        )._post_chat(
+            {
+                "model": "test-model",
+                "messages": [
+                    {"role": "system", "content": "system prompt"},
+                    {"role": "user", "content": "wrapped problem"},
+                ],
+            },
+            "scene",
+            problem_chars=len("problem"),
+        )
+    )
+
+    assert captured["metadata"]["problem_chars"] == len("problem")
+    assert captured["metadata"]["input_chars"] == len("system prompt") + len("wrapped problem")
+
+
+def test_router9_reasoning_request_logs_reasoning_kind_and_input_chars(monkeypatch):
+    captured = {}
+
+    class FakeClient:
+        async def post(self, url, headers, json, timeout):
+            captured["payload"] = json
+            return httpx.Response(200, json={"choices": [{"message": {"content": "{}"}}]})
+
+    def fake_log_provider_request(provider, kind, url, model, **metadata):
+        captured["kind"] = kind
+        captured["metadata"] = metadata
+
+    monkeypatch.setattr("app.services.http_pool.get_client", lambda *args: FakeClient())
+    monkeypatch.setattr("app.services.router9_client.log_provider_request", fake_log_provider_request)
+
+    asyncio.run(
+        Router9Client(
+            Settings(_env_file=None, router9_base_url="https://router9.test/v1", router9_api_key="secret", router9_text_model="test-model")
+        ).reason_about_problem("Vẽ điểm A", grade=10)
+    )
+
+    assert captured["kind"] == "reasoning"
+    assert captured["metadata"]["input_chars"] > len("Vẽ điểm A")
+
+
+def test_openai_compat_invalid_scene_json_logs_parse_error(monkeypatch, caplog):
+    async def fake_post_chat(self, payload, kind, **log_kwargs):
+        return "not json"
+
+    monkeypatch.setattr(OpenAICompatClient, "_post_chat", fake_post_chat)
+    caplog.set_level(logging.WARNING, logger="app.services.ai_providers")
+
+    with pytest.raises(RuntimeError, match="JSON không hợp lệ"):
+        asyncio.run(
+            OpenAICompatClient(
+                Settings(_env_file=None, openai_compat_base_url="https://compat.test/v1", openai_compat_text_model="test-model")
+            ).extract_scene_json("Vẽ điểm A")
+        )
+
+    assert "AI provider parse error provider=openai_compat kind=scene model=test-model" in caplog.text
+    assert "invalid_json" in caplog.text
+
+
+def test_extract_scene_logs_failed_provider_attempt(monkeypatch, caplog):
+    async def fake_extract(provider, settings, problem_text, grade, reasoning_layer, preferred_ai_model=None, **kwargs):
+        raise RuntimeError("OpenAI-compatible trả về JSON không hợp lệ: Expecting value")
+
+    monkeypatch.setattr("app.services.extractor._extract_with_provider", fake_extract)
+    caplog.set_level(logging.WARNING, logger="app.services.ai_providers")
+
+    with pytest.raises(RuntimeError):
+        asyncio.run(
+            extract_scene(
+                "Vẽ điểm A",
+                preferred_ai_provider="openai_compat",
+                preferred_ai_model="gpt-5.5",
+                runtime_settings=RuntimeSettings.model_validate({"openai_compat": {"api_key": "secret", "base_url": "https://compat.test/v1", "model": "gpt-5.5"}}),
+            )
+        )
+
+    assert "AI provider attempt failed provider=openai_compat kind=scene model=gpt-5.5 stage=extract" in caplog.text
+    assert "JSON không hợp lệ" in caplog.text
+
+
+def test_openai_compat_post_chat_accepts_responses_api_shape(monkeypatch):
+    class FakeClient:
+        async def post(self, url, headers, json, timeout):
+            return httpx.Response(200, json={"output_text": "OK from responses"})
+
+    monkeypatch.setattr("app.services.http_pool.get_client", lambda *args: FakeClient())
+
+    result = asyncio.run(
+        OpenAICompatClient(
+            Settings(_env_file=None, openai_compat_base_url="https://compat.test/v1", openai_compat_text_model="test-model", openai_compat_api_key="secret")
+        )._post_chat(
+            {"model": "test-model", "messages": [{"role": "user", "content": "Reply OK"}]},
+            "check",
+        )
+    )
+
+    assert result == "OK from responses"
+
+
+def test_openai_compat_post_chat_uses_reasoning_content_when_content_empty(monkeypatch):
+    class FakeClient:
+        async def post(self, url, headers, json, timeout):
+            return httpx.Response(200, json={"choices": [{"message": {"content": "", "reasoning_content": "OK from reasoning"}}]})
+
+    monkeypatch.setattr("app.services.http_pool.get_client", lambda *args: FakeClient())
+
+    result = asyncio.run(
+        OpenAICompatClient(
+            Settings(_env_file=None, openai_compat_base_url="https://compat.test/v1", openai_compat_text_model="test-model", openai_compat_api_key="secret")
+        )._post_chat(
+            {"model": "test-model", "messages": [{"role": "user", "content": "Reply OK"}]},
+            "check",
+        )
+    )
+
+    assert result == "OK from reasoning"
+
+
+def test_openai_compat_unknown_response_shape_logs_parse_error(monkeypatch, caplog):
+    class FakeClient:
+        async def post(self, url, headers, json, timeout):
+            return httpx.Response(200, json={"unexpected": []})
+
+    monkeypatch.setattr("app.services.http_pool.get_client", lambda *args: FakeClient())
+    caplog.set_level(logging.WARNING, logger="app.services.ai_providers")
+
+    with pytest.raises(RuntimeError, match="không có nội dung assistant"):
+        asyncio.run(
+            OpenAICompatClient(
+                Settings(_env_file=None, openai_compat_base_url="https://compat.test/v1", openai_compat_text_model="test-model", openai_compat_api_key="secret")
+            )._post_chat(
+                {"model": "test-model", "messages": [{"role": "user", "content": "Reply OK"}]},
+                "check",
+            )
+        )
+
+    assert "AI provider parse error provider=openai_compat kind=check model=test-model" in caplog.text
+    assert "empty_content_or_unknown_shape" in caplog.text
 
 
 def test_openai_compat_provider_check_uses_small_chat_payload(monkeypatch):
@@ -498,6 +675,14 @@ def test_extract_chat_message_content_accepts_part_lists():
 
     assert extract_chat_message_content({"content": [{"type": "text", "text": "hello"}, {"type": "text", "text": " world"}]}) == "hello world"
     assert extract_chat_message_content({"content": [{"type": "output_text", "content": "hello"}]}) == "hello"
+    assert extract_chat_message_content({"content": "", "reasoning_content": "hello from reasoning"}) == "hello from reasoning"
+
+
+def test_extract_chat_response_content_accepts_responses_shapes():
+    from app.services.chat_response import extract_chat_response_content
+
+    assert extract_chat_response_content({"output_text": "hello"}) == "hello"
+    assert extract_chat_response_content({"output": [{"content": [{"type": "output_text", "text": "hello"}, {"type": "output_text", "text": " world"}]}]}) == "hello world"
 
 
 def test_render_fallback_success_returns_prior_failures_as_warnings(monkeypatch):
