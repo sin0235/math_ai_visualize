@@ -8,7 +8,7 @@ from app.services.ai_prompt import REASONING_SYSTEM_PROMPT, SCENE_EXTRACTION_SYS
 from app.services.chat_response import extract_chat_message_content
 from app.services.chat_stream import collect_openai_chat_stream
 from app.services.openrouter_client import OCR_SYSTEM_PROMPT
-from app.services.provider_logging import format_provider_error, log_ocr_summary, log_provider_http_error, log_provider_request, log_provider_response, log_scene_summary
+from app.services.provider_logging import chat_message_input_chars, format_provider_error, log_ocr_summary, log_provider_http_error, log_provider_request, log_provider_response, log_scene_summary
 
 
 class NvidiaClient:
@@ -65,7 +65,7 @@ class NvidiaClient:
             from app.services.http_pool import TIMEOUT_SCENE, get_client
 
             started_at = time.perf_counter()
-            log_provider_request("nvidia", "scene", url, payload["model"], problem_chars=len(problem_text), thinking=self.thinking)
+            log_provider_request("nvidia", "scene", url, payload["model"], problem_chars=len(problem_text), input_chars=chat_message_input_chars(payload.get("messages")), thinking=self.thinking)
             client = get_client(self.settings.nvidia_base_url.rstrip("/"), TIMEOUT_SCENE)
             content, response_chars = await collect_openai_chat_stream(client, url, headers=headers, payload=payload, timeout=TIMEOUT_SCENE)
             elapsed_ms = int((time.perf_counter() - started_at) * 1000)
@@ -117,7 +117,7 @@ class NvidiaClient:
             from app.services.http_pool import TIMEOUT_REASONING, get_client
 
             started_at = time.perf_counter()
-            log_provider_request("nvidia", "reasoning", url, payload["model"], problem_chars=len(problem_text), thinking=self.thinking)
+            log_provider_request("nvidia", "reasoning", url, payload["model"], problem_chars=len(problem_text), input_chars=chat_message_input_chars(payload.get("messages")), thinking=self.thinking)
             client = get_client(self.settings.nvidia_base_url.rstrip("/"), TIMEOUT_REASONING)
             response = await client.post(url, headers=headers, json=payload, timeout=TIMEOUT_REASONING)
             elapsed_ms = int((time.perf_counter() - started_at) * 1000)
@@ -171,7 +171,7 @@ class NvidiaClient:
             from app.services.http_pool import TIMEOUT_OCR, get_client
 
             started_at = time.perf_counter()
-            log_provider_request("nvidia", "ocr", url, payload["model"], image_chars=len(image_data_url))
+            log_provider_request("nvidia", "ocr", url, payload["model"], image_chars=len(image_data_url), input_chars=chat_message_input_chars(payload.get("messages")))
             client = get_client(self.settings.nvidia_base_url.rstrip("/"), TIMEOUT_OCR)
             response = await client.post(url, headers=headers, json=payload, timeout=TIMEOUT_OCR)
             elapsed_ms = int((time.perf_counter() - started_at) * 1000)
