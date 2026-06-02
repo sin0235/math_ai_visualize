@@ -22,6 +22,38 @@ _BEARER_RE = re.compile(r"Bearer\s+[A-Za-z0-9._~+/=-]+", re.IGNORECASE)
 _KEY_VALUE_RE = re.compile(r"(?i)(api[_-]?key|access[_-]?token|refresh[_-]?token|secret|token)=([^\s&]+)")
 
 
+def chat_message_input_chars(messages: Any) -> int:
+    """Return an approximate character count for text sent in chat messages.
+
+    Counts plain string content plus text/image_url strings inside multimodal
+    content arrays. This is intended for safe observability only; callers should
+    continue logging domain-specific counts such as ``problem_chars`` when useful.
+    """
+    if not isinstance(messages, list):
+        return 0
+    return sum(_message_content_chars(message.get("content")) for message in messages if isinstance(message, dict))
+
+
+def _message_content_chars(content: Any) -> int:
+    if isinstance(content, str):
+        return len(content)
+    if isinstance(content, list):
+        total = 0
+        for item in content:
+            if isinstance(item, dict):
+                if isinstance(item.get("text"), str):
+                    total += len(item["text"])
+                image_url = item.get("image_url")
+                if isinstance(image_url, dict) and isinstance(image_url.get("url"), str):
+                    total += len(image_url["url"])
+                elif isinstance(image_url, str):
+                    total += len(image_url)
+            elif isinstance(item, str):
+                total += len(item)
+        return total
+    return 0
+
+
 def log_provider_request(provider: str, kind: str, url: str, model: Any, **metadata: Any) -> None:
     meta_text = _metadata_text(metadata)
     logger.info(
@@ -98,6 +130,25 @@ def log_ocr_summary(provider: str, text: str, model: Any = None) -> None:
         model or "<unknown>",
         len(text),
         extra={"provider": provider, "kind": "ocr", "model": model, "result_chars": len(text)},
+    )
+
+
+def log_provider_parse_error(provider: str, kind: str, model: Any, message: Any, response_chars: int | None = None, limit: int = 500) -> None:
+    sanitized = truncate_text(redact_sensitive(message), limit)
+    logger.warning(
+        "AI provider parse error provider=%s kind=%s model=%s response_chars=%s error=%s",
+        provider,
+        kind,
+        model or "<unknown>",
+        response_chars if response_chars is not None else "<unknown>",
+        sanitized,
+        extra={
+            "provider": provider,
+            "kind": kind,
+            "model": model,
+            "response_chars": response_chars,
+            "error": sanitized,
+        },
     )
 
 
