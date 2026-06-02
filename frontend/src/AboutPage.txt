@@ -1,25 +1,26 @@
-function AboutPage({ onStart, onGuide }: { onStart: () => void; onGuide: () => void }) {
+export function AboutPage({ onStart, onGuide }: { onStart: () => void; onGuide: () => void }) {
   const features = [
-    { title: 'Kiến trúc Phân tích & Suy luận', text: 'Quy trình xử lý đa tầng: Hệ thống phân tích giả thiết (Reasoning) trước khi thực thi lệnh vẽ, giúp tối ưu hóa độ chính xác và giảm thiểu sai sót hình học.' },
-    { title: 'Tương tác Đồ họa Đa nền tảng', text: 'Kết hợp sức mạnh của GeoGebra cho toán học phẳng và Three.js cho mô phỏng không gian 3D, mang lại trải nghiệm tương tác mượt mà và trực quan.' },
-    { title: 'Cấu trúc Scene JSON Linh hoạt', text: 'Hình vẽ không chỉ là ảnh tĩnh mà là một thực thể có cấu trúc (Scene-as-Code), cho phép người dùng can thiệp, kéo thả và tinh chỉnh từng đối tượng.' },
+    { title: 'Dựng hình và mô phỏng', text: 'Mọi ý tưởng hình học từ mặt phẳng đến không gian đều được hiện thực hóa qua các mô hình tương tác sống động, giúp bạn nắm bắt bản chất vấn đề một cách nhanh chóng.' },
+    { title: 'Khảo sát hàm số thông minh', text: 'Hệ thống tự động thực hiện các bước khảo sát phức tạp, từ vẽ đồ thị đến tính toán đạo hàm và tích phân, mang lại kết quả chuẩn xác trong chớp mắt.' },
+    { title: 'Trợ lý giải toán lý luận', text: 'Sử dụng sức mạnh của các mô hình ngôn ngữ thế hệ mới để phân tích giả thiết và trình bày lời giải chi tiết, giúp bạn tìm ra phương pháp tối ưu cho mọi bài toán.' },
+    { title: 'Số hóa tài liệu học tập', text: 'Chuyển đổi các tệp bài tập từ định dạng PDF sang Word một cách thông minh, giúp việc biên soạn và quản lý kho học liệu trở nên nhẹ nhàng hơn.' },
   ];
 
   return (
-    <section className="about-page">
+    <section className="about-page animate-in">
       <div className="about-hero">
-        <span className="home-eyebrow">Về dự án</span>
-        <h2>Số hóa hình học với độ chính xác tuyệt đối.</h2>
-        <p>AI Math Renderer là một nền tảng tiên phong kết hợp giữa Trí tuệ nhân tạo và các công cụ tính toán hình học (CAS). Chúng tôi hướng tới việc đơn giản hóa quy trình xây dựng học liệu toán học, giúp giáo viên và học sinh tiết kiệm hàng giờ làm việc thủ công.</p>
+        <span className="home-eyebrow">Câu chuyện của chúng tôi</span>
+        <h2>Không gian toán học thông minh.</h2>
+        <p>Chúng tôi xây dựng một môi trường nơi trí tuệ nhân tạo và các công cụ tính toán hiện đại hòa làm một, giúp việc học và dạy toán trở nên trực quan, gần gũi và thú vị hơn bao giờ hết.</p>
         <div className="home-actions">
-          <button type="button" onClick={onStart}>Truy cập Workspace</button>
-          <button type="button" className="secondary-button" onClick={onGuide}>Tài liệu hướng dẫn</button>
+          <button type="button" onClick={onStart}>Khám phá ngay</button>
+          <button type="button" className="secondary-button" onClick={onGuide}>Xem hướng dẫn</button>
         </div>
       </div>
 
       <div className="about-grid">
-        {features.map((feature) => (
-          <article key={feature.title}>
+        {features.map((feature, index) => (
+          <article key={feature.title} style={{ '--index': index } as React.CSSProperties}>
             <h3>{feature.title}</h3>
             <p>{feature.text}</p>
           </article>
@@ -28,10 +29,10 @@ function AboutPage({ onStart, onGuide }: { onStart: () => void; onGuide: () => v
 
       <section className="about-section">
         <div>
-          <span>Triết lý phát triển</span>
-          <h3>Trợ lý kỹ thuật đắc lực, không chỉ là công cụ vẽ hình.</h3>
+          <span>Triết lý của chúng tôi</span>
+          <h3>Hơn cả một công cụ vẽ hình, đây là người bạn đồng hành.</h3>
         </div>
-        <p>Áp dụng tư duy <strong>"Infrastructure as Code"</strong> vào toán học, chúng tôi biến các đề bài trừu tượng thành dữ liệu có cấu trúc. AI đóng vai trò là một cộng tác viên thông minh, giúp bạn hiện thực hóa các ý tưởng hình học, khảo sát đồ thị phức tạp và kiểm chứng các giả thiết toán học một cách khoa học nhất.</p>
+        <p>Chúng tôi tin rằng mỗi đề toán đều ẩn chứa một cấu trúc vẻ đẹp riêng. Bằng cách kết hợp công nghệ và tư duy khoa học, AI sẽ cùng bạn khám phá, kiểm chứng và biến những lý thuyết khô khan thành những trải nghiệm thị giác đầy cảm hứng.</p>
       </section>
     </section>
   );

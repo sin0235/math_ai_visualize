@@ -1946,6 +1946,19 @@ select {
 }
 
 
+.about-hero-row {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.88fr) minmax(420px, 1.12fr);
+  gap: clamp(18px, 3vw, 34px);
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .about-hero-row {
+    grid-template-columns: 1fr;
+  }
+}
+
 .guide-hero,
 .about-hero {
   display: grid;
@@ -2124,9 +2137,44 @@ select {
 }
 
 .about-grid {
+  position: relative;
+  z-index: 1;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(16px, 3vw, 32px);
+  margin: 48px 0 96px 0;
+}
+
+@media (min-width: 901px) {
+  /* Trục dọc (thân cây) */
+  .about-grid::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    width: 2px;
+    background: var(--line-2);
+    transform: translateX(-50%);
+    z-index: -1;
+  }
+
+  /* Trục ngang (nhánh cây) */
+  .about-grid::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 10%;
+    right: 10%;
+    height: 2px;
+    background: var(--line-2);
+    transform: translateY(-50%);
+    z-index: -1;
+  }
+
+  .about-grid article:nth-child(even) {
+    transform: translateY(48px);
+  }
 }
 
 .about-grid article {

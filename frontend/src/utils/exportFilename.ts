@@ -39,7 +39,7 @@ function problemSnippet(problemText: string): string {
 }
 
 /**
- * Tên file tải xuống: hinh-<topic>-<đoạn đề>-<YYYYMMDD-HHmmss>.<ext>
+ * Tên file tải xuống: math-renderer-<topic>-<đoạn đề>-<YYYYMMDD-HHmmss>.<ext>
  */
 export function buildExportFilename(scene: MathScene, format: ExportFormatKey): string {
   const ext = FORMAT_EXT[format];
@@ -47,12 +47,12 @@ export function buildExportFilename(scene: MathScene, format: ExportFormatKey): 
   const snippet = problemSnippet(scene.problem_text || '');
   const stamp = stampCompact();
 
-  const pieces = ['hinh', topic];
+  const pieces = ['math-renderer', topic];
   if (snippet) pieces.push(snippet);
   pieces.push(stamp);
 
   let base = pieces.join('-').replace(/-+/g, '-').replace(/^-|-$/g, '');
   if (base.length > 180) base = base.slice(0, 180).replace(/-+$/, '');
 
-  return `${base || `hinh-${stamp}`}.${ext}`;
+  return `${base || `math-renderer-${stamp}`}.${ext}`;
 }

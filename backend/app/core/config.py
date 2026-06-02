@@ -8,7 +8,7 @@ from app.schemas.scene import RuntimeSettings
 
 
 class Settings(BaseSettings):
-    app_name: str = "Hinh Math Renderer"
+    app_name: str = "AI Math Renderer"
     environment: Literal["development", "test", "production"] = "development"
     cors_origins: list[str] = [
         "http://localhost:5173",
@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     openrouter_vision_fallback_model: str = "google/gemma-4-26b-a4b-it:free"
     openrouter_reasoning_enabled: bool = False
     openrouter_http_referer: str | None = None
-    openrouter_x_title: str = "Hinh Math Renderer"
+    openrouter_x_title: str = "AI Math Renderer"
     openai_api_key: str | None = None
     opencode_nemotron_model: str = "oc/nemotron-3-super-free"
     nvidia_api_key: str | None = None

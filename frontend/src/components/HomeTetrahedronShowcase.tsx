@@ -134,7 +134,7 @@ function BackgroundParticles() {
   );
 }
 
-function Scene() {
+function Scene({ hideHelpers = false }: { hideHelpers?: boolean }) {
   const lightRef = useRef<THREE.SpotLight>(null);
   useFrame((state) => {
     if (lightRef.current) {
@@ -171,21 +171,23 @@ function Scene() {
       </group>
 
       {/* Coordinate Grid */}
-      <Grid
-        infiniteGrid
-        fadeDistance={25}
-        fadeStrength={5}
-        sectionSize={1.5}
-        sectionColor="#737373"
-        sectionThickness={2}
-        cellSize={0.75}
-        cellColor="#d4d4d4"
-        cellThickness={1}
-        position={[0, -2.5, 0]}
-      />
+      {!hideHelpers && (
+        <Grid
+          infiniteGrid
+          fadeDistance={25}
+          fadeStrength={5}
+          sectionSize={1.5}
+          sectionColor="#737373"
+          sectionThickness={2}
+          cellSize={0.75}
+          cellColor="#d4d4d4"
+          cellThickness={1}
+          position={[0, -2.5, 0]}
+        />
+      )}
 
       {/* Axes Helper */}
-      <primitive object={new THREE.AxesHelper(4)} position={[0, -2.5, 0]} />
+      {!hideHelpers && <primitive object={new THREE.AxesHelper(4)} position={[0, -2.5, 0]} />}
 
       <OrbitControls 
         enableDamping 
@@ -198,14 +200,16 @@ function Scene() {
       />
       
       {/* Visual Axis Indicator */}
-      <GizmoHelper alignment="bottom-right" margin={[80, 80]}>
-        <GizmoViewport axisColors={['#111111', '#525252', '#a3a3a3']} labelColor="white" />
-      </GizmoHelper>
+      {!hideHelpers && (
+        <GizmoHelper alignment="bottom-right" margin={[80, 80]}>
+          <GizmoViewport axisColors={['#111111', '#525252', '#a3a3a3']} labelColor="white" />
+        </GizmoHelper>
+      )}
     </>
   );
 }
 
-export function HomeTetrahedronShowcase() {
+export function HomeTetrahedronShowcase({ hideHelpers = false }: { hideHelpers?: boolean }) {
   return (
     <div className="home-tetrahedron-wrap" style={{ cursor: 'grab', width: '100%', height: '100%' }}>
       <Canvas
@@ -225,9 +229,10 @@ export function HomeTetrahedronShowcase() {
         }}
       >
         <Suspense fallback={null}>
-          <Scene />
+          <Scene hideHelpers={hideHelpers} />
         </Suspense>
       </Canvas>
     </div>
   );
 }
+

@@ -34,7 +34,7 @@ async def export_tikz(
     return Response(
         content=body,
         media_type="application/x-tex",
-        headers={"Content-Disposition": 'attachment; filename="hinh.tex"'},
+        headers={"Content-Disposition": 'attachment; filename="math-renderer.tex"'},
     )
 
 
@@ -55,7 +55,7 @@ async def export_ggb(
     return Response(
         content=body,
         media_type="application/vnd.geogebra.file",
-        headers={"Content-Disposition": 'attachment; filename="hinh.ggb"'},
+        headers={"Content-Disposition": 'attachment; filename="math-renderer.ggb"'},
     )
 
 
@@ -76,7 +76,7 @@ async def export_pdf(
     return Response(
         content=body,
         media_type="application/pdf",
-        headers={"Content-Disposition": 'attachment; filename="hinh.pdf"'},
+        headers={"Content-Disposition": 'attachment; filename="math-renderer.pdf"'},
     )
 
 
@@ -97,7 +97,7 @@ async def export_png(
     return Response(
         content=body,
         media_type="image/png",
-        headers={"Content-Disposition": 'attachment; filename="hinh.png"'},
+        headers={"Content-Disposition": 'attachment; filename="math-renderer.png"'},
     )
 
 
@@ -118,7 +118,7 @@ async def export_jpg(
     return Response(
         content=body,
         media_type="image/jpeg",
-        headers={"Content-Disposition": 'attachment; filename="hinh.jpg"'},
+        headers={"Content-Disposition": 'attachment; filename="math-renderer.jpg"'},
     )
 
 
@@ -139,7 +139,7 @@ async def export_svg(
     return Response(
         content=body,
         media_type="image/svg+xml; charset=utf-8",
-        headers={"Content-Disposition": 'attachment; filename="hinh.svg"'},
+        headers={"Content-Disposition": 'attachment; filename="math-renderer.svg"'},
     )
 
 
@@ -160,5 +160,5 @@ async def export_katex_html(
     return Response(
         content=body,
         media_type="text/html; charset=utf-8",
-        headers={"Content-Disposition": 'attachment; filename="hinh-katex.html"'},
+        headers={"Content-Disposition": 'attachment; filename="math-renderer-katex.html"'},
     )

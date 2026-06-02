@@ -20,9 +20,9 @@ def email_logo_url(settings: Settings) -> str:
 async def send_verification_email(user: UserRecord, token: str, otp: str, settings: Settings) -> None:
     link = auth_link(settings, "verify-email", token)
     logo_url = email_logo_url(settings)
-    subject = "Xác minh email tài khoản Hinh"
+    subject = "Xác minh email tài khoản AI Math Renderer"
     text = (
-        "Mở liên kết này để xác minh email tài khoản Hinh:\n"
+        "Mở liên kết này để xác minh email tài khoản AI Math Renderer:\n"
         f"{link}\n\n"
         f"Mã OTP của bạn là: {otp}\n\n"
         "Liên kết và mã OTP sẽ hết hạn sớm. Không chia sẻ mã này với bất kỳ ai."
@@ -44,9 +44,9 @@ async def send_verification_email(user: UserRecord, token: str, otp: str, settin
 async def send_password_reset_email(user: UserRecord, token: str, settings: Settings) -> None:
     link = auth_link(settings, "reset-password", token)
     logo_url = email_logo_url(settings)
-    subject = "Đặt lại mật khẩu Hinh"
+    subject = "Đặt lại mật khẩu AI Math Renderer"
     text = (
-        "Mở liên kết này để đặt lại mật khẩu tài khoản Hinh:\n"
+        "Mở liên kết này để đặt lại mật khẩu tài khoản AI Math Renderer:\n"
         f"{link}\n\n"
         f"Token đặt lại mật khẩu: {token}\n\n"
         "Liên kết sẽ hết hạn sớm. Nếu bạn không yêu cầu đặt lại mật khẩu, hãy bỏ qua email này."

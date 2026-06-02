@@ -1,4 +1,5 @@
 import { KatexSpan } from './KatexSpan';
+import { HomeTetrahedronShowcase } from './HomeTetrahedronShowcase';
 import type { RenderHistoryItem, UserResponse } from '../api/client';
 
 type GeometryMobileView = 'render' | 'simulation' | 'geogebra-lab';
@@ -176,26 +177,33 @@ export function AnalyzerGuidePage({ onOpenGeneralGuide }: { onOpenGeneralGuide: 
 
 export function AboutPage({ onStart, onGuide }: { onStart: () => void; onGuide: () => void }) {
   const features = [
-    { title: 'Kiến trúc Phân tích & Suy luận', text: 'Quy trình xử lý đa tầng: Hệ thống phân tích giả thiết (Reasoning) trước khi thực thi lệnh vẽ, giúp tối ưu hóa độ chính xác và giảm thiểu sai sót hình học.' },
-    { title: 'Tương tác Đồ họa Đa nền tảng', text: 'Kết hợp sức mạnh của GeoGebra cho toán học phẳng và Three.js cho mô phỏng không gian 3D, mang lại trải nghiệm tương tác mượt mà và trực quan.' },
-    { title: 'Cấu trúc Scene JSON Linh hoạt', text: 'Hình vẽ không chỉ là ảnh tĩnh mà là một thực thể có cấu trúc (Scene-as-Code), cho phép người dùng can thiệp, kéo thả và tinh chỉnh từng đối tượng.' },
+    { title: 'Dựng hình thông minh', text: 'Chuyển đổi những mô tả tự nhiên thành các hình khối trực quan, giúp bạn dễ dàng hình dung và khám phá các bài toán không gian.' },
+    { title: 'Khám phá hàm số', text: 'Công cụ hỗ trợ tìm hiểu sâu về đặc tính của các đồ thị, mang lại cái nhìn chi tiết và chính xác về sự biến thiên của toán học.' },
+    { title: 'Mô phỏng sinh động', text: 'Trải nghiệm toán học qua những chuyển động thực tế, giúp các khái niệm trừu tượng trở nên rõ ràng và dễ hiểu hơn bao giờ hết.' },
+    { title: 'Không gian thực hành', text: 'Một phòng thí nghiệm đa năng nơi bạn có thể thỏa sức sáng tạo, thử nghiệm và xây dựng những mô hình toán học của riêng mình.' },
   ];
 
   return (
-    <section className="about-page">
-      <div className="about-hero">
-        <span className="home-eyebrow">Về dự án</span>
-        <h2>Số hóa hình học với độ chính xác tuyệt đối.</h2>
-        <p>AI Math Renderer là một nền tảng tiên phong kết hợp giữa Trí tuệ nhân tạo và các công cụ tính toán hình học (CAS). Chúng tôi hướng tới việc đơn giản hóa quy trình xây dựng học liệu toán học, giúp giáo viên và học sinh tiết kiệm hàng giờ làm việc thủ công.</p>
-        <div className="home-actions">
-          <button type="button" onClick={onStart}>Truy cập Workspace</button>
-          <button type="button" className="secondary-button" onClick={onGuide}>Tài liệu hướng dẫn</button>
+    <section className="about-page animate-in">
+      <div className="about-hero-row">
+        <div className="about-hero">
+          <span className="home-eyebrow">Câu chuyện của chúng mình</span>
+          <h2>Một không gian toán học thông minh và gần gũi</h2>
+          <p>Chúng mình xây dựng nơi này để giúp bạn biến những ý tưởng toán học thành hình ảnh trực quan, từ việc dựng hình qua lời nói đến những mô phỏng sinh động và không gian thực hành đa năng.</p>
+          <div className="home-actions">
+            <button type="button" onClick={onStart}>Khám phá ngay</button>
+            <button type="button" className="secondary-button" onClick={onGuide}>Xem hướng dẫn</button>
+          </div>
+        </div>
+
+        <div className="home-visual-card home-visual-card--3d" role="region" aria-label="Minh họa tứ diện đều SABC, kéo để xoay góc nhìn.">
+          <HomeTetrahedronShowcase hideHelpers={true} />
         </div>
       </div>
 
       <div className="about-grid">
-        {features.map((feature) => (
-          <article key={feature.title}>
+        {features.map((feature, index) => (
+          <article key={feature.title} style={{ '--index': index } as React.CSSProperties}>
             <h3>{feature.title}</h3>
             <p>{feature.text}</p>
           </article>
@@ -204,10 +212,10 @@ export function AboutPage({ onStart, onGuide }: { onStart: () => void; onGuide: 
 
       <section className="about-section">
         <div>
-          <span>Triết lý phát triển</span>
-          <h3>Trợ lý kỹ thuật đắc lực, không chỉ là công cụ vẽ hình.</h3>
+          <span>Tầm nhìn</span>
+          <h3>Toán học không chỉ là những con số</h3>
         </div>
-        <p>Áp dụng tư duy <strong>"Infrastructure as Code"</strong> vào toán học, chúng tôi biến các đề bài trừu tượng thành dữ liệu có cấu trúc. AI đóng vai trò là một cộng tác viên thông minh, giúp bạn hiện thực hóa các ý tưởng hình học, khảo sát đồ thị phức tạp và kiểm chứng các giả thiết toán học một cách khoa học nhất.</p>
+        <p>Chúng mình tin rằng toán học sẽ trở nên gần gũi hơn khi được quan sát và tương tác trực tiếp, giúp mỗi người tự do khám phá tri thức theo cách tự nhiên nhất.</p>
       </section>
     </section>
   );
