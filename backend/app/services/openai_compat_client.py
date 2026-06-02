@@ -11,7 +11,7 @@ from app.core.config import Settings
 from app.services.ai_prompt import REASONING_SYSTEM_PROMPT, SCENE_EXTRACTION_SYSTEM_PROMPT, build_reasoning_prompt, build_scene_extraction_prompt
 from app.services import provider_logging as provider_logging_service
 from app.services.openrouter_client import OCR_SYSTEM_PROMPT, _strip_json_fences, _strip_text_fences
-from app.services.chat_response import chat_response_shape, extract_chat_response_content
+from app.services.chat_response import extract_chat_message_content
 from app.services.provider_logging import chat_message_input_chars, format_provider_error, log_ocr_summary, log_provider_parse, log_provider_request, log_provider_response, log_scene_summary
 
 
@@ -44,7 +44,7 @@ class OpenAICompatClient:
             log_scene_summary("openai_compat", scene_json, model=self.model)
             return scene_json
         except json.JSONDecodeError as error:
-            _log_openai_compat_parse_error("scene", self.model, f"invalid_json: {error.msg}", response_chars=len(content))
+            log_provider_parse_error("openai_compat", "scene", self.model, f"invalid_json: {error.msg}", response_chars=len(content))
             raise RuntimeError(f"OpenAI-compatible trả về JSON không hợp lệ: {error.msg}") from error
 
     async def reason_about_problem(self, problem_text: str, grade: int | None = None, system_prompt: str | None = None) -> dict:
@@ -62,7 +62,7 @@ class OpenAICompatClient:
         try:
             return json.loads(_strip_json_fences(content))
         except json.JSONDecodeError as error:
-            _log_openai_compat_parse_error("reasoning", self.model, f"invalid_json: {error.msg}", response_chars=len(content))
+            log_provider_parse_error("openai_compat", "reasoning", self.model, f"invalid_json: {error.msg}", response_chars=len(content))
             raise RuntimeError(f"OpenAI-compatible reasoning JSON không hợp lệ: {error.msg}") from error
 
     async def check_connection(self) -> str:
@@ -126,32 +126,22 @@ class OpenAICompatClient:
         try:
             body = response.json()
         except ValueError as error:
-            _log_openai_compat_parse_error(kind, payload.get("model"), "response_not_json", response_chars=len(response.text))
+            log_provider_parse_error("openai_compat", kind, payload.get("model"), "response_not_json", response_chars=len(response.text))
             raise RuntimeError("OpenAI-compatible response không phải JSON hợp lệ.") from error
         content = extract_chat_response_content(body)
         if not content.strip():
             shape = chat_response_shape(body)
-            _log_openai_compat_parse_error(kind, payload.get("model"), {"empty_content_or_unknown_shape": shape}, response_chars=len(response.text))
+            log_provider_parse_error("openai_compat", kind, payload.get("model"), {"empty_content_or_unknown_shape": shape}, response_chars=len(response.text))
             raise RuntimeError(f"OpenAI-compatible response không có nội dung assistant đọc được. shape={shape}")
         log_provider_parse("openai_compat", kind, payload.get("model"), len(content))
         return content
 
 
-def log_provider_parse_error(
-    provider: str,
-    kind: str,
-    model: Any,
-    message: Any,
-    response_chars: int | None = None,
-    limit: int = 500,
-) -> None:
-    """Compatibility shim so legacy local calls cannot raise NameError."""
-    provider_logging_service.log_provider_parse_error(provider, kind, model, message, response_chars=response_chars, limit=limit)
-
-
 def _log_openai_compat_parse_error(kind: str, model: Any, message: Any, response_chars: int | None = None) -> None:
     """Log parse diagnostics without letting observability break fallback flow."""
     try:
+        from app.services.provider_logging import log_provider_parse_error
+
         log_provider_parse_error("openai_compat", kind, model, message, response_chars=response_chars)
     except Exception as error:  # pragma: no cover - defensive logging guard
         logging.getLogger("app.services.ai_providers").warning(
