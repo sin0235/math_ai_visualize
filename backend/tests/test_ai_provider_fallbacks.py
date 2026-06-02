@@ -94,6 +94,83 @@ def test_provider_error_redaction_removes_secrets_and_image_data():
     assert "data:image/[REDACTED]" in message
 
 
+def test_chat_message_input_chars_counts_prompt_and_multimodal_content():
+    from app.services.provider_logging import chat_message_input_chars
+
+    messages = [
+        {"role": "system", "content": "system prompt"},
+        {"role": "user", "content": "user prompt"},
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "ocr hint"},
+                {"type": "image_url", "image_url": {"url": "data:image/png;base64,abcd"}},
+            ],
+        },
+    ]
+
+    assert chat_message_input_chars(messages) == len("system prompt") + len("user prompt") + len("ocr hint") + len("data:image/png;base64,abcd")
+
+
+def test_openai_compat_request_logs_full_input_chars(monkeypatch):
+    captured = {}
+
+    class FakeClient:
+        async def post(self, url, headers, json, timeout):
+            captured["payload"] = json
+            return httpx.Response(200, json={"choices": [{"message": {"content": "OK"}}]})
+
+    def fake_log_provider_request(provider, kind, url, model, **metadata):
+        captured["metadata"] = metadata
+
+    monkeypatch.setattr("app.services.http_pool.get_client", lambda *args: FakeClient())
+    monkeypatch.setattr("app.services.openai_compat_client.log_provider_request", fake_log_provider_request)
+
+    asyncio.run(
+        OpenAICompatClient(
+            Settings(_env_file=None, openai_compat_base_url="https://compat.test/v1", openai_compat_text_model="test-model", openai_compat_api_key="secret")
+        )._post_chat(
+            {
+                "model": "test-model",
+                "messages": [
+                    {"role": "system", "content": "system prompt"},
+                    {"role": "user", "content": "wrapped problem"},
+                ],
+            },
+            "scene",
+            problem_chars=len("problem"),
+        )
+    )
+
+    assert captured["metadata"]["problem_chars"] == len("problem")
+    assert captured["metadata"]["input_chars"] == len("system prompt") + len("wrapped problem")
+
+
+def test_router9_reasoning_request_logs_reasoning_kind_and_input_chars(monkeypatch):
+    captured = {}
+
+    class FakeClient:
+        async def post(self, url, headers, json, timeout):
+            captured["payload"] = json
+            return httpx.Response(200, json={"choices": [{"message": {"content": "{}"}}]})
+
+    def fake_log_provider_request(provider, kind, url, model, **metadata):
+        captured["kind"] = kind
+        captured["metadata"] = metadata
+
+    monkeypatch.setattr("app.services.http_pool.get_client", lambda *args: FakeClient())
+    monkeypatch.setattr("app.services.router9_client.log_provider_request", fake_log_provider_request)
+
+    asyncio.run(
+        Router9Client(
+            Settings(_env_file=None, router9_base_url="https://router9.test/v1", router9_api_key="secret", router9_text_model="test-model")
+        ).reason_about_problem("Vẽ điểm A", grade=10)
+    )
+
+    assert captured["kind"] == "reasoning"
+    assert captured["metadata"]["input_chars"] > len("Vẽ điểm A")
+
+
 def test_openai_compat_provider_check_uses_small_chat_payload(monkeypatch):
     captured = {}
 

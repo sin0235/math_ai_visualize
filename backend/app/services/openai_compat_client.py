@@ -10,7 +10,7 @@ from app.core.config import Settings
 from app.services.ai_prompt import REASONING_SYSTEM_PROMPT, SCENE_EXTRACTION_SYSTEM_PROMPT, build_reasoning_prompt, build_scene_extraction_prompt
 from app.services.openrouter_client import OCR_SYSTEM_PROMPT, _strip_json_fences, _strip_text_fences
 from app.services.chat_response import extract_chat_message_content
-from app.services.provider_logging import format_provider_error, log_ocr_summary, log_provider_parse, log_provider_request, log_provider_response, log_scene_summary
+from app.services.provider_logging import chat_message_input_chars, format_provider_error, log_ocr_summary, log_provider_parse, log_provider_request, log_provider_response, log_scene_summary
 
 
 class OpenAICompatClient:
@@ -112,7 +112,7 @@ class OpenAICompatClient:
         from app.services.http_pool import TIMEOUT_SCENE, get_client
 
         started_at = time.perf_counter()
-        log_provider_request("openai_compat", kind, url, payload.get("model"), **log_kwargs)
+        log_provider_request("openai_compat", kind, url, payload.get("model"), input_chars=chat_message_input_chars(payload.get("messages")), **log_kwargs)
         client = get_client(base_url, TIMEOUT_SCENE)
         response = await client.post(url, headers=headers, json=payload, timeout=TIMEOUT_SCENE)
         elapsed_ms = int((time.perf_counter() - started_at) * 1000)

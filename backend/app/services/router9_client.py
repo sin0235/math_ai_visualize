@@ -11,7 +11,7 @@ from app.services.chat_response import extract_chat_message_content
 from app.services.chat_stream import collect_openai_chat_stream
 from app.services.openrouter_client import OCR_SYSTEM_PROMPT
 from app.services.model_scan import CAPABILITY_KEYS, _extract_capabilities
-from app.services.provider_logging import format_provider_error, log_ocr_summary, log_provider_http_error, log_provider_request, log_provider_response, log_scene_summary
+from app.services.provider_logging import chat_message_input_chars, format_provider_error, log_ocr_summary, log_provider_http_error, log_provider_request, log_provider_response, log_scene_summary
 
 
 class Router9Client:
@@ -81,7 +81,7 @@ class Router9Client:
             "temperature": 0.1,
             "stream": False,
         }
-        response = await self._post_chat(payload)
+        response = await self._post_chat(payload, kind="scene")
 
         try:
             content = _extract_message_content(response)
@@ -115,7 +115,7 @@ class Router9Client:
             "stream": False,
         }
         from app.services.http_pool import TIMEOUT_REASONING
-        response = await self._post_chat(payload, timeout=TIMEOUT_REASONING)
+        response = await self._post_chat(payload, timeout=TIMEOUT_REASONING, kind="reasoning")
 
         try:
             content = _extract_message_content(response)
@@ -151,7 +151,7 @@ class Router9Client:
             "stream": False,
         }
         from app.services.http_pool import TIMEOUT_OCR
-        response = await self._post_chat(payload, timeout=TIMEOUT_OCR)
+        response = await self._post_chat(payload, timeout=TIMEOUT_OCR, kind="ocr")
 
         try:
             content = _extract_message_content(response)
@@ -163,7 +163,7 @@ class Router9Client:
         log_ocr_summary("9router", text)
         return text
 
-    async def _post_chat(self, payload: dict, timeout: httpx.Timeout | None = None) -> httpx.Response:
+    async def _post_chat(self, payload: dict, timeout: httpx.Timeout | None = None, kind: str | None = None) -> httpx.Response:
         from app.services.http_pool import TIMEOUT_SCENE, get_client
 
         headers = _build_headers(self.settings)
@@ -171,8 +171,8 @@ class Router9Client:
         url = f"{base_url}/chat/completions"
         try:
             started_at = time.perf_counter()
-            kind = "ocr" if any(isinstance(message.get("content"), list) for message in payload.get("messages", []) if isinstance(message, dict)) else "scene"
-            input_chars = sum(len(message.get("content", "")) for message in payload.get("messages", []) if isinstance(message, dict) and isinstance(message.get("content"), str))
+            kind = kind or ("ocr" if any(isinstance(message.get("content"), list) for message in payload.get("messages", []) if isinstance(message, dict)) else "scene")
+            input_chars = chat_message_input_chars(payload.get("messages"))
             log_provider_request("9router", kind, url, payload.get("model"), input_chars=input_chars)
             client = get_client(base_url, timeout or TIMEOUT_SCENE)
             if kind == "scene":
