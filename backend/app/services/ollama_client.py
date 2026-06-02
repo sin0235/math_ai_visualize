@@ -7,7 +7,7 @@ from app.core.config import Settings
 from app.services.ai_prompt import REASONING_SYSTEM_PROMPT, SCENE_EXTRACTION_SYSTEM_PROMPT, build_reasoning_prompt, build_scene_extraction_prompt
 from app.services.chat_response import extract_chat_message_content
 from app.services.openrouter_client import OCR_SYSTEM_PROMPT, _strip_text_fences
-from app.services.provider_logging import log_ocr_summary, log_provider_request, log_provider_response, log_scene_summary
+from app.services.provider_logging import chat_message_input_chars, log_ocr_summary, log_provider_request, log_provider_response, log_scene_summary
 
 
 class OllamaClient:
@@ -59,7 +59,7 @@ class OllamaClient:
             from app.services.http_pool import TIMEOUT_SCENE, get_client
 
             started_at = time.perf_counter()
-            log_provider_request("ollama", "scene", url, payload["model"], problem_chars=len(problem_text))
+            log_provider_request("ollama", "scene", url, payload["model"], problem_chars=len(problem_text), input_chars=chat_message_input_chars(payload.get("messages")))
             client = get_client(base_url, TIMEOUT_SCENE)
             response = await client.post(url, headers=headers, json=payload, timeout=TIMEOUT_SCENE)
             elapsed_ms = int((time.perf_counter() - started_at) * 1000)
@@ -112,7 +112,7 @@ class OllamaClient:
             from app.services.http_pool import TIMEOUT_SCENE, get_client
 
             started_at = time.perf_counter()
-            log_provider_request("ollama_cloud", "scene", url, payload["model"], problem_chars=len(problem_text))
+            log_provider_request("ollama_cloud", "scene", url, payload["model"], problem_chars=len(problem_text), input_chars=chat_message_input_chars(payload.get("messages")))
             client = get_client(base_url, TIMEOUT_SCENE)
             response = await client.post(url, headers=headers, json=payload, timeout=TIMEOUT_SCENE)
             elapsed_ms = int((time.perf_counter() - started_at) * 1000)
@@ -160,7 +160,7 @@ class OllamaClient:
             from app.services.http_pool import TIMEOUT_OCR, get_client
 
             started_at = time.perf_counter()
-            log_provider_request("ollama", "ocr", url, payload["model"], image_chars=len(image_data_url))
+            log_provider_request("ollama", "ocr", url, payload["model"], image_chars=len(image_data_url), input_chars=chat_message_input_chars(payload.get("messages")))
             client = get_client(base_url, TIMEOUT_OCR)
             response = await client.post(url, headers=headers, json=payload, timeout=TIMEOUT_OCR)
             elapsed_ms = int((time.perf_counter() - started_at) * 1000)
@@ -200,7 +200,7 @@ class OllamaClient:
             from app.services.http_pool import TIMEOUT_OCR, get_client
 
             started_at = time.perf_counter()
-            log_provider_request("ollama_cloud", "ocr", url, payload["model"], image_chars=len(image_data_url))
+            log_provider_request("ollama_cloud", "ocr", url, payload["model"], image_chars=len(image_data_url), input_chars=chat_message_input_chars(payload.get("messages")))
             client = get_client(base_url, TIMEOUT_OCR)
             response = await client.post(url, headers=headers, json=payload, timeout=TIMEOUT_OCR)
             elapsed_ms = int((time.perf_counter() - started_at) * 1000)
@@ -246,7 +246,7 @@ class OllamaClient:
             from app.services.http_pool import TIMEOUT_REASONING, get_client
 
             started_at = time.perf_counter()
-            log_provider_request("ollama", "reasoning", url, payload["model"], problem_chars=len(problem_text))
+            log_provider_request("ollama", "reasoning", url, payload["model"], problem_chars=len(problem_text), input_chars=chat_message_input_chars(payload.get("messages")))
             client = get_client(base_url, TIMEOUT_REASONING)
             response = await client.post(url, headers=headers, json=payload, timeout=TIMEOUT_REASONING)
             elapsed_ms = int((time.perf_counter() - started_at) * 1000)
@@ -286,7 +286,7 @@ class OllamaClient:
             from app.services.http_pool import TIMEOUT_REASONING, get_client
 
             started_at = time.perf_counter()
-            log_provider_request("ollama_cloud", "reasoning", url, payload["model"], problem_chars=len(problem_text))
+            log_provider_request("ollama_cloud", "reasoning", url, payload["model"], problem_chars=len(problem_text), input_chars=chat_message_input_chars(payload.get("messages")))
             client = get_client(base_url, TIMEOUT_REASONING)
             response = await client.post(url, headers=headers, json=payload, timeout=TIMEOUT_REASONING)
             elapsed_ms = int((time.perf_counter() - started_at) * 1000)
