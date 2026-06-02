@@ -7,6 +7,7 @@ from app.services.algebra.domain import domain_assumptions_from_expression
 from app.services.algebra.formatting import format_solution_set, solution_values
 from app.services.algebra.parser import ParsedAlgebraProblem
 from app.services.algebra.steps import conclusion_step, domain_step
+from app.services.algebra.trig_transformations import build_trig_steps, trig_domain_assumptions
 from app.services.algebra.verifier import verify_finite_solutions, verify_solution_set
 
 TRIG_FUNCTIONS = (sp.sin, sp.cos, sp.tan, sp.cot)
@@ -16,24 +17,25 @@ def solve_trigonometry(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
     if problem.relation is None or not isinstance(problem.relation, sp.Equality):
         return _unsupported(problem, "Đầu vào không phải phương trình lượng giác.")
     variable = problem.variable
-    expression = sp.simplify(problem.relation.lhs - problem.relation.rhs)
+    expression = problem.relation.lhs - problem.relation.rhs
+    simplified_expression = sp.simplify(expression)
     if not any(expression.has(func) for func in TRIG_FUNCTIONS):
         return _unsupported(problem, "Phương trình không chứa hàm lượng giác được hỗ trợ.")
-    assumptions = domain_assumptions_from_expression(expression, variable)
+    assumptions = _unique(domain_assumptions_from_expression(expression, variable) + trig_domain_assumptions(expression, variable))
     steps: list[AlgebraSolveStep] = []
     if assumptions:
         steps.append(domain_step(len(steps) + 1, assumptions))
-    solution_set = _solve_on_default_interval(expression, variable)
+    solution_set = _solve_on_default_interval(simplified_expression, variable)
     if solution_set is None:
         try:
-            solution_set = sp.solveset(expression, variable, domain=sp.S.Reals)
+            solution_set = sp.solveset(simplified_expression, variable, domain=sp.S.Reals)
         except Exception as exc:
             return _unsupported(problem, f"SymPy chưa giải được phương trình lượng giác này: {exc}")
         solve_explanation = "Hệ thống giải phương trình lượng giác trên miền số thực. Với nghiệm tuần hoàn, kết quả có thể ở dạng tập symbolic."
     else:
         solve_explanation = "Hệ thống giải phương trình lượng giác trên khoảng chuẩn [0, 2*pi) để tạo nghiệm hữu hạn dễ kiểm chứng."
     values = solution_values(solution_set)
-    method_steps = _basic_trig_steps(problem, expression, variable, solution_set, values, len(steps) + 1)
+    method_steps = build_trig_steps(problem, expression, solution_set, values, len(steps) + 1)
     if method_steps:
         steps.extend(method_steps)
     else:
@@ -45,8 +47,8 @@ def solve_trigonometry(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
             why="Phương trình lượng giác thường có nghiệm theo chu kỳ.",
             rule="Giải lượng giác một biến",
             operation="Giải trên khoảng chuẩn hoặc biểu diễn nghiệm tuần hoàn.",
-            expression=sp.sstr(expression),
-            expression_latex=sp.latex(expression),
+            expression=sp.sstr(simplified_expression),
+            expression_latex=sp.latex(simplified_expression),
             result=sp.sstr(solution_set),
             result_latex=sp.latex(solution_set),
             kind="solve",
@@ -185,3 +187,14 @@ def _basic_trig_general_latex(func, argument: sp.Expr, target: sp.Expr) -> str:
 
 def _unsupported(problem: ParsedAlgebraProblem, message: str) -> AlgebraSolveResponse:
     return AlgebraSolveResponse(input=problem.raw_input, normalized_input=problem.normalized_input, topic="trigonometry", problem_type="solve_trigonometric_equation", status="unsupported", answer=message, errors=[message])
+
+
+def _unique(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        result.append(value)
+    return result

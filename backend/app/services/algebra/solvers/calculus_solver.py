@@ -12,6 +12,7 @@ from app.schemas.algebra import (
     AlgebraVerificationCheck,
     AlgebraVerificationReport,
 )
+from app.services.algebra.calculus_transformations import derivative_steps, integral_steps, limit_steps
 from app.services.algebra.parser import ParsedAlgebraProblem
 
 
@@ -43,7 +44,7 @@ def solve_calculus(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
 
 def _solve_derivative(problem: ParsedAlgebraProblem, template: CalculusTemplate) -> AlgebraSolveResponse:
     derivative = sp.simplify(sp.diff(template.expression, template.variable, template.order))
-    steps = _derivative_steps(template, derivative)
+    steps = derivative_steps(template.expression, template.variable, derivative, template.order)
     answer = f"Đạo hàm: {sp.sstr(derivative)}"
     verification = AlgebraVerificationReport(
         status="verified",
@@ -69,7 +70,7 @@ def _solve_limit(problem: ParsedAlgebraProblem, template: CalculusTemplate) -> A
     if template.point is None:
         return _unsupported(problem, "calculus_limit", "Giới hạn cần có điểm tiến tới, ví dụ limit(expr=(x^2-1)/(x-1),var=x,to=1).")
     result = sp.simplify(sp.limit(template.expression, template.variable, template.point, dir=template.direction))
-    steps = _limit_steps(template, result)
+    steps = limit_steps(template.expression, template.variable, template.point, template.direction, result)
     answer = f"Giới hạn: {sp.sstr(result)}"
     verification = AlgebraVerificationReport(
         status="verified",
@@ -102,7 +103,7 @@ def _solve_integral(problem: ParsedAlgebraProblem, template: CalculusTemplate) -
         result = antiderivative
         answer = f"Nguyên hàm: {sp.sstr(result)} + C"
         latex = sp.latex(result) + "+C"
-    steps = _integral_steps(template, antiderivative, result)
+    steps = integral_steps(template.expression, template.variable, antiderivative, result, template.lower, template.upper)
     verification = AlgebraVerificationReport(
         status="verified",
         checks=[AlgebraVerificationCheck(name="integral_symbolic", status="pass", detail="Kết quả tích phân được tính symbolic.", latex=latex)],

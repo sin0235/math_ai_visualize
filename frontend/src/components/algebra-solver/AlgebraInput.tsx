@@ -136,34 +136,28 @@ export function AlgebraInput({
     else if (action === 'ln') mathField.write('\\ln\\left(\\right)');
     else if (action === 'abs') mathField.write('\\left|\\right|');
     else if (action === 'derivative') {
-      onInputModeChange('natural');
-      onInputFormatChange('auto');
       onTopicChange('calculus_derivative');
-      onInputChange('derivative(expr=x^2,var=x)');
+      mathField.write('\\frac{d}{dx}\\left(\\right)');
     }
     else if (action === 'integral') {
-      onInputModeChange('natural');
-      onInputFormatChange('auto');
       onTopicChange('calculus_integral');
-      onInputChange('integral(expr=x^2,var=x)');
+      mathField.write('\\int_{}^{}');
     }
     else if (action === 'sum') mathField.write('\\sum_{}^{}');
     else if (action === 'product') mathField.write('\\prod_{}^{}');
     else if (action === 'limit') {
-      onInputModeChange('natural');
-      onInputFormatChange('auto');
       onTopicChange('calculus_limit');
-      onInputChange('limit(expr=(x^2-1)/(x-1),var=x,to=1)');
+      mathField.write('\\lim_{x\\to0}\\left(\\right)');
     }
     else if (action === 'system2') {
       onTopicChange('system');
       onVariablesChange('x,y');
-      onInputChange('x+y=0; x-y=0');
+      mathField.write('\\begin{cases} x+y=0 \\\\ x-y=0 \\end{cases}');
     }
     else if (action === 'system3') {
       onTopicChange('system');
       onVariablesChange('x,y,z');
-      onInputChange('x+y+z=0; x-y=0; y-z=0');
+      mathField.write('\\begin{cases} x+y+z=0 \\\\ x-y=0 \\\\ y-z=0 \\end{cases}');
     }
     else if (action === 'equation') mathField.write('x=0');
     else if (action === 'sin') mathField.write('\\sin\\left(\\right)');

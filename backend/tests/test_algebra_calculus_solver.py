@@ -42,3 +42,57 @@ def test_calculus_interpreter_detects_vietnamese_natural_inputs():
     assert limit.topic == "calculus_limit"
     assert integral.topic == "calculus_integral"
     assert derivative.status == limit.status == integral.status == "solved"
+
+
+def test_calculus_derivative_explains_quotient_rule():
+    result = solve_algebra(AlgebraSolveRequest(input="derivative(expr=(x^2+1)/(x-1),var=x)", topic="auto"))
+
+    assert result.status == "solved"
+    assert "Dùng quy tắc thương" in [step.title for step in result.steps]
+    assert any(step.method == "quotient_rule" for step in result.steps)
+
+
+def test_calculus_derivative_explains_logarithmic_differentiation():
+    result = solve_algebra(AlgebraSolveRequest(input="derivative(expr=x^x,var=x)", topic="auto"))
+
+    assert result.status == "solved"
+    assert result.answer_latex == r"x^{x} \left(\log{\left(x \right)} + 1\right)"
+    assert any(step.method == "logarithmic_differentiation" for step in result.steps)
+
+
+def test_calculus_derivative_explains_trig_chain_rule_and_higher_order():
+    chain = solve_algebra(AlgebraSolveRequest(input="derivative(expr=sin(x^2),var=x)", topic="auto"))
+    higher = solve_algebra(AlgebraSolveRequest(input="derivative(expr=x^4,var=x,order=2)", topic="auto"))
+
+    assert chain.answer_latex == r"2 x \cos{\left(x^{2} \right)}"
+    assert any(step.method == "chain_rule" for step in chain.steps)
+    assert higher.answer_latex == r"12 x^{2}"
+    assert [step.method for step in higher.steps if step.method == "higher_order_derivative"] == ["higher_order_derivative", "higher_order_derivative"]
+
+
+def test_calculus_limit_explains_conjugate_infinity_trig_and_lhospital():
+    conjugate = solve_algebra(AlgebraSolveRequest(input="limit(expr=(sqrt(x+1)-1)/x,var=x,to=0)", topic="auto"))
+    infinity = solve_algebra(AlgebraSolveRequest(input="limit(expr=(3*x^2+1)/(x^2-5),var=x,to=oo)", topic="auto"))
+    trig = solve_algebra(AlgebraSolveRequest(input="limit(expr=sin(x)/x,var=x,to=0)", topic="auto"))
+    lhospital = solve_algebra(AlgebraSolveRequest(input="limit(expr=(exp(x)-1)/x,var=x,to=0)", topic="auto"))
+
+    assert conjugate.answer_latex == r"\frac{1}{2}"
+    assert any(step.method == "conjugate_limit" for step in conjugate.steps)
+    assert infinity.answer_latex == "3"
+    assert any(step.method == "dominant_term_infinity" for step in infinity.steps)
+    assert trig.answer_latex == "1"
+    assert any(step.method == "standard_trig_limit" for step in trig.steps)
+    assert lhospital.answer_latex == "1"
+    assert any(step.method == "lhospital" for step in lhospital.steps)
+
+
+def test_calculus_integral_explains_advanced_techniques():
+    substitution = solve_algebra(AlgebraSolveRequest(input="integral(expr=2*x*cos(x^2),var=x)", topic="auto"))
+    by_parts = solve_algebra(AlgebraSolveRequest(input="integral(expr=x*exp(x),var=x)", topic="auto"))
+    partial = solve_algebra(AlgebraSolveRequest(input="integral(expr=1/(x^2-1),var=x)", topic="auto"))
+    trig = solve_algebra(AlgebraSolveRequest(input="integral(expr=sin(x)^2,var=x)", topic="auto"))
+
+    assert any(step.method == "u_substitution" for step in substitution.steps)
+    assert any(step.method == "integration_by_parts" for step in by_parts.steps)
+    assert any(step.method == "partial_fractions" for step in partial.steps)
+    assert any(step.method == "trig_identity_integral" for step in trig.steps)
