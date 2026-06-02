@@ -536,7 +536,25 @@ select {
 
 .tools-dropdown button strong,
 .tools-dropdown a strong {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: 0.88rem;
+}
+
+.tools-beta-badge {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #f59e0b;
+  border-radius: 999px;
+  padding: 0 4px;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 0.54rem;
+  font-style: normal;
+  font-weight: 800;
+  line-height: 1.25;
+  text-transform: uppercase;
 }
 
 .tools-dropdown button small,
@@ -7000,9 +7018,12 @@ pre {
   min-width: 0;
 }
 .fa2-input::placeholder { color: var(--ink-4); }
-.fa2-input:focus {
+.fa2-input:focus,
+.fa2-input:focus-visible,
+.fa2-input:hover {
   border-color: transparent;
   box-shadow: none;
+  outline: none;
 }
 .fa2-guide-btn {
   display: inline-flex;
@@ -11897,51 +11918,54 @@ button.analyzer-guide-label:hover {
 }
 
 .algebra-solver-page {
-  width: min(1180px, calc(100vw - 32px));
-  margin: 0 auto;
-  padding: 28px 0 48px;
+  width: 100%;
+  margin: 0;
+  padding: 0;
 }
 
 .algebra-workspace {
   display: grid;
-  grid-template-columns: minmax(300px, 0.85fr) minmax(0, 1.35fr);
-  gap: 22px;
-  align-items: start;
+  grid-template-columns: minmax(360px, 0.42fr) minmax(0, 1fr);
+  min-height: calc(100vh - 248px);
+  align-items: stretch;
+  background: var(--paper);
 }
 
 .algebra-input-panel,
 .algebra-result-panel,
 .algebra-empty-result,
 .algebra-result-card {
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .algebra-input-panel {
   display: grid;
-  gap: 16px;
-  padding: 22px;
-  position: sticky;
-  top: 92px;
+  align-content: start;
+  gap: 15px;
+  padding: 28px clamp(18px, 2.6vw, 36px);
+  border-right: 1px solid var(--line);
+  background: color-mix(in srgb, var(--paper) 72%, transparent);
 }
 
 .algebra-panel-heading span,
-.algebra-result-header span,
-.algebra-result-card > span {
-  color: #2563eb;
-  font-weight: 800;
-  font-size: 0.78rem;
+.algebra-eyebrow {
+  color: var(--ink-3);
+  font-weight: 720;
+  font-size: 0.74rem;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
 }
 
 .algebra-panel-heading h2,
 .algebra-result-header h2 {
   margin: 6px 0 8px;
-  font-size: clamp(1.45rem, 3vw, 2.1rem);
-  letter-spacing: -0.04em;
+  color: var(--ink);
+  font-size: clamp(1.3rem, 3vw, 1.8rem);
+  font-weight: 760;
+  line-height: 1.12;
+  text-wrap: balance;
 }
 
 .algebra-panel-heading p,
@@ -11949,20 +11973,29 @@ button.analyzer-guide-label:hover {
 .algebra-result-card p,
 .algebra-step-card p {
   margin: 0;
-  color: #64748b;
+  color: var(--ink-3);
   line-height: 1.55;
+  text-wrap: pretty;
 }
 
 .algebra-input-panel textarea,
 .algebra-input-panel select,
 .algebra-input-panel input {
   width: 100%;
-  border: 1px solid #d4d4d8;
-  border-radius: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
   padding: 12px 14px;
   font: inherit;
-  background: #fff;
-  color: #111827;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.algebra-input-panel textarea:focus,
+.algebra-input-panel select:focus,
+.algebra-input-panel input:focus {
+  border-color: var(--line-2);
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--line-2) 32%, transparent);
 }
 
 .algebra-input-panel textarea {
@@ -11974,27 +12007,27 @@ button.analyzer-guide-label:hover {
 .algebra-mode-tabs {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
+  gap: 4px;
   padding: 4px;
-  border: 1px solid #dbeafe;
-  border-radius: 8px;
-  background: #eff6ff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
 }
 
 .algebra-mode-tabs button {
   border: 0;
-  border-radius: 6px;
+  border-radius: calc(var(--radius-md) - 3px);
   padding: 9px 10px;
   background: transparent;
-  color: #1e40af;
-  font-weight: 850;
+  color: var(--ink-3);
+  font-weight: 700;
   cursor: pointer;
 }
 
 .algebra-mode-tabs button.active {
-  background: #fff;
-  color: #111827;
-  box-shadow: 0 1px 4px rgba(30, 64, 175, 0.16);
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
 }
 
 .algebra-math-field-wrap {
@@ -12003,52 +12036,113 @@ button.analyzer-guide-label:hover {
 
 .algebra-math-field {
   width: 100%;
-  min-height: 72px;
-  border: 1px solid #d4d4d8;
-  border-radius: 8px;
+  min-height: 128px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
   padding: 14px;
-  background: #fff;
-  color: #111827;
-  font-size: 1.1rem;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 1.15rem;
   overflow-x: auto;
 }
 
-.algebra-math-field.mq-focused {
-  border-color: #2563eb;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.13);
+.algebra-math-field.mq-focused,
+.algebra-math-field .mq-focused,
+.algebra-math-field .mq-editable-field.mq-focused {
+  border-color: var(--line-2) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--line-2) 32%, transparent) !important;
+  outline: none !important;
+}
+
+.algebra-math-field .mq-cursor,
+.algebra-math-field .mq-textarea textarea:focus {
+  color: var(--ink) !important;
+  outline: none !important;
 }
 
 .algebra-math-toolbar {
+  display: grid;
+  gap: 8px;
+}
+
+.algebra-snippet-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.algebra-snippet-tabs button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  border: 0;
+  border-radius: calc(var(--radius-md) - 4px);
+  background: transparent;
+  color: var(--ink-3);
+  font-family: inherit;
+  font-size: 0.92rem;
+  font-weight: 620;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.algebra-snippet-tabs button.active {
+  background: var(--paper);
+  color: var(--ink);
+  font-weight: 680;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.1);
+}
+
+.algebra-snippet-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
 }
 
-.algebra-math-toolbar button {
-  min-height: 34px;
-  border: 1px solid #bfdbfe;
-  border-radius: 7px;
-  background: #f8fafc;
-  color: #1d4ed8;
-  font-weight: 800;
+.algebra-snippet-grid button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--paper) 70%, var(--surface));
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 0.92rem;
+  font-weight: 620;
+  line-height: 1;
   cursor: pointer;
+}
+
+.algebra-snippet-grid button:hover:not(:disabled),
+.algebra-snippet-tabs button:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+
+.algebra-snippet-tabs button.active:hover:not(:disabled) {
+  background: var(--paper);
 }
 
 .algebra-input-preview {
   display: grid;
   gap: 8px;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
   padding: 12px;
-  background: #f8fafc;
+  background: var(--surface);
 }
 
 .algebra-input-preview > span {
-  color: #64748b;
-  font-size: 0.78rem;
-  font-weight: 850;
+  color: var(--ink-3);
+  font-size: 0.76rem;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
 }
 
 .algebra-option-grid {
@@ -12057,32 +12151,19 @@ button.analyzer-guide-label:hover {
   gap: 12px;
 }
 
-.algebra-examples {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.algebra-examples button {
-  border: 1px solid #dbeafe;
-  border-radius: 7px;
-  background: #eff6ff;
-  color: #1d4ed8;
-  padding: 8px 11px;
-  font-weight: 750;
-  cursor: pointer;
-}
-
 .algebra-submit {
   width: 100%;
+  font-weight: 680;
 }
 
 .algebra-result-wrap {
   min-width: 0;
+  min-height: 100%;
+  border-left: 1px solid color-mix(in srgb, var(--line) 65%, transparent);
 }
 
 .algebra-empty-result {
-  min-height: 360px;
+  min-height: 100%;
   display: grid;
   place-items: center;
   align-content: center;
@@ -12091,10 +12172,26 @@ button.analyzer-guide-label:hover {
   text-align: center;
 }
 
+.algebra-empty-result strong,
+.algebra-empty-result span {
+  max-width: 520px;
+  justify-self: center;
+}
+
+.algebra-empty-result strong {
+  font-weight: 760;
+}
+
+.algebra-empty-result span {
+  text-align: center;
+}
+
 .algebra-result-panel {
   display: grid;
-  gap: 16px;
-  padding: 18px;
+  align-content: start;
+  gap: 14px;
+  min-height: 100%;
+  padding: 28px clamp(22px, 3vw, 48px);
 }
 
 .algebra-result-header {
@@ -12105,58 +12202,67 @@ button.analyzer-guide-label:hover {
   padding: 4px 4px 0;
 }
 
-.algebra-verify-badge {
-  border-radius: 999px;
-  padding: 8px 12px;
-  font-weight: 850;
-  font-size: 0.82rem;
-  white-space: nowrap;
-}
-
-.algebra-verify-badge.verified {
-  background: #dcfce7;
-  color: #166534;
-}
-
-.algebra-verify-badge.partially_verified,
-.algebra-verify-badge.skipped {
-  background: #fef3c7;
-  color: #92400e;
-}
-
-.algebra-verify-badge.failed {
-  background: #fee2e2;
-  color: #991b1b;
-}
-
 .algebra-result-card {
-  padding: 16px;
+  display: grid;
+  gap: 12px;
+  padding: 16px 0;
+  border-top: 1px solid var(--line);
+  box-shadow: none;
+  min-width: 0;
 }
 
 .algebra-result-card h3 {
-  margin: 0 0 10px;
-  font-size: 1rem;
+  margin: 0;
+  color: var(--ink-3);
+  font-size: 0.78rem;
+  font-weight: 900;
+  line-height: 1.3;
+  text-transform: uppercase;
+  text-wrap: balance;
 }
 
 .algebra-answer-card {
   display: grid;
-  gap: 8px;
+  gap: 10px;
+  padding-top: 18px;
 }
 
 .algebra-answer-katex {
-  font-size: 1.35rem;
+  max-width: 100%;
+  overflow-x: auto;
+  color: var(--ink);
+  font-size: clamp(1.15rem, 2vw, 1.35rem);
+}
+
+.algebra-answer-katex .katex-display {
+  margin: 0;
+}
+
+.algebra-answer-text {
+  color: var(--ink);
+  font-size: clamp(1rem, 1.8vw, 1.25rem);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.algebra-answer-note {
+  max-width: 72ch;
+  font-size: 0.9rem;
 }
 
 .algebra-result-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
+  align-items: start;
 }
 
-.algebra-result-card ul {
+.algebra-info-list {
   margin: 0;
   padding-left: 20px;
-  color: #475569;
+  color: var(--ink-2);
+  line-height: 1.55;
+  overflow-wrap: anywhere;
 }
 
 .algebra-check-list,
@@ -12167,37 +12273,11 @@ button.analyzer-guide-label:hover {
 
 .algebra-check,
 .algebra-step-card {
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
   padding: 12px;
-  background: #f8fafc;
-}
-
-.algebra-interpretation-card {
-  display: grid;
-  gap: 10px;
-}
-
-.algebra-interpretation-card h3 {
-  margin: 0;
-}
-
-.algebra-interpretation-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.algebra-interpretation-chips span {
-  max-width: 100%;
-  border: 1px solid #dbeafe;
-  border-radius: 7px;
-  padding: 7px 9px;
-  background: #eff6ff;
-  color: #1e40af;
-  font-size: 0.82rem;
-  font-weight: 800;
-  overflow-wrap: anywhere;
+  background: var(--surface);
+  min-width: 0;
 }
 
 .algebra-check.pass {
@@ -12216,46 +12296,138 @@ button.analyzer-guide-label:hover {
   background: #fffbeb;
 }
 
-.algebra-check span {
+.algebra-check > span {
   display: block;
   margin-top: 4px;
-  color: #475569;
+  color: var(--ink-2);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .algebra-step-head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
   margin-bottom: 6px;
+  min-width: 0;
+}
+
+.algebra-step-head strong {
+  display: block;
+  min-width: 0;
+  color: var(--ink);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.algebra-step-head > div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.algebra-step-rule {
+  width: fit-content;
+  max-width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 8px;
+  background: var(--paper);
+  color: var(--ink-3);
+  font-size: 0.74rem;
+  font-weight: 760;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 
 .algebra-step-index {
   display: inline-grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
   border-radius: 999px;
-  background: #2563eb;
-  color: #fff;
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 0.78rem;
   font-weight: 900;
+}
+
+.algebra-transform-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: stretch;
+  gap: 8px;
+  margin-top: 10px;
+  min-width: 0;
+}
+
+.algebra-transform-row > div {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 10px;
+  background: var(--paper);
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.algebra-formula-lines {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.algebra-formula-line {
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  text-align: center;
+}
+
+.algebra-transform-arrow {
+  justify-self: center;
+  color: var(--ink-3);
+  font-size: 1.15rem;
+  font-weight: 850;
+  line-height: 1;
 }
 
 .algebra-formula-row {
   display: grid;
-  grid-template-columns: 90px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
-  align-items: center;
+  align-items: start;
   margin-top: 10px;
+  min-width: 0;
 }
 
 .algebra-formula-row > span:first-child {
-  color: #64748b;
+  color: var(--ink-3);
   font-size: 0.82rem;
   font-weight: 800;
 }
 
 .algebra-katex {
-  overflow-x: auto;
+  display: block;
+  max-width: 100%;
+  overflow: visible;
+  text-align: center;
+}
+
+.algebra-katex .katex,
+.algebra-answer-katex .katex {
+  display: inline-block;
+  max-width: 100%;
+  white-space: nowrap;
+}
+
+.algebra-katex .katex-html,
+.algebra-answer-katex .katex-html {
+  white-space: nowrap;
 }
 
 @media (max-width: 960px) {
@@ -12266,7 +12438,8 @@ button.analyzer-guide-label:hover {
   }
 
   .algebra-input-panel {
-    position: static;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
   }
 
   .algebra-result-header {
@@ -12274,6 +12447,6 @@ button.analyzer-guide-label:hover {
   }
 
   .algebra-math-toolbar {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: 1fr;
   }
 }

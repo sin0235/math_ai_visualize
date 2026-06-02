@@ -5,6 +5,16 @@ export type AlgebraStatus = 'solved' | 'partial' | 'unsupported' | 'error';
 export type AlgebraVerificationStatus = 'verified' | 'partially_verified' | 'failed' | 'skipped';
 export type AlgebraInputFormat = 'auto' | 'plain' | 'latex' | 'structured';
 
+export interface AlgebraSolveOptions {
+  return_steps?: boolean;
+  verify?: boolean;
+  max_solutions?: number;
+  prefer_exact?: boolean;
+  grade_level?: 'C3';
+  use_ai_extraction?: boolean;
+  ai_explanation?: boolean;
+}
+
 export interface AlgebraSolveRequest {
   input: string;
   input_format?: AlgebraInputFormat;
@@ -12,6 +22,7 @@ export interface AlgebraSolveRequest {
   variables?: string[];
   parameters?: string[];
   domain?: 'R' | 'C' | 'N' | 'Z';
+  options?: AlgebraSolveOptions;
 }
 
 export interface AlgebraInputChip {
@@ -61,6 +72,14 @@ export interface AlgebraSolveStep {
   index: number;
   title: string;
   explanation: string;
+  goal?: string | null;
+  why?: string | null;
+  rule?: string | null;
+  operation?: string | null;
+  before_latex?: string | null;
+  after_latex?: string | null;
+  pitfall?: string | null;
+  check?: string | null;
   expression?: string | null;
   expression_latex?: string | null;
   result?: string | null;

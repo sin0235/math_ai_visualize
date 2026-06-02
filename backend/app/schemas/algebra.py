@@ -38,6 +38,8 @@ class AlgebraSolveOptions(BaseModel):
     max_solutions: int = 50
     prefer_exact: bool = True
     grade_level: Literal["C3"] = "C3"
+    use_ai_extraction: bool = False
+    ai_explanation: bool = False
 
 
 class AlgebraInputChip(BaseModel):
@@ -72,6 +74,14 @@ class AlgebraSolveStep(BaseModel):
     index: int
     title: str
     explanation: str
+    goal: str | None = None
+    why: str | None = None
+    rule: str | None = None
+    operation: str | None = None
+    before_latex: str | None = None
+    after_latex: str | None = None
+    pitfall: str | None = None
+    check: str | None = None
     expression: str | None = None
     expression_latex: str | None = None
     result: str | None = None

@@ -18,6 +18,25 @@ def test_normalizer_handles_mathquill_log_base_and_relation():
     assert normalize_algebra_input(r"\log_2(x)+\log_2(x-2)\le 3") == "log(x, 2)+log(x-2, 2)<=3"
 
 
+def test_normalizer_handles_log_base_with_nested_fraction_argument():
+    assert normalize_algebra_input(r"\log_3((x-3)/(x-2)^2)=22") == "log((x-3)/(x-2)**2, 3)=22"
+    assert normalize_algebra_input(r"\log_{3}\left((x-3)/(x-2)^2\right)=22") == "log((x-3)/(x-2)**2, 3)=22"
+    assert normalize_algebra_input("log_3((x-3)/(x-2)^2)=22") == "log((x-3)/(x-2)**2, 3)=22"
+
+
+def test_normalizer_handles_nested_latex_fraction():
+    assert normalize_algebra_input(r"\frac{\frac{x+1}{2}}{3}=1") == "((((x+1)/(2)))/(3))=1"
+
+
+def test_normalizer_handles_latex_sqrt_and_trig_fraction():
+    assert normalize_algebra_input(r"\sin(x)=\frac{1}{2}") == "sin(x)=((1)/(2))"
+    assert normalize_algebra_input(r"\sqrt{x+1}=2") == "sqrt(x+1)=2"
+
+
+def test_normalizer_handles_latex_cases_system():
+    assert normalize_algebra_input(r"\begin{cases}x+y=0\\x-y=0\end{cases}") == "x+y=0; x-y=0"
+
+
 def test_interpreter_converts_vietnamese_equation_to_canonical_input():
     interpretation = interpret_algebra_input(AlgebraSolveRequest(input="Giải phương trình x bình phương - 5x + 6 bằng 0"))
     assert interpretation.detected_format == "mixed"
@@ -30,6 +49,24 @@ def test_interpreter_converts_vietnamese_inequality_to_canonical_input():
     interpretation = interpret_algebra_input(AlgebraSolveRequest(input="Tìm x thỏa mãn (x-1)/(x+2) nhỏ hơn 0"))
     assert interpretation.canonical_input == "(x-1)/(x+2)<0"
     assert interpretation.topic_hint == "inequality"
+
+
+def test_interpreter_converts_vietnamese_combination_to_structured_input():
+    interpretation = interpret_algebra_input(AlgebraSolveRequest(input="Tính tổ hợp chập 3 của 10"))
+    assert interpretation.canonical_input == "C(10,3)"
+    assert interpretation.topic_hint == "combinatorics_probability"
+
+
+def test_interpreter_converts_vietnamese_factorial_to_structured_input():
+    interpretation = interpret_algebra_input(AlgebraSolveRequest(input="Tính 5 giai thừa"))
+    assert interpretation.canonical_input == "5!"
+    assert interpretation.topic_hint == "combinatorics_probability"
+
+
+def test_interpreter_converts_vietnamese_sequence_to_structured_input():
+    interpretation = interpret_algebra_input(AlgebraSolveRequest(input="Cấp số cộng u1=2 d=3 n=10 tìm số hạng thứ n"))
+    assert interpretation.canonical_input == "arithmetic(u1=2,d=3,n=10)"
+    assert interpretation.topic_hint == "sequence"
 
 
 def test_parser_parses_equation():

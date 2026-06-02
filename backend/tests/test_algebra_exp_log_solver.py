@@ -26,3 +26,14 @@ def test_exp_log_solver_solves_log_sum_equation():
     assert {value.text for value in result.solution_set.values} == {"4"}
     assert "x > 0" in result.assumptions
     assert "x - 2 > 0" in result.assumptions
+
+
+def test_exp_log_solver_accepts_mathquill_log_base_with_fraction_argument():
+    result = solve_algebra(AlgebraSolveRequest(input=r"\log_3((x-3)/(x-2)^2)=22", input_format="latex", topic="exponential_log"))
+
+    assert result.status == "solved"
+    assert result.topic == "exponential_log"
+    assert result.solution_set.kind == "empty"
+    assert result.answer == "Vô nghiệm."
+    assert any(step.title == "Bỏ log" for step in result.steps)
+    assert all(step.kind != "normalize" for step in result.steps)

@@ -1,13 +1,12 @@
 import type { AlgebraSolveResponse } from '../../api/client';
 import { KatexSpan } from '../KatexSpan';
 import { AlgebraStepList } from './AlgebraStepList';
-import { AlgebraVerificationBadge } from './AlgebraVerificationBadge';
 
 export function EmptyAlgebraResult() {
   return (
     <div className="algebra-empty-result">
       <strong>Kết quả sẽ hiện ở đây</strong>
-      <span>Nhập phương trình hoặc bất phương trình ở cột trái để xem lời giải và báo cáo kiểm chứng.</span>
+      <span>Nhập bài toán ở cột trái để xem lời giải và báo cáo kiểm chứng.</span>
     </div>
   );
 }
@@ -16,74 +15,121 @@ export function AlgebraLoadingResult() {
   return (
     <div className="algebra-empty-result" aria-live="polite" aria-busy="true">
       <strong>Đang giải bài toán...</strong>
-      <span>Hệ thống đang chạy solver symbolic và verifier.</span>
+      <span>Đang lập lời giải từng bước và kiểm tra lại kết quả.</span>
     </div>
   );
 }
 
 export function AlgebraResult({ result }: { result: AlgebraSolveResponse }) {
+  const assumptions = result.assumptions.filter(hasText);
+  const notices = [...result.warnings, ...result.errors].filter((item) => hasText(item) && !isRoutineInterpretationNotice(item));
+  const checks = result.verification.checks.filter((check) => (
+    check.status !== 'pass'
+    && (hasText(check.name) || hasText(check.detail) || hasText(check.latex))
+  ));
+  const steps = result.steps.filter((step) => (
+    step.kind !== 'conclusion'
+    && (
+      hasText(step.title)
+      || hasText(step.explanation)
+      || hasText(step.goal)
+      || hasText(step.why)
+      || hasText(step.rule)
+      || hasText(step.operation)
+      || hasText(step.before_latex)
+      || hasText(step.after_latex)
+      || hasText(step.expression_latex)
+      || hasText(step.result_latex)
+      || hasText(step.pitfall)
+      || hasText(step.check)
+    )
+  ));
+
   return (
     <section className="algebra-result-panel">
       <div className="algebra-result-header">
         <div>
-          <span>{result.topic} · {result.problem_type}</span>
+          <span className="algebra-eyebrow">{compactMeta(result.topic, result.problem_type)}</span>
           <h2>{statusTitle(result.status)}</h2>
         </div>
-        <AlgebraVerificationBadge status={result.verification.status} />
       </div>
 
-      <div className="algebra-result-card algebra-answer-card">
-        <span>Đáp án</span>
-        {result.answer_latex ? <KatexSpan tex={result.answer_latex} display className="algebra-answer-katex" /> : <strong>{result.answer}</strong>}
-        <p>{result.answer}</p>
-      </div>
+      {(hasText(result.answer_latex) || hasText(result.answer)) && (
+        <section className="algebra-result-card algebra-answer-card">
+          <span className="algebra-eyebrow">Đáp án</span>
+          {result.answer_latex ? (
+            <KatexSpan tex={result.answer_latex} display className="algebra-answer-katex" />
+          ) : (
+            <strong className="algebra-answer-text">{result.answer}</strong>
+          )}
+        </section>
+      )}
 
-      {result.input_interpretation && (
-        <section className="algebra-result-card algebra-interpretation-card">
-          <span>Input interpretation</span>
-          <h3>Hệ thống hiểu đề bài như sau</h3>
-          <KatexSpan tex={result.input_interpretation.canonical_input} className="algebra-katex" />
-          <div className="algebra-interpretation-chips">
-            {result.input_interpretation.chips.map((chip) => (
-              <span key={`${chip.kind}-${chip.label}-${chip.value}`} title={chip.value}>{chip.label}: {chip.value}</span>
+      {(assumptions.length > 0 || notices.length > 0) && (
+        <div className="algebra-result-grid">
+          {assumptions.length > 0 && (
+            <section className="algebra-result-card">
+              <SectionTitle title="Điều kiện/giả thiết" />
+              <InfoList items={assumptions} />
+            </section>
+          )}
+          {notices.length > 0 && (
+            <section className="algebra-result-card">
+              <SectionTitle title="Cảnh báo" />
+              <InfoList items={notices} />
+            </section>
+          )}
+        </div>
+      )}
+
+      {checks.length > 0 && (
+        <section className="algebra-result-card">
+          <SectionTitle title="Kiểm tra lại" />
+          <div className="algebra-check-list">
+            {checks.map((check, index) => (
+              <article className={`algebra-check ${check.status}`} key={`${check.name}-${index}`}>
+                {hasText(check.name) && <strong>{check.name}</strong>}
+                {hasText(check.detail) && <span>{check.detail}</span>}
+                {check.latex && <KatexSpan tex={check.latex} className="algebra-katex" />}
+              </article>
             ))}
           </div>
         </section>
       )}
 
-      <div className="algebra-result-grid">
-        <InfoList title="Điều kiện/giả thiết" items={result.assumptions} empty="Chưa phát hiện điều kiện đặc biệt." />
-        <InfoList title="Cảnh báo" items={[...result.warnings, ...result.errors]} empty="Không có cảnh báo." />
-      </div>
-
-      <section className="algebra-result-card">
-        <h3>Kiểm tra lại</h3>
-        <div className="algebra-check-list">
-          {result.verification.checks.length === 0 ? <span>Không có check chi tiết.</span> : result.verification.checks.map((check, index) => (
-            <article className={`algebra-check ${check.status}`} key={`${check.name}-${index}`}>
-              <strong>{check.name}</strong>
-              <span>{check.detail}</span>
-              {check.latex && <KatexSpan tex={check.latex} className="algebra-katex" />}
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="algebra-result-card">
-        <h3>Các bước giải</h3>
-        <AlgebraStepList steps={result.steps} />
-      </section>
+      {steps.length > 0 && (
+        <section className="algebra-result-card">
+          <SectionTitle title="Các bước giải" />
+          <AlgebraStepList steps={steps} />
+        </section>
+      )}
     </section>
   );
 }
 
-function InfoList({ title, items, empty }: { title: string; items: string[]; empty: string }) {
+function SectionTitle({ title }: { title: string }) {
+  return <h3>{title}</h3>;
+}
+
+function InfoList({ items }: { items: string[] }) {
   return (
-    <section className="algebra-result-card">
-      <h3>{title}</h3>
-      {items.length > 0 ? <ul>{items.map((item) => <li key={item}>{item}</li>)}</ul> : <p>{empty}</p>}
-    </section>
+    <ul className="algebra-info-list">
+      {items.map((item) => <li key={item}>{item}</li>)}
+    </ul>
   );
+}
+
+function compactMeta(topic: string, problemType: string) {
+  return [topic, problemType].filter(hasText).join(' · ');
+}
+
+function hasText(value: string | null | undefined) {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function isRoutineInterpretationNotice(value: string) {
+  return value.includes('Đã diễn giải đề tiếng Việt thành biểu thức chuẩn trước khi giải.')
+    || value.includes('Đầu vào gồm cả mô tả tự nhiên và ký hiệu toán; hệ thống ưu tiên phần biểu thức được trích xuất.');
 }
 
 function statusTitle(status: AlgebraSolveResponse['status']) {

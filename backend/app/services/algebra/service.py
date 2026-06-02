@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import sympy as sp
 
+from app.core.config import Settings, get_settings
 from app.schemas.algebra import AlgebraSolveRequest, AlgebraSolveResponse
+from app.services.algebra.ai_explainer import explain_algebra_response_with_ai
+from app.services.algebra.ai_extraction import extract_algebra_request_with_ai
 from app.services.algebra.classifier import classify_algebra_problem
 from app.services.algebra.interpreter import interpret_algebra_input
 from app.services.algebra.parser import AlgebraParseError, ParsedAlgebraProblem, parse_algebra_problem
@@ -18,6 +21,30 @@ from app.services.algebra.solvers.trig_solver import solve_trigonometry
 
 
 def solve_algebra(request: AlgebraSolveRequest) -> AlgebraSolveResponse:
+    return solve_algebra_deterministic(request)
+
+
+async def solve_algebra_with_optional_ai(request: AlgebraSolveRequest, settings: Settings | None = None) -> AlgebraSolveResponse:
+    settings = settings or get_settings()
+    extraction_warnings: list[str] = []
+    deterministic_request = request
+    if request.options.use_ai_extraction:
+        try:
+            deterministic_request, extraction_warnings = await extract_algebra_request_with_ai(request.input, request, settings)
+        except Exception as error:
+            extraction_warnings = [f"Không gọi được AI extraction, đang dùng rule-based interpreter: {error}"]
+    response = solve_algebra_deterministic(deterministic_request)
+    if deterministic_request.input != request.input:
+        response.input = request.input
+        response.normalized_input = deterministic_request.input
+    if extraction_warnings:
+        response.warnings = [*extraction_warnings, *response.warnings]
+    if request.options.ai_explanation:
+        response = await explain_algebra_response_with_ai(response, settings)
+    return response
+
+
+def solve_algebra_deterministic(request: AlgebraSolveRequest) -> AlgebraSolveResponse:
     interpretation = interpret_algebra_input(request)
     requested_topic = request.topic if request.topic != "auto" else interpretation.topic_hint
     variables = request.variables or interpretation.variables or ["x"]
