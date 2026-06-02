@@ -11,7 +11,7 @@ from app.services.chat_response import extract_chat_message_content
 from app.services.chat_stream import collect_openai_chat_stream
 from app.services.openrouter_client import OCR_SYSTEM_PROMPT
 from app.services.model_scan import CAPABILITY_KEYS, _extract_capabilities
-from app.services.provider_logging import chat_message_input_chars, format_provider_error, log_ocr_summary, log_provider_http_error, log_provider_parse_error, log_provider_request, log_provider_response, log_scene_summary
+from app.services.provider_logging import chat_message_input_chars, format_provider_error, log_ocr_summary, log_provider_http_error, log_provider_request, log_provider_response, log_scene_summary
 
 
 class Router9Client:
