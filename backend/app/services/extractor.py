@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import re
 import time
 from dataclasses import dataclass
@@ -54,6 +55,7 @@ _RENDER_TOTAL_BUDGET_SECONDS = 300.0
 _RENDER_MIN_ATTEMPT_SECONDS = 10.0
 _RENDER_MAX_ATTEMPT_SECONDS = 285.0
 _REASONING_TOTAL_TIMEOUT_SECONDS = 120.0
+_provider_attempt_logger = logging.getLogger("app.services.ai_providers")
 
 
 @dataclass(frozen=True)
@@ -135,12 +137,18 @@ async def extract_scene(
                 warnings.extend(cas_warnings)
                 return scene, warnings
             except TimeoutError:
-                attempts.append(RenderAttempt(candidate.provider_id, candidate.model_id, f"timeout after {attempt_timeout:.0f}s"))
+                attempt = RenderAttempt(candidate.provider_id, candidate.model_id, f"timeout after {attempt_timeout:.0f}s")
+                attempts.append(attempt)
+                _log_render_attempt_failure(attempt, stage="timeout")
             except (RuntimeError, ValidationError, ValueError, KeyError) as error:
-                attempts.append(RenderAttempt(candidate.provider_id, candidate.model_id, str(error)))
+                attempt = RenderAttempt(candidate.provider_id, candidate.model_id, str(error))
+                attempts.append(attempt)
+                _log_render_attempt_failure(attempt, stage="extract")
             except Exception as error:
                 message = str(error) or error.__class__.__name__
-                attempts.append(RenderAttempt(candidate.provider_id, candidate.model_id, message))
+                attempt = RenderAttempt(candidate.provider_id, candidate.model_id, message)
+                attempts.append(attempt)
+                _log_render_attempt_failure(attempt, stage="extract")
 
         warnings.extend(_render_attempt_warnings(attempts))
         raise RuntimeError(_format_tier_render_failure(f"Tất cả model trong tier {tier} đều lỗi.", attempts))
@@ -207,23 +215,31 @@ async def extract_scene(
                 try:
                     scene, cas_warnings = build_scene_with_cas_fix(scene_json, verify=render_settings.verify_scene)
                 except (ValidationError, ValueError, KeyError) as error:
-                    attempts.append(RenderAttempt(provider, model or _provider_model(provider, settings), str(error)))
+                    attempt = RenderAttempt(provider, model or _provider_model(provider, settings), str(error))
+                    attempts.append(attempt)
+                    _log_render_attempt_failure(attempt, stage="validation")
                     warnings.extend(_render_attempt_warnings(attempts))
                     warnings.append("AI đã phản hồi nhưng scene không hợp lệ; đang dùng mock extractor.")
                     return extract_scene_mock(problem_text, grade), warnings
                 warnings.extend(cas_warnings)
                 return scene, warnings
             except TimeoutError as error:
-                attempts.append(RenderAttempt(provider, model or _provider_model(provider, settings), f"provider timeout after {attempt_timeout:.0f}s"))
+                attempt = RenderAttempt(provider, model or _provider_model(provider, settings), f"provider timeout after {attempt_timeout:.0f}s")
+                attempts.append(attempt)
+                _log_render_attempt_failure(attempt, stage="timeout")
                 if settings.router9_only:
                     raise RuntimeError(_format_render_failure("9router-only đang bật nên không fallback sang provider khác.", attempts, True)) from error
             except (RuntimeError, ValidationError, ValueError, KeyError) as error:
-                attempts.append(RenderAttempt(provider, model or _provider_model(provider, settings), str(error)))
+                attempt = RenderAttempt(provider, model or _provider_model(provider, settings), str(error))
+                attempts.append(attempt)
+                _log_render_attempt_failure(attempt, stage="extract")
                 if settings.router9_only:
                     raise RuntimeError(_format_render_failure("9router-only đang bật nên không fallback sang provider khác.", attempts, True)) from error
             except Exception as error:
                 message = str(error) or error.__class__.__name__
-                attempts.append(RenderAttempt(provider, model or _provider_model(provider, settings), message))
+                attempt = RenderAttempt(provider, model or _provider_model(provider, settings), message)
+                attempts.append(attempt)
+                _log_render_attempt_failure(attempt, stage="extract")
                 if settings.router9_only:
                     raise RuntimeError(_format_render_failure("9router-only đang bật nên không fallback sang provider khác.", attempts, True)) from error
 
@@ -740,6 +756,24 @@ def _profile_model_candidates(profile: Any, provider: str, settings: Settings, p
     if profile is not None and provider == profile_provider:
         candidates = [*(model or "" for model in candidates), *profile.fallbacks]
     return _dedupe_model_candidates(provider, candidates)
+
+
+def _log_render_attempt_failure(attempt: RenderAttempt, stage: str) -> None:
+    error = _short_error(attempt.message)
+    _provider_attempt_logger.warning(
+        "AI provider attempt failed provider=%s kind=scene model=%s stage=%s error=%s",
+        attempt.provider,
+        attempt.model or "<unknown>",
+        stage,
+        error,
+        extra={
+            "provider": attempt.provider,
+            "kind": "scene",
+            "model": attempt.model,
+            "stage": stage,
+            "error": error,
+        },
+    )
 
 
 def _render_attempt_warnings(attempts: list[RenderAttempt]) -> list[str]:

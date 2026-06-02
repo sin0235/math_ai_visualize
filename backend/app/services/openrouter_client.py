@@ -7,7 +7,7 @@ from app.core.config import Settings
 from app.services.ai_prompt import REASONING_SYSTEM_PROMPT, SCENE_EXTRACTION_SYSTEM_PROMPT, build_reasoning_prompt, build_scene_extraction_prompt
 from app.services.chat_response import extract_chat_message_content
 from app.services.chat_stream import collect_openai_chat_stream
-from app.services.provider_logging import format_provider_error, log_ocr_summary, log_provider_request, log_provider_response, log_scene_summary
+from app.services.provider_logging import chat_message_input_chars, format_provider_error, log_ocr_summary, log_provider_parse_error, log_provider_request, log_provider_response, log_scene_summary
 
 
 OCR_SYSTEM_PROMPT = """
@@ -55,7 +55,7 @@ class OpenRouterClient:
         base_url = openrouter_api_base_url(self.settings)
         url = f"{base_url}/chat/completions"
         started_at = time.perf_counter()
-        log_provider_request("openrouter", "scene", url, payload["model"], problem_chars=len(problem_text), reasoning=self.reasoning_enabled)
+        log_provider_request("openrouter", "scene", url, payload["model"], problem_chars=len(problem_text), input_chars=chat_message_input_chars(payload.get("messages")), reasoning=self.reasoning_enabled)
         client = get_client(base_url, TIMEOUT_SCENE)
         try:
             content, response_chars = await collect_openai_chat_stream(client, url, headers=headers, payload=payload, timeout=TIMEOUT_SCENE)
@@ -72,6 +72,7 @@ class OpenRouterClient:
             log_scene_summary("openrouter", scene_json)
             return scene_json
         except json.JSONDecodeError as error:
+            log_provider_parse_error("openrouter", "scene", payload["model"], f"invalid_json: {error.msg}", response_chars=len(content))
             raise RuntimeError(f"OpenRouter trả về JSON không hợp lệ: {error.msg}") from error
 
     async def reason_about_problem(self, problem_text: str, grade: int | None = None, system_prompt: str | None = None) -> dict:
@@ -98,7 +99,7 @@ class OpenRouterClient:
         base_url = openrouter_api_base_url(self.settings)
         url = f"{base_url}/chat/completions"
         started_at = time.perf_counter()
-        log_provider_request("openrouter", "reasoning", url, payload["model"], problem_chars=len(problem_text), reasoning=self.reasoning_enabled)
+        log_provider_request("openrouter", "reasoning", url, payload["model"], problem_chars=len(problem_text), input_chars=chat_message_input_chars(payload.get("messages")), reasoning=self.reasoning_enabled)
         client = get_client(base_url, TIMEOUT_REASONING)
         response = await client.post(url, headers=headers, json=payload, timeout=TIMEOUT_REASONING)
         elapsed_ms = int((time.perf_counter() - started_at) * 1000)
@@ -113,6 +114,7 @@ class OpenRouterClient:
         try:
             return json.loads(_strip_json_fences(content))
         except json.JSONDecodeError as error:
+            log_provider_parse_error("openrouter", "reasoning", payload["model"], f"invalid_json: {error.msg}", response_chars=len(content))
             raise RuntimeError(f"OpenRouter reasoning JSON không hợp lệ: {error.msg}") from error
 
     async def ocr_image(self, image_data_url: str, model: str | None = None, system_prompt: str | None = None, user_text: str = "Trích xuất nguyên văn đề toán trong ảnh.") -> str:
@@ -147,7 +149,7 @@ class OpenRouterClient:
                 base_url = openrouter_api_base_url(self.settings)
                 url = f"{base_url}/chat/completions"
                 started_at = time.perf_counter()
-                log_provider_request("openrouter", "ocr", url, payload["model"], image_chars=len(image_data_url))
+                log_provider_request("openrouter", "ocr", url, payload["model"], image_chars=len(image_data_url), input_chars=chat_message_input_chars(payload.get("messages")))
                 client = get_client(base_url, TIMEOUT_OCR)
                 response = await client.post(url, headers=_build_headers(self.settings), json=payload, timeout=TIMEOUT_OCR)
                 elapsed_ms = int((time.perf_counter() - started_at) * 1000)
