@@ -147,6 +147,37 @@ def test_openai_compat_request_logs_full_input_chars(monkeypatch):
     assert captured["metadata"]["input_chars"] == len("system prompt") + len("wrapped problem")
 
 
+def test_openai_compat_invalid_scene_json_logs_parse_error(monkeypatch):
+    captured = {}
+
+    class FakeClient:
+        async def post(self, url, headers, json, timeout):
+            return httpx.Response(200, json={"choices": [{"message": {"content": "not json"}}]})
+
+    def fake_log_parse_error(kind, model, message, response_chars=None):
+        captured["parse_error"] = {
+            "kind": kind,
+            "model": model,
+            "message": message,
+            "response_chars": response_chars,
+        }
+
+    monkeypatch.setattr("app.services.http_pool.get_client", lambda *args, **kwargs: FakeClient())
+    monkeypatch.setattr("app.services.openai_compat_client._log_openai_compat_parse_error", fake_log_parse_error)
+
+    with pytest.raises(RuntimeError, match="OpenAI-compatible trả về JSON không hợp lệ"):
+        asyncio.run(
+            OpenAICompatClient(
+                Settings(_env_file=None, openai_compat_base_url="https://compat.test/v1", openai_compat_text_model="test-model", openai_compat_api_key="secret")
+            ).extract_scene_json("Vẽ điểm A")
+        )
+
+    assert captured["parse_error"]["kind"] == "scene"
+    assert captured["parse_error"]["model"] == "test-model"
+    assert captured["parse_error"]["message"].startswith("invalid_json:")
+    assert captured["parse_error"]["response_chars"] == len("not json")
+
+
 def test_router9_reasoning_request_logs_reasoning_kind_and_input_chars(monkeypatch):
     captured = {}
 
