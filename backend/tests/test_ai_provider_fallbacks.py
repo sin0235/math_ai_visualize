@@ -147,6 +147,60 @@ def test_openai_compat_request_logs_full_input_chars(monkeypatch):
     assert captured["metadata"]["input_chars"] == len("system prompt") + len("wrapped problem")
 
 
+def test_openai_compat_scene_payload_limits_output_and_requests_json(monkeypatch):
+    captured = {}
+
+    async def fake_post_chat(self, payload, kind, **log_kwargs):
+        captured["payload"] = payload
+        captured["kind"] = kind
+        return '{"problem_text":"x","renderer":"geogebra_2d","objects":[],"view":{"dimension":"2d"}}'
+
+    monkeypatch.setattr(OpenAICompatClient, "_post_chat", fake_post_chat)
+
+    scene_json = asyncio.run(
+        OpenAICompatClient(
+            Settings(_env_file=None, openai_compat_base_url="https://compat.test/v1", openai_compat_text_model="test-model", openai_compat_api_key="secret")
+        ).extract_scene_json("x")
+    )
+
+    assert scene_json["renderer"] == "geogebra_2d"
+    assert captured["kind"] == "scene"
+    assert captured["payload"]["stream"] is False
+    assert captured["payload"]["max_tokens"] == 8192
+    assert captured["payload"]["response_format"] == {"type": "json_object"}
+
+
+def test_openai_compat_recovers_non_json_sse_response(monkeypatch):
+    captured = {}
+
+    class FakeClient:
+        async def post(self, url, headers, json, timeout):
+            captured["payload"] = json
+            stream = "\n".join([
+                'data: {"choices":[{"delta":{"content":"OK"}}]}',
+                "data: [DONE]",
+            ])
+            return httpx.Response(200, content=stream.encode("utf-8"), headers={"Content-Type": "text/event-stream"})
+
+    monkeypatch.setattr("app.services.http_pool.get_client", lambda *args, **kwargs: FakeClient())
+
+    result = asyncio.run(
+        OpenAICompatClient(
+            Settings(_env_file=None, openai_compat_base_url="https://compat.test/v1", openai_compat_text_model="test-model", openai_compat_api_key="secret")
+        )._post_chat(
+            {
+                "model": "test-model",
+                "messages": [{"role": "user", "content": "Reply with OK only."}],
+                "stream": False,
+            },
+            "check",
+        )
+    )
+
+    assert result == "OK"
+    assert captured["payload"]["stream"] is False
+
+
 def test_openai_compat_invalid_scene_json_logs_parse_error(monkeypatch):
     captured = {}
 

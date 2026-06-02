@@ -11,7 +11,11 @@ from app.core.config import Settings
 from app.services.ai_prompt import REASONING_SYSTEM_PROMPT, SCENE_EXTRACTION_SYSTEM_PROMPT, build_reasoning_prompt, build_scene_extraction_prompt
 from app.services.openrouter_client import OCR_SYSTEM_PROMPT, _strip_json_fences, _strip_text_fences
 from app.services.chat_response import chat_response_shape, extract_chat_response_content
+from app.services.chat_stream import extract_openai_chat_stream_content
 from app.services.provider_logging import chat_message_input_chars, format_provider_error, log_ocr_summary, log_provider_parse, log_provider_request, log_provider_response, log_scene_summary
+
+_SCENE_MAX_TOKENS = 8192
+_REASONING_MAX_TOKENS = 4096
 
 
 class OpenAICompatClient:
@@ -36,6 +40,9 @@ class OpenAICompatClient:
                 {"role": "user", "content": build_scene_extraction_prompt(problem_text, grade, reasoning_layer, reasoning_plan=reasoning_plan)},
             ],
             "temperature": 0.1,
+            "max_tokens": _SCENE_MAX_TOKENS,
+            "response_format": {"type": "json_object"},
+            "stream": False,
         }
         content = await self._post_chat(payload, "scene", problem_chars=len(problem_text))
         try:
@@ -56,6 +63,9 @@ class OpenAICompatClient:
                 {"role": "user", "content": build_reasoning_prompt(problem_text, grade)},
             ],
             "temperature": 0.15,
+            "max_tokens": _REASONING_MAX_TOKENS,
+            "response_format": {"type": "json_object"},
+            "stream": False,
         }
         content = await self._post_chat(payload, "reasoning", problem_chars=len(problem_text))
         try:
@@ -74,6 +84,7 @@ class OpenAICompatClient:
             ],
             "temperature": 0,
             "max_tokens": 16,
+            "stream": False,
         }
         return await self._post_chat(payload, "check")
 
@@ -94,6 +105,7 @@ class OpenAICompatClient:
                 },
             ],
             "temperature": 0,
+            "stream": False,
         }
         content = await self._post_chat(payload, "ocr", image_chars=len(image_data_url))
         text = _strip_text_fences(content)
@@ -125,6 +137,11 @@ class OpenAICompatClient:
         try:
             body = response.json()
         except ValueError as error:
+            content = _extract_non_json_chat_content(response.text)
+            if content.strip():
+                _log_openai_compat_parse_error(kind, payload.get("model"), "response_not_json_recovered_content", response_chars=len(response.text))
+                log_provider_parse("openai_compat", kind, payload.get("model"), len(content))
+                return content
             _log_openai_compat_parse_error(kind, payload.get("model"), "response_not_json", response_chars=len(response.text))
             raise RuntimeError("OpenAI-compatible response không phải JSON hợp lệ.") from error
         content = extract_chat_response_content(body)
@@ -150,6 +167,28 @@ def _log_openai_compat_parse_error(kind: str, model: Any, message: Any, response
             str(error) or error.__class__.__name__,
             extra={"provider": "openai_compat", "kind": kind, "model": model},
         )
+
+
+def _extract_non_json_chat_content(text: str) -> str:
+    try:
+        stream_content = extract_openai_chat_stream_content(text)
+    except RuntimeError:
+        return ""
+    if stream_content.strip():
+        return stream_content
+    stripped = text.strip()
+    if _looks_like_direct_assistant_text(stripped):
+        return stripped
+    return ""
+
+
+def _looks_like_direct_assistant_text(text: str) -> bool:
+    if not text:
+        return False
+    lower = text[:200].lower()
+    if lower.startswith(("<!doctype", "<html")):
+        return False
+    return text.startswith(("{", "[")) or "```json" in lower
 
 
 def _normalize_openai_compat_base_url(base_url: str) -> str:

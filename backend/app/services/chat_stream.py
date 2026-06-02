@@ -55,6 +55,38 @@ async def collect_openai_chat_stream(
     return "".join(chunks), response_chars
 
 
+def extract_openai_chat_stream_content(text: str) -> str:
+    chunks: list[str] = []
+    event_type = "message"
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith("event:"):
+            event_type = line.removeprefix("event:").strip() or "message"
+            continue
+        if not line.startswith("data:"):
+            continue
+        data = line.removeprefix("data:").strip()
+        if not data:
+            continue
+        if data == "[DONE]":
+            event_type = "message"
+            continue
+        if event_type == "error":
+            raise RuntimeError(_stream_error_message(data))
+        try:
+            event = json.loads(data)
+        except json.JSONDecodeError:
+            event_type = "message"
+            continue
+        content = _content_from_stream_event(event)
+        if content:
+            chunks.append(content)
+        event_type = "message"
+    return "".join(chunks)
+
+
 def _stream_error_message(data: str) -> str:
     try:
         payload = json.loads(data)
