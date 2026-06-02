@@ -576,6 +576,14 @@ def test_extract_chat_message_content_accepts_part_lists():
 
     assert extract_chat_message_content({"content": [{"type": "text", "text": "hello"}, {"type": "text", "text": " world"}]}) == "hello world"
     assert extract_chat_message_content({"content": [{"type": "output_text", "content": "hello"}]}) == "hello"
+    assert extract_chat_message_content({"content": "", "reasoning_content": "hello from reasoning"}) == "hello from reasoning"
+
+
+def test_extract_chat_response_content_accepts_responses_shapes():
+    from app.services.chat_response import extract_chat_response_content
+
+    assert extract_chat_response_content({"output_text": "hello"}) == "hello"
+    assert extract_chat_response_content({"output": [{"content": [{"type": "output_text", "text": "hello"}, {"type": "output_text", "text": " world"}]}]}) == "hello world"
 
 
 def test_render_fallback_success_returns_prior_failures_as_warnings(monkeypatch):

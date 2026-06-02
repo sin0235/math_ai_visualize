@@ -123,11 +123,14 @@ class OpenAICompatClient:
             raise RuntimeError(format_provider_error("OpenAI-compatible", response))
         try:
             body = response.json()
-            content = extract_chat_message_content(body["choices"][0]["message"])
-        except (ValueError, KeyError, IndexError, TypeError) as error:
-            raise RuntimeError("OpenAI-compatible response không đúng định dạng choices[0].message.content.") from error
+        except ValueError as error:
+            log_provider_parse_error("openai_compat", kind, payload.get("model"), "response_not_json", response_chars=len(response.text))
+            raise RuntimeError("OpenAI-compatible response không phải JSON hợp lệ.") from error
+        content = extract_chat_response_content(body)
         if not content.strip():
-            raise RuntimeError("OpenAI-compatible không trả về nội dung.")
+            shape = chat_response_shape(body)
+            log_provider_parse_error("openai_compat", kind, payload.get("model"), {"empty_content_or_unknown_shape": shape}, response_chars=len(response.text))
+            raise RuntimeError(f"OpenAI-compatible response không có nội dung assistant đọc được. shape={shape}")
         log_provider_parse("openai_compat", kind, payload.get("model"), len(content))
         return content
 
