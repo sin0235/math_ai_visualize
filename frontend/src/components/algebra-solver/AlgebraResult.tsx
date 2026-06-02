@@ -5,6 +5,7 @@ import { AlgebraStepList } from './AlgebraStepList';
 export function EmptyAlgebraResult() {
   return (
     <div className="algebra-empty-result">
+      <EmptyResultIllustration />
       <strong>Kết quả sẽ hiện ở đây</strong>
       <span>Nhập bài toán ở cột trái để xem lời giải và báo cáo kiểm chứng.</span>
     </div>
@@ -14,6 +15,7 @@ export function EmptyAlgebraResult() {
 export function AlgebraLoadingResult() {
   return (
     <div className="algebra-empty-result" aria-live="polite" aria-busy="true">
+      <EmptyResultIllustration />
       <strong>Đang giải bài toán...</strong>
       <span>Đang lập lời giải từng bước và kiểm tra lại kết quả.</span>
     </div>
@@ -88,7 +90,7 @@ export function AlgebraResult({ result }: { result: AlgebraSolveResponse }) {
           <div className="algebra-check-list">
             {checks.map((check, index) => (
               <article className={`algebra-check ${check.status}`} key={`${check.name}-${index}`}>
-                {hasText(check.name) && <strong>{check.name}</strong>}
+                {hasText(check.name) && <strong>{verificationCheckLabel(check.name)}</strong>}
                 {hasText(check.detail) && <span>{check.detail}</span>}
                 {check.latex && <KatexSpan tex={check.latex} className="algebra-katex" />}
               </article>
@@ -119,6 +121,18 @@ function InfoList({ items }: { items: string[] }) {
   );
 }
 
+function EmptyResultIllustration() {
+  return (
+    <svg className="algebra-empty-illustration" viewBox="0 0 160 120" role="img" aria-label="Minh họa bảng lời giải">
+      <rect x="24" y="18" width="112" height="84" rx="8" />
+      <path d="M42 42h72M42 60h38M42 78h58" />
+      <circle cx="116" cy="76" r="14" />
+      <path d="m109 76 5 5 11-13" />
+      <path d="M30 32h112M52 18v84M80 18v84M108 18v84M24 46h112M24 74h112" className="grid-lines" />
+    </svg>
+  );
+}
+
 function compactMeta(topic: string, problemType: string) {
   return [topic, problemType].filter(hasText).join(' · ');
 }
@@ -130,6 +144,17 @@ function hasText(value: string | null | undefined) {
 function isRoutineInterpretationNotice(value: string) {
   return value.includes('Đã diễn giải đề tiếng Việt thành biểu thức chuẩn trước khi giải.')
     || value.includes('Đầu vào gồm cả mô tả tự nhiên và ký hiệu toán; hệ thống ưu tiên phần biểu thức được trích xuất.');
+}
+
+function verificationCheckLabel(name: string) {
+  const labels: Record<string, string> = {
+    empty_solution_set: 'Không có nghiệm để thử lại',
+    symbolic_solution_set: 'Kiểm tra tập nghiệm',
+    candidate_substitution: 'Thay nghiệm vào đề gốc',
+    domain_constraints_valid: 'Kiểm tra điều kiện xác định',
+    inequality_sample: 'Thử điểm trong khoảng nghiệm',
+  };
+  return labels[name] || name.replace(/_/g, ' ');
 }
 
 function statusTitle(status: AlgebraSolveResponse['status']) {

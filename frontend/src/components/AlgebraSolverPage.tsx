@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { ApiError, solveAlgebra, type AlgebraInputFormat, type AlgebraSolveResponse, type AlgebraTopic } from '../api/client';
-import { AlgebraInput, type AlgebraInputMode, type SequenceDraft } from './algebra-solver/AlgebraInput';
+import { AlgebraInput, suggestTopic, type AlgebraInputMode, type SequenceDraft } from './algebra-solver/AlgebraInput';
 import { AlgebraLoadingResult, AlgebraResult, EmptyAlgebraResult } from './algebra-solver/AlgebraResult';
 
 type AlgebraDomain = 'R' | 'C' | 'N' | 'Z';
 
 export function AlgebraSolverPage() {
-  const [input, setInput] = useState('Giải phương trình x bình phương - 5x + 6 bằng 0');
+  const [input, setInput] = useState('');
   const [inputMode, setInputMode] = useState<AlgebraInputMode>('natural');
   const [inputFormat, setInputFormat] = useState<AlgebraInputFormat>('auto');
   const [topic, setTopic] = useState<AlgebraTopic>('auto');
@@ -29,13 +29,15 @@ export function AlgebraSolverPage() {
     const sequenceInput = topic === 'sequence' ? sequenceInputFromDraft(sequenceDraft) : '';
     const payloadInput = sequenceInput || cleanInput;
     if (!payloadInput || loading) return;
+    const inferredTopic = sequenceInput ? 'sequence' : suggestTopic(cleanInput);
+    const payloadTopic = inferredTopic && inferredTopic !== topic ? inferredTopic : topic;
     setLoading(true);
     setError('');
     try {
       const response = await solveAlgebra({
         input: payloadInput,
         input_format: sequenceInput ? 'structured' : inputFormat,
-        topic,
+        topic: payloadTopic,
         domain,
         variables: variables.split(',').map((item) => item.trim()).filter(Boolean),
       });

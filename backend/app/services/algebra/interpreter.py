@@ -19,16 +19,18 @@ def interpret_algebra_input(request: AlgebraSolveRequest) -> AlgebraInputInterpr
     if structured:
         canonical = structured
     is_structured = is_structured_algebra_input(canonical)
-    canonical = canonical.strip() if is_structured else _clean_canonical(canonical)
+    canonical = canonical.strip() if is_structured or detected_format == "latex" else _clean_canonical(canonical)
     normalized_preview = normalize_algebra_input(canonical)
     if not is_structured and is_structured_algebra_input(normalized_preview):
         canonical = normalized_preview
         is_structured = True
-    topic_hint = request.topic if request.topic != "auto" else _detect_topic(raw, normalized_preview)
+    topic_hint = _detect_topic(raw, normalized_preview)
     variables = request.variables or _detect_variables(raw, normalized_preview, topic_hint)
     domain = _detect_domain(raw, request.domain, topic_hint)
     chips = _build_chips(raw, canonical, topic_hint, variables, domain, detected_format)
     warnings: list[str] = []
+    if request.topic != "auto" and topic_hint != "auto" and request.topic != topic_hint:
+        warnings.append(f"Dạng bài đang chọn là {request.topic}, nhưng biểu thức giống {topic_hint}; hệ thống sẽ ưu tiên dạng nhận dạng được nếu hai dạng mâu thuẫn rõ.")
     if canonical != raw and detected_format in {"natural_vi", "mixed"}:
         warnings.append("Đã diễn giải đề tiếng Việt thành biểu thức chuẩn trước khi giải.")
     if detected_format == "mixed":

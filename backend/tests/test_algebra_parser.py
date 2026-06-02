@@ -38,19 +38,30 @@ def test_normalizer_handles_latex_cases_system():
 
 
 def test_normalizer_converts_latex_calculus_templates():
-    assert normalize_algebra_input(r"\frac{d}{dx}\left(\frac{x^2-2x}{x-1}\right)") == "derivative(expr=((x**2-2x)/(x-1)),var=x)"
-    assert normalize_algebra_input(r"\int_1^2 \frac{x^2-2x}{x-1} dx") == "integral(expr=((x**2-2x)/(x-1)),var=x,a=1,b=2)"
+    assert normalize_algebra_input(r"\frac{d}{dx}\left(\frac{x^2-2x}{x-1}\right)") == "derivative(expr=((x**2-2*x)/(x-1)),var=x)"
+    assert normalize_algebra_input(r"\int_1^2 \frac{x^2-2x}{x-1} dx") == "integral(expr=((x**2-2*x)/(x-1)),var=x,a=1,b=2)"
+    assert normalize_algebra_input(r"\int_{1}^{2}\left(2x\right)dx") == "integral(expr=(2*x),var=x,a=1,b=2)"
+    assert normalize_algebra_input(r"\int\limits_{1}^{2}\left(2x\right)\mathrm{d}x") == "integral(expr=(2*x),var=x,a=1,b=2)"
     assert normalize_algebra_input(r"\lim_{x\to0}\left(\frac{\sin(x)}{x}\right)") == "limit(expr=((sin(x))/(x)),var=x,to=0)"
+
+
+def test_normalizer_converts_latex_inverse_trig():
+    assert normalize_algebra_input(r"\tan^{-1}\left(1\right)") == "atan(1)"
+    assert normalize_algebra_input(r"\sin^{-1}\left(\frac{1}{2}\right)") == "asin(((1)/(2)))"
+    assert normalize_algebra_input(r"\arctan\left(1\right)") == "atan(1)"
 
 
 def test_interpreter_uses_structured_latex_calculus_as_canonical_input():
     derivative = interpret_algebra_input(AlgebraSolveRequest(input=r"\frac{d}{dx}\left(\frac{x^2-2x}{x-1}\right)", input_format="latex"))
     integral = interpret_algebra_input(AlgebraSolveRequest(input=r"\int_1^2 \frac{x^2-2x}{x-1} dx", input_format="latex"))
+    limit = interpret_algebra_input(AlgebraSolveRequest(input=r"\lim_{x\to0}\left(\frac{3x}{x-1}\right)", input_format="latex"))
 
     assert derivative.canonical_input == "derivative(expr=((x**2-2*x)/(x-1)),var=x)"
     assert derivative.topic_hint == "calculus_derivative"
     assert integral.canonical_input == "integral(expr=((x**2-2*x)/(x-1)),var=x,a=1,b=2)"
     assert integral.topic_hint == "calculus_integral"
+    assert limit.canonical_input == "limit(expr=((3*x)/(x-1)),var=x,to=0)"
+    assert limit.topic_hint == "calculus_limit"
 
 
 def test_interpreter_converts_vietnamese_equation_to_canonical_input():

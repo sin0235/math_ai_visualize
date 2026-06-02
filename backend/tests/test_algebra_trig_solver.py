@@ -69,3 +69,23 @@ def test_trig_solver_records_tangent_domain():
     assert result.status == "solved"
     assert "cos(x) khác 0" in result.assumptions
     assert {value.text for value in result.solution_set.values} == {"pi/4", "5*pi/4"}
+
+
+def test_trig_solver_evaluates_latex_inverse_trig_expression():
+    result = solve_algebra(AlgebraSolveRequest(input=r"\tan^{-1}\left(1\right)", input_format="latex", topic="auto"))
+
+    assert result.status == "solved"
+    assert result.topic == "trigonometry"
+    assert result.problem_type == "evaluate_trigonometric_expression"
+    assert result.answer_latex == r"\frac{\pi}{4}"
+
+
+def test_trig_solver_overrides_stale_calculus_topic_for_inverse_trig():
+    result = solve_algebra(AlgebraSolveRequest(input=r"\tan^{-1}\left(11\right)", input_format="latex", topic="calculus_integral"))
+
+    assert result.status == "solved"
+    assert result.topic == "trigonometry"
+    assert result.problem_type == "evaluate_trigonometric_expression"
+    assert result.input_interpretation is not None
+    assert result.input_interpretation.topic_hint == "trigonometry"
+    assert result.answer_latex == r"\arctan{\left(11 \right)}"

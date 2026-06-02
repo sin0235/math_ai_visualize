@@ -344,12 +344,13 @@ export function AlgebraInput({
   );
 }
 
-function suggestTopic(input: string): AlgebraTopic | null {
+export function suggestTopic(input: string): AlgebraTopic | null {
   const text = input.trim().toLowerCase();
   if (!text) return null;
   if (/derivative|đạo hàm|dao ham|d\/dx|\\frac\{d\}\{d[a-z]\}/.test(text)) return 'calculus_derivative';
   if (/limit|giới hạn|gioi han|lim|\\lim/.test(text)) return 'calculus_limit';
   if (/integral|tích phân|tich phan|nguyên hàm|nguyen ham|\\int/.test(text)) return 'calculus_integral';
+  if (/\\(?:sin|cos|tan|cot)\s*\^\s*\{?-1\}?|\\arc(?:sin|cos|tan|cot)|\b(?:asin|acos|atan|acot|arcsin|arccos|arctan|arccot)\b/.test(text)) return 'trigonometry';
   if (/[<>≤≥]|\\le|\\ge/.test(text)) return 'inequality';
   if (text.includes(';')) return 'system';
   if (/sin|cos|tan|cot|\\sin|\\cos|\\tan|\\cot/.test(text)) return 'trigonometry';

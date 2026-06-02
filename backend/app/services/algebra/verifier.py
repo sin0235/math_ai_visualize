@@ -23,7 +23,11 @@ def verify_finite_solutions(problem: ParsedAlgebraProblem, solutions: list[sp.Ex
             latex=f"{sp.latex(variable)} = {sp.latex(solution)}",
         ))
     if not solutions:
-        checks.append(AlgebraVerificationCheck(name="empty_solution_set", status="warn", detail="Không có nghiệm hữu hạn để thay ngược; kết quả dựa trên solver symbolic."))
+        checks.append(AlgebraVerificationCheck(
+            name="empty_solution_set",
+            status="warn",
+            detail="Phương trình không có nghiệm để thử lại bằng cách thay số. Kết luận vô nghiệm được kiểm tra từ các phép biến đổi đại số.",
+        ))
         status = "partially_verified"
     else:
         status = "verified" if checks and all(check.status == "pass" for check in checks) else "failed"

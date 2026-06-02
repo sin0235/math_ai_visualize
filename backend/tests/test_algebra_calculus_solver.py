@@ -109,3 +109,22 @@ def test_calculus_solver_accepts_latex_derivative_and_definite_integral():
     assert integral.topic == "calculus_integral"
     assert any(step.method == "improper_integral" for step in integral.steps)
     assert integral.answer_latex == r"-\infty"
+
+
+def test_calculus_solver_accepts_mathquill_simple_definite_integral():
+    result = solve_algebra(AlgebraSolveRequest(input=r"\int_{1}^{2}\left(2x\right)dx", input_format="latex", topic="calculus_integral"))
+    styled_differential = solve_algebra(AlgebraSolveRequest(input=r"\int\limits_{1}^{2}\left(2x\right)\mathrm{d}x", input_format="latex", topic="calculus_integral"))
+
+    assert result.status == "solved"
+    assert result.topic == "calculus_integral"
+    assert result.answer_latex == "3"
+    assert styled_differential.status == "solved"
+    assert styled_differential.answer_latex == "3"
+
+
+def test_calculus_solver_overrides_stale_trig_topic_for_integral():
+    result = solve_algebra(AlgebraSolveRequest(input=r"\int_{1}^{2}\left(2x\right)dx", input_format="latex", topic="trigonometry"))
+
+    assert result.status == "solved"
+    assert result.topic == "calculus_integral"
+    assert result.answer_latex == "3"

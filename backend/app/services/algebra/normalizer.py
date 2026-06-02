@@ -54,9 +54,11 @@ def normalize_algebra_input(raw: str) -> str:
     text = _replace_latex_frac(text)
     text = _replace_latex_sqrt(text)
     text = _replace_latex_log_base(text)
+    text = _replace_latex_inverse_trig(text)
     text = _replace_latex_commands(text)
     text = _normalize_function_parentheses(text)
     text = text.replace("^", "**")
+    text = _normalize_structured_template(text)
     text = re.sub(r"\s*(<=|>=|!=|=|<|>)\s*", r"\1", text)
     text = re.sub(r"\s+", " ", text).strip()
     return text
@@ -94,6 +96,9 @@ def _latex_integral_template(text: str) -> str | None:
     lower: str | None = None
     upper: str | None = None
     index = _skip_spaces(text, index)
+    if text.startswith("\\limits", index):
+        index += len("\\limits")
+        index = _skip_spaces(text, index)
     if index < len(text) and text[index] == "_":
         lower, index = _read_script_value(text, index + 1)
         index = _skip_spaces(text, index)
@@ -102,7 +107,10 @@ def _latex_integral_template(text: str) -> str | None:
         index = _skip_spaces(text, index)
     body = text[index:].strip()
     body = re.sub(r"\\[,;!]\s*", " ", body).strip()
-    match = re.match(r"(.+?)(?:\\[,;!]\s*|\s*)d\s*([A-Za-z])\s*$", body)
+    match = re.match(
+        r"(.+?)\s*(?:\\mathrm\s*\{\s*d\s*\}|\\operatorname\s*\{\s*d\s*\}|\\text\s*\{\s*d\s*\}|\{\s*d\s*\}|d)\s*([A-Za-z])\s*$",
+        body,
+    )
     if match:
         expression = match.group(1).strip()
         variable = match.group(2)
@@ -250,6 +258,39 @@ def _replace_latex_log_base(text: str) -> str:
     return "".join(result)
 
 
+def _replace_latex_inverse_trig(text: str) -> str:
+    replacements = {
+        "sin": "asin",
+        "cos": "acos",
+        "tan": "atan",
+        "cot": "acot",
+    }
+    for source, target in replacements.items():
+        text = _replace_inverse_trig_command(text, source, target)
+    return text
+
+
+def _replace_inverse_trig_command(text: str, source: str, target: str) -> str:
+    pattern = re.compile(rf"\\{source}\s*\^\s*\{{\s*-1\s*\}}")
+    index = 0
+    result: list[str] = []
+    while True:
+        match = pattern.search(text, index)
+        if not match:
+            result.append(text[index:])
+            break
+        result.append(text[index:match.start()])
+        arg_start = _skip_spaces_and_latex_left(text, match.end())
+        arg, arg_end = _read_group_or_token(text, arg_start)
+        if arg is None:
+            result.append(text[match.start():match.end()])
+            index = match.end()
+            continue
+        result.append(f"{target}({_clean_latex_group(arg)})")
+        index = arg_end
+    return "".join(result)
+
+
 def _find_next_log_base(text: str, start: int) -> int:
     candidates = [position for position in (text.find("\\log_", start), text.find("log_", start)) if position >= 0]
     return min(candidates) if candidates else -1
@@ -318,6 +359,10 @@ def _replace_latex_commands(text: str) -> str:
         r"\\cos": "cos",
         r"\\tan": "tan",
         r"\\cot": "cot",
+        r"\\arcsin": "asin",
+        r"\\arccos": "acos",
+        r"\\arctan": "atan",
+        r"\\arccot": "acot",
         r"\\ln": "log",
         r"\\log": "log",
         r"\\pi": "pi",
@@ -336,8 +381,58 @@ def _replace_latex_commands(text: str) -> str:
 
 
 def _normalize_function_parentheses(text: str) -> str:
-    for name in ("sin", "cos", "tan", "cot", "log", "sqrt", "Abs", "abs"):
+    for name in ("sin", "cos", "tan", "cot", "asin", "acos", "atan", "acot", "arcsin", "arccos", "arctan", "arccot", "log", "sqrt", "Abs", "abs"):
         text = re.sub(rf"\b{name}\s+([A-Za-z0-9.]+)", rf"{name}(\1)", text)
+    return text
+
+
+def _normalize_structured_template(text: str) -> str:
+    match = re.fullmatch(r"(derivative|limit|integral)\((.*)\)", text.strip())
+    if not match:
+        return text
+    name, args_text = match.groups()
+    parts: list[str] = []
+    for part in _split_top_level_args(args_text):
+        if "=" not in part:
+            parts.append(part.strip())
+            continue
+        key, value = part.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if key in {"expr", "to", "a", "b", "order"}:
+            value = _normalize_structured_value(value)
+        parts.append(f"{key}={value}")
+    return f"{name}({','.join(parts)})"
+
+
+def _split_top_level_args(text: str) -> list[str]:
+    parts: list[str] = []
+    current: list[str] = []
+    depth = 0
+    for char in text:
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+        if char == "," and depth == 0:
+            parts.append("".join(current).strip())
+            current = []
+        else:
+            current.append(char)
+    if current:
+        parts.append("".join(current).strip())
+    return parts
+
+
+def _normalize_structured_value(value: str) -> str:
+    text = value.strip(" :;,.")
+    text = re.sub(r"\s+", "", text)
+    text = text.replace("^", "**")
+    text = re.sub(r"(\d)([A-Za-z])", r"\1*\2", text)
+    text = re.sub(r"([A-Za-z])(\d)", r"\1*\2", text)
+    text = re.sub(r"(\))(\()", r"\1*\2", text)
+    text = re.sub(r"(\d)(\()", r"\1*\2", text)
+    text = re.sub(r"(\))([A-Za-z])", r"\1*\2", text)
     return text
 
 

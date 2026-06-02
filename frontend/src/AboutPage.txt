@@ -29,10 +29,10 @@ export function AboutPage({ onStart, onGuide }: { onStart: () => void; onGuide: 
 
       <section className="about-section">
         <div>
-          <span>Triết lý của chúng tôi</span>
-          <h3>Hơn cả một công cụ vẽ hình, đây là người bạn đồng hành.</h3>
+          <span>Tầm nhìn</span>
+          <h3>Toán học không chỉ là những con số</h3>
         </div>
-        <p>Chúng tôi tin rằng mỗi đề toán đều ẩn chứa một cấu trúc vẻ đẹp riêng. Bằng cách kết hợp công nghệ và tư duy khoa học, AI sẽ cùng bạn khám phá, kiểm chứng và biến những lý thuyết khô khan thành những trải nghiệm thị giác đầy cảm hứng.</p>
+        <p>Chúng mình tin rằng toán học sẽ trở nên gần gũi hơn khi được quan sát và tương tác trực tiếp, giúp mỗi người tự do khám phá tri thức theo cách tự nhiên nhất. Mục tiêu của chúng mình là tạo ra trải nghiệm học toán vừa trực quan vừa chính xác, nơi ai cũng có thể kiểm chứng và mở rộng hiểu biết của mình.</p>
       </section>
     </section>
   );

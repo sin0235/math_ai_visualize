@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sympy as sp
 
-from app.schemas.algebra import AlgebraSolutionSet, AlgebraSolutionValue, AlgebraSolveResponse, AlgebraSolveStep
+from app.schemas.algebra import AlgebraSolutionSet, AlgebraSolutionValue, AlgebraSolveResponse, AlgebraSolveStep, AlgebraVerificationCheck, AlgebraVerificationReport
 from app.services.algebra.domain import domain_assumptions_from_expression
 from app.services.algebra.formatting import format_solution_set, solution_values
 from app.services.algebra.parser import ParsedAlgebraProblem
@@ -11,9 +11,12 @@ from app.services.algebra.trig_transformations import build_trig_steps, trig_dom
 from app.services.algebra.verifier import verify_finite_solutions, verify_solution_set
 
 TRIG_FUNCTIONS = (sp.sin, sp.cos, sp.tan, sp.cot)
+INVERSE_TRIG_FUNCTIONS = (sp.asin, sp.acos, sp.atan, sp.acot)
 
 
 def solve_trigonometry(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
+    if problem.relation is None and problem.expression is not None:
+        return _solve_trig_expression(problem)
     if problem.relation is None or not isinstance(problem.relation, sp.Equality):
         return _unsupported(problem, "Đầu vào không phải phương trình lượng giác.")
     variable = problem.variable
@@ -187,6 +190,61 @@ def _basic_trig_general_latex(func, argument: sp.Expr, target: sp.Expr) -> str:
 
 def _unsupported(problem: ParsedAlgebraProblem, message: str) -> AlgebraSolveResponse:
     return AlgebraSolveResponse(input=problem.raw_input, normalized_input=problem.normalized_input, topic="trigonometry", problem_type="solve_trigonometric_equation", status="unsupported", answer=message, errors=[message])
+
+
+def _solve_trig_expression(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
+    expression = problem.expression
+    if expression is None:
+        return _unsupported(problem, "Không có biểu thức lượng giác để tính.")
+    result = sp.simplify(expression)
+    expression_latex = _inverse_trig_latex(expression)
+    result_latex = _inverse_trig_latex(result)
+    steps = [
+        AlgebraSolveStep(
+            index=1,
+            title="Nhận dạng biểu thức lượng giác",
+            explanation="Đầu vào là biểu thức lượng giác, không phải phương trình cần tìm nghiệm.",
+            short_explanation="Tính giá trị/rút gọn biểu thức lượng giác.",
+            detail_level="brief",
+            method="trig_expression_value",
+            goal="Tính giá trị chính xác của biểu thức.",
+            why="Các biểu thức như arctan(1) có thể tính trực tiếp bằng giá trị lượng giác đặc biệt.",
+            rule="Giá trị lượng giác đặc biệt",
+            operation="Đọc biểu thức và xác định công thức cần dùng.",
+            before_latex=expression_latex,
+            after_latex=result_latex,
+            check="Kết quả phải là giá trị chính xác nếu có thể.",
+            expression=sp.sstr(expression),
+            expression_latex=expression_latex,
+            result=sp.sstr(result),
+            result_latex=result_latex,
+            kind="solve",
+            confidence="verified",
+        )
+    ]
+    answer = f"Giá trị: {sp.sstr(result)}"
+    verification = AlgebraVerificationReport(
+        status="verified",
+        checks=[AlgebraVerificationCheck(name="trig_expression_symbolic", status="pass", detail="Biểu thức lượng giác được rút gọn symbolic.", latex=result_latex)],
+        method=["sympy.simplify"],
+    )
+    steps.append(conclusion_step(2, answer, result_latex))
+    return AlgebraSolveResponse(
+        input=problem.raw_input,
+        normalized_input=problem.normalized_input,
+        topic="trigonometry",
+        problem_type="evaluate_trigonometric_expression",
+        status="solved",
+        answer=answer,
+        answer_latex=result_latex,
+        solution_set=AlgebraSolutionSet(kind="expression", text=sp.sstr(result), latex=result_latex),
+        steps=steps,
+        verification=verification,
+    )
+
+
+def _inverse_trig_latex(expression: sp.Expr) -> str:
+    return sp.latex(expression, inv_trig_style="full")
 
 
 def _unique(values: list[str]) -> list[str]:

@@ -8,6 +8,7 @@ from app.services.algebra.ai_explainer import explain_algebra_response_with_ai
 from app.services.algebra.ai_extraction import extract_algebra_request_with_ai
 from app.services.algebra.classifier import classify_algebra_problem
 from app.services.algebra.interpreter import interpret_algebra_input
+from app.services.algebra.normalizer import normalize_algebra_input
 from app.services.algebra.parser import AlgebraParseError, ParsedAlgebraProblem, parse_algebra_problem
 from app.services.algebra.solvers.calculus_solver import solve_calculus
 from app.services.algebra.solvers.combinatorics_probability_solver import solve_combinatorics_probability
@@ -47,7 +48,7 @@ async def solve_algebra_with_optional_ai(request: AlgebraSolveRequest, settings:
 
 def solve_algebra_deterministic(request: AlgebraSolveRequest) -> AlgebraSolveResponse:
     interpretation = interpret_algebra_input(request)
-    requested_topic = request.topic if request.topic != "auto" else interpretation.topic_hint
+    requested_topic = _resolve_requested_topic(request.topic, interpretation.topic_hint, interpretation.canonical_input)
     variables = request.variables or interpretation.variables or ["x"]
     domain = interpretation.domain if request.domain == "R" and interpretation.domain != "R" else request.domain
     if requested_topic == "combinatorics_probability":
@@ -106,6 +107,35 @@ def solve_algebra_deterministic(request: AlgebraSolveRequest) -> AlgebraSolveRes
         answer="Dạng bài này chưa được hỗ trợ trong phase đầu. Hiện hệ thống ưu tiên phương trình và bất phương trình một biến.",
         warnings=["Các nhóm tham số và các dạng đề tự nhiên dài sẽ được bổ sung ở các phase sau."],
     ), request.input, interpretation)
+
+
+_CALCULUS_PREFIX_BY_TOPIC = {
+    "calculus_derivative": "derivative(",
+    "calculus_limit": "limit(",
+    "calculus_integral": "integral(",
+}
+_STRONG_FORMULA_TOPICS = {
+    "inequality",
+    "exponential_log",
+    "trigonometry",
+    "system",
+    *_CALCULUS_PREFIX_BY_TOPIC.keys(),
+}
+
+
+def _resolve_requested_topic(requested_topic: str, detected_topic: str, canonical_input: str) -> str:
+    if requested_topic == "auto":
+        return detected_topic
+    if detected_topic in {"auto", requested_topic}:
+        return requested_topic
+    normalized = normalize_algebra_input(canonical_input)
+    if requested_topic in _CALCULUS_PREFIX_BY_TOPIC and not normalized.startswith(_CALCULUS_PREFIX_BY_TOPIC[requested_topic]):
+        return detected_topic
+    if detected_topic in _CALCULUS_PREFIX_BY_TOPIC and normalized.startswith(_CALCULUS_PREFIX_BY_TOPIC[detected_topic]):
+        return detected_topic
+    if requested_topic in _STRONG_FORMULA_TOPICS and detected_topic in _STRONG_FORMULA_TOPICS:
+        return detected_topic
+    return requested_topic
 
 
 def _raw_problem(request: AlgebraSolveRequest, canonical_input: str, variables: list[str], domain: str, topic: str) -> ParsedAlgebraProblem:
