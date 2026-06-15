@@ -158,7 +158,7 @@ def _read_script_value(text: str, start: int) -> tuple[str | None, int]:
     if index < len(text) and text[index] == "{":
         return _read_braced(text, index)
     end = index
-    while end < len(text) and not text[end].isspace() and text[end] not in "^_":
+    while end < len(text) and re.match(r"[A-Za-z0-9.+\-*/]", text[end]):
         end += 1
     if end == index:
         return None, start

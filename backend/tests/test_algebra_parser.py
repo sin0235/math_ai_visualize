@@ -40,6 +40,7 @@ def test_normalizer_handles_latex_cases_system():
 def test_normalizer_converts_latex_calculus_templates():
     assert normalize_algebra_input(r"\frac{d}{dx}\left(\frac{x^2-2x}{x-1}\right)") == "derivative(expr=((x**2-2*x)/(x-1)),var=x)"
     assert normalize_algebra_input(r"\int_1^2 \frac{x^2-2x}{x-1} dx") == "integral(expr=((x**2-2*x)/(x-1)),var=x,a=1,b=2)"
+    assert normalize_algebra_input(r"\int_1^2\left(2x+1\right)dx") == "integral(expr=(2*x+1),var=x,a=1,b=2)"
     assert normalize_algebra_input(r"\int_{1}^{2}\left(2x\right)dx") == "integral(expr=(2*x),var=x,a=1,b=2)"
     assert normalize_algebra_input(r"\int\limits_{1}^{2}\left(2x\right)\mathrm{d}x") == "integral(expr=(2*x),var=x,a=1,b=2)"
     assert normalize_algebra_input(r"\lim_{x\to0}\left(\frac{\sin(x)}{x}\right)") == "limit(expr=((sin(x))/(x)),var=x,to=0)"
