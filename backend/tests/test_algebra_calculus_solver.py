@@ -33,6 +33,15 @@ def test_calculus_solver_explains_definite_integral():
     assert [step.title for step in result.steps[:3]] == ["Nhận dạng tích phân", "Tìm nguyên hàm", "Thay cận tích phân"]
 
 
+def test_calculus_integral_equation_solves_upper_bound():
+    result = solve_algebra(AlgebraSolveRequest(input="integral(expr=2*x,var=x,a=1,b=z,target=2)", topic="auto", variables=["z"]))
+
+    assert result.status == "solved"
+    assert result.topic == "calculus_integral"
+    assert result.answer == "Nghiệm: z = -sqrt(3), sqrt(3)"
+    assert result.answer_latex == "z=- \\sqrt{3}, \\sqrt{3}"
+
+
 def test_calculus_interpreter_detects_vietnamese_natural_inputs():
     derivative = solve_algebra(AlgebraSolveRequest(input="đạo hàm (x^2+1)^3"))
     limit = solve_algebra(AlgebraSolveRequest(input="giới hạn (x^2-1)/(x-1) khi x tới 1"))

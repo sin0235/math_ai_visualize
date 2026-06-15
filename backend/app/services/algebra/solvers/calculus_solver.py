@@ -25,6 +25,7 @@ class CalculusTemplate:
     direction: str = "+-"
     lower: sp.Expr | None = None
     upper: sp.Expr | None = None
+    target: sp.Expr | None = None
     order: int = 1
 
 
@@ -97,8 +98,19 @@ def _solve_integral(problem: ParsedAlgebraProblem, template: CalculusTemplate) -
     is_definite = template.lower is not None and template.upper is not None
     if is_definite:
         result = sp.simplify(sp.integrate(template.expression, (template.variable, template.lower, template.upper)))
-        answer = f"Giá trị tích phân: {sp.sstr(result)}"
-        latex = sp.latex(result)
+        if template.target is not None:
+            equation = sp.Eq(result, template.target, evaluate=False)
+            solutions = sp.solve(equation, template.upper)
+            latex = sp.latex(equation)
+            if solutions:
+                answer = f"Nghiệm: {sp.sstr(template.upper)} = {', '.join(sp.sstr(solution) for solution in solutions)}"
+                latex = rf"{sp.latex(template.upper)}={', '.join(sp.latex(solution) for solution in solutions)}"
+                result = sp.FiniteSet(*solutions)
+            else:
+                answer = "Không tìm được nghiệm symbolic cho phương trình tích phân."
+        else:
+            answer = f"Giá trị tích phân: {sp.sstr(result)}"
+            latex = sp.latex(result)
     else:
         result = antiderivative
         answer = f"Nguyên hàm: {sp.sstr(result)} + C"
@@ -400,7 +412,8 @@ def _parse_template(text: str, topic: str, default_variable: sp.Symbol) -> Calcu
         return CalculusTemplate(kind="calculus_limit", expression=expression, variable=variable, point=point, direction=args.get("dir", "+-"))
     lower = sp.sympify(args["a"], locals=local_dict) if "a" in args else None
     upper = sp.sympify(args["b"], locals=local_dict) if "b" in args else None
-    return CalculusTemplate(kind="calculus_integral", expression=expression, variable=variable, lower=lower, upper=upper)
+    target = sp.sympify(args["target"], locals=local_dict) if "target" in args else None
+    return CalculusTemplate(kind="calculus_integral", expression=expression, variable=variable, lower=lower, upper=upper, target=target)
 
 
 def _parse_args(text: str) -> dict[str, str]:

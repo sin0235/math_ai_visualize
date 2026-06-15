@@ -107,6 +107,11 @@ def _latex_integral_template(text: str) -> str | None:
         index = _skip_spaces(text, index)
     body = text[index:].strip()
     body = re.sub(r"\\[,;!]\s*", " ", body).strip()
+    target: str | None = None
+    relation = re.match(r"(.+?)\s*=\s*(.+)$", body)
+    if relation:
+        body = relation.group(1).strip()
+        target = relation.group(2).strip()
     match = re.match(
         r"(.+?)\s*(?:\\mathrm\s*\{\s*d\s*\}|\\operatorname\s*\{\s*d\s*\}|\\text\s*\{\s*d\s*\}|\{\s*d\s*\}|d)\s*([A-Za-z])\s*$",
         body,
@@ -120,9 +125,10 @@ def _latex_integral_template(text: str) -> str | None:
     expression = _clean_latex_group(expression)
     if not expression:
         return None
+    target_arg = f",target={_clean_latex_group(target)}" if target else ""
     if lower is not None and upper is not None and lower.strip() and upper.strip():
-        return f"integral(expr={expression},var={variable},a={_clean_latex_group(lower)},b={_clean_latex_group(upper)})"
-    return f"integral(expr={expression},var={variable})"
+        return f"integral(expr={expression},var={variable},a={_clean_latex_group(lower)},b={_clean_latex_group(upper)}{target_arg})"
+    return f"integral(expr={expression},var={variable}{target_arg})"
 
 
 def _latex_limit_template(text: str) -> str | None:
@@ -399,7 +405,7 @@ def _normalize_structured_template(text: str) -> str:
         key, value = part.split("=", 1)
         key = key.strip()
         value = value.strip()
-        if key in {"expr", "to", "a", "b", "order"}:
+        if key in {"expr", "to", "a", "b", "target", "order"}:
             value = _normalize_structured_value(value)
         parts.append(f"{key}={value}")
     return f"{name}({','.join(parts)})"
