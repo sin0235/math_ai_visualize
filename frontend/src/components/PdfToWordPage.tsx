@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState, memo } from 'react';
 
 import { convertPdfWithMineru, getMineruJob, getMineruLlmProviders, getMineruStatus, mineruUrl, normalizeMineruBaseUrl, type MineruJobSnapshot, type MineruResult } from '../api/mineru';
 import type { ModelOption } from './ProblemInput';
@@ -525,7 +525,7 @@ function ResultDownloads({ baseUrl, result }: { baseUrl: string; result: MineruR
   );
 }
 
-function PdfOriginalPreview({ fileName, url }: { fileName: string; url: string }) {
+const PdfOriginalPreview = memo(function PdfOriginalPreview({ fileName, url }: { fileName: string; url: string }) {
   return (
     <div className="pdf-word-preview-panel">
       <div className="pdf-word-preview-head">
@@ -535,7 +535,7 @@ function PdfOriginalPreview({ fileName, url }: { fileName: string; url: string }
       <iframe src={url} title={`Xem trước ${fileName}`} />
     </div>
   );
-}
+});
 
 function loadMineruApiBaseUrl(fallback: string) {
   return window.localStorage.getItem(MINERU_API_BASE_URL_STORAGE_KEY) || fallback;
