@@ -9,6 +9,16 @@ export interface MineruStatusResponse {
   max_upload_mb?: number;
 }
 
+export interface MineruLlmProvidersResponse {
+  ok: boolean;
+  providers?: {
+    nvidia?: {
+      api_key_configured?: boolean;
+      model?: string;
+    };
+  };
+}
+
 export interface MineruArtifact {
   kind?: string;
   filename?: string;
@@ -81,6 +91,10 @@ export function mineruUrl(baseUrl: string, path: string) {
 
 export async function getMineruStatus(baseUrl: string): Promise<MineruStatusResponse> {
   return requestMineru<MineruStatusResponse>(baseUrl, '/api/status');
+}
+
+export async function getMineruLlmProviders(baseUrl: string): Promise<MineruLlmProvidersResponse> {
+  return requestMineru<MineruLlmProvidersResponse>(baseUrl, '/api/llm/providers');
 }
 
 export async function convertPdfWithMineru(baseUrl: string, options: MineruConvertOptions): Promise<MineruJobSnapshot> {

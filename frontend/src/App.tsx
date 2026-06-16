@@ -1174,7 +1174,6 @@ export default function App() {
             modelOptions={modelOptions}
             runtimeSettings={runtimeSettings}
             router9Only={settingsDefaults?.router9.only_mode ?? false}
-            onOpenSettings={() => navigateTo(user?.role === 'admin' ? 'admin' : 'render')}
           />
         )}
         {activeView === 'analyzer-guide' && <AnalyzerGuidePage onOpenGeneralGuide={() => navigateTo('guide')} />}
