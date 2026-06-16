@@ -1013,12 +1013,15 @@ select {
 }
 
 .pdf-word-option-toggles .checkbox-label input[type="checkbox"] {
-  cursor: pointer;
   width: 16px;
   height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
   accent-color: var(--ink);
   margin: 0;
   flex-shrink: 0;
+  cursor: pointer;
 }
 
 .pdf-word-advanced-options {

@@ -16,6 +16,15 @@ export interface MineruLlmProvidersResponse {
       api_key_configured?: boolean;
       model?: string;
     };
+    openrouter?: {
+      api_key_configured?: boolean;
+      model?: string;
+    };
+    router9?: {
+      api_key_configured?: boolean;
+      model?: string;
+      only_mode?: boolean;
+    };
   };
 }
 

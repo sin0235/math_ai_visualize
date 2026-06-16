@@ -160,7 +160,12 @@ export function PdfToWordPage({
       });
     getMineruLlmProviders(activeApiBaseUrl)
       .then((snapshot) => {
-        setReviewApiReady(snapshot.providers?.nvidia?.api_key_configured === true);
+        const providers = snapshot.providers;
+        setReviewApiReady(
+          providers?.nvidia?.api_key_configured === true ||
+          providers?.openrouter?.api_key_configured === true ||
+          providers?.router9?.api_key_configured === true
+        );
       })
       .catch(() => {
         setReviewApiReady(false);
