@@ -76,6 +76,8 @@ export function PdfToWordPage({
   const [readinessMessage, setReadinessMessage] = useState('');
   const [readinessReady, setReadinessReady] = useState<boolean | null>(null);
   const [reviewApiReady, setReviewApiReady] = useState<boolean | null>(null);
+  const [mineruReviewProvider, setMineruReviewProvider] = useState('auto');
+  const [mineruReviewModel, setMineruReviewModel] = useState('');
   const [guideOpen, setGuideOpen] = useState(false);
   const [backend, setBackend] = useState('auto');
   const [parseMethod, setParseMethod] = useState('auto');
@@ -93,8 +95,6 @@ export function PdfToWordPage({
   const progressFillRef = useRef<HTMLSpanElement>(null);
   const pollAbortRef = useRef(false);
 
-  const reviewProvider = normalizePdfLlmProvider(runtimeSettings.ocr.provider || 'auto');
-  const reviewModel = runtimeSettings.ocr.model.trim();
   const activeApiBaseUrl = normalizeMineruBaseUrl(mineruApiBaseUrl) || apiBaseUrl;
   const maxUploadMb = remoteMaxUploadMb ?? Number(import.meta.env.VITE_PDF_WORD_MAX_UPLOAD_MB || MAX_LOCAL_UPLOAD_MB);
   const selectedBackendDescription = backendOptions.find((option) => option.value === backend)?.description ?? '';
@@ -164,11 +164,19 @@ export function PdfToWordPage({
     getMineruLlmProviders(activeApiBaseUrl)
       .then((snapshot) => {
         const providers = snapshot.providers;
-        setReviewApiReady(
-          providers?.nvidia?.api_key_configured === true ||
-          providers?.openrouter?.api_key_configured === true ||
-          providers?.router9?.api_key_configured === true
-        );
+        const defaultProvider = snapshot.default_provider;
+        const nvidiaReady = providers?.nvidia?.api_key_configured === true;
+        const openrouterReady = providers?.openrouter?.api_key_configured === true;
+        const router9Ready = providers?.router9?.api_key_configured === true;
+        setReviewApiReady(nvidiaReady || openrouterReady || router9Ready);
+
+        // Use provider/model from MinerU notebook config, not main app
+        const resolvedProvider = defaultProvider && defaultProvider !== 'auto'
+          ? defaultProvider
+          : nvidiaReady ? 'nvidia' : openrouterReady ? 'openrouter' : router9Ready ? 'router9' : 'auto';
+        const resolvedModel = providers?.[resolvedProvider as keyof typeof providers]?.model || '';
+        setMineruReviewProvider(resolvedProvider);
+        setMineruReviewModel(resolvedModel);
       })
       .catch(() => {
         setReviewApiReady(false);
@@ -230,11 +238,11 @@ export function PdfToWordPage({
         endPage,
         serverUrl: '',
         llmMode: effectiveLlmMode,
-        llmProvider: effectiveLlmMode === 'off' ? 'auto' : reviewProvider,
-        llmModel: effectiveLlmMode === 'off' ? '' : reviewModel,
+        llmProvider: effectiveLlmMode === 'off' ? 'auto' : mineruReviewProvider,
+        llmModel: effectiveLlmMode === 'off' ? '' : mineruReviewModel,
         llmApiKey: '',
         llmBaseUrl: '',
-        llmReasoning: effectiveLlmMode !== 'off' && reviewProvider === 'openrouter' && runtimeSettings.openrouter_reasoning_enabled,
+        llmReasoning: effectiveLlmMode !== 'off' && mineruReviewProvider === 'openrouter' && runtimeSettings.openrouter_reasoning_enabled,
         router9Only: router9Only || runtimeSettings.router9.only_mode,
       });
       applyJobSnapshot(initial);

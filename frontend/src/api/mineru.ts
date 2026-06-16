@@ -11,6 +11,7 @@ export interface MineruStatusResponse {
 
 export interface MineruLlmProvidersResponse {
   ok: boolean;
+  default_provider?: string;
   providers?: {
     nvidia?: {
       api_key_configured?: boolean;
