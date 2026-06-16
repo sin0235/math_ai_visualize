@@ -44,6 +44,7 @@ _STRUCTURED_PREFIXES = (
 def normalize_algebra_input(raw: str) -> str:
     text = unicodedata.normalize("NFC", raw.strip())
     text = _strip_math_delimiters(text)
+    text = _strip_latex_spacing_commands(text)
     for source, target in _REPLACEMENTS.items():
         text = text.replace(source, target)
     text = _replace_superscripts(text)
@@ -53,6 +54,7 @@ def normalize_algebra_input(raw: str) -> str:
     text = _replace_latex_cases(text)
     text = _replace_latex_frac(text)
     text = _replace_latex_sqrt(text)
+    text = _replace_latex_wrapped_commands(text)
     text = _replace_latex_log_base(text)
     text = _replace_latex_inverse_trig(text)
     text = _replace_latex_commands(text)
@@ -69,6 +71,12 @@ def _replace_latex_calculus(text: str) -> str:
     if not stripped.startswith("\\"):
         return text
     return _latex_derivative_template(stripped) or _latex_integral_template(stripped) or _latex_limit_template(stripped) or text
+
+
+def _strip_latex_spacing_commands(text: str) -> str:
+    text = re.sub(r"\\(?:,|;|:|!|quad|qquad)\s*", " ", text)
+    text = re.sub(r"~+", " ", text)
+    return text
 
 
 def _latex_derivative_template(text: str) -> str | None:
@@ -156,13 +164,16 @@ def _latex_limit_template(text: str) -> str | None:
     expression = _clean_latex_group(expression)
     if not expression:
         return None
-    return f"limit(expr={expression},var={variable},to={_clean_latex_group(point)})"
+    point = _clean_latex_group(point).replace("\\infty", "oo")
+    return f"limit(expr={expression},var={variable},to={point})"
 
 
 def _read_script_value(text: str, start: int) -> tuple[str | None, int]:
     index = _skip_spaces(text, start)
     if index < len(text) and text[index] == "{":
         return _read_braced(text, index)
+    if index < len(text) and text[index] in "([":
+        return _read_delimited(text, index)
     end = index
     while end < len(text) and re.match(r"[A-Za-z0-9.+\-*/]", text[end]):
         end += 1
@@ -218,10 +229,13 @@ def _replace_latex_frac(text: str) -> str:
     previous = None
     while previous != text:
         previous = text
-        match = re.search(r"\\frac\s*\{", text)
+        match = re.search(r"\\(?:dfrac|tfrac|frac)\s*\{", text)
         if not match:
             break
-        replacement = _replace_first_latex_binary_command(text, match.start(), "\\frac", lambda left, right: f"(({left})/({right}))")
+        command = re.match(r"\\(?:dfrac|tfrac|frac)", text[match.start():])
+        if command is None:
+            break
+        replacement = _replace_first_latex_binary_command(text, match.start(), command.group(0), lambda left, right: f"(({left})/({right}))")
         if replacement is None:
             break
         text = replacement
@@ -235,6 +249,41 @@ def _replace_latex_sqrt(text: str) -> str:
         text = re.sub(r"\\sqrt\s*\[\s*([^\[\]{}]+)\s*\]\s*\{([^{}]+)\}", r"root(\2, \1)", text)
         text = re.sub(r"\\sqrt\s*\{([^{}]+)\}", r"sqrt(\1)", text)
     return text
+
+
+def _replace_latex_wrapped_commands(text: str) -> str:
+    replacements = {
+        "mathrm": lambda value: value,
+        "operatorname": lambda value: value,
+        "text": lambda value: value,
+        "left": lambda value: value,
+        "right": lambda value: value,
+    }
+    previous = None
+    while previous != text:
+        previous = text
+        for command, formatter in replacements.items():
+            text = _replace_latex_unary_command(text, f"\\{command}", formatter)
+    return text
+
+
+def _replace_latex_unary_command(text: str, command: str, formatter) -> str:
+    index = 0
+    result: list[str] = []
+    while True:
+        start = text.find(command, index)
+        if start < 0:
+            result.append(text[index:])
+            break
+        result.append(text[index:start])
+        arg, arg_end = _read_braced(text, start + len(command))
+        if arg is None:
+            result.append(text[start:start + len(command)])
+            index = start + len(command)
+            continue
+        result.append(formatter(arg))
+        index = arg_end
+    return "".join(result)
 
 
 def _replace_latex_log_base(text: str) -> str:
@@ -277,7 +326,7 @@ def _replace_latex_inverse_trig(text: str) -> str:
 
 
 def _replace_inverse_trig_command(text: str, source: str, target: str) -> str:
-    pattern = re.compile(rf"\\{source}\s*\^\s*\{{\s*-1\s*\}}")
+    pattern = re.compile(rf"\\{source}\s*\^\s*(?:\{{\s*-1\s*\}}|-1)")
     index = 0
     result: list[str] = []
     while True:
@@ -327,10 +376,8 @@ def _skip_spaces_and_latex_left(text: str, start: int) -> int:
 def _read_group_or_token(text: str, start: int) -> tuple[str | None, int]:
     if start >= len(text):
         return None, start
-    if text[start] == "(":
-        return _read_parenthesized(text, start)
-    if text[start] == "{":
-        return _read_braced(text, start)
+    if text[start] in "({[":
+        return _read_delimited(text, start)
     end = start
     while end < len(text) and re.match(r"[A-Za-z0-9.+\-*/^]", text[end]):
         end += 1
@@ -340,18 +387,27 @@ def _read_group_or_token(text: str, start: int) -> tuple[str | None, int]:
 
 
 def _read_parenthesized(text: str, start: int) -> tuple[str | None, int]:
-    if start >= len(text) or text[start] != "(":
+    return _read_delimited(text, start) if start < len(text) and text[start] == "(" else (None, start)
+
+
+def _read_delimited(text: str, start: int) -> tuple[str | None, int]:
+    pairs = {"(": ")", "[": "]", "{": "}"}
+    if start >= len(text) or text[start] not in pairs:
         return None, start
-    depth = 0
+    opener = text[start]
+    closer = pairs[opener]
+    stack = [closer]
     content_start = start + 1
-    for position in range(start, len(text)):
+    position = content_start
+    while position < len(text):
         char = text[position]
-        if char == "(":
-            depth += 1
-        elif char == ")":
-            depth -= 1
-            if depth == 0:
+        if char in pairs:
+            stack.append(pairs[char])
+        elif stack and char == stack[-1]:
+            stack.pop()
+            if not stack:
                 return text[content_start:position], position + 1
+        position += 1
     return None, start
 
 
@@ -372,6 +428,7 @@ def _replace_latex_commands(text: str) -> str:
         r"\\ln": "log",
         r"\\log": "log",
         r"\\pi": "pi",
+        r"\\infty": "oo",
         r"\\cdot": "*",
         r"\\times": "*",
         r"\\leq?\b": "<=",
@@ -457,16 +514,4 @@ def _read_braced(text: str, start: int) -> tuple[str | None, int]:
     index = start
     while index < len(text) and text[index].isspace():
         index += 1
-    if index >= len(text) or text[index] != "{":
-        return None, start
-    depth = 0
-    content_start = index + 1
-    for position in range(index, len(text)):
-        char = text[position]
-        if char == "{":
-            depth += 1
-        elif char == "}":
-            depth -= 1
-            if depth == 0:
-                return text[content_start:position], position + 1
-    return None, start
+    return _read_delimited(text, index) if index < len(text) and text[index] == "{" else (None, start)

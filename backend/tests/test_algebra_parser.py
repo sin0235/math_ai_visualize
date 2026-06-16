@@ -8,6 +8,8 @@ from app.schemas.algebra import AlgebraSolveRequest
 
 def test_normalizer_handles_basic_latex_fraction():
     assert normalize_algebra_input(r"\frac{x+1}{2}=3") == "((x+1)/(2))=3"
+    assert normalize_algebra_input(r"\dfrac{x+1}{2}=3") == "((x+1)/(2))=3"
+    assert normalize_algebra_input(r"\tfrac{x+1}{2}=3") == "((x+1)/(2))=3"
 
 
 def test_normalizer_handles_unicode_superscript_and_inequality():
@@ -21,6 +23,7 @@ def test_normalizer_handles_mathquill_log_base_and_relation():
 def test_normalizer_handles_log_base_with_nested_fraction_argument():
     assert normalize_algebra_input(r"\log_3((x-3)/(x-2)^2)=22") == "log((x-3)/(x-2)**2, 3)=22"
     assert normalize_algebra_input(r"\log_{3}\left((x-3)/(x-2)^2\right)=22") == "log((x-3)/(x-2)**2, 3)=22"
+    assert normalize_algebra_input(r"\log_{10}\left(x+1\right)=2") == "log(x+1, 10)=2"
     assert normalize_algebra_input("log_3((x-3)/(x-2)^2)=22") == "log((x-3)/(x-2)**2, 3)=22"
 
 
@@ -30,7 +33,9 @@ def test_normalizer_handles_nested_latex_fraction():
 
 def test_normalizer_handles_latex_sqrt_and_trig_fraction():
     assert normalize_algebra_input(r"\sin(x)=\frac{1}{2}") == "sin(x)=((1)/(2))"
+    assert normalize_algebra_input(r"\sin\left(x^2\right)=\frac{1}{2}") == "sin(x**2)=((1)/(2))"
     assert normalize_algebra_input(r"\sqrt{x+1}=2") == "sqrt(x+1)=2"
+    assert normalize_algebra_input(r"\sqrt[3]{x+1}=2") == "root(x+1, 3)=2"
 
 
 def test_normalizer_handles_latex_cases_system():
@@ -46,6 +51,7 @@ def test_normalizer_converts_latex_calculus_templates():
     assert normalize_algebra_input(r"\int_{1}^{2}\left(2x\right)dx") == "integral(expr=(2*x),var=x,a=1,b=2)"
     assert normalize_algebra_input(r"\int\limits_{1}^{2}\left(2x\right)\mathrm{d}x") == "integral(expr=(2*x),var=x,a=1,b=2)"
     assert normalize_algebra_input(r"\lim_{x\to0}\left(\frac{\sin(x)}{x}\right)") == "limit(expr=((sin(x))/(x)),var=x,to=0)"
+    assert normalize_algebra_input(r"\lim_{x\to\infty}\left(\frac{1}{x}\right)") == "limit(expr=((1)/(x)),var=x,to=oo)"
 
 
 def test_normalizer_converts_latex_inverse_trig():
