@@ -120,6 +120,9 @@ export function PdfToWordPage({
   }, [progress, status, result]);
 
   useEffect(() => {
+    if (canUseReview && llmMode === 'off') {
+      setLlmMode('review');
+    }
     if (!canUseReview && llmMode !== 'off') {
       setLlmMode('off');
     }
@@ -423,7 +426,7 @@ export function PdfToWordPage({
                 <option value="correct">Tự sửa lỗi rõ ràng</option>
                 <option value="off">Không kiểm tra thêm</option>
               </select>
-              {!canUseReview && <span className="field-help review-disabled-help">Notebook MinerU chưa có NVIDIA API nên chức năng review đang bị khoá.</span>}
+              {!canUseReview && <span className="field-help review-disabled-help">Notebook MinerU chưa có API key (NVIDIA, OpenRouter, hoặc 9router) nên chức năng review đang bị khoá.</span>}
             </label>
             <button className="submit-button" type="submit" disabled={busy || !file || !activeApiBaseUrl}>
               {busy && <Spinner />}
