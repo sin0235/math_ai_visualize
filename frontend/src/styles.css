@@ -736,7 +736,6 @@ select {
   height: 36px;
   place-items: center;
   justify-self: end;
-  transform: translateX(-8px);
   border: 1px solid rgba(245, 158, 11, 0.45);
   border-radius: 999px;
   color: #d97706;
@@ -747,7 +746,7 @@ select {
 }
 
 .pdf-word-guide-button:hover {
-  transform: translateX(-8px) translateY(-1px);
+  transform: translateY(-1px);
   background: #fef3c7;
   box-shadow: 0 0 0 6px rgba(245, 158, 11, 0.16), 0 0 24px rgba(245, 158, 11, 0.55);
 }
@@ -970,6 +969,7 @@ select {
 .pdf-word-field-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
   gap: 12px;
 }
 
