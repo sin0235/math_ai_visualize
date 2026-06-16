@@ -735,7 +735,8 @@ select {
   width: 36px;
   height: 36px;
   place-items: center;
-  justify-self: end;
+  align-self: center;
+  flex-shrink: 0;
   border: 1px solid rgba(245, 158, 11, 0.45);
   border-radius: 999px;
   color: #d97706;
