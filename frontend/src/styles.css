@@ -6905,7 +6905,7 @@ pre {
 }
 
 /* Step right column: content */
-.sp-step-content { display: grid; gap: 6px; min-width: 0; }
+.sp-step-content { display: grid; gap: 12px; min-width: 0; padding-bottom: 8px; }
 .sp-step-head    { display: flex; align-items: flex-start; gap: 8px; flex-wrap: wrap; }
 .sp-step-title   { font-size: 0.88rem; font-weight: 800; color: var(--ink); flex: 1; line-height: 1.3; }
 .sp-step-tag {
@@ -6932,15 +6932,17 @@ pre {
   align-items: center;
   justify-content: center;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 8px 12px;
+  padding: 12px 16px;
+  margin-top: 6px;
+  margin-bottom: 6px;
   background: var(--surface);
   font-family: inherit;
-  font-size: 0.85rem;
+  font-size: 0.9rem;
   font-weight: 600;
-  line-height: 1.45;
+  line-height: 1.5;
   color: var(--ink);
   overflow-x: auto;
   overflow-y: hidden;

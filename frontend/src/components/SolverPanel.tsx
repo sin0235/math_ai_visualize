@@ -11,7 +11,8 @@ interface SolverPanelProps {
 }
 
 function normalizeSolverLatex(input?: string | null): string {
-  return input ? normalizeLatexForKatex(input) : '';
+  if (!input) return '';
+  return normalizeLatexForKatex(input).replace(/°/g, '^\\circ');
 }
 
 function normalizeSolverQuestionInput(input: string): string {
