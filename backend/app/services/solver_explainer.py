@@ -25,6 +25,7 @@ Quy tắc QUAN TRỌNG:
 4. Bước 2 (Công thức & vector): Sử dụng sub_steps để trình bày việc chọn hệ trục, tính tọa độ từng vector, tính tích có hướng/vô hướng.
 5. Giải thích lý do vì sao dùng công thức đó. Nếu có cảnh báo (suy biến, trùng), hãy giải thích cho học sinh hiểu.
 6. Đích đến cuối cùng phải KHỚP HOÀN TOÀN với các step chính hệ thống đã cung cấp.
+7. PHẢI trả về JSON hợp lệ 100%. Tất cả các khóa (keys) và chuỗi (strings) bắt buộc phải bọc trong DẤU NGOẶC KÉP ("").
 
 Trả về JSON thuần: 
 {"steps":[{"index":1,"title":"...","explanation":"...","formula_latex":"...","substitution_latex":"...","result_latex":"...","sub_steps":[{"index":1,"title":"...","explanation":"...","formula_latex":"...","substitution_latex":"...","result_latex":"..."}]}]}
@@ -39,6 +40,7 @@ Quy tắc QUAN TRỌNG:
 3. TUYỆT ĐỐI KHÔNG nhắc đến "hệ trục tọa độ Oxyz", không tính toán bằng vector tọa độ dạng (x,y,z). Bạn ĐƯỢC phép bỏ qua hoặc gộp các bước giải tích rườm rà của hệ thống.
 4. Hãy sử dụng các định lý hình học cổ điển (Pytago, tỉ số lượng giác, định lý Thales, đường vuông góc, hình chiếu, giao tuyến...) để lập luận logic thay vì liệt kê số liệu (0,0,0).
 5. Đích đến cuối cùng (kết quả số học) phải KHỚP HOÀN TOÀN với đáp án số học mà hệ thống đã cung cấp.
+6. PHẢI trả về JSON hợp lệ 100%. Tất cả các khóa (keys) và chuỗi (strings) bắt buộc phải bọc trong DẤU NGOẶC KÉP ("").
 
 Trả về JSON thuần theo cấu trúc: 
 {"steps":[{"index":1,"title":"...","explanation":"...","formula_latex":"...","substitution_latex":"...","result_latex":"...","sub_steps":[{"index":1,"title":"...","explanation":"...","formula_latex":"...","substitution_latex":"...","result_latex":"..."}]}]}
@@ -173,7 +175,7 @@ async def _call_nvidia(prompt: str, settings: Settings, model: str, system_promp
         ],
         "temperature": 0.2,
         "top_p": 0.95,
-        "max_tokens": 8192,
+        "max_tokens": 4096,
     }
     headers = {"Authorization": f"Bearer {(settings.nvidia_api_key or '').strip()}", "Content-Type": "application/json"}
     base_url = settings.nvidia_base_url.rstrip("/")
@@ -269,11 +271,24 @@ def _sanitize_explanation(text: str) -> str:
 def _strip_json_fences(content: str) -> str:
     text = content.strip()
     if text.startswith("```json"):
-        text = text.removeprefix("```json").removesuffix("```").strip()
+        text = text[7:]
     elif text.startswith("```"):
-        text = text.removeprefix("```").removesuffix("```").strip()
-    start = text.find("{")
+        text = text[3:]
+    if text.endswith("```"):
+        text = text[:-3]
+    text = text.strip()
+
     end = text.rfind("}")
-    if start >= 0 and end > start:
-        return text[start:end + 1]
+    if end > -1:
+        start = 0
+        while start >= 0 and start < end:
+            start = text.find("{", start)
+            if start == -1:
+                break
+            try:
+                json.loads(text[start:end + 1])
+                return text[start:end + 1]
+            except json.JSONDecodeError:
+                start += 1
+                
     return text

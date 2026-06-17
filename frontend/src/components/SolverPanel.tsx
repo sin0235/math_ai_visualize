@@ -214,9 +214,10 @@ export function SolverPanel({ scene, runtimeSettings, onHighlight }: SolverPanel
 
       {/* Method Selection */}
       <div className="sp-method-toggle" style={{ marginBottom: '12px', padding: '0 12px' }}>
+        <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ink)', marginBottom: '6px', opacity: 0.7, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Phương pháp giải</div>
         <select 
           className="sp-input" 
-          style={{ width: '100%', fontSize: '0.9rem', padding: '8px 12px', cursor: 'pointer' }}
+          style={{ width: '100%', fontSize: '0.9rem', padding: '8px 12px', cursor: 'pointer', border: '1px solid var(--border)', borderRadius: '8px', backgroundColor: 'var(--paper)', color: 'var(--ink)', outline: 'none' }}
           value={geometryMethod}
           onChange={(e) => setGeometryMethod(e.target.value as 'oxyz' | 'classical')}
         >
