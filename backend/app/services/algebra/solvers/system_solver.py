@@ -57,7 +57,8 @@ def solve_system(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
                 t = sp.Tuple(t)
             eqs = [sp.latex(sp.Eq(v, val, evaluate=False)) for v, val in zip(variables, t)]
             ans_parts.append(r"(" + ", ".join(eqs) + r")")
-        milestones.append(f"Nghiệm hệ phương trình: {' \lor '.join(ans_parts)}")
+        ans_str = r" \lor ".join(ans_parts)
+        milestones.append(f"Nghiệm hệ phương trình: {ans_str}")
         
     steps.append(conclusion_step(len(steps) + 1, answer, sp.latex(solution_set)))
     status = "solved" if verification.status in {"verified", "partially_verified"} else "error"
