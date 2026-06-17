@@ -6,9 +6,13 @@ type ToolKey = 'interval' | 'line' | 'transform';
 type AnalyzeOptionOverrides = Partial<AnalyzeOptions & {
   intervalA: number;
   intervalB: number;
+  intervalOpenA: boolean;
+  intervalOpenB: boolean;
   enableInterval: boolean;
   lineK: number;
   lineB: number;
+  lineMode: string;
+  lineX0: number;
   enableLine: boolean;
   transformType: string;
   transformValue: number;
@@ -21,9 +25,13 @@ export function useFunctionAnalysis(initialExpression: string, onWarnings?: (war
   const [ocrLoading, setOcrLoading] = useState(false);
   const [intervalA, setIntervalA] = useState(-2);
   const [intervalB, setIntervalB] = useState(2);
+  const [intervalOpenA, setIntervalOpenA] = useState(false);
+  const [intervalOpenB, setIntervalOpenB] = useState(false);
   const [enableInterval, setEnableInterval] = useState(false);
   const [lineK, setLineK] = useState(1);
   const [lineB, setLineB] = useState(0);
+  const [lineMode, setLineMode] = useState('intersect');
+  const [lineX0, setLineX0] = useState(0);
   const [enableLine, setEnableLine] = useState(false);
   const [enableTransform, setEnableTransform] = useState(false);
   const [transformType, setTransformType] = useState('vertical_shift');
@@ -65,15 +73,21 @@ export function useFunctionAnalysis(initialExpression: string, onWarnings?: (war
     const nextEnableInterval = overrides?.enableInterval ?? enableInterval;
     const nextIntervalA = overrides?.intervalA ?? intervalA;
     const nextIntervalB = overrides?.intervalB ?? intervalB;
+    const nextIntervalOpenA = overrides?.intervalOpenA ?? intervalOpenA;
+    const nextIntervalOpenB = overrides?.intervalOpenB ?? intervalOpenB;
+    
     const nextEnableLine = overrides?.enableLine ?? enableLine;
     const nextLineK = overrides?.lineK ?? lineK;
     const nextLineB = overrides?.lineB ?? lineB;
+    const nextLineMode = overrides?.lineMode ?? lineMode;
+    const nextLineX0 = overrides?.lineX0 ?? lineX0;
+    
     const nextEnableTransform = overrides?.enableTransform ?? enableTransform;
     const nextTransformType = overrides?.transformType ?? transformType;
     const nextTransformValue = overrides?.transformValue ?? transformValue;
     return {
-      ...(nextEnableInterval ? { interval: { a: nextIntervalA, b: nextIntervalB } } : {}),
-      ...(nextEnableLine ? { line: { k: nextLineK, b: nextLineB } } : {}),
+      ...(nextEnableInterval ? { interval: { a: nextIntervalA, b: nextIntervalB, open_a: nextIntervalOpenA, open_b: nextIntervalOpenB } } : {}),
+      ...(nextEnableLine ? { line: { k: nextLineK, b: nextLineB, mode: nextLineMode, x0: nextLineX0 } } : {}),
       ...(nextEnableTransform ? { transform: { type: nextTransformType, value: nextTransformValue } } : {}),
     };
   }
@@ -165,9 +179,13 @@ export function useFunctionAnalysis(initialExpression: string, onWarnings?: (war
     error,
     intervalA,
     intervalB,
+    intervalOpenA,
+    intervalOpenB,
     enableInterval,
     lineK,
     lineB,
+    lineMode,
+    lineX0,
     enableLine,
     enableTransform,
     transformType,
@@ -178,8 +196,12 @@ export function useFunctionAnalysis(initialExpression: string, onWarnings?: (war
     updateToolEnabled,
     setIntervalA,
     setIntervalB,
+    setIntervalOpenA,
+    setIntervalOpenB,
     setLineK,
     setLineB,
+    setLineMode,
+    setLineX0,
     setTransformType,
     setTransformValue,
     setIsAnimatingTransform,

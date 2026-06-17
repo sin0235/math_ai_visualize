@@ -54,6 +54,7 @@ export interface SolveStep {
   formula_latex?: string | null;
   substitution_latex?: string | null;
   result_latex?: string | null;
+  sub_steps?: SolveStep[];
 }
 
 export interface SolveResponse {

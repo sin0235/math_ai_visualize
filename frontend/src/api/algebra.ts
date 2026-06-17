@@ -89,6 +89,7 @@ export interface AlgebraSolveStep {
   result_latex?: string | null;
   kind?: 'normalize' | 'domain' | 'transform' | 'solve' | 'verify' | 'conclusion' | null;
   confidence?: 'verified' | 'symbolic' | 'numeric_checked' | 'unverified' | null;
+  sub_steps?: AlgebraSolveStep[];
 }
 
 export interface AlgebraSolveResponse {

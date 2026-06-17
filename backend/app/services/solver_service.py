@@ -47,6 +47,7 @@ class SolverStep:
         formula_latex: str | None = None,
         substitution_latex: str | None = None,
         result_latex: str | None = None,
+        sub_steps: list["SolverStep"] | None = None,
     ) -> None:
         self.index = index
         self.title = title
@@ -58,6 +59,7 @@ class SolverStep:
         self.formula_latex = formula_latex
         self.substitution_latex = substitution_latex
         self.result_latex = result_latex
+        self.sub_steps = sub_steps or []
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -71,6 +73,7 @@ class SolverStep:
             "formula_latex": self.formula_latex,
             "substitution_latex": self.substitution_latex,
             "result_latex": self.result_latex,
+            "sub_steps": [s.to_dict() for s in self.sub_steps],
         }
 
 

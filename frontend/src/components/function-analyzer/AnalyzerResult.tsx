@@ -114,13 +114,25 @@ function ToolAnalysisResults({ result }: { result: AnalyzeResponse }) {
       )}
 
       {result.line_analysis && (
-        <Section title="Tương giao với đường thẳng" icon="graph">
+        <Section title={result.line_analysis.mode === 'tangent_at' ? 'Tiếp tuyến đồ thị' : 'Tương giao với đường thẳng'} icon="graph">
           <div className="fa2-compact-list">
-            <IntervalLine label="Đường thẳng" value={result.line_analysis.equation} className="fa2-mono-inc" />
-            <IntervalLine label="Số giao điểm" value={String(result.line_analysis.intersection_count)} className="fa2-mono-inc" />
-            {result.line_analysis.intersections.map((pt, index) => <PointBadge key={`line-${index}`} label="Giao điểm" tex={`(${sympyToLatex(pt.x)},\; ${sympyToLatex(pt.y)})`} kind="axis" />)}
-            {result.line_analysis.relative_intervals.above.length > 0 && <IntervalLine label="f(x) > d" value={result.line_analysis.relative_intervals.above.join(', ')} className="fa2-mono-inc" />}
-            {result.line_analysis.relative_intervals.below.length > 0 && <IntervalLine label="f(x) < d" value={result.line_analysis.relative_intervals.below.join(', ')} className="fa2-mono-dec" />}
+            <IntervalLine label={result.line_analysis.mode === 'tangent_at' ? 'Tiếp tuyến' : 'Đường thẳng'} value={result.line_analysis.equation} className="fa2-mono-inc" />
+            
+            {result.line_analysis.mode === 'tangent_at' ? (
+              <div className="fa2-transform-formula" style={{ marginTop: 12 }}>
+                <strong>Kết luận:</strong> {result.line_analysis.conclusion}
+              </div>
+            ) : (
+              <>
+                <IntervalLine label="Số giao điểm" value={String(result.line_analysis.intersection_count)} className="fa2-mono-inc" />
+                {result.line_analysis.intersections.map((pt, index) => <PointBadge key={`line-${index}`} label="Giao điểm" tex={`(${sympyToLatex(pt.x)},\\; ${sympyToLatex(pt.y)})`} kind="axis" />)}
+                {result.line_analysis.relative_intervals.above.length > 0 && <IntervalLine label="f(x) > d" value={result.line_analysis.relative_intervals.above.join(', ')} className="fa2-mono-inc" />}
+                {result.line_analysis.relative_intervals.below.length > 0 && <IntervalLine label="f(x) < d" value={result.line_analysis.relative_intervals.below.join(', ')} className="fa2-mono-dec" />}
+                {result.line_analysis.area_between_curves && (
+                  <IntervalLine label="Diện tích hình phẳng" value={result.line_analysis.area_between_curves} className="fa2-mono-inc" />
+                )}
+              </>
+            )}
           </div>
         </Section>
       )}
@@ -131,6 +143,16 @@ function ToolAnalysisResults({ result }: { result: AnalyzeResponse }) {
             <KatexSpan tex={TRANSFORM_LABEL_TEX[result.transform_preview.type] ?? sympyToLatex(result.transform_preview.label)} className="fa2-transform-rule" />
             <KatexSpan tex={`g(x)=${result.transform_preview.expression_latex || sympyToLatex(result.transform_preview.expression)}`} className="fa2-katex" />
           </div>
+          {result.transform_preview.pedagogical_steps && result.transform_preview.pedagogical_steps.length > 0 && (
+            <div className="fa2-pedagogical-steps" style={{ marginTop: 16, fontSize: '0.9em', color: 'var(--text-secondary)' }}>
+              <strong>Các bước biến đổi:</strong>
+              <ul style={{ paddingLeft: 20, marginTop: 8 }}>
+                {result.transform_preview.pedagogical_steps.map((step, idx) => (
+                  <li key={`step-${idx}`}>{step}</li>
+                ))}
+              </ul>
+            </div>
+          )}
         </Section>
       )}
     </div>
@@ -184,16 +206,19 @@ function intervalExtremaConclusionTex(kind: 'max' | 'min', data: IntervalAnalysi
 
 function IntervalExtremaAnalysis({ interval }: { interval: IntervalAnalysis }) {
   const candidates: IntervalCandidate[] = [
-    { label: 'Cận trái', x: interval.a, y: interval.fa },
-    { label: 'Cận phải', x: interval.b, y: interval.fb },
+    { label: interval.open_a ? 'Giới hạn trái' : 'Cận trái', x: interval.a, y: interval.fa },
+    { label: interval.open_b ? 'Giới hạn phải' : 'Cận phải', x: interval.b, y: interval.fb },
     ...interval.extrema_inside.map((point) => ({ label: point.label, x: point.x_exact || point.x, y: point.y })),
   ];
 
+  const leftBracket = interval.open_a ? '(' : '[';
+  const rightBracket = interval.open_b ? ')' : ']';
+
   return (
     <div className="fa2-interval-analysis">
-      <div className="fa2-interval-note">
-        <KatexSpan tex={`x\\in[${sympyToLatex(interval.a)},${sympyToLatex(interval.b)}]`} />
-        <span>Xét giá trị tại hai cận và các điểm cực trị nằm trong đoạn.</span>
+      <div className="fa2-interval-note" style={{ flexDirection: 'column', textAlign: 'center', gap: 8 }}>
+        <KatexSpan tex={`x\\in${leftBracket}${sympyToLatex(interval.a)},\\, ${sympyToLatex(interval.b)}${rightBracket}`} />
+        <span>Xét giá trị tại hai cận và các điểm cực trị nằm trong vùng khảo sát.</span>
       </div>
       <table className="fa2-result-table fa2-interval-table"><thead><tr><th>Điểm xét</th><th><KatexSpan tex="x" /></th><th><KatexSpan tex="f(x)" /></th></tr></thead><tbody>
         {candidates.map((candidate) => (
@@ -204,13 +229,8 @@ function IntervalExtremaAnalysis({ interval }: { interval: IntervalAnalysis }) {
           </tr>
         ))}
       </tbody></table>
-      <div className="fa2-extrema-conclusion">
-        <div className="fa2-extrema-formula">
-          <KatexSpan display tex={intervalExtremaConclusionTex('max', interval)} />
-        </div>
-        <div className="fa2-extrema-formula">
-          <KatexSpan display tex={intervalExtremaConclusionTex('min', interval)} />
-        </div>
+      <div className="fa2-extrema-conclusion" style={{ marginTop: 16, fontSize: '0.95em' }}>
+        <strong>Kết luận:</strong> {interval.conclusion}
       </div>
     </div>
   );

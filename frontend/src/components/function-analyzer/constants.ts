@@ -25,6 +25,8 @@ export const TRANSFORMS = [
   { value: 'horizontal_scale', label: 'f(a·x)' },
   { value: 'reflect_x', label: '-f(x)' },
   { value: 'reflect_y', label: 'f(-x)' },
+  { value: 'absolute_all', label: '|f(x)|' },
+  { value: 'absolute_x', label: 'f(|x|)' },
 ];
 
 export const TRANSFORM_LABEL_TEX: Record<string, string> = {
@@ -34,4 +36,6 @@ export const TRANSFORM_LABEL_TEX: Record<string, string> = {
   horizontal_scale: 'g(x)=f(a x)',
   reflect_x: 'g(x)=-f(x)',
   reflect_y: 'g(x)=f(-x)',
+  absolute_all: 'g(x)=|f(x)|',
+  absolute_x: 'g(x)=f(|x|)',
 };

@@ -302,78 +302,109 @@ export function SolverPanel({ scene, runtimeSettings, onHighlight }: SolverPanel
               <div className="sp-steps-meta">
                 {result.steps.length} bước giải
               </div>
-              {result.steps.map((step) => {
-                const isActive = activeStep === step.index;
-                const formulaLatex = normalizeSolverLatex(step.formula_latex);
-                const substitutionLatex = normalizeSolverLatex(step.substitution_latex);
-                const resultLatex = normalizeSolverLatex(step.result_latex);
-                const explanationComparable = normalizeComparableText(step.explanation);
-                const formulaComparable = normalizeComparableText(formulaLatex);
-                const substitutionComparable = normalizeComparableText(substitutionLatex);
-                const showFormula = Boolean(formulaLatex) && formulaComparable !== explanationComparable;
-                const showSubstitution = Boolean(substitutionLatex) && substitutionComparable !== explanationComparable && substitutionComparable !== formulaComparable;
-                const explanationText = normalizeExplanationText(step.explanation, showFormula, showSubstitution);
-                return (
-                  <button
-                    key={step.index}
-                    type="button"
-                    id={`solver-step-${step.index}`}
-                    className={`sp-step${isActive ? ' sp-step--on' : ''}`}
-                    onClick={() => handleStepClick(step)}
-                    aria-pressed={isActive}
-                  >
-                    {/* Step number line */}
-                    <div className="sp-step-num-col">
-                      <span className="sp-step-num">{step.index}</span>
-                      {step.index < result.steps.length && <span className="sp-step-line" aria-hidden="true" />}
-                    </div>
-
-                    {/* Content */}
-                    <div className="sp-step-content">
-                      <div className="sp-step-head">
-                        <span className="sp-step-title">{step.title}</span>
-                        {step.highlight.length > 0 && (
-                          <span className="sp-step-tag" title="Các điểm được highlight">
-                            {step.highlight.join(' · ')}
-                          </span>
-                        )}
-                      </div>
-                      <p className="sp-step-text">{explanationText}</p>
-                      {showFormula && (
-                        <div className="sp-step-formula">
-                          <KatexSpan tex={formulaLatex} className="sp-step-formula-math" />
-                        </div>
-                      )}
-                      {showSubstitution && (
-                        <div className="sp-step-formula">
-                          <span className="sp-step-formula-label">Thế số:</span>
-                          <KatexSpan tex={substitutionLatex} className="sp-step-formula-math" />
-                        </div>
-                      )}
-                      {resultLatex && (
-                        <div className="sp-step-result">
-                          <span>Kết quả: </span>
-                          <KatexSpan tex={resultLatex} />
-                        </div>
-                      )}
-                      {!step.formula_latex && step.expression && (
-                        <div className="sp-step-formula">
-                          <KatexSpan tex={sympyToLatex(step.expression)} className="sp-step-formula-math" />
-                        </div>
-                      )}
-                      {!step.result_latex && step.result && (
-                        <div className="sp-step-result">
-                          <KatexSpan tex={`= ${sympyToLatex(step.result)}`} />
-                        </div>
-                      )}
-                    </div>
-                  </button>
-                );
-              })}
+              {result.steps.map((step, idx) => (
+                <SolverStepItem
+                  key={step.index}
+                  step={step}
+                  isActive={activeStep === step.index}
+                  isLast={idx === result.steps.length - 1}
+                  onStepClick={handleStepClick}
+                />
+              ))}
             </div>
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function SolverStepItem({
+  step,
+  isActive,
+  isLast,
+  onStepClick,
+  isSubStep = false,
+}: {
+  step: SolveStep;
+  isActive: boolean;
+  isLast: boolean;
+  onStepClick: (step: SolveStep) => void;
+  isSubStep?: boolean;
+}) {
+  const formulaLatex = normalizeSolverLatex(step.formula_latex);
+  const substitutionLatex = normalizeSolverLatex(step.substitution_latex);
+  const resultLatex = normalizeSolverLatex(step.result_latex);
+  const explanationComparable = normalizeComparableText(step.explanation);
+  const formulaComparable = normalizeComparableText(formulaLatex);
+  const substitutionComparable = normalizeComparableText(substitutionLatex);
+  const showFormula = Boolean(formulaLatex) && formulaComparable !== explanationComparable;
+  const showSubstitution = Boolean(substitutionLatex) && substitutionComparable !== explanationComparable && substitutionComparable !== formulaComparable;
+  const explanationText = normalizeExplanationText(step.explanation, showFormula, showSubstitution);
+
+  return (
+    <div
+      id={`solver-step-${step.index}`}
+      className={`sp-step${isActive ? ' sp-step--on' : ''} ${isSubStep ? 'sp-sub-step' : ''}`}
+    >
+      <div className="sp-step-num-col">
+        <span className="sp-step-num">{step.index}</span>
+        {!isLast && <span className="sp-step-line" aria-hidden="true" />}
+      </div>
+
+      <div className="sp-step-content" onClick={() => onStepClick(step)} style={{ cursor: 'pointer' }} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && onStepClick(step)}>
+        <div className="sp-step-head">
+          <span className="sp-step-title">{step.title}</span>
+          {step.highlight.length > 0 && (
+            <span className="sp-step-tag" title="Các điểm được highlight">
+              {step.highlight.join(' · ')}
+            </span>
+          )}
+        </div>
+        {explanationText && <p className="sp-step-text">{explanationText}</p>}
+        {showFormula && (
+          <div className="sp-step-formula">
+            <KatexSpan tex={formulaLatex} className="sp-step-formula-math" />
+          </div>
+        )}
+        {showSubstitution && (
+          <div className="sp-step-formula">
+            <span className="sp-step-formula-label">Thế số:</span>
+            <KatexSpan tex={substitutionLatex} className="sp-step-formula-math" />
+          </div>
+        )}
+        {resultLatex && (
+          <div className="sp-step-result">
+            <span>Kết quả: </span>
+            <KatexSpan tex={resultLatex} />
+          </div>
+        )}
+        {!step.formula_latex && step.expression && (
+          <div className="sp-step-formula">
+            <KatexSpan tex={sympyToLatex(step.expression)} className="sp-step-formula-math" />
+          </div>
+        )}
+        {!step.result_latex && step.result && (
+          <div className="sp-step-result">
+            <KatexSpan tex={`= ${sympyToLatex(step.result)}`} />
+          </div>
+        )}
+
+        {step.sub_steps && step.sub_steps.length > 0 && (
+          <div className="sp-sub-steps-container" style={{ marginTop: '0.75rem' }} onClick={(e) => e.stopPropagation()}>
+            {step.sub_steps.map((sub, sIdx) => (
+              <SolverStepItem
+                key={`sub-${sub.index}`}
+                step={sub}
+                isActive={false}
+                isLast={sIdx === step.sub_steps!.length - 1}
+                onStepClick={onStepClick}
+                isSubStep={true}
+              />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

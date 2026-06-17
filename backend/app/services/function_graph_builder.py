@@ -12,7 +12,15 @@ def build_function_graph(analysis: dict) -> tuple[MathScene, list[str], list[dic
     annotations = []
 
     graph_expression = analysis.get("evaluated_expression") or analysis["expression"]
-    objects.append(FunctionGraph(name="f", expression=_geogebra_expression(graph_expression)))
+    interval_analysis = analysis.get("interval_analysis")
+    
+    domain = None
+    if interval_analysis:
+        a = interval_analysis["a"]
+        b = interval_analysis["b"]
+        domain = (a, b)
+        
+    objects.append(FunctionGraph(name="f", expression=_geogebra_expression(graph_expression), domain=domain))
 
     for i, cp in enumerate(analysis.get("critical_points", [])):
         x_val = _safe_float(cp.get("x"))

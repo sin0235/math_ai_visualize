@@ -90,7 +90,10 @@ def build_geogebra_commands(scene: MathScene, settings: AdvancedRenderSettings |
         elif isinstance(obj, FunctionGraph):
             expression = obj.expression.replace(" ", "")
             if _SAFE_EXPRESSION_RE.fullmatch(expression):
-                commands.append(f"{obj.name}(x) = {expression}")
+                if obj.domain is not None:
+                    commands.append(f"{obj.name} = Function({expression}, {obj.domain[0]}, {obj.domain[1]})")
+                else:
+                    commands.append(f"{obj.name}(x) = {expression}")
                 intersectable_names.append(obj.name)
         elif isinstance(obj, Plane):
             plane_count += 1

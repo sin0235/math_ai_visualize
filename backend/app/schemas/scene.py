@@ -100,6 +100,7 @@ class FunctionGraph(BaseModel):
     type: Literal["function_graph"] = "function_graph"
     name: str = "f"
     expression: str
+    domain: tuple[float | str, float | str] | None = None
 
 
 class Face(BaseModel):

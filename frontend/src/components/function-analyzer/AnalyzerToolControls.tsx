@@ -16,8 +16,12 @@ export interface AnalyzerToolControlsProps {
   enableTransform: boolean;
   intervalA: number;
   intervalB: number;
+  intervalOpenA: boolean;
+  intervalOpenB: boolean;
   lineK: number;
   lineB: number;
+  lineMode: string;
+  lineX0: number;
   transformType: string;
   transformValue: number;
   isAnimatingTransform: boolean;
@@ -25,8 +29,12 @@ export interface AnalyzerToolControlsProps {
   onToggleTool: (key: 'interval' | 'line' | 'transform', enabled: boolean) => void;
   onIntervalAChange: (value: number) => void;
   onIntervalBChange: (value: number) => void;
+  onIntervalOpenAChange: (value: boolean) => void;
+  onIntervalOpenBChange: (value: boolean) => void;
   onLineKChange: (value: number) => void;
   onLineBChange: (value: number) => void;
+  onLineModeChange: (value: string) => void;
+  onLineX0Change: (value: number) => void;
   onTransformTypeChange: (value: string) => void;
   onTransformValueChange: (value: number) => void;
   onToggleAnimation: () => void;
@@ -38,8 +46,12 @@ export function AnalyzerToolControls({
   enableTransform,
   intervalA,
   intervalB,
+  intervalOpenA,
+  intervalOpenB,
   lineK,
   lineB,
+  lineMode,
+  lineX0,
   transformType,
   transformValue,
   isAnimatingTransform,
@@ -47,8 +59,12 @@ export function AnalyzerToolControls({
   onToggleTool,
   onIntervalAChange,
   onIntervalBChange,
+  onIntervalOpenAChange,
+  onIntervalOpenBChange,
   onLineKChange,
   onLineBChange,
+  onLineModeChange,
+  onLineX0Change,
   onTransformTypeChange,
   onTransformValueChange,
   onToggleAnimation,
@@ -64,18 +80,43 @@ export function AnalyzerToolControls({
       {(enableInterval || enableLine || enableTransform) && (
         <div className="fa2-tool-panel">
           {enableInterval && (
-            <div className="fa2-tool-row">
-              <span className="fa2-tool-label">Đoạn [a,b]</span>
-              <input className="fa2-mini-input" type="number" value={intervalA} onChange={(e) => onIntervalAChange(Number(e.target.value))} disabled={disabled} />
-              <input className="fa2-mini-input" type="number" value={intervalB} onChange={(e) => onIntervalBChange(Number(e.target.value))} disabled={disabled} />
+            <div className="fa2-tool-stack">
+              <div className="fa2-tool-row" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+                <span className="fa2-tool-label" style={{ width: 100, flexShrink: 0, margin: 0 }}>Vùng khảo sát</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 1, minWidth: 120 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', margin: 0, cursor: 'pointer', fontSize: '0.85rem' }} title="Khoảng mở (không lấy dấu bằng)">
+                    <input type="checkbox" checked={intervalOpenA} onChange={(e) => onIntervalOpenAChange(e.target.checked)} disabled={disabled} style={{ margin: 0 }} /> Mở
+                  </label>
+                  <input className="fa2-mini-input" type="number" value={intervalA} onChange={(e) => onIntervalAChange(Number(e.target.value))} disabled={disabled} />
+                </div>
+                <span style={{ whiteSpace: 'nowrap', fontSize: '0.85rem' }}>đến</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 1, minWidth: 120 }}>
+                  <input className="fa2-mini-input" type="number" value={intervalB} onChange={(e) => onIntervalBChange(Number(e.target.value))} disabled={disabled} />
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', margin: 0, cursor: 'pointer', fontSize: '0.85rem' }} title="Khoảng mở (không lấy dấu bằng)">
+                    <input type="checkbox" checked={intervalOpenB} onChange={(e) => onIntervalOpenBChange(e.target.checked)} disabled={disabled} style={{ margin: 0 }} /> Mở
+                  </label>
+                </div>
+              </div>
             </div>
           )}
 
           {enableLine && (
             <div className="fa2-tool-stack">
-              <div className="fa2-tool-label">Đường thẳng y = kx + b</div>
-              <SliderNumber label="k" value={lineK} min={-5} max={5} step={0.1} onChange={onLineKChange} />
-              <SliderNumber label="b" value={lineB} min={-10} max={10} step={0.1} onChange={onLineBChange} />
+              <div className="fa2-tool-row">
+                <span className="fa2-tool-label">Chế độ</span>
+                <select className="fa2-mini-input" value={lineMode} onChange={(e) => onLineModeChange(e.target.value)} disabled={disabled} style={{ flex: 1 }}>
+                  <option value="intersect">Tương giao y = kx + b</option>
+                  <option value="tangent_at">Tiếp tuyến tại điểm x0</option>
+                </select>
+              </div>
+              {lineMode === 'tangent_at' ? (
+                <SliderNumber label="x0" value={lineX0} min={-5} max={5} step={0.1} onChange={onLineX0Change} />
+              ) : (
+                <>
+                  <SliderNumber label="k" value={lineK} min={-5} max={5} step={0.1} onChange={onLineKChange} />
+                  <SliderNumber label="b" value={lineB} min={-10} max={10} step={0.1} onChange={onLineBChange} />
+                </>
+              )}
             </div>
           )}
 

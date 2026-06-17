@@ -31,8 +31,8 @@ export interface AnalyzeParameters {
 
 export interface AnalyzeOptions {
   parameters?: { m?: number };
-  interval?: { a: number; b: number };
-  line?: { k: number; b: number };
+  interval?: { a: number; b: number; open_a?: boolean; open_b?: boolean };
+  line?: { k?: number; b?: number; mode?: string; x0?: number };
   parameter_conditions?: { targets: string[]; extrema_count?: number };
   transform?: { type: string; value: number };
 }
@@ -73,6 +73,8 @@ export interface AnalyzeResponse {
   interval_analysis?: {
     a: string;
     b: string;
+    open_a?: boolean;
+    open_b?: boolean;
     fa: string;
     fb: string;
     extrema_inside: Array<{ x: string; x_exact: string; y: string; label: string }>;
@@ -81,13 +83,16 @@ export interface AnalyzeResponse {
     conclusion: string;
   } | null;
   line_analysis?: {
+    mode?: string;
     equation: string;
     intersection_count: number;
     intersections: Array<{ x: string; y: string; x_exact: string }>;
     relative_intervals: { above: string[]; below: string[] };
+    area_between_curves?: string | null;
+    conclusion?: string;
   } | null;
   parameter_conditions?: Array<{ label: string; condition_latex?: string; solution: string; solution_latex?: string; warnings?: string[] }>;
-  transform_preview?: { type: string; value: string; label: string; expression: string; expression_latex: string } | null;
+  transform_preview?: { type: string; value: string; label: string; expression: string; expression_latex: string; pedagogical_steps?: string[] } | null;
   capabilities?: Record<string, unknown> | null;
   warnings: string[];
   error?: string | null;

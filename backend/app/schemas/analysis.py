@@ -8,8 +8,8 @@ from app.schemas.scene import MAX_IMAGE_DATA_URL_CHARS, RuntimeSettings
 class AnalyzeRequest(BaseModel):
     expression: str = Field(min_length=1, max_length=1000)
     parameters: dict[str, float] | None = None
-    interval: dict[str, float] | None = None
-    line: dict[str, float] | None = None
+    interval: dict[str, Any] | None = None
+    line: dict[str, Any] | None = None
     parameter_conditions: dict[str, Any] | None = None
     transform: dict[str, Any] | None = None
 

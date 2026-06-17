@@ -36,6 +36,9 @@ class SolveStepResponse(BaseModel):
     formula_latex: str | None = None
     substitution_latex: str | None = None
     result_latex: str | None = None
+    sub_steps: list["SolveStepResponse"] = Field(default_factory=list)
+
+SolveStepResponse.model_rebuild()
 
 
 class SolveResponse(BaseModel):
@@ -72,23 +75,24 @@ async def solve_problem(
 
     if used_ai:
         await AdminRepository(db).record_user_usage_event(user.id, "solver_ai", {"source": "geometry_solve"})
+    def _map_step(s) -> SolveStepResponse:
+        return SolveStepResponse(
+            index=s.index,
+            title=s.title,
+            explanation=s.explanation,
+            expression=s.expression,
+            result=s.result,
+            highlight=s.highlight,
+            kind=s.kind,
+            formula_latex=s.formula_latex,
+            substitution_latex=s.substitution_latex,
+            result_latex=s.result_latex,
+            sub_steps=[_map_step(sub) for sub in getattr(s, "sub_steps", [])],
+        )
+
     return SolveResponse(
         question=result.question,
         answer=result.answer,
-        steps=[
-            SolveStepResponse(
-                index=s.index,
-                title=s.title,
-                explanation=s.explanation,
-                expression=s.expression,
-                result=s.result,
-                highlight=s.highlight,
-                kind=s.kind,
-                formula_latex=s.formula_latex,
-                substitution_latex=s.substitution_latex,
-                result_latex=s.result_latex,
-            )
-            for s in result.steps
-        ],
+        steps=[_map_step(s) for s in result.steps],
         warnings=result.warnings,
     )

@@ -16,22 +16,18 @@ from app.services.router9_client import Router9Client, _extract_message_content 
 from app.services.solver_service import SolverResult, SolverStep
 
 SOLVER_EXPLAINER_SYSTEM_PROMPT = """
-Bạn là giáo viên hình học không gian tiếng Việt, đang giải thích step-by-step cho học sinh lớp 12.
+Bạn là giáo viên hình học không gian tiếng Việt, đang giải thích step-by-step cho học sinh lớp 12. Hệ thống (máy tính) đã tính sẵn các mốc kết quả (Milestones) bằng phương pháp tọa độ hình học không gian (Oxyz) / giải tích hình học.
 
 Quy tắc QUAN TRỌNG:
-1. Giữ nguyên đáp số và kết quả cuối cùng đã cho, KHÔNG tự tính lại.
-2. Mỗi bước explanation PHẢI là văn bản thuần, KHÔNG chứa LaTeX (\\frac, \\overrightarrow, v.v.) — công thức đã có trường riêng.
-3. Bước 1 (Dữ liệu): PHẢI liệt kê tọa độ từng điểm liên quan lấy từ scene_objects (ví dụ: "S(0, 0, 4), A(2, 0, 0), B(0, 3, 0)").
-4. Bước 2 (Công thức & vector): PHẢI nêu rõ:
-   - Chọn điểm gốc nào (ví dụ: "Chọn gốc tại S")
-   - Dựng những vector nào, tọa độ vector là bao nhiêu (ví dụ: "vector SA = (2, 0, -4), vector AB = (-2, 3, 0)")
-   - Nếu có tích có hướng/vô hướng, ghi kết quả trung gian
-   - Giải thích vì sao chọn công thức này (hai đường chéo nhau, điểm ngoài mặt phẳng, v.v.)
-5. Bước 3 (Kết luận): Ghi kết quả cuối bằng văn bản (ví dụ: "Vậy d(SD,AB) = 12/5").
-6. Nếu có cảnh báo (suy biến, chéo nhau, trùng), giải thích cho học sinh hiểu.
+1. Bạn KHÔNG BỊ GIỚI HẠN số lượng bước giải. Bạn được cung cấp các step chính, hãy mạnh dạn THÊM các `sub_steps` vào bên trong mỗi step chính để chia nhỏ quá trình tính toán.
+2. Bạn ĐƯỢC PHÉP TRẢ VỀ CÔNG THỨC TOÁN HỌC ở dạng LaTeX qua các trường: `formula_latex`, `substitution_latex`, `result_latex`. Trong khi đó, trường `explanation` PHẢI là văn bản thuần Việt, KHÔNG chứa LaTeX.
+3. Bước 1 (Dữ liệu): Hãy sử dụng sub_steps để liệt kê rõ tọa độ từng điểm liên quan (lấy từ scene_objects).
+4. Bước 2 (Công thức & vector): Sử dụng sub_steps để trình bày việc chọn hệ trục, tính tọa độ từng vector, tính tích có hướng/vô hướng.
+5. Giải thích lý do vì sao dùng công thức đó. Nếu có cảnh báo (suy biến, trùng), hãy giải thích cho học sinh hiểu.
+6. Đích đến cuối cùng phải KHỚP HOÀN TOÀN với các step chính hệ thống đã cung cấp.
 
-Trả về JSON thuần: {"steps":[{"index":1,"title":"...","explanation":"..."},...]}.
-Không markdown, không code fence, không LaTeX trong explanation.
+Trả về JSON thuần: 
+{"steps":[{"index":1,"title":"...","explanation":"...","formula_latex":"...","substitution_latex":"...","result_latex":"...","sub_steps":[{"index":1,"title":"...","explanation":"...","formula_latex":"...","substitution_latex":"...","result_latex":"..."}]}]}
 """.strip()
 
 
@@ -53,16 +49,28 @@ async def explain_solver_result(result: SolverResult, scene: dict[str, Any], set
                 result=step.result,
                 highlight=step.highlight,
                 kind=step.kind,
-                formula_latex=step.formula_latex,
-                substitution_latex=step.substitution_latex,
-                result_latex=step.result_latex,
+                formula_latex=steps_by_index.get(step.index, {}).get("formula_latex") or step.formula_latex,
+                substitution_latex=steps_by_index.get(step.index, {}).get("substitution_latex") or step.substitution_latex,
+                result_latex=steps_by_index.get(step.index, {}).get("result_latex") or step.result_latex,
+                sub_steps=[
+                    SolverStep(
+                        index=sub.get("index", 1),
+                        title=sub.get("title", ""),
+                        explanation=sub.get("explanation", ""),
+                        expression=None,
+                        result=None,
+                        highlight=[],
+                        formula_latex=sub.get("formula_latex"),
+                        substitution_latex=sub.get("substitution_latex"),
+                        result_latex=sub.get("result_latex"),
+                    ) for sub in steps_by_index.get(step.index, {}).get("sub_steps", [])
+                ],
             )
             for step in result.steps
         ]
     except Exception as error:
         result.warnings.append(f"Không gọi được LLM diễn giải, đang dùng lời giải deterministic: {error}")
     return result
-
 
 def _payload(result: SolverResult, scene: dict[str, Any]) -> dict[str, Any]:
     objects = []
@@ -193,19 +201,44 @@ async def _call_openrouter_model(prompt: str, settings: Settings, model: str, re
     return content
 
 
-def _parse_steps(data: dict[str, Any]) -> dict[int, dict[str, str]]:
+def _parse_step_node(row: Any) -> dict[str, Any] | None:
+    if not isinstance(row, dict):
+        return None
+    index = row.get("index")
+    title = row.get("title")
+    explanation = row.get("explanation")
+    if not (isinstance(index, int) and isinstance(title, str) and isinstance(explanation, str)):
+        return None
+    
+    parsed = {
+        "title": title.strip(),
+        "explanation": _sanitize_explanation(explanation),
+        "formula_latex": row.get("formula_latex"),
+        "substitution_latex": row.get("substitution_latex"),
+        "result_latex": row.get("result_latex"),
+    }
+    
+    sub_steps_raw = row.get("sub_steps")
+    sub_steps = []
+    if isinstance(sub_steps_raw, list):
+        for sub_row in sub_steps_raw:
+            sub = _parse_step_node(sub_row)
+            if sub:
+                sub["index"] = sub_row.get("index", len(sub_steps) + 1)
+                sub_steps.append(sub)
+    parsed["sub_steps"] = sub_steps
+    return parsed
+
+
+def _parse_steps(data: dict[str, Any]) -> dict[int, dict[str, Any]]:
     rows = data.get("steps")
     if not isinstance(rows, list):
         return {}
-    parsed: dict[int, dict[str, str]] = {}
+    parsed: dict[int, dict[str, Any]] = {}
     for row in rows:
-        if not isinstance(row, dict):
-            continue
-        index = row.get("index")
-        title = row.get("title")
-        explanation = row.get("explanation")
-        if isinstance(index, int) and isinstance(title, str) and isinstance(explanation, str):
-            parsed[index] = {"title": title.strip(), "explanation": _sanitize_explanation(explanation)}
+        node = _parse_step_node(row)
+        if node and "index" in row:
+            parsed[row["index"]] = node
     return parsed
 
 

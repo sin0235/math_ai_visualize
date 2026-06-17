@@ -18,7 +18,9 @@ AlgebraTopic = Literal[
     "system",
     "parameter",
     "calculus_derivative",
+    "calculus_derivative_by_definition",
     "calculus_limit",
+    "calculus_continuous_at",
     "calculus_integral",
 ]
 AlgebraStatus = Literal["solved", "partial", "unsupported", "error"]

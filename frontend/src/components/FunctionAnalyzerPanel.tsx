@@ -39,6 +39,10 @@ export function FunctionAnalyzerPanel({ initialExpression = '', onOpenGuide, onW
                   intervalB={analyzer.intervalB}
                   lineK={analyzer.lineK}
                   lineB={analyzer.lineB}
+                  intervalOpenA={analyzer.intervalOpenA}
+                  intervalOpenB={analyzer.intervalOpenB}
+                  lineMode={analyzer.lineMode}
+                  lineX0={analyzer.lineX0}
                   transformType={analyzer.transformType}
                   transformValue={analyzer.transformValue}
                   isAnimatingTransform={analyzer.isAnimatingTransform}
@@ -46,8 +50,12 @@ export function FunctionAnalyzerPanel({ initialExpression = '', onOpenGuide, onW
                   onToggleTool={analyzer.updateToolEnabled}
                   onIntervalAChange={(value) => { analyzer.setIntervalA(value); analyzer.scheduleToolAnalyze({ intervalA: value, enableInterval: true }); }}
                   onIntervalBChange={(value) => { analyzer.setIntervalB(value); analyzer.scheduleToolAnalyze({ intervalB: value, enableInterval: true }); }}
+                  onIntervalOpenAChange={(value) => { analyzer.setIntervalOpenA(value); analyzer.scheduleToolAnalyze({ intervalOpenA: value, enableInterval: true }); }}
+                  onIntervalOpenBChange={(value) => { analyzer.setIntervalOpenB(value); analyzer.scheduleToolAnalyze({ intervalOpenB: value, enableInterval: true }); }}
                   onLineKChange={(value) => { analyzer.setLineK(value); analyzer.scheduleToolAnalyze({ lineK: value, enableLine: true }); }}
                   onLineBChange={(value) => { analyzer.setLineB(value); analyzer.scheduleToolAnalyze({ lineB: value, enableLine: true }); }}
+                  onLineModeChange={(value) => { analyzer.setLineMode(value); analyzer.scheduleToolAnalyze({ lineMode: value, enableLine: true }); }}
+                  onLineX0Change={(value) => { analyzer.setLineX0(value); analyzer.scheduleToolAnalyze({ lineX0: value, enableLine: true }); }}
                   onTransformTypeChange={(value) => { analyzer.setTransformType(value); analyzer.scheduleToolAnalyze({ transformType: value, enableTransform: true }); }}
                   onTransformValueChange={(value) => { analyzer.setTransformValue(value); analyzer.scheduleToolAnalyze({ transformValue: value, enableTransform: true }); }}
                   onToggleAnimation={() => analyzer.setIsAnimatingTransform((value) => !value)}

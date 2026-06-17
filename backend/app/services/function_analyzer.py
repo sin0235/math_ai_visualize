@@ -581,17 +581,31 @@ def analyze_function(
     return result
 
 
-def _analyze_interval(f_expr, fp_expr, interval: Mapping[str, float]) -> dict[str, Any]:
-    a = _finite_float(interval.get("a"), "a")
-    b = _finite_float(interval.get("b"), "b")
+def _analyze_interval(f_expr, fp_expr, interval: Mapping[str, Any]) -> dict[str, Any]:
+    a = _finite_float(interval.get("a", -10), "a")
+    b = _finite_float(interval.get("b", 10), "b")
+    open_a = bool(interval.get("open_a", False))
+    open_b = bool(interval.get("open_b", False))
     if a >= b:
-        raise ValueError("Đoạn [a, b] không hợp lệ: cần a < b.")
+        raise ValueError("Đoạn khảo sát không hợp lệ: cần a < b.")
 
-    candidates = [
-        {"x": a, "x_exact": _fmt_num(a), "y": _eval_float(f_expr, a), "kind": "endpoint", "label": "f(a)"},
-        {"x": b, "x_exact": _fmt_num(b), "y": _eval_float(f_expr, b), "kind": "endpoint", "label": "f(b)"},
-    ]
-    extrema_inside: list[dict[str, Any]] = []
+    candidates = []
+    
+    if open_a:
+        limit_a = limit(f_expr, x, a, dir='+')
+        y_a = None if limit_a in [oo, -oo, zoo, nan] else float(limit_a)
+        candidates.append({"x": a, "x_exact": _fmt_num(a), "y": y_a, "kind": "limit", "label": f"lim(x->{_fmt_num(a)}+)"})
+    else:
+        candidates.append({"x": a, "x_exact": _fmt_num(a), "y": _eval_float(f_expr, a), "kind": "endpoint", "label": f"f({_fmt_num(a)})"})
+
+    if open_b:
+        limit_b = limit(f_expr, x, b, dir='-')
+        y_b = None if limit_b in [oo, -oo, zoo, nan] else float(limit_b)
+        candidates.append({"x": b, "x_exact": _fmt_num(b), "y": y_b, "kind": "limit", "label": f"lim(x->{_fmt_num(b)}-)"})
+    else:
+        candidates.append({"x": b, "x_exact": _fmt_num(b), "y": _eval_float(f_expr, b), "kind": "endpoint", "label": f"f({_fmt_num(b)})"})
+
+    extrema_inside = []
     if fp_expr is not None:
         for cp in _collect_stationary_candidates(f_expr, fp_expr):
             try:
@@ -601,34 +615,66 @@ def _analyze_interval(f_expr, fp_expr, interval: Mapping[str, float]) -> dict[st
             if not a < cp_float < b:
                 continue
             y_val = _eval_float(f_expr, cp_float)
-            point = {"x": _fmt_num(cp_float), "x_exact": _fmt_sym(cp), "y": _fmt_num(y_val), "kind": "critical", "label": "Cực trị trong đoạn"}
+            point = {"x": _fmt_num(cp_float), "x_exact": _fmt_sym(cp), "y": _fmt_num(y_val), "kind": "critical", "label": "Cực trị trong khoảng"}
             extrema_inside.append(point)
             candidates.append({"x": cp_float, "x_exact": _fmt_sym(cp), "y": y_val, "kind": "critical", "label": "Cực trị"})
 
     finite = [item for item in candidates if item["y"] is not None and isfinite(item["y"])]
     if not finite:
-        raise ValueError("Không tính được giá trị hữu hạn trên đoạn [a, b].")
+        raise ValueError(f"Không tính được giá trị hữu hạn trên {'khoảng' if open_a or open_b else 'đoạn'}.")
+    
     max_item = max(finite, key=lambda item: item["y"])
     min_item = min(finite, key=lambda item: item["y"])
+
+    conclusion = []
+    if max_item["kind"] == "limit":
+        conclusion.append(f"Hàm số không có GTLN, Supremum (cận trên đúng) = {_fmt_num(max_item['y'])} khi x tiến về {_fmt_num(max_item['x'])}")
+    else:
+        conclusion.append(f"GTLN = {_fmt_num(max_item['y'])} tại x = {_fmt_num(max_item['x'])}")
+
+    if min_item["kind"] == "limit":
+        conclusion.append(f"Hàm số không có GTNN, Infimum (cận dưới đúng) = {_fmt_num(min_item['y'])} khi x tiến về {_fmt_num(min_item['x'])}")
+    else:
+        conclusion.append(f"GTNN = {_fmt_num(min_item['y'])} tại x = {_fmt_num(min_item['x'])}")
+
     return {
-        "a": _fmt_num(a),
-        "b": _fmt_num(b),
-        "fa": _fmt_num(candidates[0]["y"]),
-        "fb": _fmt_num(candidates[1]["y"]),
+        "a": _fmt_num(a), "b": _fmt_num(b), "open_a": open_a, "open_b": open_b,
+        "fa": _fmt_num(candidates[0]["y"]) if candidates[0]["y"] is not None else "oo",
+        "fb": _fmt_num(candidates[1]["y"]) if candidates[1]["y"] is not None else "oo",
         "extrema_inside": extrema_inside,
         "max_point": _point_result(max_item),
         "min_point": _point_result(min_item),
-        "conclusion": f"GTLN = {_fmt_num(max_item['y'])} tại x = {_fmt_num(max_item['x'])}; GTNN = {_fmt_num(min_item['y'])} tại x = {_fmt_num(min_item['x'])}.",
+        "conclusion": "; ".join(conclusion) + ".",
     }
 
 
-def _analyze_line_position(f_expr, line: Mapping[str, float]) -> dict[str, Any]:
-    k = _finite_float(line.get("k"), "k")
-    b_val = _finite_float(line.get("b"), "b")
+def _analyze_line_position(f_expr, line: Mapping[str, Any]) -> dict[str, Any]:
+    mode = str(line.get("mode", "intersect"))
+    
+    if mode == "tangent_at":
+        x0 = _finite_float(line.get("x0", 0), "x0")
+        y0 = _eval_float(f_expr, x0)
+        try:
+            fp_expr = diff(f_expr, x)
+            k = _eval_float(fp_expr, x0)
+            b_val = y0 - k * x0
+        except Exception as e:
+            raise ValueError(f"Không thể tính đạo hàm tại x0={x0}")
+        equation = f"y = {_fmt_num(k)}(x - {_fmt_num(x0)}) + {_fmt_num(y0)}" if x0 >= 0 else f"y = {_fmt_num(k)}(x + {_fmt_num(-x0)}) + {_fmt_num(y0)}"
+        return {
+            "mode": "tangent_at",
+            "x0": _fmt_num(x0), "y0": _fmt_num(y0),
+            "k": _fmt_num(k), "b": _fmt_num(b_val),
+            "equation": equation,
+            "conclusion": f"Tiếp tuyến tại điểm ({_fmt_num(x0)}, {_fmt_num(y0)}) là: {equation}"
+        }
+
+    k = _finite_float(line.get("k", 0), "k")
+    b_val = _finite_float(line.get("b", 0), "b")
     line_expr = k * x + b_val
     diff_expr = simplify(f_expr - line_expr)
     intersections: list[dict[str, str]] = []
-    roots = []
+    
     roots = _solve_real_roots(diff_expr)[:12]
     if not roots:
         roots = _numeric_roots(diff_expr)
@@ -641,15 +687,29 @@ def _analyze_line_position(f_expr, line: Mapping[str, float]) -> dict[str, Any]:
             intersections.append({"x": _fmt_num(root_f), "y": _fmt_num(y_val), "x_exact": _fmt_sym(root)})
         except Exception:
             continue
+    
     split = sorted({float(item["x"]) for item in intersections if _is_numeric(item["x"])})
     above, below = _sign_intervals(diff_expr, split)
+    
+    area_text = None
+    if len(split) >= 2:
+        try:
+            from sympy import Integral
+            a_root, b_root = split[0], split[-1]
+            area_val = abs(float(Integral(Abs(diff_expr), (x, a_root, b_root)).evalf()))
+            area_text = _fmt_num(area_val)
+        except Exception:
+            pass
+
     return {
+        "mode": "intersect",
         "k": _fmt_num(k),
         "b": _fmt_num(b_val),
         "equation": f"y = {_fmt_num(k)}x + {_fmt_num(b_val)}",
         "intersection_count": len(intersections),
         "intersections": intersections,
         "relative_intervals": {"above": above, "below": below},
+        "area_between_curves": area_text,
     }
 
 
@@ -681,28 +741,68 @@ def _solve_parameter_conditions(parsed, options: Mapping[str, Any]) -> list[dict
 def _build_transform_preview(f_expr, transform: Mapping[str, Any]) -> dict[str, Any]:
     transform_type = str(transform.get("type", "vertical_shift"))
     value = _finite_float(transform.get("value", 0), "giá trị biến đổi")
+    
+    steps = []
     if transform_type == "vertical_shift":
         transformed = f_expr + value
-        label = f"f(x) + {_fmt_num(value)}"
+        label = f"f(x) {'+' if value >= 0 else '-'} {_fmt_num(abs(value))}"
+        dir_text = "lên trên" if value > 0 else "xuống dưới"
+        steps.append(f"Tịnh tiến đồ thị ban đầu {dir_text} {_fmt_num(abs(value))} đơn vị theo trục tung.")
+        
     elif transform_type == "horizontal_shift":
-        transformed = f_expr.subs(x, x + value)
-        label = f"f(x + {_fmt_num(value)})"
+        transformed = f_expr.subs(x, x - value)
+        label = f"f(x {'-' if value >= 0 else '+'} {_fmt_num(abs(value))})"
+        dir_text = "sang phải" if value > 0 else "sang trái"
+        steps.append(f"Tịnh tiến đồ thị ban đầu {dir_text} {_fmt_num(abs(value))} đơn vị theo trục hoành.")
+        
     elif transform_type == "vertical_scale":
         transformed = value * f_expr
         label = f"{_fmt_num(value)}f(x)"
+        steps.append(f"Kéo dãn/co đồ thị theo phương thẳng đứng với hệ số {_fmt_num(value)}.")
+        
     elif transform_type == "horizontal_scale":
         transformed = f_expr.subs(x, value * x)
         label = f"f({_fmt_num(value)}x)"
+        steps.append(f"Kéo dãn/co đồ thị theo phương ngang với hệ số {_fmt_num(value)}.")
+        
     elif transform_type == "reflect_x":
         transformed = -f_expr
         label = "-f(x)"
+        steps.append("Lấy đối xứng toàn bộ đồ thị qua trục hoành.")
+        
     elif transform_type == "reflect_y":
         transformed = f_expr.subs(x, -x)
         label = "f(-x)"
+        steps.append("Lấy đối xứng toàn bộ đồ thị qua trục tung.")
+        
+    elif transform_type == "absolute_all":
+        transformed = Abs(f_expr)
+        label = "|f(x)|"
+        steps.append("Bước 1: Giữ nguyên phần đồ thị phía trên trục hoành.")
+        steps.append("Bước 2: Lấy đối xứng phần đồ thị phía dưới trục hoành qua trục hoành.")
+        steps.append("Bước 3: Xóa bỏ phần đồ thị ban đầu nằm dưới trục hoành.")
+        
+    elif transform_type == "absolute_x":
+        transformed = f_expr.subs(x, Abs(x))
+        label = "f(|x|)"
+        steps.append("Bước 1: Giữ nguyên phần đồ thị bên phải trục tung (x ≥ 0).")
+        steps.append("Bước 2: Bỏ đi phần đồ thị bên trái trục tung (x < 0).")
+        steps.append("Bước 3: Lấy đối xứng phần đồ thị bên phải trục tung sang bên trái.")
+        
     else:
-        raise ValueError("Kiểu biến đổi đồ thị không hỗ trợ.")
+        transformed = f_expr
+        label = "f(x)"
+        steps.append("Không có biến đổi nào được áp dụng.")
+
     transformed = simplify(transformed)
-    return {"type": transform_type, "value": _fmt_num(value), "label": label, "expression": _fmt_sym(transformed), "expression_latex": latex(transformed)}
+    return {
+        "type": transform_type,
+        "value": _fmt_num(value),
+        "label": label,
+        "expression": _fmt_sym(transformed),
+        "expression_latex": latex(transformed),
+        "pedagogical_steps": steps
+    }
 
 
 def _solve_polynomial_nonnegative(poly) -> Any:
