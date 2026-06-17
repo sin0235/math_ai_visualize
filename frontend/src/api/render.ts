@@ -224,12 +224,13 @@ export async function exportScene(
 export async function solveProblem(
   scene: unknown,
   question: string,
+  geometryMethod: 'oxyz' | 'classical' = 'oxyz',
   runtimeSettings?: RuntimeSettings,
 ): Promise<SolveResponse> {
   return requestJson('/api/solve', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ scene, question, runtime_settings: compactRuntimeSettings(runtimeSettings) }),
+    body: JSON.stringify({ scene, question, geometry_method: geometryMethod, runtime_settings: compactRuntimeSettings(runtimeSettings) }),
   }, 'Không thể giải toán từ scene này.');
 }

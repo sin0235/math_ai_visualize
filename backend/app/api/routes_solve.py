@@ -22,6 +22,7 @@ router = APIRouter(prefix="/api", tags=["solver"])
 class SolveRequest(BaseModel):
     scene: dict[str, Any]
     question: str = Field(min_length=1, max_length=MAX_PROBLEM_TEXT_CHARS)
+    geometry_method: str = "oxyz"
     runtime_settings: RuntimeSettings | None = None
 
 
@@ -68,7 +69,7 @@ async def solve_problem(
         if settings.router9_api_key or settings.openrouter_api_key:
             from app.services.solver_explainer import explain_solver_result
 
-            result = await explain_solver_result(result, request.scene, settings, solver_profile)
+            result = await explain_solver_result(result, request.scene, settings, solver_profile, method=request.geometry_method)
             used_ai = True
     except Exception as e:
         raise bad_request_from_error(e, "solve_failed") from e

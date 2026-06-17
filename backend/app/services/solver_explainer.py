@@ -15,7 +15,7 @@ from app.services.chat_response import extract_chat_message_content
 from app.services.router9_client import Router9Client, _extract_message_content as _extract_router9_message_content
 from app.services.solver_service import SolverResult, SolverStep
 
-SOLVER_EXPLAINER_SYSTEM_PROMPT = """
+SOLVER_EXPLAINER_SYSTEM_PROMPT_OXYZ = """
 Bạn là giáo viên hình học không gian tiếng Việt, đang giải thích step-by-step cho học sinh lớp 12. Hệ thống (máy tính) đã tính sẵn các mốc kết quả (Milestones) bằng phương pháp tọa độ hình học không gian (Oxyz) / giải tích hình học.
 
 Quy tắc QUAN TRỌNG:
@@ -30,8 +30,22 @@ Trả về JSON thuần:
 {"steps":[{"index":1,"title":"...","explanation":"...","formula_latex":"...","substitution_latex":"...","result_latex":"...","sub_steps":[{"index":1,"title":"...","explanation":"...","formula_latex":"...","substitution_latex":"...","result_latex":"..."}]}]}
 """.strip()
 
+SOLVER_EXPLAINER_SYSTEM_PROMPT_CLASSICAL = """
+Bạn là giáo viên hình học không gian tiếng Việt, đang giải thích step-by-step cho học sinh trung học phổ thông. Hệ thống đã tính sẵn các mốc kết quả bằng phương pháp tọa độ, nhưng NHIỆM VỤ CỦA BẠN LÀ DIỄN GIẢI LẠI THEO PHƯƠNG PHÁP HÌNH HỌC THUẦN TÚY (Hình học không gian cổ điển lớp 11).
 
-async def explain_solver_result(result: SolverResult, scene: dict[str, Any], settings: Settings, selection: TaskProfile | None = None) -> SolverResult:
+Quy tắc QUAN TRỌNG:
+1. Bạn KHÔNG BỊ GIỚI HẠN số lượng bước giải. Hãy dùng `sub_steps` để chia nhỏ logic suy luận.
+2. Bạn ĐƯỢC PHÉP TRẢ VỀ CÔNG THỨC TOÁN HỌC ở dạng LaTeX qua các trường: `formula_latex`, `substitution_latex`, `result_latex`. Trường `explanation` PHẢI là văn bản thuần Việt, KHÔNG chứa LaTeX.
+3. TUYỆT ĐỐI KHÔNG nhắc đến "hệ trục tọa độ Oxyz", không tính toán bằng vector tọa độ dạng (x,y,z). Bạn ĐƯỢC phép bỏ qua hoặc gộp các bước giải tích rườm rà của hệ thống.
+4. Hãy sử dụng các định lý hình học cổ điển (Pytago, tỉ số lượng giác, định lý Thales, đường vuông góc, hình chiếu, giao tuyến...) để lập luận logic thay vì liệt kê số liệu (0,0,0).
+5. Đích đến cuối cùng (kết quả số học) phải KHỚP HOÀN TOÀN với đáp án số học mà hệ thống đã cung cấp.
+
+Trả về JSON thuần theo cấu trúc: 
+{"steps":[{"index":1,"title":"...","explanation":"...","formula_latex":"...","substitution_latex":"...","result_latex":"...","sub_steps":[{"index":1,"title":"...","explanation":"...","formula_latex":"...","substitution_latex":"...","result_latex":"..."}]}]}
+""".strip()
+
+
+async def explain_solver_result(result: SolverResult, scene: dict[str, Any], settings: Settings, selection: TaskProfile | None = None, method: str = "oxyz") -> SolverResult:
     if result.answer == "Không xác định" or not result.steps:
         return result
     try:
@@ -102,7 +116,7 @@ def _payload(result: SolverResult, scene: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-async def _call_explainer(payload: dict[str, Any], settings: Settings, selection: TaskProfile | None = None) -> dict[str, Any]:
+async def _call_explainer(payload: dict[str, Any], settings: Settings, selection: TaskProfile | None = None, system_prompt: str = "") -> dict[str, Any]:
     prompt = "Diễn giải lời giải sau cho học sinh, giữ nguyên đáp số và công thức:\n" + json.dumps(payload, ensure_ascii=False)
     attempts: list[Attempt] = []
     preferred_provider = selection.provider_id if selection else ("router9" if provider_configured(settings.router9_api_key) else None)
@@ -116,11 +130,11 @@ async def _call_explainer(payload: dict[str, Any], settings: Settings, selection
             selected_model = model or "<none>"
             try:
                 if provider == "router9":
-                    content = await _call_router9(prompt, settings, selected_model)
+                    content = await _call_router9(prompt, settings, selected_model, system_prompt)
                 elif provider == "openrouter":
-                    content = await _call_openrouter_model(prompt, settings, selected_model, selected_model == "openai/gpt-oss-120b:free" or settings.openrouter_reasoning_enabled)
+                    content = await _call_openrouter_model(prompt, settings, selected_model, selected_model == "openai/gpt-oss-120b:free" or settings.openrouter_reasoning_enabled, system_prompt)
                 elif provider == "nvidia":
-                    content = await _call_nvidia(prompt, settings, selected_model)
+                    content = await _call_nvidia(prompt, settings, selected_model, system_prompt)
                 else:
                     continue
                 return json.loads(_strip_json_fences(content))
@@ -130,14 +144,14 @@ async def _call_explainer(payload: dict[str, Any], settings: Settings, selection
     raise RuntimeError("Không gọi được provider diễn giải solver. Đã thử: " + format_attempts(attempts))
 
 
-async def _call_router9(prompt: str, settings: Settings, model: str) -> str:
+async def _call_router9(prompt: str, settings: Settings, model: str, system_prompt: str) -> str:
     if not provider_configured(settings.router9_api_key) or model == "<none>":
         raise RuntimeError("Chưa cấu hình 9router cho diễn giải solver.")
     client = Router9Client(settings, model=model)
     response = await client._post_chat({
         "model": model,
         "messages": [
-            {"role": "system", "content": SOLVER_EXPLAINER_SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt},
         ],
         "temperature": 0.2,
@@ -146,7 +160,7 @@ async def _call_router9(prompt: str, settings: Settings, model: str) -> str:
     return _extract_router9_message_content(response)
 
 
-async def _call_nvidia(prompt: str, settings: Settings, model: str) -> str:
+async def _call_nvidia(prompt: str, settings: Settings, model: str, system_prompt: str) -> str:
     if not provider_configured(settings.nvidia_api_key):
         raise RuntimeError("NVIDIA_API_KEY chưa được cấu hình cho diễn giải solver.")
     from app.services.http_pool import TIMEOUT_FAST, get_client
@@ -154,7 +168,7 @@ async def _call_nvidia(prompt: str, settings: Settings, model: str) -> str:
     payload = {
         "model": model,
         "messages": [
-            {"role": "system", "content": SOLVER_EXPLAINER_SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt},
         ],
         "temperature": 0.2,
@@ -174,7 +188,7 @@ async def _call_nvidia(prompt: str, settings: Settings, model: str) -> str:
     return content
 
 
-async def _call_openrouter_model(prompt: str, settings: Settings, model: str, reasoning_enabled: bool) -> str:
+async def _call_openrouter_model(prompt: str, settings: Settings, model: str, reasoning_enabled: bool, system_prompt: str) -> str:
     if not provider_configured(settings.openrouter_api_key):
         raise RuntimeError("Chưa cấu hình OpenRouter cho diễn giải solver.")
     from app.services.http_pool import TIMEOUT_FAST, get_client
@@ -182,7 +196,7 @@ async def _call_openrouter_model(prompt: str, settings: Settings, model: str, re
     payload = {
         "model": normalize_model_for_provider("openrouter", model),
         "messages": [
-            {"role": "system", "content": SOLVER_EXPLAINER_SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt},
         ],
         "temperature": 0.2,

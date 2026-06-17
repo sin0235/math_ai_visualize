@@ -152,6 +152,7 @@ export function SolverPanel({ scene, runtimeSettings, onHighlight }: SolverPanel
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<SolveResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [geometryMethod, setGeometryMethod] = useState<'oxyz' | 'classical'>('oxyz');
   const [activeStep, setActiveStep] = useState<number | null>(null);
   const [formulaHelpOpen, setFormulaHelpOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -163,7 +164,7 @@ export function SolverPanel({ scene, runtimeSettings, onHighlight }: SolverPanel
   async function handleSolve() {
     const trimmedQuestion = normalizedQuestion;
     if (!trimmedQuestion) return;
-    const cacheKey = `${sceneCacheKey}\n${trimmedQuestion}`;
+    const cacheKey = `${sceneCacheKey}\n${geometryMethod}\n${trimmedQuestion}`;
     setLoading(true);
     setError(null);
     setResult(null);
@@ -175,7 +176,7 @@ export function SolverPanel({ scene, runtimeSettings, onHighlight }: SolverPanel
         setResult(cached);
         return;
       }
-      const res = await solveProblem(scene, trimmedQuestion, runtimeSettings);
+      const res = await solveProblem(scene, trimmedQuestion, geometryMethod, runtimeSettings);
       cacheRef.current.set(cacheKey, res);
       setResult(res);
     } catch (e: unknown) {
@@ -209,6 +210,18 @@ export function SolverPanel({ scene, runtimeSettings, onHighlight }: SolverPanel
           <div className="sp-header-title">Giải toán từng bước</div>
           <div className="sp-header-sub">Click vào bước để highlight trên hình</div>
         </div>
+      </div>
+
+      {/* Method Selection */}
+      <div className="sp-method-toggle" style={{ display: 'flex', gap: '16px', marginBottom: '12px', fontSize: '0.85rem', padding: '0 12px' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', color: 'var(--ink)' }}>
+          <input type="radio" name="geometryMethod" value="oxyz" checked={geometryMethod === 'oxyz'} onChange={() => setGeometryMethod('oxyz')} />
+          Tọa độ (Oxyz)
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', color: 'var(--ink)' }}>
+          <input type="radio" name="geometryMethod" value="classical" checked={geometryMethod === 'classical'} onChange={() => setGeometryMethod('classical')} />
+          Hình học thuần túy (AI)
+        </label>
       </div>
 
       {/* Input */}
