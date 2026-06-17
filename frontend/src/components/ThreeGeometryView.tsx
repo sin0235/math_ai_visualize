@@ -171,7 +171,6 @@ export function ThreeGeometryView({ scene, interaction, embedded = false, highli
   return (
     <div className="viewer-card">
       <div className="viewer-header viewer-header-row">
-        <span>Three.js Renderer</span>
         <div className="viewer-controls">
           <span className="viewer-hint">{viewerHint(interaction?.mode, dragViewEnabled)}</span>
           <button type="button" className="viewer-toggle" onClick={() => setDragViewEnabled((current) => !current)}>

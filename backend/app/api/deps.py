@@ -14,6 +14,18 @@ async def get_current_user(
     db: DatabaseClient = Depends(get_database),
     settings: Settings = Depends(get_settings),
 ) -> UserRecord:
+    if settings.dev_bypass_auth:
+        return UserRecord(
+            id="dev_user",
+            email="dev@example.com",
+            password_hash="",
+            created_at="2024-01-01T00:00:00Z",
+            updated_at="2024-01-01T00:00:00Z",
+            role="admin",
+            status="active",
+            display_name="Dev User",
+            email_verified_at="2024-01-01T00:00:00Z",
+        )
     if not hinh_session:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Bạn chưa đăng nhập.")
     session = await SessionRepository(db).find_by_token(hinh_session)
@@ -32,7 +44,20 @@ async def get_current_user(
 async def get_optional_current_user(
     hinh_session: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
     db: DatabaseClient = Depends(get_database),
+    settings: Settings = Depends(get_settings),
 ) -> UserRecord | None:
+    if settings.dev_bypass_auth:
+        return UserRecord(
+            id="dev_user",
+            email="dev@example.com",
+            password_hash="",
+            created_at="2024-01-01T00:00:00Z",
+            updated_at="2024-01-01T00:00:00Z",
+            role="admin",
+            status="active",
+            display_name="Dev User",
+            email_verified_at="2024-01-01T00:00:00Z",
+        )
     if not hinh_session:
         return None
     session = await SessionRepository(db).find_by_token(hinh_session)

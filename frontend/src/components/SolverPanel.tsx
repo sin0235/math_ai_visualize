@@ -213,15 +213,16 @@ export function SolverPanel({ scene, runtimeSettings, onHighlight }: SolverPanel
       </div>
 
       {/* Method Selection */}
-      <div className="sp-method-toggle" style={{ display: 'flex', gap: '16px', marginBottom: '12px', fontSize: '0.85rem', padding: '0 12px' }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', color: 'var(--ink)' }}>
-          <input type="radio" name="geometryMethod" value="oxyz" checked={geometryMethod === 'oxyz'} onChange={() => setGeometryMethod('oxyz')} />
-          Tọa độ (Oxyz)
-        </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', color: 'var(--ink)' }}>
-          <input type="radio" name="geometryMethod" value="classical" checked={geometryMethod === 'classical'} onChange={() => setGeometryMethod('classical')} />
-          Hình học thuần túy (AI)
-        </label>
+      <div className="sp-method-toggle" style={{ marginBottom: '12px', padding: '0 12px' }}>
+        <select 
+          className="sp-input" 
+          style={{ width: '100%', fontSize: '0.9rem', padding: '8px 12px', cursor: 'pointer' }}
+          value={geometryMethod}
+          onChange={(e) => setGeometryMethod(e.target.value as 'oxyz' | 'classical')}
+        >
+          <option value="oxyz">Tọa độ hóa</option>
+          <option value="classical">Tương quan hình học</option>
+        </select>
       </div>
 
       {/* Input */}
