@@ -139,7 +139,12 @@ async def _call_explainer(payload: dict[str, Any], settings: Settings, selection
                     content = await _call_nvidia(prompt, settings, selected_model, system_prompt)
                 else:
                     continue
-                return json.loads(_strip_json_fences(content))
+                parsed = _strip_json_fences(content)
+                if parsed is not None:
+                    return parsed
+                else:
+                    print(f"FAILED TO PARSE JSON (json_repair returned None). RAW CONTENT:\n{content}")
+                    raise ValueError("Could not parse JSON from model output")
             except Exception as error:
                 attempts.append(Attempt(provider, selected_model, "solver_explainer", str(error)))
 
@@ -268,7 +273,8 @@ def _sanitize_explanation(text: str) -> str:
     return cleaned
 
 
-def _strip_json_fences(content: str) -> str:
+
+def _strip_json_fences(content: str) -> dict[str, Any] | None:
     text = content.strip()
     if text.startswith("```json"):
         text = text[7:]
@@ -278,17 +284,21 @@ def _strip_json_fences(content: str) -> str:
         text = text[:-3]
     text = text.strip()
 
-    end = text.rfind("}")
-    if end > -1:
-        start = 0
-        while start >= 0 and start < end:
-            start = text.find("{", start)
-            if start == -1:
-                break
-            try:
-                json.loads(text[start:end + 1])
-                return text[start:end + 1]
-            except json.JSONDecodeError:
-                start += 1
-                
-    return text
+    try:
+        import json_repair
+        # Try to repair and parse the text directly. json_repair is extremely robust
+        # and will find the JSON object even if there's preamble text or broken escapes.
+        parsed = json_repair.loads(text)
+        if isinstance(parsed, dict):
+            return parsed
+        
+        # If it returns a string or list, try finding the first { manually
+        start = text.find("{")
+        if start >= 0:
+            parsed = json_repair.loads(text[start:])
+            if isinstance(parsed, dict):
+                return parsed
+    except Exception:
+        pass
+        
+    return None
