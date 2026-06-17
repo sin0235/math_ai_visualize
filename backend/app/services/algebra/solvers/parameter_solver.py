@@ -64,6 +64,13 @@ def solve_parameter(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
     verification = _verify_quadratic_template(template, condition)
     answer = f"Điều kiện tham số: {condition_text}"
     steps.append(conclusion_step(3, answer, condition_latex))
+    
+    milestones = [
+        f"Phương trình gốc: {_quadratic_equation_latex(template)}",
+        f"Điều kiện: {latex}",
+        f"Kết quả: {condition_latex}"
+    ]
+    
     return AlgebraSolveResponse(
         input=problem.raw_input,
         normalized_input=problem.normalized_input,
@@ -74,6 +81,7 @@ def solve_parameter(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
         answer_latex=condition_latex,
         solution_set=AlgebraSolutionSet(kind="conditions", text=condition_text, latex=condition_latex),
         steps=steps,
+        milestones=milestones,
         verification=verification,
         assumptions=["Template tham số hiện hỗ trợ phương trình/bất phương trình bậc hai một tham số."],
         warnings=[] if verification.status == "verified" else ["Điều kiện tham số chỉ được kiểm chứng bằng mẫu đại diện."],

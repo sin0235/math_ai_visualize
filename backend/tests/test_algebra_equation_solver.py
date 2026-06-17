@@ -2,6 +2,24 @@ from app.schemas.algebra import AlgebraSolveRequest
 from app.services.algebra import solve_algebra
 
 
+def test_equation_solver_uses_requested_complex_domain():
+    result = solve_algebra(AlgebraSolveRequest(input="x^2 + 1 = 0", domain="C"))
+
+    assert result.status == "solved"
+    assert result.solution_set.kind == "finite"
+    assert {value.text for value in result.solution_set.values} == {"-I", "I"}
+
+
+def test_equation_solver_uses_requested_integer_domain():
+    result = solve_algebra(AlgebraSolveRequest(input="x^2 - 2 = 0", domain="Z"))
+
+    assert result.status == "solved"
+    assert result.solution_set.kind == "empty"
+    assert result.solution_set.values == []
+
+
+
+
 def test_equation_solver_solves_quadratic():
     result = solve_algebra(AlgebraSolveRequest(input="x^2 - 5*x + 6 = 0"))
 
@@ -58,7 +76,7 @@ def test_equation_solver_reports_empty_solution_set():
     assert result.status == "solved"
     assert result.solution_set.kind == "empty"
     assert "Vô nghiệm" in result.answer
-    assert any("x - 1" in assumption for assumption in result.assumptions)
+    assert any(r"\left(-\infty, 1\right)" in assumption for assumption in result.assumptions)
     domain_step = next(step for step in result.steps if step.kind == "domain")
     assert domain_step.why
     assert domain_step.pitfall and "bỏ qua điều kiện" in domain_step.pitfall
@@ -92,8 +110,8 @@ def test_equation_solver_filters_extraneous_sqrt_solution():
 def test_equation_solver_splits_factored_denominator_assumptions():
     result = solve_algebra(AlgebraSolveRequest(input="1/((x-1)*(x+2))=0"))
 
-    assert "x - 1 khác 0" in result.assumptions
-    assert "x + 2 khác 0" in result.assumptions
+    assert any(r"\left(1, \infty\right)" in a for a in result.assumptions)
+
 
 
 def test_equation_solver_keeps_original_rational_domain_after_simplification():
@@ -101,7 +119,7 @@ def test_equation_solver_keeps_original_rational_domain_after_simplification():
 
     assert result.status == "solved"
     assert {value.text for value in result.solution_set.values} == {"-1"}
-    assert "x - 1 khác 0" in result.assumptions
+    assert any(r"\left(1, \infty\right)" in a for a in result.assumptions)
     titles = [step.title for step in result.steps]
     assert "Quy đồng và khử mẫu" in titles
     assert "Lọc nghiệm theo điều kiện gốc" in titles

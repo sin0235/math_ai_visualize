@@ -1,9 +1,43 @@
 from __future__ import annotations
 
 import sympy as sp
+from sympy.calculus.util import continuous_domain
 
+def compute_domain(expression: sp.Expr, variable: sp.Symbol, base_domain: sp.Set = sp.S.Reals) -> sp.Set:
+    """Computes the continuous domain of an expression."""
+    try:
+        return continuous_domain(expression, variable, base_domain)
+    except Exception:
+        return base_domain
+
+def format_domain(domain: sp.Set, variable: sp.Symbol) -> str:
+    """Formats a SymPy Set into a readable LaTeX string."""
+    if domain == sp.S.Reals:
+        return f"{sp.latex(variable)} \\in \\mathbb{{R}}"
+    elif domain == sp.S.EmptySet:
+        return f"{sp.latex(variable)} \\in \\emptyset"
+    else:
+        return f"{sp.latex(variable)} \\in {sp.latex(domain)}"
 
 def domain_assumptions_from_expression(expression: sp.Expr, variable: sp.Symbol) -> list[str]:
+    """
+    Extracts the domain assumptions from an expression.
+    Now uses rigorous SymPy Set computations.
+    """
+    domain = compute_domain(expression, variable)
+    
+    # If the domain is Reals, no assumptions needed.
+    if domain == sp.S.Reals:
+        return []
+    
+    # If it's a ConditionSet or contains one, continuous_domain couldn't simplify it. Fallback to heuristic.
+    if domain.has(sp.ConditionSet):
+        return _fallback_assumptions(expression, variable)
+        
+    return [format_domain(domain, variable)]
+
+
+def _fallback_assumptions(expression: sp.Expr, variable: sp.Symbol) -> list[str]:
     assumptions: list[str] = []
     denominator = sp.denom(expression)
     if denominator != 1 and denominator.has(variable):
@@ -23,13 +57,11 @@ def domain_assumptions_from_expression(expression: sp.Expr, variable: sp.Symbol)
                 assumptions.append(f"{sp.sstr(_normalize_domain_expression(base))} > 0 và {sp.sstr(_normalize_domain_expression(base))} != 1")
     return _unique(assumptions)
 
-
 def _normalize_domain_expression(expression: sp.Expr) -> sp.Expr:
     numerator, denominator = sp.fraction(sp.factor(expression))
     if denominator.is_positive:
         return numerator
     return sp.factor(expression)
-
 
 def _nonzero_assumptions(expression: sp.Expr, variable: sp.Symbol) -> list[str]:
     factors = sp.factor_list(expression)[1]
@@ -37,7 +69,6 @@ def _nonzero_assumptions(expression: sp.Expr, variable: sp.Symbol) -> list[str]:
     if not parts:
         return [f"{sp.sstr(expression)} khác 0"]
     return [f"{sp.sstr(part)} khác 0" for part in parts]
-
 
 def _unique(values: list[str]) -> list[str]:
     seen: set[str] = set()

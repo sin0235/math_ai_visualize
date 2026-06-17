@@ -175,6 +175,14 @@ class Parameter(BaseModel):
     step: float = 0.1
 
 
+class CasIssueResponse(BaseModel):
+    relation_type: str
+    description: str
+    severity: str = "warning"
+    auto_fixed: bool = False
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
 SceneObject = Point2D | Point3D | Segment | Line2D | Vector2D | Vector3D | Line3D | Circle2D | FunctionGraph | Face | Sphere | Plane
 
 
@@ -188,6 +196,7 @@ class MathScene(BaseModel):
     annotations: list[Annotation] = Field(default_factory=list)
     parameters: list[Parameter] = Field(default_factory=list)
     view: SceneView
+    cas_issues: list[CasIssueResponse] = Field(default_factory=list)
 
 
 class AdvancedRenderSettings(BaseModel):
@@ -423,6 +432,7 @@ class RenderResponse(BaseModel):
     scene: MathScene
     payload: RenderPayload
     warnings: list[str] = Field(default_factory=list)
+    cas_issues: list[CasIssueResponse] = Field(default_factory=list)
 
 
 class RenderJobCreateResponse(BaseModel):

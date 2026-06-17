@@ -1,0 +1,6 @@
+{
+  "$schema": "https://app.kilo.ai/config.json",
+  "commit_message": {
+    "prompt": "commit bằng tiếng việt, chi tiết các nội dung đã thực hiện"
+  }
+}

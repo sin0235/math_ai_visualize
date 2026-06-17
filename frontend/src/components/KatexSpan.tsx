@@ -36,6 +36,37 @@ export function KatexSpan({ tex, display = false, className }: KatexSpanProps) {
   );
 }
 
+export function MixedTextRenderer({ text, className }: { text: string; className?: string }) {
+  if (!text.includes('$') && !text.includes('\\(') && !text.includes('\\[')) {
+    // If it is purely math (no Vietnamese chars) and contains math symbols, treat it as math
+    if (/^[^À-ỹ]+$/.test(text) && /\\[a-zA-Z]+|[=^_{}]/.test(text)) {
+      return <KatexSpan tex={text} className={className} />;
+    }
+    return <span className={className}>{text}</span>;
+  }
+  
+  const parts = text.split(/(\$\$[\s\S]+?\$\$|\$[\s\S]+?\$|\\\[[\s\S]+?\\\]|\\\([\s\S]+?\\\))/g);
+  return (
+    <span className={className}>
+      {parts.map((part, index) => {
+        if (part.startsWith('$$') && part.endsWith('$$')) {
+          return <KatexSpan key={index} tex={part.slice(2, -2)} display={false} className="inline-math" />;
+        }
+        if (part.startsWith('$') && part.endsWith('$')) {
+          return <KatexSpan key={index} tex={part.slice(1, -1)} display={false} className="inline-math" />;
+        }
+        if (part.startsWith('\\[') && part.endsWith('\\]')) {
+          return <KatexSpan key={index} tex={part.slice(2, -2)} display={false} className="inline-math" />;
+        }
+        if (part.startsWith('\\(') && part.endsWith('\\)')) {
+          return <KatexSpan key={index} tex={part.slice(2, -2)} display={false} className="inline-math" />;
+        }
+        return <span key={index}>{part}</span>;
+      })}
+    </span>
+  );
+}
+
 function renderKatex(value: string, display: boolean): string | null {
   try {
     const html = katex.renderToString(value, {

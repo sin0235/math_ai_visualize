@@ -21,7 +21,7 @@ from sympy import (
     Rational, zoo, nan, latex,
     sympify, SympifyError, fraction, cancel,
     sin, cos, tan, cot, asin, acos, atan, log, exp, sqrt, pi, E, Abs,
-    solveset, Interval, Poly, discriminant, Eq, solve_univariate_inequality,
+    solveset, Interval, Poly, discriminant, Eq, FiniteSet, solve_univariate_inequality, default_sort_key,
 )
 from sympy.calculus.util import continuous_domain, function_range
 from sympy.calculus.singularities import singularities
@@ -436,7 +436,7 @@ def analyze_function(
     concavity_breakpoints: list[float] = []
     if fpp_simplified is not None:
         try:
-            for z in solve(fpp_simplified, x):
+            for z in _solve_real_roots(fpp_simplified):
                 try:
                     z_f = float(z.evalf())
                     left = float(fpp_simplified.subs(x, z - Rational(1, 1000)).evalf())
@@ -629,10 +629,7 @@ def _analyze_line_position(f_expr, line: Mapping[str, float]) -> dict[str, Any]:
     diff_expr = simplify(f_expr - line_expr)
     intersections: list[dict[str, str]] = []
     roots = []
-    try:
-        roots = list(solve(diff_expr, x))[:12]
-    except Exception:
-        roots = []
+    roots = _solve_real_roots(diff_expr)[:12]
     if not roots:
         roots = _numeric_roots(diff_expr)
     for root in roots:
@@ -741,6 +738,42 @@ def _solve_extrema_count(poly, expected: int) -> dict[str, Any]:
     return {"label": f"Có {expected} cực trị", "solution": "Chưa hỗ trợ dạng này.", "solution_latex": "", "warnings": warnings}
 
 
+def _solve_real_roots(expr) -> list:
+    try:
+        polynomial = Poly(expr, x)
+        roots = polynomial.real_roots()
+    except Exception:
+        roots = None
+    if roots is None:
+        try:
+            solution_set = solveset(expr, x, domain=S.Reals)
+        except Exception:
+            solution_set = S.EmptySet
+        if isinstance(solution_set, FiniteSet):
+            roots = list(solution_set)
+        else:
+            try:
+                roots = solve(expr, x)
+            except Exception:
+                roots = []
+    result: list = []
+    seen: set[str] = set()
+    for root in roots:
+        try:
+            simplified = simplify(root)
+            if simplified.is_real is False:
+                continue
+            float(simplified.evalf())
+        except Exception:
+            continue
+        key = str(simplified)
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(simplified)
+    return sorted(result, key=default_sort_key)
+
+
 def _numeric_roots(expr) -> list[float]:
     roots: list[float] = []
     last_x = -20.0
@@ -786,6 +819,33 @@ def _sign_intervals(expr, breakpoints: list[float]) -> tuple[list[str], list[str
     positive: list[str] = []
     negative: list[str] = []
     bounds = [-1e9] + breakpoints + [1e9]
+    
+    # 1. Analytical try
+    try:
+        pos_set = sp.solveset(expr > 0, x, domain=sp.S.Reals)
+        neg_set = sp.solveset(expr < 0, x, domain=sp.S.Reals)
+        
+        if not pos_set.has(sp.ConditionSet) and not neg_set.has(sp.ConditionSet):
+            def format_set(s):
+                res = []
+                args = s.args if isinstance(s, sp.Union) else [s]
+                for arg in args:
+                    if isinstance(arg, sp.Interval):
+                        a_str = _bound_label(float(arg.start)) if arg.start.is_finite else ("-∞" if arg.start == -sp.oo else "+∞")
+                        b_str = _bound_label(float(arg.end)) if arg.end.is_finite else ("-∞" if arg.end == -sp.oo else "+∞")
+                        res.append(f"({a_str}; {b_str})")
+                return res
+            
+            positive = format_set(pos_set)
+            negative = format_set(neg_set)
+            if positive or negative:
+                return positive, negative
+    except Exception:
+        pass
+
+    # 2. Fallback numeric sampling
+    positive = []
+    negative = []
     for i in range(len(bounds) - 1):
         mid = (bounds[i] + bounds[i + 1]) / 2
         try:
@@ -887,24 +947,28 @@ def _fmt_lim(val) -> str:
 
 def _classify_stationary_point(fp_simplified, cp, fpp_simplified=None) -> tuple[str, str]:
     """
-    Phân loại điểm dừng theo đổi dấu của f'(x) quanh cp.
-    Ưu tiên tiêu chí đổi dấu (ổn định hơn cho trường hợp f''(cp)=0).
+    Phân loại điểm dừng bằng phương pháp giải tích chính xác.
     """
+    # 1. Analytical: Evaluate limits exactly
     try:
-        cp_f = float(cp.evalf())
+        left_lim = sp.limit(fp_simplified, x, cp, dir='-')
+        right_lim = sp.limit(fp_simplified, x, cp, dir='+')
+        
+        if left_lim.is_real and right_lim.is_real:
+            left_sign = 1 if left_lim > 0 else (-1 if left_lim < 0 else None)
+            right_sign = 1 if right_lim > 0 else (-1 if right_lim < 0 else None)
+            
+            if left_sign is not None and right_sign is not None:
+                if left_sign < 0 < right_sign:
+                    return "min", "CT"
+                if left_sign > 0 > right_sign:
+                    return "max", "CĐ"
+                if left_sign == right_sign:
+                    return "unknown", "Điểm dừng"
     except Exception:
-        return "unknown", "Điểm đặc biệt"
+        pass
 
-    left_sign, right_sign = _sample_derivative_signs(fp_simplified, cp_f)
-    if left_sign is not None and right_sign is not None:
-        if left_sign < 0 < right_sign:
-            return "min", "CT"
-        if left_sign > 0 > right_sign:
-            return "max", "CĐ"
-        if left_sign == right_sign:
-            return "unknown", "Điểm dừng"
-
-    # Fallback khi không lấy mẫu được dấu f' (miền xác định hẹp, biểu thức khó,...)
+    # 2. Fallback f''(cp)
     if fpp_simplified is not None:
         try:
             fpp_val = float(fpp_simplified.subs(x, cp).evalf())
@@ -915,6 +979,20 @@ def _classify_stationary_point(fp_simplified, cp, fpp_simplified=None) -> tuple[
                     return "max", "CĐ"
         except Exception:
             pass
+
+    # 3. Fallback sampling
+    try:
+        cp_f = float(cp.evalf())
+        left_sign, right_sign = _sample_derivative_signs(fp_simplified, cp_f)
+        if left_sign is not None and right_sign is not None:
+            if left_sign < 0 < right_sign:
+                return "min", "CT"
+            if left_sign > 0 > right_sign:
+                return "max", "CĐ"
+            if left_sign == right_sign:
+                return "unknown", "Điểm dừng"
+    except Exception:
+        pass
 
     return "unknown", "Điểm dừng"
 

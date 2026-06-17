@@ -30,6 +30,12 @@ def solve_combinatorics_probability(problem: ParsedAlgebraProblem) -> AlgebraSol
     ))
     answer = f"Kết quả: {sp.sstr(result)}"
     steps.append(conclusion_step(3, answer, sp.latex(result)))
+    
+    milestones = [
+        f"Biểu thức gốc: {latex}",
+        f"Kết quả: {sp.latex(result)}"
+    ]
+    
     verification = AlgebraVerificationReport(
         status="verified",
         checks=[AlgebraVerificationCheck(name="combinatorics_constraints_valid", status="pass", detail="Các tham số tổ hợp thỏa điều kiện nguyên không âm trong phạm vi hỗ trợ.")],
@@ -45,6 +51,7 @@ def solve_combinatorics_probability(problem: ParsedAlgebraProblem) -> AlgebraSol
         answer_latex=sp.latex(result),
         solution_set=AlgebraSolutionSet(kind="expression", text=sp.sstr(result), latex=sp.latex(result)),
         steps=steps,
+        milestones=milestones,
         verification=verification,
         assumptions=[],
         warnings=[],

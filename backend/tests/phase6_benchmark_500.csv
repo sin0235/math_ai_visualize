@@ -1,0 +1,501 @@
+id,category,expression,description
+1,domain_ir,1 / (x^3 - 10*x),Test exact domain computation (sp.Set)
+2,domain_ir,log(x - 10) + log(6 - x),Test exact domain computation (sp.Set)
+3,domain_ir,log(x - 6) + log(4 - x),Test exact domain computation (sp.Set)
+4,domain_ir,sqrt(9 - x^2) / log(x),Test exact domain computation (sp.Set)
+5,domain_ir,sqrt(5 - x^2) / log(x),Test exact domain computation (sp.Set)
+6,domain_ir,1 / (x^2 - 5),Test exact domain computation (sp.Set)
+7,domain_ir,1 / log(x - 4),Test exact domain computation (sp.Set)
+8,domain_ir,tan(x - 2),Test exact domain computation (sp.Set)
+9,domain_ir,1 / (x^2 - 9),Test exact domain computation (sp.Set)
+10,domain_ir,1 / (x^3 - 5*x),Test exact domain computation (sp.Set)
+11,domain_ir,log(x - 10) + log(9 - x),Test exact domain computation (sp.Set)
+12,domain_ir,sqrt(3 - x^2) / log(x),Test exact domain computation (sp.Set)
+13,domain_ir,log(x - 5) + log(7 - x),Test exact domain computation (sp.Set)
+14,domain_ir,log(x - 2) + log(7 - x),Test exact domain computation (sp.Set)
+15,domain_ir,1 / (x^2 - 3),Test exact domain computation (sp.Set)
+16,domain_ir,1 / log(x - 5),Test exact domain computation (sp.Set)
+17,domain_ir,sqrt(9 - x^2) / log(x),Test exact domain computation (sp.Set)
+18,domain_ir,1 / (x^2 - 8),Test exact domain computation (sp.Set)
+19,domain_ir,1 / log(x - 4),Test exact domain computation (sp.Set)
+20,domain_ir,log(x - 1) + log(6 - x),Test exact domain computation (sp.Set)
+21,domain_ir,1 / (x^3 - 4*x),Test exact domain computation (sp.Set)
+22,domain_ir,log(x - 1) + log(3 - x),Test exact domain computation (sp.Set)
+23,domain_ir,log(x - 9) + log(6 - x),Test exact domain computation (sp.Set)
+24,domain_ir,1 / log(x - 7),Test exact domain computation (sp.Set)
+25,domain_ir,tan(x - 9),Test exact domain computation (sp.Set)
+26,domain_ir,sqrt(x - 3) / (x - 5),Test exact domain computation (sp.Set)
+27,domain_ir,1 / (x^2 - 1),Test exact domain computation (sp.Set)
+28,domain_ir,sqrt((x - 6)*(x - 7)),Test exact domain computation (sp.Set)
+29,domain_ir,1 / log(x - 5),Test exact domain computation (sp.Set)
+30,domain_ir,1 / (x^2 - 10),Test exact domain computation (sp.Set)
+31,domain_ir,sqrt(6 - x^2) / log(x),Test exact domain computation (sp.Set)
+32,domain_ir,sqrt((x - 8)*(x - 7)),Test exact domain computation (sp.Set)
+33,domain_ir,1 / log(x - 7),Test exact domain computation (sp.Set)
+34,domain_ir,1 / (x^3 - 10*x),Test exact domain computation (sp.Set)
+35,domain_ir,1 / (x^2 - 2),Test exact domain computation (sp.Set)
+36,domain_ir,1 / log(x - 3),Test exact domain computation (sp.Set)
+37,domain_ir,1 / log(x - 6),Test exact domain computation (sp.Set)
+38,domain_ir,1 / (x^3 - 10*x),Test exact domain computation (sp.Set)
+39,domain_ir,log(x - 6) + log(1 - x),Test exact domain computation (sp.Set)
+40,domain_ir,sqrt((x - 4)*(x - 8)),Test exact domain computation (sp.Set)
+41,domain_ir,1 / (x^3 - 7*x),Test exact domain computation (sp.Set)
+42,domain_ir,1 / (x^3 - 1*x),Test exact domain computation (sp.Set)
+43,domain_ir,1 / log(x - 4),Test exact domain computation (sp.Set)
+44,domain_ir,sqrt((x - 3)*(x - 9)),Test exact domain computation (sp.Set)
+45,domain_ir,1 / (x^2 - 3),Test exact domain computation (sp.Set)
+46,domain_ir,tan(x - 8),Test exact domain computation (sp.Set)
+47,domain_ir,sqrt((x - 3)*(x - 2)),Test exact domain computation (sp.Set)
+48,domain_ir,sqrt((x - 6)*(x - 1)),Test exact domain computation (sp.Set)
+49,domain_ir,1 / log(x - 8),Test exact domain computation (sp.Set)
+50,domain_ir,tan(x - 10),Test exact domain computation (sp.Set)
+51,domain_ir,tan(x - 5),Test exact domain computation (sp.Set)
+52,domain_ir,1 / (x^2 - 7),Test exact domain computation (sp.Set)
+53,domain_ir,sqrt(5 - x^2) / log(x),Test exact domain computation (sp.Set)
+54,domain_ir,1 / (x^2 - 5),Test exact domain computation (sp.Set)
+55,domain_ir,sqrt(x - 8) / (x - 9),Test exact domain computation (sp.Set)
+56,domain_ir,1 / (x^2 - 3),Test exact domain computation (sp.Set)
+57,domain_ir,sqrt((x - 3)*(x - 4)),Test exact domain computation (sp.Set)
+58,domain_ir,sqrt((x - 10)*(x - 1)),Test exact domain computation (sp.Set)
+59,domain_ir,log(x - 6) + log(10 - x),Test exact domain computation (sp.Set)
+60,domain_ir,log(x - 1) + log(3 - x),Test exact domain computation (sp.Set)
+61,domain_ir,sqrt(x - 5) / (x - 4),Test exact domain computation (sp.Set)
+62,domain_ir,sqrt(2 - x^2) / log(x),Test exact domain computation (sp.Set)
+63,domain_ir,1 / (x^2 - 10),Test exact domain computation (sp.Set)
+64,domain_ir,1 / (x^3 - 7*x),Test exact domain computation (sp.Set)
+65,domain_ir,1 / (x^2 - 1),Test exact domain computation (sp.Set)
+66,domain_ir,log(x - 2) + log(5 - x),Test exact domain computation (sp.Set)
+67,domain_ir,sqrt(x - 4) / (x - 5),Test exact domain computation (sp.Set)
+68,domain_ir,1 / (x^3 - 9*x),Test exact domain computation (sp.Set)
+69,domain_ir,1 / log(x - 7),Test exact domain computation (sp.Set)
+70,domain_ir,sqrt(x - 9) / (x - 4),Test exact domain computation (sp.Set)
+71,domain_ir,1 / (x^3 - 7*x),Test exact domain computation (sp.Set)
+72,domain_ir,1 / (x^2 - 1),Test exact domain computation (sp.Set)
+73,domain_ir,1 / log(x - 7),Test exact domain computation (sp.Set)
+74,domain_ir,log(x - 2) + log(10 - x),Test exact domain computation (sp.Set)
+75,domain_ir,1 / (x^3 - 1*x),Test exact domain computation (sp.Set)
+76,domain_ir,1 / (x^2 - 5),Test exact domain computation (sp.Set)
+77,domain_ir,1 / (x^3 - 3*x),Test exact domain computation (sp.Set)
+78,domain_ir,tan(x - 1),Test exact domain computation (sp.Set)
+79,domain_ir,sqrt(2 - x^2) / log(x),Test exact domain computation (sp.Set)
+80,domain_ir,1 / (x^3 - 7*x),Test exact domain computation (sp.Set)
+81,domain_ir,sqrt(x - 4) / (x - 1),Test exact domain computation (sp.Set)
+82,domain_ir,sqrt(8 - x^2) / log(x),Test exact domain computation (sp.Set)
+83,domain_ir,sqrt(7 - x^2) / log(x),Test exact domain computation (sp.Set)
+84,domain_ir,1 / log(x - 4),Test exact domain computation (sp.Set)
+85,domain_ir,sqrt((x - 6)*(x - 4)),Test exact domain computation (sp.Set)
+86,domain_ir,1 / log(x - 3),Test exact domain computation (sp.Set)
+87,domain_ir,1 / (x^2 - 10),Test exact domain computation (sp.Set)
+88,domain_ir,1 / log(x - 1),Test exact domain computation (sp.Set)
+89,domain_ir,tan(x - 2),Test exact domain computation (sp.Set)
+90,domain_ir,sqrt(2 - x^2) / log(x),Test exact domain computation (sp.Set)
+91,domain_ir,log(x - 2) + log(7 - x),Test exact domain computation (sp.Set)
+92,domain_ir,log(x - 9) + log(6 - x),Test exact domain computation (sp.Set)
+93,domain_ir,1 / (x^3 - 10*x),Test exact domain computation (sp.Set)
+94,domain_ir,tan(x - 9),Test exact domain computation (sp.Set)
+95,domain_ir,1 / (x^3 - 4*x),Test exact domain computation (sp.Set)
+96,domain_ir,sqrt(5 - x^2) / log(x),Test exact domain computation (sp.Set)
+97,domain_ir,tan(x - 1),Test exact domain computation (sp.Set)
+98,domain_ir,tan(x - 9),Test exact domain computation (sp.Set)
+99,domain_ir,sqrt((x - 2)*(x - 7)),Test exact domain computation (sp.Set)
+100,domain_ir,sqrt(x - 9) / (x - 8),Test exact domain computation (sp.Set)
+101,domain_ir,sqrt(5 - x^2) / log(x),Test exact domain computation (sp.Set)
+102,domain_ir,sqrt(x - 3) / (x - 1),Test exact domain computation (sp.Set)
+103,domain_ir,sqrt(x - 4) / (x - 3),Test exact domain computation (sp.Set)
+104,domain_ir,1 / (x^3 - 10*x),Test exact domain computation (sp.Set)
+105,domain_ir,sqrt(3 - x^2) / log(x),Test exact domain computation (sp.Set)
+106,domain_ir,sqrt((x - 8)*(x - 6)),Test exact domain computation (sp.Set)
+107,domain_ir,sqrt(x - 10) / (x - 4),Test exact domain computation (sp.Set)
+108,domain_ir,log(x - 9) + log(2 - x),Test exact domain computation (sp.Set)
+109,domain_ir,sqrt((x - 8)*(x - 4)),Test exact domain computation (sp.Set)
+110,domain_ir,1 / (x^2 - 6),Test exact domain computation (sp.Set)
+111,domain_ir,sqrt(x - 10) / (x - 2),Test exact domain computation (sp.Set)
+112,domain_ir,sqrt((x - 6)*(x - 9)),Test exact domain computation (sp.Set)
+113,domain_ir,tan(x - 2),Test exact domain computation (sp.Set)
+114,domain_ir,sqrt(5 - x^2) / log(x),Test exact domain computation (sp.Set)
+115,domain_ir,tan(x - 8),Test exact domain computation (sp.Set)
+116,domain_ir,1 / (x^2 - 7),Test exact domain computation (sp.Set)
+117,domain_ir,log(x - 3) + log(8 - x),Test exact domain computation (sp.Set)
+118,domain_ir,tan(x - 2),Test exact domain computation (sp.Set)
+119,domain_ir,1 / log(x - 3),Test exact domain computation (sp.Set)
+120,domain_ir,tan(x - 5),Test exact domain computation (sp.Set)
+121,domain_ir,sqrt(x - 3) / (x - 8),Test exact domain computation (sp.Set)
+122,domain_ir,sqrt(x - 1) / (x - 10),Test exact domain computation (sp.Set)
+123,domain_ir,sqrt((x - 7)*(x - 9)),Test exact domain computation (sp.Set)
+124,domain_ir,1 / (x^2 - 5),Test exact domain computation (sp.Set)
+125,domain_ir,1 / log(x - 5),Test exact domain computation (sp.Set)
+126,domain_ir,tan(x - 2),Test exact domain computation (sp.Set)
+127,domain_ir,1 / log(x - 6),Test exact domain computation (sp.Set)
+128,domain_ir,sqrt((x - 2)*(x - 8)),Test exact domain computation (sp.Set)
+129,domain_ir,sqrt(x - 5) / (x - 10),Test exact domain computation (sp.Set)
+130,domain_ir,1 / (x^3 - 10*x),Test exact domain computation (sp.Set)
+131,domain_ir,sqrt(x - 8) / (x - 7),Test exact domain computation (sp.Set)
+132,domain_ir,1 / log(x - 3),Test exact domain computation (sp.Set)
+133,domain_ir,sqrt(10 - x^2) / log(x),Test exact domain computation (sp.Set)
+134,domain_ir,1 / (x^3 - 6*x),Test exact domain computation (sp.Set)
+135,domain_ir,1 / (x^3 - 8*x),Test exact domain computation (sp.Set)
+136,domain_ir,sqrt(x - 2) / (x - 1),Test exact domain computation (sp.Set)
+137,domain_ir,sqrt((x - 9)*(x - 4)),Test exact domain computation (sp.Set)
+138,domain_ir,sqrt((x - 10)*(x - 6)),Test exact domain computation (sp.Set)
+139,domain_ir,sqrt((x - 1)*(x - 10)),Test exact domain computation (sp.Set)
+140,domain_ir,sqrt(x - 6) / (x - 8),Test exact domain computation (sp.Set)
+141,domain_ir,sqrt(1 - x^2) / log(x),Test exact domain computation (sp.Set)
+142,domain_ir,sqrt(x - 6) / (x - 8),Test exact domain computation (sp.Set)
+143,domain_ir,1 / (x^2 - 1),Test exact domain computation (sp.Set)
+144,domain_ir,1 / (x^3 - 7*x),Test exact domain computation (sp.Set)
+145,domain_ir,1 / (x^2 - 5),Test exact domain computation (sp.Set)
+146,domain_ir,tan(x - 9),Test exact domain computation (sp.Set)
+147,domain_ir,1 / log(x - 1),Test exact domain computation (sp.Set)
+148,domain_ir,sqrt((x - 4)*(x - 1)),Test exact domain computation (sp.Set)
+149,domain_ir,sqrt((x - 1)*(x - 4)),Test exact domain computation (sp.Set)
+150,domain_ir,1 / log(x - 3),Test exact domain computation (sp.Set)
+151,function_analyzer,exp(-x^2 / 4),Test analytical derivative signs vs sampling
+152,function_analyzer,sin(10*x) / x,Test analytical derivative signs vs sampling
+153,function_analyzer,x * exp(-6*x),Test analytical derivative signs vs sampling
+154,function_analyzer,log(x^2 + 5) - x,Test analytical derivative signs vs sampling
+155,function_analyzer,abs(x^2 - 2*x + 2),Test analytical derivative signs vs sampling
+156,function_analyzer,sqrt(x^2 + 8) - x,Test analytical derivative signs vs sampling
+157,function_analyzer,x * exp(-8*x),Test analytical derivative signs vs sampling
+158,function_analyzer,abs(x^2 - 1*x + 8),Test analytical derivative signs vs sampling
+159,function_analyzer,sqrt(x^2 + 7) - x,Test analytical derivative signs vs sampling
+160,function_analyzer,sin(5*x) / x,Test analytical derivative signs vs sampling
+161,function_analyzer,x * exp(-1*x),Test analytical derivative signs vs sampling
+162,function_analyzer,(x^2 - 4) / (x^2 - 7),Test analytical derivative signs vs sampling
+163,function_analyzer,exp(-x^2 / 5),Test analytical derivative signs vs sampling
+164,function_analyzer,sin(4*x) / x,Test analytical derivative signs vs sampling
+165,function_analyzer,x^(1/3) * (x - 4),Test analytical derivative signs vs sampling
+166,function_analyzer,log(x^2 + 5) - x,Test analytical derivative signs vs sampling
+167,function_analyzer,log(x^2 + 1) - x,Test analytical derivative signs vs sampling
+168,function_analyzer,x^(1/3) * (x - 10),Test analytical derivative signs vs sampling
+169,function_analyzer,x * exp(-7*x),Test analytical derivative signs vs sampling
+170,function_analyzer,x * exp(-8*x),Test analytical derivative signs vs sampling
+171,function_analyzer,exp(-x^2 / 3),Test analytical derivative signs vs sampling
+172,function_analyzer,abs(x^2 - 9*x + 5),Test analytical derivative signs vs sampling
+173,function_analyzer,sin(1*x) / x,Test analytical derivative signs vs sampling
+174,function_analyzer,(x^2 - 9) / (x^2 - 7),Test analytical derivative signs vs sampling
+175,function_analyzer,x^(1/3) * (x - 4),Test analytical derivative signs vs sampling
+176,function_analyzer,(x^2 - 7) / (x^2 - 2),Test analytical derivative signs vs sampling
+177,function_analyzer,x * exp(-9*x),Test analytical derivative signs vs sampling
+178,function_analyzer,sin(9*x) / x,Test analytical derivative signs vs sampling
+179,function_analyzer,abs(x^2 - 4*x + 9),Test analytical derivative signs vs sampling
+180,function_analyzer,x^(1/3) * (x - 7),Test analytical derivative signs vs sampling
+181,function_analyzer,x^(1/3) * (x - 4),Test analytical derivative signs vs sampling
+182,function_analyzer,exp(-x^2 / 6),Test analytical derivative signs vs sampling
+183,function_analyzer,sqrt(x^2 + 2) - x,Test analytical derivative signs vs sampling
+184,function_analyzer,abs(x^2 - 9*x + 6),Test analytical derivative signs vs sampling
+185,function_analyzer,x^(1/3) * (x - 6),Test analytical derivative signs vs sampling
+186,function_analyzer,(x^2 - 8) / (x^2 - 1),Test analytical derivative signs vs sampling
+187,function_analyzer,abs(x^2 - 3*x + 9),Test analytical derivative signs vs sampling
+188,function_analyzer,x^(1/3) * (x - 10),Test analytical derivative signs vs sampling
+189,function_analyzer,sqrt(x^2 + 9) - x,Test analytical derivative signs vs sampling
+190,function_analyzer,sin(1*x) / x,Test analytical derivative signs vs sampling
+191,function_analyzer,(x^2 - 9) / (x^2 - 9),Test analytical derivative signs vs sampling
+192,function_analyzer,x^(1/3) * (x - 7),Test analytical derivative signs vs sampling
+193,function_analyzer,abs(x^2 - 10*x + 5),Test analytical derivative signs vs sampling
+194,function_analyzer,(x^2 - 7) / (x^2 - 3),Test analytical derivative signs vs sampling
+195,function_analyzer,x * exp(-10*x),Test analytical derivative signs vs sampling
+196,function_analyzer,x^(1/3) * (x - 6),Test analytical derivative signs vs sampling
+197,function_analyzer,x^(1/3) * (x - 3),Test analytical derivative signs vs sampling
+198,function_analyzer,x^(1/3) * (x - 1),Test analytical derivative signs vs sampling
+199,function_analyzer,abs(x^2 - 4*x + 7),Test analytical derivative signs vs sampling
+200,function_analyzer,x * exp(-5*x),Test analytical derivative signs vs sampling
+201,function_analyzer,x * exp(-7*x),Test analytical derivative signs vs sampling
+202,function_analyzer,(x^2 - 9) / (x^2 - 9),Test analytical derivative signs vs sampling
+203,function_analyzer,exp(-x^2 / 8),Test analytical derivative signs vs sampling
+204,function_analyzer,x^(1/3) * (x - 3),Test analytical derivative signs vs sampling
+205,function_analyzer,abs(x^2 - 4*x + 7),Test analytical derivative signs vs sampling
+206,function_analyzer,x * exp(-7*x),Test analytical derivative signs vs sampling
+207,function_analyzer,sin(5*x) / x,Test analytical derivative signs vs sampling
+208,function_analyzer,sqrt(x^2 + 10) - x,Test analytical derivative signs vs sampling
+209,function_analyzer,log(x^2 + 8) - x,Test analytical derivative signs vs sampling
+210,function_analyzer,log(x^2 + 9) - x,Test analytical derivative signs vs sampling
+211,function_analyzer,sin(10*x) / x,Test analytical derivative signs vs sampling
+212,function_analyzer,sqrt(x^2 + 5) - x,Test analytical derivative signs vs sampling
+213,function_analyzer,sqrt(x^2 + 6) - x,Test analytical derivative signs vs sampling
+214,function_analyzer,sqrt(x^2 + 6) - x,Test analytical derivative signs vs sampling
+215,function_analyzer,sin(4*x) / x,Test analytical derivative signs vs sampling
+216,function_analyzer,log(x^2 + 9) - x,Test analytical derivative signs vs sampling
+217,function_analyzer,log(x^2 + 8) - x,Test analytical derivative signs vs sampling
+218,function_analyzer,(x^2 - 4) / (x^2 - 3),Test analytical derivative signs vs sampling
+219,function_analyzer,x^(1/3) * (x - 6),Test analytical derivative signs vs sampling
+220,function_analyzer,exp(-x^2 / 10),Test analytical derivative signs vs sampling
+221,function_analyzer,log(x^2 + 6) - x,Test analytical derivative signs vs sampling
+222,function_analyzer,abs(x^2 - 4*x + 7),Test analytical derivative signs vs sampling
+223,function_analyzer,(x^2 - 9) / (x^2 - 4),Test analytical derivative signs vs sampling
+224,function_analyzer,(x^2 - 5) / (x^2 - 3),Test analytical derivative signs vs sampling
+225,function_analyzer,sqrt(x^2 + 1) - x,Test analytical derivative signs vs sampling
+226,function_analyzer,(x^2 - 8) / (x^2 - 1),Test analytical derivative signs vs sampling
+227,function_analyzer,x^(1/3) * (x - 2),Test analytical derivative signs vs sampling
+228,function_analyzer,x^(1/3) * (x - 6),Test analytical derivative signs vs sampling
+229,function_analyzer,sin(1*x) / x,Test analytical derivative signs vs sampling
+230,function_analyzer,sin(5*x) / x,Test analytical derivative signs vs sampling
+231,function_analyzer,sqrt(x^2 + 4) - x,Test analytical derivative signs vs sampling
+232,function_analyzer,(x^2 - 9) / (x^2 - 5),Test analytical derivative signs vs sampling
+233,function_analyzer,sin(4*x) / x,Test analytical derivative signs vs sampling
+234,function_analyzer,sqrt(x^2 + 4) - x,Test analytical derivative signs vs sampling
+235,function_analyzer,abs(x^2 - 9*x + 2),Test analytical derivative signs vs sampling
+236,function_analyzer,sin(10*x) / x,Test analytical derivative signs vs sampling
+237,function_analyzer,sqrt(x^2 + 9) - x,Test analytical derivative signs vs sampling
+238,function_analyzer,exp(-x^2 / 7),Test analytical derivative signs vs sampling
+239,function_analyzer,sin(7*x) / x,Test analytical derivative signs vs sampling
+240,function_analyzer,sin(5*x) / x,Test analytical derivative signs vs sampling
+241,function_analyzer,exp(-x^2 / 8),Test analytical derivative signs vs sampling
+242,function_analyzer,abs(x^2 - 4*x + 2),Test analytical derivative signs vs sampling
+243,function_analyzer,exp(-x^2 / 10),Test analytical derivative signs vs sampling
+244,function_analyzer,abs(x^2 - 9*x + 3),Test analytical derivative signs vs sampling
+245,function_analyzer,(x^2 - 3) / (x^2 - 6),Test analytical derivative signs vs sampling
+246,function_analyzer,log(x^2 + 5) - x,Test analytical derivative signs vs sampling
+247,function_analyzer,sqrt(x^2 + 3) - x,Test analytical derivative signs vs sampling
+248,function_analyzer,sin(7*x) / x,Test analytical derivative signs vs sampling
+249,function_analyzer,x * exp(-7*x),Test analytical derivative signs vs sampling
+250,function_analyzer,x^(1/3) * (x - 1),Test analytical derivative signs vs sampling
+251,function_analyzer,abs(x^2 - 8*x + 6),Test analytical derivative signs vs sampling
+252,function_analyzer,log(x^2 + 4) - x,Test analytical derivative signs vs sampling
+253,function_analyzer,log(x^2 + 9) - x,Test analytical derivative signs vs sampling
+254,function_analyzer,exp(-x^2 / 10),Test analytical derivative signs vs sampling
+255,function_analyzer,sin(2*x) / x,Test analytical derivative signs vs sampling
+256,function_analyzer,sin(5*x) / x,Test analytical derivative signs vs sampling
+257,function_analyzer,log(x^2 + 10) - x,Test analytical derivative signs vs sampling
+258,function_analyzer,(x^2 - 5) / (x^2 - 3),Test analytical derivative signs vs sampling
+259,function_analyzer,(x^2 - 2) / (x^2 - 10),Test analytical derivative signs vs sampling
+260,function_analyzer,abs(x^2 - 7*x + 7),Test analytical derivative signs vs sampling
+261,function_analyzer,abs(x^2 - 10*x + 10),Test analytical derivative signs vs sampling
+262,function_analyzer,exp(-x^2 / 8),Test analytical derivative signs vs sampling
+263,function_analyzer,sin(10*x) / x,Test analytical derivative signs vs sampling
+264,function_analyzer,x^(1/3) * (x - 3),Test analytical derivative signs vs sampling
+265,function_analyzer,(x^2 - 5) / (x^2 - 2),Test analytical derivative signs vs sampling
+266,function_analyzer,(x^2 - 7) / (x^2 - 1),Test analytical derivative signs vs sampling
+267,function_analyzer,x^(1/3) * (x - 2),Test analytical derivative signs vs sampling
+268,function_analyzer,abs(x^2 - 8*x + 6),Test analytical derivative signs vs sampling
+269,function_analyzer,exp(-x^2 / 10),Test analytical derivative signs vs sampling
+270,function_analyzer,x^(1/3) * (x - 10),Test analytical derivative signs vs sampling
+271,function_analyzer,exp(-x^2 / 6),Test analytical derivative signs vs sampling
+272,function_analyzer,log(x^2 + 4) - x,Test analytical derivative signs vs sampling
+273,function_analyzer,(x^2 - 1) / (x^2 - 10),Test analytical derivative signs vs sampling
+274,function_analyzer,abs(x^2 - 9*x + 2),Test analytical derivative signs vs sampling
+275,function_analyzer,(x^2 - 1) / (x^2 - 1),Test analytical derivative signs vs sampling
+276,function_analyzer,x^(1/3) * (x - 9),Test analytical derivative signs vs sampling
+277,function_analyzer,x * exp(-10*x),Test analytical derivative signs vs sampling
+278,function_analyzer,exp(-x^2 / 1),Test analytical derivative signs vs sampling
+279,function_analyzer,abs(x^2 - 7*x + 10),Test analytical derivative signs vs sampling
+280,function_analyzer,(x^2 - 3) / (x^2 - 9),Test analytical derivative signs vs sampling
+281,function_analyzer,(x^2 - 3) / (x^2 - 5),Test analytical derivative signs vs sampling
+282,function_analyzer,log(x^2 + 5) - x,Test analytical derivative signs vs sampling
+283,function_analyzer,exp(-x^2 / 6),Test analytical derivative signs vs sampling
+284,function_analyzer,log(x^2 + 4) - x,Test analytical derivative signs vs sampling
+285,function_analyzer,log(x^2 + 8) - x,Test analytical derivative signs vs sampling
+286,function_analyzer,sqrt(x^2 + 6) - x,Test analytical derivative signs vs sampling
+287,function_analyzer,sin(1*x) / x,Test analytical derivative signs vs sampling
+288,function_analyzer,sqrt(x^2 + 6) - x,Test analytical derivative signs vs sampling
+289,function_analyzer,sin(9*x) / x,Test analytical derivative signs vs sampling
+290,function_analyzer,x * exp(-6*x),Test analytical derivative signs vs sampling
+291,function_analyzer,sin(10*x) / x,Test analytical derivative signs vs sampling
+292,function_analyzer,abs(x^2 - 6*x + 8),Test analytical derivative signs vs sampling
+293,function_analyzer,log(x^2 + 8) - x,Test analytical derivative signs vs sampling
+294,function_analyzer,(x^2 - 1) / (x^2 - 9),Test analytical derivative signs vs sampling
+295,function_analyzer,(x^2 - 10) / (x^2 - 5),Test analytical derivative signs vs sampling
+296,function_analyzer,sqrt(x^2 + 4) - x,Test analytical derivative signs vs sampling
+297,function_analyzer,x^(1/3) * (x - 8),Test analytical derivative signs vs sampling
+298,function_analyzer,sqrt(x^2 + 5) - x,Test analytical derivative signs vs sampling
+299,function_analyzer,abs(x^2 - 3*x + 6),Test analytical derivative signs vs sampling
+300,function_analyzer,x * exp(-2*x),Test analytical derivative signs vs sampling
+301,function_analyzer,x * exp(-10*x),Test analytical derivative signs vs sampling
+302,function_analyzer,sqrt(x^2 + 2) - x,Test analytical derivative signs vs sampling
+303,function_analyzer,log(x^2 + 10) - x,Test analytical derivative signs vs sampling
+304,function_analyzer,sqrt(x^2 + 1) - x,Test analytical derivative signs vs sampling
+305,function_analyzer,exp(-x^2 / 1),Test analytical derivative signs vs sampling
+306,function_analyzer,exp(-x^2 / 6),Test analytical derivative signs vs sampling
+307,function_analyzer,abs(x^2 - 6*x + 1),Test analytical derivative signs vs sampling
+308,function_analyzer,sqrt(x^2 + 5) - x,Test analytical derivative signs vs sampling
+309,function_analyzer,exp(-x^2 / 5),Test analytical derivative signs vs sampling
+310,function_analyzer,sqrt(x^2 + 4) - x,Test analytical derivative signs vs sampling
+311,function_analyzer,sin(2*x) / x,Test analytical derivative signs vs sampling
+312,function_analyzer,abs(x^2 - 2*x + 10),Test analytical derivative signs vs sampling
+313,function_analyzer,abs(x^2 - 5*x + 2),Test analytical derivative signs vs sampling
+314,function_analyzer,(x^2 - 4) / (x^2 - 2),Test analytical derivative signs vs sampling
+315,function_analyzer,x * exp(-5*x),Test analytical derivative signs vs sampling
+316,function_analyzer,(x^2 - 3) / (x^2 - 5),Test analytical derivative signs vs sampling
+317,function_analyzer,sin(4*x) / x,Test analytical derivative signs vs sampling
+318,function_analyzer,sin(9*x) / x,Test analytical derivative signs vs sampling
+319,function_analyzer,log(x^2 + 6) - x,Test analytical derivative signs vs sampling
+320,function_analyzer,abs(x^2 - 4*x + 5),Test analytical derivative signs vs sampling
+321,function_analyzer,x^(1/3) * (x - 9),Test analytical derivative signs vs sampling
+322,function_analyzer,abs(x^2 - 6*x + 4),Test analytical derivative signs vs sampling
+323,function_analyzer,sqrt(x^2 + 5) - x,Test analytical derivative signs vs sampling
+324,function_analyzer,log(x^2 + 8) - x,Test analytical derivative signs vs sampling
+325,function_analyzer,sin(10*x) / x,Test analytical derivative signs vs sampling
+326,function_analyzer,abs(x^2 - 9*x + 6),Test analytical derivative signs vs sampling
+327,function_analyzer,sqrt(x^2 + 3) - x,Test analytical derivative signs vs sampling
+328,function_analyzer,sqrt(x^2 + 4) - x,Test analytical derivative signs vs sampling
+329,function_analyzer,sqrt(x^2 + 6) - x,Test analytical derivative signs vs sampling
+330,function_analyzer,exp(-x^2 / 7),Test analytical derivative signs vs sampling
+331,function_analyzer,x^(1/3) * (x - 2),Test analytical derivative signs vs sampling
+332,function_analyzer,sin(10*x) / x,Test analytical derivative signs vs sampling
+333,function_analyzer,x^(1/3) * (x - 10),Test analytical derivative signs vs sampling
+334,function_analyzer,exp(-x^2 / 3),Test analytical derivative signs vs sampling
+335,function_analyzer,sin(2*x) / x,Test analytical derivative signs vs sampling
+336,function_analyzer,log(x^2 + 5) - x,Test analytical derivative signs vs sampling
+337,function_analyzer,exp(-x^2 / 4),Test analytical derivative signs vs sampling
+338,function_analyzer,exp(-x^2 / 8),Test analytical derivative signs vs sampling
+339,function_analyzer,x * exp(-8*x),Test analytical derivative signs vs sampling
+340,function_analyzer,x^(1/3) * (x - 8),Test analytical derivative signs vs sampling
+341,function_analyzer,sqrt(x^2 + 9) - x,Test analytical derivative signs vs sampling
+342,function_analyzer,sqrt(x^2 + 3) - x,Test analytical derivative signs vs sampling
+343,function_analyzer,log(x^2 + 6) - x,Test analytical derivative signs vs sampling
+344,function_analyzer,(x^2 - 4) / (x^2 - 10),Test analytical derivative signs vs sampling
+345,function_analyzer,sin(5*x) / x,Test analytical derivative signs vs sampling
+346,function_analyzer,exp(-x^2 / 7),Test analytical derivative signs vs sampling
+347,function_analyzer,exp(-x^2 / 8),Test analytical derivative signs vs sampling
+348,function_analyzer,x^(1/3) * (x - 8),Test analytical derivative signs vs sampling
+349,function_analyzer,abs(x^2 - 7*x + 4),Test analytical derivative signs vs sampling
+350,function_analyzer,abs(x^2 - 5*x + 3),Test analytical derivative signs vs sampling
+351,equation_solver,"log(x, 2) + log(x - 9, 2) = 3",Test domain-constrained solution filtering
+352,equation_solver,"log(x, 2) + log(x - 1, 2) = 5",Test domain-constrained solution filtering
+353,equation_solver,abs(x - 7) + abs(x - 7) = 1,Test domain-constrained solution filtering
+354,equation_solver,2^x - 1*2^(-x) = 1,Test domain-constrained solution filtering
+355,equation_solver,abs(x - 5) + abs(x - 10) = 3,Test domain-constrained solution filtering
+356,equation_solver,"log(x, 2) + log(x - 6, 2) = 5",Test domain-constrained solution filtering
+357,equation_solver,abs(x - 7) + abs(x - 2) = 1,Test domain-constrained solution filtering
+358,equation_solver,"log(x, 2) + log(x - 8, 2) = 3",Test domain-constrained solution filtering
+359,equation_solver,1/(x - 5) + 1/(x - 8) = 5,Test domain-constrained solution filtering
+360,equation_solver,sqrt(x - 2) = 6 - x,Test domain-constrained solution filtering
+361,equation_solver,"log(x^2 - 5, 3) <= 1",Test domain-constrained solution filtering
+362,equation_solver,1/(x - 2) + 1/(x - 6) = 3,Test domain-constrained solution filtering
+363,equation_solver,abs(x - 4) + abs(x - 9) = 3,Test domain-constrained solution filtering
+364,equation_solver,(x^2 - 6) / sqrt(x - 4) > 0,Test domain-constrained solution filtering
+365,equation_solver,"log(x^2 - 9, 3) <= 1",Test domain-constrained solution filtering
+366,equation_solver,(x^2 - 10) / sqrt(x - 9) > 0,Test domain-constrained solution filtering
+367,equation_solver,sqrt(x - 6) = 7 - x,Test domain-constrained solution filtering
+368,equation_solver,abs(x - 10) + abs(x - 3) = 4,Test domain-constrained solution filtering
+369,equation_solver,abs(x - 5) + abs(x - 8) = 1,Test domain-constrained solution filtering
+370,equation_solver,sqrt(x - 7) = 9 - x,Test domain-constrained solution filtering
+371,equation_solver,1/(x - 4) + 1/(x - 6) = 2,Test domain-constrained solution filtering
+372,equation_solver,2^x - 1*2^(-x) = 5,Test domain-constrained solution filtering
+373,equation_solver,(x^2 - 1) / sqrt(x - 5) > 0,Test domain-constrained solution filtering
+374,equation_solver,2^x - 3*2^(-x) = 10,Test domain-constrained solution filtering
+375,equation_solver,"log(x, 2) + log(x - 8, 2) = 4",Test domain-constrained solution filtering
+376,equation_solver,2^x - 6*2^(-x) = 10,Test domain-constrained solution filtering
+377,equation_solver,1/(x - 2) + 1/(x - 5) = 5,Test domain-constrained solution filtering
+378,equation_solver,1/(x - 10) + 1/(x - 8) = 5,Test domain-constrained solution filtering
+379,equation_solver,sqrt(x - 1) = 3 - x,Test domain-constrained solution filtering
+380,equation_solver,1/(x - 4) + 1/(x - 4) = 4,Test domain-constrained solution filtering
+381,equation_solver,"log(x^2 - 2, 3) <= 1",Test domain-constrained solution filtering
+382,equation_solver,abs(x - 6) + abs(x - 3) = 2,Test domain-constrained solution filtering
+383,equation_solver,1/(x - 9) + 1/(x - 10) = 5,Test domain-constrained solution filtering
+384,equation_solver,"log(x^2 - 8, 3) <= 1",Test domain-constrained solution filtering
+385,equation_solver,abs(x - 3) + abs(x - 4) = 5,Test domain-constrained solution filtering
+386,equation_solver,(x^2 - 2) / sqrt(x - 3) > 0,Test domain-constrained solution filtering
+387,equation_solver,"log(x, 2) + log(x - 4, 2) = 2",Test domain-constrained solution filtering
+388,equation_solver,"log(x, 2) + log(x - 10, 2) = 1",Test domain-constrained solution filtering
+389,equation_solver,abs(x - 2) + abs(x - 8) = 4,Test domain-constrained solution filtering
+390,equation_solver,sqrt(x - 6) = 9 - x,Test domain-constrained solution filtering
+391,equation_solver,(x^2 - 5) / sqrt(x - 7) > 0,Test domain-constrained solution filtering
+392,equation_solver,abs(x - 6) + abs(x - 6) = 2,Test domain-constrained solution filtering
+393,equation_solver,"log(x^2 - 1, 3) <= 1",Test domain-constrained solution filtering
+394,equation_solver,"log(x, 2) + log(x - 3, 2) = 2",Test domain-constrained solution filtering
+395,equation_solver,abs(x - 4) + abs(x - 6) = 3,Test domain-constrained solution filtering
+396,equation_solver,1/(x - 9) + 1/(x - 1) = 3,Test domain-constrained solution filtering
+397,equation_solver,"log(x, 2) + log(x - 5, 2) = 4",Test domain-constrained solution filtering
+398,equation_solver,"log(x, 2) + log(x - 1, 2) = 8",Test domain-constrained solution filtering
+399,equation_solver,2^x - 8*2^(-x) = 3,Test domain-constrained solution filtering
+400,equation_solver,2^x - 6*2^(-x) = 7,Test domain-constrained solution filtering
+401,equation_solver,"log(x, 2) + log(x - 10, 2) = 9",Test domain-constrained solution filtering
+402,equation_solver,1/(x - 3) + 1/(x - 1) = 5,Test domain-constrained solution filtering
+403,equation_solver,"log(x^2 - 7, 3) <= 1",Test domain-constrained solution filtering
+404,equation_solver,2^x - 8*2^(-x) = 1,Test domain-constrained solution filtering
+405,equation_solver,"log(x^2 - 10, 3) <= 1",Test domain-constrained solution filtering
+406,equation_solver,(x^2 - 5) / sqrt(x - 1) > 0,Test domain-constrained solution filtering
+407,equation_solver,1/(x - 7) + 1/(x - 4) = 5,Test domain-constrained solution filtering
+408,equation_solver,sqrt(x - 4) = 4 - x,Test domain-constrained solution filtering
+409,equation_solver,(x^2 - 6) / sqrt(x - 2) > 0,Test domain-constrained solution filtering
+410,equation_solver,1/(x - 7) + 1/(x - 1) = 3,Test domain-constrained solution filtering
+411,equation_solver,2^x - 9*2^(-x) = 9,Test domain-constrained solution filtering
+412,equation_solver,1/(x - 2) + 1/(x - 4) = 5,Test domain-constrained solution filtering
+413,equation_solver,1/(x - 1) + 1/(x - 7) = 2,Test domain-constrained solution filtering
+414,equation_solver,sqrt(x - 6) = 9 - x,Test domain-constrained solution filtering
+415,equation_solver,2^x - 3*2^(-x) = 6,Test domain-constrained solution filtering
+416,equation_solver,"log(x^2 - 1, 3) <= 1",Test domain-constrained solution filtering
+417,equation_solver,(x^2 - 4) / sqrt(x - 2) > 0,Test domain-constrained solution filtering
+418,equation_solver,2^x - 2*2^(-x) = 4,Test domain-constrained solution filtering
+419,equation_solver,1/(x - 5) + 1/(x - 9) = 3,Test domain-constrained solution filtering
+420,equation_solver,1/(x - 6) + 1/(x - 3) = 3,Test domain-constrained solution filtering
+421,equation_solver,2^x - 4*2^(-x) = 8,Test domain-constrained solution filtering
+422,equation_solver,(x^2 - 6) / sqrt(x - 4) > 0,Test domain-constrained solution filtering
+423,equation_solver,1/(x - 3) + 1/(x - 3) = 2,Test domain-constrained solution filtering
+424,equation_solver,2^x - 6*2^(-x) = 4,Test domain-constrained solution filtering
+425,equation_solver,(x^2 - 6) / sqrt(x - 7) > 0,Test domain-constrained solution filtering
+426,equation_solver,abs(x - 6) + abs(x - 5) = 3,Test domain-constrained solution filtering
+427,equation_solver,"log(x, 2) + log(x - 9, 2) = 2",Test domain-constrained solution filtering
+428,equation_solver,abs(x - 9) + abs(x - 3) = 4,Test domain-constrained solution filtering
+429,equation_solver,"log(x^2 - 2, 3) <= 1",Test domain-constrained solution filtering
+430,equation_solver,(x^2 - 4) / sqrt(x - 8) > 0,Test domain-constrained solution filtering
+431,equation_solver,1/(x - 10) + 1/(x - 5) = 2,Test domain-constrained solution filtering
+432,equation_solver,"log(x^2 - 5, 3) <= 1",Test domain-constrained solution filtering
+433,equation_solver,2^x - 8*2^(-x) = 8,Test domain-constrained solution filtering
+434,equation_solver,abs(x - 1) + abs(x - 2) = 4,Test domain-constrained solution filtering
+435,equation_solver,1/(x - 10) + 1/(x - 1) = 2,Test domain-constrained solution filtering
+436,equation_solver,"log(x^2 - 1, 3) <= 1",Test domain-constrained solution filtering
+437,equation_solver,2^x - 6*2^(-x) = 5,Test domain-constrained solution filtering
+438,equation_solver,(x^2 - 1) / sqrt(x - 9) > 0,Test domain-constrained solution filtering
+439,equation_solver,abs(x - 6) + abs(x - 2) = 3,Test domain-constrained solution filtering
+440,equation_solver,1/(x - 9) + 1/(x - 7) = 5,Test domain-constrained solution filtering
+441,equation_solver,sqrt(x - 5) = 9 - x,Test domain-constrained solution filtering
+442,equation_solver,1/(x - 5) + 1/(x - 9) = 2,Test domain-constrained solution filtering
+443,equation_solver,"log(x^2 - 2, 3) <= 1",Test domain-constrained solution filtering
+444,equation_solver,"log(x^2 - 8, 3) <= 1",Test domain-constrained solution filtering
+445,equation_solver,1/(x - 7) + 1/(x - 2) = 3,Test domain-constrained solution filtering
+446,equation_solver,(x^2 - 5) / sqrt(x - 3) > 0,Test domain-constrained solution filtering
+447,equation_solver,sqrt(x - 3) = 4 - x,Test domain-constrained solution filtering
+448,equation_solver,"log(x^2 - 4, 3) <= 1",Test domain-constrained solution filtering
+449,equation_solver,(x^2 - 9) / sqrt(x - 7) > 0,Test domain-constrained solution filtering
+450,equation_solver,(x^2 - 1) / sqrt(x - 6) > 0,Test domain-constrained solution filtering
+451,equation_solver,abs(x - 8) + abs(x - 9) = 2,Test domain-constrained solution filtering
+452,equation_solver,1/(x - 8) + 1/(x - 9) = 3,Test domain-constrained solution filtering
+453,equation_solver,"log(x, 2) + log(x - 4, 2) = 7",Test domain-constrained solution filtering
+454,equation_solver,(x^2 - 7) / sqrt(x - 7) > 0,Test domain-constrained solution filtering
+455,equation_solver,2^x - 7*2^(-x) = 4,Test domain-constrained solution filtering
+456,equation_solver,1/(x - 6) + 1/(x - 4) = 1,Test domain-constrained solution filtering
+457,equation_solver,1/(x - 4) + 1/(x - 5) = 3,Test domain-constrained solution filtering
+458,equation_solver,sqrt(x - 6) = 5 - x,Test domain-constrained solution filtering
+459,equation_solver,"log(x, 2) + log(x - 5, 2) = 1",Test domain-constrained solution filtering
+460,equation_solver,"log(x^2 - 10, 3) <= 1",Test domain-constrained solution filtering
+461,equation_solver,"log(x, 2) + log(x - 8, 2) = 2",Test domain-constrained solution filtering
+462,equation_solver,1/(x - 2) + 1/(x - 2) = 5,Test domain-constrained solution filtering
+463,equation_solver,2^x - 3*2^(-x) = 6,Test domain-constrained solution filtering
+464,equation_solver,(x^2 - 9) / sqrt(x - 6) > 0,Test domain-constrained solution filtering
+465,equation_solver,abs(x - 10) + abs(x - 4) = 5,Test domain-constrained solution filtering
+466,equation_solver,"log(x, 2) + log(x - 5, 2) = 7",Test domain-constrained solution filtering
+467,equation_solver,2^x - 5*2^(-x) = 2,Test domain-constrained solution filtering
+468,equation_solver,abs(x - 7) + abs(x - 3) = 5,Test domain-constrained solution filtering
+469,equation_solver,"log(x^2 - 7, 3) <= 1",Test domain-constrained solution filtering
+470,equation_solver,"log(x^2 - 7, 3) <= 1",Test domain-constrained solution filtering
+471,equation_solver,sqrt(x - 1) = 4 - x,Test domain-constrained solution filtering
+472,equation_solver,"log(x, 2) + log(x - 4, 2) = 8",Test domain-constrained solution filtering
+473,equation_solver,sqrt(x - 6) = 7 - x,Test domain-constrained solution filtering
+474,equation_solver,1/(x - 1) + 1/(x - 10) = 4,Test domain-constrained solution filtering
+475,equation_solver,1/(x - 1) + 1/(x - 1) = 4,Test domain-constrained solution filtering
+476,equation_solver,2^x - 2*2^(-x) = 1,Test domain-constrained solution filtering
+477,equation_solver,1/(x - 7) + 1/(x - 1) = 1,Test domain-constrained solution filtering
+478,equation_solver,(x^2 - 3) / sqrt(x - 5) > 0,Test domain-constrained solution filtering
+479,equation_solver,"log(x, 2) + log(x - 10, 2) = 3",Test domain-constrained solution filtering
+480,equation_solver,"log(x^2 - 9, 3) <= 1",Test domain-constrained solution filtering
+481,equation_solver,(x^2 - 3) / sqrt(x - 6) > 0,Test domain-constrained solution filtering
+482,equation_solver,abs(x - 9) + abs(x - 4) = 1,Test domain-constrained solution filtering
+483,equation_solver,1/(x - 7) + 1/(x - 6) = 1,Test domain-constrained solution filtering
+484,equation_solver,sqrt(x - 10) = 2 - x,Test domain-constrained solution filtering
+485,equation_solver,sqrt(x - 5) = 9 - x,Test domain-constrained solution filtering
+486,equation_solver,"log(x, 2) + log(x - 3, 2) = 8",Test domain-constrained solution filtering
+487,equation_solver,2^x - 5*2^(-x) = 5,Test domain-constrained solution filtering
+488,equation_solver,1/(x - 4) + 1/(x - 6) = 3,Test domain-constrained solution filtering
+489,equation_solver,sqrt(x - 7) = 3 - x,Test domain-constrained solution filtering
+490,equation_solver,2^x - 7*2^(-x) = 6,Test domain-constrained solution filtering
+491,equation_solver,2^x - 6*2^(-x) = 9,Test domain-constrained solution filtering
+492,equation_solver,abs(x - 8) + abs(x - 8) = 1,Test domain-constrained solution filtering
+493,equation_solver,"log(x, 2) + log(x - 8, 2) = 9",Test domain-constrained solution filtering
+494,equation_solver,"log(x, 2) + log(x - 1, 2) = 3",Test domain-constrained solution filtering
+495,equation_solver,1/(x - 7) + 1/(x - 6) = 3,Test domain-constrained solution filtering
+496,equation_solver,"log(x^2 - 4, 3) <= 1",Test domain-constrained solution filtering
+497,equation_solver,1/(x - 1) + 1/(x - 3) = 1,Test domain-constrained solution filtering
+498,equation_solver,abs(x - 9) + abs(x - 8) = 2,Test domain-constrained solution filtering
+499,equation_solver,"log(x, 2) + log(x - 1, 2) = 2",Test domain-constrained solution filtering
+500,equation_solver,sqrt(x - 9) = 1 - x,Test domain-constrained solution filtering

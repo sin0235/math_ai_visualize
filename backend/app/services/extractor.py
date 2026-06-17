@@ -390,6 +390,21 @@ def build_scene_with_cas_fix(
                     )
             warnings.extend(outcome.warnings)
 
+    from app.schemas.scene import CasIssueResponse
+    all_issues = [*inference_issues, *issues]
+    fixed_scene = fixed_scene.model_copy(update={
+        "cas_issues": [
+            CasIssueResponse(
+                relation_type=issue.relation_type,
+                description=issue.description,
+                severity=issue.severity,
+                auto_fixed=issue.auto_fixed,
+                metadata=issue.metadata
+            )
+            for issue in all_issues
+        ]
+    })
+
     return fixed_scene, warnings
 
 

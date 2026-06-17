@@ -143,3 +143,17 @@ def test_parser_parses_inequality():
     problem = parse_algebra_problem("x^2 - 1 >= 0")
     assert problem.topic == "inequality"
     assert problem.relation is not None
+
+
+def test_parser_exposes_sympy_domain_for_requested_domain():
+    assert parse_algebra_problem("x^2 + 1 = 0", domain="R").sympy_domain == sp.S.Reals
+    assert parse_algebra_problem("x^2 + 1 = 0", domain="C").sympy_domain == sp.S.Complexes
+    assert parse_algebra_problem("x > 0", domain="Z").sympy_domain == sp.S.Integers
+    assert parse_algebra_problem("x > 0", domain="N").sympy_domain == sp.S.Naturals
+
+
+def test_parser_marks_integer_and_natural_domains_as_real_domains():
+    assert parse_algebra_problem("x > 0", domain="R").is_real_domain
+    assert parse_algebra_problem("x > 0", domain="Z").is_real_domain
+    assert parse_algebra_problem("x > 0", domain="N").is_real_domain
+    assert not parse_algebra_problem("x^2 + 1 = 0", domain="C").is_real_domain

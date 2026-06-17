@@ -215,6 +215,25 @@ export function SceneEditorPanel({
             </div>
           )}
 
+          {activeScene.cas_issues && activeScene.cas_issues.length > 0 && (
+            <div className="cas-issues-panel">
+              <strong className="cas-issues-title">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px', verticalAlign: 'text-bottom' }}>
+                  <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+                </svg>
+                Hệ thống CAS đã tự động chuẩn hóa
+              </strong>
+              <ul className="cas-issues-list">
+                {activeScene.cas_issues.map((issue, idx) => (
+                  <li key={idx} className="cas-issue-item">
+                    <span className="cas-issue-badge">{issue.relation_type}</span>
+                    <span className="cas-issue-desc">{issue.description}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {error && <div className="error-box">{error}</div>}
           {saving && <div className="warning-box">Đang dựng lại hình...</div>}
 

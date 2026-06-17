@@ -12242,9 +12242,9 @@ button.analyzer-guide-label:hover {
 .algebra-empty-result span,
 .algebra-result-card p,
 .algebra-step-card p {
-  margin: 0;
+  margin: 10px 0 0;
   color: var(--ink-3);
-  line-height: 1.55;
+  line-height: 1.65;
   text-wrap: pretty;
 }
 
@@ -12756,8 +12756,8 @@ button.analyzer-guide-label:hover {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   justify-items: stretch;
-  gap: 8px;
-  margin-top: 10px;
+  gap: 12px;
+  margin-top: 14px;
   min-width: 0;
 }
 
@@ -12766,14 +12766,14 @@ button.analyzer-guide-label:hover {
   min-width: 0;
   border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
   border-radius: 8px;
-  padding: 8px 10px;
+  padding: 12px 14px;
   background: color-mix(in srgb, var(--paper) 78%, var(--surface));
   overflow: visible;
 }
 
 .algebra-formula-lines {
   display: grid;
-  gap: 6px;
+  gap: 12px;
   min-width: 0;
 }
 
@@ -12798,9 +12798,9 @@ button.analyzer-guide-label:hover {
 .algebra-formula-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 10px;
+  gap: 12px;
   align-items: start;
-  margin-top: 10px;
+  margin-top: 14px;
   min-width: 0;
 }
 
@@ -12815,7 +12815,7 @@ button.analyzer-guide-label:hover {
   max-width: 100%;
   overflow: visible;
   text-align: center;
-  line-height: 1.55;
+  line-height: 1.8;
 }
 
 .algebra-katex .katex,
@@ -12851,4 +12851,73 @@ button.analyzer-guide-label:hover {
   .algebra-math-toolbar {
     grid-template-columns: 1fr;
   }
+}
+
+/* CAS Issues UI */
+.cas-issues-panel {
+  background: rgba(46, 213, 115, 0.1);
+  border: 1px solid rgba(46, 213, 115, 0.3);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 4px 16px rgba(46, 213, 115, 0.05);
+  animation: slideInFade 0.4s ease-out;
+}
+
+@keyframes slideInFade {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.cas-issues-title {
+  display: block;
+  font-size: 0.9rem;
+  color: #2ed573;
+  margin-bottom: 12px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+
+.cas-issues-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cas-issue-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 10px 12px;
+  border-radius: 8px;
+  border-left: 3px solid #2ed573;
+  transition: transform 0.2s ease, background 0.2s ease;
+}
+
+.cas-issue-item:hover {
+  transform: translateX(4px);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.cas-issue-badge {
+  font-size: 0.75rem;
+  background: rgba(46, 213, 115, 0.2);
+  color: #2ed573;
+  padding: 3px 6px;
+  border-radius: 4px;
+  font-family: monospace;
+  white-space: nowrap;
+}
+
+.cas-issue-desc {
+  font-size: 0.85rem;
+  color: #a4b0be;
+  line-height: 1.4;
 }

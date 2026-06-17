@@ -48,6 +48,13 @@ def solve_sequence(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
     ]
     answer = f"Kết quả: {sp.sstr(result)}"
     steps.append(conclusion_step(3, answer, sp.latex(result)))
+    
+    milestones = [
+        f"Công thức: {calculation.formula_latex}",
+        f"Thay số: {calculation.substitution_latex}",
+        f"Kết quả: {calculation.result_latex}"
+    ]
+    
     verification = AlgebraVerificationReport(
         status="verified",
         checks=[AlgebraVerificationCheck(name="sequence_formula_checked", status="pass", detail="Kết quả được tính bằng công thức cấp số chuẩn và kiểm tra tham số structured.")],
@@ -63,6 +70,7 @@ def solve_sequence(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
         answer_latex=sp.latex(result),
         solution_set=AlgebraSolutionSet(kind="expression", text=sp.sstr(result), latex=sp.latex(result)),
         steps=steps,
+        milestones=milestones,
         verification=verification,
         assumptions=[],
         warnings=[],

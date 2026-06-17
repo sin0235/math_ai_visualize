@@ -1,0 +1,101 @@
+id,input,topic,domain,expected_status,expected_answers
+eq_lin_1,2*x + 5 = 11,equation,R,solved,3
+eq_lin_2,3*x - 7 = 2*x + 1,equation,R,solved,8
+eq_lin_3,5*x + 10 = 0,equation,R,solved,-2
+eq_lin_4,x/2 - 4 = 1,equation,R,solved,10
+eq_lin_5,-4*x + 12 = 0,equation,R,solved,3
+eq_lin_6,10*x - 15 = 5,equation,R,solved,2
+eq_lin_7,x + 1 = 1,equation,R,solved,0
+eq_lin_8,7*x + 3 = 17,equation,R,solved,2
+eq_lin_9,-x + 5 = 6,equation,R,solved,-1
+eq_lin_10,12*x + 4 = 16,equation,R,solved,1
+eq_quad_1,x^2 - 5*x + 6 = 0,equation,R,solved,2;3
+eq_quad_2,x^2 - 7*x + 12 = 0,equation,R,solved,3;4
+eq_quad_3,2*x^2 + 5*x - 3 = 0,equation,R,solved,1/2;-3
+eq_quad_4,x^2 - 2*x + 1 = 0,equation,R,solved,1
+eq_quad_5,x^2 + 4 = 0,equation,R,solved,Vô nghiệm.
+eq_quad_6,x^2 + 4 = 0,equation,C,solved,2*I;-2*I
+eq_quad_7,x^2 - 2 = 0,equation,Z,solved,Vô nghiệm.
+eq_quad_8,x^2 - 4 = 0,equation,Z,solved,-2;2
+eq_quad_9,x^2 - 4 = 0,equation,N,solved,2
+eq_quad_10,x^2 - 6*x + 9 = 0,equation,R,solved,3
+eq_quad_11,3*x^2 - 5*x - 2 = 0,equation,R,solved,2;-1/3
+eq_quad_12,x^2 - x - 12 = 0,equation,R,solved,-3;4
+eq_quad_13,x^2 + 2*x - 15 = 0,equation,R,solved,3;-5
+eq_quad_14,x^2 + 10*x + 25 = 0,equation,R,solved,-5
+eq_quad_15,x^2 - 8*x + 12 = 0,equation,R,solved,2;6
+eq_poly_1,x^3 - 6*x^2 + 11*x - 6 = 0,equation,R,solved,1;2;3
+eq_poly_2,x^3 - x = 0,equation,R,solved,-1;0;1
+eq_poly_3,x^4 - 5*x^2 + 4 = 0,equation,R,solved,-2;-1;1;2
+eq_poly_4,x^4 - 1 = 0,equation,R,solved,-1;1
+eq_poly_5,x^4 - 1 = 0,equation,C,solved,-1;1;-I;I
+eq_poly_6,x^3 + 3*x^2 - 4*x - 12 = 0,equation,R,solved,-3;-2;2
+eq_poly_7,x^3 - 2*x^2 - 5*x + 6 = 0,equation,R,solved,-2;1;3
+eq_poly_8,x^3 - 3*x^2 + 4 = 0,equation,R,solved,-1;2
+eq_poly_9,x^4 - 10*x^2 + 9 = 0,equation,R,solved,-3;-1;1;3
+eq_poly_10,x^3 + x^2 - x - 1 = 0,equation,R,solved,-1;1
+eq_rat_1,(x-1)/(x-2) = 0,equation,R,solved,1
+eq_rat_2,(x-2)/(x-2) = 0,equation,R,solved,Vô nghiệm.
+eq_rat_3,(x^2 - 4)/(x-2) = 0,equation,R,solved,-2
+eq_rat_4,1/x = 0,equation,R,solved,Vô nghiệm.
+eq_rat_5,(x+3)/(x^2 - 9) = 0,equation,R,solved,Vô nghiệm.
+eq_rat_6,(x^2 - 1)/(x+1) = 0,equation,R,solved,1
+eq_rat_7,(2*x - 4)/(x + 3) = 0,equation,R,solved,2
+eq_rat_8,(x^2 - 5*x + 6)/(x - 3) = 0,equation,R,solved,2
+eq_rat_9,(x^2 + x)/(x + 1) = 0,equation,R,solved,0
+eq_rat_10,(3*x - 9)/(2*x) = 0,equation,R,solved,3
+eq_rad_1,sqrt(x) = 3,equation,R,solved,9
+eq_rad_2,sqrt(x-1) = 2,equation,R,solved,5
+eq_rad_3,sqrt(x+2) = x,equation,R,solved,2
+eq_rad_4,sqrt(2*x + 3) = x,equation,R,solved,3
+eq_rad_5,sqrt(x) = -1,equation,R,solved,Vô nghiệm.
+eq_rad_6,sqrt(x-3) + sqrt(x) = 3,equation,R,solved,4
+eq_rad_7,sqrt(2*x - 1) = x - 2,equation,R,solved,5
+eq_rad_8,sqrt(3*x + 1) = x - 3,equation,R,solved,8
+eq_rad_9,sqrt(x^2 - 4) = x - 2,equation,R,solved,2
+eq_rad_10,sqrt(5 - x) = x + 1,equation,R,solved,1
+eq_exp_1,2^x = 8,equation,R,solved,3
+eq_exp_2,3^(2*x - 1) = 9,equation,R,solved,3/2
+eq_exp_3,5^(x^2 - 1) = 1,equation,R,solved,-1;1
+eq_exp_4,4^x - 3*2^x + 2 = 0,equation,R,solved,0;1
+eq_exp_5,9^x - 4*3^x + 3 = 0,equation,R,solved,0;1
+eq_log_1,"log(x, 10) = 2",equation,R,solved,100
+eq_log_2,ln(x) = 0,equation,R,solved,1
+eq_log_3,"log(x-1, 2) + log(x+1, 2) = 3",equation,R,solved,3
+eq_log_4,"log(x, 2) = 4",equation,R,solved,16
+eq_log_5,"log(x-2, 3) = 1",equation,R,solved,5
+eq_trig_1,sin(x) = 0,equation,R,solved,0;pi
+eq_trig_2,cos(x) = 1,equation,R,solved,0
+eq_trig_3,sin(x) = 1,equation,R,solved,pi/2
+eq_trig_4,cos(x) = 0,equation,R,solved,pi/2;3*pi/2
+eq_trig_5,tan(x) = 0,equation,R,solved,0;pi
+ineq_poly_1,x^2 - 9 < 0,inequality,R,solved,(-3; 3)
+ineq_poly_2,x^2 - 4 >= 0,inequality,R,solved,(-∞; -2];[2; +∞)
+ineq_poly_3,x^2 + 1 > 0,inequality,R,solved,(-∞; +∞)
+ineq_poly_4,x^2 + 1 < 0,inequality,R,solved,Vô nghiệm.
+ineq_poly_5,x^2 - 2*x + 1 <= 0,inequality,R,solved,{1}
+ineq_poly_6,x^2 - 2*x + 1 > 0,inequality,R,solved,(-∞; 1);(1; +∞)
+ineq_poly_7,x - 5 < 0,inequality,R,solved,(-∞; 5)
+ineq_poly_8,-2*x + 6 >= 0,inequality,R,solved,(-∞; 3]
+ineq_poly_9,3*x + 9 > 0,inequality,R,solved,(-3; +∞)
+ineq_poly_10,x^2 - 5*x + 6 < 0,inequality,R,solved,(2; 3)
+ineq_poly_11,x^2 - 7*x + 12 >= 0,inequality,R,solved,(-∞; 3];[4; +∞)
+ineq_poly_12,-x^2 + 4 > 0,inequality,R,solved,(-2; 2)
+ineq_poly_13,x^2 - 1 <= 0,inequality,R,solved,[-1; 1]
+ineq_poly_14,x^2 - 16 >= 0,inequality,R,solved,(-∞; -4];[4; +∞)
+ineq_poly_15,x^2 - 6*x + 8 > 0,inequality,R,solved,(-∞; 2);(4; +∞)
+ineq_rat_1,1/(x-1) > 0,inequality,R,solved,(1; +∞)
+ineq_rat_2,(x-1)/(x+2) <= 0,inequality,R,solved,(-2; 1]
+ineq_rat_3,(x-2)/(x-2) >= 0,inequality,R,partial,(-∞; 2);(2; +∞)
+ineq_rat_4,(x-3)/(x+1) < 0,inequality,R,solved,(-1; 3)
+ineq_rat_5,(2*x - 4)/(x - 5) > 0,inequality,R,solved,(-∞; 2);(5; +∞)
+ineq_disc_1,x - 3 >= 0,inequality,N,solved,"Range(3, oo, 1)"
+ineq_disc_2,x - 2.5 <= 0,inequality,N,partial,"Range(1, 3, 1)"
+ineq_disc_3,x - 1.5 <= 0,inequality,Z,partial,"Range(-oo, 2, 1)"
+ineq_disc_4,x^2 - 5 < 0,inequality,Z,solved,"Range(-2, 3, 1)"
+ineq_disc_5,2*x - 5 > 0,inequality,N,partial,"Range(3, oo, 1)"
+param_quad_1,"quadratic_double_root(a=1, b=2*m, c=1, var=x, param=m)",parameter,R,solved,-1;1
+param_quad_2,"quadratic_has_two_roots(a=1, b=-2*m, c=m^2 - 1, var=x, param=m)",parameter,R,solved,UniversalSet
+param_quad_3,"quadratic_no_real_root(a=1, b=m, c=1, var=x, param=m)",parameter,R,solved,-2;2
+param_quad_4,"quadratic_positive_all(a=1, b=-m, c=4, var=x, param=m)",parameter,R,solved,-4;4
+param_quad_5,"quadratic_has_real_root(a=1, b=m, c=0, var=x, param=m)",parameter,R,solved,UniversalSet

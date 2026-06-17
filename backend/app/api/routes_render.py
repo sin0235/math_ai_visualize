@@ -88,7 +88,7 @@ async def build_problem_render_response(request: RenderRequest, db: DatabaseClie
     payload = build_render_payload(scene, request.advanced_settings)
     if scene.topic == "unknown":
         warnings.append("Chưa nhận diện được dạng toán, hãy thử đề cụ thể hơn.")
-    return RenderResponse(scene=scene, payload=payload, warnings=warnings)
+    return RenderResponse(scene=scene, payload=payload, warnings=warnings, cas_issues=scene.cas_issues)
 
 
 @router.post("/render/scene", response_model=RenderResponse, dependencies=[Depends(require_trusted_origin)])
@@ -109,7 +109,7 @@ async def render_scene(
     computed = (payload.three_scene or {}).get("computed") if payload.three_scene else None
     if isinstance(computed, dict):
         warnings = [warning for warning in computed.get("warnings", []) if isinstance(warning, str)]
-    response = RenderResponse(scene=scene, payload=payload, warnings=warnings)
+    response = RenderResponse(scene=scene, payload=payload, warnings=warnings, cas_issues=scene.cas_issues)
     if user is not None:
         await RenderHistoryRepository(db).create(
             user.id,

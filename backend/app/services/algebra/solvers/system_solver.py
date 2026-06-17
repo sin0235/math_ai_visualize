@@ -14,6 +14,11 @@ def solve_system(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
         return _unsupported(problem, "Phase này chỉ hỗ trợ hệ phương trình.")
     variables = problem.variables or _infer_variables(problem.relations)
     expressions = [sp.simplify(relation.lhs - relation.rhs) for relation in problem.relations]
+    
+    milestones: list[str] = []
+    system_latex = r"\begin{cases} " + r" \\ ".join(sp.latex(r) for r in problem.relations) + r" \end{cases}"
+    milestones.append(f"Hệ phương trình gốc: {system_latex}")
+    
     steps: list[AlgebraSolveStep] = []
     try:
         solution_set = sp.linsolve(expressions, variables)
@@ -43,6 +48,17 @@ def solve_system(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
         ))
     verification = _verify_system(problem.relations, variables, solution_set)
     answer = _format_system_solution(solution_set, variables)
+    
+    if isinstance(solution_set, sp.FiniteSet) and len(solution_set) > 0:
+        tuples = list(solution_set)
+        ans_parts = []
+        for t in tuples:
+            if not isinstance(t, sp.Tuple):
+                t = sp.Tuple(t)
+            eqs = [sp.latex(sp.Eq(v, val, evaluate=False)) for v, val in zip(variables, t)]
+            ans_parts.append(r"(" + ", ".join(eqs) + r")")
+        milestones.append(f"Nghiệm hệ phương trình: {' \lor '.join(ans_parts)}")
+        
     steps.append(conclusion_step(len(steps) + 1, answer, sp.latex(solution_set)))
     status = "solved" if verification.status in {"verified", "partially_verified"} else "error"
     return AlgebraSolveResponse(
@@ -55,6 +71,7 @@ def solve_system(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
         answer_latex=sp.latex(solution_set),
         solution_set=AlgebraSolutionSet(kind="finite" if isinstance(solution_set, sp.FiniteSet) else "set", text=answer, latex=sp.latex(solution_set)),
         steps=steps,
+        milestones=milestones,
         verification=verification,
         assumptions=[],
         warnings=[] if verification.status == "verified" else ["Hệ có nghiệm symbolic hoặc vô nghiệm nên chỉ kiểm chứng một phần."],

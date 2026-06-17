@@ -1,3 +1,5 @@
+import sympy as sp
+
 from app.schemas.algebra import AlgebraSolveRequest
 from app.services.algebra import solve_algebra
 
@@ -34,7 +36,7 @@ def test_inequality_solver_solves_rational_interval_with_domain_assumption():
 
     assert result.status == "solved"
     assert "(-2; 1)" in result.solution_set.text
-    assert any("x + 2" in assumption for assumption in result.assumptions)
+    assert any(r"\left(-\infty, -2\right)" in assumption for assumption in result.assumptions)
     verification_step = next(step for step in result.steps if step.title == "Kiểm tra tập nghiệm")
     assert verification_step.pitfall and "Dấu ngoặc" in verification_step.pitfall
     assert verification_step.after_latex
@@ -50,3 +52,28 @@ def test_inequality_solver_excludes_denominator_boundary_in_sign_chart():
     assert "\\text{mẫu bằng 0, loại}" in critical_step.after_latex
     choose_step = next(step for step in result.steps if step.title == "Chọn khoảng nghiệm")
     assert "\\left(-2, 1\\right]" in choose_step.after_latex
+
+
+def test_inequality_solver_intersects_result_with_integer_domain():
+    result = solve_algebra(AlgebraSolveRequest(input="x > -2", domain="Z"))
+
+    assert result.status == "solved"
+    assert result.solution_set.kind == "interval"
+    assert result.solution_set.latex == sp.latex(sp.Range(-1, sp.oo, 1))
+
+
+def test_inequality_solver_intersects_result_with_natural_domain():
+    result = solve_algebra(AlgebraSolveRequest(input="x < 3", domain="N"))
+
+    assert result.status == "solved"
+    assert result.solution_set.kind == "interval"
+    assert result.solution_set.latex == sp.latex(sp.Range(1, 3, 1))
+
+
+def test_inequality_solver_keeps_algebraic_critical_points_exact():
+    result = solve_algebra(AlgebraSolveRequest(input="x^4 - 2 < 0"))
+
+    assert result.status == "solved"
+    critical_step = next(step for step in result.steps if step.title == "Phân tích dấu")
+    assert "\\sqrt[4]{2}" in critical_step.after_latex
+    assert result.verification.status == "verified"

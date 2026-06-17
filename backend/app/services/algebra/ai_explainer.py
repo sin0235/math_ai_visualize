@@ -15,18 +15,18 @@ from app.services.openrouter_client import _build_headers as _build_openrouter_h
 from app.services.router9_client import Router9Client, _extract_message_content as _extract_router9_message_content
 
 ALGEBRA_EXPLAINER_SYSTEM_PROMPT = """
-Bạn là giáo viên Đại số C3 tiếng Việt, chỉ diễn giải lại lời giải đã được solver xác minh.
-Chỉ trả về JSON hợp lệ, không markdown.
+Bạn là giáo viên Toán học (Đại số, Giải tích) xuất sắc. Hệ thống máy tính (SymPy) đã giải xong bài toán và cung cấp các Cột mốc Toán học (Milestones) chắc chắn đúng.
+Nhiệm vụ của bạn là SỬ DỤNG CÁC MILESTONES NÀY để VIẾT LẠI HOÀN TOÀN danh sách các bước giải (steps) sao cho thật CHI TIẾT, DỄ HIỂU, CHUẨN SƯ PHẠM.
 
 Quy tắc bắt buộc:
-1. KHÔNG tự tính lại, KHÔNG đổi đáp án, KHÔNG đổi tập nghiệm, KHÔNG thêm nghiệm mới.
-2. Chỉ được viết lại các field văn bản: title, explanation, goal, why, rule, operation, pitfall, check.
-3. Không thay expression, expression_latex, result, result_latex, before_latex, after_latex.
-4. Nếu verification không phải verified/partially_verified thì giữ lời giải thận trọng, không khẳng định quá mức.
-5. Explanation là văn bản thuần tiếng Việt; công thức đã nằm ở field riêng.
+1. Bạn KHÔNG BỊ GIỚI HẠN số lượng bước giải. Để giao diện gọn gàng, bạn nên dùng mảng `sub_steps` bên trong mỗi step chính. Step chính đóng vai trò là một Milestone lớn, còn `sub_steps` chứa các biến đổi nhỏ lẻ (khai triển, chuyển vế, quy đồng) để đạt được Milestone đó.
+2. Tự do cung cấp công thức toán học vào `before_latex` và `after_latex` cho mỗi bước và bước con (sub-step).
+3. KHÔNG ĐƯỢC làm sai lệch tập nghiệm cuối cùng. Đích đến cuối cùng phải khớp hoàn toàn với các Milestones do hệ thống cung cấp.
+4. `explanation`, `rule` phải viết bằng văn bản thuần Việt Nam.
+5. Chỉ trả về JSON hợp lệ theo schema yêu cầu. Không markdown.
 
 Schema trả về:
-{"steps":[{"index":1,"title":"...","explanation":"...","goal":"...","why":"...","rule":"...","operation":"...","pitfall":"...","check":"..."}]}
+{"steps":[{"index":1,"title":"...","explanation":"...","before_latex":"...","after_latex":"...","sub_steps":[{"index":1,"title":"...","explanation":"...","before_latex":"...","after_latex":"..."}]}]}
 """.strip()
 
 
@@ -38,13 +38,37 @@ class AlgebraExplanationStep(BaseModel):
     why: str | None = Field(default=None, max_length=800)
     rule: str | None = Field(default=None, max_length=300)
     operation: str | None = Field(default=None, max_length=500)
+    before_latex: str | None = Field(default=None)
+    after_latex: str | None = Field(default=None)
     pitfall: str | None = Field(default=None, max_length=500)
     check: str | None = Field(default=None, max_length=500)
+    sub_steps: list['AlgebraExplanationStep'] = Field(default_factory=list)
 
 
 class AlgebraExplanationPayload(BaseModel):
     steps: list[AlgebraExplanationStep] = Field(default_factory=list)
 
+def _map_ai_step(step: AlgebraExplanationStep) -> AlgebraSolveStep:
+    return AlgebraSolveStep(
+        index=step.index,
+        title=step.title,
+        explanation=_sanitize_text(step.explanation),
+        goal=_safe_rewrite(step.goal, None),
+        why=_safe_rewrite(step.why, None),
+        rule=_safe_rewrite(step.rule, None),
+        operation=_safe_rewrite(step.operation, None),
+        before_latex=step.before_latex,
+        after_latex=step.after_latex,
+        pitfall=_safe_rewrite(step.pitfall, None),
+        check=_safe_rewrite(step.check, None),
+        expression=None,
+        expression_latex=None,
+        result=None,
+        result_latex=None,
+        kind="solve",
+        confidence="ai_generated",
+        sub_steps=[_map_ai_step(sub) for sub in step.sub_steps] if step.sub_steps else [],
+    )
 
 async def explain_algebra_response_with_ai(response: AlgebraSolveResponse, settings: Settings) -> AlgebraSolveResponse:
     if not response.steps or response.status not in {"solved", "partial"}:
@@ -55,32 +79,19 @@ async def explain_algebra_response_with_ai(response: AlgebraSolveResponse, setti
     try:
         data = await _call_explainer(_payload(response), settings)
         payload = AlgebraExplanationPayload.model_validate(data)
-        by_index = {step.index: step for step in payload.steps}
-        if not by_index:
+        if not payload.steps:
             return response
-        response.steps = [
-            AlgebraSolveStep(
-                index=step.index,
-                title=by_index.get(step.index).title if by_index.get(step.index) else step.title,
-                explanation=_sanitize_text(by_index.get(step.index).explanation) if by_index.get(step.index) else step.explanation,
-                goal=_safe_rewrite(by_index.get(step.index).goal if by_index.get(step.index) else None, step.goal),
-                why=_safe_rewrite(by_index.get(step.index).why if by_index.get(step.index) else None, step.why),
-                rule=_safe_rewrite(by_index.get(step.index).rule if by_index.get(step.index) else None, step.rule),
-                operation=_safe_rewrite(by_index.get(step.index).operation if by_index.get(step.index) else None, step.operation),
-                before_latex=step.before_latex,
-                after_latex=step.after_latex,
-                pitfall=_safe_rewrite(by_index.get(step.index).pitfall if by_index.get(step.index) else None, step.pitfall),
-                check=_safe_rewrite(by_index.get(step.index).check if by_index.get(step.index) else None, step.check),
-                expression=step.expression,
-                expression_latex=step.expression_latex,
-                result=step.result,
-                result_latex=step.result_latex,
-                kind=step.kind,
-                confidence=step.confidence,
-            )
-            for step in response.steps
-        ]
-        response.warnings.append("Đã dùng AI để diễn giải lại các bước; đáp án và kiểm chứng không thay đổi.")
+            
+        # Add the conclusion step from the original response back if it exists to preserve final verification text
+        original_conclusion = next((s for s in response.steps if s.kind == "conclusion"), None)
+        
+        response.steps = [_map_ai_step(step) for step in payload.steps]
+        
+        if original_conclusion:
+            original_conclusion.index = len(response.steps) + 1
+            response.steps.append(original_conclusion)
+            
+        response.warnings.append("Đã dùng AI để sinh các bước giải chi tiết; đáp án và kiểm chứng vẫn được bảo đảm bởi hệ thống.")
     except Exception as error:
         response.warnings.append(f"Không gọi được AI diễn giải, đang dùng lời giải deterministic: {_short_error(str(error))}")
     return response
@@ -99,6 +110,7 @@ def _payload(response: AlgebraSolveResponse) -> dict:
         "verification_checks": [check.model_dump() for check in response.verification.checks],
         "assumptions": response.assumptions,
         "warnings": response.warnings,
+        "milestones": response.milestones,
         "steps": [step.model_dump() for step in response.steps],
     }
 

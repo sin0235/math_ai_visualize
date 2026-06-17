@@ -568,3 +568,331 @@ def test_priority_midpoint_over_on_line():
     m = next(o for o in fixed.objects if getattr(o, "name", None) == "M")
     # Midpoint của AB là (2,0,0), nằm cũng trên A-C nên cả hai relation đều ok
     assert abs(m.x - 2.0) < 1e-9
+
+
+# ===========================================================================
+# Phase 4 CAS Verifier additions
+# ===========================================================================
+
+
+def test_point_on_segment_ok():
+    scene = _make_scene(
+        objects=[
+            {"type": "point_3d", "name": "A", "x": 0, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "B", "x": 4, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "M", "x": 2, "y": 0, "z": 0},
+        ],
+        relations=[
+            {"type": "point_on_segment", "object_1": "M", "object_2": "A-B"},
+        ],
+    )
+    assert verify_scene(scene) == []
+
+
+def test_point_on_segment_outside():
+    scene = _make_scene(
+        objects=[
+            {"type": "point_3d", "name": "A", "x": 0, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "B", "x": 4, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "P", "x": 6, "y": 0, "z": 0},
+        ],
+        relations=[
+            {"type": "point_on_segment", "object_1": "P", "object_2": "A-B"},
+        ],
+    )
+    issues = verify_scene(scene)
+    assert len(issues) == 1
+    assert issues[0].relation_type == "point_on_segment"
+    assert "ngoài đoạn" in issues[0].description
+
+
+def test_point_on_segment_off_line():
+    scene = _make_scene(
+        objects=[
+            {"type": "point_3d", "name": "A", "x": 0, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "B", "x": 4, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "P", "x": 2, "y": 1, "z": 0},
+        ],
+        relations=[
+            {"type": "point_on_segment", "object_1": "P", "object_2": "A-B"},
+        ],
+    )
+    issues = verify_scene(scene)
+    assert len(issues) == 1
+    assert issues[0].relation_type == "point_on_segment"
+
+
+def test_point_on_segment_auto_fix():
+    scene = _make_scene(
+        objects=[
+            {"type": "point_3d", "name": "A", "x": 0, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "B", "x": 4, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "P", "x": 2, "y": 1, "z": 0},
+        ],
+        relations=[
+            {"type": "point_on_segment", "object_1": "P", "object_2": "A-B"},
+        ],
+    )
+    fixed, _ = auto_fix_scene(scene)
+    p = next(o for o in fixed.objects if getattr(o, "name", None) == "P")
+    assert abs(p.x - 2.0) < 1e-6
+    assert abs(p.y - 0.0) < 1e-6
+    assert abs(p.z - 0.0) < 1e-6
+
+
+def test_line_in_plane_ok():
+    scene = _make_scene(
+        objects=[
+            {"type": "point_3d", "name": "A", "x": 0, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "B", "x": 4, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "C", "x": 4, "y": 4, "z": 0},
+            {"type": "point_3d", "name": "D", "x": 0, "y": 4, "z": 0},
+            {"type": "point_3d", "name": "E", "x": 2, "y": 2, "z": 0},
+        ],
+        relations=[
+            {"type": "line_in_plane", "object_1": "EA", "object_2": "plane(ABCD)"},
+        ],
+    )
+    assert verify_scene(scene) == []
+
+
+def test_line_in_plane_violated():
+    scene = _make_scene(
+        objects=[
+            {"type": "point_3d", "name": "A", "x": 0, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "B", "x": 4, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "C", "x": 4, "y": 4, "z": 0},
+            {"type": "point_3d", "name": "D", "x": 0, "y": 4, "z": 0},
+            {"type": "point_3d", "name": "E", "x": 1, "y": 1, "z": 1},
+            {"type": "point_3d", "name": "F", "x": 3, "y": 3, "z": 2},
+        ],
+        relations=[
+            {"type": "line_in_plane", "object_1": "E-F", "object_2": "plane(ABCD)"},
+        ],
+    )
+    issues = verify_scene(scene)
+    assert len(issues) == 1
+    assert issues[0].relation_type == "line_in_plane"
+
+
+def test_parallel_planes_ok():
+    scene = _make_scene(
+        objects=[
+            {"type": "point_3d", "name": "A", "x": 0, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "B", "x": 4, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "C", "x": 4, "y": 4, "z": 0},
+            {"type": "point_3d", "name": "D", "x": 0, "y": 4, "z": 0},
+            {"type": "point_3d", "name": "E", "x": 0, "y": 0, "z": 3},
+            {"type": "point_3d", "name": "F", "x": 4, "y": 0, "z": 3},
+            {"type": "point_3d", "name": "G", "x": 4, "y": 4, "z": 3},
+            {"type": "point_3d", "name": "H", "x": 0, "y": 4, "z": 3},
+        ],
+        relations=[
+            {"type": "parallel_planes", "object_1": "plane(ABCD)", "object_2": "plane(EFGH)"},
+        ],
+    )
+    assert verify_scene(scene) == []
+
+
+def test_parallel_plane_plane_alias_ok():
+    scene = _make_scene(
+        objects=[
+            {"type": "point_3d", "name": "A", "x": 0, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "B", "x": 1, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "C", "x": 0, "y": 1, "z": 0},
+            {"type": "point_3d", "name": "D", "x": 0, "y": 0, "z": 2},
+            {"type": "point_3d", "name": "E", "x": 1, "y": 0, "z": 2},
+            {"type": "point_3d", "name": "F", "x": 0, "y": 1, "z": 2},
+        ],
+        relations=[
+            {"type": "parallel_plane_plane", "object_1": "plane(ABC)", "object_2": "plane(DEF)"},
+        ],
+    )
+    assert verify_scene(scene) == []
+
+
+def test_parallel_planes_violated():
+    scene = _make_scene(
+        objects=[
+            {"type": "point_3d", "name": "A", "x": 0, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "B", "x": 4, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "C", "x": 4, "y": 4, "z": 0},
+            {"type": "point_3d", "name": "E", "x": 0, "y": 0, "z": 3},
+            {"type": "point_3d", "name": "F", "x": 4, "y": 0, "z": 3},
+            {"type": "point_3d", "name": "G", "x": 4, "y": 4, "z": 0},  # tilted
+        ],
+        relations=[
+            {"type": "parallel_planes", "object_1": "plane(ABC)", "object_2": "plane(EFG)"},
+        ],
+    )
+    issues = verify_scene(scene)
+    assert len(issues) == 1
+    assert issues[0].relation_type == "parallel_planes"
+
+
+def test_perpendicular_planes_ok():
+    scene = _make_scene(
+        objects=[
+            {"type": "point_3d", "name": "A", "x": 0, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "B", "x": 1, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "C", "x": 0, "y": 1, "z": 0},  # normal is (0,0,1)
+            {"type": "point_3d", "name": "D", "x": 0, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "E", "x": 0, "y": 1, "z": 0},
+            {"type": "point_3d", "name": "F", "x": 0, "y": 0, "z": 1},  # normal is (1,0,0)
+        ],
+        relations=[
+            {"type": "perpendicular_planes", "object_1": "plane(ABC)", "object_2": "plane(DEF)"},
+        ],
+    )
+    assert verify_scene(scene) == []
+
+
+def test_perpendicular_plane_plane_alias_ok():
+    scene = _make_scene(
+        objects=[
+            {"type": "point_3d", "name": "A", "x": 0, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "B", "x": 1, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "C", "x": 0, "y": 1, "z": 0},
+            {"type": "point_3d", "name": "D", "x": 0, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "E", "x": 0, "y": 1, "z": 0},
+            {"type": "point_3d", "name": "F", "x": 0, "y": 0, "z": 1},
+        ],
+        relations=[
+            {"type": "perpendicular_plane_plane", "object_1": "plane(ABC)", "object_2": "plane(DEF)"},
+        ],
+    )
+    assert verify_scene(scene) == []
+
+
+def test_perpendicular_planes_violated():
+    scene = _make_scene(
+        objects=[
+            {"type": "point_3d", "name": "A", "x": 0, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "B", "x": 1, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "C", "x": 0, "y": 1, "z": 0},  # normal is (0,0,1)
+            {"type": "point_3d", "name": "D", "x": 0, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "E", "x": 1, "y": 0, "z": -1},
+            {"type": "point_3d", "name": "F", "x": 0, "y": 1, "z": -1},  # normal is (1,1,1)
+        ],
+        relations=[
+            {"type": "perpendicular_planes", "object_1": "plane(ABC)", "object_2": "plane(DEF)"},
+        ],
+    )
+    issues = verify_scene(scene)
+    assert len(issues) == 1
+    assert issues[0].relation_type == "perpendicular_planes"
+
+
+def test_ratio_ok_with_value():
+    scene = _make_scene(
+        objects=[
+            {"type": "point_3d", "name": "A", "x": 0, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "B", "x": 4, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "M", "x": 1, "y": 0, "z": 0},
+        ],
+        relations=[
+            {"type": "ratio", "object_1": "M", "object_2": "A-B", "metadata": {"value": 0.25}},
+        ],
+    )
+    assert verify_scene(scene) == []
+
+
+def test_segment_ratio_alias_ok_with_value():
+    scene = _make_scene(
+        objects=[
+            {"type": "point_3d", "name": "A", "x": 0, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "B", "x": 4, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "M", "x": 1, "y": 0, "z": 0},
+        ],
+        relations=[
+            {"type": "segment_ratio", "object_1": "M", "object_2": "A-B", "metadata": {"value": 0.25}},
+        ],
+    )
+    assert verify_scene(scene) == []
+
+
+def test_ratio_violated():
+    scene = _make_scene(
+        objects=[
+            {"type": "point_3d", "name": "A", "x": 0, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "B", "x": 4, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "M", "x": 3, "y": 0, "z": 0},
+        ],
+        relations=[
+            {"type": "ratio", "object_1": "M", "object_2": "A-B", "metadata": {"value": 0.25}},
+        ],
+    )
+    issues = verify_scene(scene)
+    assert len(issues) == 1
+    assert issues[0].relation_type == "ratio"
+
+
+def test_ratio_with_colon_notation():
+    scene = _make_scene(
+        objects=[
+            {"type": "point_3d", "name": "A", "x": 0, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "B", "x": 4, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "M", "x": 1, "y": 0, "z": 0},
+        ],
+        relations=[
+            {"type": "ratio", "object_1": "M", "object_2": "A-B", "metadata": {"ratio": "1:3"}},
+        ],
+    )
+    assert verify_scene(scene) == []
+
+
+def test_ratio_auto_fix():
+    scene = _make_scene(
+        objects=[
+            {"type": "point_3d", "name": "A", "x": 0, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "B", "x": 4, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "M", "x": 3, "y": 0, "z": 0},
+        ],
+        relations=[
+            {"type": "ratio", "object_1": "M", "object_2": "A-B", "metadata": {"value": 0.5}},
+        ],
+    )
+    fixed, _ = auto_fix_scene(scene)
+    m = next(o for o in fixed.objects if getattr(o, "name", None) == "M")
+    assert abs(m.x - 2.0) < 1e-6
+
+
+def test_optimizer_repairs_parallel_planes():
+    scene = _make_scene(
+        objects=[
+            {"type": "point_3d", "name": "A", "x": 0, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "B", "x": 4, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "C", "x": 4, "y": 4, "z": 0},
+            {"type": "point_3d", "name": "D", "x": 0, "y": 4, "z": 0},
+            {"type": "point_3d", "name": "E", "x": 0, "y": 0, "z": 3},
+            {"type": "point_3d", "name": "F", "x": 4, "y": 0, "z": 3},
+            {"type": "point_3d", "name": "G", "x": 4, "y": 4, "z": 3},
+            {"type": "point_3d", "name": "H", "x": 0, "y": 4, "z": 3.5},  # tilted by 0.5
+        ],
+        relations=[
+            {"type": "parallel_planes", "object_1": "plane(ABCD)", "object_2": "plane(EFGH)"},
+        ],
+    )
+    fixed, issues = auto_fix_scene(scene, use_optimizer=True)
+    assert any(issue.relation_type == "optimizer" and issue.auto_fixed for issue in issues)
+    assert verify_scene(fixed) == []
+
+
+def test_optimizer_repairs_perpendicular_planes():
+    scene = _make_scene(
+        objects=[
+            {"type": "point_3d", "name": "A", "x": 0, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "B", "x": 1, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "C", "x": 0, "y": 1, "z": 0},  # normal (0,0,1)
+            {"type": "point_3d", "name": "D", "x": 0, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "E", "x": 1, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "F", "x": 0, "y": 0.1, "z": 1},  # slightly off perpendicular
+        ],
+        relations=[
+            {"type": "perpendicular_planes", "object_1": "plane(ABC)", "object_2": "plane(DEF)"},
+        ],
+    )
+    fixed, issues = auto_fix_scene(scene, use_optimizer=True)
+    assert any(issue.relation_type == "optimizer" and issue.auto_fixed for issue in issues)
+    assert verify_scene(fixed) == []
+

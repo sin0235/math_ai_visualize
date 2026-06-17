@@ -53,6 +53,10 @@ def _solve_derivative(problem: ParsedAlgebraProblem, template: CalculusTemplate)
         method=["sympy.diff"],
     )
     steps.append(_calculus_conclusion_step(len(steps) + 1, "Kết luận đạo hàm", answer, sp.latex(derivative)))
+    milestones = [
+        f"Biểu thức gốc: f({sp.latex(template.variable)}) = {sp.latex(template.expression)}",
+        f"Kết quả đạo hàm: f'({sp.latex(template.variable)}) = {sp.latex(derivative)}"
+    ]
     return AlgebraSolveResponse(
         input=problem.raw_input,
         normalized_input=problem.normalized_input,
@@ -63,6 +67,7 @@ def _solve_derivative(problem: ParsedAlgebraProblem, template: CalculusTemplate)
         answer_latex=sp.latex(derivative),
         solution_set=AlgebraSolutionSet(kind="expression", text=sp.sstr(derivative), latex=sp.latex(derivative)),
         steps=steps,
+        milestones=milestones,
         verification=verification,
     )
 
@@ -79,6 +84,11 @@ def _solve_limit(problem: ParsedAlgebraProblem, template: CalculusTemplate) -> A
         method=["sympy.limit"],
     )
     steps.append(_calculus_conclusion_step(len(steps) + 1, "Kết luận giới hạn", answer, sp.latex(result)))
+    dir_str = "^+" if template.direction == "+" else "^-" if template.direction == "-" else ""
+    milestones = [
+        f"Giới hạn cần tính: \\lim_{{{sp.latex(template.variable)}\\to {sp.latex(template.point)}{dir_str}}}{sp.latex(template.expression)}",
+        f"Kết quả: {sp.latex(result)}"
+    ]
     return AlgebraSolveResponse(
         input=problem.raw_input,
         normalized_input=problem.normalized_input,
@@ -89,6 +99,7 @@ def _solve_limit(problem: ParsedAlgebraProblem, template: CalculusTemplate) -> A
         answer_latex=sp.latex(result),
         solution_set=AlgebraSolutionSet(kind="expression", text=sp.sstr(result), latex=sp.latex(result)),
         steps=steps,
+        milestones=milestones,
         verification=verification,
     )
 
@@ -122,6 +133,15 @@ def _solve_integral(problem: ParsedAlgebraProblem, template: CalculusTemplate) -
         method=["sympy.integrate"],
     )
     steps.append(_calculus_conclusion_step(len(steps) + 1, "Kết luận tích phân", answer, latex))
+    milestones = []
+    if is_definite:
+        milestones.append(f"Tích phân xác định: \\int_{{{sp.latex(template.lower)}}}^{{{sp.latex(template.upper)}}} {sp.latex(template.expression)} d{sp.latex(template.variable)}")
+        milestones.append(f"Nguyên hàm: {sp.latex(antiderivative)}")
+        milestones.append(f"Kết quả: {sp.latex(result)}")
+    else:
+        milestones.append(f"Nguyên hàm cần tìm: \\int {sp.latex(template.expression)} d{sp.latex(template.variable)}")
+        milestones.append(f"Kết quả: {sp.latex(antiderivative)} + C")
+        
     return AlgebraSolveResponse(
         input=problem.raw_input,
         normalized_input=problem.normalized_input,
@@ -132,6 +152,7 @@ def _solve_integral(problem: ParsedAlgebraProblem, template: CalculusTemplate) -
         answer_latex=latex,
         solution_set=AlgebraSolutionSet(kind="expression", text=sp.sstr(result), latex=latex),
         steps=steps,
+        milestones=milestones,
         verification=verification,
     )
 

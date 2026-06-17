@@ -23,6 +23,7 @@ export interface MathScene {
   annotations: Annotation[];
   parameters?: Parameter[];
   view: SceneView;
+  cas_issues?: CasIssue[];
 }
 
 export interface Parameter {
@@ -239,8 +240,17 @@ export interface RenderPayload {
   three_scene?: ThreeScene | null;
 }
 
+export interface CasIssue {
+  relation_type: string;
+  description: string;
+  severity: string;
+  auto_fixed: boolean;
+  metadata?: Record<string, unknown> | null;
+}
+
 export interface RenderResponse {
   scene: MathScene;
   payload: RenderPayload;
   warnings: string[];
+  cas_issues?: CasIssue[];
 }

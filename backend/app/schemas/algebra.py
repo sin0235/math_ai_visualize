@@ -94,6 +94,7 @@ class AlgebraSolveStep(BaseModel):
     result_latex: str | None = None
     kind: Literal["normalize", "domain", "transform", "solve", "verify", "conclusion"] | None = None
     confidence: Literal["verified", "symbolic", "numeric_checked", "unverified"] | None = None
+    sub_steps: list['AlgebraSolveStep'] = Field(default_factory=list)
 
 
 class AlgebraSolutionValue(BaseModel):
@@ -133,6 +134,7 @@ class AlgebraSolveResponse(BaseModel):
     answer_latex: str | None = None
     solution_set: AlgebraSolutionSet = Field(default_factory=AlgebraSolutionSet)
     steps: list[AlgebraSolveStep] = Field(default_factory=list)
+    milestones: list[str] = Field(default_factory=list)
     verification: AlgebraVerificationReport = Field(default_factory=AlgebraVerificationReport)
     assumptions: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)

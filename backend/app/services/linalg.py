@@ -137,3 +137,57 @@ def angle_between(a, b, eps: float = 1e-9) -> float | None:
         return None
     ratio = float(np.clip(dot(a, b) / (first_norm * second_norm), -1.0, 1.0))
     return float(np.degrees(np.arccos(ratio)))
+
+
+# ---------------------------------------------------------------------------
+# Phase-4 geometry helpers
+# ---------------------------------------------------------------------------
+
+
+def line_direction(start, end) -> Vec3:
+    """Direction vector from start to end (unnormalized)."""
+    return sub(end, start)
+
+
+def is_point_in_plane(point, plane_point, normal, eps: float = 1e-9) -> bool:
+    """Check if point lies on the plane defined by plane_point and normal."""
+    return abs(signed_distance_to_plane(point, plane_point, normal)) <= eps
+
+
+def are_vectors_parallel(a, b, eps: float = 1e-9) -> bool:
+    """Check if two 3D vectors are parallel (cross product ~ 0)."""
+    a3 = as_vec3(a)
+    b3 = as_vec3(b)
+    cr = cross(a3, b3)
+    return norm(cr) <= eps * max(norm(a3) * norm(b3), 1.0)
+
+
+def segment_ratio(point, seg_start, seg_end, eps: float = 1e-9) -> float | None:
+    """Compute parameter t such that point = seg_start + t*(seg_end - seg_start).
+
+    Returns None if the segment is degenerate (start == end) or point is not on the line.
+    """
+    d = sub(seg_end, seg_start)
+    d_len = norm(d)
+    if d_len <= eps:
+        return None
+    v = sub(point, seg_start)
+    # Check point is on the line
+    cr = cross(as_vec3(d), as_vec3(v))
+    if norm(cr) > eps * max(d_len * norm(v), 1.0):
+        return None
+    return dot(v, d) / (d_len * d_len)
+
+
+def project_point_to_line(point, line_start, line_end, eps: float = 1e-9) -> Vec3 | None:
+    """Project point onto the line through line_start and line_end.
+
+    Returns None if line_start == line_end (degenerate).
+    """
+    d = sub(line_end, line_start)
+    d_len = norm(d)
+    if d_len <= eps:
+        return None
+    t = dot(sub(point, line_start), d) / (d_len * d_len)
+    return add(line_start, scale(d, t))
+

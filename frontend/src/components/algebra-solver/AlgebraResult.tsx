@@ -1,5 +1,5 @@
 import type { AlgebraSolveResponse } from '../../api/client';
-import { KatexSpan } from '../KatexSpan';
+import { KatexSpan, MixedTextRenderer } from '../KatexSpan';
 import { AlgebraStepList } from './AlgebraStepList';
 
 export function EmptyAlgebraResult() {
@@ -116,7 +116,7 @@ function SectionTitle({ title }: { title: string }) {
 function InfoList({ items }: { items: string[] }) {
   return (
     <ul className="algebra-info-list">
-      {items.map((item) => <li key={item}>{item}</li>)}
+      {items.map((item) => <li key={item}><MixedTextRenderer text={item} /></li>)}
     </ul>
   );
 }

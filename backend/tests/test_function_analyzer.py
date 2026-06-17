@@ -47,3 +47,31 @@ def test_analyze_function_accepts_broader_latex_and_ocr_syntax():
         result = analyze_function(expression)
         assert "error" not in result, expression
         assert result["domain"] is not None
+
+
+def test_analyze_function_reports_rational_domain_and_vertical_asymptote():
+    result = analyze_function("1/(x-1)")
+
+    assert "error" not in result
+    assert "1" in result["domain"]
+    assert result["vertical_asymptotes"] == [{"x": "1", "lim_right": "+∞", "lim_left": "-∞"}]
+
+
+def test_analyze_function_finds_polynomial_extrema_and_intervals():
+    result = analyze_function("x^3 - 3*x")
+
+    assert "error" not in result
+    critical_points = {(point["x_exact"], point["kind"]) for point in result["critical_points"]}
+    assert ("-1", "max") in critical_points
+    assert ("1", "min") in critical_points
+    assert result["intervals_increasing"]
+    assert result["intervals_decreasing"]
+
+
+def test_analyze_line_position_uses_exact_roots_before_numeric_fallback():
+    result = analyze_function("x^4 - 2", line={"k": 0, "b": 0})
+
+    assert "error" not in result
+    intersections = result["line_analysis"]["intersections"]
+    assert {item["x_exact"] for item in intersections} == {"-2**(1/4)", "2**(1/4)"}
+    assert result["line_analysis"]["intersection_count"] == 2

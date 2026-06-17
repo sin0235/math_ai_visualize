@@ -28,6 +28,20 @@ class ParsedAlgebraProblem:
     variables: list[sp.Symbol] = field(default_factory=list)
     domain: str = "R"
 
+    @property
+    def sympy_domain(self) -> sp.Set:
+        if self.domain == "C":
+            return sp.S.Complexes
+        if self.domain == "Z":
+            return sp.S.Integers
+        if self.domain == "N":
+            return sp.S.Naturals
+        return sp.S.Reals
+
+    @property
+    def is_real_domain(self) -> bool:
+        return self.domain in {"R", "Z", "N"}
+
 
 def parse_algebra_problem(raw_input: str, topic: str = "auto", variables: list[str] | None = None, domain: str = "R") -> ParsedAlgebraProblem:
     normalized = normalize_algebra_input(raw_input)

@@ -29,8 +29,6 @@ def interpret_algebra_input(request: AlgebraSolveRequest) -> AlgebraInputInterpr
     domain = _detect_domain(raw, request.domain, topic_hint)
     chips = _build_chips(raw, canonical, topic_hint, variables, domain, detected_format)
     warnings: list[str] = []
-    if request.topic != "auto" and topic_hint != "auto" and request.topic != topic_hint:
-        warnings.append(f"Dạng bài đang chọn là {request.topic}, nhưng biểu thức giống {topic_hint}; hệ thống sẽ ưu tiên dạng nhận dạng được nếu hai dạng mâu thuẫn rõ.")
     if canonical != raw and detected_format in {"natural_vi", "mixed"}:
         warnings.append("Đã diễn giải đề tiếng Việt thành biểu thức chuẩn trước khi giải.")
     if detected_format == "mixed":
@@ -98,9 +96,13 @@ def _structured_from_natural_language(raw: str) -> str | None:
     if permutation:
         k, n = permutation.groups()
         return f"A({n},{k})"
-    factorial = re.search(r"\b(\d+)\s*(?:giai thua|!)\b", plain)
+    factorial = re.search(r"\b(\d+)\s*(?:giai thua|!|hoan vi|hoán vị)\b", plain)
     if factorial:
         return f"{factorial.group(1)}!"
+    if "hoan vi cua" in plain or "hoan vi" in plain:
+        match = re.search(r"\b(\d+)\b", plain)
+        if match:
+            return f"{match.group(1)}!"
     coefficient = re.search(r"he so cua\s+([a-zA-Z])\^?(\d+)\s+trong\s+(.+)$", plain)
     if coefficient:
         variable, power, expression = coefficient.groups()
@@ -177,9 +179,10 @@ def _extract_quadratic_coefficients(expression: str) -> tuple[str | None, str | 
     a, variable, b, linear_variable, c = match.groups()
     if variable != linear_variable:
         return None, None, None, variable, "m"
+    a = re.sub(r"^[a-zA-Z\s]+", "", a) # strip leftover words like "trình", "nh"
     a = a.rstrip("*") or "1"
-    if a == "-":
-        a = "-1"
+    if a == "-" or not a:
+        a = "-1" if a == "-" else "1"
     parameter_match = re.search(r"\b([a-zA-Z])\b", b)
     parameter = parameter_match.group(1) if parameter_match else "m"
     return a, b.rstrip("*"), c, variable, parameter
@@ -208,12 +211,12 @@ def _sequence_template_from_text(plain: str) -> str | None:
     if "u1" not in values or "n" not in values:
         return None
     asks_sum = "tong" in plain or "s_n" in plain or "sn" in plain
-    if "cong" in plain and "d" in values:
+    if ("cong" in plain or "d" in values) and ("q" not in values):
         name = "arithmetic_sum" if asks_sum else "arithmetic"
-        return f"{name}(u1={values['u1']},d={values['d']},n={values['n']})"
-    if "nhan" in plain and "q" in values:
+        return f"{name}(u1={values['u1']},d={values.get('d', 0)},n={values['n']})"
+    if "nhan" in plain or "q" in values:
         name = "geometric_sum" if asks_sum else "geometric"
-        return f"{name}(u1={values['u1']},q={values['q']},n={values['n']})"
+        return f"{name}(u1={values['u1']},q={values.get('q', 0)},n={values['n']})"
     return None
 
 
@@ -325,7 +328,7 @@ def _replace_vietnamese_math_words(text: str) -> str:
 def _strip_intent_phrases(text: str) -> str:
     patterns = [
         r"^\s*(hãy\s+)?(giải|giai|tìm tập nghiệm của|tim tap nghiem cua|tìm tập nghiệm|tim tap nghiem|tìm nghiệm của|tim nghiem cua|tìm nghiệm|tim nghiem|tìm x thỏa mãn|tim x thoa man|tìm|tim)\s+",
-        r"^\s*(phương trình|phuong trinh|bất phương trình|bat phuong trinh|hệ phương trình|he phuong trinh|biểu thức|bieu thuc)\s+",
+        r"^\s*(phương trình|phuong trinh|bất phương trình|bat phuong trinh|hệ phương trình|he phuong trinh|biểu thức|bieu thuc|pt|bpt|hpt)\s+",
         r"\s+(theo|trên|trong)\s+(miền\s+)?(số\s+)?(thực|phức|nguyên|tự nhiên|thuc|phuc|nguyen|tu nhien)\s*$",
     ]
     result = text
@@ -388,9 +391,9 @@ def _detect_topic(raw: str, normalized: str) -> str:
         return "sequence"
     if ";" in normalized or "he phuong trinh" in plain:
         return "system"
-    if any(key in plain for key in ("bat phuong trinh", "lon hon", "nho hon", "khong am", "duong")) or re.search(r"<=|>=|<|>", normalized):
+    if any(key in plain for key in ("bat phuong trinh", "bpt", "lon hon", "nho hon", "khong am", "duong")) or re.search(r"<=|>=|<|>", normalized):
         return "inequality"
-    if any(key in plain for key in ("log", "ln", "mu", "luy thua", "logarit", "loga")) or re.search(r"\blog\(|\bexp\(", normalized):
+    if any(key in plain for key in ("log", "ln", "mu", "luy thua", "logarit", "loga")) or re.search(r"\blog\(|\bexp\(", normalized) or re.search(r"\*\*[\s({]*[a-zA-Z]", normalized) or re.search(r"\*\*\([^)]*[a-zA-Z][^)]*\)", normalized):
         return "exponential_log"
     if any(key in plain for key in ("dao ham", "derivative")) or normalized.startswith("derivative("):
         return "calculus_derivative"
@@ -398,9 +401,9 @@ def _detect_topic(raw: str, normalized: str) -> str:
         return "calculus_limit"
     if any(key in plain for key in ("tich phan", "nguyen ham", "integral")) or normalized.startswith("integral("):
         return "calculus_integral"
-    if any(key in plain for key in ("luong giac", "sin", "cos", "tan", "cot")):
+    if any(key in plain for key in ("luong giac", "sin", "cos", "tan", "cot", "arcsin", "arccos", "arctan", "arccot")):
         return "trigonometry"
-    if any(key in plain for key in ("so phuc", "complex", "mo dun", "module", "phan thuc", "phan ao", "lien hop")) or re.search(r"\bi\b|I", normalized):
+    if any(key in plain for key in ("so phuc", "complex", "mo dun", "module", "phan thuc", "phan ao", "lien hop")) or re.search(r"\bi\b", normalized):
         return "complex"
     if "=" in normalized:
         return "equation"

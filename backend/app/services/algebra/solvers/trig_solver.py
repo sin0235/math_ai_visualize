@@ -25,6 +25,11 @@ def solve_trigonometry(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
     if not any(expression.has(func) for func in TRIG_FUNCTIONS):
         return _unsupported(problem, "Phương trình không chứa hàm lượng giác được hỗ trợ.")
     assumptions = _unique(domain_assumptions_from_expression(expression, variable) + trig_domain_assumptions(expression, variable))
+    
+    milestones: list[str] = []
+    if problem.relation is not None:
+        milestones.append(f"Phương trình gốc: {sp.latex(problem.relation)}")
+        
     steps: list[AlgebraSolveStep] = []
     if assumptions:
         steps.append(domain_step(len(steps) + 1, assumptions))
@@ -67,6 +72,12 @@ def solve_trigonometry(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
     verification = verify_finite_solutions(problem, values) if values is not None else verify_solution_set(problem, solution_set)
     status = "solved" if verification.status in {"verified", "partially_verified"} else "error"
     steps.append(conclusion_step(len(steps) + 1, answer, sp.latex(solution_set)))
+    if values is not None and len(values) > 0:
+        roots_latex = ", ".join(sp.latex(sp.Eq(variable, val, evaluate=False)) for val in values)
+        milestones.append(f"Tập nghiệm: {roots_latex}")
+    else:
+        milestones.append(f"Tập nghiệm: {sp.latex(solution_set)}")
+        
     return AlgebraSolveResponse(
         input=problem.raw_input,
         normalized_input=problem.normalized_input,
@@ -77,6 +88,7 @@ def solve_trigonometry(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
         answer_latex=sp.latex(solution_set),
         solution_set=solution,
         steps=steps,
+        milestones=milestones,
         verification=verification,
         assumptions=assumptions,
         warnings=[] if values is not None else ["Nghiệm lượng giác tuần hoàn được biểu diễn symbolic nên chỉ kiểm chứng ở mức tập nghiệm."],

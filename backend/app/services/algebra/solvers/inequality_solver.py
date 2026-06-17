@@ -21,6 +21,18 @@ def solve_inequality(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
     raw_expression = problem.relation.lhs - problem.relation.rhs
     expression = sp.simplify(raw_expression)
     assumptions = domain_assumptions_from_expression(raw_expression, variable)
+    
+    milestones: list[str] = []
+    if problem.relation is not None:
+        milestones.append(f"Bất phương trình gốc: {sp.latex(problem.relation)}")
+    try:
+        factored_expr = sp.factor(expression)
+        if factored_expr != expression and not isinstance(factored_expr, sp.Add):
+            rel_zero = _relation_from_expression(factored_expr, problem.relation.rel_op)
+            milestones.append(f"Dạng phân tích nhân tử: {sp.latex(rel_zero)}")
+    except Exception:
+        pass
+        
     steps: list[AlgebraSolveStep] = []
     if assumptions:
         steps.append(domain_step(len(steps) + 1, assumptions))
@@ -29,6 +41,7 @@ def solve_inequality(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
         result_set = solve_univariate_inequality(problem.relation, variable, relational=False)
     except Exception as exc:
         return _unsupported(problem, f"SymPy chưa giải được bất phương trình này: {exc}")
+    result_set = _apply_problem_domain(result_set, problem.sympy_domain)
     relation_zero_latex = sp.latex(_relation_from_expression(expression, problem.relation.rel_op))
     steps.append(AlgebraSolveStep(
         index=len(steps) + 1,
@@ -57,6 +70,8 @@ def solve_inequality(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
     result_set_for_verification = result_set if isinstance(result_set, sp.Set) else sp.S.UniversalSet
     verification = verify_inequality_solution_set(problem, result_set_for_verification, _verification_samples(expression, variable, result_set_for_verification))
     answer = format_interval_set(result_set)
+    milestones.append(f"Tập nghiệm bất phương trình: {sp.latex(result_set)}")
+    
     steps.append(_inequality_verification_step(len(steps) + 1, verification.status, result_set))
     steps.append(conclusion_step(len(steps) + 1, answer, sp.latex(result_set)))
     return AlgebraSolveResponse(
@@ -69,6 +84,7 @@ def solve_inequality(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
         answer_latex=sp.latex(result_set),
         solution_set=AlgebraSolutionSet(kind="empty" if result_set is sp.EmptySet else "interval", text=answer, latex=sp.latex(result_set)),
         steps=steps,
+        milestones=milestones,
         verification=verification,
         assumptions=assumptions,
         warnings=[] if sign_steps else ["Bất phương trình được kiểm chứng ở mức tập nghiệm symbolic; chưa tạo được bảng xét dấu chi tiết cho dạng này."],
@@ -76,17 +92,13 @@ def solve_inequality(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
     )
 
 
-def _domain_assumptions(relation: sp.Relational, variable: sp.Symbol) -> list[str]:
-    expression = sp.simplify(relation.lhs - relation.rhs)
-    assumptions: list[str] = []
-    denominator = sp.denom(expression)
-    if denominator != 1 and denominator.has(variable):
-        assumptions.append(f"{sp.sstr(denominator)} khác 0")
-    for log_expr in expression.atoms(sp.log):
-        arg = log_expr.args[0]
-        if arg.has(variable):
-            assumptions.append(f"{sp.sstr(arg)} > 0")
-    return assumptions
+def _apply_problem_domain(result_set: sp.Set, domain: sp.Set) -> sp.Set:
+    if domain == sp.S.Reals:
+        return result_set
+    try:
+        return result_set.intersect(domain)
+    except Exception:
+        return result_set
 
 
 def _unsupported(problem: ParsedAlgebraProblem, message: str) -> AlgebraSolveResponse:
@@ -194,10 +206,19 @@ def _sign_chart_steps(expression: sp.Expr, variable: sp.Symbol, rel_op: str, res
 
 def _real_roots(expression: sp.Expr, variable: sp.Symbol) -> list[sp.Expr]:
     try:
-        roots = sp.solve(sp.Eq(expression, 0), variable)
-    except Exception:
-        return []
-    return [sp.simplify(root) for root in roots if root.is_real is not False]
+        polynomial = sp.Poly(sp.factor(expression), variable)
+        roots = polynomial.real_roots()
+    except (sp.PolynomialError, NotImplementedError):
+        roots = None
+    if roots is None:
+        try:
+            solution_set = sp.solveset(expression, variable, domain=sp.S.Reals)
+        except Exception:
+            return []
+        if not isinstance(solution_set, sp.FiniteSet):
+            return []
+        roots = list(solution_set)
+    return sorted({sp.simplify(root) for root in roots if root.is_real is not False}, key=sp.default_sort_key)
 
 
 def _sign_intervals(expression: sp.Expr, variable: sp.Symbol, points: list[sp.Expr], result_set: sp.Set) -> list[SignInterval]:

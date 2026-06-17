@@ -744,6 +744,227 @@ def _verify_angle(
     return None
 
 
+def _verify_point_on_segment(
+    rel: Relation, points: dict[str, Point2D | Point3D]
+) -> CasIssue | None:
+    """object_1 = tên điểm P; object_2 = 'A-B' hoặc 'AB' (đoạn thẳng).
+
+    Khác on_line: yêu cầu P nằm GIỮA A và B (0 <= t <= 1).
+    """
+    p_name = (rel.object_1 or "").strip()
+    seg = _parse_segment_token(rel.object_2 or "")
+    if not (p_name and seg):
+        return None
+    p = points.get(p_name)
+    a = points.get(seg[0])
+    b = points.get(seg[1])
+    if p is None or a is None or b is None:
+        return None
+    if not (type(p) is type(a) is type(b)):
+        return None
+    base = _vec_sub(_coords(b), _coords(a))
+    base_len = _length(base)
+    if base_len < REL_EPS:
+        return None
+    v = _vec_sub(_coords(p), _coords(a))
+    cross = _cross3(_to_3d(base), _to_3d(v))
+    dist = _length(cross) / base_len
+    if dist > REL_EPS * max(base_len, 1.0):
+        t = _dot(v, base) / (base_len * base_len)
+        t_clamped = max(0.0, min(1.0, t))
+        foot = _vec_add(_coords(a), _vec_scale(base, t_clamped))
+        return CasIssue(
+            relation_type="point_on_segment",
+            description=(
+                f"Điểm {p_name} không nằm trên đoạn {seg[0]}{seg[1]} "
+                f"(lệch {dist:.4f})"
+            ),
+            metadata={"point": p_name, "expected": foot, "segment": seg},
+        )
+    # On the line — check 0 <= t <= 1
+    t = _dot(v, base) / (base_len * base_len)
+    if t < -REL_EPS or t > 1.0 + REL_EPS:
+        t_clamped = max(0.0, min(1.0, t))
+        foot = _vec_add(_coords(a), _vec_scale(base, t_clamped))
+        return CasIssue(
+            relation_type="point_on_segment",
+            description=(
+                f"Điểm {p_name} nằm trên đường thẳng {seg[0]}{seg[1]} "
+                f"nhưng ngoài đoạn (t = {t:.4f})"
+            ),
+            metadata={"point": p_name, "expected": foot, "segment": seg},
+        )
+    return None
+
+
+def _verify_line_in_plane(
+    rel: Relation, points: dict[str, Point2D | Point3D]
+) -> CasIssue | None:
+    """object_1 = 'AB' (đường thẳng); object_2 = 'plane(ABCD)' hoặc '(ABC)' (mặt phẳng).
+
+    Kiểm tra cả hai đầu mút của đường thẳng đều nằm trên mặt phẳng.
+    """
+    seg = _parse_segment_token(rel.object_1 or "")
+    plane = _parse_plane_token(rel.object_2 or "") or _parse_point_list(rel.object_2 or "")
+    if not (seg and plane and len(plane) >= 3):
+        return None
+    p1 = points.get(seg[0])
+    p2 = points.get(seg[1])
+    if not (isinstance(p1, Point3D) and isinstance(p2, Point3D)):
+        return None
+    n = _plane_normal(points, plane)
+    if n is None:
+        return None
+    p0 = _coords(points[plane[0]])
+    n_len = _length(n)
+    if n_len < REL_EPS:
+        return None
+    offsets = []
+    for name, pt in [(seg[0], p1), (seg[1], p2)]:
+        v = _vec_sub(_coords(pt), p0)
+        off = abs(_dot(v, n) / n_len)
+        offsets.append((name, off))
+    max_off = max(off for _, off in offsets)
+    if max_off > REL_EPS * max(_length(_vec_sub(_coords(p2), _coords(p1))), 1.0):
+        bad = [name for name, off in offsets if off > REL_EPS]
+        return CasIssue(
+            relation_type="line_in_plane",
+            description=(
+                f"Đường thẳng {seg[0]}{seg[1]} không nằm trong mặt phẳng "
+                f"({''.join(plane)}) (điểm lệch: {', '.join(bad)}, max = {max_off:.4f})"
+            ),
+        )
+    return None
+
+
+def _verify_parallel_planes(
+    rel: Relation, points: dict[str, Point2D | Point3D]
+) -> CasIssue | None:
+    """object_1 = 'plane(ABC)' / '(ABC)'; object_2 = 'plane(DEF)' / '(DEF)'."""
+    plane1 = _parse_plane_token(rel.object_1 or "") or _parse_point_list(rel.object_1 or "")
+    plane2 = _parse_plane_token(rel.object_2 or "") or _parse_point_list(rel.object_2 or "")
+    if not (plane1 and plane2 and len(plane1) >= 3 and len(plane2) >= 3):
+        return None
+    n1 = _plane_normal(points, plane1)
+    n2 = _plane_normal(points, plane2)
+    if n1 is None or n2 is None:
+        return None
+    l1, l2 = _length(n1), _length(n2)
+    if l1 < REL_EPS or l2 < REL_EPS:
+        return None
+    cross = _cross3(n1, n2)
+    if _length(cross) > REL_EPS * l1 * l2:
+        return CasIssue(
+            relation_type="parallel_planes",
+            description=(
+                f"Mặt phẳng ({''.join(plane1)}) không song song với "
+                f"({''.join(plane2)}) (|n1×n2| = {_length(cross):.4f})"
+            ),
+        )
+    return None
+
+
+def _verify_perpendicular_planes(
+    rel: Relation, points: dict[str, Point2D | Point3D]
+) -> CasIssue | None:
+    """object_1 = 'plane(ABC)' / '(ABC)'; object_2 = 'plane(DEF)' / '(DEF)'."""
+    plane1 = _parse_plane_token(rel.object_1 or "") or _parse_point_list(rel.object_1 or "")
+    plane2 = _parse_plane_token(rel.object_2 or "") or _parse_point_list(rel.object_2 or "")
+    if not (plane1 and plane2 and len(plane1) >= 3 and len(plane2) >= 3):
+        return None
+    n1 = _plane_normal(points, plane1)
+    n2 = _plane_normal(points, plane2)
+    if n1 is None or n2 is None:
+        return None
+    l1, l2 = _length(n1), _length(n2)
+    if l1 < REL_EPS or l2 < REL_EPS:
+        return None
+    d = _dot(n1, n2)
+    if abs(d) > REL_EPS * l1 * l2:
+        return CasIssue(
+            relation_type="perpendicular_planes",
+            description=(
+                f"Mặt phẳng ({''.join(plane1)}) không vuông góc với "
+                f"({''.join(plane2)}) (cos = {d / (l1 * l2):.4f})"
+            ),
+        )
+    return None
+
+
+def _verify_ratio(
+    rel: Relation, points: dict[str, Point2D | Point3D]
+) -> CasIssue | None:
+    """Tỉ lệ chia đoạn: P chia AB theo tỉ lệ metadata.value.
+
+    object_1 = tên điểm P; object_2 = 'A-B' hoặc 'AB'.
+    metadata.value = t (P = A + t*(B-A)), hoặc
+    metadata.ratio = "m:n" hoặc "m/n" (PA/PB = m/n → t = m/(m+n)).
+    """
+    p_name = (rel.object_1 or "").strip()
+    seg = _parse_segment_token(rel.object_2 or "")
+    if not (p_name and seg):
+        return None
+    meta = rel.metadata or {}
+    # Parse expected t
+    expected_t: float | None = None
+    if "value" in meta:
+        try:
+            expected_t = float(meta["value"])
+        except (TypeError, ValueError):
+            pass
+    elif "ratio" in meta:
+        ratio_str = str(meta["ratio"])
+        if ":" in ratio_str:
+            parts = ratio_str.split(":")
+            if len(parts) == 2:
+                try:
+                    m, n = float(parts[0]), float(parts[1])
+                    if abs(m + n) > REL_EPS:
+                        expected_t = m / (m + n)
+                except (TypeError, ValueError):
+                    pass
+        elif "/" in ratio_str:
+            parts = ratio_str.split("/")
+            if len(parts) == 2:
+                try:
+                    m, n = float(parts[0]), float(parts[1])
+                    if abs(m + n) > REL_EPS:
+                        expected_t = m / (m + n)
+                except (TypeError, ValueError):
+                    pass
+    elif "t" in meta:
+        try:
+            expected_t = float(meta["t"])
+        except (TypeError, ValueError):
+            pass
+    if expected_t is None:
+        return None
+    p = points.get(p_name)
+    a = points.get(seg[0])
+    b = points.get(seg[1])
+    if p is None or a is None or b is None:
+        return None
+    if not (type(p) is type(a) is type(b)):
+        return None
+    base = _vec_sub(_coords(b), _coords(a))
+    base_len = _length(base)
+    if base_len < REL_EPS:
+        return None
+    v = _vec_sub(_coords(p), _coords(a))
+    actual_t = _dot(v, base) / (base_len * base_len)
+    if abs(actual_t - expected_t) > REL_EPS * max(abs(expected_t), 1.0):
+        expected_pos = _vec_add(_coords(a), _vec_scale(base, expected_t))
+        return CasIssue(
+            relation_type="ratio",
+            description=(
+                f"Điểm {p_name} chia đoạn {seg[0]}{seg[1]} với t = {actual_t:.4f} "
+                f"≠ kỳ vọng {expected_t:.4f}"
+            ),
+            metadata={"point": p_name, "expected": expected_pos, "segment": seg},
+        )
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Pipeline
 # ---------------------------------------------------------------------------
@@ -845,6 +1066,16 @@ def _dispatch(
         return _verify_distance(rel, points)
     if rtype == "angle":
         return _verify_angle(rel, points)
+    if rtype == "point_on_segment":
+        return _verify_point_on_segment(rel, points)
+    if rtype == "line_in_plane":
+        return _verify_line_in_plane(rel, points)
+    if rtype in {"parallel_planes", "parallel_plane_plane"}:
+        return _verify_parallel_planes(rel, points)
+    if rtype in {"perpendicular_planes", "perpendicular_plane_plane"}:
+        return _verify_perpendicular_planes(rel, points)
+    if rtype in {"ratio", "segment_ratio", "ratio_length"}:
+        return _verify_ratio(rel, points)
     return None
 
 
@@ -996,6 +1227,8 @@ _FIX_PRIORITY = {
     "midpoint": 1,    # M = (A+B)/2 — duy nhất
     "on_plane": 2,    # foot vuông góc — duy nhất với mặt phẳng cố định
     "on_line": 3,     # foot trên đoạn — duy nhất
+    "point_on_segment": 3,  # same priority as on_line
+    "ratio": 3,             # same priority as on_line
     "on_sphere": 4,   # scale theo direction hiện tại — phụ thuộc direction
     "on_circle": 5,   # scale theo direction hiện tại — phụ thuộc direction
 }
@@ -1204,6 +1437,109 @@ def _optimize_scene_constraints(scene: MathScene, base_issues: list[CasIssue]) -
                     if ab_len > REL_EPS:
                         dist = _length(_cross3(ab, ac)) / ab_len
                         residual.append((dist - float(sphere.radius)) / max(float(sphere.radius), 1.0))
+            elif rtype == "point_on_segment":
+                p_name = (rel.object_1 or "").strip()
+                seg = _parse_segment_token(rel.object_2 or "")
+                if p_name in pts and seg and all(name in pts for name in seg):
+                    base = pts[seg[1]] - pts[seg[0]]
+                    base_len = _length(base)
+                    if base_len > REL_EPS:
+                        # Same as on_line residual (collinearity)
+                        residual.extend((_cross3(base, pts[p_name] - pts[seg[0]]) / max(base_len, 1.0)).tolist())
+                        # Plus clamp t to [0,1]
+                        t = _dot(pts[p_name] - pts[seg[0]], base) / (base_len * base_len)
+                        if t < 0:
+                            residual.append(-t)
+                        elif t > 1:
+                            residual.append(t - 1)
+            elif rtype == "line_in_plane":
+                seg = _parse_segment_token(rel.object_1 or "")
+                plane = _parse_plane_token(rel.object_2 or "") or _parse_point_list(rel.object_2 or "")
+                if seg and len(plane) >= 3 and all(name in pts for name in [*seg, *plane[:3]]):
+                    normal = _cross3(pts[plane[1]] - pts[plane[0]], pts[plane[2]] - pts[plane[0]])
+                    n_len = _length(normal)
+                    if n_len > REL_EPS:
+                        for pt_name in seg:
+                            residual.append(_dot(pts[pt_name] - pts[plane[0]], normal) / max(n_len, 1.0))
+                        if len(plane) >= 4:
+                            for name in plane[3:]:
+                                if name in pts:
+                                    residual.append(_dot(pts[name] - pts[plane[0]], normal) / n_len)
+            elif rtype in {"parallel_planes", "parallel_plane_plane"}:
+                plane1 = _parse_plane_token(rel.object_1 or "") or _parse_point_list(rel.object_1 or "")
+                plane2 = _parse_plane_token(rel.object_2 or "") or _parse_point_list(rel.object_2 or "")
+                if plane1 and plane2 and len(plane1) >= 3 and len(plane2) >= 3:
+                    all_names = [*plane1[:3], *plane2[:3]]
+                    if all(name in pts for name in all_names):
+                        n1 = _cross3(pts[plane1[1]] - pts[plane1[0]], pts[plane1[2]] - pts[plane1[0]])
+                        n2 = _cross3(pts[plane2[1]] - pts[plane2[0]], pts[plane2[2]] - pts[plane2[0]])
+                        l1, l2 = _length(n1), _length(n2)
+                        denom = max(l1 * l2, 1.0)
+                        if l1 > REL_EPS and l2 > REL_EPS:
+                            residual.extend((_cross3(n1, n2) / denom).tolist())
+                        if len(plane1) >= 4 and l1 > REL_EPS:
+                            for name in plane1[3:]:
+                                if name in pts:
+                                    residual.append(_dot(pts[name] - pts[plane1[0]], n1) / l1)
+                        if len(plane2) >= 4 and l2 > REL_EPS:
+                            for name in plane2[3:]:
+                                if name in pts:
+                                    residual.append(_dot(pts[name] - pts[plane2[0]], n2) / l2)
+            elif rtype in {"perpendicular_planes", "perpendicular_plane_plane"}:
+                plane1 = _parse_plane_token(rel.object_1 or "") or _parse_point_list(rel.object_1 or "")
+                plane2 = _parse_plane_token(rel.object_2 or "") or _parse_point_list(rel.object_2 or "")
+                if plane1 and plane2 and len(plane1) >= 3 and len(plane2) >= 3:
+                    all_names = [*plane1[:3], *plane2[:3]]
+                    if all(name in pts for name in all_names):
+                        n1 = _cross3(pts[plane1[1]] - pts[plane1[0]], pts[plane1[2]] - pts[plane1[0]])
+                        n2 = _cross3(pts[plane2[1]] - pts[plane2[0]], pts[plane2[2]] - pts[plane2[0]])
+                        l1, l2 = _length(n1), _length(n2)
+                        denom = max(l1 * l2, 1.0)
+                        if l1 > REL_EPS and l2 > REL_EPS:
+                            residual.append(_dot(n1, n2) / denom)
+                        if len(plane1) >= 4 and l1 > REL_EPS:
+                            for name in plane1[3:]:
+                                if name in pts:
+                                    residual.append(_dot(pts[name] - pts[plane1[0]], n1) / l1)
+                        if len(plane2) >= 4 and l2 > REL_EPS:
+                            for name in plane2[3:]:
+                                if name in pts:
+                                    residual.append(_dot(pts[name] - pts[plane2[0]], n2) / l2)
+            elif rtype in {"ratio", "segment_ratio", "ratio_length"}:
+                p_name = (rel.object_1 or "").strip()
+                seg = _parse_segment_token(rel.object_2 or "")
+                meta = rel.metadata or {}
+                expected_t: float | None = None
+                if "value" in meta:
+                    try:
+                        expected_t = float(meta["value"])
+                    except (TypeError, ValueError):
+                        pass
+                elif "ratio" in meta:
+                    ratio_str = str(meta["ratio"])
+                    if ":" in ratio_str:
+                        parts = ratio_str.split(":")
+                        if len(parts) == 2:
+                            try:
+                                m, n = float(parts[0]), float(parts[1])
+                                if abs(m + n) > REL_EPS:
+                                    expected_t = m / (m + n)
+                            except (TypeError, ValueError):
+                                pass
+                elif "t" in meta:
+                    try:
+                        expected_t = float(meta["t"])
+                    except (TypeError, ValueError):
+                        pass
+                if expected_t is not None and p_name in pts and seg and all(name in pts for name in seg):
+                    base = pts[seg[1]] - pts[seg[0]]
+                    base_len = _length(base)
+                    if base_len > REL_EPS:
+                        # Collinearity
+                        residual.extend((_cross3(base, pts[p_name] - pts[seg[0]]) / max(base_len, 1.0)).tolist())
+                        # Ratio
+                        actual_t = _dot(pts[p_name] - pts[seg[0]], base) / (base_len * base_len)
+                        residual.append(actual_t - expected_t)
 
         # Planarity SVD cho Face/Plane: nếu Face có >=4 điểm, residual = singular value thứ 3
         # (ý nghĩa: tổng bình phương distance từ điểm tới best-fit plane).
@@ -1242,7 +1578,12 @@ def _optimize_scene_constraints(scene: MathScene, base_issues: list[CasIssue]) -
         return None, []
     base_norm = float(np.linalg.norm(base_relation_residuals))
     try:
-        result = least_squares(residuals, base_vector, max_nfev=500, xtol=1e-10, ftol=1e-10, gtol=1e-10)
+        # Tinh chỉnh scipy.optimize: dùng jac="3-point" (chính xác hơn) và loss="soft_l1" (bền vững với nhiễu)
+        result = least_squares(
+            residuals, base_vector,
+            jac="3-point", loss="soft_l1",
+            max_nfev=500, xtol=1e-10, ftol=1e-10, gtol=1e-10
+        )
     except Exception as exc:  # pragma: no cover - SciPy có thể raise nhiều loại
         return None, [CasIssue("optimizer", f"SciPy least_squares lỗi: {exc}")]
     if not result.success:

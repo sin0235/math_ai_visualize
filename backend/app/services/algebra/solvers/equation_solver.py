@@ -21,15 +21,32 @@ def solve_equation(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
     expression = sp.simplify(raw_expression)
     solve_expression = _equation_expression_after_safe_transform(raw_expression, variable)
     assumptions = domain_assumptions_from_expression(raw_expression, variable)
+    
+    milestones: list[str] = []
+    if problem.relation is not None:
+        milestones.append(f"Phương trình gốc: {sp.latex(problem.relation)}")
+    
+    try:
+        factored_expr = sp.factor(expression)
+        if factored_expr != expression and not isinstance(factored_expr, sp.Add):
+            milestones.append(f"Dạng phân tích nhân tử: {sp.latex(sp.Eq(factored_expr, 0, evaluate=False))}")
+    except Exception:
+        pass
+        
     steps: list[AlgebraSolveStep] = []
     if assumptions and _should_add_initial_domain_step(raw_expression, variable):
         steps.append(domain_step(len(steps) + 1, assumptions))
     steps.append(method_step(len(steps) + 1, detect_primary_technique("equation", raw_expression, variable)))
     try:
-        solution_set = sp.solveset(raw_expression, variable, domain=sp.S.Reals if problem.domain == "R" else sp.S.Complexes)
+        solution_set = sp.solveset(raw_expression, variable, domain=problem.sympy_domain)
     except Exception as exc:
         return _unsupported(problem, f"SymPy chưa giải được phương trình này: {exc}")
     values = solution_values(solution_set)
+    
+    if values is not None and len(values) > 0:
+        roots_latex = ", ".join(sp.latex(sp.Eq(variable, val, evaluate=False)) for val in values)
+        milestones.append(f"Tập nghiệm: {roots_latex}")
+        
     steps.extend(_technique_steps(problem, raw_expression, variable, len(steps) + 1))
     detailed_steps = (
         _radical_equation_steps(problem, expression, variable, values, start_index=len(steps) + 1)
@@ -85,6 +102,7 @@ def solve_equation(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
         answer_latex=answer_latex,
         solution_set=solution,
         steps=steps,
+        milestones=milestones,
         verification=verification,
         assumptions=assumptions,
         warnings=[] if values is not None else ["Tập nghiệm symbolic không hữu hạn nên chỉ kiểm chứng ở mức biểu diễn tập nghiệm."],

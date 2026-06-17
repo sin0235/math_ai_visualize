@@ -20,6 +20,7 @@ from app.services.algebra.solvers.parameter_solver import solve_parameter
 from app.services.algebra.solvers.sequence_solver import solve_sequence
 from app.services.algebra.solvers.system_solver import solve_system
 from app.services.algebra.solvers.trig_solver import solve_trigonometry
+from app.services.algebra.solvers.expression_solver import solve_expression
 
 
 def solve_algebra(request: AlgebraSolveRequest) -> AlgebraSolveResponse:
@@ -86,6 +87,8 @@ def solve_algebra_deterministic(request: AlgebraSolveRequest) -> AlgebraSolveRes
         return _with_interpretation(solve_exp_log(problem), request.input, interpretation)
     if topic == "trigonometry":
         return _with_interpretation(solve_trigonometry(problem), request.input, interpretation)
+    if topic == "expression":
+        return _with_interpretation(solve_expression(problem), request.input, interpretation)
     if topic == "complex":
         return _with_interpretation(solve_complex(problem), request.input, interpretation)
     if topic == "system":
