@@ -21,7 +21,7 @@ Bạn là giáo viên hình học không gian tiếng Việt, đang giải thíc
 Quy tắc QUAN TRỌNG:
 1. Bạn KHÔNG BỊ GIỚI HẠN số lượng bước giải. Bạn được cung cấp các step chính, hãy mạnh dạn THÊM các `sub_steps` vào bên trong mỗi step chính để chia nhỏ quá trình tính toán.
 2. Bạn ĐƯỢC PHÉP TRẢ VỀ CÔNG THỨC TOÁN HỌC ở dạng LaTeX qua các trường: `formula_latex`, `substitution_latex`, `result_latex`. Trong khi đó, trường `explanation` PHẢI là văn bản thuần Việt, KHÔNG chứa LaTeX.
-3. Bước 1 (Dữ liệu): Hãy sử dụng sub_steps để liệt kê rõ tọa độ từng điểm liên quan (lấy từ scene_objects).
+3. Bước 1 (Dữ liệu): Hãy ĐỌC KỸ `problem_text` (đề bài) trong JSON để biết hình dáng chính xác của bài toán. Hãy sử dụng sub_steps để liệt kê rõ tọa độ từng điểm liên quan phù hợp với đề bài (lấy từ scene_objects). TUYỆT ĐỐI KHÔNG tự bịa ra tính chất không có trong đề.
 4. Bước 2 (Công thức & vector): Sử dụng sub_steps để trình bày việc chọn hệ trục, tính tọa độ từng vector, tính tích có hướng/vô hướng.
 5. Giải thích lý do vì sao dùng công thức đó. Nếu có cảnh báo (suy biến, trùng), hãy giải thích cho học sinh hiểu.
 6. Đích đến cuối cùng phải KHỚP HOÀN TOÀN với các step chính hệ thống đã cung cấp.
@@ -39,8 +39,9 @@ Quy tắc QUAN TRỌNG:
 2. Bạn ĐƯỢC PHÉP TRẢ VỀ CÔNG THỨC TOÁN HỌC ở dạng LaTeX qua các trường: `formula_latex`, `substitution_latex`, `result_latex`. Trường `explanation` PHẢI là văn bản thuần Việt, KHÔNG chứa LaTeX.
 3. TUYỆT ĐỐI KHÔNG nhắc đến "hệ trục tọa độ Oxyz", không tính toán bằng vector tọa độ dạng (x,y,z). Bạn ĐƯỢC phép bỏ qua hoặc gộp các bước giải tích rườm rà của hệ thống.
 4. Hãy sử dụng các định lý hình học cổ điển (Pytago, tỉ số lượng giác, định lý Thales, đường vuông góc, hình chiếu, giao tuyến...) để lập luận logic thay vì liệt kê số liệu (0,0,0).
-5. Đích đến cuối cùng (kết quả số học) phải KHỚP HOÀN TOÀN với đáp án số học mà hệ thống đã cung cấp.
-6. PHẢI trả về JSON hợp lệ 100%. Tất cả các khóa (keys) và chuỗi (strings) bắt buộc phải bọc trong DẤU NGOẶC KÉP ("").
+5. Hãy ĐỌC KỸ `problem_text` (đề bài) trong JSON để biết cấu trúc hình học chính xác (ví dụ SA vuông góc với đáy, hay hình chóp đều). TUYỆT ĐỐI KHÔNG tự bịa ra tính chất không có trong đề.
+6. Đích đến cuối cùng (kết quả số học) phải KHỚP HOÀN TOÀN với đáp án số học mà hệ thống đã cung cấp.
+7. PHẢI trả về JSON hợp lệ 100%. Tất cả các khóa (keys) và chuỗi (strings) bắt buộc phải bọc trong DẤU NGOẶC KÉP ("").
 
 Trả về JSON thuần theo cấu trúc: 
 {"steps":[{"index":1,"title":"...","explanation":"...","formula_latex":"...","substitution_latex":"...","result_latex":"...","sub_steps":[{"index":1,"title":"...","explanation":"...","formula_latex":"...","substitution_latex":"...","result_latex":"..."}]}]}
@@ -112,6 +113,7 @@ def _payload(result: SolverResult, scene: dict[str, Any]) -> dict[str, Any]:
     relevant_coords = {name: point_coords[name] for name in highlight_names if name in point_coords}
 
     return {
+        "problem_text": scene.get("problem_text", ""),
         "question": result.question,
         "answer": result.answer,
         "warnings": result.warnings,
