@@ -55,7 +55,7 @@ async def explain_solver_result(result: SolverResult, scene: dict[str, Any], set
         
         system_prompt = SOLVER_EXPLAINER_SYSTEM_PROMPT_CLASSICAL if method == "classical" else SOLVER_EXPLAINER_SYSTEM_PROMPT_OXYZ
         
-        data = await _call_explainer(payload, settings, selection, system_prompt=system_prompt)
+        data = await _call_explainer(payload, settings, selection, system_prompt=system_prompt, method=method)
         steps_by_index = _parse_steps(data)
         if not steps_by_index:
             return result
@@ -121,8 +121,12 @@ def _payload(result: SolverResult, scene: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-async def _call_explainer(payload: dict[str, Any], settings: Settings, selection: TaskProfile | None = None, system_prompt: str = "") -> dict[str, Any]:
-    prompt = "Diễn giải lời giải sau cho học sinh, giữ nguyên đáp số và công thức:\n" + json.dumps(payload, ensure_ascii=False)
+async def _call_explainer(payload: dict[str, Any], settings: Settings, selection: TaskProfile | None = None, system_prompt: str = "", method: str = "oxyz") -> dict[str, Any]:
+    if method == "classical":
+        prompt = "Diễn giải lời giải sau cho học sinh. BẠN PHẢI THAY THẾ các công thức tọa độ/vector (formula_latex, substitution_latex) của hệ thống bằng các công thức và định lý hình học thuần túy (Pytago, Thales, Cosin, ...). GIỮ NGUYÊN kết quả cuối cùng:\n" + json.dumps(payload, ensure_ascii=False)
+    else:
+        prompt = "Diễn giải lời giải sau cho học sinh, giữ nguyên đáp số và công thức:\n" + json.dumps(payload, ensure_ascii=False)
+        
     attempts: list[Attempt] = []
     preferred_provider = selection.provider_id if selection else ("router9" if provider_configured(settings.router9_api_key) else None)
     preferred_model = selection.model_id if selection else None
