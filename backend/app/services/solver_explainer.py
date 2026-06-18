@@ -229,6 +229,14 @@ async def _call_openrouter_model(prompt: str, settings: Settings, model: str, re
     return content
 
 
+def _sanitize_latex(text: str | None) -> str | None:
+    if not isinstance(text, str):
+        return text
+    cleaned = text.replace("°", r"^\circ")
+    cleaned = cleaned.replace(r"\degree", r"^\circ")
+    return cleaned
+
+
 def _parse_step_node(row: Any) -> dict[str, Any] | None:
     if not isinstance(row, dict):
         return None
@@ -241,9 +249,9 @@ def _parse_step_node(row: Any) -> dict[str, Any] | None:
     parsed = {
         "title": title.strip(),
         "explanation": _sanitize_explanation(explanation),
-        "formula_latex": row.get("formula_latex"),
-        "substitution_latex": row.get("substitution_latex"),
-        "result_latex": row.get("result_latex"),
+        "formula_latex": _sanitize_latex(row.get("formula_latex")),
+        "substitution_latex": _sanitize_latex(row.get("substitution_latex")),
+        "result_latex": _sanitize_latex(row.get("result_latex")),
     }
     
     sub_steps_raw = row.get("sub_steps")
