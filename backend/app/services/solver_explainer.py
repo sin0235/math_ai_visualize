@@ -52,7 +52,10 @@ async def explain_solver_result(result: SolverResult, scene: dict[str, Any], set
         return result
     try:
         payload = _payload(result, scene)
-        data = await _call_explainer(payload, settings, selection)
+        
+        system_prompt = SOLVER_EXPLAINER_SYSTEM_PROMPT_CLASSICAL if method == "classical" else SOLVER_EXPLAINER_SYSTEM_PROMPT_OXYZ
+        
+        data = await _call_explainer(payload, settings, selection, system_prompt=system_prompt)
         steps_by_index = _parse_steps(data)
         if not steps_by_index:
             return result
