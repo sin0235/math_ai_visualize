@@ -19,8 +19,8 @@ SOLVER_EXPLAINER_SYSTEM_PROMPT_OXYZ = """
 Bạn là giáo viên hình học không gian tiếng Việt, đang giải thích step-by-step cho học sinh lớp 12. Hệ thống (máy tính) đã tính sẵn các mốc kết quả (Milestones) bằng phương pháp tọa độ hình học không gian (Oxyz) / giải tích hình học.
 
 Quy tắc QUAN TRỌNG:
-1. Bạn ĐƯỢC PHÉP THAY ĐỔI SỐ LƯỢNG bước giải chính (steps) và mạnh dạn THÊM các `sub_steps` vào bên trong mỗi step chính để chia nhỏ quá trình tính toán.
-2. Bạn ĐƯỢC PHÉP TRẢ VỀ CÔNG THỨC TOÁN HỌC ở dạng LaTeX qua các trường: `formula_latex`, `substitution_latex`, `result_latex`. Trong khi đó, trường `explanation` PHẢI là văn bản thuần Việt, KHÔNG chứa LaTeX.
+1. Bạn KHÔNG ĐƯỢC thay đổi số lượng bước chính, công thức, thế số, kết quả hoặc đáp án.
+2. Bạn CHỈ ĐƯỢC viết lại `title`, `explanation` và thêm `sub_steps` giải thích bằng văn bản thuần Việt. Các `sub_steps` không được chứa công thức/số liệu mới ngoài dữ liệu đã có.
 3. Bước 1 (Dữ liệu): Hãy ĐỌC KỸ `problem_text` (đề bài) trong JSON để biết hình dáng chính xác của bài toán. Hãy sử dụng sub_steps để liệt kê rõ tọa độ từng điểm liên quan phù hợp với đề bài (lấy từ scene_objects). TUYỆT ĐỐI KHÔNG tự bịa ra tính chất không có trong đề.
 4. Bước 2 (Công thức & vector): Sử dụng sub_steps để trình bày việc chọn hệ trục, tính tọa độ từng vector, tính tích có hướng/vô hướng.
 5. Giải thích lý do vì sao dùng công thức đó. Nếu có cảnh báo (suy biến, trùng), hãy giải thích cho học sinh hiểu.
@@ -28,15 +28,15 @@ Quy tắc QUAN TRỌNG:
 7. PHẢI trả về JSON hợp lệ 100%. Tất cả các khóa (keys) và chuỗi (strings) bắt buộc phải bọc trong DẤU NGOẶC KÉP ("").
 
 Trả về JSON thuần: 
-{"steps":[{"index":1,"title":"...","explanation":"...","formula_latex":"...","substitution_latex":"...","result_latex":"...","sub_steps":[{"index":1,"title":"...","explanation":"...","formula_latex":"...","substitution_latex":"...","result_latex":"..."}]}]}
+{"steps":[{"index":1,"title":"...","explanation":"...","sub_steps":[{"index":1,"title":"...","explanation":"..."}]}]}
 """.strip()
 
 SOLVER_EXPLAINER_SYSTEM_PROMPT_CLASSICAL = """
 Bạn là giáo viên hình học không gian tiếng Việt, đang giải thích step-by-step cho học sinh trung học phổ thông. Hệ thống đã tính sẵn các mốc kết quả bằng phương pháp tọa độ, nhưng NHIỆM VỤ CỦA BẠN LÀ DIỄN GIẢI LẠI THEO PHƯƠNG PHÁP HÌNH HỌC THUẦN TÚY (Hình học không gian cổ điển lớp 11).
 
 Quy tắc QUAN TRỌNG:
-1. Bạn ĐƯỢC PHÉP THAY ĐỔI SỐ LƯỢNG bước giải chính (steps) và thêm các `sub_steps` thoải mái để bài giải được tự nhiên, trôi chảy nhất.
-2. Bạn ĐƯỢC PHÉP TRẢ VỀ CÔNG THỨC TOÁN HỌC ở dạng LaTeX qua các trường: `formula_latex`, `substitution_latex`, `result_latex`. Trường `explanation` PHẢI là văn bản thuần Việt, KHÔNG chứa LaTeX.
+1. Bạn KHÔNG ĐƯỢC thay đổi số lượng bước chính, công thức, thế số, kết quả hoặc đáp án.
+2. Bạn CHỈ ĐƯỢC viết lại `title`, `explanation` và thêm `sub_steps` giải thích bằng văn bản thuần Việt. Các `sub_steps` không được chứa công thức/số liệu mới ngoài dữ liệu đã có.
 3. TUYỆT ĐỐI KHÔNG nhắc đến "hệ trục tọa độ Oxyz". TUYỆT ĐỐI KHÔNG sử dụng: vector tọa độ dạng (x,y,z), phương trình tham số của đường thẳng, phương trình mặt phẳng, phương trình đại số, vector chỉ phương, vector pháp tuyến, ma trận hay định thức. Bạn ĐƯỢC phép bỏ qua hoặc gộp các bước giải tích rườm rà của hệ thống.
 4. Đối với bài toán TƯƠNG GIAO (giao điểm, giao tuyến, đồng phẳng, chéo nhau): PHẢI sử dụng các tiên đề và định lý hình học không gian thuần túy (ví dụ: tìm mặt phẳng phụ, xét giao tuyến của hai mặt phẳng, đường trung bình, tỉ số đồng dạng, tính chất hình bình hành...) thay vì giải hệ phương trình đại số.
 5. Hãy sử dụng các định lý hình học cổ điển (Pytago, tỉ số lượng giác, định lý Thales, đường vuông góc, hình chiếu, giao tuyến...) để lập luận logic thay vì liệt kê số liệu (0,0,0).
@@ -45,7 +45,7 @@ Quy tắc QUAN TRỌNG:
 8. PHẢI trả về JSON hợp lệ 100%. Tất cả các khóa (keys) và chuỗi (strings) bắt buộc phải bọc trong DẤU NGOẶC KÉP ("").
 
 Trả về JSON thuần theo cấu trúc: 
-{"steps":[{"index":1,"title":"...","explanation":"...","formula_latex":"...","substitution_latex":"...","result_latex":"...","sub_steps":[{"index":1,"title":"...","explanation":"...","formula_latex":"...","substitution_latex":"...","result_latex":"..."}]}]}
+{"steps":[{"index":1,"title":"...","explanation":"...","sub_steps":[{"index":1,"title":"...","explanation":"..."}]}]}
 """.strip()
 
 
@@ -70,9 +70,9 @@ async def explain_solver_result(result: SolverResult, scene: dict[str, Any], set
                 result=step.result,
                 highlight=step.highlight,
                 kind=step.kind,
-                formula_latex=steps_by_index.get(step.index, {}).get("formula_latex") or step.formula_latex,
-                substitution_latex=steps_by_index.get(step.index, {}).get("substitution_latex") or step.substitution_latex,
-                result_latex=steps_by_index.get(step.index, {}).get("result_latex") or step.result_latex,
+                formula_latex=step.formula_latex,
+                substitution_latex=step.substitution_latex,
+                result_latex=step.result_latex,
                 sub_steps=[
                     SolverStep(
                         index=sub.get("index", 1),
@@ -81,16 +81,21 @@ async def explain_solver_result(result: SolverResult, scene: dict[str, Any], set
                         expression=None,
                         result=None,
                         highlight=[],
-                        formula_latex=sub.get("formula_latex"),
-                        substitution_latex=sub.get("substitution_latex"),
-                        result_latex=sub.get("result_latex"),
+                        formula_latex=None,
+                        substitution_latex=None,
+                        result_latex=None,
                     ) for sub in steps_by_index.get(step.index, {}).get("sub_steps", [])
                 ],
             )
             for step in result.steps
         ]
     except Exception as error:
-        result.warnings.append(f"Không gọi được LLM diễn giải, đang dùng lời giải deterministic: {error}")
+        warning = f"Không gọi được LLM diễn giải, đang dùng lời giải deterministic: {error}"
+        result.warnings.append(warning)
+        if warning not in getattr(result, "data_issues", []):
+            result.data_issues.append(warning)
+        if getattr(result, "confidence", "verified") == "verified":
+            result.confidence = "partial"
     return result
 
 def _payload(result: SolverResult, scene: dict[str, Any]) -> dict[str, Any]:
@@ -126,9 +131,9 @@ def _payload(result: SolverResult, scene: dict[str, Any]) -> dict[str, Any]:
 
 async def _call_explainer(payload: dict[str, Any], settings: Settings, selection: TaskProfile | None = None, system_prompt: str = "", method: str = "oxyz") -> dict[str, Any]:
     if method == "classical":
-        prompt = "Diễn giải lời giải sau cho học sinh. BẠN PHẢI THAY THẾ các công thức tọa độ/vector (formula_latex, substitution_latex) của hệ thống bằng các công thức và định lý hình học thuần túy (Pytago, Thales, Cosin, ...). GIỮ NGUYÊN kết quả cuối cùng:\n" + json.dumps(payload, ensure_ascii=False)
+        prompt = "Diễn giải lời giải sau cho học sinh. Chỉ viết lại câu chữ, không thêm dữ kiện, không đổi công thức và không đổi kết quả:\n" + json.dumps(payload, ensure_ascii=False)
     else:
-        prompt = "Diễn giải lời giải sau cho học sinh, giữ nguyên đáp số và công thức:\n" + json.dumps(payload, ensure_ascii=False)
+        prompt = "Diễn giải lời giải sau cho học sinh. Chỉ viết lại câu chữ, giữ nguyên đáp số, công thức, thế số và kết quả:\n" + json.dumps(payload, ensure_ascii=False)
         
     attempts: list[Attempt] = []
     preferred_provider = selection.provider_id if selection else ("router9" if provider_configured(settings.router9_api_key) else None)

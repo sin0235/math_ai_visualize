@@ -89,6 +89,8 @@ class Settings(BaseSettings):
     cas_repair_enabled: bool = False
     cas_repair_max_iterations: int = 2
     cas_repair_min_severity: Literal["warning", "error"] = "warning"
+    advisory_enabled: bool = True
+    advisory_include_debug_signals: bool = False
     dev_bypass_auth: bool = False
 
     model_config = SettingsConfigDict(env_file=(".env", "backend/.env"), env_file_encoding="utf-8", extra="ignore")

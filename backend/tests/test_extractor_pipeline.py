@@ -65,6 +65,27 @@ def test_pipeline_autofix_midpoint():
     assert any("midpoint" in w.lower() and "tự sửa" in w.lower() for w in warns)
 
 
+def test_pipeline_marks_verified_relation_metadata_after_cas():
+    raw = _scene(
+        problem_text="AB vuông góc BC.",
+        objects=[
+            {"type": "point_3d", "name": "A", "x": 0, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "B", "x": 1, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "C", "x": 1, "y": 1, "z": 0},
+        ],
+        relations=[
+            {"type": "perpendicular", "object_1": "AB", "object_2": "BC"},
+        ],
+    )
+
+    scene, _ = build_scene_with_cas_fix(raw)
+
+    metadata = scene.relations[0].metadata
+    assert metadata["source"] == "inferred"
+    assert metadata["confidence"] == "verified"
+    assert metadata["verified_by"] == "cas"
+
+
 def test_pipeline_autofix_on_line():
     raw = _scene(
         objects=[

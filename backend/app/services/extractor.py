@@ -390,6 +390,8 @@ def build_scene_with_cas_fix(
                     )
             warnings.extend(outcome.warnings)
 
+    fixed_scene = _apply_cas_fact_metadata(fixed_scene, issues, verify=verify)
+
     from app.schemas.scene import CasIssueResponse
     all_issues = [*inference_issues, *issues]
     fixed_scene = fixed_scene.model_copy(update={
@@ -406,6 +408,44 @@ def build_scene_with_cas_fix(
     })
 
     return fixed_scene, warnings
+
+
+def _apply_cas_fact_metadata(scene: MathScene, issues: list[Any], *, verify: bool) -> MathScene:
+    if not verify:
+        return scene
+
+    unresolved_types = {
+        str(issue.relation_type)
+        for issue in issues
+        if not bool(getattr(issue, "auto_fixed", False))
+    }
+    data = scene.model_dump()
+    changed = False
+
+    for rel in data.get("relations", []):
+        if not isinstance(rel, dict):
+            continue
+        metadata = rel.get("metadata") if isinstance(rel.get("metadata"), dict) else {}
+        new_metadata = dict(metadata)
+        rel_changed = False
+        rtype = str(rel.get("type") or "")
+        if rtype and rtype not in unresolved_types:
+            if new_metadata.get("confidence") != "verified":
+                new_metadata["confidence"] = "verified"
+                rel_changed = True
+            if new_metadata.get("verified_by") != "cas":
+                new_metadata["verified_by"] = "cas"
+                rel_changed = True
+        elif rtype and new_metadata.get("confidence") == "verified":
+            new_metadata["confidence"] = "partial"
+            rel_changed = True
+        if rel_changed:
+            rel["metadata"] = new_metadata
+            changed = True
+
+    if changed:
+        return MathScene.model_validate(data)
+    return scene
 
 
 def _normalize_parameter(param: dict[str, Any]) -> dict[str, Any] | None:

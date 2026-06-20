@@ -9,9 +9,11 @@ from pydantic import BaseModel, Field
 
 from app.api.deps import enforce_rate_limit, require_active_user, require_trusted_origin
 from app.api.routes_render import enforce_render_access
+from app.core.config import get_settings
 from app.db.models import UserRecord
 from app.db.session import DatabaseClient, get_database
 from app.repositories.admin import AdminRepository
+from app.schemas.advisory import QualityRiskAdvisory
 from app.schemas.scene import MAX_PROBLEM_TEXT_CHARS, RuntimeSettings
 from app.services.api_errors import bad_request_from_error
 from app.services.model_registry import load_model_registry, resolve_effective_settings, resolve_task_profile
@@ -47,6 +49,11 @@ class SolveResponse(BaseModel):
     answer: str
     steps: list[SolveStepResponse]
     warnings: list[str] = Field(default_factory=list)
+    confidence: str = "verified"
+    method: str = "oxyz"
+    used_facts: list[dict[str, str]] = Field(default_factory=list)
+    data_issues: list[str] = Field(default_factory=list)
+    advisory: QualityRiskAdvisory | None = None
 
 
 @router.post("/solve", response_model=SolveResponse, dependencies=[Depends(require_trusted_origin)])
@@ -62,14 +69,20 @@ async def solve_problem(
     await enforce_render_access(db, user)
     used_ai = False
     try:
-        result = solve(request.scene, request.question)
+        geometry_method = request.geometry_method if request.geometry_method in {"oxyz", "classical"} else "oxyz"
+        result = solve(request.scene, request.question, geometry_method=geometry_method)
+        advisory = None
+        if get_settings().advisory_enabled:
+            from app.services.quality_advisory import build_solve_advisory
+
+            advisory = build_solve_advisory(request.question, request.scene, result)
         settings = await resolve_effective_settings(db, request.runtime_settings)
         registry = await load_model_registry(db, settings)
         solver_profile = resolve_task_profile(registry, "solver_explanation")
-        if settings.router9_api_key or settings.openrouter_api_key:
+        if geometry_method != "classical" and (settings.router9_api_key or settings.openrouter_api_key):
             from app.services.solver_explainer import explain_solver_result
 
-            result = await explain_solver_result(result, request.scene, settings, solver_profile, method=request.geometry_method)
+            result = await explain_solver_result(result, request.scene, settings, solver_profile, method=geometry_method)
             used_ai = True
     except Exception as e:
         raise bad_request_from_error(e, "solve_failed") from e
@@ -96,4 +109,9 @@ async def solve_problem(
         answer=result.answer,
         steps=[_map_step(s) for s in result.steps],
         warnings=result.warnings,
+        confidence=getattr(result, "confidence", "verified"),
+        method=getattr(result, "method", "oxyz"),
+        used_facts=getattr(result, "used_facts", []),
+        data_issues=getattr(result, "data_issues", []),
+        advisory=advisory,
     )

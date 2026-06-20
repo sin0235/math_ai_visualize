@@ -78,11 +78,26 @@ class SolverStep:
 
 
 class SolverResult:
-    def __init__(self, question: str, answer: str, steps: list[SolverStep], warnings: list[str]) -> None:
+    def __init__(
+        self,
+        question: str,
+        answer: str,
+        steps: list[SolverStep],
+        warnings: list[str],
+        *,
+        confidence: str = "verified",
+        method: str = "oxyz",
+        used_facts: list[dict[str, str]] | None = None,
+        data_issues: list[str] | None = None,
+    ) -> None:
         self.question = question
         self.answer = answer
         self.steps = steps
         self.warnings = warnings
+        self.confidence = confidence
+        self.method = method
+        self.used_facts = used_facts or []
+        self.data_issues = data_issues or []
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -90,6 +105,10 @@ class SolverResult:
             "answer": self.answer,
             "steps": [s.to_dict() for s in self.steps],
             "warnings": self.warnings,
+            "confidence": self.confidence,
+            "method": self.method,
+            "used_facts": self.used_facts,
+            "data_issues": self.data_issues,
         }
 
 
@@ -207,42 +226,206 @@ def _normalize_parenthesized_geometry(question: str) -> str:
     return "".join(result)
 
 
-def solve(scene_dict: dict, question: str) -> SolverResult:
+def solve(scene_dict: dict, question: str, geometry_method: str = "oxyz") -> SolverResult:
     pts = _point_map(scene_dict)
-    warnings: list[str] = []
+    warnings: list[str] = _scene_reliability_warnings(scene_dict)
     q = normalize_solver_question(question)
 
-    if _EQUATION_RE.search(q):
-        return _solve_equation(pts, q, warnings)
-    if _PROJECTION_RE.search(q):
-        return _solve_projection(pts, q, warnings)
-    if _REFLECTION_RE.search(q):
-        return _solve_reflection(pts, q, warnings)
-    if _COLLINEAR_RE.search(q):
-        return _solve_collinear(pts, q, warnings)
-    if _COPLANAR_RE.search(q):
-        return _solve_coplanar(pts, q, warnings)
-    if _DISTANCE_RE.search(q):
-        return _solve_distance(pts, q, warnings)
-    if _PARALLEL_RE.search(q):
-        return _solve_parallel(pts, q, warnings)
-    if _PERP_RE.search(q):
-        return _solve_perpendicular(pts, q, warnings)
-    if _ANGLE_RE.search(q):
-        return _solve_angle(pts, q, warnings)
-    if _AREA_RE.search(q):
-        return _solve_area(scene_dict, pts, q, warnings)
-    if _VOLUME_RE.search(q):
-        return _solve_volume(pts, q, warnings)
-    if _is_vector_dot_question(q):
-        return _solve_vector_operation(pts, q, warnings, "dot")
-    if _is_vector_cross_question(q):
-        return _solve_vector_operation(pts, q, warnings, "cross")
-    if _VECTOR_RE.search(q):
-        return _solve_vector(pts, q, warnings)
+    guard = _metric_data_guard(scene_dict, q)
+    if guard:
+        result = SolverResult(q, "Không đủ dữ kiện", [], [*warnings, guard])
+        _apply_result_metadata(result, scene_dict, geometry_method)
+        return result
 
-    warnings.append("Chưa nhận diện được dạng bài. Hãy thử hỏi cụ thể hơn: d(A,B), d(A,BC), d(A,(BCD)), góc giữa AB và CD, S(ABC), V(S.ABCD), phương trình AB, AB . AC, hình chiếu A lên (BCD).")
-    return SolverResult(q, "Không xác định", [], warnings)
+    if _EQUATION_RE.search(q):
+        result = _solve_equation(pts, q, warnings)
+    elif _PROJECTION_RE.search(q):
+        result = _solve_projection(pts, q, warnings)
+    elif _REFLECTION_RE.search(q):
+        result = _solve_reflection(pts, q, warnings)
+    elif _COLLINEAR_RE.search(q):
+        result = _solve_collinear(pts, q, warnings)
+    elif _COPLANAR_RE.search(q):
+        result = _solve_coplanar(pts, q, warnings)
+    elif _DISTANCE_RE.search(q):
+        result = _solve_distance(pts, q, warnings)
+    elif _PARALLEL_RE.search(q):
+        result = _solve_parallel(pts, q, warnings)
+    elif _PERP_RE.search(q):
+        result = _solve_perpendicular(pts, q, warnings)
+    elif _ANGLE_RE.search(q):
+        result = _solve_angle(pts, q, warnings)
+    elif _AREA_RE.search(q):
+        result = _solve_area(scene_dict, pts, q, warnings)
+    elif _VOLUME_RE.search(q):
+        result = _solve_volume(pts, q, warnings)
+    elif _is_vector_dot_question(q):
+        result = _solve_vector_operation(pts, q, warnings, "dot")
+    elif _is_vector_cross_question(q):
+        result = _solve_vector_operation(pts, q, warnings, "cross")
+    elif _VECTOR_RE.search(q):
+        result = _solve_vector(pts, q, warnings)
+    else:
+        warnings.append("Chưa nhận diện được dạng bài. Hãy thử hỏi cụ thể hơn: d(A,B), d(A,BC), d(A,(BCD)), góc giữa AB và CD, S(ABC), V(S.ABCD), phương trình AB, AB . AC, hình chiếu A lên (BCD).")
+        result = SolverResult(q, "Không xác định", [], warnings)
+
+    _prepend_context_warnings(result, warnings)
+    if geometry_method == "classical":
+        result = _classicalize_result(result, scene_dict, pts)
+    _apply_result_metadata(result, scene_dict, geometry_method)
+    return result
+
+
+def _apply_result_metadata(result: SolverResult, scene_dict: dict, method: str) -> None:
+    result.method = method if method in {"oxyz", "classical"} else "oxyz"
+    result.data_issues = _result_data_issues(result)
+    result.confidence = _result_confidence(result)
+    result.used_facts = _solver_used_facts(scene_dict, _result_highlights(result), result)
+
+
+def _result_highlights(result: SolverResult) -> list[str]:
+    names: list[str] = []
+    for step in result.steps:
+        for name in step.highlight:
+            if name not in names:
+                names.append(name)
+    return names
+
+
+def _result_data_issues(result: SolverResult) -> list[str]:
+    issue_markers = (
+        "không đủ dữ kiện",
+        "không dùng tọa độ minh họa",
+        "cảnh báo cas",
+        "scene còn cảnh báo cas",
+        "giá trị mặc định",
+        "suy biến",
+        "đang nằm trên",
+        "không gọi được",
+        "cross-check",
+    )
+    issues = [
+        warning for warning in result.warnings
+        if any(marker in warning.lower() for marker in issue_markers)
+    ]
+    return list(dict.fromkeys(issues))
+
+
+def _result_confidence(result: SolverResult) -> str:
+    if result.answer in {"Không đủ dữ kiện", "Không xác định"}:
+        return "insufficient"
+    if result.data_issues:
+        return "partial"
+    return "verified"
+
+
+def _prepend_context_warnings(result: SolverResult, context_warnings: list[str]) -> None:
+    if not context_warnings:
+        return
+    merged = [*context_warnings]
+    for warning in result.warnings:
+        if warning not in merged:
+            merged.append(warning)
+    result.warnings = merged
+
+
+def _scene_reliability_warnings(scene_dict: dict) -> list[str]:
+    warnings: list[str] = []
+    unresolved = [
+        issue for issue in scene_dict.get("cas_issues", [])
+        if isinstance(issue, dict) and not bool(issue.get("auto_fixed"))
+    ]
+    if unresolved:
+        warnings.append("Scene còn cảnh báo CAS chưa tự sửa; lời giải chỉ đáng tin nếu các dữ kiện liên quan không nằm trong cảnh báo đó.")
+    if scene_dict.get("parameters"):
+        names = ", ".join(str(item.get("name")) for item in scene_dict.get("parameters", []) if isinstance(item, dict) and item.get("name"))
+        if names:
+            warnings.append(f"Scene có tham số ({names}); kết quả số hiện tính theo giá trị mặc định của tham số.")
+    return warnings
+
+
+def _metric_data_guard(scene_dict: dict, question: str) -> str | None:
+    if not scene_dict.get("problem_text"):
+        return None
+    if scene_dict.get("topic") in {"coordinate_2d", "coordinate_3d"}:
+        return None
+    metric_query = any(regex.search(question) for regex in (_DISTANCE_RE, _ANGLE_RE, _AREA_RE, _VOLUME_RE))
+    if not metric_query:
+        return None
+    if _ANGLE_RE.search(question) and _has_angle_evidence(scene_dict):
+        return None
+    if _has_metric_evidence(scene_dict):
+        return None
+    return (
+        "Đề/scene hiện không có dữ kiện định lượng đã kiểm chứng cho đại lượng cần tính. "
+        "Hệ thống không dùng tọa độ minh họa do AI tự chọn để kết luận số học."
+    )
+
+
+def _has_metric_evidence(scene_dict: dict) -> bool:
+    if scene_dict.get("parameters"):
+        return True
+    for obj in scene_dict.get("objects", []):
+        if not isinstance(obj, dict):
+            continue
+        if any(isinstance(obj.get(field), str) and obj.get(field) for field in ("x_expr", "y_expr", "z_expr", "radius_expr")):
+            return True
+    for rel in scene_dict.get("relations", []):
+        if not isinstance(rel, dict):
+            continue
+        metadata = rel.get("metadata") if isinstance(rel.get("metadata"), dict) else {}
+        if (
+            rel.get("type") in {"distance", "angle", "equal_length"}
+            and any(key in metadata for key in ("value", "length", "angle"))
+            and _metadata_is_usable_fact(metadata, default=True)
+        ):
+            return True
+    for ann in scene_dict.get("annotations", []):
+        if not isinstance(ann, dict):
+            continue
+        metadata = ann.get("metadata") if isinstance(ann.get("metadata"), dict) else {}
+        if (
+            ann.get("type") in {"length", "angle"}
+            and _looks_metric_label(ann.get("label"))
+            and _metadata_is_usable_fact(metadata, default=True)
+        ):
+            return True
+    return False
+
+
+def _looks_metric_label(value: Any) -> bool:
+    if not isinstance(value, str):
+        return False
+    text = value.strip()
+    if not text:
+        return False
+    return bool(re.search(r"\d|sqrt|√|\b[a-z]\b", text, flags=re.IGNORECASE))
+
+
+def _has_angle_evidence(scene_dict: dict) -> bool:
+    for rel in scene_dict.get("relations", []):
+        if not isinstance(rel, dict):
+            continue
+        metadata = rel.get("metadata") if isinstance(rel.get("metadata"), dict) else {}
+        if rel.get("type") in {"angle", "perpendicular", "parallel"} and _metadata_is_usable_fact(metadata, default=True):
+            return True
+    for ann in scene_dict.get("annotations", []):
+        if not isinstance(ann, dict):
+            continue
+        metadata = ann.get("metadata") if isinstance(ann.get("metadata"), dict) else {}
+        if ann.get("type") in {"angle", "right_angle"} and _metadata_is_usable_fact(metadata, default=True):
+            return True
+    return False
+
+
+def _metadata_is_usable_fact(metadata: dict[str, Any], *, default: bool) -> bool:
+    source = metadata.get("source")
+    confidence = metadata.get("confidence")
+    if source is None and confidence is None:
+        return default
+    if source == "construction" or confidence == "unverified":
+        return False
+    return source in {None, "given", "inferred"} and confidence in {None, "verified", "partial"}
 
 
 def _point_map(scene_dict: dict) -> dict[str, Vec3]:
@@ -606,6 +789,711 @@ def _steps_from_calculation(calc: dict[str, Any], points: dict[str, Vec3] | None
             result_latex=calc["result_latex"],
         ),
     ]
+
+
+def _classicalize_result(result: SolverResult, scene_dict: dict, points: dict[str, Vec3]) -> SolverResult:
+    if result.answer in {"Không xác định", "Không đủ dữ kiện"} or len(result.steps) < 2:
+        return result
+    kind = result.steps[1].kind or ""
+    highlight = result.steps[1].highlight
+    if not kind:
+        return result
+    if kind == "volume_pyramid" and _pyramid_volume_fact(scene_dict, highlight) is None:
+        warnings = [
+            *result.warnings,
+            "Mode Tương quan hình học chưa xác định được chiều cao khối chóp từ quan hệ vuông góc đã kiểm chứng; không dùng tọa độ minh họa để kết luận thể tích.",
+        ]
+        return SolverResult(result.question, "Không đủ dữ kiện", [], warnings)
+
+    facts = _relevant_scene_facts(scene_dict, highlight)
+    fact_sub_steps = [
+        SolverStep(index + 1, "Dữ kiện từ đề/hình", fact, None, None, highlight, kind="fact")
+        for index, fact in enumerate(facts[:6])
+    ]
+    if not fact_sub_steps:
+        fact_sub_steps = [SolverStep(1, "Dữ kiện từ hình", f"Các đối tượng liên quan là {', '.join(highlight)}.", None, None, highlight, kind="fact")]
+
+    setup = SolverStep(
+        1,
+        "Xác định dữ kiện hình học",
+        "Chỉ dùng các điểm, quan hệ và nhãn đã có trong scene; không thêm giả thiết ngoài đề.",
+        None,
+        None,
+        highlight,
+        kind="input",
+        sub_steps=fact_sub_steps,
+    )
+    point_plane_height = _point_plane_height_fact(scene_dict, highlight) if kind == "distance_point_plane" else None
+    line_plane_projection = _line_plane_projection_fact(scene_dict, result.question, highlight) if kind == "angle_line_plane" else None
+    plane_plane_angle = _plane_plane_angle_fact(scene_dict, result.question) if kind == "angle_plane_plane" else None
+    pyramid_volume = _pyramid_volume_fact(scene_dict, highlight) if kind == "volume_pyramid" else None
+    method_step = _classical_method_step(kind, highlight, result.question, scene_dict)
+    conclusion = SolverStep(
+        3,
+        "Kết luận",
+        _classical_conclusion_text(
+            kind,
+            highlight,
+            result.answer,
+            point_plane_height,
+            line_plane_projection,
+            plane_plane_angle,
+            pyramid_volume,
+        ),
+        None,
+        result.steps[-1].result,
+        highlight,
+        kind="result",
+        result_latex=result.steps[-1].result_latex,
+    )
+    result.steps = [setup, method_step, conclusion]
+    result.warnings = [
+        *result.warnings,
+        "Mode Tương quan hình học đang dùng template deterministic an toàn; AI không được phép tự thêm định lý, dữ kiện hoặc thay đổi kết quả.",
+    ]
+    return result
+
+
+def _classical_method_step(kind: str, highlight: list[str], question: str = "", scene_dict: dict | None = None) -> SolverStep:
+    label = ", ".join(highlight)
+    if kind == "distance_point_plane" and len(highlight) >= 4:
+        p, *plane = highlight[:4]
+        plane_name = "".join(plane)
+        height = _point_plane_height_fact(scene_dict or {}, highlight)
+        if height:
+            foot = height["foot"]
+            segment = height["segment"]
+            return SolverStep(
+                2,
+                "Nhận ra đường cao",
+                f"Vì {segment} vuông góc với mặt phẳng ({plane_name}) và {foot} thuộc ({plane_name}), nên {segment} là đoạn vuông góc kẻ từ {p} đến ({plane_name}). Do đó khoảng cách cần tìm là {segment}.",
+                None,
+                None,
+                highlight,
+                kind=kind,
+                formula_latex=rf"{segment}\perp({plane_name}),\ {foot}\in({plane_name})\Rightarrow d({p},({plane_name}))={segment}",
+            )
+        return SolverStep(
+            2,
+            "Dựng khoảng cách điểm đến mặt phẳng",
+            f"Gọi H là hình chiếu vuông góc của {p} lên mặt phẳng ({plane_name}). Khi đó khoảng cách cần tìm là độ dài {p}H.",
+            None,
+            None,
+            highlight,
+            kind=kind,
+            formula_latex=rf"d({p},({plane_name}))={p}H,\ {p}H\perp({plane_name})",
+        )
+    if kind == "distance_point_line" and len(highlight) >= 3:
+        p, a, b = highlight[:3]
+        return SolverStep(
+            2,
+            "Dựng khoảng cách điểm đến đường thẳng",
+            f"Gọi H là hình chiếu vuông góc của {p} lên đường thẳng {a}{b}. Khi đó khoảng cách cần tìm là {p}H.",
+            None,
+            None,
+            highlight,
+            kind=kind,
+            formula_latex=rf"d({p},{a}{b})={p}H,\ {p}H\perp {a}{b}",
+        )
+    if kind == "distance_point_point" and len(highlight) >= 2:
+        a, b = highlight[:2]
+        return SolverStep(
+            2,
+            "Xét đoạn thẳng cần đo",
+            f"Khoảng cách giữa hai điểm {a} và {b} chính là độ dài đoạn thẳng {a}{b}.",
+            None,
+            None,
+            highlight,
+            kind=kind,
+            formula_latex=rf"d({a},{b})={a}{b}",
+        )
+    if kind == "distance_line_line" and len(highlight) >= 4:
+        a, b, c, d = highlight[:4]
+        return SolverStep(
+            2,
+            "Dựng đoạn vuông góc chung",
+            f"Khoảng cách giữa {a}{b} và {c}{d} là độ dài đoạn vuông góc chung nếu hai đường chéo nhau, hoặc khoảng cách từ một điểm trên đường này đến đường kia nếu chúng song song.",
+            None,
+            None,
+            highlight,
+            kind=kind,
+        )
+    if kind == "angle_line_plane" and len(highlight) >= 2:
+        a, b = highlight[:2]
+        plane_ref = _first_plane_ref(question, highlight)
+        plane = "".join(plane_ref) if plane_ref else "".join(highlight[2:5])
+        projection = _line_plane_projection_fact(scene_dict or {}, question, highlight)
+        if projection and projection.get("perpendicular_line") == "true":
+            line = f"{a}{b}"
+            return SolverStep(
+                2,
+                "Nhận ra đường vuông góc mặt phẳng",
+                f"Vì {line} vuông góc với mặt phẳng ({plane}), nên góc giữa {line} và ({plane}) bằng 90°.",
+                None,
+                None,
+                highlight,
+                kind=kind,
+                formula_latex=rf"{line}\perp({plane})\Rightarrow \widehat{{({line},({plane}))}}=90^\circ",
+            )
+        if projection:
+            outside = projection["outside"]
+            plane_point = projection["plane_point"]
+            foot = projection["foot"]
+            projected_line = projection["projected_line"]
+            angle_name = projection["angle_name"]
+            return SolverStep(
+                2,
+                "Dùng hình chiếu trên mặt phẳng",
+                f"Gọi {foot} là hình chiếu của {outside} lên ({plane}). Vì {plane_point} thuộc ({plane}), nên hình chiếu của {a}{b} trên ({plane}) là {projected_line}. Do đó góc giữa {a}{b} và ({plane}) là góc {angle_name}.",
+                None,
+                None,
+                highlight,
+                kind=kind,
+                formula_latex=rf"\widehat{{({a}{b},({plane}))}}=\widehat{{{angle_name}}}",
+            )
+        return SolverStep(
+            2,
+            "Dùng hình chiếu của đường thẳng",
+            f"Góc giữa {a}{b} và mặt phẳng ({plane}) là góc giữa {a}{b} và hình chiếu của nó trên mặt phẳng đó.",
+            None,
+            None,
+            highlight,
+            kind=kind,
+            formula_latex=rf"\widehat{{({a}{b},({plane}))}}=\widehat{{({a}{b},d')}}",
+        )
+    if kind == "angle_line_line" and len(highlight) >= 4:
+        a, b, c, d = highlight[:4]
+        return SolverStep(
+            2,
+            "Quy về góc giữa hai đường cắt nhau",
+            f"Góc giữa {a}{b} và {c}{d} được hiểu là góc giữa hai đường thẳng lần lượt song song với chúng và cùng đi qua một điểm.",
+            None,
+            None,
+            highlight,
+            kind=kind,
+        )
+    if kind == "angle_plane_plane":
+        plane_refs = _parse_plane_refs(question)
+        first_plane = "".join(plane_refs[0]) if len(plane_refs) >= 1 else "P"
+        second_plane = "".join(plane_refs[1]) if len(plane_refs) >= 2 else "Q"
+        plane_angle = _plane_plane_angle_fact(scene_dict or {}, question)
+        if plane_angle:
+            intersection = plane_angle["intersection"]
+            first_line = plane_angle["first_line"]
+            second_line = plane_angle["second_line"]
+            vertex = plane_angle["vertex"]
+            angle_name = plane_angle["angle_name"]
+            return SolverStep(
+                2,
+                "Dựng góc phẳng nhị diện",
+                f"Hai mặt phẳng ({first_plane}) và ({second_plane}) cắt nhau theo {intersection}. Trong ({first_plane}) có {first_line} vuông góc {intersection} tại {vertex}; trong ({second_plane}) có {second_line} vuông góc {intersection} tại {vertex}. Vì vậy góc giữa hai mặt phẳng là góc {angle_name}.",
+                None,
+                None,
+                highlight,
+                kind=kind,
+                formula_latex=rf"{first_line}\perp {intersection},\ {second_line}\perp {intersection}\Rightarrow \widehat{{(({first_plane}),({second_plane}))}}=\widehat{{{angle_name}}}",
+            )
+        return SolverStep(
+            2,
+            "Dựng góc giữa hai mặt phẳng",
+            f"Tìm giao tuyến của hai mặt phẳng ({first_plane}) và ({second_plane}). Trong mỗi mặt phẳng, dựng một đường thẳng vuông góc với giao tuyến tại cùng một điểm; góc giữa hai đường đó là góc giữa hai mặt phẳng.",
+            None,
+            None,
+            highlight,
+            kind=kind,
+            formula_latex=rf"\widehat{{(({first_plane}),({second_plane}))}}=\widehat{{(d_1,d_2)}}",
+        )
+    if kind == "area_polygon":
+        polygon = "".join(highlight)
+        return SolverStep(
+            2,
+            "Tính diện tích theo đáy và chiều cao",
+            f"Xét đa giác {polygon}; chọn cách chia hoặc chọn đáy - chiều cao phù hợp với các dữ kiện đã có trên hình.",
+            None,
+            None,
+            highlight,
+            kind=kind,
+        )
+    if kind in {"volume_pyramid", "volume_tetrahedron"} and len(highlight) >= 4:
+        apex = highlight[0]
+        base = "".join(highlight[1:])
+        pyramid_volume = _pyramid_volume_fact(scene_dict or {}, highlight) if kind == "volume_pyramid" else None
+        if pyramid_volume:
+            height_segment = pyramid_volume["height_segment"]
+            foot = pyramid_volume["foot"]
+            return SolverStep(
+                2,
+                "Nhận ra đáy và chiều cao",
+                f"Xem {base} là đáy của khối chóp. Vì {height_segment} vuông góc với mặt phẳng ({base}) và {foot} thuộc ({base}), nên {height_segment} là chiều cao của khối chóp.",
+                None,
+                None,
+                highlight,
+                kind=kind,
+                formula_latex=rf"V_{{{apex}.{base}}}=\frac{{1}}{{3}}S_{{{base}}}\cdot {height_segment}",
+            )
+        return SolverStep(
+            2,
+            "Tính thể tích theo đáy và chiều cao",
+            f"Xem {base} là đáy và dựng chiều cao từ {apex} xuống mặt phẳng đáy. Thể tích bằng một phần ba diện tích đáy nhân chiều cao.",
+            None,
+            None,
+            highlight,
+            kind=kind,
+            formula_latex=rf"V=\frac{{1}}{{3}}S_{{{base}}}\cdot h",
+        )
+    if kind == "volume_prism" and len(highlight) >= 6:
+        return SolverStep(
+            2,
+            "Tính thể tích lăng trụ",
+            "Thể tích lăng trụ bằng diện tích đáy nhân với chiều cao tương ứng.",
+            None,
+            None,
+            highlight,
+            kind=kind,
+            formula_latex=r"V=S_{\text{đáy}}\cdot h",
+        )
+    if kind == "proof_collinear" and len(highlight) >= 3:
+        return SolverStep(
+            2,
+            "Kiểm tra quan hệ thẳng hàng",
+            f"Chọn một đường thẳng đi qua hai điểm đầu, rồi kiểm tra các điểm còn lại có cùng nằm trên đường thẳng đó hay không.",
+            None,
+            None,
+            highlight,
+            kind=kind,
+        )
+    if kind == "proof_coplanar" and len(highlight) >= 4:
+        return SolverStep(
+            2,
+            "Kiểm tra quan hệ đồng phẳng",
+            f"Chọn mặt phẳng đi qua ba điểm không thẳng hàng đầu tiên, rồi kiểm tra các điểm còn lại có thuộc mặt phẳng đó hay không.",
+            None,
+            None,
+            highlight,
+            kind=kind,
+        )
+    return SolverStep(
+        2,
+        "Chọn định nghĩa hình học phù hợp",
+        f"Dạng này chưa có template THPT chuyên biệt, nên hệ thống chỉ trình bày các đối tượng liên quan: {label}.",
+        None,
+        None,
+        highlight,
+        kind=kind,
+    )
+
+
+def _classical_conclusion_text(
+    kind: str,
+    highlight: list[str],
+    answer: str,
+    point_plane_height: dict[str, str] | None,
+    line_plane_projection: dict[str, str] | None = None,
+    plane_plane_angle: dict[str, str] | None = None,
+    pyramid_volume: dict[str, str] | None = None,
+) -> str:
+    if kind == "distance_point_plane" and len(highlight) >= 4 and point_plane_height:
+        p = highlight[0]
+        plane_name = "".join(highlight[1:4])
+        segment = point_plane_height["segment"]
+        length_label = point_plane_height.get("length_label")
+        if length_label:
+            return f"Mà {segment} = {length_label}, nên d({p},({plane_name})) = {segment} = {length_label}."
+        return f"Vì {segment} là đoạn vuông góc từ {p} đến ({plane_name}), nên {answer}."
+    if kind == "angle_line_plane" and len(highlight) >= 2 and line_plane_projection:
+        line = "".join(highlight[:2])
+        plane_name = line_plane_projection["plane"]
+        if line_plane_projection.get("perpendicular_line") == "true":
+            return f"Vì {line} vuông góc với ({plane_name}), nên góc giữa {line} và ({plane_name}) bằng 90°."
+        angle_name = line_plane_projection["angle_name"]
+        return f"Vì hình chiếu của {line} trên ({plane_name}) đã xác định, nên góc giữa {line} và ({plane_name}) là góc {angle_name}; do đó {answer}."
+    if kind == "angle_plane_plane" and plane_plane_angle:
+        first_plane = plane_plane_angle["first_plane"]
+        second_plane = plane_plane_angle["second_plane"]
+        angle_name = plane_plane_angle["angle_name"]
+        return f"Vì góc phẳng nhị diện giữa ({first_plane}) và ({second_plane}) là góc {angle_name}, nên {answer}."
+    if kind == "volume_pyramid" and pyramid_volume:
+        apex = pyramid_volume["apex"]
+        base = pyramid_volume["base"]
+        height_segment = pyramid_volume["height_segment"]
+        height_label = pyramid_volume.get("height_label")
+        if height_label:
+            return f"Với đáy {base} và chiều cao {height_segment} = {height_label}, áp dụng V = 1/3·S_đáy·h, suy ra {answer}."
+        return f"Với đáy {base} và chiều cao {height_segment}, áp dụng V = 1/3·S_đáy·h, suy ra {answer}."
+    return f"Dựa trên các dữ kiện hình học đã kiểm chứng, suy ra {answer}."
+
+
+def _first_plane_ref(question: str, highlight: list[str]) -> list[str] | None:
+    plane_refs = _parse_plane_refs(question)
+    if plane_refs:
+        return plane_refs[0]
+    if len(highlight) >= 5:
+        return highlight[2:5]
+    return None
+
+
+def _point_plane_height_fact(scene_dict: dict, highlight: list[str]) -> dict[str, str] | None:
+    if len(highlight) < 4:
+        return None
+    point = highlight[0]
+    plane = highlight[1:4]
+    plane_set = set(plane)
+    for rel in scene_dict.get("relations", []):
+        if not isinstance(rel, dict) or str(rel.get("type") or "").strip().lower() != "perpendicular":
+            continue
+        metadata = rel.get("metadata") if isinstance(rel.get("metadata"), dict) else {}
+        if not _metadata_is_usable_fact(metadata, default=True):
+            continue
+        object_1 = str(rel.get("object_1") or "")
+        object_2 = str(rel.get("object_2") or "")
+        segment = _parse_edge_token(object_1)
+        plane_ref = _parse_plane_token(object_2)
+        if segment is None or plane_ref is None:
+            segment = _parse_edge_token(object_2)
+            plane_ref = _parse_plane_token(object_1)
+        if segment is None or plane_ref is None:
+            continue
+        if set(plane_ref) != plane_set or point not in segment:
+            continue
+        foot = segment[1] if segment[0] == point else segment[0]
+        if foot not in plane_set:
+            continue
+        ordered_segment = f"{point}{foot}"
+        return {
+            "foot": foot,
+            "segment": ordered_segment,
+            "length_label": _length_label_for_segment(scene_dict, point, foot) or "",
+        }
+    return None
+
+
+def _line_plane_projection_fact(scene_dict: dict, question: str, highlight: list[str]) -> dict[str, str] | None:
+    if len(highlight) < 2:
+        return None
+    line = (highlight[0], highlight[1])
+    plane_ref = _first_plane_ref(question, highlight)
+    if plane_ref is None:
+        return None
+    plane_set = set(plane_ref)
+    plane_name = "".join(plane_ref)
+    line_set = set(line)
+
+    for rel in scene_dict.get("relations", []):
+        if not isinstance(rel, dict) or str(rel.get("type") or "").strip().lower() != "perpendicular":
+            continue
+        metadata = rel.get("metadata") if isinstance(rel.get("metadata"), dict) else {}
+        if not _metadata_is_usable_fact(metadata, default=True):
+            continue
+
+        segment, relation_plane = _perpendicular_segment_plane(rel)
+        if segment is None or relation_plane is None or set(relation_plane) != plane_set:
+            continue
+
+        segment_set = set(segment)
+        if segment_set == line_set:
+            return {
+                "plane": plane_name,
+                "perpendicular_line": "true",
+            }
+
+        for outside, foot in (segment, (segment[1], segment[0])):
+            if outside not in line_set:
+                continue
+            plane_point = line[1] if line[0] == outside else line[0]
+            if not _point_is_on_plane_fact(scene_dict, plane_point, plane_ref):
+                continue
+            if not _point_is_on_plane_fact(scene_dict, foot, plane_ref):
+                continue
+            if foot == plane_point:
+                return {
+                    "plane": plane_name,
+                    "perpendicular_line": "true",
+                }
+            return {
+                "plane": plane_name,
+                "outside": outside,
+                "foot": foot,
+                "plane_point": plane_point,
+                "projected_line": f"{foot}{plane_point}",
+                "angle_name": f"{outside}{plane_point}{foot}",
+            }
+    return None
+
+
+def _perpendicular_segment_plane(relation: dict[str, Any]) -> tuple[tuple[str, str] | None, list[str] | None]:
+    object_1 = str(relation.get("object_1") or "")
+    object_2 = str(relation.get("object_2") or "")
+    segment = _parse_edge_token(object_1)
+    plane_ref = _parse_plane_token(object_2)
+    if segment is not None and plane_ref is not None:
+        return segment, plane_ref
+    segment = _parse_edge_token(object_2)
+    plane_ref = _parse_plane_token(object_1)
+    return segment, plane_ref
+
+
+def _point_is_on_plane_fact(scene_dict: dict, point: str, plane_ref: list[str]) -> bool:
+    if point in set(plane_ref):
+        return True
+    for rel in scene_dict.get("relations", []):
+        if not isinstance(rel, dict) or str(rel.get("type") or "").strip().lower() != "on_plane":
+            continue
+        metadata = rel.get("metadata") if isinstance(rel.get("metadata"), dict) else {}
+        if not _metadata_is_usable_fact(metadata, default=True):
+            continue
+        if str(rel.get("object_1") or "") != point:
+            continue
+        rel_plane = _parse_plane_token(str(rel.get("object_2") or ""))
+        if rel_plane is not None and set(rel_plane) == set(plane_ref):
+            return True
+    return False
+
+
+def _plane_plane_angle_fact(scene_dict: dict, question: str) -> dict[str, str] | None:
+    plane_refs = _parse_plane_refs(question)
+    if len(plane_refs) < 2:
+        return None
+    first_plane, second_plane = plane_refs[:2]
+    first_set = set(first_plane)
+    second_set = set(second_plane)
+    common = [point for point in first_plane if point in second_set]
+    if len(common) < 2:
+        return None
+    intersection = (common[0], common[1])
+    intersection_label = f"{intersection[0]}{intersection[1]}"
+
+    for vertex in intersection:
+        first_line = _perpendicular_line_to_edge_in_plane(scene_dict, intersection, first_set, vertex)
+        second_line = _perpendicular_line_to_edge_in_plane(scene_dict, intersection, second_set, vertex)
+        if first_line is None or second_line is None:
+            continue
+        first_other = first_line[1] if first_line[0] == vertex else first_line[0]
+        second_other = second_line[1] if second_line[0] == vertex else second_line[0]
+        if first_other == second_other:
+            continue
+        return {
+            "first_plane": "".join(first_plane),
+            "second_plane": "".join(second_plane),
+            "intersection": intersection_label,
+            "vertex": vertex,
+            "first_line": f"{first_line[0]}{first_line[1]}",
+            "second_line": f"{second_line[0]}{second_line[1]}",
+            "angle_name": f"{first_other}{vertex}{second_other}",
+        }
+    return None
+
+
+def _pyramid_volume_fact(scene_dict: dict, highlight: list[str]) -> dict[str, str] | None:
+    if len(highlight) < 4:
+        return None
+    apex = highlight[0]
+    base = highlight[1:]
+    base_set = set(base)
+    base_label = "".join(base)
+    for rel in scene_dict.get("relations", []):
+        if not isinstance(rel, dict) or str(rel.get("type") or "").strip().lower() != "perpendicular":
+            continue
+        metadata = rel.get("metadata") if isinstance(rel.get("metadata"), dict) else {}
+        if not _metadata_is_usable_fact(metadata, default=True):
+            continue
+        segment, plane_ref = _perpendicular_segment_plane(rel)
+        if segment is None or plane_ref is None:
+            continue
+        if set(plane_ref) != base_set or apex not in segment:
+            continue
+        foot = segment[1] if segment[0] == apex else segment[0]
+        if foot not in base_set:
+            continue
+        height_segment = f"{apex}{foot}"
+        return {
+            "apex": apex,
+            "base": base_label,
+            "foot": foot,
+            "height_segment": height_segment,
+            "height_label": _length_label_for_segment(scene_dict, apex, foot) or "",
+        }
+    return None
+
+
+def _perpendicular_line_to_edge_in_plane(
+    scene_dict: dict,
+    edge: tuple[str, str],
+    plane_set: set[str],
+    vertex: str,
+) -> tuple[str, str] | None:
+    edge_set = set(edge)
+    for rel in scene_dict.get("relations", []):
+        if not isinstance(rel, dict) or str(rel.get("type") or "").strip().lower() != "perpendicular":
+            continue
+        metadata = rel.get("metadata") if isinstance(rel.get("metadata"), dict) else {}
+        if not _metadata_is_usable_fact(metadata, default=True):
+            continue
+        first = _parse_edge_token(str(rel.get("object_1") or ""))
+        second = _parse_edge_token(str(rel.get("object_2") or ""))
+        if first is None or second is None:
+            continue
+        candidate = second if set(first) == edge_set else first if set(second) == edge_set else None
+        if candidate is None:
+            continue
+        if set(candidate) == edge_set or vertex not in candidate:
+            continue
+        if not set(candidate).issubset(plane_set):
+            continue
+        return candidate
+    return None
+
+
+def _length_label_for_segment(scene_dict: dict, first: str, second: str) -> str | None:
+    target_set = {first, second}
+    for ann in scene_dict.get("annotations", []):
+        if not isinstance(ann, dict) or ann.get("type") != "length":
+            continue
+        metadata = ann.get("metadata") if isinstance(ann.get("metadata"), dict) else {}
+        if not _metadata_is_usable_fact(metadata, default=True):
+            continue
+        target = str(ann.get("target") or "")
+        edge = _parse_edge_token(target)
+        label = ann.get("label")
+        if edge and set(edge) == target_set and isinstance(label, str) and label.strip():
+            return label.strip()
+    return None
+
+
+def _relevant_scene_facts(scene_dict: dict, highlight: list[str]) -> list[str]:
+    names = set(highlight)
+    facts: list[str] = []
+    for ann in scene_dict.get("annotations", []):
+        if not isinstance(ann, dict):
+            continue
+        fact = _annotation_fact(ann, names)
+        if fact:
+            facts.append(fact)
+    for rel in scene_dict.get("relations", []):
+        if not isinstance(rel, dict):
+            continue
+        fact = _relation_fact(rel, names)
+        if fact:
+            facts.append(fact)
+    return list(dict.fromkeys(facts))
+
+
+def _solver_used_facts(scene_dict: dict, highlight: list[str], result: SolverResult) -> list[dict[str, str]]:
+    names = set(highlight)
+    facts: list[dict[str, str]] = []
+
+    for ann in scene_dict.get("annotations", []):
+        if not isinstance(ann, dict):
+            continue
+        text = _annotation_fact(ann, names)
+        if text:
+            metadata = ann.get("metadata") if isinstance(ann.get("metadata"), dict) else {}
+            facts.append({"source": _fact_source_from_metadata(metadata, "given"), "text": _append_evidence(text, metadata)})
+
+    for rel in scene_dict.get("relations", []):
+        if not isinstance(rel, dict):
+            continue
+        text = _relation_fact(rel, names)
+        if text:
+            metadata = rel.get("metadata") if isinstance(rel.get("metadata"), dict) else {}
+            facts.append({"source": _fact_source_from_metadata(metadata, "verified"), "text": _append_evidence(text, metadata)})
+
+    for param in scene_dict.get("parameters", []):
+        if not isinstance(param, dict):
+            continue
+        name = str(param.get("name") or "").strip()
+        if not name:
+            continue
+        value = param.get("default")
+        label = str(param.get("label") or name)
+        facts.append({"source": "parameter_default", "text": f"{label} đang dùng giá trị mặc định {value}."})
+
+    for issue in scene_dict.get("cas_issues", []):
+        if not isinstance(issue, dict):
+            continue
+        description = str(issue.get("description") or "").strip()
+        if not description:
+            continue
+        source = "verified" if bool(issue.get("auto_fixed")) else "construction_only"
+        prefix = "CAS đã tự sửa" if source == "verified" else "CAS chưa tự sửa"
+        facts.append({"source": source, "text": f"{prefix}: {description}"})
+
+    if not facts and result.answer not in {"Không đủ dữ kiện", "Không xác định"}:
+        if scene_dict.get("topic") in {"coordinate_2d", "coordinate_3d"}:
+            facts.append({"source": "given", "text": "Bài toán tọa độ: dùng tọa độ điểm có trong scene."})
+        else:
+            facts.append({"source": "construction_only", "text": "Chưa có dữ kiện đề/quan hệ định lượng rõ trong scene; kết quả dựa trên tọa độ scene hiện tại."})
+
+    deduped: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for fact in facts:
+        key = (fact["source"], fact["text"])
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(fact)
+    return deduped[:10]
+
+
+def _fact_source_from_metadata(metadata: dict[str, Any], fallback: str) -> str:
+    source = metadata.get("source")
+    confidence = metadata.get("confidence")
+    if source == "construction" or confidence == "unverified":
+        return "construction_only"
+    if source == "given":
+        return "given"
+    if source == "inferred":
+        return "verified" if confidence == "verified" else "inferred"
+    if confidence == "verified":
+        return "verified"
+    return fallback
+
+
+def _append_evidence(text: str, metadata: dict[str, Any]) -> str:
+    evidence = metadata.get("evidence")
+    if isinstance(evidence, str) and evidence.strip():
+        return f"{text} Căn cứ: {evidence.strip()}."
+    return text
+
+
+def _annotation_fact(annotation: dict[str, Any], names: set[str]) -> str | None:
+    atype = str(annotation.get("type") or "")
+    target = str(annotation.get("target") or "")
+    label = annotation.get("label")
+    target_points = set(_split_point_sequence(target.replace("-", "")))
+    metadata = annotation.get("metadata") if isinstance(annotation.get("metadata"), dict) else {}
+    if atype == "length" and target_points.intersection(names) and isinstance(label, str) and label.strip():
+        return f"Đề cho độ dài {target.replace('-', '')} = {label.strip()}."
+    if atype == "angle" and target in names and isinstance(label, str) and label.strip():
+        arms = metadata.get("arms")
+        if isinstance(arms, list) and len(arms) >= 2:
+            return f"Đề cho góc {arms[0]}{target}{arms[1]} = {label.strip()}."
+    if atype == "right_angle" and target in names:
+        arms = metadata.get("arms")
+        if isinstance(arms, list) and len(arms) >= 2:
+            return f"Có {arms[0]}{target} vuông góc {target}{arms[1]}."
+    return None
+
+
+def _relation_fact(relation: dict[str, Any], names: set[str]) -> str | None:
+    rtype = str(relation.get("type") or "").strip().lower()
+    object_1 = str(relation.get("object_1") or "")
+    object_2 = str(relation.get("object_2") or "")
+    points = set(_split_point_sequence(f"{object_1}{object_2}".replace("plane", "")))
+    if points and not points.intersection(names):
+        return None
+    if rtype == "perpendicular" and object_2:
+        return f"Có {object_1} vuông góc {object_2}."
+    if rtype == "parallel" and object_2:
+        return f"Có {object_1} song song {object_2}."
+    if rtype == "equal_length" and object_2:
+        return f"Có {object_1} = {object_2}."
+    if rtype == "midpoint" and object_2:
+        return f"{object_1} là trung điểm của {object_2.replace('-', '')}."
+    if rtype == "on_line" and object_2:
+        return f"{object_1} nằm trên đường thẳng {object_2.replace('-', '')}."
+    if rtype == "on_plane" and object_2:
+        return f"{object_1} nằm trên mặt phẳng {object_2}."
+    return None
 
 
 def _is_vector_dot_question(question: str) -> bool:

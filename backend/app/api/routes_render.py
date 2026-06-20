@@ -10,6 +10,7 @@ from app.db.models import UserRecord
 from app.db.session import DatabaseClient, get_database
 from app.repositories.admin import AdminRepository
 from app.repositories.history import RenderHistoryRepository
+from app.core.config import get_settings
 from app.schemas.auth import SystemFeatureFlags
 from app.schemas.scene import RenderRequest, RenderResponse, SceneRenderRequest
 from app.services.api_errors import api_error
@@ -62,6 +63,7 @@ async def render_problem(
 async def build_problem_render_response(request: RenderRequest, db: DatabaseClient) -> RenderResponse:
     from app.services.extractor import extract_scene
     from app.services.geometry_engine import normalize_scene
+    from app.services.quality_advisory import build_render_advisory
     from app.services.renderer_router import build_render_payload
 
     scene, warnings = await extract_scene(
@@ -88,7 +90,10 @@ async def build_problem_render_response(request: RenderRequest, db: DatabaseClie
     payload = build_render_payload(scene, request.advanced_settings)
     if scene.topic == "unknown":
         warnings.append("Chưa nhận diện được dạng toán, hãy thử đề cụ thể hơn.")
-    return RenderResponse(scene=scene, payload=payload, warnings=warnings, cas_issues=scene.cas_issues)
+    advisory = None
+    if get_settings().advisory_enabled:
+        advisory = build_render_advisory(request.problem_text, request.grade, scene, warnings, scene.cas_issues, payload)
+    return RenderResponse(scene=scene, payload=payload, warnings=warnings, cas_issues=scene.cas_issues, advisory=advisory)
 
 
 @router.post("/render/scene", response_model=RenderResponse, dependencies=[Depends(require_trusted_origin)])
@@ -99,6 +104,7 @@ async def render_scene(
     db: DatabaseClient = Depends(get_database),
 ) -> RenderResponse:
     from app.services.geometry_engine import normalize_scene
+    from app.services.quality_advisory import build_scene_advisory
     from app.services.renderer_router import build_render_payload
 
     await enforce_rate_limit(db, http_request, user, "render_scene", 40 if user else 12, 60)
@@ -109,7 +115,8 @@ async def render_scene(
     computed = (payload.three_scene or {}).get("computed") if payload.three_scene else None
     if isinstance(computed, dict):
         warnings = [warning for warning in computed.get("warnings", []) if isinstance(warning, str)]
-    response = RenderResponse(scene=scene, payload=payload, warnings=warnings, cas_issues=scene.cas_issues)
+    advisory = build_scene_advisory(scene, warnings, payload) if get_settings().advisory_enabled else None
+    response = RenderResponse(scene=scene, payload=payload, warnings=warnings, cas_issues=scene.cas_issues, advisory=advisory)
     if user is not None:
         await RenderHistoryRepository(db).create(
             user.id,

@@ -6845,6 +6845,125 @@ pre {
   font-family: 'Courier New', monospace;
 }
 
+.sp-trust {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: var(--paper);
+}
+
+.sp-trust--verified {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+
+.sp-trust--partial {
+  border-color: #fde68a;
+  background: #fffbeb;
+}
+
+.sp-trust--insufficient {
+  border-color: #fecaca;
+  background: #fff5f5;
+}
+
+.sp-trust-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sp-trust-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  border-radius: 999px;
+  padding: 3px 9px;
+  background: var(--ink);
+  color: var(--accent-fg);
+  font-size: 0.72rem;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.sp-trust--verified .sp-trust-badge { background: #166534; }
+.sp-trust--partial .sp-trust-badge { background: #92400e; }
+.sp-trust--insufficient .sp-trust-badge { background: #991b1b; }
+
+.sp-trust-method {
+  color: var(--ink-4);
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.sp-trust-section {
+  display: grid;
+  gap: 6px;
+}
+
+.sp-trust-title {
+  color: var(--ink);
+  font-size: 0.74rem;
+  font-weight: 900;
+}
+
+.sp-trust-facts,
+.sp-trust-issues {
+  display: grid;
+  gap: 5px;
+}
+
+.sp-trust-fact {
+  display: grid;
+  grid-template-columns: 76px 1fr;
+  gap: 8px;
+  align-items: start;
+  color: var(--ink);
+  font-size: 0.78rem;
+  line-height: 1.38;
+}
+
+.sp-trust-fact span {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 2px 6px;
+  background: rgba(255,255,255,0.72);
+  color: var(--ink-4);
+  font-size: 0.68rem;
+  font-weight: 900;
+  text-align: center;
+}
+
+.sp-trust-fact p,
+.sp-trust-issues p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.sp-trust-issues p {
+  color: #92400e;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.sp-trust--insufficient .sp-trust-issues p {
+  color: #991b1b;
+}
+
+@media (max-width: 560px) {
+  .sp-trust-fact {
+    grid-template-columns: 1fr;
+  }
+
+  .sp-trust-fact span {
+    width: max-content;
+  }
+}
+
 /* Steps */
 .sp-result   { display: grid; gap: 12px; }
 .sp-steps    { display: grid; gap: 2px; }

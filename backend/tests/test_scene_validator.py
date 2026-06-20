@@ -162,6 +162,38 @@ def test_reference_integrity_drops_annotation_with_missing_arms():
     assert len(report.scene.annotations) == 0
 
 
+def test_fact_metadata_is_normalized_for_relations_and_annotations():
+    scene = MathScene.model_validate(
+        _base_scene(
+            objects=[
+                {"type": "point_3d", "name": "A", "x": 0, "y": 0, "z": 0},
+                {"type": "point_3d", "name": "B", "x": 1, "y": 0, "z": 0},
+                {"type": "point_3d", "name": "C", "x": 1, "y": 1, "z": 0},
+            ],
+            relations=[
+                {"type": "perpendicular", "object_1": "AB", "object_2": "BC", "metadata": {"source": "bad"}},
+            ],
+            annotations=[
+                {"type": "length", "target": "A-B", "label": "3", "metadata": {"confidence": "bad", "evidence": 3}},
+                {"type": "right_angle", "target": "B", "metadata": {"arms": ["A", "C"]}},
+            ],
+        )
+    )
+
+    report = validate_and_repair(scene)
+
+    rel_meta = report.scene.relations[0].metadata
+    length_meta = next(ann.metadata for ann in report.scene.annotations if ann.type == "length")
+    right_angle_meta = next(ann.metadata for ann in report.scene.annotations if ann.type == "right_angle")
+    assert rel_meta["source"] == "inferred"
+    assert rel_meta["confidence"] == "partial"
+    assert length_meta["source"] == "given"
+    assert length_meta["confidence"] == "partial"
+    assert length_meta["evidence"] == "3"
+    assert right_angle_meta["source"] == "inferred"
+    assert right_angle_meta["confidence"] == "partial"
+
+
 # ---------------------------------------------------------------------------
 # validate_and_repair: dimension consistency
 # ---------------------------------------------------------------------------

@@ -85,6 +85,8 @@ _VALID_RELATION_TYPES = {
 _VALID_ANNOTATION_TYPES = {
     "length", "angle", "right_angle", "equal_marks", "coordinate_label",
 }
+_VALID_FACT_SOURCES = {"given", "inferred", "construction"}
+_VALID_FACT_CONFIDENCE = {"verified", "partial", "unverified"}
 
 
 def pre_validate_raw(scene_json: dict) -> tuple[dict, list[str]]:
@@ -190,11 +192,85 @@ def validate_and_repair(scene: MathScene) -> ValidationReport:
     # 6. Parameter integrity
     scene = _enforce_parameters(scene, report)
 
-    # 7. Numeric quality warnings
+    # 7. Fact metadata
+    scene = _normalize_fact_metadata(scene, report)
+
+    # 8. Numeric quality warnings
     _check_numeric_quality(scene, report)
 
     report.scene = scene
     return report
+
+
+def _normalize_fact_metadata(scene: MathScene, report: ValidationReport) -> MathScene:
+    data = scene.model_dump()
+    changed = False
+
+    for rel in data.get("relations", []):
+        if not isinstance(rel, dict):
+            continue
+        metadata = rel.get("metadata") if isinstance(rel.get("metadata"), dict) else {}
+        new_metadata, did_change = _normalized_metadata(
+            metadata,
+            default_source="inferred",
+            default_confidence="partial",
+        )
+        if did_change:
+            rel["metadata"] = new_metadata
+            changed = True
+
+    for ann in data.get("annotations", []):
+        if not isinstance(ann, dict):
+            continue
+        metadata = ann.get("metadata") if isinstance(ann.get("metadata"), dict) else {}
+        default_source, default_confidence = _annotation_metadata_defaults(ann)
+        new_metadata, did_change = _normalized_metadata(
+            metadata,
+            default_source=default_source,
+            default_confidence=default_confidence,
+        )
+        if did_change:
+            ann["metadata"] = new_metadata
+            changed = True
+
+    if changed:
+        report.repairs.append("Đã chuẩn hoá metadata nguồn/độ tin cậy cho dữ kiện hình học")
+        return MathScene.model_validate(data)
+    return scene
+
+
+def _annotation_metadata_defaults(annotation: dict) -> tuple[str, str]:
+    atype = annotation.get("type")
+    label = annotation.get("label")
+    if atype in {"length", "angle"} and isinstance(label, str) and label.strip():
+        return "given", "partial"
+    if atype in {"right_angle", "equal_marks"}:
+        return "inferred", "partial"
+    return "construction", "unverified"
+
+
+def _normalized_metadata(
+    metadata: dict,
+    *,
+    default_source: str,
+    default_confidence: str,
+) -> tuple[dict, bool]:
+    normalized = dict(metadata)
+    source = normalized.get("source")
+    confidence = normalized.get("confidence")
+    evidence = normalized.get("evidence")
+    changed = False
+
+    if source not in _VALID_FACT_SOURCES:
+        normalized["source"] = default_source
+        changed = True
+    if confidence not in _VALID_FACT_CONFIDENCE:
+        normalized["confidence"] = default_confidence
+        changed = True
+    if evidence is not None and not isinstance(evidence, str):
+        normalized["evidence"] = str(evidence)
+        changed = True
+    return normalized, changed
 
 
 # ---------------------------------------------------------------------------

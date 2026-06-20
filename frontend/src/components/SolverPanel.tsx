@@ -305,6 +305,8 @@ export function SolverPanel({ scene, runtimeSettings, onHighlight }: SolverPanel
             <span className="sp-answer-value">{result.answer}</span>
           </div>
 
+          <SolverTrustPanel result={result} />
+
           {/* Warnings */}
           {result.warnings.length > 0 && (
             <div className="sp-warnings">
@@ -333,6 +335,57 @@ export function SolverPanel({ scene, runtimeSettings, onHighlight }: SolverPanel
       )}
     </div>
   );
+}
+
+function SolverTrustPanel({ result }: { result: SolveResponse }) {
+  const confidence = result.confidence ?? 'verified';
+  const usedFacts = result.used_facts ?? [];
+  const dataIssues = result.data_issues ?? [];
+  const methodLabel = result.method === 'classical' ? 'Tương quan hình học' : 'Tọa độ hóa';
+  return (
+    <div className={`sp-trust sp-trust--${confidence}`}>
+      <div className="sp-trust-head">
+        <span className="sp-trust-badge">{confidenceLabel(confidence)}</span>
+        <span className="sp-trust-method">{methodLabel}</span>
+      </div>
+      {usedFacts.length > 0 && (
+        <div className="sp-trust-section">
+          <div className="sp-trust-title">Dữ kiện đã dùng</div>
+          <div className="sp-trust-facts">
+            {usedFacts.slice(0, 6).map((fact, index) => (
+              <div key={`${fact.source}-${index}`} className="sp-trust-fact">
+                <span>{factSourceLabel(fact.source)}</span>
+                <p>{fact.text}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {dataIssues.length > 0 && (
+        <div className="sp-trust-section">
+          <div className="sp-trust-title">Vấn đề dữ kiện</div>
+          <div className="sp-trust-issues">
+            {dataIssues.slice(0, 4).map((issue, index) => <p key={index}>{issue}</p>)}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function confidenceLabel(confidence: string) {
+  if (confidence === 'insufficient') return 'Không đủ dữ kiện';
+  if (confidence === 'partial') return 'Cần kiểm tra';
+  return 'Đủ dữ kiện';
+}
+
+function factSourceLabel(source: string) {
+  if (source === 'given') return 'Đề cho';
+  if (source === 'inferred') return 'Suy ra';
+  if (source === 'verified') return 'Đã kiểm';
+  if (source === 'parameter_default') return 'Mặc định';
+  if (source === 'construction_only') return 'Minh họa';
+  return 'Dữ kiện';
 }
 
 function SolverStepItem({

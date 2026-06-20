@@ -61,6 +61,8 @@ def test_render_routes_cas_issues(monkeypatch):
         assert payload["cas_issues"][0]["relation_type"] == "midpoint"
         assert payload["cas_issues"][0]["description"] == "M lệch khỏi trung điểm"
         assert payload["cas_issues"][0]["severity"] == "warning"
+        assert payload["advisory"]["classification"]["task_type"] == "render_scene"
+        assert payload["advisory"]["risk_score"] >= 15
 
         # Test render/scene endpoint
         scene_data = {
@@ -92,5 +94,6 @@ def test_render_routes_cas_issues(monkeypatch):
         assert "cas_issues" in payload_scene
         assert len(payload_scene["cas_issues"]) == 1
         assert payload_scene["cas_issues"][0]["relation_type"] == "midpoint"
+        assert payload_scene["advisory"]["classification"]["task_type"] == "render_scene"
     finally:
         app.dependency_overrides.clear()

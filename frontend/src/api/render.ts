@@ -1,4 +1,4 @@
-import type { AdvancedRenderSettings, MathScene, RenderResponse, Renderer } from '../types/scene';
+import type { AdvancedRenderSettings, MathScene, QualityRiskAdvisory, RenderResponse, Renderer } from '../types/scene';
 import type { OcrProvider, RuntimeSettings, ScannedModelInfo, SettingsDefaults } from '../types/settings';
 import { buildExportFilename, type ExportFormatKey } from '../utils/exportFilename';
 import { normalizeProviderModelSelection } from '../utils/settingsOptions';
@@ -57,11 +57,23 @@ export interface SolveStep {
   sub_steps?: SolveStep[];
 }
 
+export type SolveConfidence = 'verified' | 'partial' | 'insufficient';
+
+export interface SolveFact {
+  source: 'given' | 'verified' | 'parameter_default' | 'construction_only' | string;
+  text: string;
+}
+
 export interface SolveResponse {
   question: string;
   answer: string;
   steps: SolveStep[];
   warnings: string[];
+  confidence?: SolveConfidence;
+  method?: 'oxyz' | 'classical' | string;
+  used_facts?: SolveFact[];
+  data_issues?: string[];
+  advisory?: QualityRiskAdvisory | null;
 }
 
 const EXPORT_META: Record<ExportFormat, { path: string; errorMessage: string }> = {

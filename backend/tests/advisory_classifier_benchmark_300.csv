@@ -1,0 +1,301 @@
+id,mode,input,scene_topic,expected_topic,expected_task_type,expected_sub_type
+R001,render,Vẽ đồ thị hàm số y = x^2 + 1,,function_graph,render_scene,
+R002,render,Cho hình chóp S.ABCD có SA vuông góc với đáy và cạnh 2,,solid_geometry,render_scene,
+R003,render,Cho đường tròn tâm O bán kính 3,,conic,render_scene,
+R004,render,Cho vectơ AB trong mặt phẳng với độ dài 4,,vector_2d,render_scene,
+R005,render,Trong mặt phẳng Oxy cho tam giác ABC với tham số 5,,coordinate_2d,render_scene,
+R006,render,Vẽ đồ thị hàm số y = x^2 + 6,,function_graph,render_scene,
+R007,render,Cho hình chóp S.ABCD có SA vuông góc với đáy và cạnh 7,,solid_geometry,render_scene,
+R008,render,Cho đường tròn tâm O bán kính 8,,conic,render_scene,
+R009,render,Cho vectơ AB trong mặt phẳng với độ dài 9,,vector_2d,render_scene,
+R010,render,Trong mặt phẳng Oxy cho tam giác ABC với tham số 10,,coordinate_2d,render_scene,
+R011,render,Vẽ đồ thị hàm số y = x^2 + 11,,function_graph,render_scene,
+R012,render,Cho hình chóp S.ABCD có SA vuông góc với đáy và cạnh 12,,solid_geometry,render_scene,
+R013,render,Cho đường tròn tâm O bán kính 13,,conic,render_scene,
+R014,render,Cho vectơ AB trong mặt phẳng với độ dài 14,,vector_2d,render_scene,
+R015,render,Trong mặt phẳng Oxy cho tam giác ABC với tham số 15,,coordinate_2d,render_scene,
+R016,render,Vẽ đồ thị hàm số y = x^2 + 16,,function_graph,render_scene,
+R017,render,Cho hình chóp S.ABCD có SA vuông góc với đáy và cạnh 17,,solid_geometry,render_scene,
+R018,render,Cho đường tròn tâm O bán kính 18,,conic,render_scene,
+R019,render,Cho vectơ AB trong mặt phẳng với độ dài 19,,vector_2d,render_scene,
+R020,render,Trong mặt phẳng Oxy cho tam giác ABC với tham số 20,,coordinate_2d,render_scene,
+R021,render,Vẽ đồ thị hàm số y = x^2 + 21,,function_graph,render_scene,
+R022,render,Cho hình chóp S.ABCD có SA vuông góc với đáy và cạnh 22,,solid_geometry,render_scene,
+R023,render,Cho đường tròn tâm O bán kính 23,,conic,render_scene,
+R024,render,Cho vectơ AB trong mặt phẳng với độ dài 24,,vector_2d,render_scene,
+R025,render,Trong mặt phẳng Oxy cho tam giác ABC với tham số 25,,coordinate_2d,render_scene,
+R026,render,Vẽ đồ thị hàm số y = x^2 + 26,,function_graph,render_scene,
+R027,render,Cho hình chóp S.ABCD có SA vuông góc với đáy và cạnh 27,,solid_geometry,render_scene,
+R028,render,Cho đường tròn tâm O bán kính 28,,conic,render_scene,
+R029,render,Cho vectơ AB trong mặt phẳng với độ dài 29,,vector_2d,render_scene,
+R030,render,Trong mặt phẳng Oxy cho tam giác ABC với tham số 30,,coordinate_2d,render_scene,
+R031,render,Vẽ đồ thị hàm số y = x^2 + 31,,function_graph,render_scene,
+R032,render,Cho hình chóp S.ABCD có SA vuông góc với đáy và cạnh 32,,solid_geometry,render_scene,
+R033,render,Cho đường tròn tâm O bán kính 33,,conic,render_scene,
+R034,render,Cho vectơ AB trong mặt phẳng với độ dài 34,,vector_2d,render_scene,
+R035,render,Trong mặt phẳng Oxy cho tam giác ABC với tham số 35,,coordinate_2d,render_scene,
+R036,render,Vẽ đồ thị hàm số y = x^2 + 36,,function_graph,render_scene,
+R037,render,Cho hình chóp S.ABCD có SA vuông góc với đáy và cạnh 37,,solid_geometry,render_scene,
+R038,render,Cho đường tròn tâm O bán kính 38,,conic,render_scene,
+R039,render,Cho vectơ AB trong mặt phẳng với độ dài 39,,vector_2d,render_scene,
+R040,render,Trong mặt phẳng Oxy cho tam giác ABC với tham số 40,,coordinate_2d,render_scene,
+R041,render,Vẽ đồ thị hàm số y = x^2 + 41,,function_graph,render_scene,
+R042,render,Cho hình chóp S.ABCD có SA vuông góc với đáy và cạnh 42,,solid_geometry,render_scene,
+R043,render,Cho đường tròn tâm O bán kính 43,,conic,render_scene,
+R044,render,Cho vectơ AB trong mặt phẳng với độ dài 44,,vector_2d,render_scene,
+R045,render,Trong mặt phẳng Oxy cho tam giác ABC với tham số 45,,coordinate_2d,render_scene,
+R046,render,Vẽ đồ thị hàm số y = x^2 + 46,,function_graph,render_scene,
+R047,render,Cho hình chóp S.ABCD có SA vuông góc với đáy và cạnh 47,,solid_geometry,render_scene,
+R048,render,Cho đường tròn tâm O bán kính 48,,conic,render_scene,
+R049,render,Cho vectơ AB trong mặt phẳng với độ dài 49,,vector_2d,render_scene,
+R050,render,Trong mặt phẳng Oxy cho tam giác ABC với tham số 50,,coordinate_2d,render_scene,
+R051,render,Vẽ đồ thị hàm số y = x^2 + 51,,function_graph,render_scene,
+R052,render,Cho hình chóp S.ABCD có SA vuông góc với đáy và cạnh 52,,solid_geometry,render_scene,
+R053,render,Cho đường tròn tâm O bán kính 53,,conic,render_scene,
+R054,render,Cho vectơ AB trong mặt phẳng với độ dài 54,,vector_2d,render_scene,
+R055,render,Trong mặt phẳng Oxy cho tam giác ABC với tham số 55,,coordinate_2d,render_scene,
+R056,render,Vẽ đồ thị hàm số y = x^2 + 56,,function_graph,render_scene,
+R057,render,Cho hình chóp S.ABCD có SA vuông góc với đáy và cạnh 57,,solid_geometry,render_scene,
+R058,render,Cho đường tròn tâm O bán kính 58,,conic,render_scene,
+R059,render,Cho vectơ AB trong mặt phẳng với độ dài 59,,vector_2d,render_scene,
+R060,render,Trong mặt phẳng Oxy cho tam giác ABC với tham số 60,,coordinate_2d,render_scene,
+R061,render,Vẽ đồ thị hàm số y = x^2 + 61,,function_graph,render_scene,
+R062,render,Cho hình chóp S.ABCD có SA vuông góc với đáy và cạnh 62,,solid_geometry,render_scene,
+R063,render,Cho đường tròn tâm O bán kính 63,,conic,render_scene,
+R064,render,Cho vectơ AB trong mặt phẳng với độ dài 64,,vector_2d,render_scene,
+R065,render,Trong mặt phẳng Oxy cho tam giác ABC với tham số 65,,coordinate_2d,render_scene,
+R066,render,Vẽ đồ thị hàm số y = x^2 + 66,,function_graph,render_scene,
+R067,render,Cho hình chóp S.ABCD có SA vuông góc với đáy và cạnh 67,,solid_geometry,render_scene,
+R068,render,Cho đường tròn tâm O bán kính 68,,conic,render_scene,
+R069,render,Cho vectơ AB trong mặt phẳng với độ dài 69,,vector_2d,render_scene,
+R070,render,Trong mặt phẳng Oxy cho tam giác ABC với tham số 70,,coordinate_2d,render_scene,
+R071,render,Vẽ đồ thị hàm số y = x^2 + 71,,function_graph,render_scene,
+R072,render,Cho hình chóp S.ABCD có SA vuông góc với đáy và cạnh 72,,solid_geometry,render_scene,
+R073,render,Cho đường tròn tâm O bán kính 73,,conic,render_scene,
+R074,render,Cho vectơ AB trong mặt phẳng với độ dài 74,,vector_2d,render_scene,
+R075,render,Trong mặt phẳng Oxy cho tam giác ABC với tham số 75,,coordinate_2d,render_scene,
+R076,render,Vẽ đồ thị hàm số y = x^2 + 76,,function_graph,render_scene,
+R077,render,Cho hình chóp S.ABCD có SA vuông góc với đáy và cạnh 77,,solid_geometry,render_scene,
+R078,render,Cho đường tròn tâm O bán kính 78,,conic,render_scene,
+R079,render,Cho vectơ AB trong mặt phẳng với độ dài 79,,vector_2d,render_scene,
+R080,render,Trong mặt phẳng Oxy cho tam giác ABC với tham số 80,,coordinate_2d,render_scene,
+R081,render,Vẽ đồ thị hàm số y = x^2 + 81,,function_graph,render_scene,
+R082,render,Cho hình chóp S.ABCD có SA vuông góc với đáy và cạnh 82,,solid_geometry,render_scene,
+R083,render,Cho đường tròn tâm O bán kính 83,,conic,render_scene,
+R084,render,Cho vectơ AB trong mặt phẳng với độ dài 84,,vector_2d,render_scene,
+R085,render,Trong mặt phẳng Oxy cho tam giác ABC với tham số 85,,coordinate_2d,render_scene,
+R086,render,Vẽ đồ thị hàm số y = x^2 + 86,,function_graph,render_scene,
+R087,render,Cho hình chóp S.ABCD có SA vuông góc với đáy và cạnh 87,,solid_geometry,render_scene,
+R088,render,Cho đường tròn tâm O bán kính 88,,conic,render_scene,
+R089,render,Cho vectơ AB trong mặt phẳng với độ dài 89,,vector_2d,render_scene,
+R090,render,Trong mặt phẳng Oxy cho tam giác ABC với tham số 90,,coordinate_2d,render_scene,
+R091,render,Vẽ đồ thị hàm số y = x^2 + 91,,function_graph,render_scene,
+R092,render,Cho hình chóp S.ABCD có SA vuông góc với đáy và cạnh 92,,solid_geometry,render_scene,
+R093,render,Cho đường tròn tâm O bán kính 93,,conic,render_scene,
+R094,render,Cho vectơ AB trong mặt phẳng với độ dài 94,,vector_2d,render_scene,
+R095,render,Trong mặt phẳng Oxy cho tam giác ABC với tham số 95,,coordinate_2d,render_scene,
+R096,render,Vẽ đồ thị hàm số y = x^2 + 96,,function_graph,render_scene,
+R097,render,Cho hình chóp S.ABCD có SA vuông góc với đáy và cạnh 97,,solid_geometry,render_scene,
+R098,render,Cho đường tròn tâm O bán kính 98,,conic,render_scene,
+R099,render,Cho vectơ AB trong mặt phẳng với độ dài 99,,vector_2d,render_scene,
+R100,render,Trong mặt phẳng Oxy cho tam giác ABC với tham số 100,,coordinate_2d,render_scene,
+R101,render,Vẽ đồ thị hàm số y = x^2 + 101,,function_graph,render_scene,
+R102,render,Cho hình chóp S.ABCD có SA vuông góc với đáy và cạnh 102,,solid_geometry,render_scene,
+R103,render,Cho đường tròn tâm O bán kính 103,,conic,render_scene,
+R104,render,Cho vectơ AB trong mặt phẳng với độ dài 104,,vector_2d,render_scene,
+R105,render,Trong mặt phẳng Oxy cho tam giác ABC với tham số 105,,coordinate_2d,render_scene,
+R106,render,Vẽ đồ thị hàm số y = x^2 + 106,,function_graph,render_scene,
+R107,render,Cho hình chóp S.ABCD có SA vuông góc với đáy và cạnh 107,,solid_geometry,render_scene,
+R108,render,Cho đường tròn tâm O bán kính 108,,conic,render_scene,
+R109,render,Cho vectơ AB trong mặt phẳng với độ dài 109,,vector_2d,render_scene,
+R110,render,Trong mặt phẳng Oxy cho tam giác ABC với tham số 110,,coordinate_2d,render_scene,
+R111,render,Vẽ đồ thị hàm số y = x^2 + 111,,function_graph,render_scene,
+R112,render,Cho hình chóp S.ABCD có SA vuông góc với đáy và cạnh 112,,solid_geometry,render_scene,
+R113,render,Cho đường tròn tâm O bán kính 113,,conic,render_scene,
+R114,render,Cho vectơ AB trong mặt phẳng với độ dài 114,,vector_2d,render_scene,
+R115,render,Trong mặt phẳng Oxy cho tam giác ABC với tham số 115,,coordinate_2d,render_scene,
+R116,render,Vẽ đồ thị hàm số y = x^2 + 116,,function_graph,render_scene,
+R117,render,Cho hình chóp S.ABCD có SA vuông góc với đáy và cạnh 117,,solid_geometry,render_scene,
+R118,render,Cho đường tròn tâm O bán kính 118,,conic,render_scene,
+R119,render,Cho vectơ AB trong mặt phẳng với độ dài 119,,vector_2d,render_scene,
+R120,render,Trong mặt phẳng Oxy cho tam giác ABC với tham số 120,,coordinate_2d,render_scene,
+R121,render,Vẽ đồ thị hàm số y = x^2 + 121,,function_graph,render_scene,
+R122,render,Cho hình chóp S.ABCD có SA vuông góc với đáy và cạnh 122,,solid_geometry,render_scene,
+R123,render,Cho đường tròn tâm O bán kính 123,,conic,render_scene,
+R124,render,Cho vectơ AB trong mặt phẳng với độ dài 124,,vector_2d,render_scene,
+R125,render,Trong mặt phẳng Oxy cho tam giác ABC với tham số 125,,coordinate_2d,render_scene,
+R126,render,Vẽ đồ thị hàm số y = x^2 + 126,,function_graph,render_scene,
+R127,render,Cho hình chóp S.ABCD có SA vuông góc với đáy và cạnh 127,,solid_geometry,render_scene,
+R128,render,Cho đường tròn tâm O bán kính 128,,conic,render_scene,
+R129,render,Cho vectơ AB trong mặt phẳng với độ dài 129,,vector_2d,render_scene,
+R130,render,Trong mặt phẳng Oxy cho tam giác ABC với tham số 130,,coordinate_2d,render_scene,
+R131,render,Vẽ đồ thị hàm số y = x^2 + 131,,function_graph,render_scene,
+R132,render,Cho hình chóp S.ABCD có SA vuông góc với đáy và cạnh 132,,solid_geometry,render_scene,
+R133,render,Cho đường tròn tâm O bán kính 133,,conic,render_scene,
+R134,render,Cho vectơ AB trong mặt phẳng với độ dài 134,,vector_2d,render_scene,
+R135,render,Trong mặt phẳng Oxy cho tam giác ABC với tham số 135,,coordinate_2d,render_scene,
+R136,render,Vẽ đồ thị hàm số y = x^2 + 136,,function_graph,render_scene,
+R137,render,Cho hình chóp S.ABCD có SA vuông góc với đáy và cạnh 137,,solid_geometry,render_scene,
+R138,render,Cho đường tròn tâm O bán kính 138,,conic,render_scene,
+R139,render,Cho vectơ AB trong mặt phẳng với độ dài 139,,vector_2d,render_scene,
+R140,render,Trong mặt phẳng Oxy cho tam giác ABC với tham số 140,,coordinate_2d,render_scene,
+R141,render,Vẽ đồ thị hàm số y = x^2 + 141,,function_graph,render_scene,
+R142,render,Cho hình chóp S.ABCD có SA vuông góc với đáy và cạnh 142,,solid_geometry,render_scene,
+R143,render,Cho đường tròn tâm O bán kính 143,,conic,render_scene,
+R144,render,Cho vectơ AB trong mặt phẳng với độ dài 144,,vector_2d,render_scene,
+R145,render,Trong mặt phẳng Oxy cho tam giác ABC với tham số 145,,coordinate_2d,render_scene,
+R146,render,Vẽ đồ thị hàm số y = x^2 + 146,,function_graph,render_scene,
+R147,render,Cho hình chóp S.ABCD có SA vuông góc với đáy và cạnh 147,,solid_geometry,render_scene,
+R148,render,Cho đường tròn tâm O bán kính 148,,conic,render_scene,
+R149,render,Cho vectơ AB trong mặt phẳng với độ dài 149,,vector_2d,render_scene,
+R150,render,Trong mặt phẳng Oxy cho tam giác ABC với tham số 150,,coordinate_2d,render_scene,
+S001,solve,"d(A,(BCD))",coordinate_3d,coordinate_3d,distance,point_plane
+S002,solve,"d(A,B) #2",coordinate_3d,coordinate_3d,distance,
+S003,solve,góc giữa AB và (BCD) #3,coordinate_3d,coordinate_3d,angle,line_plane
+S004,solve,góc giữa (ABC) và (BCD) #4,coordinate_3d,coordinate_3d,angle,plane_plane
+S005,solve,S(ABC) #5,coordinate_3d,coordinate_3d,area,polygon
+S006,solve,V(S.ABCD) #6,coordinate_3d,coordinate_3d,volume,solid
+S007,solve,phương trình mặt phẳng (ABC) #7,coordinate_3d,coordinate_3d,equation,plane
+S008,solve,hình chiếu của A lên (BCD) #8,coordinate_3d,coordinate_3d,projection,plane
+S009,solve,đối xứng A qua (BCD) #9,coordinate_3d,coordinate_3d,reflection,plane
+S010,solve,AB song song CD #10,coordinate_3d,coordinate_3d,relation,parallel
+S011,solve,"d(A,(BCD))",coordinate_3d,coordinate_3d,distance,point_plane
+S012,solve,"d(A,B) #12",coordinate_3d,coordinate_3d,distance,
+S013,solve,góc giữa AB và (BCD) #13,coordinate_3d,coordinate_3d,angle,line_plane
+S014,solve,góc giữa (ABC) và (BCD) #14,coordinate_3d,coordinate_3d,angle,plane_plane
+S015,solve,S(ABC) #15,coordinate_3d,coordinate_3d,area,polygon
+S016,solve,V(S.ABCD) #16,coordinate_3d,coordinate_3d,volume,solid
+S017,solve,phương trình mặt phẳng (ABC) #17,coordinate_3d,coordinate_3d,equation,plane
+S018,solve,hình chiếu của A lên (BCD) #18,coordinate_3d,coordinate_3d,projection,plane
+S019,solve,đối xứng A qua (BCD) #19,coordinate_3d,coordinate_3d,reflection,plane
+S020,solve,AB song song CD #20,coordinate_3d,coordinate_3d,relation,parallel
+S021,solve,"d(A,(BCD))",coordinate_3d,coordinate_3d,distance,point_plane
+S022,solve,"d(A,B) #22",coordinate_3d,coordinate_3d,distance,
+S023,solve,góc giữa AB và (BCD) #23,coordinate_3d,coordinate_3d,angle,line_plane
+S024,solve,góc giữa (ABC) và (BCD) #24,coordinate_3d,coordinate_3d,angle,plane_plane
+S025,solve,S(ABC) #25,coordinate_3d,coordinate_3d,area,polygon
+S026,solve,V(S.ABCD) #26,coordinate_3d,coordinate_3d,volume,solid
+S027,solve,phương trình mặt phẳng (ABC) #27,coordinate_3d,coordinate_3d,equation,plane
+S028,solve,hình chiếu của A lên (BCD) #28,coordinate_3d,coordinate_3d,projection,plane
+S029,solve,đối xứng A qua (BCD) #29,coordinate_3d,coordinate_3d,reflection,plane
+S030,solve,AB song song CD #30,coordinate_3d,coordinate_3d,relation,parallel
+S031,solve,"d(A,(BCD))",coordinate_3d,coordinate_3d,distance,point_plane
+S032,solve,"d(A,B) #32",coordinate_3d,coordinate_3d,distance,
+S033,solve,góc giữa AB và (BCD) #33,coordinate_3d,coordinate_3d,angle,line_plane
+S034,solve,góc giữa (ABC) và (BCD) #34,coordinate_3d,coordinate_3d,angle,plane_plane
+S035,solve,S(ABC) #35,coordinate_3d,coordinate_3d,area,polygon
+S036,solve,V(S.ABCD) #36,coordinate_3d,coordinate_3d,volume,solid
+S037,solve,phương trình mặt phẳng (ABC) #37,coordinate_3d,coordinate_3d,equation,plane
+S038,solve,hình chiếu của A lên (BCD) #38,coordinate_3d,coordinate_3d,projection,plane
+S039,solve,đối xứng A qua (BCD) #39,coordinate_3d,coordinate_3d,reflection,plane
+S040,solve,AB song song CD #40,coordinate_3d,coordinate_3d,relation,parallel
+S041,solve,"d(A,(BCD))",coordinate_3d,coordinate_3d,distance,point_plane
+S042,solve,"d(A,B) #42",coordinate_3d,coordinate_3d,distance,
+S043,solve,góc giữa AB và (BCD) #43,coordinate_3d,coordinate_3d,angle,line_plane
+S044,solve,góc giữa (ABC) và (BCD) #44,coordinate_3d,coordinate_3d,angle,plane_plane
+S045,solve,S(ABC) #45,coordinate_3d,coordinate_3d,area,polygon
+S046,solve,V(S.ABCD) #46,coordinate_3d,coordinate_3d,volume,solid
+S047,solve,phương trình mặt phẳng (ABC) #47,coordinate_3d,coordinate_3d,equation,plane
+S048,solve,hình chiếu của A lên (BCD) #48,coordinate_3d,coordinate_3d,projection,plane
+S049,solve,đối xứng A qua (BCD) #49,coordinate_3d,coordinate_3d,reflection,plane
+S050,solve,AB song song CD #50,coordinate_3d,coordinate_3d,relation,parallel
+S051,solve,"d(A,(BCD))",coordinate_3d,coordinate_3d,distance,point_plane
+S052,solve,"d(A,B) #52",coordinate_3d,coordinate_3d,distance,
+S053,solve,góc giữa AB và (BCD) #53,coordinate_3d,coordinate_3d,angle,line_plane
+S054,solve,góc giữa (ABC) và (BCD) #54,coordinate_3d,coordinate_3d,angle,plane_plane
+S055,solve,S(ABC) #55,coordinate_3d,coordinate_3d,area,polygon
+S056,solve,V(S.ABCD) #56,coordinate_3d,coordinate_3d,volume,solid
+S057,solve,phương trình mặt phẳng (ABC) #57,coordinate_3d,coordinate_3d,equation,plane
+S058,solve,hình chiếu của A lên (BCD) #58,coordinate_3d,coordinate_3d,projection,plane
+S059,solve,đối xứng A qua (BCD) #59,coordinate_3d,coordinate_3d,reflection,plane
+S060,solve,AB song song CD #60,coordinate_3d,coordinate_3d,relation,parallel
+S061,solve,"d(A,(BCD))",coordinate_3d,coordinate_3d,distance,point_plane
+S062,solve,"d(A,B) #62",coordinate_3d,coordinate_3d,distance,
+S063,solve,góc giữa AB và (BCD) #63,coordinate_3d,coordinate_3d,angle,line_plane
+S064,solve,góc giữa (ABC) và (BCD) #64,coordinate_3d,coordinate_3d,angle,plane_plane
+S065,solve,S(ABC) #65,coordinate_3d,coordinate_3d,area,polygon
+S066,solve,V(S.ABCD) #66,coordinate_3d,coordinate_3d,volume,solid
+S067,solve,phương trình mặt phẳng (ABC) #67,coordinate_3d,coordinate_3d,equation,plane
+S068,solve,hình chiếu của A lên (BCD) #68,coordinate_3d,coordinate_3d,projection,plane
+S069,solve,đối xứng A qua (BCD) #69,coordinate_3d,coordinate_3d,reflection,plane
+S070,solve,AB song song CD #70,coordinate_3d,coordinate_3d,relation,parallel
+S071,solve,"d(A,(BCD))",coordinate_3d,coordinate_3d,distance,point_plane
+S072,solve,"d(A,B) #72",coordinate_3d,coordinate_3d,distance,
+S073,solve,góc giữa AB và (BCD) #73,coordinate_3d,coordinate_3d,angle,line_plane
+S074,solve,góc giữa (ABC) và (BCD) #74,coordinate_3d,coordinate_3d,angle,plane_plane
+S075,solve,S(ABC) #75,coordinate_3d,coordinate_3d,area,polygon
+S076,solve,V(S.ABCD) #76,coordinate_3d,coordinate_3d,volume,solid
+S077,solve,phương trình mặt phẳng (ABC) #77,coordinate_3d,coordinate_3d,equation,plane
+S078,solve,hình chiếu của A lên (BCD) #78,coordinate_3d,coordinate_3d,projection,plane
+S079,solve,đối xứng A qua (BCD) #79,coordinate_3d,coordinate_3d,reflection,plane
+S080,solve,AB song song CD #80,coordinate_3d,coordinate_3d,relation,parallel
+S081,solve,"d(A,(BCD))",coordinate_3d,coordinate_3d,distance,point_plane
+S082,solve,"d(A,B) #82",coordinate_3d,coordinate_3d,distance,
+S083,solve,góc giữa AB và (BCD) #83,coordinate_3d,coordinate_3d,angle,line_plane
+S084,solve,góc giữa (ABC) và (BCD) #84,coordinate_3d,coordinate_3d,angle,plane_plane
+S085,solve,S(ABC) #85,coordinate_3d,coordinate_3d,area,polygon
+S086,solve,V(S.ABCD) #86,coordinate_3d,coordinate_3d,volume,solid
+S087,solve,phương trình mặt phẳng (ABC) #87,coordinate_3d,coordinate_3d,equation,plane
+S088,solve,hình chiếu của A lên (BCD) #88,coordinate_3d,coordinate_3d,projection,plane
+S089,solve,đối xứng A qua (BCD) #89,coordinate_3d,coordinate_3d,reflection,plane
+S090,solve,AB song song CD #90,coordinate_3d,coordinate_3d,relation,parallel
+S091,solve,"d(A,(BCD))",coordinate_3d,coordinate_3d,distance,point_plane
+S092,solve,"d(A,B) #92",coordinate_3d,coordinate_3d,distance,
+S093,solve,góc giữa AB và (BCD) #93,coordinate_3d,coordinate_3d,angle,line_plane
+S094,solve,góc giữa (ABC) và (BCD) #94,coordinate_3d,coordinate_3d,angle,plane_plane
+S095,solve,S(ABC) #95,coordinate_3d,coordinate_3d,area,polygon
+S096,solve,V(S.ABCD) #96,coordinate_3d,coordinate_3d,volume,solid
+S097,solve,phương trình mặt phẳng (ABC) #97,coordinate_3d,coordinate_3d,equation,plane
+S098,solve,hình chiếu của A lên (BCD) #98,coordinate_3d,coordinate_3d,projection,plane
+S099,solve,đối xứng A qua (BCD) #99,coordinate_3d,coordinate_3d,reflection,plane
+S100,solve,AB song song CD #100,coordinate_3d,coordinate_3d,relation,parallel
+S101,solve,"d(A,(BCD))",coordinate_3d,coordinate_3d,distance,point_plane
+S102,solve,"d(A,B) #102",coordinate_3d,coordinate_3d,distance,
+S103,solve,góc giữa AB và (BCD) #103,coordinate_3d,coordinate_3d,angle,line_plane
+S104,solve,góc giữa (ABC) và (BCD) #104,coordinate_3d,coordinate_3d,angle,plane_plane
+S105,solve,S(ABC) #105,coordinate_3d,coordinate_3d,area,polygon
+S106,solve,V(S.ABCD) #106,coordinate_3d,coordinate_3d,volume,solid
+S107,solve,phương trình mặt phẳng (ABC) #107,coordinate_3d,coordinate_3d,equation,plane
+S108,solve,hình chiếu của A lên (BCD) #108,coordinate_3d,coordinate_3d,projection,plane
+S109,solve,đối xứng A qua (BCD) #109,coordinate_3d,coordinate_3d,reflection,plane
+S110,solve,AB song song CD #110,coordinate_3d,coordinate_3d,relation,parallel
+S111,solve,"d(A,(BCD))",coordinate_3d,coordinate_3d,distance,point_plane
+S112,solve,"d(A,B) #112",coordinate_3d,coordinate_3d,distance,
+S113,solve,góc giữa AB và (BCD) #113,coordinate_3d,coordinate_3d,angle,line_plane
+S114,solve,góc giữa (ABC) và (BCD) #114,coordinate_3d,coordinate_3d,angle,plane_plane
+S115,solve,S(ABC) #115,coordinate_3d,coordinate_3d,area,polygon
+S116,solve,V(S.ABCD) #116,coordinate_3d,coordinate_3d,volume,solid
+S117,solve,phương trình mặt phẳng (ABC) #117,coordinate_3d,coordinate_3d,equation,plane
+S118,solve,hình chiếu của A lên (BCD) #118,coordinate_3d,coordinate_3d,projection,plane
+S119,solve,đối xứng A qua (BCD) #119,coordinate_3d,coordinate_3d,reflection,plane
+S120,solve,AB song song CD #120,coordinate_3d,coordinate_3d,relation,parallel
+S121,solve,"d(A,(BCD))",coordinate_3d,coordinate_3d,distance,point_plane
+S122,solve,"d(A,B) #122",coordinate_3d,coordinate_3d,distance,
+S123,solve,góc giữa AB và (BCD) #123,coordinate_3d,coordinate_3d,angle,line_plane
+S124,solve,góc giữa (ABC) và (BCD) #124,coordinate_3d,coordinate_3d,angle,plane_plane
+S125,solve,S(ABC) #125,coordinate_3d,coordinate_3d,area,polygon
+S126,solve,V(S.ABCD) #126,coordinate_3d,coordinate_3d,volume,solid
+S127,solve,phương trình mặt phẳng (ABC) #127,coordinate_3d,coordinate_3d,equation,plane
+S128,solve,hình chiếu của A lên (BCD) #128,coordinate_3d,coordinate_3d,projection,plane
+S129,solve,đối xứng A qua (BCD) #129,coordinate_3d,coordinate_3d,reflection,plane
+S130,solve,AB song song CD #130,coordinate_3d,coordinate_3d,relation,parallel
+S131,solve,"d(A,(BCD))",coordinate_3d,coordinate_3d,distance,point_plane
+S132,solve,"d(A,B) #132",coordinate_3d,coordinate_3d,distance,
+S133,solve,góc giữa AB và (BCD) #133,coordinate_3d,coordinate_3d,angle,line_plane
+S134,solve,góc giữa (ABC) và (BCD) #134,coordinate_3d,coordinate_3d,angle,plane_plane
+S135,solve,S(ABC) #135,coordinate_3d,coordinate_3d,area,polygon
+S136,solve,V(S.ABCD) #136,coordinate_3d,coordinate_3d,volume,solid
+S137,solve,phương trình mặt phẳng (ABC) #137,coordinate_3d,coordinate_3d,equation,plane
+S138,solve,hình chiếu của A lên (BCD) #138,coordinate_3d,coordinate_3d,projection,plane
+S139,solve,đối xứng A qua (BCD) #139,coordinate_3d,coordinate_3d,reflection,plane
+S140,solve,AB song song CD #140,coordinate_3d,coordinate_3d,relation,parallel
+S141,solve,"d(A,(BCD))",coordinate_3d,coordinate_3d,distance,point_plane
+S142,solve,"d(A,B) #142",coordinate_3d,coordinate_3d,distance,
+S143,solve,góc giữa AB và (BCD) #143,coordinate_3d,coordinate_3d,angle,line_plane
+S144,solve,góc giữa (ABC) và (BCD) #144,coordinate_3d,coordinate_3d,angle,plane_plane
+S145,solve,S(ABC) #145,coordinate_3d,coordinate_3d,area,polygon
+S146,solve,V(S.ABCD) #146,coordinate_3d,coordinate_3d,volume,solid
+S147,solve,phương trình mặt phẳng (ABC) #147,coordinate_3d,coordinate_3d,equation,plane
+S148,solve,hình chiếu của A lên (BCD) #148,coordinate_3d,coordinate_3d,projection,plane
+S149,solve,đối xứng A qua (BCD) #149,coordinate_3d,coordinate_3d,reflection,plane
+S150,solve,AB song song CD #150,coordinate_3d,coordinate_3d,relation,parallel

@@ -2,6 +2,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from app.schemas.advisory import QualityRiskAdvisory
+
 
 MAX_PROBLEM_TEXT_CHARS = 20_000
 MAX_IMAGE_DATA_URL_CHARS = 12_000_000
@@ -434,6 +436,7 @@ class RenderResponse(BaseModel):
     payload: RenderPayload
     warnings: list[str] = Field(default_factory=list)
     cas_issues: list[CasIssueResponse] = Field(default_factory=list)
+    advisory: QualityRiskAdvisory | None = None
 
 
 class RenderJobCreateResponse(BaseModel):

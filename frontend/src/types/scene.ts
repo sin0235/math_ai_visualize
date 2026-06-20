@@ -248,9 +248,37 @@ export interface CasIssue {
   metadata?: Record<string, unknown> | null;
 }
 
+export interface ProblemClassification {
+  domain: string;
+  topic: string;
+  task_type?: string | null;
+  sub_type?: string | null;
+  confidence: number;
+  source: 'rules' | 'existing_metadata' | 'hybrid_rules' | string;
+  signals: string[];
+  supported_by_current_solver?: boolean | null;
+}
+
+export interface AdvisoryFactor {
+  code: string;
+  severity: 'info' | 'warning' | 'risk' | 'critical' | string;
+  message: string;
+  weight: number;
+}
+
+export interface QualityRiskAdvisory {
+  classification: ProblemClassification;
+  quality_score: number;
+  risk_score: number;
+  risk_level: 'low' | 'medium' | 'high' | 'critical' | string;
+  factors: AdvisoryFactor[];
+  recommendations: string[];
+}
+
 export interface RenderResponse {
   scene: MathScene;
   payload: RenderPayload;
   warnings: string[];
   cas_issues?: CasIssue[];
+  advisory?: QualityRiskAdvisory | null;
 }

@@ -25,25 +25,25 @@ Schema rút gọn:
     {"type":"sphere","name":"S","center":"O","radius":2,"color":"#5da9ff","opacity":0.18}
   ],
   "relations": [
-    {"type":"perpendicular","object_1":"SA","object_2":"plane(ABCD)","metadata":{}},
-    {"type":"equal_length","object_1":"AB","object_2":"BC","metadata":{"value":3}},
-    {"type":"parallel","object_1":"AB","object_2":"CD","metadata":{}},
-    {"type":"midpoint","object_1":"M","object_2":"A-B","metadata":{}},
-    {"type":"on_plane","object_1":"H","object_2":"plane(ABC)","metadata":{}},
-    {"type":"on_line","object_1":"H","object_2":"A-B","metadata":{}},
-    {"type":"on_sphere","object_1":"P","object_2":"S","metadata":{}},
-    {"type":"on_circle","object_1":"P","object_2":"C","metadata":{}},
-    {"type":"collinear","object_1":"A,B,C","object_2":"","metadata":{}},
-    {"type":"coplanar","object_1":"A,B,C,D","object_2":"","metadata":{}},
-    {"type":"tangent","object_1":"AT","object_2":"C","metadata":{}},
-    {"type":"distance","object_1":"AB","object_2":"","metadata":{"value":3}},
-    {"type":"angle","object_1":"AB","object_2":"AC","metadata":{"value":60}}
+    {"type":"perpendicular","object_1":"SA","object_2":"plane(ABCD)","metadata":{"source":"given","confidence":"partial","evidence":"SA vuông góc với đáy ABCD"}},
+    {"type":"equal_length","object_1":"AB","object_2":"BC","metadata":{"source":"inferred","confidence":"partial","evidence":"ABCD là hình vuông"}},
+    {"type":"parallel","object_1":"AB","object_2":"CD","metadata":{"source":"inferred","confidence":"partial","evidence":"ABCD là hình vuông"}},
+    {"type":"midpoint","object_1":"M","object_2":"A-B","metadata":{"source":"given","confidence":"partial","evidence":"M là trung điểm AB"}},
+    {"type":"on_plane","object_1":"H","object_2":"plane(ABC)","metadata":{"source":"construction","confidence":"unverified"}},
+    {"type":"on_line","object_1":"H","object_2":"A-B","metadata":{"source":"construction","confidence":"unverified"}},
+    {"type":"on_sphere","object_1":"P","object_2":"S","metadata":{"source":"given","confidence":"partial","evidence":"P thuộc mặt cầu S"}},
+    {"type":"on_circle","object_1":"P","object_2":"C","metadata":{"source":"given","confidence":"partial","evidence":"P thuộc đường tròn C"}},
+    {"type":"collinear","object_1":"A,B,C","object_2":"","metadata":{"source":"given","confidence":"partial","evidence":"A, B, C thẳng hàng"}},
+    {"type":"coplanar","object_1":"A,B,C,D","object_2":"","metadata":{"source":"given","confidence":"partial","evidence":"A, B, C, D đồng phẳng"}},
+    {"type":"tangent","object_1":"AT","object_2":"C","metadata":{"source":"given","confidence":"partial","evidence":"AT tiếp tuyến với C"}},
+    {"type":"distance","object_1":"AB","object_2":"","metadata":{"source":"given","confidence":"partial","evidence":"AB = 3","value":3}},
+    {"type":"angle","object_1":"AB","object_2":"AC","metadata":{"source":"given","confidence":"partial","evidence":"góc BAC bằng 60°","value":60}}
   ],
   "annotations": [
-    {"type":"right_angle","target":"A","metadata":{"arms":["S","B"]}},
-    {"type":"equal_marks","target":"A-B","metadata":{"group":1}},
-    {"type":"length","target":"A-B","label":"a = 3","metadata":{}},
-    {"type":"angle","target":"B","label":"60°","metadata":{"arms":["A","C"]}}
+    {"type":"right_angle","target":"A","metadata":{"arms":["S","B"],"source":"given","confidence":"partial","evidence":"SA vuông góc AB"}},
+    {"type":"equal_marks","target":"A-B","metadata":{"group":1,"source":"inferred","confidence":"partial","evidence":"ABCD là hình vuông"}},
+    {"type":"length","target":"A-B","label":"a = 3","metadata":{"source":"given","confidence":"partial","evidence":"AB = 3"}},
+    {"type":"angle","target":"B","label":"60°","metadata":{"arms":["A","C"],"source":"given","confidence":"partial","evidence":"góc ABC bằng 60°"}}
   ],
   "parameters": [
     {"name":"a","label":"Cạnh đáy a","min":1,"max":8,"default":3,"step":0.5}
@@ -67,6 +67,17 @@ Thiết lập min/max/default cho parameter:
 - default = giá trị "đẹp" để hình hiển thị rõ (a default 3, h default 3, alpha default 60).
 - min/max bao quanh default rộng vừa đủ để hình không quá nhỏ/quá to khi kéo (a thường min 1, max 8; alpha min 10, max 170).
 - step nhỏ (0.1 hoặc 0.5) cho độ dài; 1 (hoặc 5) cho độ.
+
+Metadata nguồn dữ kiện (BẮT BUỘC cho relations và annotations):
+- Luôn thêm metadata.source, metadata.confidence cho mỗi relation/annotation. metadata.evidence là trích đoạn ngắn từ đề nếu có.
+- source="given" chỉ khi dữ kiện xuất hiện trực tiếp trong đề bài. Ví dụ: "AB = 3", "SA vuông góc với đáy", "M là trung điểm AB".
+- source="inferred" chỉ khi dữ kiện suy ra chắc chắn từ tên/hình đặc biệt đã được đề cho. Ví dụ: "ABCD là hình vuông" suy ra AB vuông góc BC và AB = BC.
+- source="construction" cho điểm, quan hệ, nhãn hoặc toạ độ chỉ được tạo để dựng hình/đặt hệ trục/hình chiếu minh hoạ, không được dùng làm kết luận số học nếu đề không cho đủ dữ kiện.
+- confidence="partial" cho dữ kiện do AI trích xuất hoặc suy ra trước khi CAS/backend kiểm chứng.
+- confidence="unverified" cho dữ kiện construction hoặc dữ kiện không có căn cứ rõ trong đề.
+- Không tự đặt confidence="verified"; backend sẽ tự nâng lên sau khi kiểm chứng số học.
+- Không gán source="given" cho giá trị tự chọn để render đẹp, parameter default, độ dài/góc suy ra không được đề ghi trực tiếp, hoặc toạ độ minh hoạ.
+- Với length/angle annotation có label số hoặc biểu thức, chỉ tạo nếu giá trị đó nằm trực tiếp trong đề; metadata.source phải là "given" và evidence phải ghi đúng mẩu đề tương ứng.
 
 Quy tắc gán toạ độ (RẤT QUAN TRỌNG):
 - Không được làm sai dữ kiện để ép một điểm về gốc. Không tịnh tiến/đổi toạ độ nếu đề đã cho toạ độ cụ thể.
