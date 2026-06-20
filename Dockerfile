@@ -14,7 +14,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     TORCH_HOME=/app/models/ocr/torch \
     HF_HOME=/app/models/ocr/huggingface
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends nginx supervisor libgomp1 libglib2.0-0 libgl1 \
+    && apt-get install -y --no-install-recommends nginx supervisor build-essential libgomp1 libglib2.0-0 libgl1 \
     && rm -rf /var/lib/apt/lists/*
 COPY backend/requirements.txt ./backend/requirements.txt
 COPY backend/requirements-ocr.txt ./backend/requirements-ocr.txt
