@@ -644,8 +644,8 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave, onToast }
       <section className="admin-settings-section">
         <h4>OCR</h4>
         <div className="admin-field-grid admin-ocr-grid">
-          <label className="field-label">Provider OCR<select value={ocrProvider} onChange={(event) => selectOcrProvider(event.target.value)}>{(['openrouter', 'router9', 'nvidia', 'ollama', 'openai_compat'] as const).map((provider) => <option key={provider} value={provider}>{providerLabels[provider] || provider}</option>)}</select></label>
-          <label className="field-label">Model OCR<select value={ocrModel} onChange={(event) => setOcrModel(event.target.value)}><option value="">Chọn model</option>{ocrModelOptions.map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.name}</option>)}</select></label>
+          <label className="field-label">Provider OCR<select value={ocrProvider} onChange={(event) => selectOcrProvider(event.target.value)}>{(['local', 'openrouter', 'router9', 'nvidia', 'ollama', 'openai_compat'] as const).map((provider) => <option key={provider} value={provider}>{providerLabels[provider] || provider}</option>)}</select></label>
+          <label className="field-label">Model OCR<select value={ocrModel} onChange={(event) => setOcrModel(event.target.value)}><option value="">{ocrProvider === 'local' ? 'paddleocr+pix2tex mặc định' : 'Chọn model'}</option>{ocrProvider === 'local' ? <option value="paddleocr+pix2tex">paddleocr+pix2tex</option> : ocrModelOptions.map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.name}</option>)}</select></label>
           <label className="field-label">Dung lượng ảnh tối đa (MB)<input type="number" min="1" max="32" value={ocrMaxImageMb} onChange={(event) => setOcrMaxImageMb(event.target.value)} /></label>
         </div>
         <button type="button" className="secondary-button" onClick={saveOcr} disabled={saving}>{saving ? 'Đang lưu...' : 'Lưu OCR'}</button>

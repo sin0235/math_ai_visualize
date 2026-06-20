@@ -26,16 +26,16 @@ async def ocr_image(
 ) -> OcrResponse:
     await enforce_rate_limit(db, http_request, user, "ocr", 12 if user else 4, 60)
     await enforce_ocr_access(db, user)
-    settings = await resolve_effective_settings(db, request.runtime_settings)
+    settings = await resolve_effective_settings(db, None)
     registry = await load_model_registry(db, settings)
     raw_ocr_profile = registry.task_profiles.get("ocr")
     try:
-        ocr_profile = resolve_task_profile(registry, "ocr", request.ocr_provider, request.ocr_model)
+        ocr_profile = resolve_task_profile(registry, "ocr")
     except ValueError as error:
         raise bad_request_from_error(error, "ocr_failed") from error
-    apply_profile = should_apply_ocr_profile(settings, raw_ocr_profile, ocr_profile, request.ocr_provider, request.ocr_model)
-    profile_provider = ocr_profile.provider_id if apply_profile else request.ocr_provider
-    profile_model = ocr_profile.model_id if apply_profile else request.ocr_model
+    apply_profile = should_apply_ocr_profile(settings, raw_ocr_profile, ocr_profile, None, None)
+    profile_provider = ocr_profile.provider_id if apply_profile else None
+    profile_model = ocr_profile.model_id if apply_profile else None
     profile_fallbacks = ocr_profile.fallbacks if apply_profile else []
     try:
         result = await extract_text_from_image(
@@ -43,7 +43,7 @@ async def ocr_image(
             settings,
             profile_provider,
             profile_model,
-            request.mode,
+            "problem",
             profile_fallbacks,
         )
     except (RuntimeError, ValueError) as error:

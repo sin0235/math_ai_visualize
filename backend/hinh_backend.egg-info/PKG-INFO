@@ -20,5 +20,6 @@ Requires-Dist: numpy>=2.0.0
 Requires-Dist: scipy>=1.14.0
 Requires-Dist: sympy>=1.13.0
 Requires-Dist: matplotlib>=3.9.0
+Requires-Dist: json-repair>=0.30.0
 Provides-Extra: dev
 Requires-Dist: pytest>=8.3.0; extra == "dev"

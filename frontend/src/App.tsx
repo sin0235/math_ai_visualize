@@ -404,14 +404,11 @@ export default function App() {
       showNotification('OCR thất bại', message);
     } catch (caught) {
       const apiError = toApiError(caught, 'Không đọc được ảnh từ clipboard.');
-      await reportWorkspaceError('OCR thất bại', apiError, 'Hãy kiểm tra ảnh có rõ chữ không, model OCR đã chọn có hỗ trợ ảnh không, hoặc thử provider/model khác.');
+      await reportWorkspaceError('OCR thất bại', apiError, 'Hãy kiểm tra ảnh có rõ chữ không hoặc liên hệ admin kiểm tra cấu hình OCR hệ thống.');
     }
   }
 
-  async function handleOcrImage(
-    file: File,
-    mode: 'problem' | 'diagram' = 'problem',
-  ) {
+  async function handleOcrImage(file: File) {
     if (ocrInFlightRef.current) return;
     if (!user) {
       showNotification('Cần đăng nhập', 'Vui lòng đăng nhập trước khi dùng OCR.', [], 'warning');
@@ -439,11 +436,11 @@ export default function App() {
     setOcrLoading(true);
     try {
       const imageDataUrl = await fileToDataUrl(file);
-      const response = await ocrImage(imageDataUrl, runtimeSettings, mode);
+      const response = await ocrImage(imageDataUrl);
       setProblemText(response.text.trim());
     } catch (caught) {
       const apiError = toApiError(caught, 'Không thể OCR ảnh đề bài.');
-      await reportWorkspaceError('OCR thất bại', apiError, 'Hãy kiểm tra ảnh có rõ chữ không, model OCR đã chọn có hỗ trợ ảnh không, hoặc thử provider/model khác.');
+      await reportWorkspaceError('OCR thất bại', apiError, 'Hãy kiểm tra ảnh có rõ chữ không hoặc liên hệ admin kiểm tra cấu hình OCR hệ thống.');
     } finally {
       ocrInFlightRef.current = false;
       setOcrLoading(false);

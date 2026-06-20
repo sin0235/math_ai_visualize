@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import re
 from dataclasses import dataclass
@@ -78,6 +79,24 @@ async def extract_text_from_image(
     if settings.router9_only and selected_provider != "router9":
         raise RuntimeError("9router-only đang bật nên OCR không fallback sang provider khác. Hãy chọn OCR provider 9router hoặc tắt 9router-only.")
 
+    should_try_local = (
+        settings.local_ocr_enabled
+        and selected_provider == "local"
+        or (
+            settings.local_ocr_enabled
+            and auto_selection
+            and not settings.router9_only
+            and settings.local_ocr_prefer in {"auto", "always"}
+            and (settings.local_ocr_prefer == "always" or not settings.router9_api_key)
+        )
+    )
+    if should_try_local:
+        result = await _try_local_ocr(image_data_url, settings, selected_models, attempts, mode)
+        if result is not None:
+            return result
+        if selected_provider == "local" and not settings.local_ocr_fallback_to_llm:
+            raise RuntimeError(_format_ocr_failure("Local OCR thất bại hoặc confidence thấp.", attempts, settings.router9_only))
+
     if selected_provider == "router9":
         result = await _try_router9_ocr(image_data_url, settings, selected_models, attempts, system_prompt, user_text)
         if result is not None:
@@ -109,6 +128,36 @@ async def extract_text_from_image(
             raise RuntimeError(_format_ocr_failure(f"OCR {fallback_provider} thất bại với model đã chọn.", attempts, settings.router9_only))
 
     raise RuntimeError(_format_ocr_failure("OCR thất bại qua tất cả provider fallback.", attempts, settings.router9_only))
+
+
+async def _try_local_ocr(
+    image_data_url: str,
+    settings: Settings,
+    explicit_models: list[str] | None,
+    attempts: list[OcrAttempt],
+    mode: OcrMode,
+) -> OcrResult | None:
+    selected_model = (explicit_models or [settings.local_ocr_model_name])[0] or settings.local_ocr_model_name
+    try:
+        result = await _run_local_ocr(image_data_url, mode, settings)
+    except RuntimeError as error:
+        attempts.append(OcrAttempt("local", selected_model, str(error)))
+        return None
+    if result.confidence < settings.local_ocr_min_confidence:
+        attempts.append(OcrAttempt("local", result.model, f"confidence thấp ({result.confidence:.2f} < {settings.local_ocr_min_confidence:.2f})"))
+        return None
+    warnings = [*result.warnings, *_attempt_warnings(attempts)]
+    return OcrResult(text=result.text, provider="local", model=result.model, warnings=warnings)
+
+
+async def _run_local_ocr(image_data_url: str, mode: OcrMode, settings: Settings):
+    from app.services.ocr_pipeline.local_pipeline import run_local_ocr_sync
+
+    timeout = max(1, int(settings.local_ocr_timeout_seconds))
+    return await asyncio.wait_for(
+        asyncio.to_thread(run_local_ocr_sync, image_data_url, mode, settings),
+        timeout=timeout,
+    )
 
 
 async def _try_router9_ocr(

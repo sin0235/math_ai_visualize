@@ -41,8 +41,8 @@ ERROR_SUGGESTIONS: dict[str, list[str]] = {
         "Giảm độ phức tạp đề bài nếu lỗi lặp lại.",
     ],
     "OCR_FAILED": [
-        "Kiểm tra model OCR đã chọn có hỗ trợ ảnh không.",
-        "Thử model/provider khác hoặc ảnh rõ chữ hơn.",
+        "Kiểm tra ảnh có rõ chữ và đúng định dạng không.",
+        "Liên hệ admin nếu cần kiểm tra cấu hình OCR hệ thống.",
     ],
     "RENDER_FAILED": [
         "Kiểm tra đề bài và model dựng hình đã chọn.",

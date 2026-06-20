@@ -63,7 +63,7 @@ async def analyze_from_ocr(
 
     await enforce_rate_limit(db, http_request, user, "analyze_ocr", 12, 60)
     await enforce_ocr_access(db, user)
-    settings = await resolve_effective_settings(db, request.runtime_settings)
+    settings = await resolve_effective_settings(db, None)
     registry = await load_model_registry(db, settings)
     ocr_profile = resolve_task_profile(registry, "ocr")
     apply_ocr_profile = ocr_profile is not None and not (

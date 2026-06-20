@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from app.schemas.scene import OcrProvider
 
 
-CANONICAL_PROVIDERS = {"openrouter", "nvidia", "ollama", "openai_compat", "router9"}
+CANONICAL_PROVIDERS = {"local", "openrouter", "nvidia", "ollama", "openai_compat", "router9"}
 REGISTRY_PROVIDERS = ("openrouter", "nvidia", "ollama", "openai_compat", "router9")
 PROVIDER_ALIASES = {
     "ollama_gpt_oss": "ollama",
@@ -22,9 +22,9 @@ class CanonicalModelRef:
 
 
 EXPLICIT_PROVIDER_PREFIXES = {
+    "local": ("local/",),
     "router9": ("router9/",),
     "openrouter": ("openrouter/",),
-    "nvidia": ("nvidia/",),
     "ollama": ("ollama/",),
     "openai_compat": ("openai_compat/", "openai-compat/"),
 }
@@ -81,6 +81,8 @@ def _model_belongs_to_provider(provider_id: str, model_id: str) -> bool:
 
 def normalize_model_for_provider(provider: str, model: str | None) -> str | None:
     provider = canonical_provider_id(provider) or provider
+    if provider == "local" and model:
+        return model.removeprefix("local/")
     if provider == "router9" and model:
         return model.removeprefix("router9/")
     if provider == "openrouter" and model:
@@ -163,6 +165,6 @@ def resolve_ocr_provider(provider: OcrProvider | None, model: str | None) -> Ocr
     if provider is not None:
         return provider
     explicit_provider = explicit_provider_from_model(model)
-    if explicit_provider in {"router9", "openrouter", "ollama", "openai_compat"}:
+    if explicit_provider in {"local", "router9", "openrouter", "ollama", "openai_compat"}:
         return explicit_provider
     return "openrouter"

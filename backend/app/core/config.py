@@ -91,6 +91,15 @@ class Settings(BaseSettings):
     cas_repair_min_severity: Literal["warning", "error"] = "warning"
     advisory_enabled: bool = True
     advisory_include_debug_signals: bool = False
+    local_ocr_enabled: bool = True
+    local_ocr_prefer: Literal["auto", "always", "never"] = "auto"
+    local_ocr_min_confidence: float = 0.55
+    local_ocr_timeout_seconds: int = 30
+    local_ocr_max_concurrency: int = 1
+    local_ocr_paddle_lang: str = "vi"
+    local_ocr_use_pix2tex: bool = True
+    local_ocr_fallback_to_llm: bool = True
+    local_ocr_model_name: str = "paddleocr+pix2tex"
     dev_bypass_auth: bool = False
 
     model_config = SettingsConfigDict(env_file=(".env", "backend/.env"), env_file_encoding="utf-8", extra="ignore")

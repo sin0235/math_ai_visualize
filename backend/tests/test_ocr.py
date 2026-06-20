@@ -40,6 +40,11 @@ def isolated_database(tmp_path):
         app.dependency_overrides.clear()
 
 
+def _override_ocr_settings(monkeypatch, settings: Settings) -> None:
+    app.dependency_overrides[get_settings] = lambda: settings
+    monkeypatch.setattr("app.api.routes_ocr.get_settings", lambda: settings)
+    monkeypatch.setattr("app.services.model_registry.get_settings", lambda: settings)
+
 def test_validate_image_data_url_accepts_supported_images():
     validate_image_data_url(_IMAGE_DATA_URL)
 
@@ -78,7 +83,16 @@ def test_resolve_ocr_provider_supports_all_admin_providers():
     assert resolve_ocr_provider(None, "openai_compat/vision") == "openai_compat"
 
 
-def test_ocr_route_returns_openrouter_text(monkeypatch):
+def test_ocr_route_returns_openrouter_text(monkeypatch, isolated_database):
+    settings = Settings(
+        _env_file=None,
+        sqlite_path=isolated_database.path,
+        openrouter_api_key="secret",
+        openrouter_vision_model="vision/model",
+        local_ocr_enabled=False,
+    )
+    _override_ocr_settings(monkeypatch, settings)
+
     async def fake_ocr_image(self, image_data_url: str, model: str | None = None):
         assert image_data_url == _IMAGE_DATA_URL
         assert model == "vision/model"
@@ -86,6 +100,15 @@ def test_ocr_route_returns_openrouter_text(monkeypatch):
 
     monkeypatch.setattr("app.services.openrouter_client.OpenRouterClient.ocr_image", fake_ocr_image)
 
+    response = TestClient(app).post("/api/ocr", json={"image_data_url": _IMAGE_DATA_URL})
+
+    assert response.status_code == 200
+    assert response.json()["text"] == "Cho tam giác ABC."
+    assert response.json()["model"] == "vision/model"
+    assert response.json()["provider"] == "openrouter"
+
+
+def test_ocr_route_rejects_client_provider_model_selection():
     response = TestClient(app).post(
         "/api/ocr",
         json={
@@ -96,13 +119,17 @@ def test_ocr_route_returns_openrouter_text(monkeypatch):
         },
     )
 
-    assert response.status_code == 200
-    assert response.json()["text"] == "Cho tam giác ABC."
-    assert response.json()["model"] == "vision/model"
-    assert response.json()["provider"] == "openrouter"
+    assert response.status_code == 422
 
 
-def test_ocr_prefers_router9_codex_when_connected(monkeypatch):
+def test_ocr_prefers_router9_codex_when_connected(monkeypatch, isolated_database):
+    settings = Settings(
+        _env_file=None,
+        sqlite_path=isolated_database.path,
+        router9_api_key="router9-secret",
+        local_ocr_enabled=False,
+    )
+    _override_ocr_settings(monkeypatch, settings)
     calls = []
 
     async def fake_router9(self, image_data_url: str, model: str | None = None):
@@ -117,13 +144,7 @@ def test_ocr_prefers_router9_codex_when_connected(monkeypatch):
     monkeypatch.setattr("app.services.router9_client.Router9Client.ocr_image", fake_router9)
     monkeypatch.setattr("app.services.openrouter_client.OpenRouterClient.ocr_image", fake_openrouter)
 
-    response = TestClient(app).post(
-        "/api/ocr",
-        json={
-            "image_data_url": _IMAGE_DATA_URL,
-            "runtime_settings": {"router9": {"api_key": "router9-secret"}, "openrouter": {"api_key": "secret"}},
-        },
-    )
+    response = TestClient(app).post("/api/ocr", json={"image_data_url": _IMAGE_DATA_URL})
 
     assert response.status_code == 200
     assert response.json()["text"] == "Đề từ Codex 5.5."
@@ -132,7 +153,15 @@ def test_ocr_prefers_router9_codex_when_connected(monkeypatch):
     assert calls == [("router9", "codex-5.5-image")]
 
 
-def test_ocr_falls_back_to_nvidia_when_openrouter_fails(monkeypatch):
+def test_ocr_falls_back_to_nvidia_when_openrouter_fails(monkeypatch, isolated_database):
+    settings = Settings(
+        _env_file=None,
+        sqlite_path=isolated_database.path,
+        openrouter_api_key="secret",
+        nvidia_api_key="nv-secret",
+        local_ocr_enabled=False,
+    )
+    _override_ocr_settings(monkeypatch, settings)
     calls = []
 
     async def fail_openrouter(self, image_data_url: str, model: str | None = None):
@@ -146,14 +175,7 @@ def test_ocr_falls_back_to_nvidia_when_openrouter_fails(monkeypatch):
     monkeypatch.setattr("app.services.openrouter_client.OpenRouterClient.ocr_image", fail_openrouter)
     monkeypatch.setattr("app.services.nvidia_client.NvidiaClient.ocr_image", fake_nvidia)
 
-    response = TestClient(app).post(
-        "/api/ocr",
-        json={
-            "image_data_url": _IMAGE_DATA_URL,
-            "ocr_provider": "openrouter",
-            "runtime_settings": {"openrouter": {"api_key": "secret"}, "nvidia": {"api_key": "nv-secret"}},
-        },
-    )
+    response = TestClient(app).post("/api/ocr", json={"image_data_url": _IMAGE_DATA_URL})
 
     assert response.status_code == 200
     assert response.json()["text"] == "Đề từ NVIDIA."
@@ -167,7 +189,18 @@ def test_ocr_falls_back_to_nvidia_when_openrouter_fails(monkeypatch):
     ]
 
 
-def test_ocr_uses_selected_ollama_provider(monkeypatch):
+def test_ocr_uses_admin_ollama_profile(monkeypatch, isolated_database):
+    from app.services.model_registry import load_model_registry, save_task_profile
+
+    settings = Settings(
+        _env_file=None,
+        sqlite_path=isolated_database.path,
+        ollama_text_model="llava:latest",
+        local_ocr_enabled=False,
+    )
+    _override_ocr_settings(monkeypatch, settings)
+    asyncio.run(load_model_registry(isolated_database, settings))
+    asyncio.run(save_task_profile(isolated_database, "ocr", "ollama", "llava:latest", []))
     calls = []
 
     async def fake_ollama(self, image_data_url: str, model: str | None = None, system_prompt=None, user_text="Trích xuất nguyên văn đề toán trong ảnh."):
@@ -176,14 +209,7 @@ def test_ocr_uses_selected_ollama_provider(monkeypatch):
 
     monkeypatch.setattr("app.services.ollama_client.OllamaClient.ocr_image", fake_ollama)
 
-    response = TestClient(app).post(
-        "/api/ocr",
-        json={
-            "image_data_url": _IMAGE_DATA_URL,
-            "ocr_provider": "ollama",
-            "ocr_model": "llava:latest",
-        },
-    )
+    response = TestClient(app).post("/api/ocr", json={"image_data_url": _IMAGE_DATA_URL})
 
     assert response.status_code == 200
     assert response.json()["provider"] == "ollama"
@@ -192,7 +218,19 @@ def test_ocr_uses_selected_ollama_provider(monkeypatch):
     assert calls == [("ollama", "llava:latest")]
 
 
-def test_ocr_uses_selected_openai_compat_provider(monkeypatch):
+def test_ocr_uses_admin_openai_compat_profile(monkeypatch, isolated_database):
+    from app.services.model_registry import load_model_registry, save_task_profile
+
+    settings = Settings(
+        _env_file=None,
+        sqlite_path=isolated_database.path,
+        openai_compat_api_key="secret",
+        openai_compat_text_model="vision-model",
+        local_ocr_enabled=False,
+    )
+    _override_ocr_settings(monkeypatch, settings)
+    asyncio.run(load_model_registry(isolated_database, settings))
+    asyncio.run(save_task_profile(isolated_database, "ocr", "openai_compat", "vision-model", []))
     calls = []
 
     async def fake_openai_compat(self, image_data_url: str, model: str | None = None, system_prompt=None, user_text="Trích xuất nguyên văn đề toán trong ảnh."):
@@ -201,15 +239,7 @@ def test_ocr_uses_selected_openai_compat_provider(monkeypatch):
 
     monkeypatch.setattr("app.services.openai_compat_client.OpenAICompatClient.ocr_image", fake_openai_compat)
 
-    response = TestClient(app).post(
-        "/api/ocr",
-        json={
-            "image_data_url": _IMAGE_DATA_URL,
-            "ocr_provider": "openai_compat",
-            "ocr_model": "vision-model",
-            "runtime_settings": {"openai_compat": {"api_key": "secret", "model": "vision-model"}},
-        },
-    )
+    response = TestClient(app).post("/api/ocr", json={"image_data_url": _IMAGE_DATA_URL})
 
     assert response.status_code == 200
     assert response.json()["provider"] == "openai_compat"
@@ -218,7 +248,15 @@ def test_ocr_uses_selected_openai_compat_provider(monkeypatch):
     assert calls == [("openai_compat", "vision-model")]
 
 
-def test_ocr_router9_allowlist_uses_single_selected_model(monkeypatch):
+def test_ocr_router9_allowlist_uses_single_selected_model(monkeypatch, isolated_database):
+    settings = Settings(
+        _env_file=None,
+        sqlite_path=isolated_database.path,
+        router9_api_key="router9-secret",
+        router9_allowed_models=["cc/codex-5.5-image", "cc/codex-5.4-image", "gh/gpt-5.2"],
+        local_ocr_enabled=False,
+    )
+    _override_ocr_settings(monkeypatch, settings)
     calls = []
 
     async def fake_router9(self, image_data_url: str, model: str | None = None):
@@ -227,18 +265,7 @@ def test_ocr_router9_allowlist_uses_single_selected_model(monkeypatch):
 
     monkeypatch.setattr("app.services.router9_client.Router9Client.ocr_image", fake_router9)
 
-    response = TestClient(app).post(
-        "/api/ocr",
-        json={
-            "image_data_url": _IMAGE_DATA_URL,
-            "runtime_settings": {
-                "router9": {
-                    "api_key": "router9-secret",
-                    "allowed_model_ids": ["cc/codex-5.5-image", "cc/codex-5.4-image", "gh/gpt-5.2"],
-                }
-            },
-        },
-    )
+    response = TestClient(app).post("/api/ocr", json={"image_data_url": _IMAGE_DATA_URL})
 
     assert response.status_code == 200
     assert response.json()["text"] == "Đề từ Codex 5.5."
@@ -246,7 +273,15 @@ def test_ocr_router9_allowlist_uses_single_selected_model(monkeypatch):
     assert calls == [("router9", "cc/codex-5.5-image")]
 
 
-def test_ocr_router9_falls_back_to_openrouter_when_not_only(monkeypatch):
+def test_ocr_router9_falls_back_to_openrouter_when_not_only(monkeypatch, isolated_database):
+    settings = Settings(
+        _env_file=None,
+        sqlite_path=isolated_database.path,
+        router9_api_key="router9-secret",
+        openrouter_api_key="secret",
+        local_ocr_enabled=False,
+    )
+    _override_ocr_settings(monkeypatch, settings)
     calls = []
 
     async def fail_router9(self, image_data_url: str, model: str | None = None):
@@ -260,14 +295,7 @@ def test_ocr_router9_falls_back_to_openrouter_when_not_only(monkeypatch):
     monkeypatch.setattr("app.services.router9_client.Router9Client.ocr_image", fail_router9)
     monkeypatch.setattr("app.services.openrouter_client.OpenRouterClient.ocr_image", fake_openrouter)
 
-    response = TestClient(app).post(
-        "/api/ocr",
-        json={
-            "image_data_url": _IMAGE_DATA_URL,
-            "ocr_provider": "router9",
-            "runtime_settings": {"router9": {"api_key": "router9-secret"}, "openrouter": {"api_key": "secret"}},
-        },
-    )
+    response = TestClient(app).post("/api/ocr", json={"image_data_url": _IMAGE_DATA_URL})
 
     assert response.status_code == 200
     assert response.json()["text"] == "Đề từ OpenRouter."
@@ -282,21 +310,15 @@ def test_ocr_router9_falls_back_to_openrouter_when_not_only(monkeypatch):
     ]
 
 
-def test_ocr_router9_only_rejects_openrouter_provider():
-    response = TestClient(app).post(
-        "/api/ocr",
-        json={
-            "image_data_url": _IMAGE_DATA_URL,
-            "ocr_provider": "openrouter",
-            "runtime_settings": {"router9": {"only_mode": True}},
-        },
+def test_ocr_router9_only_auto_uses_router9(monkeypatch, isolated_database):
+    settings = Settings(
+        _env_file=None,
+        sqlite_path=isolated_database.path,
+        router9_api_key="router9-secret",
+        router9_only=True,
+        local_ocr_enabled=False,
     )
-
-    assert response.status_code == 400
-    assert "9router-only" in response.json()["detail"]["message"]
-
-
-def test_ocr_router9_only_auto_uses_router9(monkeypatch):
+    _override_ocr_settings(monkeypatch, settings)
     calls = []
 
     async def fake_router9(self, image_data_url: str, model: str | None = None):
@@ -310,13 +332,7 @@ def test_ocr_router9_only_auto_uses_router9(monkeypatch):
     monkeypatch.setattr("app.services.router9_client.Router9Client.ocr_image", fake_router9)
     monkeypatch.setattr("app.services.openrouter_client.OpenRouterClient.ocr_image", fake_openrouter)
 
-    response = TestClient(app).post(
-        "/api/ocr",
-        json={
-            "image_data_url": _IMAGE_DATA_URL,
-            "runtime_settings": {"router9": {"only_mode": True, "api_key": "router9-secret"}},
-        },
-    )
+    response = TestClient(app).post("/api/ocr", json={"image_data_url": _IMAGE_DATA_URL})
 
     assert response.status_code == 200
     assert response.json()["provider"] == "router9"
@@ -324,7 +340,14 @@ def test_ocr_router9_only_auto_uses_router9(monkeypatch):
     assert calls == [("router9", "codex-5.5-image")]
 
 
-def test_ocr_openrouter_fallback_reports_actual_model(monkeypatch):
+def test_ocr_openrouter_fallback_reports_actual_model(monkeypatch, isolated_database):
+    settings = Settings(
+        _env_file=None,
+        sqlite_path=isolated_database.path,
+        openrouter_api_key="secret",
+        local_ocr_enabled=False,
+    )
+    _override_ocr_settings(monkeypatch, settings)
     calls = []
 
     async def fake_openrouter(self, image_data_url: str, model: str | None = None):
@@ -335,58 +358,12 @@ def test_ocr_openrouter_fallback_reports_actual_model(monkeypatch):
 
     monkeypatch.setattr("app.services.openrouter_client.OpenRouterClient.ocr_image", fake_openrouter)
 
-    response = TestClient(app).post(
-        "/api/ocr",
-        json={
-            "image_data_url": _IMAGE_DATA_URL,
-            "ocr_provider": "openrouter",
-            "runtime_settings": {"openrouter": {"api_key": "secret"}},
-        },
-    )
+    response = TestClient(app).post("/api/ocr", json={"image_data_url": _IMAGE_DATA_URL})
 
     assert response.status_code == 200
     assert response.json()["model"] == "google/gemma-4-26b-a4b-it:free"
     assert "google/gemma-4-31b-it:free" in response.json()["warnings"][0]
     assert calls == ["google/gemma-4-31b-it:free", "google/gemma-4-26b-a4b-it:free"]
-
-
-def test_ocr_explicit_model_does_not_try_fallback_model(monkeypatch):
-    calls = []
-
-    async def fail_openrouter(self, image_data_url: str, model: str | None = None):
-        calls.append(model)
-        raise RuntimeError("bad model")
-
-    monkeypatch.setattr("app.services.openrouter_client.OpenRouterClient.ocr_image", fail_openrouter)
-
-    response = TestClient(app).post(
-        "/api/ocr",
-        json={
-            "image_data_url": _IMAGE_DATA_URL,
-            "ocr_provider": "openrouter",
-            "ocr_model": "vision/model",
-            "runtime_settings": {"openrouter": {"api_key": "secret"}},
-        },
-    )
-
-    assert response.status_code == 400
-    assert "vision/model" in response.json()["detail"]["message"]
-    assert calls == ["vision/model"]
-
-
-def test_ocr_explicit_provider_rejects_cross_provider_model():
-    response = TestClient(app).post(
-        "/api/ocr",
-        json={
-            "image_data_url": _IMAGE_DATA_URL,
-            "ocr_provider": "router9",
-            "ocr_model": "openrouter/google/gemma-4-26b-it:free",
-        },
-    )
-
-    assert response.status_code == 400
-    assert "thuộc provider openrouter" in response.json()["detail"]["message"]
-
 
 def test_ocr_enforces_daily_plan_limit(isolated_database, monkeypatch):
     async def fake_ocr_image(self, image_data_url: str, model: str | None = None):
@@ -411,11 +388,7 @@ def test_ocr_enforces_daily_plan_limit(isolated_database, monkeypatch):
     response = TestClient(app).post(
         "/api/ocr",
         cookies={SESSION_COOKIE_NAME: token},
-        json={
-            "image_data_url": _IMAGE_DATA_URL,
-            "ocr_provider": "openrouter",
-            "runtime_settings": {"openrouter": {"api_key": "secret"}},
-        },
+        json={"image_data_url": _IMAGE_DATA_URL},
     )
 
     assert response.status_code == 429

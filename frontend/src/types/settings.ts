@@ -1,5 +1,5 @@
 export type ProviderKey = 'openrouter' | 'nvidia' | 'ollama' | 'openai_compat';
-export type OcrProvider = 'openrouter' | 'router9' | 'nvidia' | 'ollama' | 'openai_compat';
+export type OcrProvider = 'local' | 'openrouter' | 'router9' | 'nvidia' | 'ollama' | 'openai_compat';
 export type OcrProviderChoice = '' | OcrProvider;
 
 export interface ScannedModelInfo {

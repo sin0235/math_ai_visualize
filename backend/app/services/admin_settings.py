@@ -93,10 +93,8 @@ async def sync_ai_profiles_to_registry(db: DatabaseClient, value: dict, patch: d
     profiles = SystemAiProfiles.model_validate(value)
     patch_keys = set(patch or value)
     if "geometry_reasoning" in patch_keys:
-        from app.repositories.model_registry import ModelRegistryRepository
-
-        await save_task_profile(db, "reasoning", profiles.geometry_reasoning.provider, profiles.geometry_reasoning.model, [])
-        await ModelRegistryRepository(db).delete_legacy_render_profile()
+        await save_task_profile(db, "render", profiles.geometry_reasoning.provider, profiles.geometry_reasoning.model, profiles.geometry_reasoning.fallbacks)
+        await save_task_profile(db, "reasoning", profiles.geometry_reasoning.provider, profiles.geometry_reasoning.model, profiles.geometry_reasoning.fallbacks)
     if "solver_explanation" in patch_keys:
         await save_task_profile(db, "solver_explanation", profiles.solver_explanation.provider, profiles.solver_explanation.model, profiles.solver_explanation.fallbacks)
     if "ocr" in patch_keys:

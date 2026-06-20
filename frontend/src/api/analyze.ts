@@ -1,6 +1,5 @@
 import type { MathScene } from '../types/scene';
-import type { RuntimeSettings } from '../types/settings';
-import { compactRuntimeSettings, requestJson } from './core';
+import { requestJson } from './core';
 
 export interface CriticalPoint {
   x: string;
@@ -109,11 +108,11 @@ export async function analyzeFunction(expression: string, options?: AnalyzeOptio
   }, 'Không thể phân tích hàm số.');
 }
 
-export async function analyzeFunctionImage(imageDataUrl: string, runtimeSettings?: RuntimeSettings): Promise<AnalyzeResponse> {
+export async function analyzeFunctionImage(imageDataUrl: string): Promise<AnalyzeResponse> {
   return requestJson('/api/analyze/ocr', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ image_data_url: imageDataUrl, runtime_settings: compactRuntimeSettings(runtimeSettings) }),
+    body: JSON.stringify({ image_data_url: imageDataUrl }),
   }, 'Không thể phân tích hàm số từ ảnh.');
 }

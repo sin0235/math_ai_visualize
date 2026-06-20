@@ -1,6 +1,6 @@
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.advisory import QualityRiskAdvisory
 
@@ -278,16 +278,14 @@ class ModelScanJobStatusResponse(BaseModel):
     error: dict[str, Any] | None = None
 
 
-OcrProvider = Literal["openrouter", "router9", "nvidia", "ollama", "openai_compat"]
+OcrProvider = Literal["local", "openrouter", "router9", "nvidia", "ollama", "openai_compat"]
 OcrMode = Literal["problem", "diagram"]
 
 
 class OcrRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     image_data_url: str = Field(min_length=1, max_length=MAX_IMAGE_DATA_URL_CHARS)
-    ocr_provider: OcrProvider | None = None
-    ocr_model: str | None = Field(default=None, max_length=MAX_MODEL_ID_CHARS)
-    mode: OcrMode = "problem"
-    runtime_settings: RuntimeSettings | None = None
 
 
 class OcrResponse(BaseModel):

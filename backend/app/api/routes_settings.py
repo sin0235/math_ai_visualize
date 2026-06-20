@@ -20,7 +20,7 @@ from app.schemas.scene import (
 from app.services.system_settings import load_feature_flags
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
-OCR_PROVIDERS = {"openrouter", "router9", "nvidia", "ollama", "openai_compat"}
+OCR_PROVIDERS = {"local", "openrouter", "router9", "nvidia", "ollama", "openai_compat"}
 
 
 @router.get("/defaults", response_model=SettingsDefaultsResponse)
@@ -209,6 +209,9 @@ def allowed_provider_default(registry: Any, provider_id: str, default_model_id: 
 def registry_ocr_default(registry: Any, settings: Any, ocr_profile: Any) -> tuple[str, str]:
     if ocr_profile and ocr_profile.provider_id in OCR_PROVIDERS and ocr_profile.model_id:
         return ocr_profile.provider_id, ocr_profile.model_id
+
+    if getattr(settings, "local_ocr_enabled", False) and getattr(settings, "local_ocr_prefer", "auto") in {"auto", "always"}:
+        return "local", getattr(settings, "local_ocr_model_name", "paddleocr+pix2tex")
 
     if settings.router9_ocr_model:
         return "router9", settings.router9_ocr_model

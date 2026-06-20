@@ -227,7 +227,7 @@ def settings_from_admin_ai_settings(settings: Settings, admin_settings: SystemAi
         if db_model and not (registry_provider and registry_provider.default_model_id):
             key = "router9_text_model" if provider_id == "router9" else f"{provider_id}_text_model"
             data[key] = db_model
-        if db_api_key:
+        if db_api_key and (db_base_url or db_model or getattr(provider_settings, "allowed_model_ids", []) or getattr(provider_settings, "scanned_models", [])):
             data[f"{provider_id}_api_key"] = db_api_key
     return Settings.model_validate(data)
 
@@ -339,7 +339,6 @@ async def ensure_task_profiles(db: DatabaseClient, settings: Settings) -> None:
             defaults[f"{task}_{tier}"] = (settings.ai_provider, "", [])
     repo = ModelRegistryRepository(db)
     await repo.delete_unsupported_tier_profiles()
-    await repo.delete_legacy_render_profile()
     for task, (provider_id, model_id, fallbacks) in defaults.items():
         if not await repo.task_profile_exists(task):
             await save_task_profile(db, task, provider_id, model_id, fallbacks)
@@ -530,7 +529,7 @@ def resolve_task_profile(registry: ModelRegistry, task: str, preferred_provider:
     if provider_id == "auto":
         default_provider = registry.settings.get("default_provider")
         provider_id = default_provider if isinstance(default_provider, str) and provider_is_enabled(registry, default_provider) else "auto"
-    if provider_id == "auto" or not provider_is_enabled(registry, provider_id):
+    if provider_id == "auto" or (provider_id != "local" and not provider_is_enabled(registry, provider_id)):
         return None
 
     raw_model_id = ""

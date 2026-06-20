@@ -85,7 +85,7 @@ interface ProblemInputProps {
   tier: TierKey;
   onProblemTextChange: (next: string) => void;
   onTierChange: (next: TierKey) => void;
-  onOcrImage: (file: File, mode?: 'problem' | 'diagram') => void;
+  onOcrImage: (file: File) => void;
   onOcrClipboardImage: () => void;
   onSubmit: (
     problemText: string,
@@ -128,10 +128,10 @@ export function ProblemInput({
     );
   }
 
-  function pickImageFile(files: FileList | null, mode: 'problem' | 'diagram' = 'problem') {
+  function pickImageFile(files: FileList | null) {
     const file = Array.from(files ?? []).find((item) => item.type.startsWith('image/'));
     if (file) {
-      onOcrImage(file, mode);
+      onOcrImage(file);
     }
   }
 
@@ -154,7 +154,6 @@ export function ProblemInput({
   function handleTextAreaDoubleClick(event: MouseEvent<HTMLTextAreaElement>) {
     if (problemText.trim() || loading || ocrLoading) return;
     event.preventDefault();
-    fileInputRef.current?.setAttribute('data-ocr-mode', 'problem');
     fileInputRef.current?.click();
   }
 
@@ -164,8 +163,7 @@ export function ProblemInput({
     onOcrClipboardImage();
   }
 
-  function openImagePicker(mode: 'problem' | 'diagram') {
-    fileInputRef.current?.setAttribute('data-ocr-mode', mode);
+  function openImagePicker() {
     fileInputRef.current?.click();
   }
 
@@ -176,9 +174,8 @@ export function ProblemInput({
         <details className="ocr-actions-panel">
           <summary>Nhập bằng ảnh / OCR</summary>
           <div className="ocr-action-row" aria-label="Thao tác nhập bằng hình ảnh">
-            <button type="button" disabled={busy} onClick={() => openImagePicker('problem')}>Tải ảnh đề bài</button>
+            <button type="button" disabled={busy} onClick={openImagePicker}>Tải ảnh đề bài</button>
             <button type="button" disabled={busy} onClick={onOcrClipboardImage}>Dán ảnh</button>
-            <button type="button" disabled={busy} onClick={() => openImagePicker('diagram')}>OCR hình</button>
           </div>
         </details>
       </div>
@@ -197,8 +194,7 @@ export function ProblemInput({
             accept="image/*"
             className="hidden-file-input"
             onChange={(event) => {
-              pickImageFile(event.target.files, event.currentTarget.dataset.ocrMode === 'diagram' ? 'diagram' : 'problem');
-              delete event.currentTarget.dataset.ocrMode;
+              pickImageFile(event.target.files);
               event.target.value = '';
             }}
           />

@@ -9,7 +9,7 @@ MAX_STORED_MODELS = 1000
 PLAN_ID_PATTERN = re.compile(r"^[a-z][a-z0-9_+-]{0,63}$")
 ADMIN_AI_PROVIDERS = {"openrouter", "nvidia", "ollama", "openai_compat", "router9"}
 ADMIN_DEFAULT_PROVIDERS = ADMIN_AI_PROVIDERS | {"auto"}
-ADMIN_OCR_PROVIDERS = {"openrouter", "router9", "nvidia", "ollama", "openai_compat"}
+ADMIN_OCR_PROVIDERS = {"local", "openrouter", "router9", "nvidia", "ollama", "openai_compat"}
 SYSTEM_SETTING_KEYS = {"ai_settings", "plan_settings", "feature_flags", "ai_profiles", "ai_tier_profiles", "ai_prompts"}
 
 

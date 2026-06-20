@@ -1,8 +1,4 @@
-"""Unit test cho Phase 4: OCR hình vẽ tay và sinh đề biến thể.
-
-Mock httpx ở mức module ``app.services.diagram_ocr`` và
-``app.services.problem_variants`` để không gọi mạng thực.
-"""
+"""Unit test cho sinh đề biến thể từ MathScene."""
 
 from __future__ import annotations
 
@@ -18,8 +14,6 @@ from app.db.session import SQLiteClient, get_database
 from app.main import app
 from app.repositories.auth import UserRepository
 from app.schemas.scene import MathScene
-from app.api import routes_diagram as routes_diagram_module
-from app.services import ocr as ocr_module
 from app.services import problem_variants as variants_module
 
 _IMAGE_DATA_URL = "data:image/png;base64,aGVsbG8="
@@ -67,43 +61,13 @@ def isolated_database(tmp_path):
         app.dependency_overrides.clear()
 
 
-def test_describe_diagram_calls_vision_model(monkeypatch):
-    captured: dict[str, str] = {}
-
-    async def fake_extract_text_from_image(image_data_url, settings, provider=None, model=None, mode="problem"):
-        captured["image"] = image_data_url
-        captured["model"] = model
-        captured["mode"] = mode
-        return ocr_module.OcrResult(
-            text="Cho hình chóp S.ABCD đáy là hình vuông cạnh a, SA vuông góc đáy.",
-            provider="openrouter",
-            model=model or "vision/default",
-            warnings=[],
-        )
-
-    monkeypatch.setattr(routes_diagram_module, "extract_text_from_image", fake_extract_text_from_image)
-
+def test_diagram_ocr_endpoint_removed():
     response = TestClient(app).post(
         "/api/diagram/ocr",
-        json={"image_data_url": _IMAGE_DATA_URL, "preferred_ai_model": "vision/x"},
+        json={"image_data_url": _IMAGE_DATA_URL},
     )
 
-    assert response.status_code == 200, response.text
-    body = response.json()
-    assert body["description"].startswith("Cho hình chóp")
-    assert body["model"] == "vision/x"
-    assert captured["image"] == _IMAGE_DATA_URL
-    assert captured["model"] == "vision/x"
-    assert captured["mode"] == "diagram"
-
-
-def test_describe_diagram_rejects_invalid_image(monkeypatch):
-    response = TestClient(app).post(
-        "/api/diagram/ocr",
-        json={"image_data_url": "data:text/plain;base64,aGVsbG8="},
-    )
-    assert response.status_code == 400
-    assert "data URL" in response.json().get("detail", {}).get("message", "")
+    assert response.status_code == 404
 
 
 def test_generate_variants_returns_list(monkeypatch):
@@ -139,12 +103,12 @@ def test_generate_variants_returns_list(monkeypatch):
         async def __aexit__(self, *args):
             return False
 
-        async def post(self, url, headers=None, json=None):
+        async def post(self, url, headers=None, json=None, timeout=None):
             captured["url"] = url
             captured["payload"] = json
             return FakeResponse()
 
-    monkeypatch.setattr(variants_module.httpx, "AsyncClient", FakeAsyncClient)
+    monkeypatch.setattr("app.services.http_pool.get_client", lambda *args, **kwargs: FakeAsyncClient())
 
     response = TestClient(app).post(
         "/api/problem/variants",
@@ -194,7 +158,7 @@ def test_generate_variants_handles_empty_response(monkeypatch):
         async def post(self, url, headers=None, json=None):
             return FakeResponse()
 
-    monkeypatch.setattr(variants_module.httpx, "AsyncClient", FakeAsyncClient)
+    monkeypatch.setattr("app.services.http_pool.get_client", lambda *args, **kwargs: FakeAsyncClient())
 
     response = TestClient(app).post(
         "/api/problem/variants",

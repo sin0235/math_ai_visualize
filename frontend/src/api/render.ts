@@ -1,7 +1,6 @@
 import type { AdvancedRenderSettings, MathScene, QualityRiskAdvisory, RenderResponse, Renderer } from '../types/scene';
-import type { OcrProvider, RuntimeSettings, ScannedModelInfo, SettingsDefaults } from '../types/settings';
+import type { RuntimeSettings, ScannedModelInfo, SettingsDefaults } from '../types/settings';
 import { buildExportFilename, type ExportFormatKey } from '../utils/exportFilename';
-import { normalizeProviderModelSelection } from '../utils/settingsOptions';
 import { ApiError, apiUrl, compactRuntimeSettings, fetchWithRetry, networkApiError, parseApiError, requestJson, requestVoid, timeoutSignal } from './core';
 
 export interface OcrResponse {
@@ -123,28 +122,13 @@ export async function renderProblem(
   }, 'Không thể dựng hình.');
 }
 
-function effectiveOcrSelectionForRequest(settings: RuntimeSettings): { provider?: OcrProvider; model?: string } {
-  if (settings.router9.only_mode) {
-    return { provider: 'router9', model: normalizeProviderModelSelection('router9', settings.ocr.model).model || undefined };
-  }
-  const explicit = settings.ocr.provider.trim();
-  if (!explicit) return { provider: undefined, model: undefined };
-  const normalized = normalizeProviderModelSelection(explicit, settings.ocr.model);
-  return { provider: normalized.provider as OcrProvider, model: normalized.model || undefined };
-}
-
-export async function ocrImage(imageDataUrl: string, runtimeSettings: RuntimeSettings, mode: 'problem' | 'diagram' = 'problem'): Promise<OcrResponse> {
-  const ocrSelection = effectiveOcrSelectionForRequest(runtimeSettings);
+export async function ocrImage(imageDataUrl: string): Promise<OcrResponse> {
   return requestJson('/api/ocr', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
     body: JSON.stringify({
       image_data_url: imageDataUrl,
-      ocr_provider: ocrSelection.provider,
-      ocr_model: ocrSelection.provider ? ocrSelection.model : undefined,
-      mode,
-      runtime_settings: compactRuntimeSettings(runtimeSettings),
     }),
   }, 'Không thể OCR ảnh đề bài.');
 }

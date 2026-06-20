@@ -9,12 +9,17 @@ FROM python:3.11-slim AS backend
 WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    SQLITE_PATH=/app/data/hinh.db
+    SQLITE_PATH=/app/data/hinh.db \
+    PADDLEOCR_HOME=/app/models/ocr/paddleocr \
+    TORCH_HOME=/app/models/ocr/torch \
+    HF_HOME=/app/models/ocr/huggingface
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends nginx supervisor \
+    && apt-get install -y --no-install-recommends nginx supervisor libgomp1 libglib2.0-0 libgl1 \
     && rm -rf /var/lib/apt/lists/*
 COPY backend/requirements.txt ./backend/requirements.txt
-RUN pip install --no-cache-dir -r backend/requirements.txt
+COPY backend/requirements-ocr.txt ./backend/requirements-ocr.txt
+RUN pip install --no-cache-dir -r backend/requirements.txt \
+    && pip install --no-cache-dir -r backend/requirements-ocr.txt
 COPY backend/ ./backend/
 COPY --from=frontend-build /app/frontend/dist /usr/share/nginx/html
 COPY deploy/nginx.conf /etc/nginx/nginx.conf

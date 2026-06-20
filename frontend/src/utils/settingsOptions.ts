@@ -20,6 +20,7 @@ export const providerLabels: Record<string, string> = {
   ollama: 'Ollama',
   openai_compat: 'OpenAI-compatible',
   router9: '9router',
+  local: 'Local OCR',
   mock: 'Mock extractor',
 };
 
@@ -44,9 +45,13 @@ export function buildProviderOptions(defaults: SettingsDefaults | null, includeM
 
 export function buildOcrProviderOptions(defaults: SettingsDefaults | null): Option[] {
   const options: Option[] = [{ id: '', label: 'Theo mặc định hệ thống' }];
-  const providers = ['openrouter', 'router9', 'nvidia', 'ollama', 'openai_compat'] as const;
+  const providers = ['local', 'openrouter', 'router9', 'nvidia', 'ollama', 'openai_compat'] as const;
   providers.forEach((provider) => {
     if (!defaults) {
+      options.push({ id: provider, label: providerLabels[provider] || provider });
+      return;
+    }
+    if (provider === 'local') {
       options.push({ id: provider, label: providerLabels[provider] || provider });
       return;
     }
@@ -155,6 +160,7 @@ const NVIDIA_MODEL_PREFIXES = ['nvidia/'] as const;
 const OLLAMA_MODEL_PREFIXES = ['ollama/'] as const;
 const OPENAI_COMPAT_MODEL_PREFIXES = ['openai_compat/', 'openai-compat/'] as const;
 const EXPLICIT_PROVIDER_PREFIXES: Record<OcrProvider, readonly string[]> = {
+  local: ['local/'],
   openrouter: ['openrouter/'],
   router9: ['router9/'],
   nvidia: NVIDIA_MODEL_PREFIXES,
@@ -184,6 +190,7 @@ export function explicitProviderFromModelId(model: string): OcrProvider | null {
 
 export function normalizeModelForProvider(provider: string, model: string): string {
   const value = model.trim();
+  if (provider === 'local') return value.replace(/^local\//, '');
   if (provider === 'openrouter') return value.replace(/^openrouter\//, '');
   if (provider === 'router9') return value.replace(/^router9\//, '');
   if (provider === 'nvidia') return value.replace(/^nvidia\//, '');
