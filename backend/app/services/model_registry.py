@@ -21,6 +21,7 @@ from app.services.model_provider import (
 )
 
 PROVIDER_LABELS = {
+    "local": "Local OCR",
     "openrouter": "OpenRouter",
     "nvidia": "NVIDIA",
     "ollama": "Ollama",
@@ -153,6 +154,17 @@ async def load_model_registry(db: DatabaseClient, settings: Settings | None = No
     return ModelRegistry(providers=providers, models=models, task_profiles=profiles, settings=registry_settings, legacy_used=await repo.has_legacy_ai_settings())
 
 
+def default_ocr_profile(settings: Settings, legacy: SystemAiSettings | None = None) -> tuple[str, str]:
+    if legacy is not None:
+        model = legacy.ocr.model or (settings.local_ocr_model_name if legacy.ocr.provider == "local" else "")
+        return legacy.ocr.provider, model
+    if settings.local_ocr_enabled and settings.local_ocr_prefer in {"auto", "always"} and not settings.router9_only:
+        return "local", settings.local_ocr_model_name
+    if settings.router9_ocr_model:
+        return "router9", settings.router9_ocr_model
+    return "openrouter", settings.openrouter_vision_model
+
+
 async def seed_model_registry(db: DatabaseClient, settings: Settings) -> None:
     repo = ModelRegistryRepository(db)
     if await repo.has_any_provider():
@@ -163,7 +175,8 @@ async def seed_model_registry(db: DatabaseClient, settings: Settings) -> None:
     for provider_id, data in provider_data.items():
         await repo.insert_seed_provider(provider_id, PROVIDER_LABELS[provider_id], data["base_url"], data["model"], bool(data["api_key_configured"]))
         for model in data["models"]:
-            await upsert_model(db, provider_id, model, allowed=model.id in data["allowed_model_ids"], source="legacy" if legacy else "env")
+            allowed = provider_id == "local" or model.id in data["allowed_model_ids"]
+            await upsert_model(db, provider_id, model, allowed=allowed, source="legacy" if legacy else "env")
     router9_only = legacy.router9.only_mode if legacy else settings.router9_only
     openrouter_reasoning = legacy.openrouter_reasoning_enabled if legacy else settings.openrouter_reasoning_enabled
     ocr_max = legacy.ocr.max_image_mb if legacy else 5
@@ -172,8 +185,7 @@ async def seed_model_registry(db: DatabaseClient, settings: Settings) -> None:
     await set_model_setting(db, "openrouter_reasoning_enabled", openrouter_reasoning)
     await set_model_setting(db, "ocr_max_image_mb", ocr_max)
     await set_model_setting(db, "default_provider", default_provider)
-    ocr_provider = legacy.ocr.provider if legacy else ("router9" if settings.router9_ocr_model else "openrouter")
-    ocr_model = legacy.ocr.model if legacy else (settings.router9_ocr_model or settings.openrouter_vision_model)
+    ocr_provider, ocr_model = default_ocr_profile(settings, legacy)
     for task in TIERED_TASKS:
         for tier in TIER_KEYS:
             await save_task_profile(db, f"{task}_{tier}", default_provider, "", [])
@@ -246,7 +258,7 @@ def settings_from_registry(settings: Settings, registry: ModelRegistry) -> Setti
         if provider.base_url and not keep_env_connection:
             data[f"{provider_id}_base_url"] = provider.base_url
         default_model_id = effective_provider_default_model(registry, provider_id, provider.default_model_id)
-        if default_model_id and not keep_env_connection:
+        if default_model_id and not keep_env_connection and provider_id != "local":
             key = "router9_text_model" if provider_id == "router9" else f"{provider_id}_text_model"
             data[key] = default_model_id
     data["router9_only"] = bool(registry.settings.get("router9_only", settings.router9_only))
@@ -329,10 +341,12 @@ async def set_model_setting(db: DatabaseClient, key: str, value: Any) -> None:
 
 
 async def ensure_task_profiles(db: DatabaseClient, settings: Settings) -> None:
+    await ensure_local_ocr_provider(db, settings)
+    ocr_provider, ocr_model = default_ocr_profile(settings)
     defaults = {
         "reasoning": (settings.ai_provider, "", []),
         "solver_explanation": (settings.ai_provider, "", []),
-        "ocr": ("router9" if settings.router9_ocr_model else "openrouter", settings.router9_ocr_model or settings.openrouter_vision_model, []),
+        "ocr": (ocr_provider, ocr_model, []),
     }
     for task in TIERED_TASKS:
         for tier in TIER_KEYS:
@@ -347,6 +361,24 @@ async def ensure_task_profiles(db: DatabaseClient, settings: Settings) -> None:
 async def ensure_provider(db: DatabaseClient, provider_id: str) -> None:
     provider_id = canonical_provider_id(provider_id) or provider_id
     await ModelRegistryRepository(db).ensure_provider(provider_id, PROVIDER_LABELS.get(provider_id, provider_id))
+
+
+async def ensure_local_ocr_provider(db: DatabaseClient, settings: Settings) -> None:
+    await save_provider_config(
+        db,
+        "local",
+        "",
+        settings.local_ocr_model_name,
+        enabled=bool(settings.local_ocr_enabled),
+        api_key_configured=True,
+    )
+    await upsert_model(
+        db,
+        "local",
+        AiModelInfo(id=settings.local_ocr_model_name, label=settings.local_ocr_model_name, provider="local"),
+        allowed=True,
+        source="env",
+    )
 
 
 def _canonical_model_info(provider_id: str, model: AiModelInfo) -> AiModelInfo:
@@ -383,6 +415,7 @@ async def ensure_model_registry_canonical(db: DatabaseClient) -> None:
 
 def _provider_seed_data(settings: Settings, legacy: SystemAiSettings | None) -> dict[str, dict[str, Any]]:
     provider_settings = {
+        "local": None,
         "openrouter": legacy.openrouter if legacy else None,
         "nvidia": legacy.nvidia if legacy else None,
         "ollama": legacy.ollama if legacy else None,
@@ -390,6 +423,7 @@ def _provider_seed_data(settings: Settings, legacy: SystemAiSettings | None) -> 
         "router9": legacy.router9 if legacy else None,
     }
     base = {
+        "local": {"base_url": "", "model": settings.local_ocr_model_name, "api_key_configured": True},
         "openrouter": {"base_url": settings.openrouter_base_url, "model": settings.openrouter_text_model, "api_key_configured": provider_configured(settings.openrouter_api_key)},
         "nvidia": {"base_url": settings.nvidia_base_url, "model": settings.nvidia_text_model, "api_key_configured": provider_configured(settings.nvidia_api_key)},
         "ollama": {"base_url": settings.ollama_base_url, "model": settings.ollama_text_model, "api_key_configured": bool(settings.ollama_api_key)},
@@ -445,7 +479,7 @@ def registry_from_settings(settings: Settings) -> ModelRegistry:
     task_profiles = {
         "reasoning": TaskProfile("reasoning", settings.ai_provider, "", []),
         "solver_explanation": TaskProfile("solver_explanation", settings.ai_provider, "", []),
-        "ocr": TaskProfile("ocr", "router9" if settings.router9_ocr_model else "openrouter", settings.router9_ocr_model or settings.openrouter_vision_model, []),
+        "ocr": TaskProfile("ocr", *default_ocr_profile(settings), []),
     }
     for task in TIERED_TASKS:
         for tier in TIER_KEYS:
@@ -493,6 +527,8 @@ def model_is_enabled(registry: ModelRegistry, provider_id: str, model_id: str) -
 
 
 def model_is_allowed(registry: ModelRegistry, provider_id: str, model_id: str) -> bool:
+    if provider_id == "local":
+        return bool(model_id)
     if not provider_is_enabled(registry, provider_id) or not model_is_enabled(registry, provider_id, model_id):
         return False
     allowed_model_ids = registry.allowed_model_ids(provider_id)

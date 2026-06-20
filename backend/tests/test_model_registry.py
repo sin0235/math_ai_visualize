@@ -36,13 +36,40 @@ async def test_registry_seeds_from_env(db):
 
 
 @pytest.mark.anyio
-async def test_registry_seeds_router9_ocr_profile_from_env(db):
-    settings = Settings(_env_file=None, router9_ocr_model="cx/gpt-5.2")
+async def test_registry_seeds_local_ocr_profile_by_default(db):
+    settings = Settings(_env_file=None)
+
+    registry = await load_model_registry(db, settings)
+
+    assert registry.providers["local"].label == "Local OCR"
+    assert registry.providers["local"].default_model_id == "paddleocr+pix2tex"
+    assert registry.allowed_model_ids("local") == ["paddleocr+pix2tex"]
+    assert registry.task_profiles["ocr"].provider_id == "local"
+    assert registry.task_profiles["ocr"].model_id == "paddleocr+pix2tex"
+
+
+@pytest.mark.anyio
+async def test_registry_seeds_router9_ocr_profile_when_local_is_disabled(db):
+    settings = Settings(_env_file=None, local_ocr_enabled=False, router9_ocr_model="cx/gpt-5.2")
 
     registry = await load_model_registry(db, settings)
 
     assert registry.task_profiles["ocr"].provider_id == "router9"
     assert registry.task_profiles["ocr"].model_id == "cx/gpt-5.2"
+
+
+@pytest.mark.anyio
+async def test_existing_registry_backfills_local_provider_without_overwriting_ocr_profile(db):
+    settings = Settings(_env_file=None)
+    await load_model_registry(db, Settings(_env_file=None, local_ocr_enabled=False))
+    await save_task_profile(db, "ocr", "openrouter", "openrouter/vision", [])
+
+    registry = await load_model_registry(db, settings)
+
+    assert registry.providers["local"].default_model_id == "paddleocr+pix2tex"
+    assert registry.allowed_model_ids("local") == ["paddleocr+pix2tex"]
+    assert registry.task_profiles["ocr"].provider_id == "openrouter"
+    assert registry.task_profiles["ocr"].model_id == "vision"
 
 
 @pytest.mark.anyio
