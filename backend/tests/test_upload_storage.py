@@ -166,7 +166,7 @@ async def test_save_upload_image_rejects_too_large_image(db):
 
 
 @pytest.mark.anyio
-async def test_load_upload_image_rejects_appwrite_without_database_base64(db, monkeypatch):
+async def test_load_upload_image_reads_appwrite_when_database_base64_is_empty(db, monkeypatch):
     from app.services.appwrite_storage import AppwriteStoredFile
 
     upload = UploadFile(filename="problem.png", file=io.BytesIO(b"fake-png"), headers={"content-type": "image/png"})
@@ -187,12 +187,64 @@ async def test_load_upload_image_rejects_appwrite_without_database_base64(db, mo
             metadata={},
         )
 
+    async def fake_appwrite_load_file(file_id, settings, bucket_id=None):
+        assert file_id == "appwrite-file-id"
+        assert bucket_id == "math-lab-storage"
+        return b"fake-png"
+
     monkeypatch.setattr("app.services.appwrite_storage.store_file", fake_appwrite_store_file)
+    monkeypatch.setattr("app.services.appwrite_storage.load_file", fake_appwrite_load_file)
+
+    stored = await save_upload_image(upload, settings, db)
+    await db.execute("UPDATE uploaded_files SET data_base64 = '' WHERE id = ?", [stored.file_id])
+    loaded = await load_upload_image(db, stored.file_id, settings)
+
+    assert loaded is not None
+    assert loaded.data_url == "data:image/png;base64,ZmFrZS1wbmc="
+    assert loaded.external_file_id == "appwrite-file-id"
+
+
+@pytest.mark.anyio
+async def test_save_upload_image_external_only_clears_base64_for_remote_provider(db, monkeypatch):
+    upload = UploadFile(filename="problem.png", file=io.BytesIO(b"fake-png"), headers={"content-type": "image/png"})
+    settings = Settings(
+        _env_file=None,
+        ocr_upload_base64_retention="external_only",
+        r2_account_id="account",
+        r2_access_key_id="access",
+        r2_secret_access_key="secret",
+        r2_bucket_name="bucket",
+    )
+
+    monkeypatch.setattr("app.services.r2_storage.store_file", lambda body, filename, content_type, settings: "uploads/ocr/file.png")
+
+    stored = await save_upload_image(upload, settings, db)
+    row = await db.fetch_one("SELECT data_base64, storage_provider FROM uploaded_files WHERE id = ?", [stored.file_id])
+
+    assert stored.data_url == "data:image/png;base64,ZmFrZS1wbmc="
+    assert row is not None
+    assert row["storage_provider"] == "r2"
+    assert row["data_base64"] == ""
+
+
+@pytest.mark.anyio
+async def test_load_upload_image_rejects_remote_checksum_mismatch(db, monkeypatch):
+    upload = UploadFile(filename="problem.png", file=io.BytesIO(b"fake-png"), headers={"content-type": "image/png"})
+    settings = Settings(
+        _env_file=None,
+        r2_account_id="account",
+        r2_access_key_id="access",
+        r2_secret_access_key="secret",
+        r2_bucket_name="bucket",
+    )
+
+    monkeypatch.setattr("app.services.r2_storage.store_file", lambda body, filename, content_type, settings: "uploads/ocr/file.png")
+    monkeypatch.setattr("app.services.r2_storage.load_file", lambda object_key, settings: b"different")
 
     stored = await save_upload_image(upload, settings, db)
     await db.execute("UPDATE uploaded_files SET data_base64 = '' WHERE id = ?", [stored.file_id])
 
-    with pytest.raises(RuntimeError, match="provider này"):
+    with pytest.raises(RuntimeError, match="kích thước|checksum"):
         await load_upload_image(db, stored.file_id, settings)
 
 

@@ -1,11 +1,13 @@
 import asyncio
 import json
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field, ValidationError
 
 from app.api.deps import enforce_rate_limit, require_admin_user, require_trusted_origin
 from app.api.routes_history import parse_json_object
+from app.core.config import Settings, get_settings
 from app.db.models import UserRecord
 from app.db.session import DatabaseClient, get_database
 from app.repositories.admin import AdminRepository
@@ -46,6 +48,9 @@ class DatabaseCleanupRequest(BaseModel):
     dry_run: bool = True
     limit_per_table: int = Field(default=100, ge=1, le=5000)
     tables: list[str] | None = None
+    min_age_hours: int = Field(default=24, ge=1, le=24 * 365)
+    verify_remote: bool = True
+    providers: list[Literal["appwrite", "r2"]] | None = None
 
 
 @router.get("/summary", response_model=AdminSummaryResponse)
@@ -314,12 +319,40 @@ async def admin_database_cleanup(
     http_request: Request,
     admin: UserRecord = Depends(require_admin_user),
     db: DatabaseClient = Depends(get_database),
+    settings: Settings = Depends(get_settings),
 ) -> dict:
     await enforce_rate_limit(db, http_request, admin, "admin_database_cleanup", 5, 60)
-    result = await cleanup_database(db, dry_run=request.dry_run, limit_per_table=request.limit_per_table, tables=request.tables)
+    result = await cleanup_database(
+        db,
+        dry_run=request.dry_run,
+        limit_per_table=request.limit_per_table,
+        tables=request.tables,
+        settings=settings,
+        min_age_hours=request.min_age_hours,
+        verify_remote=request.verify_remote,
+        providers=request.providers,
+    )
     if not request.dry_run:
-        deleted = {table: item.get("deleted", 0) for table, item in result["tables"].items()}
-        await AdminRepository(db).audit(admin.id, "admin.database.cleanup", "database", None, {"deleted": deleted})
+        summary = {
+            table: {
+                "deleted": item.get("deleted", 0),
+                "cleared": item.get("cleared", 0),
+                "bytes_cleared": item.get("bytes_cleared", 0),
+            }
+            for table, item in result["tables"].items()
+        }
+        await AdminRepository(db).audit(
+            admin.id,
+            "admin.database.cleanup",
+            "database",
+            None,
+            {
+                "tables": request.tables,
+                "summary": summary,
+                "min_age_hours": request.min_age_hours,
+                "providers": request.providers,
+            },
+        )
     return result
 
 

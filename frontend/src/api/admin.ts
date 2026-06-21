@@ -94,6 +94,20 @@ export interface AdminPlanResponse {
   updated_at: string;
 }
 
+export interface AdminUploadedFilesStorageDiagnostics {
+  total_rows: number;
+  rows_by_provider: Record<string, number>;
+  rows_with_base64: number;
+  external_rows_with_base64: number;
+  external_only_rows: number;
+  database_provider_rows: number;
+  base64_chars: number;
+  estimated_inline_bytes: number;
+  default_cleanup_candidates: number;
+  default_cleanup_reclaimable_bytes: number;
+  error?: string;
+}
+
 export interface AdminDatabaseDiagnostics {
   backend: string;
   sqlite_path?: string | null;
@@ -117,6 +131,7 @@ export interface AdminDatabaseDiagnostics {
   };
   migrations: Array<{ filename: string; applied_at: string }>;
   counts: Record<string, number | string>;
+  uploaded_files_storage?: AdminUploadedFilesStorageDiagnostics;
   system_settings: Record<string, { updated_at: string; updated_by?: string | null }>;
   ai_settings: {
     exists: boolean;
@@ -138,6 +153,40 @@ export interface AdminDatabaseDiagnostics {
     legacy_ai_settings_present: boolean;
     canonical_registry_active: boolean;
   };
+}
+
+export interface AdminDatabaseCleanupRequest {
+  dry_run: boolean;
+  limit_per_table?: number;
+  tables?: string[] | null;
+  min_age_hours?: number;
+  verify_remote?: boolean;
+  providers?: Array<'appwrite' | 'r2'> | null;
+}
+
+export interface AdminDatabaseCleanupTableResult {
+  candidates: number;
+  deleted?: number;
+  cleared?: number;
+  skipped?: number;
+  bytes_reclaimable?: number;
+  bytes_cleared?: number;
+  dry_run: boolean;
+  limit: number;
+  min_age_hours?: number;
+  verify_remote?: boolean;
+  providers?: string[];
+  by_provider?: Record<string, { candidates: number; bytes_reclaimable: number }>;
+  warnings?: string[];
+  error?: string;
+}
+
+export interface AdminDatabaseCleanupResponse {
+  dry_run: boolean;
+  limit_per_table: number;
+  tables: Record<string, AdminDatabaseCleanupTableResult>;
+  warnings: string[];
+  report_only_tables: string[];
 }
 
 export interface AdminProviderCheckResponse {
@@ -206,6 +255,15 @@ export async function updateAdminSystemSetting(key: string, value: Record<string
 
 export async function getAdminDatabaseDiagnostics(): Promise<AdminDatabaseDiagnostics> {
   return requestJson('/api/admin/database/diagnostics', { credentials: 'include' }, 'Không thể tải chẩn đoán database.');
+}
+
+export async function cleanupAdminDatabase(request: AdminDatabaseCleanupRequest): Promise<AdminDatabaseCleanupResponse> {
+  return requestJson('/api/admin/database/cleanup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(request),
+  }, 'Không thể chạy cleanup database.');
 }
 
 export async function checkAdminProvider(provider: string, runtimeSettings: RuntimeSettings): Promise<AdminProviderCheckResponse> {

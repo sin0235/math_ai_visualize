@@ -65,6 +65,7 @@ class Settings(BaseSettings):
     appwrite_upload_prefix: str = "uploads"
     appwrite_public_base_url: str | None = None
     ocr_upload_storage_provider: Literal["auto", "appwrite", "r2", "database"] = "auto"
+    ocr_upload_base64_retention: Literal["retain", "external_only"] = "retain"
     ocr_image_max_mb: int = 10
     cloudinary_cloud_name: str | None = None
     cloudinary_api_key: str | None = None

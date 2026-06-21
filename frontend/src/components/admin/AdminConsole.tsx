@@ -10,6 +10,7 @@ import type {
   AdminUserFilters,
   AdminRenderJobFilters,
   AdminAuditLogFilters,
+  AdminDatabaseCleanupResponse,
   AdminDatabaseDiagnostics,
   AdminFeedbackFilters,
   AdminFeedbackResponse,
@@ -38,6 +39,7 @@ import {
   updateAdminFeedback,
   getSettingsDefaults,
   getAdminDatabaseDiagnostics,
+  cleanupAdminDatabase,
   getAdminChatConversations,
   getAdminChatConversation,
   sendAdminChatMessage,
@@ -148,7 +150,38 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
   const [aiSettings, setAiSettings] = useState<Record<string, unknown>>({});
   const [settingsDefaults, setSettingsDefaults] = useState<SettingsDefaults | null>(null);
   const [databaseDiagnostics, setDatabaseDiagnostics] = useState<AdminDatabaseDiagnostics | null>(null);
+  const [databaseCleanupResult, setDatabaseCleanupResult] = useState<AdminDatabaseCleanupResponse | null>(null);
+  const [databaseCleanupLoading, setDatabaseCleanupLoading] = useState(false);
   const [savingAiSettings, setSavingAiSettings] = useState(false);
+
+  async function refreshDatabaseDiagnostics() {
+    setDatabaseDiagnostics(await getAdminDatabaseDiagnostics());
+  }
+
+  async function runUploadedFilesCleanup(dryRun: boolean) {
+    if (!dryRun) {
+      const confirmed = window.confirm('Clear base64 trong database cho ảnh OCR đã lưu remote? Thao tác này không xoá record và không xoá file Appwrite/R2, nhưng sẽ cần remote read-back để OCR ảnh cũ.');
+      if (!confirmed) return;
+    }
+    setDatabaseCleanupLoading(true);
+    try {
+      const result = await cleanupAdminDatabase({
+        dry_run: dryRun,
+        limit_per_table: 100,
+        tables: ['uploaded_files_base64'],
+        min_age_hours: 24,
+        verify_remote: true,
+        providers: ['appwrite', 'r2'],
+      });
+      setDatabaseCleanupResult(result);
+      await refreshDatabaseDiagnostics();
+      onToast('Database cleanup', dryRun ? 'Dry-run cleanup OCR đã hoàn tất.' : 'Đã chạy cleanup OCR base64.', result.warnings.length ? 'warning' : 'info');
+    } catch (error) {
+      onToast('Database cleanup', getErrorMessage(error, 'Không thể chạy cleanup OCR base64.'), 'error');
+    } finally {
+      setDatabaseCleanupLoading(false);
+    }
+  }
 
   // Feedback filters
   const [localFeedbackFilters, setLocalFeedbackFilters] = useState<AdminFeedbackFilters>({});
@@ -853,7 +886,15 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
               <AdminToolbarRefreshButton loading={loading} onClick={() => void refreshActiveSection(true)} />
             </header>
             <section className="admin-panel admin-panel-full">
-            {databaseDiagnostics && <AdminDatabaseDiagnosticsPanel diagnostics={databaseDiagnostics} />}
+            {databaseDiagnostics && (
+              <AdminDatabaseDiagnosticsPanel
+                diagnostics={databaseDiagnostics}
+                cleanupResult={databaseCleanupResult}
+                cleanupLoading={databaseCleanupLoading}
+                onDryRunCleanup={() => void runUploadedFilesCleanup(true)}
+                onExecuteCleanup={() => void runUploadedFilesCleanup(false)}
+              />
+            )}
             {!databaseDiagnostics && <p className="field-hint">Đang tải chẩn đoán database...</p>}
             <AdminDetails title="system_settings raw" value={settings.map(({ key, updated_at, updated_by }) => ({ key, updated_at, updated_by }))} />
           </section>
@@ -1174,12 +1215,27 @@ function AdminSystemSettingRow({ item }: { item: SystemSettingResponse }) {
   );
 }
 
-function AdminDatabaseDiagnosticsPanel({ diagnostics }: { diagnostics: AdminDatabaseDiagnostics }) {
+function AdminDatabaseDiagnosticsPanel({
+  diagnostics,
+  cleanupResult,
+  cleanupLoading,
+  onDryRunCleanup,
+  onExecuteCleanup,
+}: {
+  diagnostics: AdminDatabaseDiagnostics;
+  cleanupResult: AdminDatabaseCleanupResponse | null;
+  cleanupLoading: boolean;
+  onDryRunCleanup: () => void;
+  onExecuteCleanup: () => void;
+}) {
   const countRows = Object.entries(diagnostics.counts);
   const settingRows = Object.entries(diagnostics.system_settings);
   const missingMigrations = diagnostics.migration_drift?.missing_migrations ?? [];
   const extraMigrations = diagnostics.migration_drift?.extra_migrations ?? [];
   const aiDrift = diagnostics.ai_settings.legacy_canonical_drift;
+  const uploadStats = diagnostics.uploaded_files_storage;
+  const uploadCleanup = cleanupResult?.tables.uploaded_files_base64;
+  const canExecuteCleanup = Boolean(uploadCleanup?.dry_run && (uploadCleanup.candidates ?? 0) > 0);
   return (
     <div className="admin-section-stack">
       <div className="admin-field-grid">
@@ -1194,6 +1250,44 @@ function AdminDatabaseDiagnosticsPanel({ diagnostics }: { diagnostics: AdminData
       {aiDrift && !aiDrift.ok && (
         <p className="error-box">Legacy ai_settings đang lệch canonical registry ở {aiDrift.differences.length} mục. Không hiển thị secret trong chẩn đoán này.</p>
       )}
+      <section className="admin-settings-section">
+        <h4>OCR uploaded_files storage</h4>
+        {uploadStats?.error ? (
+          <p className="error-box">Không đọc được thống kê uploaded_files: {uploadStats.error}</p>
+        ) : uploadStats ? (
+          <>
+            <div className="admin-field-grid">
+              <span><strong>Tổng file</strong>{uploadStats.total_rows}</span>
+              <span><strong>Còn base64</strong>{uploadStats.rows_with_base64}</span>
+              <span><strong>External còn base64</strong>{uploadStats.external_rows_with_base64}</span>
+              <span><strong>External-only</strong>{uploadStats.external_only_rows}</span>
+              <span><strong>Database provider</strong>{uploadStats.database_provider_rows}</span>
+              <span><strong>Ước tính inline</strong>{formatBytes(uploadStats.estimated_inline_bytes)}</span>
+              <span><strong>Cleanup candidates</strong>{uploadStats.default_cleanup_candidates}</span>
+              <span><strong>Có thể thu hồi</strong>{formatBytes(uploadStats.default_cleanup_reclaimable_bytes)}</span>
+            </div>
+            <div className="admin-row-actions">
+              <button type="button" className="secondary-button" onClick={onDryRunCleanup} disabled={cleanupLoading}>{cleanupLoading ? 'Đang chạy...' : 'Dry-run OCR base64 cleanup'}</button>
+              <button type="button" className="secondary-button" onClick={onExecuteCleanup} disabled={cleanupLoading || !canExecuteCleanup}>{cleanupLoading ? 'Đang chạy...' : 'Clear verified DB base64'}</button>
+            </div>
+            <p className="field-hint">Cleanup chỉ clear base64 trong database cho ảnh OCR đã có Appwrite/R2 và verify remote; không xoá record hoặc file remote.</p>
+            {uploadCleanup && (
+              <div className="admin-table">
+                <article className="admin-row">
+                  <div>
+                    <strong>{uploadCleanup.dry_run ? 'Dry-run gần nhất' : 'Cleanup gần nhất'}</strong>
+                    <span>{uploadCleanup.candidates} candidate · cleared {uploadCleanup.cleared ?? 0} · skipped {uploadCleanup.skipped ?? 0} · reclaimable {formatBytes(uploadCleanup.bytes_reclaimable ?? 0)} · cleared {formatBytes(uploadCleanup.bytes_cleared ?? 0)}</span>
+                  </div>
+                </article>
+                {(uploadCleanup.warnings ?? []).map((warning, index) => <p key={index} className="field-hint">{warning}</p>)}
+              </div>
+            )}
+            <AdminDetails title="Uploaded files provider counts" value={uploadStats.rows_by_provider} />
+          </>
+        ) : (
+          <p className="field-hint">Chưa có thống kê uploaded_files.</p>
+        )}
+      </section>
       <section className="admin-settings-section">
         <h4>Bảng dữ liệu</h4>
         <div className="admin-table">
@@ -1455,6 +1549,18 @@ function formatLocalDateKey(date: Date) {
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+}
+
+function formatBytes(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let size = value;
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
+  }
+  return `${size >= 10 || unitIndex === 0 ? size.toFixed(0) : size.toFixed(1)} ${units[unitIndex]}`;
 }
 
 function summarizeRenderJobs(renderJobs: AdminRenderHistoryItem[]) {

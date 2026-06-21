@@ -60,13 +60,14 @@ async def save_upload_image(upload: UploadFile, settings: Settings, db: Database
     encoded = base64.b64encode(body).decode("ascii")
     digest = hashlib.sha256(body).hexdigest()
     remote = await store_remote_file_with_fallback(body, filename, content_type, settings)
+    stored_base64 = encoded if should_retain_base64(remote, settings) else ""
     record = await UploadRepository(db).create(
         user_id,
         filename,
         content_type,
         len(body),
         digest,
-        encoded,
+        stored_base64,
         remote.storage_key,
         remote.public_url,
         remote.provider,
@@ -83,11 +84,9 @@ async def load_upload_image(db: DatabaseClient, file_id: str, settings: Settings
         return None
     data_base64 = record.data_base64
     if not data_base64:
-        if not record.storage_key:
-            raise RuntimeError("File upload không có dữ liệu base64 hoặc storage key.")
-        if record.storage_provider != "r2":
-            raise RuntimeError("File upload không còn lưu base64 trong database cho provider này.")
-        data_base64 = base64.b64encode(r2_storage.load_file(record.storage_key, settings or get_settings())).decode("ascii")
+        body = await load_remote_upload_body(record, settings or get_settings())
+        verify_upload_body(record, body)
+        data_base64 = base64.b64encode(body).decode("ascii")
     return stored_image_from_record(record, data_base64)
 
 
@@ -143,6 +142,32 @@ async def store_remote_file_with_fallback(body: bytes, filename: str, content_ty
     if provider in {"appwrite", "r2"}:
         raise RuntimeError(f"Storage provider {provider} chưa được cấu hình đầy đủ.")
     return RemoteUpload(provider="database")
+
+
+async def load_remote_upload_body(record: UploadedFileRecord, settings: Settings) -> bytes:
+    if record.storage_provider == "r2":
+        if not record.storage_key:
+            raise RuntimeError("File upload R2 không có storage key.")
+        return r2_storage.load_file(record.storage_key, settings)
+    if record.storage_provider == "appwrite":
+        if not record.external_file_id:
+            raise RuntimeError("File upload Appwrite không có external file id.")
+        return await appwrite_storage.load_file(record.external_file_id, settings, record.storage_bucket)
+    raise RuntimeError("File upload không còn lưu base64 trong database cho provider này.")
+
+
+def verify_upload_body(record: UploadedFileRecord, body: bytes) -> None:
+    if len(body) != record.size:
+        raise RuntimeError("File upload remote không khớp kích thước đã lưu.")
+    digest = hashlib.sha256(body).hexdigest()
+    if digest != record.sha256:
+        raise RuntimeError("File upload remote không khớp checksum đã lưu.")
+
+
+def should_retain_base64(remote: RemoteUpload, settings: Settings) -> bool:
+    if settings.ocr_upload_base64_retention != "external_only":
+        return True
+    return remote.provider not in {"appwrite", "r2"}
 
 
 def stored_image_from_record(record: UploadedFileRecord, data_base64: str) -> StoredImage:

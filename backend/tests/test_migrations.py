@@ -1,7 +1,7 @@
 import asyncio
 from pathlib import Path
 
-from app.db.migrations import build_migration_drift, duplicate_migration_prefixes, warn_duplicate_migration_prefixes
+from app.db.migrations import apply_sqlite_migrations, build_migration_drift, duplicate_migration_prefixes, warn_duplicate_migration_prefixes
 from app.db.session import SQLiteClient
 
 
@@ -39,6 +39,18 @@ def test_duplicate_migration_prefixes_ignores_known_legacy_duplicates():
     ]
 
     assert duplicate_migration_prefixes(migrations) == {}
+
+
+def test_uploaded_files_cleanup_migration_adds_base64_cleared_at(tmp_path):
+    db = SQLiteClient(str(tmp_path / "test.db"))
+
+    asyncio.run(apply_sqlite_migrations(db))
+    columns = asyncio.run(db.fetch_all("PRAGMA table_info(uploaded_files)"))
+    indexes = asyncio.run(db.fetch_all("PRAGMA index_list(uploaded_files)"))
+
+    assert "base64_cleared_at" in {str(row["name"]) for row in columns}
+    assert "idx_uploaded_files_provider_created" in {str(row["name"]) for row in indexes}
+
 
 
 def test_build_migration_drift_reports_missing_and_extra(tmp_path, monkeypatch):

@@ -57,6 +57,7 @@ async def build_database_diagnostics(db: DatabaseClient) -> dict[str, Any]:
 
     migrations = await db.fetch_all("SELECT filename, applied_at FROM schema_migrations ORDER BY filename")
     migration_drift = await build_migration_drift(db)
+    uploaded_files_storage = await build_uploaded_files_storage_diagnostics(db)
     setting_rows = await AdminRepository(db).list_system_settings()
     settings_summary = {item.key: {"updated_at": item.updated_at, "updated_by": item.updated_by} for item in setting_rows}
     ai_settings_row = next((item for item in setting_rows if item.key == "ai_settings"), None)
@@ -81,6 +82,7 @@ async def build_database_diagnostics(db: DatabaseClient) -> dict[str, Any]:
         "migration_drift": migration_drift,
         "migrations": migrations,
         "counts": counts,
+        "uploaded_files_storage": uploaded_files_storage,
         "system_settings": settings_summary,
         "ai_settings": {
             "exists": ai_settings_row is not None,
@@ -100,6 +102,48 @@ async def build_database_diagnostics(db: DatabaseClient) -> dict[str, Any]:
             "legacy_ai_settings_present": registry.legacy_used,
             "canonical_registry_active": bool(registry.providers),
         },
+    }
+
+
+async def build_uploaded_files_storage_diagnostics(db: DatabaseClient) -> dict[str, Any]:
+    try:
+        total_row = await db.fetch_one("SELECT COUNT(*) AS count FROM uploaded_files")
+        provider_rows = await db.fetch_all(
+            """
+            SELECT COALESCE(storage_provider, 'database') AS provider, COUNT(*) AS count
+            FROM uploaded_files
+            GROUP BY COALESCE(storage_provider, 'database')
+            """
+        )
+        stats_row = await db.fetch_one(
+            """
+            SELECT
+              SUM(CASE WHEN data_base64 IS NOT NULL AND data_base64 != '' THEN 1 ELSE 0 END) AS rows_with_base64,
+              SUM(CASE WHEN storage_provider IN ('appwrite', 'r2') AND data_base64 IS NOT NULL AND data_base64 != '' THEN 1 ELSE 0 END) AS external_rows_with_base64,
+              SUM(CASE WHEN storage_provider IN ('appwrite', 'r2') AND (data_base64 IS NULL OR data_base64 = '') THEN 1 ELSE 0 END) AS external_only_rows,
+              SUM(CASE WHEN COALESCE(storage_provider, 'database') = 'database' THEN 1 ELSE 0 END) AS database_provider_rows,
+              SUM(CASE WHEN data_base64 IS NOT NULL AND data_base64 != '' THEN LENGTH(data_base64) ELSE 0 END) AS base64_chars,
+              SUM(CASE WHEN storage_provider IN ('appwrite', 'r2') AND data_base64 IS NOT NULL AND data_base64 != '' THEN 1 ELSE 0 END) AS default_cleanup_candidates,
+              SUM(CASE WHEN storage_provider IN ('appwrite', 'r2') AND data_base64 IS NOT NULL AND data_base64 != '' THEN LENGTH(data_base64) ELSE 0 END) AS default_cleanup_base64_chars
+            FROM uploaded_files
+            """
+        )
+    except Exception as error:
+        return {"error": str(error)}
+
+    base64_chars = int((stats_row or {}).get("base64_chars") or 0)
+    cleanup_base64_chars = int((stats_row or {}).get("default_cleanup_base64_chars") or 0)
+    return {
+        "total_rows": int((total_row or {}).get("count") or 0),
+        "rows_by_provider": {str(row["provider"]): int(row["count"] or 0) for row in provider_rows},
+        "rows_with_base64": int((stats_row or {}).get("rows_with_base64") or 0),
+        "external_rows_with_base64": int((stats_row or {}).get("external_rows_with_base64") or 0),
+        "external_only_rows": int((stats_row or {}).get("external_only_rows") or 0),
+        "database_provider_rows": int((stats_row or {}).get("database_provider_rows") or 0),
+        "base64_chars": base64_chars,
+        "estimated_inline_bytes": base64_chars * 3 // 4,
+        "default_cleanup_candidates": int((stats_row or {}).get("default_cleanup_candidates") or 0),
+        "default_cleanup_reclaimable_bytes": cleanup_base64_chars * 3 // 4,
     }
 
 

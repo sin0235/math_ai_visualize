@@ -41,19 +41,18 @@ async def store_file(body: bytes, filename: str, content_type: str, settings: Se
     )
 
 
+async def load_file(file_id: str, settings: Settings, bucket_id: str | None = None) -> bytes:
+    require_appwrite_config(settings)
+    return await asyncio.to_thread(_load_file_sync, file_id, settings, bucket_id)
+
+
 def _store_file_sync(body: bytes, filename: str, content_type: str, file_id: str, settings: Settings) -> dict:
+    storage = _storage_client(settings)
     try:
-        from appwrite.client import Client
         from appwrite.input_file import InputFile
-        from appwrite.services.storage import Storage
     except ImportError as error:
         raise RuntimeError("Appwrite SDK chưa được cài đặt trong backend.") from error
 
-    client = Client()
-    client.set_endpoint((settings.appwrite_endpoint or "").rstrip("/"))
-    client.set_project(settings.appwrite_project_id or "")
-    client.set_key(settings.appwrite_api_key or "")
-    storage = Storage(client)
     try:
         input_file = InputFile.from_bytes(body, filename=filename, mime_type=content_type)
     except TypeError:
@@ -64,6 +63,49 @@ def _store_file_sync(body: bytes, filename: str, content_type: str, file_id: str
         file=input_file,
     )
     return dict(created) if isinstance(created, dict) else {"id": file_id}
+
+
+def _load_file_sync(file_id: str, settings: Settings, bucket_id: str | None) -> bytes:
+    storage = _storage_client(settings)
+    downloaded = storage.get_file_download(
+        bucket_id=bucket_id or settings.appwrite_storage_bucket_id or "",
+        file_id=file_id,
+    )
+    return _download_to_bytes(downloaded)
+
+
+def _storage_client(settings: Settings):
+    try:
+        from appwrite.client import Client
+        from appwrite.services.storage import Storage
+    except ImportError as error:
+        raise RuntimeError("Appwrite SDK chưa được cài đặt trong backend.") from error
+
+    client = Client()
+    client.set_endpoint((settings.appwrite_endpoint or "").rstrip("/"))
+    client.set_project(settings.appwrite_project_id or "")
+    client.set_key(settings.appwrite_api_key or "")
+    return Storage(client)
+
+
+def _download_to_bytes(downloaded) -> bytes:
+    if isinstance(downloaded, bytes):
+        return downloaded
+    if isinstance(downloaded, bytearray):
+        return bytes(downloaded)
+    read = getattr(downloaded, "read", None)
+    if callable(read):
+        data = read()
+        if isinstance(data, bytes):
+            return data
+        if isinstance(data, bytearray):
+            return bytes(data)
+    content = getattr(downloaded, "content", None)
+    if isinstance(content, bytes):
+        return content
+    if isinstance(content, bytearray):
+        return bytes(content)
+    raise RuntimeError("Appwrite trả về dữ liệu file không hợp lệ.")
 
 
 def require_appwrite_config(settings: Settings) -> None:
