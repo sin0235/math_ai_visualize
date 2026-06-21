@@ -1,6 +1,6 @@
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 from app.schemas.advisory import QualityRiskAdvisory
 
@@ -138,6 +138,10 @@ class Relation(BaseModel):
     object_2: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
+    @field_serializer("metadata")
+    def serialize_metadata(self, value: dict[str, Any]) -> dict[str, Any]:
+        return _json_safe(value)
+
 
 class Annotation(BaseModel):
     """Annotation to display on the rendered figure.
@@ -154,6 +158,10 @@ class Annotation(BaseModel):
     label: str | None = None
     color: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_serializer("metadata")
+    def serialize_metadata(self, value: dict[str, Any]) -> dict[str, Any]:
+        return _json_safe(value)
 
 
 class SceneView(BaseModel):
@@ -184,6 +192,24 @@ class CasIssueResponse(BaseModel):
     severity: str = "warning"
     auto_fixed: bool = False
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_serializer("metadata")
+    def serialize_metadata(self, value: dict[str, Any]) -> dict[str, Any]:
+        return _json_safe(value)
+
+
+def _json_safe(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_json_safe(item) for item in value]
+    tolist = getattr(value, "tolist", None)
+    if callable(tolist):
+        return _json_safe(tolist())
+    item = getattr(value, "item", None)
+    if callable(item):
+        return _json_safe(item())
+    return value
 
 
 SceneObject = Point2D | Point3D | Segment | Line2D | Vector2D | Vector3D | Line3D | Circle2D | FunctionGraph | Face | Sphere | Plane

@@ -1,6 +1,10 @@
+import json
+
+import numpy as np
+
 from app.renderers.geogebra_commands import build_geogebra_commands
 from app.renderers.three_scene import build_three_scene
-from app.schemas.scene import AdvancedRenderSettings, MathScene, SceneView
+from app.schemas.scene import AdvancedRenderSettings, CasIssueResponse, MathScene, SceneView
 from app.services.extractor import normalize_scene_json
 
 
@@ -20,6 +24,44 @@ def test_normalize_angle_target_and_arms():
     assert data["annotations"][0]["metadata"]["arms"] == ["A", "C"]
     assert data["annotations"][0]["color"] == "#b45309"
     assert data["annotations"][1]["metadata"]["arms"] == ["E", "F"]
+
+
+def test_scene_metadata_serializes_numpy_values_to_json():
+    scene = MathScene(
+        problem_text="test",
+        renderer="threejs_3d",
+        objects=[],
+        relations=[
+            {
+                "type": "on_plane",
+                "object_1": "P",
+                "object_2": "plane(ABC)",
+                "metadata": {"expected": np.array([1.0, 2.0, 3.0])},
+            }
+        ],
+        annotations=[
+            {
+                "type": "coordinate_label",
+                "target": "P",
+                "metadata": {"coords": (np.float64(1.0), np.float64(2.0), np.float64(3.0))},
+            }
+        ],
+        cas_issues=[
+            CasIssueResponse(
+                relation_type="planarity",
+                description="Face không đồng phẳng",
+                metadata={"rms": np.float64(0.25), "normal": np.array([0.0, 0.0, 1.0])},
+            )
+        ],
+        view=SceneView(dimension="3d"),
+    )
+
+    payload = json.loads(scene.model_dump_json())
+
+    assert payload["relations"][0]["metadata"]["expected"] == [1.0, 2.0, 3.0]
+    assert payload["annotations"][0]["metadata"]["coords"] == [1.0, 2.0, 3.0]
+    assert payload["cas_issues"][0]["metadata"]["rms"] == 0.25
+    assert payload["cas_issues"][0]["metadata"]["normal"] == [0.0, 0.0, 1.0]
 
 
 def test_normalize_segment_target_and_color_names():
