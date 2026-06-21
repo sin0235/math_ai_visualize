@@ -1,5 +1,6 @@
 import type { MathScene } from '../types/scene';
 import { requestJson } from './core';
+import { uploadOcrImage } from './render';
 
 export interface CriticalPoint {
   x: string;
@@ -109,10 +110,23 @@ export async function analyzeFunction(expression: string, options?: AnalyzeOptio
 }
 
 export async function analyzeFunctionImage(imageDataUrl: string): Promise<AnalyzeResponse> {
+  return analyzeFunctionImageByPayload({ image_data_url: imageDataUrl });
+}
+
+export async function analyzeFunctionImageFile(file: File): Promise<AnalyzeResponse> {
+  const uploaded = await uploadOcrImage(file);
+  return analyzeFunctionImageByUploadId(uploaded.file_id);
+}
+
+export async function analyzeFunctionImageByUploadId(uploadId: string): Promise<AnalyzeResponse> {
+  return analyzeFunctionImageByPayload({ upload_id: uploadId });
+}
+
+function analyzeFunctionImageByPayload(payload: { image_data_url: string } | { upload_id: string }): Promise<AnalyzeResponse> {
   return requestJson('/api/analyze/ocr', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ image_data_url: imageDataUrl }),
+    body: JSON.stringify(payload),
   }, 'Không thể phân tích hàm số từ ảnh.');
 }

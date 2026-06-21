@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { analyzeFunction, analyzeFunctionImage, type AnalyzeOptions, type AnalyzeResponse } from '../../api/client';
+import { analyzeFunction, analyzeFunctionImageFile, type AnalyzeOptions, type AnalyzeResponse } from '../../api/client';
 
 type ToolKey = 'interval' | 'line' | 'transform';
 
@@ -134,7 +134,7 @@ export function useFunctionAnalysis(initialExpression: string, onWarnings?: (war
     setError(null);
     setResult(null);
     try {
-      const res = await analyzeFunctionImage(await readFileAsDataUrl(file));
+      const res = await analyzeFunctionImageFile(file);
       if (requestId !== analyzeRequestRef.current) return;
       if (res.ocr_expression) setExpression(res.ocr_expression);
       if (res.error) setError(res.error);
@@ -207,13 +207,4 @@ export function useFunctionAnalysis(initialExpression: string, onWarnings?: (war
     setIsAnimatingTransform,
     scheduleToolAnalyze,
   };
-}
-
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(new Error('Không đọc được ảnh.'));
-    reader.readAsDataURL(file);
-  });
 }

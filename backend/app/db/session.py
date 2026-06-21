@@ -88,6 +88,17 @@ def resolve_sqlite_path(path: str) -> Path:
         return sqlite_path
     return Path(__file__).resolve().parents[3] / sqlite_path
 
+
+def sqlite_path_diagnostics(path: str) -> dict[str, Any]:
+    resolved = resolve_sqlite_path(path)
+    return {
+        "configured_path": path,
+        "resolved_path": str(resolved),
+        "parent_exists": resolved.parent.exists(),
+        "file_exists": resolved.exists(),
+    }
+
+
 def create_database_client(settings: Settings) -> DatabaseClient:
     if settings.database_backend == "sqlite":
         return SQLiteClient(settings.sqlite_path)

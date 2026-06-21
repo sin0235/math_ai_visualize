@@ -5,10 +5,10 @@ API routes for:
 """
 from typing import Any
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app.api.deps import enforce_rate_limit, require_active_user, require_trusted_origin
-from app.api.routes_ocr import enforce_ocr_access
+from app.api.routes_ocr import enforce_ocr_access, resolve_image_source
 from app.db.models import UserRecord
 from app.db.session import DatabaseClient, get_database
 from app.repositories.admin import AdminRepository
@@ -71,8 +71,9 @@ async def analyze_from_ocr(
         or (ocr_profile.provider_id == "router9" and ocr_profile.model_id in {settings.router9_ocr_model, settings.router9_text_model})
     )
     try:
+        image_data_url = await resolve_image_source(request.image_data_url, request.upload_id, db, settings, user)
         ocr_result = await extract_text_from_image(
-            request.image_data_url,
+            image_data_url,
             settings,
             ocr_profile.provider_id if apply_ocr_profile and ocr_profile else None,
             ocr_profile.model_id if apply_ocr_profile and ocr_profile else None,
@@ -87,6 +88,8 @@ async def analyze_from_ocr(
         data["ocr_text"] = ocr_result.text
         data["ocr_expression"] = expression
         data["warnings"] = [*data.get("warnings", []), *ocr_result.warnings]
+    except HTTPException:
+        raise
     except Exception as e:
         raise api_error(400, f"Lỗi khi phân tích ảnh: {e}", "ANALYZE_OCR_FAILED") from e
 

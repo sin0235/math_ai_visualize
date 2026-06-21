@@ -10,6 +10,15 @@ export interface OcrResponse {
   warnings: string[];
 }
 
+export interface OcrUploadResponse {
+  file_id: string;
+  filename: string;
+  content_type: string;
+  size: number;
+  storage_provider: string;
+  public_url?: string | null;
+}
+
 export interface HealthResponse {
   status: string;
   app: string;
@@ -122,14 +131,30 @@ export async function renderProblem(
   }, 'Không thể dựng hình.');
 }
 
+export async function uploadOcrImage(file: File): Promise<OcrUploadResponse> {
+  const formData = new FormData();
+  formData.set('file', file);
+  return requestJson('/api/ocr/uploads', {
+    method: 'POST',
+    credentials: 'include',
+    body: formData,
+  }, 'Không thể upload ảnh OCR.');
+}
+
 export async function ocrImage(imageDataUrl: string): Promise<OcrResponse> {
+  return ocrImageByPayload({ image_data_url: imageDataUrl });
+}
+
+export async function ocrImageByUploadId(uploadId: string): Promise<OcrResponse> {
+  return ocrImageByPayload({ upload_id: uploadId });
+}
+
+function ocrImageByPayload(payload: { image_data_url: string } | { upload_id: string }): Promise<OcrResponse> {
   return requestJson('/api/ocr', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({
-      image_data_url: imageDataUrl,
-    }),
+    body: JSON.stringify(payload),
   }, 'Không thể OCR ảnh đề bài.');
 }
 

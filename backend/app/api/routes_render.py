@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Request, status
 
 from app.api.deps import enforce_rate_limit, require_active_user, require_trusted_origin
 from app.db.models import UserRecord
-from app.db.session import DatabaseClient, get_database
+from app.db.session import DatabaseClient, create_database_client, get_database
 from app.repositories.admin import AdminRepository
 from app.repositories.history import RenderHistoryRepository
 from app.core.config import get_settings
@@ -101,14 +101,15 @@ async def render_scene(
     request: SceneRenderRequest,
     http_request: Request,
     user: UserRecord = Depends(require_active_user),
-    db: DatabaseClient = Depends(get_database),
 ) -> RenderResponse:
     from app.services.geometry_engine import normalize_scene
     from app.services.quality_advisory import build_scene_advisory
     from app.services.renderer_router import build_render_payload
 
-    await enforce_rate_limit(db, http_request, user, "render_scene", 40 if user else 12, 60)
-    await enforce_render_access(db, user)
+    db = optional_database_for_scene_render(user)
+    if db is not None:
+        await enforce_rate_limit(db, http_request, user, "render_scene", 40 if user else 12, 60)
+        await enforce_render_access(db, user)
     scene = normalize_scene(request.scene, request.advanced_settings)
     payload = build_render_payload(scene, request.advanced_settings)
     warnings = []
@@ -131,6 +132,15 @@ async def render_scene(
             renderer=scene.renderer,
         )
     return response
+
+
+def optional_database_for_scene_render(user: UserRecord | None) -> DatabaseClient | None:
+    try:
+        return create_database_client(get_settings())
+    except RuntimeError:
+        if user is not None:
+            raise
+        return None
 
 
 async def enforce_render_access(db: DatabaseClient, user: UserRecord | None) -> None:

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AdminConsole } from './components/admin/AdminConsole';
-import { ApiError, changePassword, deleteRenderHistory, forgotPassword, getCurrentUser, getHealth, getRenderHistory, getRenderHistoryDetail, getSessions, getSettingsDefaults, login, loginWithGoogle, logout, ocrImage, register, renderEditedScene, renderProblem, resendVerification, resetPassword, revokeOtherSessions, revokeSession, updateProfile, verifyEmail, type AdminRenderHistoryDetail, type RenderHistoryItem, type SessionResponse, type UserResponse } from './api/client';
+import { ApiError, changePassword, deleteRenderHistory, forgotPassword, getCurrentUser, getHealth, getRenderHistory, getRenderHistoryDetail, getSessions, getSettingsDefaults, login, loginWithGoogle, logout, ocrImageByUploadId, register, renderEditedScene, renderProblem, resendVerification, resetPassword, revokeOtherSessions, revokeSession, updateProfile, uploadOcrImage, verifyEmail, type AdminRenderHistoryDetail, type RenderHistoryItem, type SessionResponse, type UserResponse } from './api/client';
 import { defaultAdvancedSettings, ProblemInput, type ModelOption, type TierKey } from './components/ProblemInput';
 import { AccountPage } from './components/AccountPage';
 import { FeedbackPage } from './components/FeedbackPage';
@@ -435,8 +435,8 @@ export default function App() {
     ocrInFlightRef.current = true;
     setOcrLoading(true);
     try {
-      const imageDataUrl = await fileToDataUrl(file);
-      const response = await ocrImage(imageDataUrl);
+      const uploaded = await uploadOcrImage(file);
+      const response = await ocrImageByUploadId(uploaded.file_id);
       setProblemText(response.text.trim());
     } catch (caught) {
       const apiError = toApiError(caught, 'Không thể OCR ảnh đề bài.');
@@ -1407,21 +1407,6 @@ function providerSettingsFromAdminDefaults(defaults: SettingsDefaults['openroute
     allowed_model_ids: defaults.allowed_model_ids,
     last_scanned_at: '',
   };
-}
-
-function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        resolve(reader.result);
-      } else {
-        reject(new Error('Không đọc được ảnh OCR.'));
-      }
-    };
-    reader.onerror = () => reject(new Error('Không đọc được ảnh OCR.'));
-    reader.readAsDataURL(file);
-  });
 }
 
 function buildModelOptions(settings: RuntimeSettings, defaults?: SettingsDefaults | null): ModelOption[] {

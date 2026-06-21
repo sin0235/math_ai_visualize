@@ -94,12 +94,44 @@ export interface AdminPlanResponse {
   updated_at: string;
 }
 
+export interface AdminUploadedFilesStorageDiagnostics {
+  total_rows: number;
+  rows_by_provider: Record<string, number>;
+  rows_with_base64: number;
+  external_rows_with_base64: number;
+  external_only_rows: number;
+  database_provider_rows: number;
+  base64_chars: number;
+  estimated_inline_bytes: number;
+  default_cleanup_candidates: number;
+  default_cleanup_reclaimable_bytes: number;
+  error?: string;
+}
+
 export interface AdminDatabaseDiagnostics {
   backend: string;
   sqlite_path?: string | null;
   configured_sqlite_path: string;
+  resolved_sqlite_path?: string | null;
+  sqlite_path_diagnostics?: {
+    configured_path: string;
+    resolved_path: string;
+    parent_exists: boolean;
+    file_exists: boolean;
+  };
+  migration_drift?: {
+    ok: boolean;
+    available_count: number;
+    applied_count: number;
+    missing_migrations: string[];
+    extra_migrations: string[];
+    latest_available_migration?: string | null;
+    latest_applied_migration?: string | null;
+    unexpected_duplicate_prefixes: Record<string, string[]>;
+  };
   migrations: Array<{ filename: string; applied_at: string }>;
   counts: Record<string, number | string>;
+  uploaded_files_storage?: AdminUploadedFilesStorageDiagnostics;
   system_settings: Record<string, { updated_at: string; updated_by?: string | null }>;
   ai_settings: {
     exists: boolean;
@@ -108,7 +140,97 @@ export interface AdminDatabaseDiagnostics {
     router9_only_mode?: boolean | null;
     router9_allowed_model_count: number;
     router9_scanned_model_count: number;
+    legacy_canonical_drift?: {
+      ok: boolean;
+      differences: Array<{ field: string; legacy?: unknown; canonical?: unknown }>;
+    };
   };
+  model_registry?: {
+    provider_count: number;
+    model_count: number;
+    allowed_model_count: number;
+    stale_allowed_model_count: number;
+    legacy_ai_settings_present: boolean;
+    canonical_registry_active: boolean;
+  };
+}
+
+export interface AdminDatabaseCleanupRequest {
+  dry_run: boolean;
+  limit_per_table?: number;
+  tables?: string[] | null;
+  min_age_hours?: number;
+  verify_remote?: boolean;
+  providers?: Array<'appwrite' | 'r2'> | null;
+  confirm?: string | null;
+  delete_remote?: boolean;
+  delete_db_record?: boolean;
+}
+
+export interface AdminDevDataResetRequest {
+  dry_run: boolean;
+  confirm?: string | null;
+  delete_upload_remotes?: boolean;
+}
+
+export interface AdminDevDataResetResponse {
+  dry_run: boolean;
+  confirm_required: string;
+  tables: Record<string, number>;
+  remote_deleted: number;
+  remote_skipped: number;
+  warnings: string[];
+}
+
+export interface AdminStorageCheckRequest {
+  provider: 'auto' | 'appwrite' | 'r2';
+  write?: boolean;
+  read_back?: boolean;
+  delete_after?: boolean;
+}
+
+export interface AdminStorageCheckResult {
+  provider: string;
+  status: string;
+  configured: boolean;
+  steps: Array<{ name: string; status: string; message: string }>;
+  warnings: string[];
+  storage_key?: string | null;
+  external_file_id?: string | null;
+  latency_ms: number;
+}
+
+export interface AdminStorageCheckResponse {
+  provider: string;
+  status: string;
+  results: AdminStorageCheckResult[];
+}
+
+export interface AdminDatabaseCleanupTableResult {
+  candidates: number;
+  deleted?: number;
+  cleared?: number;
+  remote_deleted?: number;
+  db_deleted?: number;
+  skipped?: number;
+  bytes_reclaimable?: number;
+  bytes_cleared?: number;
+  dry_run: boolean;
+  limit: number;
+  min_age_hours?: number;
+  verify_remote?: boolean;
+  providers?: string[];
+  by_provider?: Record<string, { candidates: number; bytes_reclaimable: number }>;
+  warnings?: string[];
+  error?: string;
+}
+
+export interface AdminDatabaseCleanupResponse {
+  dry_run: boolean;
+  limit_per_table: number;
+  tables: Record<string, AdminDatabaseCleanupTableResult>;
+  warnings: string[];
+  report_only_tables: string[];
 }
 
 export interface AdminProviderCheckResponse {
@@ -177,6 +299,33 @@ export async function updateAdminSystemSetting(key: string, value: Record<string
 
 export async function getAdminDatabaseDiagnostics(): Promise<AdminDatabaseDiagnostics> {
   return requestJson('/api/admin/database/diagnostics', { credentials: 'include' }, 'Không thể tải chẩn đoán database.');
+}
+
+export async function cleanupAdminDatabase(request: AdminDatabaseCleanupRequest): Promise<AdminDatabaseCleanupResponse> {
+  return requestJson('/api/admin/database/cleanup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(request),
+  }, 'Không thể chạy cleanup database.');
+}
+
+export async function resetAdminDevData(request: AdminDevDataResetRequest): Promise<AdminDevDataResetResponse> {
+  return requestJson('/api/admin/database/reset-dev-data', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(request),
+  }, 'Không thể reset dữ liệu dev.');
+}
+
+export async function checkAdminStorage(request: AdminStorageCheckRequest): Promise<AdminStorageCheckResponse> {
+  return requestJson('/api/admin/storage/check', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(request),
+  }, 'Không thể kiểm tra storage upload.');
 }
 
 export async function checkAdminProvider(provider: string, runtimeSettings: RuntimeSettings): Promise<AdminProviderCheckResponse> {

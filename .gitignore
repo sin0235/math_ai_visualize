@@ -12,14 +12,26 @@ backend/.env.*
 __pycache__/
 *.py[cod]
 .pytest_cache/
+*.egg-info/
 backend/.venv/
 .venv/
+.codex_pytest_tmp_base_url/
+backend/.codex_pytest_tmp_base_url/
+scratch/
+backend/scratch/
 
 # Node / Vite
 node_modules/
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
+*.tsbuildinfo
+
+# Local data/cache
+.data/
+backend/.data/
+backend/backend/.data/
+.wrangler/
 
 # OS / editor
 .DS_Store

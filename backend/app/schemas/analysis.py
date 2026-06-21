@@ -1,6 +1,6 @@
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.schemas.scene import MAX_IMAGE_DATA_URL_CHARS, RuntimeSettings
 
@@ -15,8 +15,17 @@ class AnalyzeRequest(BaseModel):
 
 
 class AnalyzeOcrRequest(BaseModel):
-    image_data_url: str = Field(min_length=1, max_length=MAX_IMAGE_DATA_URL_CHARS)
+    model_config = ConfigDict(extra="forbid")
+
+    image_data_url: str | None = Field(default=None, min_length=1, max_length=MAX_IMAGE_DATA_URL_CHARS)
+    upload_id: str | None = Field(default=None, min_length=1, max_length=128)
     runtime_settings: RuntimeSettings | None = None
+
+    @model_validator(mode="after")
+    def validate_image_source(self) -> "AnalyzeOcrRequest":
+        if bool(self.image_data_url) == bool(self.upload_id):
+            raise ValueError("Cần gửi đúng một trong hai trường image_data_url hoặc upload_id.")
+        return self
 
 
 class CriticalPoint(BaseModel):

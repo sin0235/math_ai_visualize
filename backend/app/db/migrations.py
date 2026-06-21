@@ -1,5 +1,6 @@
 import logging
 from pathlib import Path
+from typing import Any
 
 import aiosqlite
 
@@ -99,21 +100,48 @@ async def ensure_chat_image_columns(db: DatabaseClient) -> None:
                 raise
 
 
+async def build_migration_drift(db: DatabaseClient) -> dict[str, Any]:
+    local_files = [migration.name for migration in list_migration_files()]
+    applied_rows = await db.fetch_all("SELECT filename, applied_at FROM schema_migrations ORDER BY filename")
+    applied_files = [str(row["filename"]) for row in applied_rows]
+    missing = [filename for filename in local_files if filename not in applied_files]
+    extra = [filename for filename in applied_files if filename not in local_files]
+    unexpected_duplicates = duplicate_migration_prefixes(list_migration_files())
+    return {
+        "ok": not missing and not extra and not unexpected_duplicates,
+        "available_count": len(local_files),
+        "applied_count": len(applied_files),
+        "missing_migrations": missing,
+        "extra_migrations": extra,
+        "latest_available_migration": local_files[-1] if local_files else None,
+        "latest_applied_migration": applied_files[-1] if applied_files else None,
+        "unexpected_duplicate_prefixes": unexpected_duplicates,
+    }
+
+
+def list_migration_files() -> list[Path]:
+    return sorted(migrations_path().glob("*.sql"))
+
+
 def migrations_path() -> Path:
     return Path(__file__).resolve().parents[3] / "migrations"
 
 
-def warn_duplicate_migration_prefixes(migrations: list[Path]) -> None:
+def duplicate_migration_prefixes(migrations: list[Path]) -> dict[str, list[str]]:
     by_prefix: dict[str, list[str]] = {}
     for migration in migrations:
         prefix = migration.name.split("_", 1)[0]
         if prefix.isdigit():
             by_prefix.setdefault(prefix, []).append(migration.name)
-    duplicates = {
+    return {
         prefix: names
         for prefix, names in by_prefix.items()
         if len(names) > 1 and set(names) != LEGACY_DUPLICATE_MIGRATION_PREFIXES.get(prefix)
     }
+
+
+def warn_duplicate_migration_prefixes(migrations: list[Path]) -> None:
+    duplicates = duplicate_migration_prefixes(migrations)
     if duplicates:
         details = "; ".join(f"{prefix}: {', '.join(names)}" for prefix, names in sorted(duplicates.items()))
         logger.warning("Duplicate migration numeric prefixes found: %s", details)
