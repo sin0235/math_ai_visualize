@@ -15,7 +15,7 @@ def interpret_algebra_input(request: AlgebraSolveRequest) -> AlgebraInputInterpr
     raw = request.input.strip()
     detected_format = _detect_format(raw, request.input_format)
     canonical = _canonical_from_natural_language(raw) if detected_format in {"natural_vi", "mixed"} else raw
-    structured = _structured_from_natural_language(raw)
+    structured = None if is_structured_algebra_input(raw) else _structured_from_natural_language(raw)
     if structured:
         canonical = structured
     is_structured = is_structured_algebra_input(canonical)
@@ -203,18 +203,26 @@ def _sequence_template_from_text(plain: str) -> str | None:
     if n:
         values["n"] = n
     if "u1" not in values:
-        values["u1"] = _extract_named_number(plain, ("u1", "u_1", "u₁", "so hang dau", "số hạng đầu"))
+        u1 = _extract_named_number(plain, ("u1", "u_1", "u₁", "so hang dau", "số hạng đầu"))
+        if u1 is not None:
+            values["u1"] = u1
     if "d" not in values:
-        values["d"] = _extract_named_number(plain, ("cong sai", "d"))
+        d = _extract_named_number(plain, ("cong sai", "d"))
+        if d is not None:
+            values["d"] = d
     if "q" not in values:
-        values["q"] = _extract_named_number(plain, ("cong boi", "công bội", "q"))
+        q = _extract_named_number(plain, ("cong boi", "công bội", "q"))
+        if q is not None:
+            values["q"] = q
     if "u1" not in values or "n" not in values:
         return None
     asks_sum = "tong" in plain or "s_n" in plain or "sn" in plain
-    if ("cong" in plain or "d" in values) and ("q" not in values):
+    has_d = values.get("d") is not None
+    has_q = values.get("q") is not None
+    if ("cong" in plain or has_d) and not has_q:
         name = "arithmetic_sum" if asks_sum else "arithmetic"
         return f"{name}(u1={values['u1']},d={values.get('d', 0)},n={values['n']})"
-    if "nhan" in plain or "q" in values:
+    if "nhan" in plain or has_q:
         name = "geometric_sum" if asks_sum else "geometric"
         return f"{name}(u1={values['u1']},q={values.get('q', 0)},n={values['n']})"
     return None

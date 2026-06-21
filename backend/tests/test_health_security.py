@@ -28,7 +28,11 @@ def test_health_detail_requires_admin(tmp_path):
         asyncio.run(db.execute("UPDATE users SET role = 'admin' WHERE id = ?", [user.id]))
         login = client.post("/api/auth/login", json={"email": "admin@example.com", "password": "StrongPass123"})
         assert login.status_code == 200
-        assert client.get("/api/health/detail").status_code == 200
+        detail = client.get("/api/health/detail")
+        assert detail.status_code == 200
+        payload = detail.json()
+        assert payload["database"]["migration_drift"]["ok"] is True
+        assert payload["database"]["migration_drift"]["missing_migrations"] == []
     finally:
         app.dependency_overrides.clear()
 

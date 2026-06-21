@@ -2,7 +2,7 @@ import asyncio
 import json
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from pydantic import ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from app.api.deps import enforce_rate_limit, require_admin_user, require_trusted_origin
 from app.api.routes_history import parse_json_object
@@ -34,11 +34,18 @@ from app.schemas.auth import (
 from app.schemas.feedback import AdminFeedbackResponse, AdminFeedbackUpdateRequest
 from app.schemas.scene import MathScene, ModelScanRequest, RenderPayload
 from app.services.admin_settings import build_database_diagnostics, normalize_provider_defaults, sync_ai_profiles_to_registry, sync_ai_settings_to_registry, sync_ai_tier_profiles_to_registry
+from app.services.database_cleanup import cleanup_database
 from app.services.model_provider import canonicalize_fallback_models, canonicalize_model_ref, explicit_provider_from_model
 from app.services.model_registry import resolve_effective_settings, save_provider_check
 from app.services.provider_ping import ADMIN_PING_PROVIDERS, ping_provider
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
+
+
+class DatabaseCleanupRequest(BaseModel):
+    dry_run: bool = True
+    limit_per_table: int = Field(default=100, ge=1, le=5000)
+    tables: list[str] | None = None
 
 
 @router.get("/summary", response_model=AdminSummaryResponse)
@@ -299,6 +306,21 @@ async def admin_system_settings(_: UserRecord = Depends(require_admin_user), db:
 @router.get("/database/diagnostics")
 async def admin_database_diagnostics(_: UserRecord = Depends(require_admin_user), db: DatabaseClient = Depends(get_database)) -> dict:
     return await build_database_diagnostics(db)
+
+
+@router.post("/database/cleanup", dependencies=[Depends(require_trusted_origin)])
+async def admin_database_cleanup(
+    request: DatabaseCleanupRequest,
+    http_request: Request,
+    admin: UserRecord = Depends(require_admin_user),
+    db: DatabaseClient = Depends(get_database),
+) -> dict:
+    await enforce_rate_limit(db, http_request, admin, "admin_database_cleanup", 5, 60)
+    result = await cleanup_database(db, dry_run=request.dry_run, limit_per_table=request.limit_per_table, tables=request.tables)
+    if not request.dry_run:
+        deleted = {table: item.get("deleted", 0) for table, item in result["tables"].items()}
+        await AdminRepository(db).audit(admin.id, "admin.database.cleanup", "database", None, {"deleted": deleted})
+    return result
 
 
 @router.put("/system-settings", response_model=SystemSettingResponse, dependencies=[Depends(require_trusted_origin)])

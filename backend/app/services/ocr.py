@@ -15,7 +15,6 @@ from app.services.router9_client import Router9Client
 from app.services.provider_logging import redact_sensitive
 
 _IMAGE_DATA_URL_RE = re.compile(r"^data:image/(png|jpeg|jpg|webp|gif);base64,([A-Za-z0-9+/=\s]+)$", re.IGNORECASE)
-_MAX_IMAGE_BYTES = 5 * 1024 * 1024
 DIAGRAM_OCR_SYSTEM_PROMPT = """
 Bạn là bộ mô tả hình vẽ toán học tiếng Việt.
 Nhìn ảnh hình vẽ tay/in và chuyển thành đề bài hình học có thể dựng lại.
@@ -45,7 +44,7 @@ class OcrAttempt:
         return f"{self.provider}/{self.model}: {_short_error(self.message)}"
 
 
-def validate_image_data_url(image_data_url: str) -> None:
+def validate_image_data_url(image_data_url: str, max_mb: int = 5) -> None:
     match = _IMAGE_DATA_URL_RE.match(image_data_url.strip())
     if not match:
         raise ValueError("Ảnh OCR phải là data URL base64 dạng PNG/JPEG/WebP/GIF.")
@@ -54,8 +53,9 @@ def validate_image_data_url(image_data_url: str) -> None:
         image_bytes = base64.b64decode(encoded, validate=True)
     except ValueError as error:
         raise ValueError("Dữ liệu ảnh OCR không phải base64 hợp lệ.") from error
-    if len(image_bytes) > _MAX_IMAGE_BYTES:
-        raise ValueError("Ảnh OCR vượt quá giới hạn 5MB.")
+    max_bytes = max(1, int(max_mb)) * 1024 * 1024
+    if len(image_bytes) > max_bytes:
+        raise ValueError(f"Ảnh OCR vượt quá giới hạn {max_mb}MB.")
 
 
 async def extract_text_from_image(
@@ -66,7 +66,7 @@ async def extract_text_from_image(
     mode: OcrMode = "problem",
     fallback_models: list[str] | None = None,
 ) -> OcrResult:
-    validate_image_data_url(image_data_url)
+    validate_image_data_url(image_data_url, settings.ocr_image_max_mb)
     attempts: list[OcrAttempt] = []
     auto_selection = provider is None and model is None
     selected_provider = "router9" if auto_selection and settings.router9_only else resolve_ocr_provider(provider, model)

@@ -11,6 +11,7 @@ from app.api.deps import require_active_user
 from app.db.session import SQLiteClient, get_database
 from app.repositories.auth import SESSION_COOKIE_NAME, SessionRepository, UserRepository
 from app.main import app
+from app.services.ocr import OcrResult
 from app.services.model_provider import resolve_ocr_provider
 from app.services.ocr import extract_text_from_image, validate_image_data_url
 from app.services.openrouter_client import OpenRouterClient
@@ -81,6 +82,107 @@ def test_resolve_ocr_provider_supports_all_admin_providers():
     assert resolve_ocr_provider(None, "nvidia/model") == "openrouter"
     assert resolve_ocr_provider(None, "ollama/llava") == "ollama"
     assert resolve_ocr_provider(None, "openai_compat/vision") == "openai_compat"
+
+
+def test_ocr_upload_endpoint_returns_file_metadata_without_data_url(monkeypatch, isolated_database):
+    async def fake_extract_text_from_image(*args, **kwargs):
+        raise AssertionError("Upload endpoint must not run OCR directly")
+
+    monkeypatch.setattr("app.services.ocr.extract_text_from_image", fake_extract_text_from_image)
+
+    response = TestClient(app).post(
+        "/api/ocr/uploads",
+        files={"file": ("problem.png", b"fake-png", "image/png")},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["file_id"]
+    assert data["filename"] == "problem.png"
+    assert data["content_type"] == "image/png"
+    assert data["size"] == len(b"fake-png")
+    assert data["storage_provider"] == "database"
+    assert "data_url" not in data
+
+
+
+def test_ocr_route_accepts_upload_id(monkeypatch, isolated_database):
+    settings = Settings(
+        _env_file=None,
+        sqlite_path=isolated_database.path,
+        openrouter_api_key="secret",
+        local_ocr_enabled=False,
+    )
+    _override_ocr_settings(monkeypatch, settings)
+    captured = []
+
+    async def fake_extract_text_from_image(image_data_url, settings, provider=None, model=None, mode="problem", fallback_models=None):
+        captured.append(image_data_url)
+        return OcrResult(text="Cho tam giác ABC.", provider="openrouter", model="vision/model", warnings=[])
+
+    async def seed_upload():
+        user_row = await isolated_database.fetch_one("SELECT * FROM users WHERE email = ?", ["ocr@example.com"])
+        assert user_row is not None
+        await isolated_database.execute(
+            """
+            INSERT INTO uploaded_files (id, user_id, filename, content_type, size, sha256, data_base64)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            ["upload-owned", user_row["id"], "problem.png", "image/png", 5, "sha", "aGVsbG8="],
+        )
+
+    asyncio.run(seed_upload())
+    monkeypatch.setattr("app.api.routes_ocr.extract_text_from_image", fake_extract_text_from_image)
+
+    response = TestClient(app).post("/api/ocr", json={"upload_id": "upload-owned"})
+
+    assert response.status_code == 200
+    assert response.json()["text"] == "Cho tam giác ABC."
+    assert captured == [_IMAGE_DATA_URL]
+
+
+
+def test_ocr_route_rejects_missing_or_duplicate_image_source():
+    client = TestClient(app)
+
+    missing = client.post("/api/ocr", json={})
+    duplicate = client.post("/api/ocr", json={"image_data_url": _IMAGE_DATA_URL, "upload_id": "upload-owned"})
+
+    assert missing.status_code == 422
+    assert duplicate.status_code == 422
+
+
+
+def test_ocr_route_rejects_upload_owned_by_other_user(monkeypatch, isolated_database):
+    settings = Settings(
+        _env_file=None,
+        sqlite_path=isolated_database.path,
+        openrouter_api_key="secret",
+        local_ocr_enabled=False,
+    )
+    _override_ocr_settings(monkeypatch, settings)
+
+    async def fake_extract_text_from_image(*args, **kwargs):
+        raise AssertionError("OCR must not run for another user's upload")
+
+    async def seed_upload():
+        other = await UserRepository(isolated_database).create("other@example.com", "StrongPass123")
+        await isolated_database.execute(
+            """
+            INSERT INTO uploaded_files (id, user_id, filename, content_type, size, sha256, data_base64)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            ["upload-other", other.id, "problem.png", "image/png", 5, "sha", "aGVsbG8="],
+        )
+
+    asyncio.run(seed_upload())
+    monkeypatch.setattr("app.api.routes_ocr.extract_text_from_image", fake_extract_text_from_image)
+
+    response = TestClient(app).post("/api/ocr", json={"upload_id": "upload-other"})
+
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "OCR_FAILED"
+
 
 
 def test_ocr_route_returns_openrouter_text(monkeypatch, isolated_database):

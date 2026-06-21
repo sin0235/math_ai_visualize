@@ -57,6 +57,15 @@ class Settings(BaseSettings):
     r2_bucket_name: str | None = None
     r2_public_base_url: str | None = None
     r2_upload_prefix: str = "uploads"
+    appwrite_endpoint: str | None = None
+    appwrite_project_id: str | None = None
+    appwrite_api_key: str | None = None
+    appwrite_database_id: str | None = None
+    appwrite_storage_bucket_id: str | None = None
+    appwrite_upload_prefix: str = "uploads"
+    appwrite_public_base_url: str | None = None
+    ocr_upload_storage_provider: Literal["auto", "appwrite", "r2", "database"] = "auto"
+    ocr_image_max_mb: int = 10
     cloudinary_cloud_name: str | None = None
     cloudinary_api_key: str | None = None
     cloudinary_api_secret: str | None = None

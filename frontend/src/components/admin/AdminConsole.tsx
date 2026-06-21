@@ -1177,14 +1177,23 @@ function AdminSystemSettingRow({ item }: { item: SystemSettingResponse }) {
 function AdminDatabaseDiagnosticsPanel({ diagnostics }: { diagnostics: AdminDatabaseDiagnostics }) {
   const countRows = Object.entries(diagnostics.counts);
   const settingRows = Object.entries(diagnostics.system_settings);
+  const missingMigrations = diagnostics.migration_drift?.missing_migrations ?? [];
+  const extraMigrations = diagnostics.migration_drift?.extra_migrations ?? [];
+  const aiDrift = diagnostics.ai_settings.legacy_canonical_drift;
   return (
     <div className="admin-section-stack">
       <div className="admin-field-grid">
         <span><strong>Backend</strong>{diagnostics.backend}</span>
-        <span><strong>SQLite path</strong>{diagnostics.sqlite_path || diagnostics.configured_sqlite_path || 'Không dùng SQLite'}</span>
-        <span><strong>Migrations</strong>{diagnostics.migrations.length} đã áp dụng</span>
+        <span><strong>SQLite path</strong>{diagnostics.sqlite_path || diagnostics.resolved_sqlite_path || diagnostics.configured_sqlite_path || 'Không dùng SQLite'}</span>
+        <span><strong>Migrations</strong>{diagnostics.migration_drift ? `${diagnostics.migration_drift.applied_count}/${diagnostics.migration_drift.available_count} đã áp dụng` : `${diagnostics.migrations.length} đã áp dụng`}</span>
         <span><strong>Legacy ai_settings</strong>{diagnostics.ai_settings.exists ? 'Có' : 'Không'}</span>
       </div>
+      {diagnostics.migration_drift && !diagnostics.migration_drift.ok && (
+        <p className="error-box">Database đang lệch migration: thiếu {missingMigrations.length}, dư {extraMigrations.length}. Xem chi tiết trong Migration drift.</p>
+      )}
+      {aiDrift && !aiDrift.ok && (
+        <p className="error-box">Legacy ai_settings đang lệch canonical registry ở {aiDrift.differences.length} mục. Không hiển thị secret trong chẩn đoán này.</p>
+      )}
       <section className="admin-settings-section">
         <h4>Bảng dữ liệu</h4>
         <div className="admin-table">
@@ -1199,6 +1208,9 @@ function AdminDatabaseDiagnosticsPanel({ diagnostics }: { diagnostics: AdminData
           {settingRows.length === 0 && <p className="field-hint">Chưa có bản ghi system_settings.</p>}
         </div>
       </section>
+      <AdminDetails title="SQLite path diagnostics" value={diagnostics.sqlite_path_diagnostics ?? {}} />
+      <AdminDetails title="Migration drift" value={diagnostics.migration_drift ?? {}} />
+      <AdminDetails title="AI settings drift" value={aiDrift ?? {}} />
       <AdminDetails title="Migration raw" value={diagnostics.migrations} />
     </div>
   );

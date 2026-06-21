@@ -6,7 +6,7 @@ from app.core.config import Settings
 from app.db.migrations import apply_sqlite_migrations
 from app.db.session import SQLiteClient
 from app.schemas.scene import AiModelInfo
-from app.services.admin_settings import sync_ai_profiles_to_registry, sync_ai_settings_to_registry
+from app.services.admin_settings import build_ai_settings_drift, sync_ai_profiles_to_registry, sync_ai_settings_to_registry
 from app.services.model_registry import (
     load_model_registry,
     resolve_effective_settings,
@@ -348,6 +348,28 @@ async def test_sync_ai_settings_patch_only_updates_touched_provider(db):
 
     assert registry.providers["openrouter"].default_model_id == "new/openrouter"
     assert registry.providers["nvidia"].default_model_id == "old-nvidia"
+
+
+@pytest.mark.anyio
+async def test_ai_settings_drift_reports_legacy_canonical_difference_without_secrets(db):
+    await load_model_registry(db, Settings(_env_file=None))
+    await save_provider_config(db, "openrouter", "https://canonical.example/v1", "canonical/model")
+    registry = await load_model_registry(db, Settings(_env_file=None))
+
+    drift = build_ai_settings_drift({
+        "version": 1,
+        "default_provider": "openrouter",
+        "openrouter": {
+            "api_key": "legacy-secret",
+            "base_url": "https://legacy.example/v1",
+            "model": "legacy/model",
+        },
+    }, registry)
+
+    assert drift["ok"] is False
+    assert any(item["field"] == "openrouter.base_url" for item in drift["differences"])
+    assert any(item["field"] == "openrouter.model" for item in drift["differences"])
+    assert "legacy-secret" not in json.dumps(drift)
 
 
 @pytest.mark.anyio

@@ -1,20 +1,47 @@
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 
 from app.api.deps import enforce_rate_limit, require_active_user, require_trusted_origin
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.db.models import UserRecord
 from app.db.session import DatabaseClient, get_database
 from app.repositories.admin import AdminRepository
 from app.schemas.auth import SystemFeatureFlags
-from app.schemas.scene import OcrRequest, OcrResponse
+from app.schemas.scene import OcrRequest, OcrResponse, OcrUploadResponse
 from app.services.api_errors import api_error, bad_request_from_error
 from app.services.model_registry import load_model_registry, resolve_effective_settings, resolve_task_profile
 from app.services.ocr import extract_text_from_image
 from app.services.system_settings import load_feature_flags
+from app.services.upload_storage import StoredImage, load_upload_image, save_upload_image
 
 router = APIRouter(prefix="/api", tags=["ocr"])
+
+
+@router.post("/ocr/uploads", response_model=OcrUploadResponse, dependencies=[Depends(require_trusted_origin)])
+async def upload_ocr_image(
+    http_request: Request,
+    file: UploadFile = File(...),
+    user: UserRecord = Depends(require_active_user),
+    db: DatabaseClient = Depends(get_database),
+    settings: Settings = Depends(get_settings),
+) -> OcrUploadResponse:
+    await enforce_rate_limit(db, http_request, user, "ocr_upload", 18, 60, settings)
+    await enforce_ocr_access(db, user)
+    try:
+        stored = await save_upload_image(file, settings, db, user.id)
+    except ValueError as error:
+        raise bad_request_from_error(error, "ocr_failed") from error
+    except RuntimeError as error:
+        raise bad_request_from_error(error, "ocr_failed") from error
+    return OcrUploadResponse(
+        file_id=stored.file_id,
+        filename=stored.filename,
+        content_type=stored.content_type,
+        size=stored.size,
+        storage_provider=stored.storage_provider,
+        public_url=stored.public_url,
+    )
 
 
 @router.post("/ocr", response_model=OcrResponse, dependencies=[Depends(require_trusted_origin)])
@@ -27,6 +54,7 @@ async def ocr_image(
     await enforce_rate_limit(db, http_request, user, "ocr", 12 if user else 4, 60)
     await enforce_ocr_access(db, user)
     settings = await resolve_effective_settings(db, None)
+    image_data_url = await resolve_ocr_image_data_url(request, db, settings, user)
     registry = await load_model_registry(db, settings)
     raw_ocr_profile = registry.task_profiles.get("ocr")
     try:
@@ -39,7 +67,7 @@ async def ocr_image(
     profile_fallbacks = ocr_profile.fallbacks if apply_profile else []
     try:
         result = await extract_text_from_image(
-            request.image_data_url,
+            image_data_url,
             settings,
             profile_provider,
             profile_model,
@@ -51,6 +79,32 @@ async def ocr_image(
     if user is not None:
         await AdminRepository(db).record_user_usage_event(user.id, "ocr", {"provider": result.provider, "model": result.model})
     return OcrResponse(text=result.text, provider=result.provider, model=result.model, warnings=result.warnings)
+
+
+async def resolve_ocr_image_data_url(request: OcrRequest, db: DatabaseClient, settings: Settings, user: UserRecord) -> str:
+    return await resolve_image_source(request.image_data_url, request.upload_id, db, settings, user)
+
+
+async def resolve_image_source(image_data_url: str | None, upload_id: str | None, db: DatabaseClient, settings: Settings, user: UserRecord) -> str:
+    if image_data_url:
+        return image_data_url
+    if not upload_id:
+        raise bad_request_from_error(ValueError("Cần gửi image_data_url hoặc upload_id."), "ocr_failed")
+    stored = await load_owned_upload_image(db, upload_id, settings, user)
+    return stored.data_url
+
+
+async def load_owned_upload_image(db: DatabaseClient, upload_id: str, settings: Settings, user: UserRecord) -> StoredImage:
+    owner_row = await db.fetch_one("SELECT user_id FROM uploaded_files WHERE id = ?", [upload_id])
+    if owner_row is None:
+        raise api_error(status.HTTP_404_NOT_FOUND, "Không tìm thấy ảnh OCR đã upload.", "OCR_FAILED")
+    owner_id = owner_row.get("user_id")
+    if owner_id is not None and str(owner_id) != user.id:
+        raise api_error(status.HTTP_403_FORBIDDEN, "Bạn không có quyền dùng ảnh OCR này.", "OCR_FAILED")
+    record = await load_upload_image(db, upload_id, settings)
+    if record is None:
+        raise api_error(status.HTTP_404_NOT_FOUND, "Không tìm thấy ảnh OCR đã upload.", "OCR_FAILED")
+    return record
 
 
 async def enforce_ocr_access(db: DatabaseClient, user: UserRecord | None) -> None:

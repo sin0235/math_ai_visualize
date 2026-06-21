@@ -1,6 +1,6 @@
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
 
 from app.schemas.advisory import QualityRiskAdvisory
 
@@ -311,7 +311,23 @@ OcrMode = Literal["problem", "diagram"]
 class OcrRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    image_data_url: str = Field(min_length=1, max_length=MAX_IMAGE_DATA_URL_CHARS)
+    image_data_url: str | None = Field(default=None, min_length=1, max_length=MAX_IMAGE_DATA_URL_CHARS)
+    upload_id: str | None = Field(default=None, min_length=1, max_length=128)
+
+    @model_validator(mode="after")
+    def validate_image_source(self) -> "OcrRequest":
+        if bool(self.image_data_url) == bool(self.upload_id):
+            raise ValueError("Cần gửi đúng một trong hai trường image_data_url hoặc upload_id.")
+        return self
+
+
+class OcrUploadResponse(BaseModel):
+    file_id: str
+    filename: str
+    content_type: str
+    size: int
+    storage_provider: str
+    public_url: str | None = None
 
 
 class OcrResponse(BaseModel):

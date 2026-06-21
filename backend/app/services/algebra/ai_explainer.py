@@ -48,26 +48,30 @@ class AlgebraExplanationStep(BaseModel):
 class AlgebraExplanationPayload(BaseModel):
     steps: list[AlgebraExplanationStep] = Field(default_factory=list)
 
-def _map_ai_step(step: AlgebraExplanationStep) -> AlgebraSolveStep:
+def _map_ai_step(step: AlgebraExplanationStep, original: AlgebraSolveStep | None = None) -> AlgebraSolveStep:
+    original_sub_steps = {sub.index: sub for sub in original.sub_steps} if original else {}
     return AlgebraSolveStep(
-        index=step.index,
-        title=step.title,
-        explanation=_sanitize_text(step.explanation),
-        goal=_safe_rewrite(step.goal, None),
-        why=_safe_rewrite(step.why, None),
-        rule=_safe_rewrite(step.rule, None),
-        operation=_safe_rewrite(step.operation, None),
-        before_latex=step.before_latex,
-        after_latex=step.after_latex,
-        pitfall=_safe_rewrite(step.pitfall, None),
-        check=_safe_rewrite(step.check, None),
-        expression=None,
-        expression_latex=None,
-        result=None,
-        result_latex=None,
-        kind="solve",
-        confidence="ai_generated",
-        sub_steps=[_map_ai_step(sub) for sub in step.sub_steps] if step.sub_steps else [],
+        index=original.index if original else step.index,
+        title=_safe_rewrite(step.title, original.title if original else None) or step.title,
+        explanation=_safe_rewrite(step.explanation, original.explanation if original else None) or step.explanation,
+        short_explanation=original.short_explanation if original else None,
+        detail_level=original.detail_level if original else "standard",
+        method=original.method if original else None,
+        goal=_safe_rewrite(step.goal, original.goal if original else None),
+        why=_safe_rewrite(step.why, original.why if original else None),
+        rule=_safe_rewrite(step.rule, original.rule if original else None),
+        operation=_safe_rewrite(step.operation, original.operation if original else None),
+        before_latex=original.before_latex if original else None,
+        after_latex=original.after_latex if original else None,
+        pitfall=_safe_rewrite(step.pitfall, original.pitfall if original else None),
+        check=_safe_rewrite(step.check, original.check if original else None),
+        expression=original.expression if original else None,
+        expression_latex=original.expression_latex if original else None,
+        result=original.result if original else None,
+        result_latex=original.result_latex if original else None,
+        kind=original.kind if original else "solve",
+        confidence=original.confidence if original else "unverified",
+        sub_steps=[_map_ai_step(sub, original_sub_steps.get(sub.index)) for sub in step.sub_steps] if step.sub_steps else (original.sub_steps if original else []),
     )
 
 async def explain_algebra_response_with_ai(response: AlgebraSolveResponse, settings: Settings) -> AlgebraSolveResponse:
@@ -85,7 +89,8 @@ async def explain_algebra_response_with_ai(response: AlgebraSolveResponse, setti
         # Add the conclusion step from the original response back if it exists to preserve final verification text
         original_conclusion = next((s for s in response.steps if s.kind == "conclusion"), None)
         
-        response.steps = [_map_ai_step(step) for step in payload.steps]
+        original_steps = {step.index: step for step in response.steps}
+        response.steps = [_map_ai_step(step, original_steps.get(step.index)) for step in payload.steps]
         
         if original_conclusion:
             original_conclusion.index = len(response.steps) + 1

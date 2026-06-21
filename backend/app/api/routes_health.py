@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends
 
 from app.api.deps import require_admin_user
 from app.core.config import get_settings
+from app.db.migrations import build_migration_drift
 from app.db.models import UserRecord
 from app.db.session import DatabaseClient, get_database
 from app.services.model_registry import load_model_registry
@@ -56,11 +57,14 @@ async def _database_status(db: DatabaseClient) -> dict[str, Any]:
     try:
         probe = await db.fetch_one("SELECT 1 AS ok")
         migrations = await db.fetch_all("SELECT filename, applied_at FROM schema_migrations ORDER BY filename")
+        migration_drift = await build_migration_drift(db)
+        database_ok = bool(probe and probe.get("ok") == 1)
         return {
-            "ok": bool(probe and probe.get("ok") == 1),
+            "ok": database_ok and bool(migration_drift["ok"]),
             "backend": getattr(db, "backend", "unknown"),
             "migration_count": len(migrations),
             "latest_migration": migrations[-1]["filename"] if migrations else None,
+            "migration_drift": migration_drift,
         }
     except Exception as error:
         return {

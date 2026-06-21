@@ -98,6 +98,23 @@ export interface AdminDatabaseDiagnostics {
   backend: string;
   sqlite_path?: string | null;
   configured_sqlite_path: string;
+  resolved_sqlite_path?: string | null;
+  sqlite_path_diagnostics?: {
+    configured_path: string;
+    resolved_path: string;
+    parent_exists: boolean;
+    file_exists: boolean;
+  };
+  migration_drift?: {
+    ok: boolean;
+    available_count: number;
+    applied_count: number;
+    missing_migrations: string[];
+    extra_migrations: string[];
+    latest_available_migration?: string | null;
+    latest_applied_migration?: string | null;
+    unexpected_duplicate_prefixes: Record<string, string[]>;
+  };
   migrations: Array<{ filename: string; applied_at: string }>;
   counts: Record<string, number | string>;
   system_settings: Record<string, { updated_at: string; updated_by?: string | null }>;
@@ -108,6 +125,18 @@ export interface AdminDatabaseDiagnostics {
     router9_only_mode?: boolean | null;
     router9_allowed_model_count: number;
     router9_scanned_model_count: number;
+    legacy_canonical_drift?: {
+      ok: boolean;
+      differences: Array<{ field: string; legacy?: unknown; canonical?: unknown }>;
+    };
+  };
+  model_registry?: {
+    provider_count: number;
+    model_count: number;
+    allowed_model_count: number;
+    stale_allowed_model_count: number;
+    legacy_ai_settings_present: boolean;
+    canonical_registry_active: boolean;
   };
 }
 

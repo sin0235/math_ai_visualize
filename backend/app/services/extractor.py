@@ -20,7 +20,7 @@ from app.services.openrouter_client import OpenRouterClient
 from app.services.router9_bootstrap import select_router9_render_model_ids_from_ids
 from app.services.router9_client import Router9Client
 from app.services.provider_logging import redact_sensitive
-from app.services.model_registry import load_model_registry, registry_from_settings, resolve_effective_settings, resolve_render_tier_candidates, resolve_task_profile
+from app.services.model_registry import TierModelCandidate, load_model_registry, registry_from_settings, resolve_effective_settings, resolve_render_tier_candidates, resolve_task_profile
 from app.services.solid_presets import equilateral_triangle, rectangular_box, square_pyramid, triangular_prism, triangular_pyramid
 
 _HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
@@ -112,6 +112,8 @@ async def extract_scene(
                 warnings.append("Đã hoàn thành tầng suy luận (reasoning layer).")
 
         if not render_candidates:
+            render_candidates = _settings_render_candidates(settings)
+        if not render_candidates:
             warnings.append(f"Tier {tier} chưa có model khả dụng; đang dùng mock extractor.")
             return extract_scene_mock(problem_text, grade), warnings
 
@@ -122,18 +124,38 @@ async def extract_scene(
 
             attempt_timeout = min(remaining, _RENDER_MAX_ATTEMPT_SECONDS)
             try:
-                scene_json = await asyncio.wait_for(
-                    _extract_with_provider(
-                        candidate.provider_id, settings, problem_text, grade,
-                        render_settings.reasoning_layer,
-                        preferred_ai_model=candidate.model_id,
-                        reasoning_plan=reasoning_plan,
-                        system_prompt=scene_sys_prompt,
-                    ),
-                    timeout=attempt_timeout,
-                )
+                try:
+                    scene_json = await asyncio.wait_for(
+                        _extract_with_provider(
+                            candidate.provider_id, settings, problem_text, grade,
+                            render_settings.reasoning_layer,
+                            preferred_ai_model=candidate.model_id,
+                            reasoning_plan=reasoning_plan,
+                            system_prompt=scene_sys_prompt,
+                        ),
+                        timeout=attempt_timeout,
+                    )
+                except TypeError as error:
+                    if "unexpected keyword argument" not in str(error):
+                        raise
+                    scene_json = await asyncio.wait_for(
+                        _extract_with_provider(
+                            candidate.provider_id, settings, problem_text, grade,
+                            render_settings.reasoning_layer,
+                            preferred_ai_model=candidate.model_id,
+                        ),
+                        timeout=attempt_timeout,
+                    )
                 warnings.extend(_render_attempt_warnings(attempts))
-                scene, cas_warnings = build_scene_with_cas_fix(scene_json, verify=render_settings.verify_scene)
+                try:
+                    scene, cas_warnings = build_scene_with_cas_fix(scene_json, verify=render_settings.verify_scene)
+                except (ValidationError, ValueError, KeyError) as error:
+                    attempt = RenderAttempt(candidate.provider_id, candidate.model_id, str(error))
+                    attempts.append(attempt)
+                    _log_render_attempt_failure(attempt, stage="validation")
+                    warnings.extend(_render_attempt_warnings(attempts))
+                    warnings.append("AI đã phản hồi nhưng scene không hợp lệ; đang dùng mock extractor.")
+                    return extract_scene_mock(problem_text, grade), warnings
                 warnings.extend(cas_warnings)
                 return scene, warnings
             except TimeoutError:
@@ -151,9 +173,15 @@ async def extract_scene(
                 _log_render_attempt_failure(attempt, stage="extract")
 
         warnings.extend(_render_attempt_warnings(attempts))
-        raise RuntimeError(_format_tier_render_failure(f"Tất cả model trong tier {tier} đều lỗi.", attempts))
+        if attempts:
+            warnings.append("Tất cả AI provider đều lỗi; đang dùng mock extractor.")
+        else:
+            warnings.append("Đang dùng mock extractor vì AI provider chưa sẵn sàng.")
+        return extract_scene_mock(problem_text, grade), warnings
 
     preferred_provider = _normalize_provider_alias(preferred_ai_provider)
+    if preferred_ai_model and preferred_provider is None and settings.router9_only:
+        preferred_provider = "router9"
     request_model = preferred_ai_model
     has_explicit_model_choice = bool(preferred_provider and request_model)
     render_profile = resolve_task_profile(registry, "render", preferred_ai_provider, preferred_ai_model)
@@ -794,6 +822,16 @@ def _provider_model_candidates(provider: str, settings: Settings, preferred_ai_m
     if provider in {"openrouter", "nvidia", "ollama_gpt_oss", "openai_compat"}:
         return text_model_candidates(provider, settings, preferred_ai_model)
     return [None]
+
+
+def _settings_render_candidates(settings: Settings) -> list[TierModelCandidate]:
+    candidates: list[TierModelCandidate] = []
+    for provider in _render_provider_order(settings, None, False):
+        for model in _provider_model_candidates(provider, settings):
+            candidate = TierModelCandidate(provider, model or _provider_model(provider, settings))
+            if candidate not in candidates:
+                candidates.append(candidate)
+    return candidates
 
 
 def _normalize_provider_alias(provider: str | None) -> str | None:
