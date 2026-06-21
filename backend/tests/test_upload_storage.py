@@ -7,7 +7,10 @@ from fastapi import UploadFile
 from app.core.config import Settings
 from app.db.migrations import apply_sqlite_migrations
 from app.db.session import SQLiteClient
+from app.repositories.uploads import UploadedFileRecord
 from app.services.r2_storage import load_upload_image, save_upload_image
+from app.services.storage_diagnostics import check_upload_storage
+from app.services.upload_storage import delete_remote_upload, load_upload_body_from_record
 
 
 @pytest.fixture
@@ -225,6 +228,43 @@ async def test_save_upload_image_external_only_clears_base64_for_remote_provider
     assert row is not None
     assert row["storage_provider"] == "r2"
     assert row["data_base64"] == ""
+
+
+@pytest.mark.anyio
+async def test_load_upload_body_from_record_reads_verified_inline_base64():
+    record = UploadedFileRecord(
+        id="upload-inline",
+        user_id="user-1",
+        filename="problem.png",
+        content_type="image/png",
+        size=len(b"fake-png"),
+        sha256="f084b1351c41cf3c554d932a3a978992a39b902f289c6e213b6428c3b38541ed",
+        data_base64="ZmFrZS1wbmc=",
+        storage_key=None,
+        public_url=None,
+    )
+
+    body = await load_upload_body_from_record(record, Settings(_env_file=None))
+
+    assert body == b"fake-png"
+
+
+@pytest.mark.anyio
+async def test_load_upload_body_from_record_rejects_invalid_inline_base64():
+    record = UploadedFileRecord(
+        id="upload-inline",
+        user_id="user-1",
+        filename="problem.png",
+        content_type="image/png",
+        size=len(b"fake-png"),
+        sha256="f084b1351c41cf3c554d932a3a978992a39b902f289c6e213b6428c3b38541ed",
+        data_base64="not valid base64",
+        storage_key=None,
+        public_url=None,
+    )
+
+    with pytest.raises(RuntimeError, match="base64 không hợp lệ"):
+        await load_upload_body_from_record(record, Settings(_env_file=None))
 
 
 @pytest.mark.anyio

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import hashlib
 import json
 import logging
@@ -82,12 +83,21 @@ async def load_upload_image(db: DatabaseClient, file_id: str, settings: Settings
     record = await UploadRepository(db).load(file_id)
     if record is None:
         return None
-    data_base64 = record.data_base64
-    if not data_base64:
-        body = await load_remote_upload_body(record, settings or get_settings())
-        verify_upload_body(record, body)
-        data_base64 = base64.b64encode(body).decode("ascii")
+    body = await load_upload_body_from_record(record, settings or get_settings())
+    data_base64 = base64.b64encode(body).decode("ascii")
     return stored_image_from_record(record, data_base64)
+
+
+async def load_upload_body_from_record(record: UploadedFileRecord, settings: Settings) -> bytes:
+    if record.data_base64:
+        try:
+            body = base64.b64decode(record.data_base64, validate=True)
+        except (binascii.Error, ValueError) as error:
+            raise RuntimeError("File upload trong database có base64 không hợp lệ.") from error
+    else:
+        body = await load_remote_upload_body(record, settings)
+    verify_upload_body(record, body)
+    return body
 
 
 async def read_upload_body(upload: UploadFile, settings: Settings) -> tuple[str, str, bytes]:
@@ -154,6 +164,20 @@ async def load_remote_upload_body(record: UploadedFileRecord, settings: Settings
             raise RuntimeError("File upload Appwrite không có external file id.")
         return await appwrite_storage.load_file(record.external_file_id, settings, record.storage_bucket)
     raise RuntimeError("File upload không còn lưu base64 trong database cho provider này.")
+
+
+async def delete_remote_upload(record: UploadedFileRecord, settings: Settings) -> None:
+    if record.storage_provider == "r2":
+        if not record.storage_key:
+            raise RuntimeError("File upload R2 không có storage key.")
+        r2_storage.delete_file(record.storage_key, settings)
+        return
+    if record.storage_provider == "appwrite":
+        if not record.external_file_id:
+            raise RuntimeError("File upload Appwrite không có external file id.")
+        await appwrite_storage.delete_file(record.external_file_id, settings, record.storage_bucket)
+        return
+    raise RuntimeError("File upload không dùng remote storage.")
 
 
 def verify_upload_body(record: UploadedFileRecord, body: bytes) -> None:

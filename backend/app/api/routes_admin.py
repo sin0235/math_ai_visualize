@@ -36,10 +36,11 @@ from app.schemas.auth import (
 from app.schemas.feedback import AdminFeedbackResponse, AdminFeedbackUpdateRequest
 from app.schemas.scene import MathScene, ModelScanRequest, RenderPayload
 from app.services.admin_settings import build_database_diagnostics, normalize_provider_defaults, sync_ai_profiles_to_registry, sync_ai_settings_to_registry, sync_ai_tier_profiles_to_registry
-from app.services.database_cleanup import cleanup_database
+from app.services.database_cleanup import cleanup_database, reset_dev_data
 from app.services.model_provider import canonicalize_fallback_models, canonicalize_model_ref, explicit_provider_from_model
 from app.services.model_registry import resolve_effective_settings, save_provider_check
 from app.services.provider_ping import ADMIN_PING_PROVIDERS, ping_provider
+from app.services.storage_diagnostics import check_upload_storage
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -51,6 +52,22 @@ class DatabaseCleanupRequest(BaseModel):
     min_age_hours: int = Field(default=24, ge=1, le=24 * 365)
     verify_remote: bool = True
     providers: list[Literal["appwrite", "r2"]] | None = None
+    confirm: str | None = Field(default=None, max_length=128)
+    delete_remote: bool = False
+    delete_db_record: bool = False
+
+
+class DevDataResetRequest(BaseModel):
+    dry_run: bool = True
+    confirm: str | None = Field(default=None, max_length=128)
+    delete_upload_remotes: bool = False
+
+
+class StorageCheckRequest(BaseModel):
+    provider: Literal["auto", "appwrite", "r2"] = "auto"
+    write: bool = False
+    read_back: bool = True
+    delete_after: bool = True
 
 
 @router.get("/summary", response_model=AdminSummaryResponse)
@@ -331,6 +348,9 @@ async def admin_database_cleanup(
         min_age_hours=request.min_age_hours,
         verify_remote=request.verify_remote,
         providers=request.providers,
+        confirm=request.confirm,
+        delete_remote=request.delete_remote,
+        delete_db_record=request.delete_db_record,
     )
     if not request.dry_run:
         summary = {
@@ -351,6 +371,43 @@ async def admin_database_cleanup(
                 "summary": summary,
                 "min_age_hours": request.min_age_hours,
                 "providers": request.providers,
+                "delete_remote": request.delete_remote,
+                "delete_db_record": request.delete_db_record,
+            },
+        )
+    return result
+
+
+@router.post("/database/reset-dev-data", dependencies=[Depends(require_trusted_origin)])
+async def admin_reset_dev_data(
+    request: DevDataResetRequest,
+    http_request: Request,
+    admin: UserRecord = Depends(require_admin_user),
+    db: DatabaseClient = Depends(get_database),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    await enforce_rate_limit(db, http_request, admin, "admin_database_reset_dev_data", 3, 60)
+    try:
+        result = await reset_dev_data(
+            db,
+            dry_run=request.dry_run,
+            confirm=request.confirm,
+            settings=settings,
+            delete_upload_remotes=request.delete_upload_remotes,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
+    if not request.dry_run:
+        await AdminRepository(db).audit(
+            admin.id,
+            "admin.database.reset_dev_data",
+            "database",
+            None,
+            {
+                "tables": result.get("tables", {}),
+                "delete_upload_remotes": request.delete_upload_remotes,
+                "remote_deleted": result.get("remote_deleted", 0),
+                "remote_skipped": result.get("remote_skipped", 0),
             },
         )
     return result
@@ -381,6 +438,33 @@ async def admin_save_system_setting(
         await sync_ai_tier_profiles_to_registry(db, value, request.value)
     await repo.audit(admin.id, "admin.system_settings.update", "system_setting", request.key, {"key": request.key})
     return SystemSettingResponse(key=setting.key, value=parse_setting_value(setting.value_json), updated_by=setting.updated_by, updated_at=setting.updated_at)
+
+
+@router.post("/storage/check", dependencies=[Depends(require_trusted_origin)])
+async def admin_check_storage(
+    request: StorageCheckRequest,
+    http_request: Request,
+    admin: UserRecord = Depends(require_admin_user),
+    db: DatabaseClient = Depends(get_database),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    await enforce_rate_limit(db, http_request, admin, "admin_storage_check", 6, 60)
+    result = await check_upload_storage(settings, request.provider, request.write, request.read_back, request.delete_after)
+    if request.write:
+        await AdminRepository(db).audit(
+            admin.id,
+            "admin.storage.check",
+            "storage",
+            request.provider,
+            {
+                "write": request.write,
+                "read_back": request.read_back,
+                "delete_after": request.delete_after,
+                "statuses": {item["provider"]: item["status"] for item in result.get("results", [])},
+                "warnings": sum(len(item.get("warnings", [])) for item in result.get("results", [])),
+            },
+        )
+    return result
 
 
 @router.post("/providers/{provider}/check")

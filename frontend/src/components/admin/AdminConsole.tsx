@@ -12,9 +12,11 @@ import type {
   AdminAuditLogFilters,
   AdminDatabaseCleanupResponse,
   AdminDatabaseDiagnostics,
+  AdminDevDataResetResponse,
   AdminFeedbackFilters,
   AdminFeedbackResponse,
   AdminPlanResponse,
+  AdminStorageCheckResponse,
   FeedbackStatus,
   ChatConversationResponse,
   ChatMessageResponse,
@@ -40,6 +42,8 @@ import {
   getSettingsDefaults,
   getAdminDatabaseDiagnostics,
   cleanupAdminDatabase,
+  checkAdminStorage,
+  resetAdminDevData,
   getAdminChatConversations,
   getAdminChatConversation,
   sendAdminChatMessage,
@@ -152,6 +156,12 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
   const [databaseDiagnostics, setDatabaseDiagnostics] = useState<AdminDatabaseDiagnostics | null>(null);
   const [databaseCleanupResult, setDatabaseCleanupResult] = useState<AdminDatabaseCleanupResponse | null>(null);
   const [databaseCleanupLoading, setDatabaseCleanupLoading] = useState(false);
+  const [storageCheckResult, setStorageCheckResult] = useState<AdminStorageCheckResponse | null>(null);
+  const [storageCheckLoading, setStorageCheckLoading] = useState(false);
+  const [storageCheckProvider, setStorageCheckProvider] = useState<'auto' | 'appwrite' | 'r2'>('auto');
+  const [devResetResult, setDevResetResult] = useState<AdminDevDataResetResponse | null>(null);
+  const [devResetLoading, setDevResetLoading] = useState(false);
+  const [devResetDeleteRemotes, setDevResetDeleteRemotes] = useState(false);
   const [savingAiSettings, setSavingAiSettings] = useState(false);
 
   async function refreshDatabaseDiagnostics() {
@@ -180,6 +190,42 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
       onToast('Database cleanup', getErrorMessage(error, 'Không thể chạy cleanup OCR base64.'), 'error');
     } finally {
       setDatabaseCleanupLoading(false);
+    }
+  }
+
+  async function runStorageCheck(write: boolean) {
+    if (write && !window.confirm('Chạy smoke test ghi/đọc/xoá một file nhỏ trên Appwrite/R2?')) return;
+    setStorageCheckLoading(true);
+    try {
+      const result = await checkAdminStorage({ provider: storageCheckProvider, write, read_back: true, delete_after: true });
+      setStorageCheckResult(result);
+      onToast('Storage check', result.status === 'ok' ? 'Storage check hoàn tất.' : 'Storage check có cảnh báo hoặc lỗi.', result.status === 'ok' ? 'info' : 'warning');
+    } catch (error) {
+      onToast('Storage check', getErrorMessage(error, 'Không thể kiểm tra upload storage.'), 'error');
+    } finally {
+      setStorageCheckLoading(false);
+    }
+  }
+
+  async function runDevDataReset(dryRun: boolean) {
+    if (!dryRun) {
+      const confirmed = window.confirm('Reset dữ liệu dev sẽ xoá user thường và dữ liệu test, nhưng giữ admin/config/model registry. Tiếp tục?');
+      if (!confirmed) return;
+    }
+    setDevResetLoading(true);
+    try {
+      const result = await resetAdminDevData({
+        dry_run: dryRun,
+        confirm: dryRun ? undefined : 'RESET_DEV_DATA_KEEP_ADMIN_CONFIG',
+        delete_upload_remotes: devResetDeleteRemotes,
+      });
+      setDevResetResult(result);
+      await refreshDatabaseDiagnostics();
+      onToast('Dev data reset', dryRun ? 'Dry-run reset dữ liệu dev đã hoàn tất.' : 'Đã reset dữ liệu dev.', result.warnings.length ? 'warning' : 'info');
+    } catch (error) {
+      onToast('Dev data reset', getErrorMessage(error, 'Không thể reset dữ liệu dev.'), 'error');
+    } finally {
+      setDevResetLoading(false);
     }
   }
 
@@ -891,8 +937,20 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
                 diagnostics={databaseDiagnostics}
                 cleanupResult={databaseCleanupResult}
                 cleanupLoading={databaseCleanupLoading}
+                storageCheckResult={storageCheckResult}
+                storageCheckLoading={storageCheckLoading}
+                storageCheckProvider={storageCheckProvider}
+                onStorageCheckProviderChange={setStorageCheckProvider}
+                devResetResult={devResetResult}
+                devResetLoading={devResetLoading}
+                devResetDeleteRemotes={devResetDeleteRemotes}
+                onDevResetDeleteRemotesChange={setDevResetDeleteRemotes}
                 onDryRunCleanup={() => void runUploadedFilesCleanup(true)}
                 onExecuteCleanup={() => void runUploadedFilesCleanup(false)}
+                onConfigCheck={() => void runStorageCheck(false)}
+                onSmokeCheck={() => void runStorageCheck(true)}
+                onDryRunReset={() => void runDevDataReset(true)}
+                onExecuteReset={() => void runDevDataReset(false)}
               />
             )}
             {!databaseDiagnostics && <p className="field-hint">Đang tải chẩn đoán database...</p>}
@@ -1219,14 +1277,38 @@ function AdminDatabaseDiagnosticsPanel({
   diagnostics,
   cleanupResult,
   cleanupLoading,
+  storageCheckResult,
+  storageCheckLoading,
+  storageCheckProvider,
+  onStorageCheckProviderChange,
+  devResetResult,
+  devResetLoading,
+  devResetDeleteRemotes,
+  onDevResetDeleteRemotesChange,
   onDryRunCleanup,
   onExecuteCleanup,
+  onConfigCheck,
+  onSmokeCheck,
+  onDryRunReset,
+  onExecuteReset,
 }: {
   diagnostics: AdminDatabaseDiagnostics;
   cleanupResult: AdminDatabaseCleanupResponse | null;
   cleanupLoading: boolean;
+  storageCheckResult: AdminStorageCheckResponse | null;
+  storageCheckLoading: boolean;
+  storageCheckProvider: 'auto' | 'appwrite' | 'r2';
+  onStorageCheckProviderChange: (provider: 'auto' | 'appwrite' | 'r2') => void;
+  devResetResult: AdminDevDataResetResponse | null;
+  devResetLoading: boolean;
+  devResetDeleteRemotes: boolean;
+  onDevResetDeleteRemotesChange: (value: boolean) => void;
   onDryRunCleanup: () => void;
   onExecuteCleanup: () => void;
+  onConfigCheck: () => void;
+  onSmokeCheck: () => void;
+  onDryRunReset: () => void;
+  onExecuteReset: () => void;
 }) {
   const countRows = Object.entries(diagnostics.counts);
   const settingRows = Object.entries(diagnostics.system_settings);
@@ -1286,6 +1368,56 @@ function AdminDatabaseDiagnosticsPanel({
           </>
         ) : (
           <p className="field-hint">Chưa có thống kê uploaded_files.</p>
+        )}
+      </section>
+      <section className="admin-settings-section">
+        <h4>Storage smoke check</h4>
+        <div className="admin-toolbar">
+          <label className="field-label">Provider
+            <select value={storageCheckProvider} onChange={(event) => onStorageCheckProviderChange(event.target.value as 'auto' | 'appwrite' | 'r2')}>
+              <option value="auto">auto</option>
+              <option value="appwrite">appwrite</option>
+              <option value="r2">r2</option>
+            </select>
+          </label>
+          <button type="button" className="secondary-button" onClick={onConfigCheck} disabled={storageCheckLoading}>{storageCheckLoading ? 'Đang kiểm tra...' : 'Kiểm tra cấu hình storage'}</button>
+          <button type="button" className="secondary-button" onClick={onSmokeCheck} disabled={storageCheckLoading}>{storageCheckLoading ? 'Đang kiểm tra...' : 'Smoke upload/read/delete'}</button>
+        </div>
+        <p className="field-hint">Smoke check ghi một file nhỏ rồi đọc lại và xoá ngay nếu bật write.</p>
+        {storageCheckResult && (
+          <div className="admin-table">
+            {storageCheckResult.results.map((item) => (
+              <article className="admin-row admin-row-block" key={item.provider}>
+                <div>
+                  <strong>{item.provider} · {item.status}</strong>
+                  <span>{item.configured ? 'Đã cấu hình' : 'Chưa cấu hình'} · {item.latency_ms}ms</span>
+                </div>
+                {item.steps.map((step, index) => <p key={index} className="field-hint">{step.name}: {step.status} · {step.message}</p>)}
+                {item.warnings.map((warning, index) => <p key={`warning-${index}`} className="field-hint">{warning}</p>)}
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+      <section className="admin-settings-section">
+        <h4>Dev data reset</h4>
+        <div className="admin-toolbar">
+          <label className="checkbox-label"><input type="checkbox" checked={devResetDeleteRemotes} onChange={(event) => onDevResetDeleteRemotesChange(event.target.checked)} /> Xoá remote uploads</label>
+          <button type="button" className="secondary-button" onClick={onDryRunReset} disabled={devResetLoading}>{devResetLoading ? 'Đang chạy...' : 'Dry-run reset dev data'}</button>
+          <button type="button" className="secondary-button" onClick={onExecuteReset} disabled={devResetLoading || !devResetResult?.dry_run}>{devResetLoading ? 'Đang chạy...' : 'Reset dev data giữ admin/config'}</button>
+        </div>
+        <p className="field-hint">Reset chỉ dành cho môi trường dev: xoá user thường và dữ liệu test, giữ admin, system_settings, plans, model registry và schema_migrations.</p>
+        {devResetResult && (
+          <div className="admin-table">
+            <article className="admin-row admin-row-block">
+              <div>
+                <strong>{devResetResult.dry_run ? 'Dry-run reset gần nhất' : 'Reset gần nhất'}</strong>
+                <span>remote deleted {devResetResult.remote_deleted} · remote skipped {devResetResult.remote_skipped}</span>
+              </div>
+              <AdminDetails title="Reset table counts" value={devResetResult.tables} />
+              {devResetResult.warnings.map((warning, index) => <p key={index} className="field-hint">{warning}</p>)}
+            </article>
+          </div>
         )}
       </section>
       <section className="admin-settings-section">

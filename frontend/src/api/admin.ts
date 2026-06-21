@@ -162,12 +162,56 @@ export interface AdminDatabaseCleanupRequest {
   min_age_hours?: number;
   verify_remote?: boolean;
   providers?: Array<'appwrite' | 'r2'> | null;
+  confirm?: string | null;
+  delete_remote?: boolean;
+  delete_db_record?: boolean;
+}
+
+export interface AdminDevDataResetRequest {
+  dry_run: boolean;
+  confirm?: string | null;
+  delete_upload_remotes?: boolean;
+}
+
+export interface AdminDevDataResetResponse {
+  dry_run: boolean;
+  confirm_required: string;
+  tables: Record<string, number>;
+  remote_deleted: number;
+  remote_skipped: number;
+  warnings: string[];
+}
+
+export interface AdminStorageCheckRequest {
+  provider: 'auto' | 'appwrite' | 'r2';
+  write?: boolean;
+  read_back?: boolean;
+  delete_after?: boolean;
+}
+
+export interface AdminStorageCheckResult {
+  provider: string;
+  status: string;
+  configured: boolean;
+  steps: Array<{ name: string; status: string; message: string }>;
+  warnings: string[];
+  storage_key?: string | null;
+  external_file_id?: string | null;
+  latency_ms: number;
+}
+
+export interface AdminStorageCheckResponse {
+  provider: string;
+  status: string;
+  results: AdminStorageCheckResult[];
 }
 
 export interface AdminDatabaseCleanupTableResult {
   candidates: number;
   deleted?: number;
   cleared?: number;
+  remote_deleted?: number;
+  db_deleted?: number;
   skipped?: number;
   bytes_reclaimable?: number;
   bytes_cleared?: number;
@@ -264,6 +308,24 @@ export async function cleanupAdminDatabase(request: AdminDatabaseCleanupRequest)
     credentials: 'include',
     body: JSON.stringify(request),
   }, 'Không thể chạy cleanup database.');
+}
+
+export async function resetAdminDevData(request: AdminDevDataResetRequest): Promise<AdminDevDataResetResponse> {
+  return requestJson('/api/admin/database/reset-dev-data', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(request),
+  }, 'Không thể reset dữ liệu dev.');
+}
+
+export async function checkAdminStorage(request: AdminStorageCheckRequest): Promise<AdminStorageCheckResponse> {
+  return requestJson('/api/admin/storage/check', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(request),
+  }, 'Không thể kiểm tra storage upload.');
 }
 
 export async function checkAdminProvider(provider: string, runtimeSettings: RuntimeSettings): Promise<AdminProviderCheckResponse> {

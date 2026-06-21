@@ -1,130 +1,673 @@
-# Hình toán AI
+# AI Math Renderer
 
-Ứng dụng dựng hình toán 10-12 từ đề bài văn bản hoặc ảnh đề bài. Backend trích xuất scene JSON có cấu trúc, validate dữ liệu rồi tạo payload render; frontend render bằng GeoGebra cho 2D/đồ thị và React Three Fiber cho hình học không gian.
+Ứng dụng AI hỗ trợ dựng hình và phân tích toán học từ đề bài văn bản hoặc ảnh. Backend chuyển đề bài thành dữ liệu toán học có cấu trúc, kiểm tra schema và tạo payload render; frontend hiển thị bằng GeoGebra, Three.js, KaTeX và các công cụ tương tác.
 
-## Trạng thái hiện tại
+## Nội dung
 
-- Backend FastAPI hỗ trợ OpenRouter, NVIDIA, Ollama/OpenAI-compatible, 9router và mock fallback khi AI provider không sẵn sàng.
-- Frontend React/Vite có form nhập đề, OCR ảnh/clipboard, chọn provider/model, quét model 9router, GeoGebra renderer, Three.js renderer, chỉnh hình 3D và Scene JSON debug panel.
-- API key override nhập trên UI chỉ dùng trong phiên/tab hiện tại và không persist vào `localStorage`; cấu hình lâu dài nên đặt trong backend `.env`.
-- Hỗ trợ mẫu:
-  - `Cho A(1,2), B(4,5). Vẽ đường thẳng AB.`
-  - `Vẽ đồ thị hàm số y = x^2 - 2x + 1.`
-  - `Cho hình chóp S.ABCD có đáy ABCD là hình vuông, SA vuông góc với mặt phẳng đáy.`
-  - `Trong Oxyz cho A(1,2,3), B(4,5,6).`
+- [Tổng quan](#tổng-quan)
+- [Kiến trúc](#kiến-trúc)
+- [Yêu cầu môi trường](#yêu-cầu-môi-trường)
+- [Cài đặt local](#cài-đặt-local)
+- [Cấu hình môi trường](#cấu-hình-môi-trường)
+- [Database và migration](#database-và-migration)
+- [Lệnh kiểm tra](#lệnh-kiểm-tra)
+- [Triển khai production](#triển-khai-production)
+- [API chính](#api-chính)
+- [Vận hành](#vận-hành)
+- [Bảo mật](#bảo-mật)
+- [Cấu trúc thư mục](#cấu-trúc-thư-mục)
 
-## Chạy backend
+## Tổng quan
+
+AI Math Renderer hiện hỗ trợ:
+
+- Dựng hình 2D/3D từ đề bài tự nhiên.
+- OCR ảnh đề bài và ảnh trong clipboard.
+- Dựng scene GeoGebra, Three.js, xuất PNG/JPG/SVG/TikZ/PDF/HTML KaTeX.
+- Khảo sát hàm số, giải đại số, phân tích biểu thức và mô phỏng giải tích.
+- Auth backend bằng email/password, xác minh email, Google OAuth, session cookie.
+- Lịch sử dựng hình, tài khoản người dùng, gói sử dụng, admin console.
+- Chat hỗ trợ người dùng qua REST và WebSocket.
+- Nhiều provider AI: OpenRouter, NVIDIA, Ollama, OpenAI-compatible, 9router.
+- Lưu upload OCR qua database, R2 hoặc Appwrite.
+- Lưu ảnh chat qua Cloudinary.
+
+## Kiến trúc
+
+```text
+frontend React/Vite
+  |
+  | /api, /ws
+  v
+FastAPI backend
+  |
+  |-- API routes: auth, render, OCR, analyze, export, admin, chat
+  |-- Services: AI provider, OCR, solver, geometry, storage, cleanup
+  |-- Repositories: auth, history, admin, upload, feedback, chat
+  |-- Database client: SQLite hoặc Cloudflare D1
+  |-- External storage: R2, Appwrite, Cloudinary
+```
+
+Trong Docker production, nginx phục vụ frontend static và proxy `/api/`, `/ws/` vào Uvicorn nội bộ.
+
+## Yêu cầu môi trường
+
+Local:
+
+- Python `>=3.11`
+- Node.js `20` hoặc phiên bản tương thích với Vite 5
+- npm
+- SQLite cho môi trường phát triển local
+
+Production:
+
+- HTTPS bắt buộc nếu `ENVIRONMENT=production`
+- D1 hoặc SQLite tuỳ cách deploy
+- Provider AI đã cấu hình key/model
+- Email provider nếu bật xác minh email
+- Storage ngoài nếu muốn lưu upload ngoài database
+
+## Cài đặt local
+
+### Backend
 
 ```bash
 cd backend
 python -m venv .venv
-source .venv/Scripts/activate
+source .venv/bin/activate
 pip install -e .
 uvicorn app.main:app --reload
 ```
 
-Backend chạy tại `http://localhost:8000`.
+Backend chạy mặc định tại:
 
-## Cấu hình AI
-
-Các biến môi trường backend hỗ trợ:
-
-```bash
-AI_PROVIDER=auto
-OPENROUTER_API_KEY=...
-OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
-OPENROUTER_TEXT_MODEL=...
-OPENROUTER_VISION_MODEL=...
-OPENROUTER_VISION_FALLBACK_MODEL=...
-NVIDIA_API_KEY=...
-NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1
-NVIDIA_TEXT_MODEL=...
-OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_TEXT_MODEL=...
-OLLAMA_API_KEY=...
-ROUTER9_BASE_URL=http://localhost:20128/v1
-ROUTER9_API_KEY=...
-ROUTER9_ONLY_MODE=false
+```text
+http://localhost:8000
 ```
 
-`AI_PROVIDER=auto` sẽ thử provider theo cấu hình backend và fallback về mock nếu không có provider khả dụng. Có thể chọn trực tiếp provider/model trên UI cho từng lần dựng hình.
+Nếu cần OCR local đầy đủ:
 
-Nếu chạy Ollama local thì dùng `OLLAMA_BASE_URL=http://localhost:11434` và có thể để trống `OLLAMA_API_KEY`. Nếu dùng Ollama cloud/OpenAI-compatible endpoint thì dùng base URL tương ứng và cấu hình API key nếu endpoint yêu cầu.
+```bash
+cd backend
+source .venv/bin/activate
+pip install -r requirements-ocr.txt
+```
 
-9router chạy local mặc định tại `http://localhost:20128/v1`. Sau khi mở 9router và cấu hình provider trong dashboard của nó, vào tab `9router` trên UI để quét `GET /v1/models`, chọn model được phép hiển thị, rồi chọn model đó ở form dựng hình. Khi bật 9router-only, render/OCR chỉ dùng các model 9router đã chọn.
+`requirements-ocr.txt` gồm PaddleOCR, PaddlePaddle CPU, PyTorch CPU, OpenCV headless và pix2tex. Nhóm dependency này nặng hơn dependency backend chính.
 
-## Cấu hình production backend
+### Frontend
 
-Auth chạy hoàn toàn qua backend: email/password, email verification bằng Resend/SMTP, Google OAuth backend và cookie `hinh_session`.
+```bash
+cd frontend
+npm ci
+npm run dev
+```
+
+Frontend chạy mặc định tại:
+
+```text
+http://localhost:5173
+```
+
+Trong dev, `frontend/vite.config.ts` proxy:
+
+- `/api` sang `http://localhost:8000`
+- `/ws` sang `ws://localhost:8000`
+
+## Cấu hình môi trường
+
+Backend đọc biến môi trường từ `.env` và `backend/.env`. Không commit file `.env`.
+
+### Cấu hình bắt buộc cho production
+
+```bash
+ENVIRONMENT=production
+PUBLIC_APP_URL=https://your-app.example.com
+CORS_ORIGINS=["https://your-app.example.com"]
+
+SESSION_COOKIE_SECURE=true
+SESSION_COOKIE_SAMESITE=lax
+ALLOW_MISSING_ORIGIN_FOR_COOKIE_MUTATIONS=false
+```
+
+`Settings` sẽ chặn startup production nếu:
+
+- `ENVIRONMENT=production` nhưng `SESSION_COOKIE_SECURE=false`
+- `ENVIRONMENT=production` nhưng `ALLOW_MISSING_ORIGIN_FOR_COOKIE_MUTATIONS=true`
+- `SESSION_COOKIE_SAMESITE=none` nhưng `SESSION_COOKIE_SECURE=false`
+
+### Database
+
+SQLite:
+
+```bash
+DATABASE_BACKEND=sqlite
+SQLITE_PATH=backend/.data/hinh.db
+AUTO_APPLY_SQLITE_MIGRATIONS=true
+```
+
+Cloudflare D1:
 
 ```bash
 DATABASE_BACKEND=d1
 D1_ACCOUNT_ID=...
 D1_DATABASE_ID=...
 D1_API_TOKEN=...
+AUTO_APPLY_D1_MIGRATIONS=false
+```
 
+Trong production với D1, nên áp dụng migration trong pipeline deploy thay vì bật tự động khi startup.
+
+### AI provider
+
+Chọn provider mặc định:
+
+```bash
+AI_PROVIDER=auto
+```
+
+OpenRouter:
+
+```bash
+OPENROUTER_API_KEY=...
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+OPENROUTER_TEXT_MODEL=openai/gpt-oss-120b:free
+OPENROUTER_VISION_MODEL=google/gemma-4-31b-it:free
+OPENROUTER_VISION_FALLBACK_MODEL=google/gemma-4-26b-a4b-it:free
+OPENROUTER_HTTP_REFERER=https://your-app.example.com
+OPENROUTER_X_TITLE=AI Math Renderer
+OPENROUTER_REASONING_ENABLED=false
+```
+
+NVIDIA:
+
+```bash
+NVIDIA_API_KEY=...
+NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1
+NVIDIA_TEXT_MODEL=qwen/qwen3-coder-480b-a35b-instruct
+```
+
+Ollama:
+
+```bash
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_TEXT_MODEL=gpt-oss:120b
+OLLAMA_API_KEY=
+```
+
+OpenAI-compatible:
+
+```bash
+OPENAI_COMPAT_API_KEY=...
+OPENAI_COMPAT_BASE_URL=http://localhost:8080/v1
+OPENAI_COMPAT_TEXT_MODEL=...
+```
+
+9router:
+
+```bash
+ROUTER9_BASE_URL=http://localhost:20128/v1
+ROUTER9_API_KEY=...
+ROUTER9_TEXT_MODEL=
+ROUTER9_OCR_MODEL=
+ROUTER9_ONLY=false
+ROUTER9_ALLOWED_MODELS=[]
+```
+
+### Auth và email
+
+Email gửi qua Resend:
+
+```bash
+RESEND_API_KEY=...
+RESEND_FROM_EMAIL=no-reply@example.com
+AUTH_EMAIL_DEV_MODE=false
+REQUIRE_EMAIL_VERIFICATION=true
+```
+
+Email gửi qua SMTP:
+
+```bash
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_USERNAME=...
+SMTP_PASSWORD=...
+SMTP_FROM_EMAIL=no-reply@example.com
+SMTP_USE_TLS=true
+AUTH_EMAIL_DEV_MODE=false
+```
+
+Google OAuth:
+
+```bash
+GOOGLE_OAUTH_CLIENT_ID=...
+GOOGLE_OAUTH_CLIENT_SECRET=...
+GOOGLE_OAUTH_REDIRECT_URI=https://your-api.example.com/api/auth/google/callback
+```
+
+Cloudflare Turnstile:
+
+```bash
+TURNSTILE_SECRET_KEY=...
+TURNSTILE_SITE_KEY=...
+```
+
+### Upload và storage
+
+OCR upload:
+
+```bash
+OCR_IMAGE_MAX_MB=10
+OCR_UPLOAD_STORAGE_PROVIDER=auto
+OCR_UPLOAD_BASE64_RETENTION=retain
+```
+
+Giá trị hợp lệ của `OCR_UPLOAD_STORAGE_PROVIDER`:
+
+- `auto`
+- `appwrite`
+- `r2`
+- `database`
+
+Giá trị hợp lệ của `OCR_UPLOAD_BASE64_RETENTION`:
+
+- `retain`
+- `external_only`
+
+Cloudflare R2:
+
+```bash
 R2_ACCOUNT_ID=...
 R2_ACCESS_KEY_ID=...
 R2_SECRET_ACCESS_KEY=...
 R2_BUCKET_NAME=...
+R2_PUBLIC_BASE_URL=https://cdn.example.com
 R2_UPLOAD_PREFIX=uploads
-
-PUBLIC_APP_URL=https://your-domain.com
-SESSION_COOKIE_SECURE=true
-SESSION_COOKIE_SAMESITE=lax
-
-RESEND_API_KEY=...
-RESEND_FROM_EMAIL=...
-GOOGLE_OAUTH_CLIENT_ID=...
-GOOGLE_OAUTH_CLIENT_SECRET=...
-GOOGLE_OAUTH_REDIRECT_URI=https://your-domain.com/api/auth/google/callback
 ```
 
-D1 migrations nên được apply trong workflow deploy hoặc bật `AUTO_APPLY_D1_MIGRATIONS=true` nếu muốn backend tự apply khi startup.
+Appwrite:
 
-## Chạy frontend
+```bash
+APPWRITE_ENDPOINT=...
+APPWRITE_PROJECT_ID=...
+APPWRITE_API_KEY=...
+APPWRITE_DATABASE_ID=...
+APPWRITE_STORAGE_BUCKET_ID=...
+APPWRITE_UPLOAD_PREFIX=uploads
+APPWRITE_PUBLIC_BASE_URL=...
+```
+
+Cloudinary cho ảnh chat:
+
+```bash
+CLOUDINARY_CLOUD_NAME=...
+CLOUDINARY_API_KEY=...
+CLOUDINARY_API_SECRET=...
+CLOUDINARY_CHAT_FOLDER=hinh/chat
+CHAT_IMAGE_MAX_MB=5
+```
+
+### OCR local
+
+```bash
+LOCAL_OCR_ENABLED=true
+LOCAL_OCR_PREFER=auto
+LOCAL_OCR_MIN_CONFIDENCE=0.55
+LOCAL_OCR_TIMEOUT_SECONDS=30
+LOCAL_OCR_MAX_CONCURRENCY=1
+LOCAL_OCR_PADDLE_LANG=vi
+LOCAL_OCR_USE_PIX2TEX=true
+LOCAL_OCR_FALLBACK_TO_LLM=true
+LOCAL_OCR_MODEL_NAME=paddleocr+pix2tex
+```
+
+### Frontend
+
+Frontend đọc `frontend/.env` hoặc biến môi trường build:
+
+```bash
+VITE_API_BASE_URL=
+VITE_MINERU_API_BASE_URL=
+VITE_PDF_WORD_MAX_UPLOAD_MB=128
+```
+
+Nếu frontend và backend cùng origin, để trống `VITE_API_BASE_URL`. Nếu tách domain:
+
+```bash
+VITE_API_BASE_URL=https://your-api.example.com
+```
+
+## Database và migration
+
+Migration SQL nằm trong thư mục `migrations/`.
+
+Backend tự apply migration khi:
+
+- `DATABASE_BACKEND=sqlite` và `AUTO_APPLY_SQLITE_MIGRATIONS=true`
+- `DATABASE_BACKEND=d1` và `AUTO_APPLY_D1_MIGRATIONS=true`
+
+Production khuyến nghị:
+
+1. Apply migration trước khi deploy app mới.
+2. Backup database trước migration.
+3. Giữ `AUTO_APPLY_D1_MIGRATIONS=false` nếu dùng D1.
+4. Kiểm tra `/api/admin/database/diagnostics` bằng tài khoản admin sau deploy.
+
+Repository hiện có hai cặp migration legacy trùng prefix số:
+
+- `0008_firebase_auth.sql` và `0008_model_management.sql`
+- `0009_ai_tier_profiles.sql` và `0009_feedback.sql`
+
+Code migration đã cho phép hai cặp legacy này. Migration mới nên dùng prefix số duy nhất.
+
+Nếu dùng Cloudflare Wrangler, `wrangler.toml` đã khai báo:
+
+```toml
+name = "hinh"
+migrations_dir = "migrations"
+```
+
+Hãy áp dụng migration D1 theo quy trình Cloudflare của môi trường deploy đang dùng.
+
+## Lệnh kiểm tra
+
+Frontend:
 
 ```bash
 cd frontend
-npm install
-npm run dev
+npm run build
 ```
 
-Frontend chạy tại `http://localhost:5173` và proxy API sang backend.
+Backend:
+
+```bash
+cd backend
+python -m pytest
+```
+
+Chạy một nhóm test cụ thể:
+
+```bash
+cd backend
+python -m pytest tests/test_routes_render.py tests/test_auth_product.py
+```
+
+Lưu ý: một số test có thể phụ thuộc môi trường async, database tạm hoặc provider mock. Không dùng dữ liệu production để chạy test.
+
+## Triển khai production
+
+### Docker một container
+
+Dockerfile hiện build frontend bằng Node 20, sau đó build image Python 3.11 chạy nginx và Uvicorn qua supervisord.
+
+Build image:
+
+```bash
+docker build -t ai-math-renderer .
+```
+
+Run với SQLite local:
+
+```bash
+docker run --rm -p 8080:8080 \
+  -e ENVIRONMENT=production \
+  -e PUBLIC_APP_URL=https://your-app.example.com \
+  -e CORS_ORIGINS='["https://your-app.example.com"]' \
+  -e SESSION_COOKIE_SECURE=true \
+  -e SESSION_COOKIE_SAMESITE=lax \
+  -e ALLOW_MISSING_ORIGIN_FOR_COOKIE_MUTATIONS=false \
+  -e DATABASE_BACKEND=sqlite \
+  -e SQLITE_PATH=/app/data/hinh.db \
+  -v "$PWD/.runtime-data:/app/data" \
+  ai-math-renderer
+```
+
+Container lắng nghe cổng `8080`.
+
+Trong container:
+
+- nginx phục vụ frontend tại `/`
+- nginx proxy `/api/` vào `127.0.0.1:8000`
+- nginx proxy `/ws/` vào `127.0.0.1:8000`
+- Uvicorn chạy `app.main:app`
+
+### Backend API tách riêng
+
+Nếu chạy backend riêng:
+
+```bash
+cd backend
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+Production cần reverse proxy HTTPS phía trước backend. Cấu hình timeout nên đủ dài cho render/OCR:
+
+- API render: tối thiểu khoảng 320 giây nếu dùng fallback nhiều provider.
+- WebSocket chat: tối thiểu khoảng 3600 giây.
+
+### Frontend tách riêng
+
+Build:
+
+```bash
+cd frontend
+npm ci
+npm run build
+```
+
+Deploy thư mục:
+
+```text
+frontend/dist
+```
+
+Nếu frontend tách domain với backend, đặt:
+
+```bash
+VITE_API_BASE_URL=https://your-api.example.com
+```
+
+SPA cần fallback mọi route về `index.html`. File `frontend/public/_redirects` hỗ trợ nền tảng dùng `_redirects`.
 
 ## API chính
 
-```http
-POST /api/render
-Content-Type: application/json
+Health:
 
-{
-  "problem_text": "Cho A(1,2), B(4,5). Vẽ đường thẳng AB.",
-  "grade": 10
-}
+```http
+GET /api/health
+GET /api/health/detail
+GET /api/ai/status
 ```
 
-Response gồm `scene`, `payload` và `warnings`. Frontend dùng `payload.renderer` để chọn GeoGebra hoặc Three.js.
+Render:
+
+```http
+POST /api/render
+POST /api/render/scene
+```
+
+OCR:
 
 ```http
 POST /api/ocr
-Content-Type: application/json
-
-{
-  "image_data_url": "data:image/png;base64,..."
-}
+POST /api/ocr/uploads
 ```
 
-OCR nhận ảnh PNG/JPEG/WebP/GIF dạng data URL, có giới hạn kích thước ở backend và phù hợp nhất với ảnh đề bài rõ chữ.
+Giải toán và phân tích:
 
-## Tính năng frontend đáng chú ý
+```http
+POST /api/solve
+POST /api/algebra/solve
+POST /api/analyze
+POST /api/analyze/ocr
+POST /api/problem/variants
+```
 
-- OCR bằng upload ảnh, kéo-thả ảnh hoặc dán ảnh từ clipboard.
-- Settings cho provider/model, OCR, fallback và 9router-only.
-- Three.js hỗ trợ xoay hình, zoom, pan/kéo góc nhìn, kéo điểm, nối điểm, thêm điểm và tạo chân nối xuống đoạn.
-- Trên mobile có cảnh báo renderer tối ưu cho desktop, tự cuộn xuống kết quả sau khi render và nút “Xem hình vừa dựng”.
-- Scene JSON debug panel cho phép xem, sao chép và tải JSON render.
+Export:
 
-## Nguyên tắc an toàn
+```http
+POST /api/export/png
+POST /api/export/jpg
+POST /api/export/svg
+POST /api/export/tikz
+POST /api/export/ggb
+POST /api/export/pdf
+POST /api/export/katex-html
+```
 
-LLM chỉ được sinh JSON theo schema. Backend validate JSON rồi tự tạo GeoGebra commands hoặc Three.js scene; không chạy code tuỳ ý do LLM sinh ra. Log/error provider được rút gọn và che API key, bearer token, secret và dữ liệu ảnh base64.
+Auth:
+
+```http
+POST /api/auth/register
+POST /api/auth/login
+POST /api/auth/logout
+GET  /api/auth/me
+POST /api/auth/forgot-password
+POST /api/auth/reset-password
+POST /api/auth/verify-email
+POST /api/auth/resend-verification
+GET  /api/auth/google/start
+GET  /api/auth/google/callback
+```
+
+User data:
+
+```http
+GET    /api/history
+GET    /api/history/{job_id}
+DELETE /api/history/{job_id}
+GET    /api/user/settings
+PUT    /api/user/settings
+GET    /api/feedback/status
+POST   /api/feedback
+```
+
+Admin:
+
+```http
+GET  /api/admin/summary
+GET  /api/admin/database/diagnostics
+POST /api/admin/database/cleanup
+GET  /api/admin/system-settings
+PUT  /api/admin/system-settings
+POST /api/admin/providers/check-all
+```
+
+Chat:
+
+```http
+GET       /api/chat/conversation
+POST      /api/chat/ws-ticket
+WebSocket /ws/chat
+```
+
+## Vận hành
+
+### Health check
+
+Kiểm tra sau deploy:
+
+```bash
+curl -fsS https://your-app.example.com/api/health
+```
+
+Kiểm tra chi tiết hơn:
+
+```bash
+curl -fsS https://your-app.example.com/api/health/detail
+```
+
+### Admin diagnostics
+
+Vào admin console hoặc gọi endpoint admin để kiểm tra:
+
+- migration drift
+- số lượng bản ghi từng bảng
+- trạng thái system settings
+- trạng thái uploaded file storage
+- provider AI
+
+### Cleanup dữ liệu
+
+Endpoint admin:
+
+```http
+POST /api/admin/database/cleanup
+```
+
+Mặc định nên chạy `dry_run=true` trước. Với upload đã lưu ngoài R2/Appwrite, cleanup base64 nên giữ `verify_remote=true` để kiểm tra size và checksum trước khi xoá base64 trong database.
+
+### Log
+
+Trong Docker:
+
+- stdout/stderr của Uvicorn ra log container.
+- stdout/stderr của nginx ra log container.
+- supervisord không ghi log file lâu dài.
+
+### Backup
+
+Production cần backup:
+
+- Database D1 hoặc SQLite volume.
+- Storage R2/Appwrite nếu dùng upload ngoài database.
+- Cloudinary nếu ảnh chat là dữ liệu cần lưu dài hạn.
+- Biến môi trường và secret trong secret manager của nền tảng deploy.
+
+## Bảo mật
+
+Checklist production:
+
+- Bật HTTPS.
+- Đặt `ENVIRONMENT=production`.
+- Đặt `SESSION_COOKIE_SECURE=true`.
+- Đặt `ALLOW_MISSING_ORIGIN_FOR_COOKIE_MUTATIONS=false`.
+- Cấu hình `CORS_ORIGINS` đúng origin frontend.
+- Không commit `.env`, database local, cache Wrangler hoặc file credential.
+- Không bật `DEV_BYPASS_AUTH` ở production.
+- Tắt `AUTH_EMAIL_DEV_MODE` nếu yêu cầu xác minh email thật.
+- Dùng secret manager cho API key.
+- Giới hạn quyền token D1/R2/Appwrite theo nhu cầu thực tế.
+- Không log raw API key, bearer token hoặc ảnh base64.
+- Backup trước migration hoặc cleanup destructive.
+
+## Cấu trúc thư mục
+
+```text
+.
+├── backend/
+│   ├── app/
+│   │   ├── api/              # FastAPI routes
+│   │   ├── core/             # cấu hình và logging
+│   │   ├── db/               # database client và migration runner
+│   │   ├── renderers/        # GeoGebra, Three.js, export renderer
+│   │   ├── repositories/     # truy cập dữ liệu
+│   │   ├── schemas/          # Pydantic schema
+│   │   └── services/         # logic nghiệp vụ và tích hợp ngoài
+│   ├── tests/                # test backend
+│   ├── requirements.txt
+│   ├── requirements-ocr.txt
+│   └── pyproject.toml
+├── frontend/
+│   ├── src/
+│   │   ├── api/              # client gọi backend
+│   │   ├── components/       # React components
+│   │   ├── hooks/
+│   │   ├── types/
+│   │   └── utils/
+│   ├── package.json
+│   └── vite.config.ts
+├── migrations/               # SQL migrations
+├── deploy/                   # nginx và supervisord config cho Docker
+├── Dockerfile
+└── wrangler.toml             # Cloudflare D1 metadata
+```
+
+## Ghi chú phát triển
+
+- Giữ frontend API client theo domain trong `frontend/src/api/*`; `frontend/src/api/client.ts` chỉ là barrel export.
+- Không commit artifact build như `dist`, `*.tsbuildinfo`, `*.egg-info`, `.data`, `.wrangler`.
+- Migration mới nên có prefix số duy nhất.
+- Khi thêm API mutation, kiểm tra `require_trusted_origin`.
+- Khi thêm upload hoặc dữ liệu người dùng, kiểm tra ownership, storage provider và cleanup path.
+- Khi sửa render/OCR, kiểm tra cả schema Pydantic, frontend type và test route liên quan.

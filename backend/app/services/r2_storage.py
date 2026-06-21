@@ -83,6 +83,11 @@ def load_file(object_key: str, settings: Settings) -> bytes:
     return data
 
 
+def delete_file(object_key: str, settings: Settings) -> None:
+    require_r2_config(settings)
+    r2_client(settings).delete_object(Bucket=settings.r2_bucket_name, Key=object_key)
+
+
 def r2_client(settings: Settings):
     return boto3.client(
         "s3",

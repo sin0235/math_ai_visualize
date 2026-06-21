@@ -46,6 +46,11 @@ async def load_file(file_id: str, settings: Settings, bucket_id: str | None = No
     return await asyncio.to_thread(_load_file_sync, file_id, settings, bucket_id)
 
 
+async def delete_file(file_id: str, settings: Settings, bucket_id: str | None = None) -> None:
+    require_appwrite_config(settings)
+    await asyncio.to_thread(_delete_file_sync, file_id, settings, bucket_id)
+
+
 def _store_file_sync(body: bytes, filename: str, content_type: str, file_id: str, settings: Settings) -> dict:
     storage = _storage_client(settings)
     try:
@@ -72,6 +77,13 @@ def _load_file_sync(file_id: str, settings: Settings, bucket_id: str | None) -> 
         file_id=file_id,
     )
     return _download_to_bytes(downloaded)
+
+
+def _delete_file_sync(file_id: str, settings: Settings, bucket_id: str | None) -> None:
+    _storage_client(settings).delete_file(
+        bucket_id=bucket_id or settings.appwrite_storage_bucket_id or "",
+        file_id=file_id,
+    )
 
 
 def _storage_client(settings: Settings):
