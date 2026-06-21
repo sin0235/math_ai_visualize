@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from app.core.config import Settings
 from app.schemas.scene import OcrMode, OcrProvider
 from app.services.ai_fallback import openrouter_vision_candidates, provider_configured, router9_ocr_candidates
-from app.services.model_provider import canonicalize_model_ref, normalize_model_for_provider, resolve_ocr_provider
+from app.services.model_provider import canonicalize_model_ref, explicit_provider_from_model, normalize_model_for_provider, resolve_ocr_provider
 from app.services.nvidia_client import NvidiaClient
 from app.services.ollama_client import OllamaClient
 from app.services.openai_compat_client import OpenAICompatClient
@@ -71,7 +71,8 @@ async def extract_text_from_image(
     auto_selection = provider is None and model is None
     selected_provider = "router9" if auto_selection and settings.router9_only else resolve_ocr_provider(provider, model)
     selected_model = canonicalize_model_ref(selected_provider, model, strict=True, allow_auto=False).model_id if model else None
-    selected_models = _dedupe([selected_model or "", *[normalize_model_for_provider(selected_provider, fallback) or "" for fallback in fallback_models or []]])
+    selected_models = _ocr_models_for_provider(selected_provider, selected_model, fallback_models)
+    has_cross_provider_fallbacks = _has_cross_provider_fallbacks(fallback_models, selected_provider)
     explicit_model = model is not None
     system_prompt = DIAGRAM_OCR_SYSTEM_PROMPT if mode == "diagram" else None
     user_text = DIAGRAM_OCR_USER_TEXT if mode == "diagram" else PROBLEM_OCR_USER_TEXT
@@ -101,7 +102,7 @@ async def extract_text_from_image(
         result = await _try_router9_ocr(image_data_url, settings, selected_models, attempts, system_prompt, user_text)
         if result is not None:
             return result
-        if settings.router9_only or explicit_model:
+        if settings.router9_only or (explicit_model and not has_cross_provider_fallbacks):
             raise RuntimeError(_format_ocr_failure("OCR 9router thất bại.", attempts, settings.router9_only))
 
     if auto_selection and selected_provider != "router9" and settings.router9_api_key:
@@ -109,9 +110,15 @@ async def extract_text_from_image(
         if result is not None:
             return result
 
-    provider_order = _ocr_provider_order(settings, selected_provider, provider is None and model is None)
+    provider_order = _ocr_provider_order(settings, selected_provider, provider is None and model is None, fallback_models)
     for fallback_provider in provider_order:
-        provider_models = selected_models if selected_provider == fallback_provider else None
+        provider_models = _ocr_models_for_provider(
+            fallback_provider,
+            selected_model if selected_provider == fallback_provider else None,
+            fallback_models,
+        )
+        if fallback_provider != selected_provider and not auto_selection and fallback_models and not provider_models:
+            continue
         if fallback_provider == "openrouter":
             result = await _try_openrouter_ocr(image_data_url, settings, provider_models, attempts, system_prompt, user_text)
         elif fallback_provider == "nvidia":
@@ -124,7 +131,7 @@ async def extract_text_from_image(
             continue
         if result is not None:
             return result
-        if explicit_model and fallback_provider == selected_provider:
+        if explicit_model and fallback_provider == selected_provider and not has_cross_provider_fallbacks:
             raise RuntimeError(_format_ocr_failure(f"OCR {fallback_provider} thất bại với model đã chọn.", attempts, settings.router9_only))
 
     raise RuntimeError(_format_ocr_failure("OCR thất bại qua tất cả provider fallback.", attempts, settings.router9_only))
@@ -268,24 +275,60 @@ async def _try_openai_compat_ocr(
     return None
 
 
-def _ocr_provider_order(settings: Settings, selected_provider: str, include_router9_auto: bool) -> list[str]:
+def _ocr_provider_order(settings: Settings, selected_provider: str, include_router9_auto: bool, fallback_models: list[str] | None = None) -> list[str]:
     providers: list[str] = []
     if include_router9_auto and provider_configured(settings.router9_api_key):
         providers.append("router9")
     providers.append(selected_provider)
+    for fallback in fallback_models or []:
+        fallback_provider = _ocr_fallback_provider_from_model(fallback)
+        if fallback_provider:
+            providers.append(fallback_provider)
     if provider_configured(settings.openrouter_api_key):
         providers.append("openrouter")
     if provider_configured(settings.nvidia_api_key):
         providers.append("nvidia")
     if settings.ollama_text_model:
         providers.append("ollama")
-    if provider_configured(settings.openai_compat_api_key) and settings.openai_compat_text_model:
+    if provider_configured(settings.openai_compat_api_key) and settings.openai_compat_text_model and selected_provider != "openai_compat":
         providers.append("openai_compat")
     return _dedupe(providers)
 
 
 def _attempt_warnings(attempts: list[OcrAttempt]) -> list[str]:
     return [f"OCR fallback: {attempt.warning()}" for attempt in attempts]
+
+
+def _has_cross_provider_fallbacks(fallback_models: list[str] | None, selected_provider: str) -> bool:
+    return any(
+        bool(fallback_provider and fallback_provider != selected_provider)
+        for fallback_provider in (_ocr_fallback_provider_from_model(fallback) for fallback in fallback_models or [])
+    )
+
+
+def _ocr_fallback_provider_from_model(model: str | None) -> str | None:
+    if not model:
+        return None
+    for provider_id in ("local", "openrouter", "router9", "nvidia", "ollama", "openai_compat"):
+        if model.startswith(f"{provider_id}/"):
+            return provider_id
+    if model.startswith("openai-compat/"):
+        return "openai_compat"
+    return explicit_provider_from_model(model)
+
+
+def _ocr_models_for_provider(selected_provider: str, selected_model: str | None, fallback_models: list[str] | None) -> list[str]:
+    models: list[str] = []
+    if selected_model:
+        models.append(selected_model)
+    for fallback in fallback_models or []:
+        fallback_provider = _ocr_fallback_provider_from_model(fallback)
+        if fallback_provider and fallback_provider != selected_provider:
+            continue
+        normalized = normalize_model_for_provider(selected_provider, fallback)
+        if normalized:
+            models.append(normalized)
+    return _dedupe(models)
 
 
 def _router9_ocr_model_candidates(settings: Settings, explicit_model: str | None) -> list[str]:

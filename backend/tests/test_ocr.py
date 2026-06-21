@@ -12,7 +12,7 @@ from app.db.session import SQLiteClient, get_database
 from app.repositories.auth import SESSION_COOKIE_NAME, SessionRepository, UserRepository
 from app.main import app
 from app.services.model_provider import resolve_ocr_provider
-from app.services.ocr import validate_image_data_url
+from app.services.ocr import extract_text_from_image, validate_image_data_url
 from app.services.openrouter_client import OpenRouterClient
 
 _IMAGE_DATA_URL = "data:image/png;base64,aGVsbG8="
@@ -561,6 +561,53 @@ def test_ocr_route_uses_admin_stored_router9_key_and_profile(monkeypatch, isolat
     assert response.json()["provider"] == "router9"
     assert response.json()["model"] == "gh/gpt-5-mini"
     assert calls == [("router9-secret", "gh/gpt-5-mini")]
+
+
+def test_ocr_profile_filters_cross_provider_fallback_models(monkeypatch):
+    settings = Settings(
+        _env_file=None,
+        openai_compat_api_key="compat-secret",
+        openai_compat_base_url="https://compat.example/v1",
+        openai_compat_text_model="compat/default",
+        openrouter_api_key="openrouter-secret",
+        local_ocr_enabled=False,
+    )
+    calls = []
+
+    async def fail_openai_compat(self, image_data_url: str, model: str | None = None, system_prompt=None, user_text="Trích xuất nguyên văn đề toán trong ảnh."):
+        calls.append(("openai_compat", model))
+        raise RuntimeError("compat unauthorized")
+
+    async def fake_openrouter(self, image_data_url: str, model: str | None = None, system_prompt=None, user_text="Trích xuất nguyên văn đề toán trong ảnh."):
+        calls.append(("openrouter", model))
+        return "Đề từ OpenRouter."
+
+    monkeypatch.setattr("app.services.openai_compat_client.OpenAICompatClient.ocr_image", fail_openai_compat)
+    monkeypatch.setattr("app.services.openrouter_client.OpenRouterClient.ocr_image", fake_openrouter)
+
+    result = asyncio.run(
+        extract_text_from_image(
+            _IMAGE_DATA_URL,
+            settings,
+            provider="openai_compat",
+            model="compat/primary",
+            fallback_models=[
+                "openrouter/google/gemma-4-31b-it:free",
+                "router9/codex-5.5-image",
+                "openai_compat/compat/fallback",
+            ],
+        )
+    )
+
+    assert result.provider == "openrouter"
+    assert result.model == "google/gemma-4-31b-it:free"
+    assert any("openai_compat/compat/fallback" in warning for warning in result.warnings)
+    assert calls == [
+        ("openai_compat", "compat/primary"),
+        ("openai_compat", "compat/fallback"),
+        ("openrouter", "google/gemma-4-31b-it:free"),
+    ]
+
 
 
 def test_openrouter_ocr_payload_uses_vision_message(monkeypatch):
