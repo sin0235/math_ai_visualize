@@ -1,8 +1,11 @@
+import { lazy, Suspense } from 'react';
 import type { RenderResponse } from '../types/scene';
 
 type Vec3 = { x: number; y: number; z: number };
 import { GeoGebraView } from './GeoGebraView';
-import { ThreeGeometryView, type ThreeSceneImageCapture, type ThreeSceneInteraction } from './ThreeGeometryView';
+import type { ThreeSceneImageCapture, ThreeSceneInteraction } from './ThreeGeometryView';
+
+const ThreeGeometryView = lazy(() => import('./ThreeGeometryView').then((module) => ({ default: module.ThreeGeometryView })));
 
 interface RendererPanelProps {
   result: RenderResponse | null;
@@ -21,6 +24,7 @@ export function RendererPanel({ result, threeInteraction, onGeoGebraPointChange,
   if (result.payload.renderer === 'geogebra_2d' || result.payload.renderer === 'geogebra_3d') {
     return (
       <div className="renderer-frame">
+        <RenderMetadataBanner result={result} />
         <GeoGebraView commands={result.payload.geogebra_commands} renderer={result.payload.renderer} scene={result.scene} view={result.scene.view} onPointChange={onGeoGebraPointChange} />
         {saving && <div className="renderer-saving-overlay">Đang dựng lại hình...</div>}
       </div>
@@ -30,7 +34,9 @@ export function RendererPanel({ result, threeInteraction, onGeoGebraPointChange,
   if (result.payload.three_scene) {
     return (
       <div className="renderer-frame">
-        <ThreeGeometryView scene={result.payload.three_scene} interaction={threeInteraction} highlightedObjects={highlightedObjects} onImageCaptureReady={onThreeImageCaptureReady} />
+        <Suspense fallback={<div className="renderer-loading-state">Đang tải trình dựng 3D...</div>}>
+          <ThreeGeometryView scene={result.payload.three_scene} interaction={threeInteraction} highlightedObjects={highlightedObjects} onImageCaptureReady={onThreeImageCaptureReady} />
+        </Suspense>
         {saving && <div className="renderer-saving-overlay">Đang dựng lại hình...</div>}
       </div>
     );
@@ -57,6 +63,25 @@ function EmptyState() {
       </div>
     </div>
   );
+}
+
+function RenderMetadataBanner({ result }: { result: RenderResponse }) {
+  const degraded = result.degraded || result.fallback_source === 'mock' || result.fallback_source === 'provider_fallback';
+  if (!degraded && result.ai_source !== 'byok') return null;
+
+  return (
+    <div className={`renderer-metadata-banner${degraded ? ' warning' : ''}`}>
+      <strong>{degraded ? 'Kết quả render có fallback' : 'Đang dùng BYOK'}</strong>
+      <span>{renderMetadataMessage(result)}</span>
+    </div>
+  );
+}
+
+function renderMetadataMessage(result: RenderResponse) {
+  if (result.fallback_source === 'mock') return 'Hệ thống đã dùng mock fallback, hình chỉ mang tính tham khảo.';
+  if (result.fallback_source === 'provider_fallback') return 'Hệ thống đã dùng provider fallback, nên kiểm tra lại nội dung hình.';
+  if (result.ai_source === 'byok') return 'Kết quả được sinh bằng provider OpenAI-compatible của tài khoản.';
+  return 'Nguồn dựng hình có trạng thái degraded.';
 }
 
 function GeometryIllustration() {

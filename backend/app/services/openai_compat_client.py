@@ -19,9 +19,15 @@ _REASONING_MAX_TOKENS = 4096
 
 
 class OpenAICompatClient:
-    def __init__(self, settings: Settings, model: str | None = None) -> None:
+    def __init__(self, settings: Settings | None = None, model: str | None = None, *, base_url: str | None = None, api_key: str | None = None) -> None:
         self.settings = settings
-        self.model = model or settings.openai_compat_text_model
+        self.base_url = base_url or (settings.openai_compat_base_url if settings is not None else "")
+        self.api_key = api_key if api_key is not None else (settings.openai_compat_api_key if settings is not None else None)
+        self.model = model or (settings.openai_compat_text_model if settings is not None else "")
+
+    @classmethod
+    def from_connection(cls, *, base_url: str, api_key: str | None, model: str) -> "OpenAICompatClient":
+        return cls(None, model=model, base_url=base_url, api_key=api_key)
 
     async def extract_scene_json(
         self,
@@ -77,16 +83,38 @@ class OpenAICompatClient:
     async def check_connection(self) -> str:
         if not self.model:
             raise RuntimeError("Chưa chọn model OpenAI-compatible.")
-        payload = {
-            "model": self.model,
-            "messages": [
-                {"role": "user", "content": "Reply with OK only."},
-            ],
-            "temperature": 0,
-            "max_tokens": 16,
+        return await self.chat_completion_text(
+            [{"role": "user", "content": "Reply with OK only."}],
+            kind="check",
+            temperature=0,
+            max_tokens=16,
+        )
+
+    async def chat_completion_text(
+        self,
+        messages: list[dict[str, Any]],
+        *,
+        kind: str = "chat",
+        model: str | None = None,
+        temperature: float = 0.2,
+        max_tokens: int | None = 4096,
+        response_format: dict[str, Any] | None = None,
+        **log_kwargs: Any,
+    ) -> str:
+        selected_model = model or self.model
+        if not selected_model:
+            raise RuntimeError("Chưa chọn model OpenAI-compatible.")
+        payload: dict[str, Any] = {
+            "model": selected_model,
+            "messages": messages,
+            "temperature": temperature,
             "stream": False,
         }
-        return await self._post_chat(payload, "check")
+        if max_tokens is not None:
+            payload["max_tokens"] = max_tokens
+        if response_format is not None:
+            payload["response_format"] = response_format
+        return await self._post_chat(payload, kind, **log_kwargs)
 
     async def ocr_image(self, image_data_url: str, model: str | None = None, system_prompt: str | None = None, user_text: str = "Trích xuất nguyên văn đề toán trong ảnh.") -> str:
         selected_model = model or self.model
@@ -113,8 +141,8 @@ class OpenAICompatClient:
         return text
 
     async def _post_chat(self, payload: dict[str, Any], kind: str, **log_kwargs: Any) -> str:
-        base_url = self.settings.openai_compat_base_url.rstrip("/")
-        api_key = (self.settings.openai_compat_api_key or "").strip()
+        base_url = self.base_url.rstrip("/")
+        api_key = (self.api_key or "").strip()
         if not api_key and _requires_api_key(base_url):
             raise RuntimeError(
                 f"OpenAI-compatible endpoint ({base_url}) cần API key nhưng chưa được cấu hình. "

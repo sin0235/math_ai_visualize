@@ -39,11 +39,11 @@ function clamp(value: number, min: number, max: number) {
 
 const defaultRuntimeSettings: RuntimeSettings = {
   default_provider: 'auto',
-  openrouter: { api_key: '', base_url: '', model: '', scanned_models: [], allowed_model_ids: [], last_scanned_at: '' },
-  nvidia: { api_key: '', base_url: '', model: '', scanned_models: [], allowed_model_ids: [], last_scanned_at: '' },
-  ollama: { api_key: '', base_url: '', model: '', scanned_models: [], allowed_model_ids: [], last_scanned_at: '' },
-  openai_compat: { api_key: '', base_url: '', model: '', scanned_models: [], allowed_model_ids: [], last_scanned_at: '' },
-  router9: { api_key: '', base_url: '', model: '', scanned_models: [], last_scanned_at: '', only_mode: false, allowed_model_ids: [] },
+  openrouter: { model: '', scanned_models: [], allowed_model_ids: [], last_scanned_at: '' },
+  nvidia: { model: '', scanned_models: [], allowed_model_ids: [], last_scanned_at: '' },
+  ollama: { model: '', scanned_models: [], allowed_model_ids: [], last_scanned_at: '' },
+  openai_compat: { model: '', scanned_models: [], allowed_model_ids: [], last_scanned_at: '' },
+  router9: { model: '', scanned_models: [], last_scanned_at: '', only_mode: false, allowed_model_ids: [] },
   ocr: { provider: 'openrouter', model: '', max_image_mb: 5 },
   openrouter_http_referer: '',
   openrouter_x_title: '',

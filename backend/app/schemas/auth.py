@@ -235,6 +235,9 @@ class RenderHistoryItem(BaseModel):
     created_at: str
     source_type: str = "problem"
     renderer: str | None = None
+    degraded: bool = False
+    fallback_source: Literal["none", "mock", "provider_fallback"] = "none"
+    ai_source: Literal["admin", "byok", "none"] = "none"
 
 
 class RenderHistoryDetail(RenderHistoryItem):

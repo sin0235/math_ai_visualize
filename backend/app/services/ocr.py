@@ -24,6 +24,12 @@ Nếu ảnh có cả đề bài và hình, kết hợp thành một mô tả đ�
 """.strip()
 DIAGRAM_OCR_USER_TEXT = "Mô tả hình vẽ này thành đề bài hình học để dựng lại."
 PROBLEM_OCR_USER_TEXT = "Trích xuất nguyên văn đề toán trong ảnh."
+_LOCAL_OCR_SEMAPHORES: dict[int, asyncio.Semaphore] = {}
+_LOCAL_OCR_GUARD = asyncio.Lock()
+
+
+class LocalOcrBusyError(RuntimeError):
+    pass
 
 
 @dataclass(frozen=True)
@@ -161,10 +167,27 @@ async def _run_local_ocr(image_data_url: str, mode: OcrMode, settings: Settings)
     from app.services.ocr_pipeline.local_pipeline import run_local_ocr_sync
 
     timeout = max(1, int(settings.local_ocr_timeout_seconds))
-    return await asyncio.wait_for(
-        asyncio.to_thread(run_local_ocr_sync, image_data_url, mode, settings),
-        timeout=timeout,
-    )
+    semaphore = await _local_ocr_semaphore(max(1, int(settings.local_ocr_max_concurrency)))
+    try:
+        await asyncio.wait_for(semaphore.acquire(), timeout=0.05)
+    except TimeoutError as error:
+        raise LocalOcrBusyError("Local OCR đang bận. Hãy thử lại sau.") from error
+    try:
+        return await asyncio.wait_for(
+            asyncio.to_thread(run_local_ocr_sync, image_data_url, mode, settings),
+            timeout=timeout,
+        )
+    finally:
+        semaphore.release()
+
+
+async def _local_ocr_semaphore(limit: int) -> asyncio.Semaphore:
+    async with _LOCAL_OCR_GUARD:
+        semaphore = _LOCAL_OCR_SEMAPHORES.get(limit)
+        if semaphore is None:
+            semaphore = asyncio.Semaphore(limit)
+            _LOCAL_OCR_SEMAPHORES[limit] = semaphore
+        return semaphore
 
 
 async def _try_router9_ocr(

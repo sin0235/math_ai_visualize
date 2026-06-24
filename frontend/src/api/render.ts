@@ -1,4 +1,4 @@
-import type { AdvancedRenderSettings, MathScene, QualityRiskAdvisory, RenderResponse, Renderer } from '../types/scene';
+import type { AdvancedRenderSettings, MathScene, QualityRiskAdvisory, RenderAiSource, RenderFallbackSource, RenderResponse, Renderer } from '../types/scene';
 import type { RuntimeSettings, ScannedModelInfo, SettingsDefaults } from '../types/settings';
 import { buildExportFilename, type ExportFormatKey } from '../utils/exportFilename';
 import { ApiError, apiUrl, compactRuntimeSettings, fetchWithRetry, networkApiError, parseApiError, requestJson, requestVoid, timeoutSignal } from './core';
@@ -32,6 +32,9 @@ export interface RenderHistoryItem {
   created_at: string;
   source_type: string;
   renderer?: string | null;
+  degraded?: boolean;
+  fallback_source?: RenderFallbackSource;
+  ai_source?: RenderAiSource;
 }
 
 export interface RenderHistoryDetail extends RenderHistoryItem {

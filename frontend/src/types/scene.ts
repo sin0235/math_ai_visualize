@@ -275,10 +275,16 @@ export interface QualityRiskAdvisory {
   recommendations: string[];
 }
 
+export type RenderFallbackSource = 'none' | 'mock' | 'provider_fallback';
+export type RenderAiSource = 'admin' | 'byok' | 'none';
+
 export interface RenderResponse {
   scene: MathScene;
   payload: RenderPayload;
   warnings: string[];
   cas_issues?: CasIssue[];
   advisory?: QualityRiskAdvisory | null;
+  degraded?: boolean;
+  fallback_source?: RenderFallbackSource;
+  ai_source?: RenderAiSource;
 }

@@ -180,11 +180,10 @@ export function compactRuntimeSettings(settings?: RuntimeSettings) {
 
 function compactProviderConnectionSettings(settings: RuntimeSettings['openrouter']) {
   const compact = {
-    api_key: cleanText(settings.api_key),
-    base_url: cleanText(settings.base_url),
+    model: cleanText(settings.model),
   };
 
-  if (compact.api_key === undefined && compact.base_url === undefined) {
+  if (compact.model === undefined) {
     return undefined;
   }
 
@@ -193,15 +192,13 @@ function compactProviderConnectionSettings(settings: RuntimeSettings['openrouter
 
 function compactRouter9ConnectionSettings(settings: RuntimeSettings) {
   const compact = {
-    api_key: cleanText(settings.router9.api_key),
-    base_url: cleanText(settings.router9.base_url),
+    model: cleanText(settings.router9.model),
     only_mode: settings.router9.only_mode ? true : undefined,
     allowed_model_ids: settings.router9.allowed_model_ids.length > 0 ? settings.router9.allowed_model_ids : undefined,
   };
 
   if (
-    compact.api_key === undefined &&
-    compact.base_url === undefined &&
+    compact.model === undefined &&
     compact.only_mode === undefined &&
     compact.allowed_model_ids === undefined
   ) {

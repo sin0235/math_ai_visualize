@@ -18,6 +18,7 @@ from app.services import appwrite_storage, r2_storage
 logger = logging.getLogger(__name__)
 
 SUPPORTED_IMAGE_TYPES = {"image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"}
+_UPLOAD_CHUNK_SIZE = 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -101,17 +102,29 @@ async def load_upload_body_from_record(record: UploadedFileRecord, settings: Set
 
 
 async def read_upload_body(upload: UploadFile, settings: Settings) -> tuple[str, str, bytes]:
-    content_type = (upload.content_type or "").lower()
-    if content_type not in SUPPORTED_IMAGE_TYPES:
+    declared_content_type = (upload.content_type or "").lower()
+    if declared_content_type and declared_content_type not in SUPPORTED_IMAGE_TYPES:
         raise ValueError("File OCR phải là ảnh PNG/JPEG/WebP/GIF.")
-    body = await upload.read()
+    max_bytes = max(1, int(settings.ocr_image_max_mb)) * 1024 * 1024
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        chunk = await upload.read(_UPLOAD_CHUNK_SIZE)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > max_bytes:
+            raise ValueError(f"Ảnh OCR vượt quá giới hạn {settings.ocr_image_max_mb}MB.")
+        chunks.append(chunk)
+    body = b"".join(chunks)
     if not body:
         raise ValueError("File OCR không có dữ liệu.")
-    max_bytes = max(1, int(settings.ocr_image_max_mb)) * 1024 * 1024
-    if len(body) > max_bytes:
-        raise ValueError(f"Ảnh OCR vượt quá giới hạn {settings.ocr_image_max_mb}MB.")
+    detected_content_type = detect_image_content_type(body)
+    if detected_content_type is None:
+        raise ValueError("File OCR không phải ảnh PNG/JPEG/WebP/GIF hợp lệ.")
+    validate_image_body(body, detected_content_type)
     filename = upload.filename or "ocr-image"
-    return filename, content_type, body
+    return filename, detected_content_type, body
 
 
 async def store_remote_file_with_fallback(body: bytes, filename: str, content_type: str, settings: Settings) -> RemoteUpload:
@@ -192,6 +205,74 @@ def should_retain_base64(remote: RemoteUpload, settings: Settings) -> bool:
     if settings.ocr_upload_base64_retention != "external_only":
         return True
     return remote.provider not in {"appwrite", "r2"}
+
+
+def detect_image_content_type(body: bytes) -> str | None:
+    if body.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if body.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if body.startswith(b"GIF87a") or body.startswith(b"GIF89a"):
+        return "image/gif"
+    if len(body) >= 12 and body[:4] == b"RIFF" and body[8:12] == b"WEBP":
+        return "image/webp"
+    return None
+
+
+def validate_image_body(body: bytes, content_type: str) -> None:
+    valid = False
+    if content_type == "image/png":
+        valid = _valid_png(body)
+    elif content_type in {"image/jpeg", "image/jpg"}:
+        valid = _valid_jpeg(body)
+    elif content_type == "image/gif":
+        valid = _valid_gif(body)
+    elif content_type == "image/webp":
+        valid = _valid_webp(body)
+    if not valid:
+        raise ValueError("File OCR không phải ảnh PNG/JPEG/WebP/GIF hợp lệ.")
+
+
+def _valid_png(body: bytes) -> bool:
+    if not body.startswith(b"\x89PNG\r\n\x1a\n") or len(body) < 33:
+        return False
+    offset = 8
+    seen_ihdr = False
+    while offset + 12 <= len(body):
+        length = int.from_bytes(body[offset:offset + 4], "big")
+        chunk_type = body[offset + 4:offset + 8]
+        data_start = offset + 8
+        data_end = data_start + length
+        crc_end = data_end + 4
+        if crc_end > len(body):
+            return False
+        if chunk_type == b"IHDR":
+            if seen_ihdr or length != 13:
+                return False
+            width = int.from_bytes(body[data_start:data_start + 4], "big")
+            height = int.from_bytes(body[data_start + 4:data_start + 8], "big")
+            if width <= 0 or height <= 0:
+                return False
+            seen_ihdr = True
+        if chunk_type == b"IEND":
+            return seen_ihdr and length == 0
+        offset = crc_end
+    return False
+
+
+def _valid_jpeg(body: bytes) -> bool:
+    return len(body) >= 4 and body.startswith(b"\xff\xd8") and body.endswith(b"\xff\xd9")
+
+
+def _valid_gif(body: bytes) -> bool:
+    return len(body) >= 13 and (body.startswith(b"GIF87a") or body.startswith(b"GIF89a")) and body[10] & 0b10000000 == 0 or body.endswith(b";" )
+
+
+def _valid_webp(body: bytes) -> bool:
+    if len(body) < 16 or body[:4] != b"RIFF" or body[8:12] != b"WEBP":
+        return False
+    declared_size = int.from_bytes(body[4:8], "little")
+    return declared_size + 8 <= len(body)
 
 
 def stored_image_from_record(record: UploadedFileRecord, data_base64: str) -> StoredImage:

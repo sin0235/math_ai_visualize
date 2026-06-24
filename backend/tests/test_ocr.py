@@ -18,6 +18,7 @@ from app.services.ocr import extract_text_from_image, validate_image_data_url
 from app.services.openrouter_client import OpenRouterClient
 
 _IMAGE_DATA_URL = "data:image/png;base64,aGVsbG8="
+PNG_BYTES = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x04\x00\x00\x00\xb5\x1c\x0c\x02\x00\x00\x00\x0bIDATx\xdac\xfc\xff\x1f\x00\x03\x03\x02\x00\xef\xbf\xa7\xdb\x00\x00\x00\x00IEND\xaeB`\x82"
 
 
 @pytest.fixture(autouse=True)
@@ -93,7 +94,7 @@ def test_ocr_upload_endpoint_returns_file_metadata_without_data_url(monkeypatch,
 
     response = TestClient(app).post(
         "/api/ocr/uploads",
-        files={"file": ("problem.png", b"fake-png", "image/png")},
+        files={"file": ("problem.png", PNG_BYTES, "image/png")},
     )
 
     assert response.status_code == 200
@@ -101,7 +102,7 @@ def test_ocr_upload_endpoint_returns_file_metadata_without_data_url(monkeypatch,
     assert data["file_id"]
     assert data["filename"] == "problem.png"
     assert data["content_type"] == "image/png"
-    assert data["size"] == len(b"fake-png")
+    assert data["size"] == len(PNG_BYTES)
     assert data["storage_provider"] == "database"
     assert "data_url" not in data
 

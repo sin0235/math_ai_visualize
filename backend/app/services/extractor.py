@@ -3,7 +3,7 @@ import logging
 import re
 import time
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any, Callable, Iterator, Literal
 
 from pydantic import ValidationError
 
@@ -68,6 +68,21 @@ class RenderAttempt:
         return f"{self.provider}/{self.model}: {_short_error(self.message)}"
 
 
+RenderFallbackSource = Literal["none", "mock", "provider_fallback"]
+
+
+@dataclass(frozen=True)
+class ExtractSceneResult:
+    scene: MathScene
+    warnings: list[str]
+    degraded: bool = False
+    fallback_source: RenderFallbackSource = "none"
+
+    def __iter__(self) -> Iterator[Any]:
+        yield self.scene
+        yield self.warnings
+
+
 async def _build_render_settings(db: DatabaseClient | None, runtime_settings: RuntimeSettings | None) -> Settings:
     return await resolve_effective_settings(db, runtime_settings)
 
@@ -80,7 +95,7 @@ async def extract_scene(
     preferred_ai_provider: str | None = None,
     preferred_ai_model: str | None = None,
     runtime_settings: RuntimeSettings | None = None,
-) -> tuple[MathScene, list[str]]:
+) -> ExtractSceneResult:
     """
     Trích xuất scene từ problem text với tier cụ thể.
     Các tham số preferred/runtime được giữ để tương thích với client và test cũ.
@@ -115,7 +130,7 @@ async def extract_scene(
             render_candidates = _settings_render_candidates(settings)
         if not render_candidates:
             warnings.append(f"Tier {tier} chưa có model khả dụng; đang dùng mock extractor.")
-            return extract_scene_mock(problem_text, grade), warnings
+            return _extract_result(extract_scene_mock(problem_text, grade), warnings, fallback_source="mock")
 
         for candidate in render_candidates:
             remaining = _render_budget_remaining(started_at)
@@ -155,7 +170,7 @@ async def extract_scene(
                     _log_render_attempt_failure(attempt, stage="validation")
                     warnings.extend(_render_attempt_warnings(attempts))
                     warnings.append("AI đã phản hồi nhưng scene không hợp lệ; đang dùng mock extractor.")
-                    return extract_scene_mock(problem_text, grade), warnings
+                    return _extract_result(extract_scene_mock(problem_text, grade), warnings, fallback_source="mock")
                 warnings.extend(cas_warnings)
                 return scene, warnings
             except TimeoutError:
@@ -177,7 +192,7 @@ async def extract_scene(
             warnings.append("Tất cả AI provider đều lỗi; đang dùng mock extractor.")
         else:
             warnings.append("Đang dùng mock extractor vì AI provider chưa sẵn sàng.")
-        return extract_scene_mock(problem_text, grade), warnings
+        return _extract_result(extract_scene_mock(problem_text, grade), warnings, fallback_source="mock")
 
     preferred_provider = _normalize_provider_alias(preferred_ai_provider)
     if preferred_ai_model and preferred_provider is None and settings.router9_only:
@@ -214,7 +229,7 @@ async def extract_scene(
                 warnings.append(_render_budget_warning(attempts, remaining))
                 if settings.router9_only:
                     raise RuntimeError(_format_render_failure("9router-only đang bật và render đã gần hết thời gian.", attempts, True))
-                return extract_scene_mock(problem_text, grade), warnings
+                return _extract_result(extract_scene_mock(problem_text, grade), warnings, fallback_source="mock")
             attempt_timeout = min(remaining, _RENDER_MAX_ATTEMPT_SECONDS)
             try:
                 try:
@@ -248,7 +263,7 @@ async def extract_scene(
                     _log_render_attempt_failure(attempt, stage="validation")
                     warnings.extend(_render_attempt_warnings(attempts))
                     warnings.append("AI đã phản hồi nhưng scene không hợp lệ; đang dùng mock extractor.")
-                    return extract_scene_mock(problem_text, grade), warnings
+                    return _extract_result(extract_scene_mock(problem_text, grade), warnings, fallback_source="mock")
                 warnings.extend(cas_warnings)
                 return scene, warnings
             except TimeoutError as error:
@@ -278,7 +293,16 @@ async def extract_scene(
         warnings.append("Tất cả AI provider đều lỗi; đang dùng mock extractor.")
     else:
         warnings.append("Đang dùng mock extractor vì AI provider chưa sẵn sàng.")
-    return extract_scene_mock(problem_text, grade), warnings
+    return _extract_result(extract_scene_mock(problem_text, grade), warnings, fallback_source="mock")
+
+
+def _extract_result(scene: MathScene, warnings: list[str], *, fallback_source: RenderFallbackSource) -> ExtractSceneResult:
+    return ExtractSceneResult(
+        scene=scene,
+        warnings=warnings,
+        degraded=fallback_source != "none",
+        fallback_source=fallback_source,
+    )
 
 
 async def _run_reasoning_stage(

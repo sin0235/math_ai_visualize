@@ -18,7 +18,7 @@ async def bootstrap_router9_models(settings: Settings) -> None:
         return
     try:
         models = await Router9Client(settings).list_models()
-    except RuntimeError as error:
+    except Exception as error:
         logger.warning("Không thể tự động quét model 9router lúc khởi động: %s", error)
         return
 

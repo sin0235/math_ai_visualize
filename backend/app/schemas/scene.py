@@ -240,8 +240,8 @@ class AdvancedRenderSettings(BaseModel):
 
 
 class ProviderRuntimeSettings(BaseModel):
-    api_key: str | None = Field(default=None, max_length=MAX_API_KEY_CHARS)
-    base_url: str | None = Field(default=None, max_length=MAX_BASE_URL_CHARS)
+    model_config = ConfigDict(extra="forbid")
+
     model: str | None = Field(default=None, max_length=MAX_MODEL_ID_CHARS)
 
 
@@ -477,6 +477,9 @@ class RenderResponse(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     cas_issues: list[CasIssueResponse] = Field(default_factory=list)
     advisory: QualityRiskAdvisory | None = None
+    degraded: bool = False
+    fallback_source: Literal["none", "mock", "provider_fallback"] = "none"
+    ai_source: Literal["admin", "byok", "none"] = "none"
 
 
 class RenderJobCreateResponse(BaseModel):

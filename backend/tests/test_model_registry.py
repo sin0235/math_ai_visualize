@@ -5,7 +5,7 @@ import pytest
 from app.core.config import Settings
 from app.db.migrations import apply_sqlite_migrations
 from app.db.session import SQLiteClient
-from app.schemas.scene import AiModelInfo
+from app.schemas.scene import AiModelInfo, RuntimeSettings
 from app.services.admin_settings import build_ai_settings_drift, sync_ai_profiles_to_registry, sync_ai_settings_to_registry
 from app.services.model_registry import (
     load_model_registry,
@@ -497,6 +497,31 @@ async def test_env_secret_keeps_env_openai_compat_connection_when_registry_has_s
     assert effective.openai_compat_api_key == "env-secret"
     assert effective.openai_compat_base_url == "https://env-openai-compatible.example/v1"
     assert effective.openai_compat_text_model == ""
+
+
+@pytest.mark.anyio
+async def test_runtime_settings_do_not_override_provider_secrets(db, monkeypatch):
+    settings = Settings(
+        _env_file=None,
+        openai_compat_api_key="env-secret",
+        openai_compat_base_url="https://env-openai-compatible.example/v1",
+        openai_compat_text_model="env-model",
+    )
+    monkeypatch.setattr("app.services.model_registry.get_settings", lambda: settings)
+    runtime = RuntimeSettings.model_validate({"openai_compat": {"model": "request-model"}})
+
+    effective = await resolve_effective_settings(db, runtime)
+
+    assert effective.openai_compat_api_key == "env-secret"
+    assert effective.openai_compat_base_url == "https://env-openai-compatible.example/v1"
+    assert effective.openai_compat_text_model == "request-model"
+
+
+def test_runtime_settings_reject_provider_secrets():
+    with pytest.raises(ValueError):
+        RuntimeSettings.model_validate({"openai_compat": {"api_key": "request-secret"}})
+    with pytest.raises(ValueError):
+        RuntimeSettings.model_validate({"openai_compat": {"base_url": "https://attacker.example/v1"}})
 
 
 @pytest.mark.anyio

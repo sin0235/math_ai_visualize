@@ -24,6 +24,7 @@ from app.core.config import Settings
 from app.schemas.scene import MathScene
 from app.services.ai_fallback import Attempt, format_attempts, provider_configured, text_model_candidates, text_provider_order
 from app.services.model_provider import normalize_model_for_provider
+from app.services.openai_compat_client import OpenAICompatClient
 from app.services.openrouter_client import _build_headers, _extract_message, _format_openrouter_error, _strip_json_fences, openrouter_api_base_url
 from app.services.provider_logging import log_provider_request, log_provider_response
 from app.services.chat_response import extract_chat_message_content
@@ -94,7 +95,24 @@ async def _call_variants_provider(provider: str, model: str, user_prompt: str, s
     if provider == "nvidia":
         return await _call_nvidia_variants(model, user_prompt, settings)
 
+    if provider == "openai_compat":
+        return await _call_openai_compat_variants(model, user_prompt, settings)
+
     raise RuntimeError(f"Provider không hỗ trợ sinh biến thể: {provider}")
+
+
+async def _call_openai_compat_variants(model: str, user_prompt: str, settings: Settings) -> str:
+    client = OpenAICompatClient(settings, model=model)
+    return await client.chat_completion_text(
+        [
+            {"role": "system", "content": VARIANTS_SYSTEM_PROMPT},
+            {"role": "user", "content": user_prompt},
+        ],
+        kind="variants",
+        temperature=0.6,
+        max_tokens=8192,
+        problem_chars=len(user_prompt),
+    )
 
 
 async def _call_openrouter_variants(model: str, user_prompt: str, settings: Settings) -> str:
@@ -185,14 +203,15 @@ async def generate_variants(
     count: int = 3,
     original_problem: str | None = None,
     explicit_model: str | None = None,
+    preferred_provider: str | None = "openrouter",
 ) -> VariantsResult:
     if count < 1 or count > 10:
         raise ValueError("Số biến thể phải từ 1 đến 10.")
 
     user_prompt = _build_user_prompt(scene, original_problem, count)
     attempts: list[Attempt] = []
-    for provider in text_provider_order(settings, "openrouter"):
-        for model in text_model_candidates(provider, settings, explicit_model if provider == "openrouter" else None):
+    for provider in text_provider_order(settings, preferred_provider):
+        for model in text_model_candidates(provider, settings, explicit_model if provider == preferred_provider else None):
             selected_model = model or "<none>"
             try:
                 content = await _call_variants_provider(provider, selected_model, user_prompt, settings)

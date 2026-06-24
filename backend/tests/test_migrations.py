@@ -1,4 +1,5 @@
 import asyncio
+import subprocess
 from pathlib import Path
 
 from app.db.migrations import apply_sqlite_migrations, build_migration_drift, duplicate_migration_prefixes, warn_duplicate_migration_prefixes
@@ -51,6 +52,41 @@ def test_uploaded_files_cleanup_migration_adds_base64_cleared_at(tmp_path):
     assert "base64_cleared_at" in {str(row["name"]) for row in columns}
     assert "idx_uploaded_files_provider_created" in {str(row["name"]) for row in indexes}
 
+
+def test_system_hardening_migration_adds_byok_and_render_metadata(tmp_path):
+    db = SQLiteClient(str(tmp_path / "test.db"))
+
+    asyncio.run(apply_sqlite_migrations(db))
+    tables = asyncio.run(db.fetch_all("SELECT name FROM sqlite_master WHERE type = 'table'"))
+    table_names = {str(row["name"]) for row in tables}
+    render_columns = asyncio.run(db.fetch_all("PRAGMA table_info(render_jobs)"))
+    render_indexes = asyncio.run(db.fetch_all("PRAGMA index_list(render_jobs)"))
+
+    assert {
+        "user_ai_provider_settings",
+        "user_ai_models",
+        "user_ai_task_profiles",
+    }.issubset(table_names)
+    assert {"degraded", "fallback_source", "ai_source"}.issubset({str(row["name"]) for row in render_columns})
+    assert "idx_render_jobs_status_created" in {str(row["name"]) for row in render_indexes}
+
+
+def test_local_artifacts_are_not_tracked_by_git():
+    blocked = {
+        ".wrangler/cache/wrangler-account.json",
+        "backend/.data/hinh.db",
+        "backend/backend/.data/hinh.db",
+    }
+    result = subprocess.run(
+        ["git", "ls-files", ".wrangler/cache/wrangler-account.json", "backend/.codex_pytest_tmp_base_url", "backend/.data/hinh.db", "backend/backend/.data/hinh.db"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    tracked = {line.strip() for line in result.stdout.splitlines() if line.strip()}
+
+    assert not tracked & blocked
+    assert not any(path.startswith("backend/.codex_pytest_tmp_base_url/") for path in tracked)
 
 
 def test_build_migration_drift_reports_missing_and_extra(tmp_path, monkeypatch):

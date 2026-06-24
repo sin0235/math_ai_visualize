@@ -1,6 +1,8 @@
+import { lazy, Suspense } from 'react';
 import { KatexSpan } from './KatexSpan';
-import { HomeTetrahedronShowcase } from './HomeTetrahedronShowcase';
 import type { RenderHistoryItem, UserResponse } from '../api/client';
+
+const HomeTetrahedronShowcase = lazy(() => import('./HomeTetrahedronShowcase').then((module) => ({ default: module.HomeTetrahedronShowcase })));
 
 type GeometryMobileView = 'render' | 'simulation' | 'geogebra-lab';
 
@@ -220,7 +222,9 @@ export function AboutPage({ onStart, onGuide }: { onStart: () => void; onGuide: 
         </div>
 
         <div className="home-visual-card home-visual-card--3d" role="region" aria-label="Minh họa tứ diện đều SABC, kéo để xoay góc nhìn.">
-          <HomeTetrahedronShowcase hideHelpers={true} />
+          <Suspense fallback={<div className="home-visual-placeholder" aria-hidden="true" />}>
+            <HomeTetrahedronShowcase hideHelpers={true} />
+          </Suspense>
         </div>
       </div>
 
@@ -383,6 +387,15 @@ function historySourceLabel(sourceType: string) {
   if (sourceType === 'scene_edit') return 'chỉnh hình';
   if (sourceType === 'ocr') return 'OCR';
   return 'đề bài';
+}
+
+function historyMetadataLabel(item: RenderHistoryItem) {
+  const labels: string[] = [];
+  if (item.ai_source === 'byok') labels.push('BYOK');
+  if (item.fallback_source === 'mock') labels.push('mock fallback');
+  else if (item.fallback_source === 'provider_fallback') labels.push('provider fallback');
+  else if (item.degraded) labels.push('degraded');
+  return labels.length ? ` · ${labels.join(' · ')}` : '';
 }
 
 export function MobileRendererWarning({ dismissed, onDismiss }: { dismissed: boolean; onDismiss: () => void }) {

@@ -415,8 +415,6 @@ def test_runtime_settings_merge_router9_values():
     settings = Settings(router9_base_url="https://old.example/v1", router9_api_key="old", router9_allowed_models=[])
     runtime_settings = RuntimeSettings.model_validate({
         "router9": {
-            "api_key": "new",
-            "base_url": "https://new.example/v1",
             "model": "provider/model-a",
             "only_mode": True,
             "allowed_model_ids": ["provider/model-a"],
@@ -424,8 +422,8 @@ def test_runtime_settings_merge_router9_values():
     })
     merged = merge_runtime_settings(settings, runtime_settings)
 
-    assert merged.router9_api_key == "new"
-    assert merged.router9_base_url == "https://new.example/v1"
+    assert merged.router9_api_key == "old"
+    assert merged.router9_base_url == "https://old.example/v1"
     assert merged.router9_text_model == "provider/model-a"
     assert merged.router9_only is True
     assert merged.router9_allowed_models == ["provider/model-a"]
@@ -444,7 +442,7 @@ def test_runtime_settings_ignore_blank_provider_overrides():
         openrouter_x_title="Env title",
     )
     runtime_settings = RuntimeSettings.model_validate({
-        "openrouter": {"api_key": "   ", "base_url": "", "model": "\t"},
+        "openrouter": {"model": "\t"},
         "openrouter_http_referer": " ",
         "openrouter_x_title": "",
     })
@@ -679,7 +677,8 @@ def test_render_fallback_success_returns_prior_failures_as_warnings(monkeypatch)
 
     monkeypatch.setattr("app.services.extractor._extract_with_provider", fake_extract)
 
-    scene, warnings = asyncio.run(extract_scene("x", runtime_settings=RuntimeSettings.model_validate({"default_provider": "nvidia", "nvidia": {"api_key": "secret"}})))
+    monkeypatch.setattr("app.services.model_registry.get_settings", lambda: Settings(_env_file=None, ai_provider="nvidia", nvidia_api_key="secret"))
+    scene, warnings = asyncio.run(extract_scene("x", runtime_settings=RuntimeSettings.model_validate({"default_provider": "nvidia"})))
 
     assert scene.renderer == "geogebra_2d"
     assert any("AI fallback: nvidia/" in warning and "quota exceeded" in warning for warning in warnings)
@@ -693,13 +692,17 @@ def test_render_stops_after_invalid_ai_response(monkeypatch):
         return {"problem_text": problem_text, "renderer": "geogebra_2d", "objects": [{"type": "point_2d"}], "view": {"dimension": "2d"}}
 
     monkeypatch.setattr("app.services.extractor._extract_with_provider", fake_extract)
+    monkeypatch.setattr(
+        "app.services.model_registry.get_settings",
+        lambda: Settings(_env_file=None, ai_provider="router9", router9_api_key="router9-secret", router9_text_model="cx/gpt-5.5", router9_allowed_models=["cx/gpt-5.5"]),
+    )
 
     scene, warnings = asyncio.run(extract_scene(
         "x",
         runtime_settings=RuntimeSettings.model_validate({
             "default_provider": "router9",
-            "router9": {"api_key": "router9-secret", "model": "cx/gpt-5.5"},
-            "openrouter": {"api_key": "openrouter-secret", "model": "openrouter/model"},
+            "router9": {"model": "cx/gpt-5.5"},
+            "openrouter": {"model": "openrouter/model"},
         }),
     ))
 
@@ -765,13 +768,12 @@ def test_render_router9_allowlist_uses_single_selected_model(monkeypatch):
         return {"problem_text": problem_text, "renderer": "geogebra_2d", "objects": [], "view": {"dimension": "2d"}}
 
     monkeypatch.setattr("app.services.extractor._extract_with_provider", fake_extract)
+    monkeypatch.setattr(
+        "app.services.model_registry.get_settings",
+        lambda: Settings(_env_file=None, router9_api_key="secret", router9_allowed_models=["cc/codex-5.5", "cc/codex-5.4", "cc/codex-5.3", "gh/gpt-5.2"]),
+    )
 
-    runtime_settings = RuntimeSettings.model_validate({
-        "router9": {
-            "api_key": "secret",
-            "allowed_model_ids": ["cc/codex-5.5", "cc/codex-5.4", "cc/codex-5.3", "gh/gpt-5.2"],
-        }
-    })
+    runtime_settings = RuntimeSettings.model_validate({"router9": {}})
     scene, warnings = asyncio.run(extract_scene("x", runtime_settings=runtime_settings))
 
     assert scene.topic == "unknown"
@@ -790,7 +792,6 @@ def test_render_router9_accepts_explicit_vendor_prefixed_model(monkeypatch):
 
     runtime_settings = RuntimeSettings.model_validate({
         "router9": {
-            "api_key": "secret",
             "model": "cx/gpt-5.5",
             "allowed_model_ids": ["cx/gpt-5.5", "google/gemini-2.5-pro"],
         }
@@ -845,7 +846,6 @@ def test_render_explicit_model_bypasses_registry_task_profile(monkeypatch):
 
     runtime_settings = RuntimeSettings.model_validate({
         "router9": {
-            "api_key": "secret",
             "model": "cx/gpt-5.5",
             "allowed_model_ids": ["cx/gpt-5.5", "google/gemini-2.5-pro"],
         }
@@ -874,7 +874,6 @@ def test_render_provider_selection_uses_runtime_model_when_payload_model_missing
 
     runtime_settings = RuntimeSettings.model_validate({
         "router9": {
-            "api_key": "secret",
             "model": "google/gemini-2.5-pro",
             "allowed_model_ids": ["cx/gpt-5.5", "google/gemini-2.5-pro"],
         }
@@ -902,11 +901,9 @@ def test_render_explicit_openai_compat_is_tried_before_fallback_without_api_key(
 
     runtime_settings = RuntimeSettings.model_validate({
         "openai_compat": {
-            "base_url": "https://deepseek.example/v1",
             "model": "deepseek-v4-flash",
         },
         "router9": {
-            "api_key": "router9-secret",
             "model": "cx/gpt-5.5",
             "allowed_model_ids": ["cx/gpt-5.5"],
         },
@@ -934,16 +931,13 @@ def test_render_explicit_model_does_not_fallback_to_other_providers(monkeypatch)
 
     runtime_settings = RuntimeSettings.model_validate({
         "openai_compat": {
-            "base_url": "https://deepseek.example/v1",
             "model": "deepseek-v4-flash",
         },
         "router9": {
-            "api_key": "router9-secret",
             "model": "cx/gpt-5.5",
             "allowed_model_ids": ["cx/gpt-5.5"],
         },
         "nvidia": {
-            "api_key": "nvidia-secret",
             "model": "qwen/qwen3-coder-480b-a35b-instruct",
         },
     })
@@ -1014,11 +1008,9 @@ def test_render_explicit_model_ignores_configured_profile_fallbacks(monkeypatch)
 
     runtime_settings = RuntimeSettings.model_validate({
         "openai_compat": {
-            "base_url": "https://deepseek.example/v1",
             "model": "deepseek-v4-flash",
         },
         "router9": {
-            "api_key": "router9-secret",
             "model": "cx/gpt-5.5",
             "allowed_model_ids": ["cx/gpt-5.5"],
         },
@@ -1048,11 +1040,9 @@ def test_render_explicit_ollama_alias_uses_ollama_provider(monkeypatch):
 
     runtime_settings = RuntimeSettings.model_validate({
         "ollama": {
-            "base_url": "https://ollama.example/v1",
             "model": "gpt-oss:120b",
         },
         "router9": {
-            "api_key": "router9-secret",
             "model": "cx/gpt-5.5",
         },
     })
@@ -1079,8 +1069,8 @@ def test_render_tries_full_provider_order_before_mock(monkeypatch):
 
     runtime_settings = RuntimeSettings.model_validate({
         "default_provider": "openrouter",
-        "openrouter": {"api_key": "router"},
-        "nvidia": {"api_key": "nvidia"},
+        "openrouter": {},
+        "nvidia": {},
     })
     scene, warnings = asyncio.run(extract_scene("x", runtime_settings=runtime_settings))
 
@@ -1113,7 +1103,8 @@ def test_render_all_ai_failures_warn_with_attempt_chain_before_mock(monkeypatch)
 
     monkeypatch.setattr("app.services.extractor._extract_with_provider", fail_extract)
 
-    scene, warnings = asyncio.run(extract_scene("x", runtime_settings=RuntimeSettings.model_validate({"default_provider": "openrouter", "openrouter": {"api_key": "router"}})))
+    monkeypatch.setattr("app.services.model_registry.get_settings", lambda: Settings(_env_file=None, ai_provider="openrouter", openrouter_api_key="router"))
+    scene, warnings = asyncio.run(extract_scene("x", runtime_settings=RuntimeSettings.model_validate({"default_provider": "openrouter"})))
 
     assert scene.topic == "unknown"
     assert any("AI fallback: openrouter/" in warning for warning in warnings)
@@ -1125,12 +1116,16 @@ def test_render_router9_only_failure_includes_attempted_model(monkeypatch):
         raise RuntimeError("gateway down")
 
     monkeypatch.setattr("app.services.extractor._extract_with_provider", fail_extract)
+    monkeypatch.setattr(
+        "app.services.model_registry.get_settings",
+        lambda: Settings(_env_file=None, router9_api_key="secret", router9_allowed_models=["cc/codex-5.5"]),
+    )
 
     try:
         asyncio.run(extract_scene(
             "x",
             preferred_ai_model="cc/codex-5.5",
-            runtime_settings=RuntimeSettings.model_validate({"router9": {"only_mode": True, "api_key": "secret"}}),
+            runtime_settings=RuntimeSettings.model_validate({"router9": {"only_mode": True}}),
         ))
     except RuntimeError as error:
         message = str(error)

@@ -1,5 +1,7 @@
+import { lazy, Suspense } from 'react';
 import type { SettingsDefaults } from '../types/settings';
-import { HomeTetrahedronShowcase } from './HomeTetrahedronShowcase';
+
+const HomeTetrahedronShowcase = lazy(() => import('./HomeTetrahedronShowcase').then((module) => ({ default: module.HomeTetrahedronShowcase })));
 
 export interface HomeBackendStatus {
   state: 'checking' | 'online' | 'offline';
@@ -86,7 +88,9 @@ export function HomePage({ backendStatus, onOpenLogin }: HomePageProps) {
         </div>
 
         <div className="home-visual-card home-visual-card--3d" role="region" aria-label="Minh họa tứ diện đều SABC, kéo để xoay góc nhìn.">
-          <HomeTetrahedronShowcase />
+          <Suspense fallback={<div className="home-visual-placeholder" aria-hidden="true" />}>
+            <HomeTetrahedronShowcase />
+          </Suspense>
         </div>
       </div>
 

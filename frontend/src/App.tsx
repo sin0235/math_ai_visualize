@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AdminConsole } from './components/admin/AdminConsole';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError, changePassword, deleteRenderHistory, forgotPassword, getCurrentUser, getHealth, getRenderHistory, getRenderHistoryDetail, getSessions, getSettingsDefaults, login, loginWithGoogle, logout, ocrImageByUploadId, register, renderEditedScene, renderProblem, resendVerification, resetPassword, revokeOtherSessions, revokeSession, updateProfile, uploadOcrImage, verifyEmail, type AdminRenderHistoryDetail, type RenderHistoryItem, type SessionResponse, type UserResponse } from './api/client';
 import { defaultAdvancedSettings, ProblemInput, type ModelOption, type TierKey } from './components/ProblemInput';
 import { AccountPage } from './components/AccountPage';
@@ -14,12 +13,6 @@ import type { ThreeSceneImageCapture } from './components/ThreeGeometryView';
 import { SceneEditorPanel, type PointPlacementPlane } from './components/SceneEditorPanel';
 import { PrivacyPolicyPage, TermsPage } from './components/LegalPages';
 import { SolverPanel } from './components/SolverPanel';
-import { AlgebraSolverPage } from './components/AlgebraSolverPage';
-import { FunctionAnalyzerPanel } from './components/FunctionAnalyzerPanel';
-import { CalculusSimulationPage } from './components/CalculusSimulationPage';
-import { GeoGebraLabPage } from './components/GeoGebraLabPage';
-import { PdfToWordPage } from './components/PdfToWordPage';
-import { KatexSpan } from './components/KatexSpan';
 import { AboutPage, AccessDeniedPage, AnalyzerGuidePage, GuidePage, HistoryPage, HistoryPanel, MobileRendererWarning, isGeometryMobileWarningView } from './components/AppPages';
 import { NotificationStack } from './components/NotificationStack';
 import { useNotifications } from './hooks/useNotifications';
@@ -32,6 +25,13 @@ import type { AdvancedRenderSettings, MathScene, RenderResponse, Renderer } from
 import { defaultRuntimeSettings, type RuntimeSettings, type SettingsDefaults } from './types/settings';
 import logoUrl from '../img.svg';
 import './styles.css';
+
+const AdminConsole = lazy(() => import('./components/admin/AdminConsole').then((module) => ({ default: module.AdminConsole })));
+const FunctionAnalyzerPanel = lazy(() => import('./components/FunctionAnalyzerPanel').then((module) => ({ default: module.FunctionAnalyzerPanel })));
+const AlgebraSolverPage = lazy(() => import('./components/AlgebraSolverPage').then((module) => ({ default: module.AlgebraSolverPage })));
+const CalculusSimulationPage = lazy(() => import('./components/CalculusSimulationPage').then((module) => ({ default: module.CalculusSimulationPage })));
+const GeoGebraLabPage = lazy(() => import('./components/GeoGebraLabPage').then((module) => ({ default: module.GeoGebraLabPage })));
+const PdfToWordPage = lazy(() => import('./components/PdfToWordPage').then((module) => ({ default: module.PdfToWordPage })));
 
 const MOBILE_WARNING_STORAGE_KEY = 'hinh-mobile-warning-dismissed';
 const MOBILE_BREAKPOINT_QUERY = '(max-width: 900px)';
@@ -805,12 +805,14 @@ export default function App() {
       return (
         <>
           <NotificationStack notifications={notifications} onDismiss={dismissNotification} />
-          <AdminConsole
-            user={user}
-            onBackToApp={() => navigateTo('home')}
-            onOpenRenderJobDetail={openAdminRenderJobDetail}
-            onToast={(title, message, kind = 'info') => showNotification(title, message, [], kind)}
-          />
+          <Suspense fallback={<PageLoadingFallback />}>
+            <AdminConsole
+              user={user}
+              onBackToApp={() => navigateTo('home')}
+              onOpenRenderJobDetail={openAdminRenderJobDetail}
+              onToast={(title, message, kind = 'info') => showNotification(title, message, [], kind)}
+            />
+          </Suspense>
         </>
       );
     }
@@ -1158,20 +1160,24 @@ export default function App() {
           </section>
         )}
         {activeView === 'analyzer' && (
-          <div className="analyzer-standalone-wrap">
-            <FunctionAnalyzerPanel onOpenGuide={() => navigateTo('analyzer-guide')} onWarnings={showAnalyzerWarnings} />
-          </div>
+          <Suspense fallback={<PageLoadingFallback />}>
+            <div className="analyzer-standalone-wrap">
+              <FunctionAnalyzerPanel onOpenGuide={() => navigateTo('analyzer-guide')} onWarnings={showAnalyzerWarnings} />
+            </div>
+          </Suspense>
         )}
-        {activeView === 'algebra-solver' && <AlgebraSolverPage />}
-        {activeView === 'simulation' && <CalculusSimulationPage />}
-        {activeView === 'geogebra-lab' && <GeoGebraLabPage />}
+        {activeView === 'algebra-solver' && <Suspense fallback={<PageLoadingFallback />}><AlgebraSolverPage /></Suspense>}
+        {activeView === 'simulation' && <Suspense fallback={<PageLoadingFallback />}><CalculusSimulationPage /></Suspense>}
+        {activeView === 'geogebra-lab' && <Suspense fallback={<PageLoadingFallback />}><GeoGebraLabPage /></Suspense>}
         {activeView === 'pdf-to-word' && (
-          <PdfToWordPage
-            apiBaseUrl={MINERU_API_BASE_URL}
-            modelOptions={modelOptions}
-            runtimeSettings={runtimeSettings}
-            router9Only={settingsDefaults?.router9.only_mode ?? false}
-          />
+          <Suspense fallback={<PageLoadingFallback />}>
+            <PdfToWordPage
+              apiBaseUrl={MINERU_API_BASE_URL}
+              modelOptions={modelOptions}
+              runtimeSettings={runtimeSettings}
+              router9Only={settingsDefaults?.router9.only_mode ?? false}
+            />
+          </Suspense>
         )}
         {activeView === 'analyzer-guide' && <AnalyzerGuidePage onOpenGeneralGuide={() => navigateTo('guide')} />}
         {activeView === 'history' && (
@@ -1365,6 +1371,15 @@ export default function App() {
   );
 }
 
+function PageLoadingFallback() {
+  return (
+    <section className="product-page-card page-loading-fallback" aria-live="polite">
+      <span className="sp-spinner" aria-hidden="true" />
+      <p>Đang tải công cụ...</p>
+    </section>
+  );
+}
+
 function toApiError(caught: unknown, fallback: string): ApiError {
   if (caught instanceof ApiError) return caught;
   if (caught instanceof Error) return new ApiError(caught.message || fallback);
@@ -1401,7 +1416,6 @@ function runtimeSettingsFromAdminDefaults(defaults: SettingsDefaults): RuntimeSe
 function providerSettingsFromAdminDefaults(defaults: SettingsDefaults['openrouter'] | SettingsDefaults['nvidia'] | SettingsDefaults['ollama'] | SettingsDefaults['openai_compat'] | SettingsDefaults['router9']) {
   return {
     ...defaultRuntimeSettings.openrouter,
-    base_url: defaults.base_url,
     model: defaults.model ?? '',
     scanned_models: defaults.scanned_models,
     allowed_model_ids: defaults.allowed_model_ids,

@@ -24,6 +24,9 @@ async def list_history(user: UserRecord = Depends(get_current_user), db: Databas
             created_at=job.created_at,
             source_type=job.source_type,
             renderer=job.renderer,
+            degraded=job.degraded,
+            fallback_source=job.fallback_source,  # type: ignore[arg-type]
+            ai_source=job.ai_source,  # type: ignore[arg-type]
         )
         for job in jobs
     ]
@@ -42,6 +45,9 @@ async def get_history(job_id: str, user: UserRecord = Depends(get_current_user),
         created_at=job.created_at,
         source_type=job.source_type,
         renderer=job.renderer,
+        degraded=job.degraded,
+        fallback_source=job.fallback_source,  # type: ignore[arg-type]
+        ai_source=job.ai_source,  # type: ignore[arg-type]
         scene=MathScene.model_validate_json(job.scene_json),
         payload=RenderPayload.model_validate_json(job.payload_json),
         warnings=json.loads(job.warnings_json),

@@ -215,15 +215,6 @@ async def resolve_effective_settings(db: DatabaseClient | None, runtime_settings
     return merge_runtime_settings(settings, runtime_settings)
 
 
-def _has_runtime_secret_override(runtime_settings: RuntimeSettings | None) -> bool:
-    if runtime_settings is None:
-        return False
-    return any(
-        provider is not None and bool((provider.api_key or "").strip())
-        for provider in (runtime_settings.openrouter, runtime_settings.nvidia, runtime_settings.ollama, runtime_settings.openai_compat, runtime_settings.router9)
-    )
-
-
 def settings_from_admin_ai_settings(settings: Settings, admin_settings: SystemAiSettings | None, registry: ModelRegistry) -> Settings:
     if admin_settings is None:
         return settings

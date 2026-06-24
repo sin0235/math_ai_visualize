@@ -12,8 +12,6 @@ export interface ScannedModelInfo {
 }
 
 export interface ProviderConnectionSettings {
-  api_key: string;
-  base_url: string;
   model: string;
   scanned_models: ScannedModelInfo[];
   allowed_model_ids: string[];
@@ -146,40 +144,30 @@ export interface SettingsDefaults {
 export const defaultRuntimeSettings: RuntimeSettings = {
   default_provider: 'auto',
   openrouter: {
-    api_key: '',
-    base_url: '',
     model: '',
     scanned_models: [],
     allowed_model_ids: [],
     last_scanned_at: '',
   },
   nvidia: {
-    api_key: '',
-    base_url: '',
     model: '',
     scanned_models: [],
     allowed_model_ids: [],
     last_scanned_at: '',
   },
   ollama: {
-    api_key: '',
-    base_url: '',
     model: '',
     scanned_models: [],
     allowed_model_ids: [],
     last_scanned_at: '',
   },
   openai_compat: {
-    api_key: '',
-    base_url: '',
     model: '',
     scanned_models: [],
     allowed_model_ids: [],
     last_scanned_at: '',
   },
   router9: {
-    api_key: '',
-    base_url: '',
     model: '',
     only_mode: false,
     scanned_models: [],

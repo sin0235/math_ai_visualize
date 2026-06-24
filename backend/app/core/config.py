@@ -111,6 +111,7 @@ class Settings(BaseSettings):
     local_ocr_fallback_to_llm: bool = True
     local_ocr_model_name: str = "paddleocr+pix2tex"
     dev_bypass_auth: bool = False
+    user_secret_encryption_key: str | None = None
 
     model_config = SettingsConfigDict(env_file=(".env", "backend/.env"), env_file_encoding="utf-8", extra="ignore")
 
@@ -146,42 +147,22 @@ def merge_runtime_settings(settings: Settings, runtime_settings: RuntimeSettings
         data["ai_provider"] = runtime_settings.default_provider
 
     if runtime_settings.openrouter:
-        if api_key := _clean_optional_text(runtime_settings.openrouter.api_key):
-            data["openrouter_api_key"] = api_key
-        if base_url := _clean_optional_text(runtime_settings.openrouter.base_url):
-            data["openrouter_base_url"] = base_url
         if model := _clean_optional_text(runtime_settings.openrouter.model):
             data["openrouter_text_model"] = model
 
     if runtime_settings.nvidia:
-        if api_key := _clean_optional_text(runtime_settings.nvidia.api_key):
-            data["nvidia_api_key"] = api_key
-        if base_url := _clean_optional_text(runtime_settings.nvidia.base_url):
-            data["nvidia_base_url"] = base_url
         if model := _clean_optional_text(runtime_settings.nvidia.model):
             data["nvidia_text_model"] = model
 
     if runtime_settings.ollama:
-        if api_key := _clean_optional_text(runtime_settings.ollama.api_key):
-            data["ollama_api_key"] = api_key
-        if base_url := _clean_optional_text(runtime_settings.ollama.base_url):
-            data["ollama_base_url"] = base_url
         if model := _clean_optional_text(runtime_settings.ollama.model):
             data["ollama_text_model"] = model
 
     if runtime_settings.openai_compat:
-        if api_key := _clean_optional_text(runtime_settings.openai_compat.api_key):
-            data["openai_compat_api_key"] = api_key
-        if base_url := _clean_optional_text(runtime_settings.openai_compat.base_url):
-            data["openai_compat_base_url"] = base_url
         if model := _clean_optional_text(runtime_settings.openai_compat.model):
             data["openai_compat_text_model"] = model
 
     if runtime_settings.router9:
-        if api_key := _clean_optional_text(runtime_settings.router9.api_key):
-            data["router9_api_key"] = api_key
-        if base_url := _clean_optional_text(runtime_settings.router9.base_url):
-            data["router9_base_url"] = base_url
         if model := _clean_optional_text(runtime_settings.router9.model):
             data["router9_text_model"] = model
         if runtime_settings.router9.only_mode is not None:

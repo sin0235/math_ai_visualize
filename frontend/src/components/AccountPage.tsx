@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import type { SessionResponse, UserResponse } from '../api/client';
+import { ByokSettingsPanel } from './ByokSettingsPanel';
 
 type AccountIconName = 'profile' | 'lock' | 'sessions' | 'shield' | 'workspace' | 'logout';
 type ToastKind = 'error' | 'warning' | 'info';
@@ -179,6 +180,8 @@ export function AccountPage({
             <button type="submit" disabled={loading}>Đổi mật khẩu</button>
           </form>
         </div>
+
+        <ByokSettingsPanel onToast={onToast} />
 
         <div className="account-panel">
           <div className="account-section-title">

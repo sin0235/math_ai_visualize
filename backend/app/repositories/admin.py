@@ -120,13 +120,16 @@ class AdminRepository:
         rows = await self.db.fetch_all(f"SELECT * FROM render_jobs{where} ORDER BY created_at DESC LIMIT ?", params)
         return [render_job_from_row(row) for row in rows]
 
-    async def count_user_render_jobs_since(self, user_id: str, since_iso: str, source_type: str | None = None) -> int:
+    async def count_user_render_jobs_since(self, user_id: str, since_iso: str, source_type: str | None = None, ai_source: str | None = None) -> int:
         params: list[object] = [user_id, since_iso]
-        source_clause = ""
+        clauses = ["user_id = ?", "created_at >= ?"]
         if source_type:
-            source_clause = " AND source_type = ?"
+            clauses.append("source_type = ?")
             params.append(source_type)
-        row = await self.db.fetch_one(f"SELECT COUNT(*) AS count FROM render_jobs WHERE user_id = ? AND created_at >= ?{source_clause}", params)
+        if ai_source:
+            clauses.append("ai_source = ?")
+            params.append(ai_source)
+        row = await self.db.fetch_one(f"SELECT COUNT(*) AS count FROM render_jobs WHERE {' AND '.join(clauses)}", params)
         return int((row or {}).get("count") or 0)
 
     async def count_user_usage_events_since(self, user_id: str, event_type: str, since_iso: str) -> int:

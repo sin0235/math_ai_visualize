@@ -40,18 +40,28 @@ async def apply_sqlite_migrations(db: SQLiteClient) -> None:
             )
             """
         )
+        await connection.commit()
         for migration in migrations:
             cursor = await connection.execute("SELECT 1 FROM schema_migrations WHERE filename = ?", [migration.name])
             if await cursor.fetchone():
                 continue
-            for statement in split_sql_statements(migration.read_text(encoding="utf-8")):
-                try:
-                    await connection.execute(statement)
-                except aiosqlite.OperationalError as error:
-                    if "duplicate column name" not in str(error).lower():
-                        raise
-            await connection.execute("INSERT INTO schema_migrations (filename) VALUES (?)", [migration.name])
+            await apply_sqlite_migration_file(connection, migration)
+
+
+async def apply_sqlite_migration_file(connection: aiosqlite.Connection, migration: Path) -> None:
+    try:
+        await connection.execute("BEGIN")
+        for statement in split_sql_statements(migration.read_text(encoding="utf-8")):
+            try:
+                await connection.execute(statement)
+            except aiosqlite.OperationalError as error:
+                if "duplicate column name" not in str(error).lower():
+                    raise
+        await connection.execute("INSERT INTO schema_migrations (filename) VALUES (?)", [migration.name])
         await connection.commit()
+    except Exception:
+        await connection.rollback()
+        raise
 
 
 async def apply_d1_migrations(db: D1Client) -> None:

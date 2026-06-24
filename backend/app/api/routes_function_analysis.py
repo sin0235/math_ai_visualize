@@ -14,8 +14,10 @@ from app.db.session import DatabaseClient, get_database
 from app.repositories.admin import AdminRepository
 from app.schemas.analysis import AnalyzeOcrRequest, AnalyzeRequest, AnalyzeResponse, CriticalPoint, VariationRow
 from app.schemas.scene import MAX_PROBLEM_TEXT_CHARS
+from app.services.ai_resolution import resolve_byok_ai_config, settings_with_byok_connection
 from app.services.api_errors import api_error
 from app.services.model_registry import load_model_registry, resolve_effective_settings, resolve_task_profile
+from app.services.user_ai_settings import UserAiSettingsError
 
 router = APIRouter(prefix="/api", tags=["function-analysis"])
 
@@ -28,10 +30,15 @@ Văn bản: {text}"""
 
 
 @router.post("/analyze", response_model=AnalyzeResponse, dependencies=[Depends(require_trusted_origin)])
-async def analyze_function_endpoint(request: AnalyzeRequest) -> AnalyzeResponse:
+async def analyze_function_endpoint(
+    request: AnalyzeRequest,
+    http_request: Request,
+    db: DatabaseClient = Depends(get_database),
+) -> AnalyzeResponse:
     from app.services.function_analyzer import analyze_function
     from app.services.function_graph_builder import build_function_graph
 
+    await enforce_rate_limit(db, http_request, None, "analyze", 30, 60)
     try:
         data = analyze_function(
             request.expression,
@@ -64,6 +71,11 @@ async def analyze_from_ocr(
     await enforce_rate_limit(db, http_request, user, "analyze_ocr", 12, 60)
     await enforce_ocr_access(db, user)
     settings = await resolve_effective_settings(db, None)
+    byok_used = False
+    try:
+        byok = await resolve_byok_ai_config(db, user, "ocr", settings)
+    except UserAiSettingsError as error:
+        raise api_error(400, f"Cấu hình BYOK không hợp lệ: {error}", "ANALYZE_OCR_FAILED") from error
     registry = await load_model_registry(db, settings)
     ocr_profile = resolve_task_profile(registry, "ocr")
     apply_ocr_profile = ocr_profile is not None and not (
@@ -72,12 +84,20 @@ async def analyze_from_ocr(
     )
     try:
         image_data_url = await resolve_image_source(request.image_data_url, request.upload_id, db, settings, user)
-        ocr_result = await extract_text_from_image(
-            image_data_url,
-            settings,
-            ocr_profile.provider_id if apply_ocr_profile and ocr_profile else None,
-            ocr_profile.model_id if apply_ocr_profile and ocr_profile else None,
-        )
+        if byok is not None and byok.client is not None:
+            text = await byok.client.ocr_image(image_data_url, byok.model_id)
+            from app.services.ocr import OcrResult
+
+            settings = settings_with_byok_connection(settings, byok)
+            ocr_result = OcrResult(text=text, provider="openai_compat", model=byok.model_id, warnings=["OCR sử dụng BYOK OpenAI-compatible."])
+            byok_used = True
+        else:
+            ocr_result = await extract_text_from_image(
+                image_data_url,
+                settings,
+                ocr_profile.provider_id if apply_ocr_profile and ocr_profile else None,
+                ocr_profile.model_id if apply_ocr_profile and ocr_profile else None,
+            )
         expression = await _extract_function_from_text(ocr_result.text, settings)
         if expression == "NONE":
             return AnalyzeResponse(expression="", error="Không tìm thấy biểu thức hàm số trong ảnh.", ocr_text=ocr_result.text, warnings=ocr_result.warnings)
@@ -93,7 +113,8 @@ async def analyze_from_ocr(
     except Exception as e:
         raise api_error(400, f"Lỗi khi phân tích ảnh: {e}", "ANALYZE_OCR_FAILED") from e
 
-    await AdminRepository(db).record_user_usage_event(user.id, "ocr", {"source": "analyze_ocr"})
+    if not byok_used:
+        await AdminRepository(db).record_user_usage_event(user.id, "ocr", {"source": "analyze_ocr"})
     return _analysis_response(expression, data)
 
 
@@ -169,6 +190,15 @@ async def _chat_text(prompt: str, settings) -> str:
                         "stream": False,
                     })
                     return _extract_router9_message_content(response).strip()
+                if provider == "openai_compat":
+                    from app.services.openai_compat_client import OpenAICompatClient
+
+                    return (await OpenAICompatClient(settings, model=selected_model).chat_completion_text(
+                        [{"role": "user", "content": prompt}],
+                        kind="function_extract",
+                        temperature=0.1,
+                        max_tokens=512,
+                    )).strip()
                 if provider == "openrouter":
                     from app.services.http_pool import TIMEOUT_FAST, get_client
 

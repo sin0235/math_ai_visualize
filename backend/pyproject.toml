@@ -23,6 +23,7 @@ dependencies = [
   "sympy>=1.13.0",
   "matplotlib>=3.9.0",
   "json-repair>=0.30.0",
+  "cryptography>=42.0.0",
 ]
 
 [project.optional-dependencies]

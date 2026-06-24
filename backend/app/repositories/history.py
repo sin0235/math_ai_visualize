@@ -29,9 +29,10 @@ class RenderHistoryRepository:
             """
             INSERT INTO render_jobs (
               id, user_id, problem_text, provider, model, scene_json, payload_json, warnings_json,
-              render_request_json, advanced_settings_json, runtime_settings_json, source_type, renderer
+              render_request_json, advanced_settings_json, runtime_settings_json, source_type, renderer,
+              degraded, fallback_source, ai_source
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 job_id,
@@ -47,6 +48,9 @@ class RenderHistoryRepository:
                 runtime_settings_json,
                 source_type,
                 renderer,
+                1 if response.degraded else 0,
+                response.fallback_source,
+                response.ai_source,
             ],
         )
         row = await self.db.fetch_one("SELECT * FROM render_jobs WHERE id = ?", [job_id])
@@ -105,7 +109,8 @@ class RenderHistoryRepository:
         await self.db.execute(
             """
             UPDATE render_jobs
-            SET status = 'completed', scene_json = ?, payload_json = ?, warnings_json = ?, renderer = ?, finished_at = CURRENT_TIMESTAMP
+            SET status = 'completed', scene_json = ?, payload_json = ?, warnings_json = ?, renderer = ?,
+                degraded = ?, fallback_source = ?, ai_source = ?, finished_at = CURRENT_TIMESTAMP
             WHERE id = ?
             """,
             [
@@ -113,6 +118,9 @@ class RenderHistoryRepository:
                 response.payload.model_dump_json(),
                 json.dumps(response.warnings, ensure_ascii=False),
                 renderer,
+                1 if response.degraded else 0,
+                response.fallback_source,
+                response.ai_source,
                 job_id,
             ],
         )
@@ -130,7 +138,8 @@ class RenderHistoryRepository:
     async def list_for_user(self, user_id: str, limit: int = 30) -> list[RenderJobRecord]:
         rows = await self.db.fetch_all(
             """
-            SELECT id, user_id, problem_text, provider, model, warnings_json, created_at, source_type, renderer, status, error_json, started_at, finished_at
+            SELECT id, user_id, problem_text, provider, model, warnings_json, created_at, source_type, renderer,
+                   status, error_json, started_at, finished_at, degraded, fallback_source, ai_source
             FROM render_jobs
             WHERE user_id = ? AND status = 'completed'
             ORDER BY created_at DESC
@@ -168,4 +177,7 @@ def render_job_from_row(row: DbRow) -> RenderJobRecord:
         error_json=str(row["error_json"]) if row.get("error_json") is not None else None,
         started_at=str(row["started_at"]) if row.get("started_at") is not None else None,
         finished_at=str(row["finished_at"]) if row.get("finished_at") is not None else None,
+        degraded=bool(row.get("degraded") or 0),
+        fallback_source=str(row.get("fallback_source") or "none"),
+        ai_source=str(row.get("ai_source") or "none"),
     )

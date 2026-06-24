@@ -12,8 +12,10 @@ from app.repositories.uploads import UploadRepository, UploadedFileRecord
 from app.schemas.auth import SystemFeatureFlags
 from app.schemas.scene import OcrRequest, OcrResponse, OcrUploadResponse
 from app.services.api_errors import api_error, bad_request_from_error
+from app.services.ai_resolution import resolve_byok_ai_config
 from app.services.model_registry import load_model_registry, resolve_effective_settings, resolve_task_profile
 from app.services.ocr import extract_text_from_image
+from app.services.user_ai_settings import UserAiSettingsError
 from app.services.system_settings import load_feature_flags
 from app.services.upload_storage import StoredImage, load_upload_body_from_record, load_upload_image, save_upload_image
 
@@ -79,6 +81,16 @@ async def ocr_image(
     await enforce_ocr_access(db, user)
     settings = await resolve_effective_settings(db, None)
     image_data_url = await resolve_ocr_image_data_url(request, db, settings, user)
+    try:
+        byok = await resolve_byok_ai_config(db, user, "ocr", settings)
+    except UserAiSettingsError as error:
+        raise bad_request_from_error(error, "ocr_failed") from error
+    if byok is not None and byok.client is not None:
+        try:
+            text = await byok.client.ocr_image(image_data_url, byok.model_id)
+        except RuntimeError as error:
+            raise bad_request_from_error(error, "ocr_failed") from error
+        return OcrResponse(text=text, provider="openai_compat", model=byok.model_id, warnings=["OCR sử dụng BYOK OpenAI-compatible."])
     registry = await load_model_registry(db, settings)
     raw_ocr_profile = registry.task_profiles.get("ocr")
     try:

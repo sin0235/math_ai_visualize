@@ -10,6 +10,7 @@ from app.core.config import Settings
 from app.services.model_registry import TaskProfile
 from app.services.ai_fallback import Attempt, dedupe, format_attempts, provider_configured, text_model_candidates, text_provider_order
 from app.services.model_provider import normalize_model_for_provider
+from app.services.openai_compat_client import OpenAICompatClient
 from app.services.openrouter_client import _build_headers as _build_openrouter_headers, _extract_message as _extract_openrouter_message, openrouter_api_base_url
 from app.services.chat_response import extract_chat_message_content
 from app.services.router9_client import Router9Client, _extract_message_content as _extract_router9_message_content
@@ -136,7 +137,7 @@ async def _call_explainer(payload: dict[str, Any], settings: Settings, selection
         prompt = "Diễn giải lời giải sau cho học sinh. Chỉ viết lại câu chữ, giữ nguyên đáp số, công thức, thế số và kết quả:\n" + json.dumps(payload, ensure_ascii=False)
         
     attempts: list[Attempt] = []
-    preferred_provider = selection.provider_id if selection else ("router9" if provider_configured(settings.router9_api_key) else None)
+    preferred_provider = selection.provider_id if selection else preferred_provider_from_settings(settings)
     preferred_model = selection.model_id if selection else None
 
     for provider in text_provider_order(settings, preferred_provider):
@@ -152,6 +153,8 @@ async def _call_explainer(payload: dict[str, Any], settings: Settings, selection
                     content = await _call_openrouter_model(prompt, settings, selected_model, selected_model == "openai/gpt-oss-120b:free" or settings.openrouter_reasoning_enabled, system_prompt)
                 elif provider == "nvidia":
                     content = await _call_nvidia(prompt, settings, selected_model, system_prompt)
+                elif provider == "openai_compat":
+                    content = await _call_openai_compat(prompt, settings, selected_model, system_prompt)
                 else:
                     continue
                 parsed = _strip_json_fences(content)
@@ -164,6 +167,27 @@ async def _call_explainer(payload: dict[str, Any], settings: Settings, selection
                 attempts.append(Attempt(provider, selected_model, "solver_explainer", str(error)))
 
     raise RuntimeError("Không gọi được provider diễn giải solver. Đã thử: " + format_attempts(attempts))
+
+
+def preferred_provider_from_settings(settings: Settings) -> str | None:
+    if settings.ai_provider == "openai_compat" and provider_configured(settings.openai_compat_api_key):
+        return "openai_compat"
+    if provider_configured(settings.router9_api_key):
+        return "router9"
+    return settings.ai_provider if settings.ai_provider not in {"auto", "mock", "openrouter_gpt_oss", "opencode_nemotron"} else None
+
+
+async def _call_openai_compat(prompt: str, settings: Settings, model: str, system_prompt: str) -> str:
+    client = OpenAICompatClient(settings, model=model)
+    return await client.chat_completion_text(
+        [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt},
+        ],
+        kind="solver_explainer",
+        temperature=0.2,
+        max_tokens=4096,
+    )
 
 
 async def _call_router9(prompt: str, settings: Settings, model: str, system_prompt: str) -> str:

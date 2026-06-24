@@ -11,6 +11,7 @@ from app.db.models import DbRow
 
 class DatabaseClient(Protocol):
     async def execute(self, sql: str, params: list[Any] | tuple[Any, ...] | None = None) -> None: ...
+    async def execute_many(self, statements: list[tuple[str, list[Any] | tuple[Any, ...] | None]]) -> None: ...
     async def fetch_one(self, sql: str, params: list[Any] | tuple[Any, ...] | None = None) -> DbRow | None: ...
     async def fetch_all(self, sql: str, params: list[Any] | tuple[Any, ...] | None = None) -> list[DbRow]: ...
 
@@ -23,10 +24,19 @@ class SQLiteClient:
         Path(self.path).parent.mkdir(parents=True, exist_ok=True)
 
     async def execute(self, sql: str, params: list[Any] | tuple[Any, ...] | None = None) -> None:
+        await self.execute_many([(sql, params)])
+
+    async def execute_many(self, statements: list[tuple[str, list[Any] | tuple[Any, ...] | None]]) -> None:
         async with aiosqlite.connect(self.path) as db:
             await db.execute("PRAGMA foreign_keys = ON")
-            await db.execute(sql, params or [])
-            await db.commit()
+            try:
+                await db.execute("BEGIN")
+                for sql, params in statements:
+                    await db.execute(sql, params or [])
+                await db.commit()
+            except Exception:
+                await db.rollback()
+                raise
 
     async def fetch_one(self, sql: str, params: list[Any] | tuple[Any, ...] | None = None) -> DbRow | None:
         async with aiosqlite.connect(self.path) as db:
@@ -54,6 +64,10 @@ class D1Client:
 
     async def execute(self, sql: str, params: list[Any] | tuple[Any, ...] | None = None) -> None:
         await self._query(sql, params)
+
+    async def execute_many(self, statements: list[tuple[str, list[Any] | tuple[Any, ...] | None]]) -> None:
+        for sql, params in statements:
+            await self.execute(sql, params)
 
     async def fetch_one(self, sql: str, params: list[Any] | tuple[Any, ...] | None = None) -> DbRow | None:
         rows = await self._query(sql, params)

@@ -356,17 +356,21 @@ class RateLimitRepository:
     async def hit(self, key: str, limit: int, window_seconds: int) -> RateLimitResult:
         now = datetime.now(UTC)
         bucket = str(int(now.timestamp()) // window_seconds)
+        expires_at = (now + timedelta(seconds=window_seconds)).isoformat()
+        await self.db.execute(
+            """
+            INSERT INTO rate_limit_events (key, bucket, count, expires_at)
+            VALUES (?, ?, 1, ?)
+            ON CONFLICT(key, bucket) DO UPDATE SET
+              count = count + 1,
+              updated_at = CURRENT_TIMESTAMP
+            """,
+            [key, bucket, expires_at],
+        )
         row = await self.db.fetch_one("SELECT * FROM rate_limit_events WHERE key = ? AND bucket = ?", [key, bucket])
-        if row is None:
-            expires_at = (now + timedelta(seconds=window_seconds)).isoformat()
-            await self.db.execute(
-                "INSERT INTO rate_limit_events (key, bucket, count, expires_at) VALUES (?, ?, 1, ?)",
-                [key, bucket, expires_at],
-            )
-            return RateLimitResult(True, max(limit - 1, 0), window_seconds)
-        count = int(row.get("count") or 0) + 1
-        await self.db.execute("UPDATE rate_limit_events SET count = ?, updated_at = CURRENT_TIMESTAMP WHERE key = ? AND bucket = ?", [count, key, bucket])
-        retry_after = max(int((parse_datetime(str(row["expires_at"])) - now).total_seconds()), 1)
+        count = int((row or {}).get("count") or 0)
+        stored_expires_at = str((row or {}).get("expires_at") or expires_at)
+        retry_after = max(int((parse_datetime(stored_expires_at) - now).total_seconds()), 1)
         return RateLimitResult(count <= limit, max(limit - count, 0), retry_after)
 
 

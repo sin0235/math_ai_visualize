@@ -14,6 +14,8 @@ from app.core.config import get_settings
 from app.schemas.auth import SystemFeatureFlags
 from app.schemas.scene import RenderRequest, RenderResponse, SceneRenderRequest
 from app.services.api_errors import api_error
+from app.services.ai_resolution import resolve_byok_ai_config
+from app.services.user_ai_settings import UserAiSettingsError
 from app.services.system_settings import load_feature_flags
 
 router = APIRouter(prefix="/api", tags=["render"])
@@ -31,9 +33,15 @@ async def render_problem(
     db: DatabaseClient = Depends(get_database),
 ) -> RenderResponse:
     await enforce_rate_limit(db, http_request, user, "render", 20 if user else 8, 60)
-    await enforce_render_access(db, user)
+    settings = get_settings()
     try:
-        response = await asyncio.wait_for(build_problem_render_response(request, db), timeout=RENDER_TIMEOUT_SECONDS)
+        byok = await resolve_byok_ai_config(db, user, "render", settings)
+    except UserAiSettingsError as error:
+        raise api_error(status.HTTP_400_BAD_REQUEST, f"Cấu hình BYOK không hợp lệ: {error}", "RENDER_FAILED") from error
+    if byok is None:
+        await enforce_render_access(db, user)
+    try:
+        response = await asyncio.wait_for(build_problem_render_response(request, db, user, byok=byok), timeout=RENDER_TIMEOUT_SECONDS)
     except TimeoutError as error:
         raise api_error(
             status.HTTP_504_GATEWAY_TIMEOUT,
@@ -60,22 +68,46 @@ async def render_problem(
     return response
 
 
-async def build_problem_render_response(request: RenderRequest, db: DatabaseClient) -> RenderResponse:
+async def build_problem_render_response(request: RenderRequest, db: DatabaseClient, user: UserRecord | None = None, byok=None) -> RenderResponse:
     from app.services.extractor import extract_scene
     from app.services.geometry_engine import normalize_scene
     from app.services.quality_advisory import build_render_advisory
     from app.services.renderer_router import build_render_payload
 
-    scene, warnings = await extract_scene(
-        request.problem_text,
-        request.grade,
-        request.tier,
-        request.advanced_settings,
-        db=db,
-        preferred_ai_provider=request.preferred_ai_provider,
-        preferred_ai_model=request.preferred_ai_model,
-        runtime_settings=request.runtime_settings,
-    )
+    settings = get_settings()
+    ai_source = "admin"
+    degraded = False
+    fallback_source = "none"
+    if byok is None:
+        try:
+            byok = await resolve_byok_ai_config(db, user, "render", settings)
+        except UserAiSettingsError as error:
+            raise RuntimeError(f"Cấu hình BYOK không hợp lệ: {error}") from error
+    if byok is not None and byok.client is not None:
+        try:
+            scene_json = await byok.client.extract_scene_json(
+                request.problem_text,
+                request.grade,
+                request.advanced_settings.reasoning_layer,
+            )
+            from app.services.extractor import build_scene_with_cas_fix
+
+            scene, warnings = build_scene_with_cas_fix(scene_json, verify=request.advanced_settings.verify_scene)
+            ai_source = "byok"
+        except Exception as error:
+            raise RuntimeError(f"Render BYOK thất bại: {error}") from error
+    else:
+        extraction = await extract_scene(
+            request.problem_text,
+            request.grade,
+            request.tier,
+            request.advanced_settings,
+            db=db,
+            preferred_ai_provider=request.preferred_ai_provider,
+            preferred_ai_model=request.preferred_ai_model,
+            runtime_settings=request.runtime_settings,
+        )
+        scene, warnings, degraded, fallback_source = unpack_extraction_result(extraction)
     if request.preferred_renderer is not None:
         scene.renderer = request.preferred_renderer
     scene_data = scene.model_dump()
@@ -93,7 +125,11 @@ async def build_problem_render_response(request: RenderRequest, db: DatabaseClie
     advisory = None
     if get_settings().advisory_enabled:
         advisory = build_render_advisory(request.problem_text, request.grade, scene, warnings, scene.cas_issues, payload)
-    return RenderResponse(scene=scene, payload=payload, warnings=warnings, cas_issues=scene.cas_issues, advisory=advisory)
+    warning_degraded, warning_fallback_source = render_degradation_metadata(warnings)
+    degraded = degraded or warning_degraded
+    if fallback_source == "none":
+        fallback_source = warning_fallback_source
+    return RenderResponse(scene=scene, payload=payload, warnings=warnings, cas_issues=scene.cas_issues, advisory=advisory, degraded=degraded, fallback_source=fallback_source, ai_source=ai_source)
 
 
 @router.post("/render/scene", response_model=RenderResponse, dependencies=[Depends(require_trusted_origin)])
@@ -117,7 +153,7 @@ async def render_scene(
     if isinstance(computed, dict):
         warnings = [warning for warning in computed.get("warnings", []) if isinstance(warning, str)]
     advisory = build_scene_advisory(scene, warnings, payload) if get_settings().advisory_enabled else None
-    response = RenderResponse(scene=scene, payload=payload, warnings=warnings, cas_issues=scene.cas_issues, advisory=advisory)
+    response = RenderResponse(scene=scene, payload=payload, warnings=warnings, cas_issues=scene.cas_issues, advisory=advisory, ai_source="none")
     if user is not None:
         await RenderHistoryRepository(db).create(
             user.id,
@@ -153,7 +189,8 @@ async def enforce_render_access(db: DatabaseClient, user: UserRecord | None) -> 
     if plan is None or plan.daily_render_limit is None:
         return
     since = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
-    used = await repo.count_user_render_jobs_since(user.id, since)
+    used = await repo.count_user_render_jobs_since(user.id, since, ai_source="admin")
+    used += await repo.count_user_render_jobs_since(user.id, since, source_type="problem", ai_source="none")
     used += await repo.count_user_usage_events_since_any(user.id, RENDER_AI_USAGE_EVENT_TYPES, since)
     if used >= plan.daily_render_limit:
         raise api_error(
@@ -169,6 +206,23 @@ def enforce_enabled(flags: SystemFeatureFlags) -> None:
         raise api_error(status.HTTP_503_SERVICE_UNAVAILABLE, flags.maintenance_message, "MAINTENANCE_MODE")
     if not flags.render_enabled:
         raise api_error(status.HTTP_403_FORBIDDEN, "Tính năng render đang tạm tắt.", "RENDER_DISABLED")
+
+
+def unpack_extraction_result(extraction) -> tuple:
+    if hasattr(extraction, "scene"):
+        return extraction.scene, extraction.warnings, extraction.degraded, extraction.fallback_source
+    scene, warnings = extraction
+    return scene, warnings, False, "none"
+
+
+def render_degradation_metadata(warnings: list[str]) -> tuple[bool, str]:
+    for warning in warnings:
+        lowered = warning.lower()
+        if "mock" in lowered:
+            return True, "mock"
+        if "fallback" in lowered or "dự phòng" in lowered:
+            return True, "provider_fallback"
+    return False, "none"
 
 
 def render_error_payload(error: Exception) -> dict:

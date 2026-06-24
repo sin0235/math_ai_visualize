@@ -110,6 +110,9 @@ class RenderJobRecord:
     error_json: str | None = None
     started_at: str | None = None
     finished_at: str | None = None
+    degraded: bool = False
+    fallback_source: str = "none"
+    ai_source: str = "none"
 
 
 @dataclass(frozen=True)

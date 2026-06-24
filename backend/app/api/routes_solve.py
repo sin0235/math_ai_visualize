@@ -15,8 +15,10 @@ from app.db.session import DatabaseClient, get_database
 from app.repositories.admin import AdminRepository
 from app.schemas.advisory import QualityRiskAdvisory
 from app.schemas.scene import MAX_PROBLEM_TEXT_CHARS, RuntimeSettings
+from app.services.ai_resolution import resolve_byok_ai_config, settings_with_byok_connection
 from app.services.api_errors import bad_request_from_error
 from app.services.model_registry import load_model_registry, resolve_effective_settings, resolve_task_profile
+from app.services.user_ai_settings import UserAiSettingsError
 
 router = APIRouter(prefix="/api", tags=["solver"])
 
@@ -77,9 +79,21 @@ async def solve_problem(
 
             advisory = build_solve_advisory(request.question, request.scene, result)
         settings = await resolve_effective_settings(db, request.runtime_settings)
-        registry = await load_model_registry(db, settings)
-        solver_profile = resolve_task_profile(registry, "solver_explanation")
-        if geometry_method != "classical" and (settings.router9_api_key or settings.openrouter_api_key):
+        byok_used = False
+        byok = None
+        if user is not None and hasattr(db, "fetch_one"):
+            try:
+                byok = await resolve_byok_ai_config(db, user, "solver", settings)
+            except UserAiSettingsError as error:
+                raise RuntimeError(f"Cấu hình BYOK không hợp lệ: {error}") from error
+        if byok is not None:
+            settings = settings_with_byok_connection(settings, byok)
+            solver_profile = None
+            byok_used = True
+        else:
+            registry = await load_model_registry(db, settings)
+            solver_profile = resolve_task_profile(registry, "solver_explanation")
+        if geometry_method != "classical" and (settings.router9_api_key or settings.openrouter_api_key or settings.openai_compat_api_key):
             from app.services.solver_explainer import explain_solver_result
 
             result = await explain_solver_result(result, request.scene, settings, solver_profile, method=geometry_method)
@@ -87,7 +101,7 @@ async def solve_problem(
     except Exception as e:
         raise bad_request_from_error(e, "solve_failed") from e
 
-    if used_ai:
+    if used_ai and not byok_used:
         await AdminRepository(db).record_user_usage_event(user.id, "solver_ai", {"source": "geometry_solve"})
     def _map_step(s) -> SolveStepResponse:
         return SolveStepResponse(

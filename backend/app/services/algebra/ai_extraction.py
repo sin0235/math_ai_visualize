@@ -11,6 +11,7 @@ from app.schemas.algebra import AlgebraSolveRequest, AlgebraTopic
 from app.services.ai_fallback import Attempt, format_attempts, provider_configured, text_model_candidates, text_provider_order
 from app.services.chat_response import extract_chat_message_content
 from app.services.model_provider import normalize_model_for_provider
+from app.services.openai_compat_client import OpenAICompatClient
 from app.services.openrouter_client import _build_headers as _build_openrouter_headers, _extract_message as _extract_openrouter_message, openrouter_api_base_url
 from app.services.router9_client import Router9Client, _extract_message_content as _extract_router9_message_content
 
@@ -98,12 +99,27 @@ async def _call_extractor(problem_text: str, settings: Settings) -> dict:
                     content = await _call_openrouter(prompt, settings, selected_model)
                 elif provider == "nvidia":
                     content = await _call_nvidia(prompt, settings, selected_model)
+                elif provider == "openai_compat":
+                    content = await _call_openai_compat(prompt, settings, selected_model)
                 else:
                     continue
                 return json.loads(_strip_json_fences(content))
             except (RuntimeError, json.JSONDecodeError, ValidationError, httpx.HTTPError) as error:
                 attempts.append(Attempt(provider, selected_model, "algebra_extraction", str(error)))
     raise RuntimeError("Không gọi được AI extraction cho đại số. Đã thử: " + format_attempts(attempts))
+
+
+async def _call_openai_compat(prompt: str, settings: Settings, model: str) -> str:
+    client = OpenAICompatClient(settings, model=model)
+    return await client.chat_completion_text(
+        [
+            {"role": "system", "content": ALGEBRA_EXTRACTION_SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+        ],
+        kind="algebra_extraction",
+        temperature=0,
+        max_tokens=2048,
+    )
 
 
 async def _call_router9(prompt: str, settings: Settings, model: str) -> str:
