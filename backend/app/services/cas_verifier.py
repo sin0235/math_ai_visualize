@@ -39,6 +39,7 @@ Các loại quan hệ được verify:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import logging
 from math import acos, degrees, isfinite, sqrt
 from typing import Any
 
@@ -54,9 +55,17 @@ from app.schemas.scene import (
     Point2D,
     Point3D,
     Relation,
+    RelationVerificationResponse,
+    RepairChange,
+    RepairReportResponse,
+    VerificationReportResponse,
+    VerificationSummary,
     Sphere,
 )
 from app.services.linalg import add as _vec_add, as_vec3, bbox_diagonal as _bbox_diag, cross as _cross3, dot as _dot, norm as _length, plane_from_points, scale as _vec_scale, sub as _vec_sub, to_tuple, vec3
+from app.services.relation_registry import relation_spec
+
+logger = logging.getLogger(__name__)
 
 REL_EPS = 1e-6
 _SAFE_SYMPY_LOCALS = {
@@ -108,6 +117,10 @@ def _coord_expr(point: Point2D | Point3D) -> tuple[sp.Expr, ...]:
         else (point.x_expr, point.y_expr)
     )
     return tuple(_parse_expr(expr, value) for expr, value in zip(exprs, values, strict=True))
+
+
+def _can_auto_modify_point(point: Point2D | Point3D) -> bool:
+    return point.source in {"ai_inferred", "construction"} and not point.locked and not point.user_edited
 
 
 def _parse_expr(expr: str | None, value: float) -> sp.Expr:
@@ -973,28 +986,178 @@ def _verify_ratio(
 def verify_scene(scene: MathScene) -> list[CasIssue]:
     """Kiểm tra mọi relation trong scene; trả issues nếu vi phạm số học.
 
-    Bao gồm cả check planarity cho Face/Plane object có ≥4 điểm — phát hiện
-    LLM gán các đỉnh không đồng phẳng vào cùng một mặt.
+    Hàm legacy này chỉ còn dùng cho các caller cũ. Pipeline v2 phải dùng
+    ``verify_scene_relations`` để tránh suy luận verified từ absence of issue.
     """
-    points = _build_point_index(scene)
-    circles = _build_circle_index(scene)
-    spheres = _build_sphere_index(scene)
+    report = verify_scene_relations(scene)
     issues: list[CasIssue] = []
-    for rel in scene.relations:
-        try:
-            issue = _dispatch(rel, points, circles, spheres)
-        except Exception:  # pragma: no cover - defensive
-            issue = None
-        if issue is not None:
-            issues.append(issue)
-
-    # Pass thứ 2: kiểm tra planarity của Face/Plane (không gắn với relation)
+    for item in report.relations:
+        if item.status in {"failed", "error"}:
+            issues.append(CasIssue(
+                relation_type=(item.metadata or {}).get("relation_type", "verification"),
+                description=item.message or item.evidence or item.status,
+                severity="error" if item.status == "error" else "warning",
+                metadata=dict(item.metadata or {}),
+            ))
+    points = _build_point_index(scene)
     for obj in scene.objects:
         if isinstance(obj, (Face, Plane)) and len(obj.points) >= 4:
             issue = _verify_face_planarity(obj, points)
             if issue is not None:
                 issues.append(issue)
     return issues
+
+
+def verify_scene_relations(scene: MathScene) -> VerificationReportResponse:
+    points = _build_point_index(scene)
+    circles = _build_circle_index(scene)
+    spheres = _build_sphere_index(scene)
+    results: list[RelationVerificationResponse] = []
+    for rel in scene.relations:
+        relation_id = rel.id or f"rel_{len(results) + 1}"
+        spec = relation_spec(rel.type)
+        metadata = {"relation_type": rel.type, "object_1": rel.object_1, "object_2": rel.object_2}
+        if spec is None:
+            results.append(RelationVerificationResponse(
+                relation_id=relation_id,
+                status="unsupported",
+                message=f"Relation '{rel.type}' chưa được hỗ trợ để kiểm chứng.",
+                metadata=metadata,
+            ))
+            continue
+        if spec.verify != "supported":
+            results.append(RelationVerificationResponse(
+                relation_id=relation_id,
+                status="unsupported",
+                message=f"Relation '{rel.type}' chưa có verifier CAS.",
+                metadata=metadata,
+            ))
+            continue
+        unverifiable_reason = _relation_unverifiable_reason(rel, points, circles, spheres)
+        if unverifiable_reason is not None:
+            results.append(RelationVerificationResponse(
+                relation_id=relation_id,
+                status="unverifiable",
+                method=rel.type,
+                message=unverifiable_reason,
+                metadata=metadata,
+            ))
+            continue
+        try:
+            issue = _dispatch(rel, points, circles, spheres)
+        except Exception as exc:  # pragma: no cover - defensive logging path
+            logger.exception("CAS verifier failed for relation %s (%s)", relation_id, rel.type)
+            results.append(RelationVerificationResponse(
+                relation_id=relation_id,
+                status="error",
+                message=f"Verifier lỗi khi kiểm chứng relation '{rel.type}'.",
+                metadata={**metadata, "error_type": exc.__class__.__name__},
+            ))
+            continue
+        if issue is None:
+            results.append(RelationVerificationResponse(
+                relation_id=relation_id,
+                status="verified",
+                method=rel.type,
+                evidence="Verifier không phát hiện sai lệch trong tolerance hiện tại.",
+                tolerance=REL_EPS,
+                metadata=metadata,
+            ))
+        else:
+            results.append(RelationVerificationResponse(
+                relation_id=relation_id,
+                status="failed",
+                method=rel.type,
+                message=issue.description,
+                tolerance=REL_EPS,
+                metadata={**metadata, **issue.metadata},
+            ))
+    summary = VerificationSummary(
+        verified=sum(1 for item in results if item.status == "verified"),
+        failed=sum(1 for item in results if item.status == "failed"),
+        unsupported=sum(1 for item in results if item.status == "unsupported"),
+        unverifiable=sum(1 for item in results if item.status == "unverifiable"),
+        error=sum(1 for item in results if item.status == "error"),
+    )
+    if summary.failed or summary.error:
+        status = "failed"
+    elif summary.unsupported or summary.unverifiable:
+        status = "partial"
+    else:
+        status = "passed"
+    return VerificationReportResponse(status=status, relations=results, summary=summary)
+
+
+def _relation_unverifiable_reason(
+    rel: Relation,
+    points: dict[str, Point2D | Point3D],
+    circles: dict[str, Circle2D],
+    spheres: dict[str, Sphere],
+) -> str | None:
+    rtype = rel.type.strip().lower()
+
+    def has_points(names: list[str]) -> bool:
+        return bool(names) and all(name in points for name in names)
+
+    def segment_names(value: str | None) -> tuple[str, str] | None:
+        seg = _parse_segment_token(value or "")
+        if not seg or not has_points([seg[0], seg[1]]):
+            return None
+        return seg
+
+    def plane_names(value: str | None) -> list[str] | None:
+        plane = _parse_plane_token(value or "") or _parse_point_list(value or "")
+        if len(plane) < 3 or not has_points(plane[:3]):
+            return None
+        return plane
+
+    if rtype == "perpendicular":
+        seg1 = segment_names(rel.object_1)
+        if seg1 is None:
+            return "Không đọc được đoạn thứ nhất hoặc thiếu điểm tham chiếu."
+        raw_object_2 = (rel.object_2 or "").strip()
+        if not raw_object_2:
+            return "Thiếu đoạn hoặc mặt phẳng thứ hai."
+        if raw_object_2.startswith("plane(") or raw_object_2.startswith("("):
+            return None if plane_names(raw_object_2) else "Không đọc được mặt phẳng thứ hai hoặc thiếu điểm tham chiếu."
+        return None if segment_names(raw_object_2) else "Không đọc được đoạn thứ hai hoặc thiếu điểm tham chiếu."
+    if rtype in {"parallel", "equal_length", "angle"}:
+        return None if segment_names(rel.object_1) and segment_names(rel.object_2) else "Không đọc được đủ hai đoạn hoặc thiếu điểm tham chiếu."
+    if rtype in {"midpoint", "on_line", "point_on_segment"}:
+        point_name = (rel.object_1 or "").strip()
+        return None if point_name in points and segment_names(rel.object_2) else "Thiếu điểm hoặc đoạn tham chiếu cho relation."
+    if rtype in {"ratio", "segment_ratio", "ratio_length"}:
+        point_name = (rel.object_1 or "").strip()
+        meta = rel.metadata or {}
+        has_ratio_value = any(key in meta for key in ("value", "ratio", "t"))
+        return None if point_name in points and segment_names(rel.object_2) and has_ratio_value else "Thiếu điểm, đoạn hoặc tỉ lệ cần kiểm chứng."
+    if rtype == "on_plane":
+        point_name = (rel.object_1 or "").strip()
+        return None if point_name in points and plane_names(rel.object_2) else "Thiếu điểm hoặc mặt phẳng tham chiếu cho relation."
+    if rtype in {"collinear", "coplanar"}:
+        names = _parse_point_list(rel.object_1 or "") + _parse_point_list(rel.object_2 or "")
+        required = 3 if rtype == "collinear" else 4
+        return None if len(names) >= required and has_points(names) else "Không đủ điểm tham chiếu để kiểm chứng relation."
+    if rtype == "on_sphere":
+        point_name = (rel.object_1 or "").strip()
+        sphere_name = (rel.object_2 or "").strip()
+        return None if point_name in points and sphere_name in spheres else "Thiếu điểm hoặc mặt cầu tham chiếu."
+    if rtype == "on_circle":
+        point_name = (rel.object_1 or "").strip()
+        circle_name = (rel.object_2 or "").strip()
+        return None if point_name in points and circle_name in circles else "Thiếu điểm hoặc đường tròn tham chiếu."
+    if rtype == "tangent":
+        target = (rel.object_2 or "").strip()
+        return None if segment_names(rel.object_1) and (target in circles or target in spheres) else "Thiếu đường thẳng hoặc đường tròn/mặt cầu tiếp xúc."
+    if rtype == "distance":
+        expected_value = rel.metadata.get("value") if rel.metadata else None
+        return None if (segment_names(rel.object_1) or segment_names(rel.object_2)) and isinstance(expected_value, (int, float)) else "Thiếu đoạn hoặc giá trị khoảng cách cần kiểm chứng."
+    if rtype == "line_in_plane":
+        return None if segment_names(rel.object_1) and plane_names(rel.object_2) else "Thiếu đường thẳng hoặc mặt phẳng tham chiếu."
+    if rtype in {"parallel_planes", "parallel_plane_plane", "perpendicular_planes", "perpendicular_plane_plane"}:
+        return None if plane_names(rel.object_1) and plane_names(rel.object_2) else "Thiếu một trong hai mặt phẳng tham chiếu."
+    return None
+
 
 
 def _verify_face_planarity(
@@ -1093,13 +1256,27 @@ def infer_point_coordinates(scene: MathScene) -> tuple[MathScene, list[CasIssue]
         elif rtype == "on_plane":
             _infer_on_plane(rel, points, updates, issues)
 
-    if not updates:
+    allowed_updates: dict[str, tuple[sp.Expr, ...]] = {}
+    for name, exprs in updates.items():
+        point = points.get(name)
+        if point is not None and _can_auto_modify_point(point):
+            allowed_updates[name] = exprs
+        else:
+            issue = next((item for item in issues if item.metadata.get("point") == name and item.auto_fixed), None)
+            if issue is not None:
+                issue.auto_fixed = False
+                issue.severity = "warning"
+                issue.description = f"Đề xuất {issue.description}; cần xác nhận vì điểm {name} là dữ kiện hoặc đã bị khoá/chỉnh tay"
+                issue.metadata["requires_confirmation"] = True
+                issue.metadata["blocked_by_policy"] = True
+
+    if not allowed_updates:
         return scene, issues
 
     data = scene.model_dump()
     for obj in data.get("objects", []):
         name = obj.get("name")
-        exprs = updates.get(name)
+        exprs = allowed_updates.get(name)
         if exprs is None:
             continue
         _apply_expr_update(obj, exprs)
@@ -1201,7 +1378,7 @@ def _infer_on_plane(
         candidates.append((delta, axis, target))
     if not candidates:
         return
-    _, axis, target = max(candidates, key=lambda item: (item[0], {"x": 0, "y": 1, "z": 2}[item[1]]))
+    _, axis, target = min(candidates, key=lambda item: (item[0], {"z": 0, "y": 1, "x": 2}[item[1]]))
     updates[p_name] = target
     issues.append(CasIssue("on_plane", f"Nội suy exact tọa độ {axis} của {p_name} trên plane({''.join(plane)})", auto_fixed=True, metadata={"point": p_name}))
     return
@@ -1273,9 +1450,29 @@ def auto_fix_scene(scene: MathScene, *, use_optimizer: bool = True) -> tuple[Mat
             return scene, [*issues, *optimizer_issues]
         return scene, issues
 
-    updates: dict[str, tuple[float, ...]] = {name: data[1] for name, data in chosen.items()}
-    for _, _, issue in chosen.values():
-        issue.auto_fixed = True
+    updates: dict[str, tuple[float, ...]] = {}
+    blocked_by_policy = False
+    for name, (_, expected, issue) in chosen.items():
+        point = _build_point_index(scene).get(name)
+        if point is not None and _can_auto_modify_point(point):
+            updates[name] = expected
+            issue.auto_fixed = True
+        else:
+            blocked_by_policy = True
+            issue.auto_fixed = False
+            issue.metadata["requires_confirmation"] = True
+            issue.metadata["blocked_by_policy"] = True
+            issue.description = f"Đề xuất sửa {name}; cần xác nhận vì điểm là dữ kiện hoặc đã bị khoá/chỉnh tay"
+
+    if not updates:
+        if blocked_by_policy:
+            return scene, issues
+        if use_optimizer:
+            optimized, optimizer_issues = _optimize_scene_constraints(scene, issues)
+            if optimized is not None:
+                return optimized, [*issues, *optimizer_issues]
+            return scene, [*issues, *optimizer_issues]
+        return scene, issues
 
     data = scene.model_dump()
     for obj in data.get("objects", []):
@@ -1296,6 +1493,8 @@ def auto_fix_scene(scene: MathScene, *, use_optimizer: bool = True) -> tuple[Mat
             obj["z_expr"] = None
 
     fixed = MathScene.model_validate(data)
+    if blocked_by_policy:
+        return fixed, issues
     if use_optimizer:
         optimized, optimizer_issues = _optimize_scene_constraints(fixed, verify_scene(fixed))
         if optimized is not None:
@@ -1327,8 +1526,8 @@ def _optimize_scene_constraints(scene: MathScene, base_issues: list[CasIssue]) -
     if not (_OPTIMIZER_MIN_POINTS <= len(point_objects) <= _OPTIMIZER_MAX_POINTS):
         return None, []
 
-    anchor_set = {p.name for p in point_objects if _is_symbolic_anchor(p)}
-    free_names = [p.name for p in point_objects if p.name not in anchor_set]
+    anchor_set = {p.name for p in point_objects if _is_symbolic_anchor(p) or not _can_auto_modify_point(p)}
+    free_names = [p.name for p in point_objects if p.name not in anchor_set and _can_auto_modify_point(p)]
     # Trường hợp mọi điểm đều symbolic: không có gì để chỉnh
     if not free_names:
         return None, []
@@ -1633,4 +1832,61 @@ def _scene_with_point_vector(scene: MathScene, point_names: list[str], values: n
     return MathScene.model_validate(data)
 
 
-__all__ = ["CasIssue", "auto_fix_scene", "infer_point_coordinates", "verify_scene"]
+def build_repair_report(scene: MathScene, issues: list[CasIssue]) -> RepairReportResponse:
+    points = _build_point_index(scene)
+    changes: list[RepairChange] = []
+    warnings: list[str] = []
+    has_applied = False
+    has_proposal = False
+
+    for issue in issues:
+        meta = issue.metadata or {}
+        point_name = meta.get("point")
+        expected = meta.get("expected")
+        if not isinstance(point_name, str) or expected is None:
+            if not issue.auto_fixed:
+                warnings.append(issue.description)
+            continue
+        point = points.get(point_name)
+        if point is None:
+            warnings.append(issue.description)
+            continue
+        try:
+            expected_tuple = tuple(float(value) for value in expected)
+        except (TypeError, ValueError):
+            warnings.append(issue.description)
+            continue
+        before = tuple(float(value) for value in _coords(point))
+        reason = issue.description
+        changes.append(RepairChange(
+            target_id=point.id,
+            target_name=point_name,
+            field="coordinates",
+            before=before,
+            after=expected_tuple,
+            reason=reason,
+        ))
+        if issue.auto_fixed:
+            has_applied = True
+        else:
+            has_proposal = True
+            if meta.get("blocked_by_policy"):
+                warnings.append(f"Cần xác nhận trước khi sửa điểm {point_name} vì điểm là dữ kiện hoặc đã bị khoá/chỉnh tay.")
+            else:
+                warnings.append(issue.description)
+
+    if has_proposal:
+        status = "proposal"
+    elif has_applied:
+        status = "applied"
+    else:
+        status = "none"
+    return RepairReportResponse(
+        status=status,
+        changes=changes,
+        requires_confirmation=has_proposal,
+        warnings=warnings,
+    )
+
+
+__all__ = ["CasIssue", "auto_fix_scene", "build_repair_report", "infer_point_coordinates", "verify_scene", "verify_scene_relations"]

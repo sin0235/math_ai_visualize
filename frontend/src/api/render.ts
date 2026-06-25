@@ -35,12 +35,14 @@ export interface RenderHistoryItem {
   degraded?: boolean;
   fallback_source?: RenderFallbackSource;
   ai_source?: RenderAiSource;
+  schema_version?: string;
 }
 
 export interface RenderHistoryDetail extends RenderHistoryItem {
   scene: MathScene;
   payload: RenderResponse['payload'];
   warnings: string[];
+  response?: RenderResponse | null;
   render_request?: Record<string, unknown> | null;
   advanced_settings?: Record<string, unknown> | null;
   runtime_settings?: Record<string, unknown> | null;
@@ -93,6 +95,8 @@ const EXPORT_META: Record<ExportFormat, { path: string; errorMessage: string }> 
   svg: { path: '/api/export/svg', errorMessage: 'Không thể xuất SVG.' },
   'katex-html': { path: '/api/export/katex-html', errorMessage: 'Không thể xuất HTML KaTeX.' },
   tikz: { path: '/api/export/tikz', errorMessage: 'Không thể xuất TikZ.' },
+  pdf: { path: '/api/export/pdf', errorMessage: 'Không thể xuất PDF.' },
+  ggb: { path: '/api/export/ggb', errorMessage: 'Không thể xuất GeoGebra.' },
 };
 
 export async function getHealth(): Promise<HealthResponse> {
@@ -120,6 +124,8 @@ export async function renderProblem(
   tier: 'tier1' | 'tier2' | 'tier3' = 'tier1',
   advancedSettings?: AdvancedRenderSettings,
   preferredRenderer?: Renderer,
+  runtimeSettings?: RuntimeSettings,
+  preferredAiModel?: string,
 ): Promise<RenderResponse> {
   return requestJson('/api/render', {
     method: 'POST',
@@ -130,6 +136,8 @@ export async function renderProblem(
       tier,
       preferred_renderer: preferredRenderer,
       advanced_settings: advancedSettings,
+      preferred_ai_model: preferredAiModel,
+      runtime_settings: compactRuntimeSettings(runtimeSettings),
     }),
   }, 'Không thể dựng hình.');
 }
@@ -186,13 +194,14 @@ export async function scanRouter9Models(runtimeSettings: RuntimeSettings): Promi
   return response.models;
 }
 
-export async function renderEditedScene(scene: MathScene, advancedSettings: AdvancedRenderSettings): Promise<RenderResponse> {
+export async function renderEditedScene(scene: MathScene, advancedSettings: AdvancedRenderSettings, response?: RenderResponse | null): Promise<RenderResponse> {
   return requestJson('/api/render/scene', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
     body: JSON.stringify({
       scene,
+      response,
       advanced_settings: advancedSettings,
     }),
   }, 'Không thể dựng lại scene.');
@@ -204,6 +213,7 @@ export async function generateProblemVariants(
   originalProblem?: string,
   runtimeSettings?: RuntimeSettings,
   preferredAiModel?: string,
+  response?: RenderResponse | null,
 ): Promise<ProblemVariantsResponse> {
   return requestJson<ProblemVariantsResponse>(
     '/api/problem/variants',
@@ -213,6 +223,7 @@ export async function generateProblemVariants(
       credentials: 'include',
       body: JSON.stringify({
         scene,
+        response,
         count,
         original_problem: originalProblem,
         preferred_ai_model: preferredAiModel,
@@ -227,6 +238,7 @@ export async function exportScene(
   format: ExportFormat,
   scene: MathScene,
   advancedSettings: AdvancedRenderSettings,
+  renderResponse?: RenderResponse | null,
 ): Promise<{ blob: Blob; filename: string }> {
   const meta = EXPORT_META[format];
   try {
@@ -234,7 +246,7 @@ export async function exportScene(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ scene, advanced_settings: advancedSettings }),
+      body: JSON.stringify({ scene, response: renderResponse, advanced_settings: advancedSettings }),
     });
     if (!response.ok) throw await parseApiError(response, `${meta.errorMessage} HTTP ${response.status}`);
     const blob = await response.blob();
@@ -250,11 +262,12 @@ export async function solveProblem(
   question: string,
   geometryMethod: 'oxyz' | 'classical' = 'oxyz',
   runtimeSettings?: RuntimeSettings,
+  response?: RenderResponse | null,
 ): Promise<SolveResponse> {
   return requestJson('/api/solve', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ scene, question, geometry_method: geometryMethod, runtime_settings: compactRuntimeSettings(runtimeSettings) }),
+    body: JSON.stringify({ scene, response, question, geometry_method: geometryMethod, runtime_settings: compactRuntimeSettings(runtimeSettings) }),
   }, 'Không thể giải toán từ scene này.');
 }

@@ -37,7 +37,7 @@ def test_pre_validate_drops_invalid_object_type():
     assert any("type='circle_3d'" in w for w in warnings)
 
 
-def test_pre_validate_drops_invalid_relation_type():
+def test_pre_validate_keeps_unsupported_relation_for_verification_report():
     raw = _base_scene(
         relations=[
             {"type": "perpendicular", "object_1": "AB", "object_2": "CD"},
@@ -45,8 +45,9 @@ def test_pre_validate_drops_invalid_relation_type():
         ]
     )
     cleaned, warnings = pre_validate_raw(raw)
-    assert len(cleaned["relations"]) == 1
-    assert any("magic" in w for w in warnings)
+    assert len(cleaned["relations"]) == 2
+    assert cleaned["relations"][1]["type"] == "magic"
+    assert any("magic" in w and "giữ lại" in w for w in warnings)
 
 
 def test_pre_validate_normalizes_relation_type_case():

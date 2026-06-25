@@ -14,7 +14,7 @@ from app.db.models import UserRecord
 from app.db.session import DatabaseClient, get_database
 from app.repositories.admin import AdminRepository
 from app.schemas.advisory import QualityRiskAdvisory
-from app.schemas.scene import MAX_PROBLEM_TEXT_CHARS, RuntimeSettings
+from app.schemas.scene import MAX_PROBLEM_TEXT_CHARS, MathScene, RenderResponse, RuntimeSettings
 from app.services.ai_resolution import resolve_byok_ai_config, settings_with_byok_connection
 from app.services.api_errors import bad_request_from_error
 from app.services.model_registry import load_model_registry, resolve_effective_settings, resolve_task_profile
@@ -25,6 +25,7 @@ router = APIRouter(prefix="/api", tags=["solver"])
 
 class SolveRequest(BaseModel):
     scene: dict[str, Any]
+    response: RenderResponse | None = None
     question: str = Field(min_length=1, max_length=MAX_PROBLEM_TEXT_CHARS)
     geometry_method: str = "oxyz"
     runtime_settings: RuntimeSettings | None = None
@@ -72,6 +73,7 @@ async def solve_problem(
     used_ai = False
     try:
         geometry_method = request.geometry_method if request.geometry_method in {"oxyz", "classical"} else "oxyz"
+        _assert_solve_quality_gate(request)
         result = solve(request.scene, request.question, geometry_method=geometry_method)
         advisory = None
         if get_settings().advisory_enabled:
@@ -129,3 +131,24 @@ async def solve_problem(
         data_issues=getattr(result, "data_issues", []),
         advisory=advisory,
     )
+
+
+def _assert_solve_quality_gate(request: SolveRequest) -> None:
+    from app.services.render_quality_gate import assert_render_response_safe_for_downstream, assert_scene_safe_for_downstream
+
+    if request.response is not None:
+        scene = MathScene.model_validate(request.scene)
+        assert_render_response_safe_for_downstream(
+            request.response,
+            scene,
+            operation="giải bài",
+            allow_partial=False,
+        )
+        return
+    try:
+        scene = MathScene.model_validate(request.scene)
+    except Exception:
+        # Caller cũ có thể gửi scene solver dạng dict không phải MathScene render v2.
+        # Chỉ áp quality gate đầy đủ khi có response v2 hoặc scene khớp MathScene.
+        return
+    assert_scene_safe_for_downstream(scene, operation="giải bài", allow_partial=False)

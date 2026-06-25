@@ -145,6 +145,24 @@ def test_on_plane_inference_solves_one_axis():
     assert p.z_expr == "1/2"
 
 
+def test_on_plane_inference_prefers_smallest_displacement_not_largest():
+    scene = _make_scene(
+        objects=[
+            {"type": "point_3d", "name": "A", "x": 0, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "B", "x": 1, "y": 0, "z": -1},
+            {"type": "point_3d", "name": "C", "x": 0, "y": 1, "z": -1},
+            {"type": "point_3d", "name": "P", "x": 100, "y": -100, "z": 1},
+        ],
+        relations=[{"type": "on_plane", "object_1": "P", "object_2": "plane(ABC)"}],
+    )
+    fixed, _ = infer_point_coordinates(scene)
+    p = next(o for o in fixed.objects if getattr(o, "name", None) == "P")
+    assert p.x == 100
+    assert p.y == -100
+    assert p.z == 0
+
+
+
 def test_inference_does_not_guess_underdetermined_relation():
     scene = _make_scene(
         objects=[
@@ -174,6 +192,22 @@ def test_midpoint_auto_fix():
     assert any(i.relation_type == "midpoint" and i.auto_fixed for i in issues)
     m = next(o for o in fixed.objects if getattr(o, "name", None) == "M")
     assert m.x == 2.0 and m.y == 0.0 and m.z == 0.0
+
+
+def test_auto_fix_does_not_move_given_locked_or_user_edited_point():
+    scene = _make_scene(
+        objects=[
+            {"type": "point_3d", "name": "A", "x": 0, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "B", "x": 4, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "M", "x": 1, "y": 0.5, "z": 0, "source": "given", "locked": True},
+        ],
+        relations=[{"type": "midpoint", "object_1": "M", "object_2": "A-B"}],
+    )
+    fixed, issues = auto_fix_scene(scene)
+    m = next(o for o in fixed.objects if getattr(o, "name", None) == "M")
+    assert m.x == 1 and m.y == 0.5 and m.z == 0
+    assert any(i.relation_type == "midpoint" and not i.auto_fixed and i.metadata.get("requires_confirmation") for i in issues)
+
 
 
 def test_midpoint_already_correct_no_change():

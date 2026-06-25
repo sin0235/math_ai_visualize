@@ -16,12 +16,26 @@ export function findPoint(scene: MathScene, name: string): Vec3 | null {
   return { x: point.x, y: point.y, z: point.type === 'point_3d' ? point.z : 0 };
 }
 
-export function projectPointToSegment(point: Vec3, start: Vec3, end: Vec3): Vec3 {
+export interface ProjectionResult extends Vec3 {
+  t: number;
+  clamped: boolean;
+  outside: boolean;
+}
+
+export function projectPointToLine(point: Vec3, start: Vec3, end: Vec3): ProjectionResult {
   const direction = sub(end, start);
   const size = dot(direction, direction);
-  if (size <= 1e-9) return start;
-  const t = Math.max(0, Math.min(1, dot(sub(point, start), direction) / size));
-  return add(start, scale(direction, t));
+  if (size <= 1e-9) return { ...start, t: 0, clamped: false, outside: false };
+  const t = dot(sub(point, start), direction) / size;
+  return { ...add(start, scale(direction, t)), t, clamped: false, outside: t < 0 || t > 1 };
+}
+
+export function projectPointToSegment(point: Vec3, start: Vec3, end: Vec3): ProjectionResult {
+  const projection = projectPointToLine(point, start, end);
+  const t = clamp(projection.t, 0, 1);
+  const clamped = t !== projection.t;
+  const direction = sub(end, start);
+  return { ...add(start, scale(direction, t)), t, clamped, outside: projection.outside };
 }
 
 export function nextPointName(scene: MathScene) {

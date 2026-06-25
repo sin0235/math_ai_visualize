@@ -113,6 +113,8 @@ class RenderJobRecord:
     degraded: bool = False
     fallback_source: str = "none"
     ai_source: str = "none"
+    response_json: str | None = None
+    schema_version: str = "1.0"
 
 
 @dataclass(frozen=True)

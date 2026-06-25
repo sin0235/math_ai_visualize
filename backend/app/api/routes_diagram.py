@@ -32,9 +32,10 @@ async def problem_variants(
 ) -> ProblemVariantsResponse:
     await enforce_rate_limit(db, http_request, user, "problem_variants", 18 if user else 4, 60)
     await enforce_render_access(db, user)
-    settings = await resolve_effective_settings(db, request.runtime_settings)
     byok_used = False
     try:
+        _assert_variants_quality_gate(request)
+        settings = await resolve_effective_settings(db, request.runtime_settings)
         byok = await resolve_byok_ai_config(db, user, "solver", settings)
         if byok is not None:
             settings = settings_with_byok_connection(settings, byok)
@@ -60,3 +61,17 @@ async def problem_variants(
         provider=result.provider,
         model=result.model,
     )
+
+
+def _assert_variants_quality_gate(request: ProblemVariantsRequest) -> None:
+    from app.services.render_quality_gate import assert_render_response_safe_for_downstream, assert_scene_safe_for_downstream
+
+    if request.response is not None:
+        assert_render_response_safe_for_downstream(
+            request.response,
+            request.scene,
+            operation="sinh biến thể",
+            allow_partial=False,
+        )
+        return
+    assert_scene_safe_for_downstream(request.scene, operation="sinh biến thể", allow_partial=False)

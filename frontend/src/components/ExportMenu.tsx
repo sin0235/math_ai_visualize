@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { exportScene, type ExportFormat } from '../api/client';
 import { buildExportFilename } from '../utils/exportFilename';
+import { downstreamGateMessage } from '../utils/renderQualityGate';
 import type { ThreeSceneImageCapture } from './ThreeGeometryView';
-import type { AdvancedRenderSettings, MathScene } from '../types/scene';
+import type { AdvancedRenderSettings, MathScene, RenderResponse } from '../types/scene';
 
 export interface ExportMenuProps {
   scene: MathScene;
@@ -10,6 +11,7 @@ export interface ExportMenuProps {
   onError?: (message: string) => void;
   captureCurrentView?: ThreeSceneImageCapture | null;
   preferCurrentViewCapture?: boolean;
+  response?: RenderResponse | null;
 }
 
 interface ExportMenuItemsProps extends ExportMenuProps {
@@ -17,7 +19,7 @@ interface ExportMenuItemsProps extends ExportMenuProps {
   onAfterDownload?: () => void;
 }
 
-const EXPORT_FORMATS: ExportFormat[] = ['png', 'jpg', 'svg', 'katex-html', 'tikz'];
+const EXPORT_FORMATS: ExportFormat[] = ['png', 'jpg', 'svg', 'katex-html', 'tikz', 'pdf', 'ggb'];
 
 function formatLabelsForContext(preferThreeView: boolean): Record<ExportFormat, { label: string; hint: string }> {
   const base = {
@@ -26,6 +28,8 @@ function formatLabelsForContext(preferThreeView: boolean): Record<ExportFormat, 
     svg: { label: 'Xuất SVG (.svg)', hint: 'Vector, phóng to không vỡ' },
     'katex-html': { label: 'Xuất HTML KaTeX (.html)', hint: 'File HTML hiển thị công thức bằng KaTeX' },
     tikz: { label: 'Xuất TikZ (.tex)', hint: 'Chèn vào Word/Overleaf, dùng \\usepackage{tikz}' },
+    pdf: { label: 'Xuất PDF (.pdf)', hint: 'File PDF để in hoặc chia sẻ' },
+    ggb: { label: 'Xuất GeoGebra (.ggb)', hint: 'Mở và chỉnh sửa tiếp trong GeoGebra' },
   } satisfies Record<ExportFormat, { label: string; hint: string }>;
   if (!preferThreeView) return base;
   return {
@@ -43,6 +47,14 @@ function formatLabelsForContext(preferThreeView: boolean): Record<ExportFormat, 
     tikz: {
       ...base.tikz,
       hint: 'TikZ chỉ hỗ trợ phép chiếu vector cố định cho hình 3D.',
+    },
+    pdf: {
+      ...base.pdf,
+      hint: 'PDF dùng phép chiếu backend cố định cho hình 3D.',
+    },
+    ggb: {
+      ...base.ggb,
+      hint: 'GeoGebra file dùng dữ liệu scene đã kiểm chứng.',
     },
   };
 }
@@ -65,17 +77,18 @@ function exportLock(
   return { locked: false };
 }
 
-export function ExportMenuItems({ scene, advancedSettings, onError, captureCurrentView, preferCurrentViewCapture = false, itemClassName = 'export-menu-item', onAfterDownload }: ExportMenuItemsProps): JSX.Element {
+export function ExportMenuItems({ scene, advancedSettings, onError, captureCurrentView, preferCurrentViewCapture = false, response, itemClassName = 'export-menu-item', onAfterDownload }: ExportMenuItemsProps): JSX.Element {
   const [busy, setBusy] = useState<ExportFormat | null>(null);
   const labels = formatLabelsForContext(preferCurrentViewCapture);
+  const gateMessage = response ? downstreamGateMessage(response, 'xuất file', true) : null;
 
   async function handleDownload(format: ExportFormat) {
-    if (busy) return;
+    if (busy || gateMessage) return;
     const lock = exportLock(format, captureCurrentView, preferCurrentViewCapture);
     if (lock.locked) return;
     setBusy(format);
     try {
-      const { blob, filename } = await getExportBlob(format, scene, advancedSettings, captureCurrentView, preferCurrentViewCapture);
+      const { blob, filename } = await getExportBlob(format, scene, advancedSettings, captureCurrentView, preferCurrentViewCapture, response);
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -95,18 +108,20 @@ export function ExportMenuItems({ scene, advancedSettings, onError, captureCurre
 
   return (
     <>
+      {gateMessage && <div className="export-menu-warning" role="note">{gateMessage}</div>}
       {EXPORT_FORMATS.map((fmt) => {
         const { locked: isLocked, reason: lockReason } = exportLock(fmt, captureCurrentView, preferCurrentViewCapture);
-        const tooltip = isLocked ? lockReason : undefined;
+        const disabledByGate = Boolean(gateMessage);
+        const tooltip = gateMessage || (isLocked ? lockReason : undefined);
         const fmtLabels = labels[fmt];
         return (
           <button
             key={fmt}
             type="button"
             role="menuitem"
-            className={`${itemClassName}${isLocked ? ' is-locked' : ''}`}
-            disabled={busy !== null}
-            aria-disabled={isLocked || undefined}
+            className={`${itemClassName}${isLocked || disabledByGate ? ' is-locked' : ''}`}
+            disabled={busy !== null || disabledByGate}
+            aria-disabled={isLocked || disabledByGate || undefined}
             title={tooltip}
             onClick={() => handleDownload(fmt)}
           >
@@ -124,7 +139,7 @@ export function ExportMenuItems({ scene, advancedSettings, onError, captureCurre
   );
 }
 
-async function getExportBlob(format: ExportFormat, scene: MathScene, advancedSettings: AdvancedRenderSettings, captureCurrentView?: ThreeSceneImageCapture | null, preferCurrentViewCapture = false) {
+async function getExportBlob(format: ExportFormat, scene: MathScene, advancedSettings: AdvancedRenderSettings, captureCurrentView?: ThreeSceneImageCapture | null, preferCurrentViewCapture = false, response?: RenderResponse | null) {
   if (format === 'png' || format === 'jpg') {
     if (typeof captureCurrentView === 'function') {
       return {
@@ -151,7 +166,7 @@ async function getExportBlob(format: ExportFormat, scene: MathScene, advancedSet
     };
   }
 
-  return exportScene(format, scene, advancedSettings);
+  return exportScene(format, scene, advancedSettings, response);
 }
 
 function blobToDataUrl(blob: Blob): Promise<string> {
@@ -218,7 +233,7 @@ function escapeXml(value: string) {
   return escapeHtml(value).replace(/'/g, '&apos;');
 }
 
-export function ExportMenu({ scene, advancedSettings, onError, captureCurrentView, preferCurrentViewCapture }: ExportMenuProps): JSX.Element {
+export function ExportMenu({ scene, advancedSettings, onError, captureCurrentView, preferCurrentViewCapture, response }: ExportMenuProps): JSX.Element {
   const [open, setOpen] = useState(false);
 
   return (
@@ -228,7 +243,7 @@ export function ExportMenu({ scene, advancedSettings, onError, captureCurrentVie
       </button>
       {open && (
         <div className="export-menu-dropdown" role="menu">
-          <ExportMenuItems scene={scene} advancedSettings={advancedSettings} onError={onError} captureCurrentView={captureCurrentView} preferCurrentViewCapture={preferCurrentViewCapture} onAfterDownload={() => setOpen(false)} />
+          <ExportMenuItems scene={scene} advancedSettings={advancedSettings} onError={onError} captureCurrentView={captureCurrentView} preferCurrentViewCapture={preferCurrentViewCapture} response={response} onAfterDownload={() => setOpen(false)} />
         </div>
       )}
     </div>
@@ -247,6 +262,12 @@ function ExportFormatIcon({ format }: { format: ExportFormat }) {
   }
   if (format === 'tikz') {
     return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 7 4 12l4 5M16 7l4 5-4 5M10 19l4-14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+  }
+  if (format === 'pdf') {
+    return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h7l4 4v14H7z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /><path d="M14 3v5h5M9 13h6M9 16h4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>;
+  }
+  if (format === 'ggb') {
+    return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" strokeWidth="1.8" /><circle cx="8" cy="9" r="1.3" fill="currentColor" /><circle cx="15" cy="8" r="1.3" fill="currentColor" /><circle cx="16" cy="15" r="1.3" fill="currentColor" /><circle cx="9" cy="16" r="1.3" fill="currentColor" /></svg>;
   }
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h7l4 4v14H7z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /><path d="M14 3v5h5M9 15h6M9 18h4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>;
 }

@@ -30,9 +30,9 @@ class RenderHistoryRepository:
             INSERT INTO render_jobs (
               id, user_id, problem_text, provider, model, scene_json, payload_json, warnings_json,
               render_request_json, advanced_settings_json, runtime_settings_json, source_type, renderer,
-              degraded, fallback_source, ai_source
+              degraded, fallback_source, ai_source, response_json, schema_version
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 job_id,
@@ -51,6 +51,8 @@ class RenderHistoryRepository:
                 1 if response.degraded else 0,
                 response.fallback_source,
                 response.ai_source,
+                response.model_dump_json(),
+                response.scene.schema_version,
             ],
         )
         row = await self.db.fetch_one("SELECT * FROM render_jobs WHERE id = ?", [job_id])
@@ -110,7 +112,7 @@ class RenderHistoryRepository:
             """
             UPDATE render_jobs
             SET status = 'completed', scene_json = ?, payload_json = ?, warnings_json = ?, renderer = ?,
-                degraded = ?, fallback_source = ?, ai_source = ?, finished_at = CURRENT_TIMESTAMP
+                degraded = ?, fallback_source = ?, ai_source = ?, response_json = ?, schema_version = ?, finished_at = CURRENT_TIMESTAMP
             WHERE id = ?
             """,
             [
@@ -121,6 +123,8 @@ class RenderHistoryRepository:
                 1 if response.degraded else 0,
                 response.fallback_source,
                 response.ai_source,
+                response.model_dump_json(),
+                response.scene.schema_version,
                 job_id,
             ],
         )
@@ -139,7 +143,7 @@ class RenderHistoryRepository:
         rows = await self.db.fetch_all(
             """
             SELECT id, user_id, problem_text, provider, model, warnings_json, created_at, source_type, renderer,
-                   status, error_json, started_at, finished_at, degraded, fallback_source, ai_source
+                   status, error_json, started_at, finished_at, degraded, fallback_source, ai_source, response_json, schema_version
             FROM render_jobs
             WHERE user_id = ? AND status = 'completed'
             ORDER BY created_at DESC
@@ -180,4 +184,6 @@ def render_job_from_row(row: DbRow) -> RenderJobRecord:
         degraded=bool(row.get("degraded") or 0),
         fallback_source=str(row.get("fallback_source") or "none"),
         ai_source=str(row.get("ai_source") or "none"),
+        response_json=str(row["response_json"]) if row.get("response_json") is not None else None,
+        schema_version=str(row.get("schema_version") or "1.0"),
     )

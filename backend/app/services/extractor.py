@@ -2,7 +2,7 @@ import asyncio
 import logging
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable, Iterator, Literal
 
 from pydantic import ValidationError
@@ -77,6 +77,9 @@ class ExtractSceneResult:
     warnings: list[str]
     degraded: bool = False
     fallback_source: RenderFallbackSource = "none"
+    provider: str | None = None
+    model: str | None = None
+    attempts: list[RenderAttempt] = field(default_factory=list)
 
     def __iter__(self) -> Iterator[Any]:
         yield self.scene
@@ -168,9 +171,9 @@ async def extract_scene(
                     attempt = RenderAttempt(candidate.provider_id, candidate.model_id, str(error))
                     attempts.append(attempt)
                     _log_render_attempt_failure(attempt, stage="validation")
-                    warnings.extend(_render_attempt_warnings(attempts))
-                    warnings.append("AI đã phản hồi nhưng scene không hợp lệ; đang dùng mock extractor.")
-                    return _extract_result(extract_scene_mock(problem_text, grade), warnings, fallback_source="mock")
+                    warnings.extend(_render_attempt_warnings([attempt]))
+                    warnings.append("AI đã phản hồi nhưng scene không hợp lệ; thử model dự phòng tiếp theo.")
+                    continue
                 warnings.extend(cas_warnings)
                 return scene, warnings
             except TimeoutError:
@@ -261,11 +264,11 @@ async def extract_scene(
                     attempt = RenderAttempt(provider, model or _provider_model(provider, settings), str(error))
                     attempts.append(attempt)
                     _log_render_attempt_failure(attempt, stage="validation")
-                    warnings.extend(_render_attempt_warnings(attempts))
-                    warnings.append("AI đã phản hồi nhưng scene không hợp lệ; đang dùng mock extractor.")
-                    return _extract_result(extract_scene_mock(problem_text, grade), warnings, fallback_source="mock")
+                    warnings.extend(_render_attempt_warnings([attempt]))
+                    warnings.append("AI đã phản hồi nhưng scene không hợp lệ; thử model dự phòng tiếp theo.")
+                    continue
                 warnings.extend(cas_warnings)
-                return scene, warnings
+                return ExtractSceneResult(scene=scene, warnings=warnings, provider=provider, model=model or _provider_model(provider, settings), attempts=list(attempts))
             except TimeoutError as error:
                 attempt = RenderAttempt(provider, model or _provider_model(provider, settings), f"provider timeout after {attempt_timeout:.0f}s")
                 attempts.append(attempt)
@@ -296,12 +299,15 @@ async def extract_scene(
     return _extract_result(extract_scene_mock(problem_text, grade), warnings, fallback_source="mock")
 
 
-def _extract_result(scene: MathScene, warnings: list[str], *, fallback_source: RenderFallbackSource) -> ExtractSceneResult:
+def _extract_result(scene: MathScene, warnings: list[str], *, fallback_source: RenderFallbackSource, attempts: list[RenderAttempt] | None = None) -> ExtractSceneResult:
     return ExtractSceneResult(
         scene=scene,
         warnings=warnings,
         degraded=fallback_source != "none",
         fallback_source=fallback_source,
+        provider="mock" if fallback_source == "mock" else None,
+        model="mock" if fallback_source == "mock" else None,
+        attempts=list(attempts or []),
     )
 
 
@@ -442,8 +448,6 @@ def build_scene_with_cas_fix(
                     )
             warnings.extend(outcome.warnings)
 
-    fixed_scene = _apply_cas_fact_metadata(fixed_scene, issues, verify=verify)
-
     from app.schemas.scene import CasIssueResponse
     all_issues = [*inference_issues, *issues]
     fixed_scene = fixed_scene.model_copy(update={
@@ -458,46 +462,45 @@ def build_scene_with_cas_fix(
             for issue in all_issues
         ]
     })
+    fixed_scene = _apply_relation_verification_metadata(fixed_scene, verify=verify)
 
     return fixed_scene, warnings
 
 
-def _apply_cas_fact_metadata(scene: MathScene, issues: list[Any], *, verify: bool) -> MathScene:
+def _apply_relation_verification_metadata(scene: MathScene, *, verify: bool) -> MathScene:
     if not verify:
         return scene
+    from app.services.cas_verifier import verify_scene_relations
 
-    unresolved_types = {
-        str(issue.relation_type)
-        for issue in issues
-        if not bool(getattr(issue, "auto_fixed", False))
-    }
+    report = verify_scene_relations(scene)
+    by_id = {item.relation_id: item for item in report.relations}
     data = scene.model_dump()
     changed = False
-
     for rel in data.get("relations", []):
         if not isinstance(rel, dict):
             continue
+        rel_id = rel.get("id")
+        verification = by_id.get(str(rel_id)) if rel_id is not None else None
+        if verification is None:
+            continue
         metadata = rel.get("metadata") if isinstance(rel.get("metadata"), dict) else {}
         new_metadata = dict(metadata)
-        rel_changed = False
-        rtype = str(rel.get("type") or "")
-        if rtype and rtype not in unresolved_types:
+        if verification.status == "verified":
             if new_metadata.get("confidence") != "verified":
                 new_metadata["confidence"] = "verified"
-                rel_changed = True
+                changed = True
             if new_metadata.get("verified_by") != "cas":
                 new_metadata["verified_by"] = "cas"
-                rel_changed = True
-        elif rtype and new_metadata.get("confidence") == "verified":
+                changed = True
+        elif new_metadata.get("confidence") == "verified":
             new_metadata["confidence"] = "partial"
-            rel_changed = True
-        if rel_changed:
-            rel["metadata"] = new_metadata
             changed = True
-
+        if new_metadata != metadata:
+            rel["metadata"] = new_metadata
     if changed:
         return MathScene.model_validate(data)
     return scene
+
 
 
 def _normalize_parameter(param: dict[str, Any]) -> dict[str, Any] | None:

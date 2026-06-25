@@ -12,7 +12,7 @@ from app.repositories.admin import AdminRepository
 from app.repositories.history import RenderHistoryRepository
 from app.core.config import get_settings
 from app.schemas.auth import SystemFeatureFlags
-from app.schemas.scene import RenderRequest, RenderResponse, SceneRenderRequest
+from app.schemas.scene import RenderRequest, RenderResponse, RenderSourceResponse, SceneRenderRequest
 from app.services.api_errors import api_error
 from app.services.ai_resolution import resolve_byok_ai_config
 from app.services.user_ai_settings import UserAiSettingsError
@@ -56,12 +56,12 @@ async def render_problem(
         await RenderHistoryRepository(db).create(
             user.id,
             request.problem_text,
-            request.preferred_ai_provider,
-            request.preferred_ai_model,
+            response.source.provider,
+            response.source.model,
             response,
             render_request_json=json.dumps(sanitize_request_dump(request), ensure_ascii=False),
             advanced_settings_json=request.advanced_settings.model_dump_json(),
-            runtime_settings_json=None,
+            runtime_settings_json=request.runtime_settings.model_dump_json(exclude_none=True) if request.runtime_settings is not None else None,
             source_type="problem",
             renderer=response.scene.renderer,
         )
@@ -69,13 +69,11 @@ async def render_problem(
 
 
 async def build_problem_render_response(request: RenderRequest, db: DatabaseClient, user: UserRecord | None = None, byok=None) -> RenderResponse:
-    from app.services.extractor import extract_scene
-    from app.services.geometry_engine import normalize_scene
-    from app.services.quality_advisory import build_render_advisory
-    from app.services.renderer_router import build_render_payload
+    from app.services.extractor import build_scene_with_cas_fix, extract_scene
+    from app.services.scene_pipeline import validate_normalize_verify_scene
 
     settings = get_settings()
-    ai_source = "admin"
+    source = RenderSourceResponse(kind="ai")
     degraded = False
     fallback_source = "none"
     if byok is None:
@@ -90,10 +88,8 @@ async def build_problem_render_response(request: RenderRequest, db: DatabaseClie
                 request.grade,
                 request.advanced_settings.reasoning_layer,
             )
-            from app.services.extractor import build_scene_with_cas_fix
-
             scene, warnings = build_scene_with_cas_fix(scene_json, verify=request.advanced_settings.verify_scene)
-            ai_source = "byok"
+            source = RenderSourceResponse(kind="byok")
         except Exception as error:
             raise RuntimeError(f"Render BYOK thất bại: {error}") from error
     else:
@@ -108,6 +104,17 @@ async def build_problem_render_response(request: RenderRequest, db: DatabaseClie
             runtime_settings=request.runtime_settings,
         )
         scene, warnings, degraded, fallback_source = unpack_extraction_result(extraction)
+        source = RenderSourceResponse(
+            kind="mock" if fallback_source == "mock" else "ai",
+            provider=getattr(extraction, "provider", None),
+            model=getattr(extraction, "model", None),
+            fallback_used=fallback_source != "none" or degraded,
+            fallback_reason=fallback_source if fallback_source != "none" else None,
+            candidate_attempts=[
+                {"provider": attempt.provider, "model": attempt.model, "stage": "extract", "success": False, "message": attempt.message}
+                for attempt in getattr(extraction, "attempts", [])
+            ],
+        )
     if request.preferred_renderer is not None:
         scene.renderer = request.preferred_renderer
     scene_data = scene.model_dump()
@@ -118,18 +125,16 @@ async def build_problem_render_response(request: RenderRequest, db: DatabaseClie
     if request.advanced_settings.show_grid is not None:
         scene_data["view"]["show_grid"] = request.advanced_settings.show_grid
     scene = scene.model_validate(scene_data)
-    scene = normalize_scene(scene, request.advanced_settings)
-    payload = build_render_payload(scene, request.advanced_settings)
     if scene.topic == "unknown":
         warnings.append("Chưa nhận diện được dạng toán, hãy thử đề cụ thể hơn.")
-    advisory = None
-    if get_settings().advisory_enabled:
-        advisory = build_render_advisory(request.problem_text, request.grade, scene, warnings, scene.cas_issues, payload)
-    warning_degraded, warning_fallback_source = render_degradation_metadata(warnings)
-    degraded = degraded or warning_degraded
-    if fallback_source == "none":
-        fallback_source = warning_fallback_source
-    return RenderResponse(scene=scene, payload=payload, warnings=warnings, cas_issues=scene.cas_issues, advisory=advisory, degraded=degraded, fallback_source=fallback_source, ai_source=ai_source)
+    response = validate_normalize_verify_scene(
+        scene,
+        request.advanced_settings,
+        warnings=warnings,
+        source=source,
+        build_problem_advisory=True,
+    ).response
+    return response
 
 
 @router.post("/render/scene", response_model=RenderResponse, dependencies=[Depends(require_trusted_origin)])
@@ -138,35 +143,19 @@ async def render_scene(
     http_request: Request,
     user: UserRecord = Depends(require_active_user),
 ) -> RenderResponse:
-    from app.services.geometry_engine import normalize_scene
-    from app.services.quality_advisory import build_scene_advisory
-    from app.services.renderer_router import build_render_payload
+    from app.services.scene_pipeline import validate_normalize_verify_scene
 
     db = optional_database_for_scene_render(user)
     if db is not None:
         await enforce_rate_limit(db, http_request, user, "render_scene", 40 if user else 12, 60)
         await enforce_render_access(db, user)
-    scene = normalize_scene(request.scene, request.advanced_settings)
-    payload = build_render_payload(scene, request.advanced_settings)
-    warnings = []
-    computed = (payload.three_scene or {}).get("computed") if payload.three_scene else None
-    if isinstance(computed, dict):
-        warnings = [warning for warning in computed.get("warnings", []) if isinstance(warning, str)]
-    advisory = build_scene_advisory(scene, warnings, payload) if get_settings().advisory_enabled else None
-    response = RenderResponse(scene=scene, payload=payload, warnings=warnings, cas_issues=scene.cas_issues, advisory=advisory, ai_source="none")
-    if user is not None:
-        await RenderHistoryRepository(db).create(
-            user.id,
-            scene.problem_text,
-            None,
-            None,
-            response,
-            render_request_json=json.dumps(sanitize_request_dump(request), ensure_ascii=False),
-            advanced_settings_json=request.advanced_settings.model_dump_json(),
-            runtime_settings_json=None,
-            source_type="scene_edit",
-            renderer=scene.renderer,
-        )
+    response = validate_normalize_verify_scene(
+        request.scene,
+        request.advanced_settings,
+        warnings=[],
+        source=RenderSourceResponse(kind="scene_edit"),
+        build_problem_advisory=False,
+    ).response
     return response
 
 
@@ -227,8 +216,9 @@ def render_degradation_metadata(warnings: list[str]) -> tuple[bool, str]:
 
 def render_error_payload(error: Exception) -> dict:
     message = str(error) or error.__class__.__name__
+    code = "RENDERER_INCOMPATIBLE" if "không tương thích" in message.lower() else "RENDER_EXTRACTION_FAILED"
     return {
-        "code": "RENDER_FAILED",
+        "code": code,
         "message": "Không thể dựng hình từ đề bài này.",
         "debug_message": message,
         "suggestions": ["Kiểm tra đề bài và cấu hình tier model.", "Thử mức chất lượng khác hoặc viết đề bài rõ hơn."],

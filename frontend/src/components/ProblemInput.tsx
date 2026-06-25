@@ -92,7 +92,9 @@ interface ProblemInputProps {
     tier: TierKey,
     advancedSettings?: AdvancedRenderSettings,
     preferredRenderer?: Renderer,
+    preferredAiModel?: string,
   ) => void;
+  modelOptions?: ModelOption[];
 }
 
 export function ProblemInput({
@@ -106,8 +108,10 @@ export function ProblemInput({
   onOcrImage,
   onOcrClipboardImage,
   onSubmit,
+  modelOptions = [],
 }: ProblemInputProps) {
   const [preferredRenderer, setPreferredRenderer] = useState<'auto' | Renderer>('auto');
+  const [preferredModelKey, setPreferredModelKey] = useState('default:auto');
   const [advancedSettings, setAdvancedSettings] = useState<AdvancedRenderSettings>(defaultAdvancedSettings);
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -120,11 +124,13 @@ export function ProblemInput({
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
+    const selectedModel = modelOptions.find((option) => option.key === preferredModelKey);
     onSubmit(
       problemText,
       tier,
       advancedSettings,
       preferredRenderer === 'auto' ? undefined : preferredRenderer,
+      selectedModel?.modelId,
     );
   }
 
@@ -273,6 +279,17 @@ export function ProblemInput({
             <option value="threejs_3d">Three.js 3D</option>
           </select>
         </label>
+        {modelOptions.length > 0 && (
+          <label className="field-label">
+            Model dựng hình
+            <select value={preferredModelKey} onChange={(event) => setPreferredModelKey(event.target.value)}>
+              {modelOptions.map((option) => (
+                <option key={option.key} value={option.key} title={option.description}>{option.label}</option>
+              ))}
+            </select>
+            <span className="field-hint">{modelOptions.find((option) => option.key === preferredModelKey)?.description ?? 'Backend tự chọn model phù hợp.'}</span>
+          </label>
+        )}
         <label className="field-label">
           Hiển thị tọa độ điểm
           <select

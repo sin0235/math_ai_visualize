@@ -1,6 +1,6 @@
 import type { MathScene } from '../types/scene';
 
-export type ExportFormatKey = 'png' | 'jpg' | 'svg' | 'katex-html' | 'tikz';
+export type ExportFormatKey = 'png' | 'jpg' | 'svg' | 'katex-html' | 'tikz' | 'pdf' | 'ggb';
 
 const FORMAT_EXT: Record<ExportFormatKey, string> = {
   png: 'png',
@@ -8,6 +8,8 @@ const FORMAT_EXT: Record<ExportFormatKey, string> = {
   svg: 'svg',
   'katex-html': 'html',
   tikz: 'tex',
+  pdf: 'pdf',
+  ggb: 'ggb',
 };
 
 /** Loại bỏ ký tự không hợp lệ trên Windows/macOS/Linux và rút gọn. */

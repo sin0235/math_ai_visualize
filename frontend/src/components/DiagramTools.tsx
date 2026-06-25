@@ -1,27 +1,30 @@
 import React, { useState } from 'react';
 import { generateProblemVariants } from '../api/client';
-import type { MathScene } from '../types/scene';
+import type { MathScene, RenderResponse } from '../types/scene';
 import type { RuntimeSettings } from '../types/settings';
+import { downstreamGateMessage } from '../utils/renderQualityGate';
 
 export interface DiagramToolsProps {
   scene: MathScene | null;
   originalProblem: string;
   runtimeSettings: RuntimeSettings;
+  response?: RenderResponse | null;
   onError?: (message: string) => void;
 }
 
 const VARIANT_OPTIONS = [2, 3, 5];
 
-export function ProblemVariantTool({ scene, originalProblem, runtimeSettings, onError }: Pick<DiagramToolsProps, 'scene' | 'originalProblem' | 'runtimeSettings' | 'onError'>): JSX.Element {
+export function ProblemVariantTool({ scene, originalProblem, runtimeSettings, response, onError }: Pick<DiagramToolsProps, 'scene' | 'originalProblem' | 'runtimeSettings' | 'response' | 'onError'>): JSX.Element {
   const [busyVariants, setBusyVariants] = useState<number | null>(null);
   const [variants, setVariants] = useState<string[]>([]);
   const [variantsModel, setVariantsModel] = useState<string | null>(null);
+  const gateMessage = response ? downstreamGateMessage(response, 'sinh đề biến thể') : null;
 
   async function handleGenerateVariants(count: number) {
-    if (!scene) return;
+    if (!scene || gateMessage) return;
     setBusyVariants(count);
     try {
-      const res = await generateProblemVariants(scene, count, originalProblem || undefined, runtimeSettings);
+      const res = await generateProblemVariants(scene, count, originalProblem || undefined, runtimeSettings, undefined, response);
       setVariants(res.variants);
       setVariantsModel(`${res.provider}/${res.model}`);
     } catch (err) {
@@ -43,9 +46,10 @@ export function ProblemVariantTool({ scene, originalProblem, runtimeSettings, on
   return (
     <div className="diagram-tools-block">
       <p className="diagram-tools-hint">Giữ nguyên cấu trúc hình, đổi tên điểm và số liệu.</p>
+      {gateMessage && <p className="diagram-tools-hint warning">{gateMessage}</p>}
       <div className="diagram-tools-button-row">
         {VARIANT_OPTIONS.map((count) => (
-          <button key={count} type="button" className="diagram-tools-button" disabled={!scene || busyVariants !== null} onClick={() => handleGenerateVariants(count)} title={!scene ? 'Cần có hình đã dựng trước' : `Sinh ${count} đề biến thể`}>
+          <button key={count} type="button" className="diagram-tools-button" disabled={!scene || Boolean(gateMessage) || busyVariants !== null} onClick={() => handleGenerateVariants(count)} title={!scene ? 'Cần có hình đã dựng trước' : gateMessage ?? `Sinh ${count} đề biến thể`}>
             {busyVariants === count ? `Đang sinh ${count}…` : `Sinh ${count} đề`}
           </button>
         ))}
@@ -74,7 +78,7 @@ export function DiagramTools(props: DiagramToolsProps): JSX.Element {
   return (
     <div className="diagram-tools">
       <div className="diagram-tools-row">
-        <ProblemVariantTool scene={props.scene} originalProblem={props.originalProblem} runtimeSettings={props.runtimeSettings} onError={props.onError} />
+        <ProblemVariantTool scene={props.scene} originalProblem={props.originalProblem} runtimeSettings={props.runtimeSettings} response={props.response} onError={props.onError} />
       </div>
     </div>
   );

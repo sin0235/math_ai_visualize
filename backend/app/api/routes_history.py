@@ -7,7 +7,7 @@ from app.db.models import UserRecord
 from app.db.session import DatabaseClient, get_database
 from app.repositories.history import RenderHistoryRepository
 from app.schemas.auth import RenderHistoryDetail, RenderHistoryItem
-from app.schemas.scene import MathScene, RenderPayload
+from app.schemas.scene import MathScene, RenderPayload, RenderResponse
 
 router = APIRouter(prefix="/api/history", tags=["history"])
 
@@ -27,6 +27,7 @@ async def list_history(user: UserRecord = Depends(get_current_user), db: Databas
             degraded=job.degraded,
             fallback_source=job.fallback_source,  # type: ignore[arg-type]
             ai_source=job.ai_source,  # type: ignore[arg-type]
+            schema_version=job.schema_version,
         )
         for job in jobs
     ]
@@ -48,9 +49,11 @@ async def get_history(job_id: str, user: UserRecord = Depends(get_current_user),
         degraded=job.degraded,
         fallback_source=job.fallback_source,  # type: ignore[arg-type]
         ai_source=job.ai_source,  # type: ignore[arg-type]
+        schema_version=job.schema_version,
         scene=MathScene.model_validate_json(job.scene_json),
         payload=RenderPayload.model_validate_json(job.payload_json),
         warnings=json.loads(job.warnings_json),
+        response=RenderResponse.model_validate_json(job.response_json) if job.response_json else None,
         render_request=parse_json_object(job.render_request_json),
         advanced_settings=parse_json_object(job.advanced_settings_json),
         runtime_settings=parse_json_object(job.runtime_settings_json),

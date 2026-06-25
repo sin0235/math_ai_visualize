@@ -3,7 +3,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
-from app.schemas.scene import MAX_BASE_URL_CHARS, MAX_MODEL_ID_CHARS, MathScene, RenderPayload
+from app.schemas.scene import MAX_BASE_URL_CHARS, MAX_MODEL_ID_CHARS, MathScene, RenderPayload, RenderResponse
 
 MAX_STORED_MODELS = 1000
 PLAN_ID_PATTERN = re.compile(r"^[a-z][a-z0-9_+-]{0,63}$")
@@ -238,12 +238,14 @@ class RenderHistoryItem(BaseModel):
     degraded: bool = False
     fallback_source: Literal["none", "mock", "provider_fallback"] = "none"
     ai_source: Literal["admin", "byok", "none"] = "none"
+    schema_version: str = "1.0"
 
 
 class RenderHistoryDetail(RenderHistoryItem):
     scene: MathScene
     payload: RenderPayload
     warnings: list[str]
+    response: RenderResponse | None = None
     render_request: dict | None = None
     advanced_settings: dict | None = None
     runtime_settings: dict | None = None

@@ -1,11 +1,13 @@
 import { useMemo, useRef, useState } from 'react';
 import { solveProblem, type SolveResponse, type SolveStep } from '../api/client';
 import type { RuntimeSettings } from '../types/settings';
-import type { MathScene } from '../types/scene';
+import type { MathScene, RenderResponse } from '../types/scene';
+import { downstreamGateMessage } from '../utils/renderQualityGate';
 import { KatexSpan, normalizeLatexForKatex, sympyToLatex } from './KatexSpan';
 
 interface SolverPanelProps {
   scene: MathScene;
+  response?: RenderResponse | null;
   runtimeSettings?: RuntimeSettings;
   onHighlight: (names: string[]) => void;
 }
@@ -147,7 +149,7 @@ function buildExamples(scene: MathScene) {
   return Array.from(new Set(examples));
 }
 
-export function SolverPanel({ scene, runtimeSettings, onHighlight }: SolverPanelProps) {
+export function SolverPanel({ scene, response, runtimeSettings, onHighlight }: SolverPanelProps) {
   const [question, setQuestion] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<SolveResponse | null>(null);
@@ -160,10 +162,11 @@ export function SolverPanel({ scene, runtimeSettings, onHighlight }: SolverPanel
   const sceneCacheKey = useMemo(() => JSON.stringify(scene), [scene]);
   const normalizedQuestion = normalizeSolverQuestionInput(question);
   const showNormalizedQuestion = Boolean(question.trim()) && normalizedQuestion !== question.trim();
+  const gateMessage = response ? downstreamGateMessage(response, 'giải bài') : null;
 
   async function handleSolve() {
     const trimmedQuestion = normalizedQuestion;
-    if (!trimmedQuestion) return;
+    if (!trimmedQuestion || gateMessage) return;
     const cacheKey = `${sceneCacheKey}\n${geometryMethod}\n${trimmedQuestion}`;
     setLoading(true);
     setError(null);
@@ -176,7 +179,7 @@ export function SolverPanel({ scene, runtimeSettings, onHighlight }: SolverPanel
         setResult(cached);
         return;
       }
-      const res = await solveProblem(scene, trimmedQuestion, geometryMethod, runtimeSettings);
+      const res = await solveProblem(scene, trimmedQuestion, geometryMethod, runtimeSettings, response);
       cacheRef.current.set(cacheKey, res);
       setResult(res);
     } catch (e: unknown) {
@@ -226,6 +229,8 @@ export function SolverPanel({ scene, runtimeSettings, onHighlight }: SolverPanel
         </select>
       </div>
 
+      {gateMessage && <div className="sp-warning" role="note">{gateMessage}</div>}
+
       {/* Input */}
       <div className="sp-input-wrap">
         <input
@@ -247,7 +252,7 @@ export function SolverPanel({ scene, runtimeSettings, onHighlight }: SolverPanel
           type="button"
           className="sp-btn-primary"
           onClick={() => void handleSolve()}
-          disabled={loading || !question.trim()}
+          disabled={loading || Boolean(gateMessage) || !question.trim()}
           aria-label="Giải toán"
         >
           {loading

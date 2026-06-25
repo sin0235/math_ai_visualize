@@ -20,7 +20,7 @@ import { ExportMenuItems } from './components/ExportMenu';
 import { ProblemVariantTool } from './components/DiagramTools';
 import { normalizeMineruBaseUrl } from './api/mineru';
 import { getDefaultParamValues, patchGeogebraCommandsForScene, recomputeSceneWithParameters, recomputeThreeScene } from './utils/sceneParameters';
-import { clamp, findPoint, hasSegment, nextPointName, projectPointToSegment, round, type Vec3 } from './utils/sceneEditing';
+import { clamp, findPoint, hasSegment, nextPointName, projectPointToLine, round, type Vec3 } from './utils/sceneEditing';
 import type { AdvancedRenderSettings, MathScene, RenderResponse, Renderer } from './types/scene';
 import { defaultRuntimeSettings, type RuntimeSettings, type SettingsDefaults } from './types/settings';
 import logoUrl from '../img.svg';
@@ -46,6 +46,18 @@ type EditTool = 'move' | 'connect' | 'project_to_segment' | 'add_point';
 type BackendStatus = {
   state: 'checking' | 'online' | 'offline';
   appName?: string;
+};
+
+type ConfirmationState = {
+  fallback_confirmed: boolean;
+  assumptions_confirmed: boolean;
+  repair_confirmed: boolean;
+};
+
+const defaultConfirmation: ConfirmationState = {
+  fallback_confirmed: false,
+  assumptions_confirmed: false,
+  repair_confirmed: false,
 };
 
 const viewPaths: Record<AppView, string> = {
@@ -149,6 +161,9 @@ function FooterNavLink({
 export default function App() {
   const [activeView, setActiveView] = useState<AppView>(() => pathToView(window.location.pathname));
   const [result, setResult] = useState<RenderResponse | null>(null);
+  const [activeScene, setActiveScene] = useState<MathScene | null>(null);
+  const [activeRevision, setActiveRevision] = useState(0);
+  const [confirmation, setConfirmation] = useState<ConfirmationState>(defaultConfirmation);
   const [paramValues, setParamValues] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(false);
   const [editorSaving, setEditorSaving] = useState(false);
@@ -188,6 +203,17 @@ export default function App() {
   const renderToolsMenuRef = useRef<HTMLDivElement | null>(null);
   const ocrInFlightRef = useRef(false);
   const editorButtonDragRef = useRef<{ pointerId: number; startY: number; startTop: number; moved: boolean } | null>(null);
+
+  function applyRenderResponse(response: RenderResponse, nextConfirmation: ConfirmationState = defaultConfirmation) {
+    setResult(response);
+    setActiveScene(response.scene);
+    setActiveRevision(response.scene.revision ?? 1);
+    setConfirmation(nextConfirmation);
+  }
+
+  function confirmCurrentScene() {
+    setConfirmation({ fallback_confirmed: true, assumptions_confirmed: true, repair_confirmed: true });
+  }
 
   function navigateTo(view: AppView, replace = false) {
     setActiveView(view);
@@ -327,24 +353,23 @@ export default function App() {
 
   // Reset slider values khi scene mới được dựng
   useEffect(() => {
-    setParamValues(getDefaultParamValues(result?.scene.parameters));
-  }, [result?.scene]);
+    setParamValues(getDefaultParamValues(activeScene?.parameters));
+  }, [activeScene]);
 
   // Tạo result đã được recompute theo paramValues. Khi không có parameters, trả result gốc.
   const effectiveResult = useMemo<RenderResponse | null>(() => {
-    if (!result) return null;
-    const params = result.scene.parameters;
-    if (!params || params.length === 0) return result;
-    const recomputedScene = recomputeSceneWithParameters(result.scene, paramValues);
+    if (!result || !activeScene) return null;
+    const params = activeScene.parameters;
+    const baseScene = params && params.length > 0 ? recomputeSceneWithParameters(activeScene, paramValues) : activeScene;
     let payload = result.payload;
     if (payload.three_scene) {
-      payload = { ...payload, three_scene: recomputeThreeScene(payload.three_scene, recomputedScene) };
+      payload = { ...payload, three_scene: recomputeThreeScene(payload.three_scene, baseScene) };
     }
     if (payload.geogebra_commands && payload.geogebra_commands.length > 0) {
-      payload = { ...payload, geogebra_commands: patchGeogebraCommandsForScene(payload.geogebra_commands, recomputedScene) };
+      payload = { ...payload, geogebra_commands: patchGeogebraCommandsForScene(payload.geogebra_commands, baseScene) };
     }
-    return { ...result, scene: recomputedScene, payload };
-  }, [result, paramValues]);
+    return { ...result, scene: baseScene, payload, user_confirmed: confirmation.fallback_confirmed && confirmation.assumptions_confirmed && confirmation.repair_confirmed };
+  }, [result, activeScene, paramValues, confirmation]);
 
   const modelOptions = buildModelOptions(runtimeSettings, settingsDefaults);
   const threeInteraction = effectiveResult?.scene.renderer === 'threejs_3d'
@@ -452,6 +477,7 @@ export default function App() {
     tier: TierKey,
     advancedSettings?: AdvancedRenderSettings,
     preferredRenderer?: Renderer,
+    preferredAiModel?: string,
   ) {
     if (!user) {
       showNotification('Cần đăng nhập', 'Vui lòng đăng nhập trước khi dựng hình.', [], 'warning');
@@ -463,8 +489,8 @@ export default function App() {
     setEditTool('move');
     setLastAdvancedSettings(advancedSettings ?? defaultAdvancedSettings);
     try {
-      const response = await renderProblem(problemText, tier, advancedSettings, preferredRenderer);
-      setResult(response);
+      const response = await renderProblem(problemText, tier, advancedSettings, preferredRenderer, runtimeSettings, preferredAiModel);
+      applyRenderResponse(response);
       if (user) void refreshHistory();
       scrollToResultOnMobile();
       showWarnings(response.warnings);
@@ -633,7 +659,7 @@ export default function App() {
 
   function openAdminRenderJobDetail(detail: AdminRenderHistoryDetail) {
     setProblemText(detail.problem_text);
-    setResult({ scene: detail.scene, payload: detail.payload, warnings: detail.warnings });
+    applyRenderResponse(detail.response ?? buildLegacyHistoryResponse(detail));
     navigateTo('render');
     scrollToResultOnMobile();
   }
@@ -643,7 +669,9 @@ export default function App() {
     try {
       const detail = await getRenderHistoryDetail(id);
       setProblemText(detail.problem_text);
-      setResult({ scene: detail.scene, payload: detail.payload, warnings: detail.warnings });
+      applyRenderResponse(detail.response ?? buildLegacyHistoryResponse(detail));
+      setLastAdvancedSettings(advancedSettingsFromHistory(detail.advanced_settings));
+      setRuntimeSettings((current) => runtimeSettingsFromHistory(detail.runtime_settings, current));
       navigateTo('render');
       scrollToResultOnMobile();
     } catch (caught) {
@@ -667,8 +695,8 @@ export default function App() {
   async function handleSceneEdit(scene: MathScene) {
     setEditorSaving(true);
     try {
-      const response = await renderEditedScene(scene, lastAdvancedSettings);
-      setResult(response);
+      const response = await renderEditedScene(scene, lastAdvancedSettings, effectiveResult);
+      applyRenderResponse(response);
       if (user) void refreshHistory();
       showWarnings(response.warnings);
     } catch (caught) {
@@ -680,10 +708,11 @@ export default function App() {
   }
 
   async function handlePointDragEnd(name: string, point: Vec3) {
-    if (!result?.scene || editorSaving) return;
+    if (!activeScene || editorSaving) return;
     const editedScene: MathScene = {
-      ...result.scene,
-      objects: result.scene.objects.map((obj) => {
+      ...activeScene,
+      revision: activeRevision + 1,
+      objects: activeScene.objects.map((obj) => {
         if ((obj.type === 'point_2d' || obj.type === 'point_3d') && obj.name === name) {
           // Khi user tự kéo điểm, xoá biểu thức tham số (nếu có) cho điểm đó
           // vì giá trị mới do user đặt thủ công, không còn phụ thuộc tham số.
@@ -699,22 +728,23 @@ export default function App() {
   }
 
   async function handleConnectPoints(start: string, end: string) {
-    if (!result?.scene || editorSaving) return;
+    if (!activeScene || editorSaving) return;
     if (start === end) {
       const message = 'Chọn hai điểm khác nhau để nối đoạn.';
       showNotification('Không thể nối đoạn', message);
       return;
     }
-    if (hasSegment(result.scene, start, end)) {
+    if (hasSegment(activeScene, start, end)) {
       const message = `Đoạn ${start}${end} đã tồn tại.`;
       showNotification('Không thể nối đoạn', message);
       return;
     }
     const editedScene: MathScene = {
-      ...result.scene,
+      ...activeScene,
+      revision: activeRevision + 1,
       objects: [
-        ...result.scene.objects,
-        { type: 'segment', points: [start, end], hidden: false, color: '#111111', line_width: 3, style: 'solid' },
+        ...activeScene.objects,
+        { type: 'segment', points: [start, end], hidden: false, color: '#111111', line_width: 3, style: 'solid', source: 'construction' },
       ],
     };
     await handleSceneEdit(editedScene);
@@ -722,7 +752,7 @@ export default function App() {
 
   async function handlePointToSegmentClick(segmentPoints: [string, string], clickedPoint: Vec3) {
     if (editorSaving) return;
-    if (!result?.scene || !pointToSegmentSource || editTool !== 'project_to_segment') {
+    if (!activeScene || !pointToSegmentSource || editTool !== 'project_to_segment') {
       const message = 'Chọn công cụ tạo chân nối, chọn một điểm nguồn, rồi click vào đoạn đích.';
       showNotification('Không thể tạo chân nối', message);
       return;
@@ -733,23 +763,30 @@ export default function App() {
       return;
     }
 
-    const source = findPoint(result.scene, pointToSegmentSource);
-    const start = findPoint(result.scene, segmentPoints[0]);
-    const end = findPoint(result.scene, segmentPoints[1]);
+    const source = findPoint(activeScene, pointToSegmentSource);
+    const start = findPoint(activeScene, segmentPoints[0]);
+    const end = findPoint(activeScene, segmentPoints[1]);
     if (!source || !start || !end) {
       const message = 'Không tìm thấy điểm nguồn hoặc đoạn đích trong scene.';
       showNotification('Không thể tạo chân nối', message);
       return;
     }
 
-    const newPoint = projectPointToSegment(clickedPoint, start, end);
-    const newName = nextPointName(result.scene);
+    const newPoint = projectPointToLine(source, start, end);
+    const newName = nextPointName(activeScene);
+    const targetSegment = `${segmentPoints[0]}-${segmentPoints[1]}`;
     const editedScene: MathScene = {
-      ...result.scene,
+      ...activeScene,
+      revision: activeRevision + 1,
       objects: [
-        ...result.scene.objects,
-        { type: 'point_3d', name: newName, x: round(newPoint.x), y: round(newPoint.y), z: round(newPoint.z) },
-        { type: 'segment', points: [pointToSegmentSource, newName], hidden: false, color: '#111111', line_width: 3, style: 'solid' },
+        ...activeScene.objects,
+        { type: 'point_3d', name: newName, x: round(newPoint.x), y: round(newPoint.y), z: round(newPoint.z), source: 'construction' },
+        { type: 'segment', points: [pointToSegmentSource, newName], hidden: false, color: '#111111', line_width: 3, style: 'solid', source: 'construction' },
+      ],
+      relations: [
+        ...(activeScene.relations ?? []),
+        { type: 'perpendicular', object_1: `${pointToSegmentSource}-${newName}`, object_2: targetSegment, source: 'construction', metadata: { source: 'construction', confidence: 'unverified' } },
+        { type: 'on_line', object_1: newName, object_2: targetSegment, source: 'construction', metadata: { source: 'construction', confidence: 'unverified', t: newPoint.t } },
       ],
     };
 
@@ -762,18 +799,19 @@ export default function App() {
   }
 
   async function handleCanvasClickToAddPoint(clickedPoint: Vec3) {
-    if (!result?.scene) return;
+    if (!activeScene) return;
     if (editorSaving) return;
 
-    const dim = result.scene.view.dimension;
-    const name = nextPointName(result.scene);
+    const dim = activeScene.view.dimension;
+    const name = nextPointName(activeScene);
     const point = dim === '3d'
       ? { type: 'point_3d' as const, name, x: round(clickedPoint.x), y: round(clickedPoint.y), z: round(clickedPoint.z) }
       : { type: 'point_2d' as const, name, x: round(clickedPoint.x), y: round(clickedPoint.y) };
 
     const editedScene: MathScene = {
-      ...result.scene,
-      objects: [...result.scene.objects, point],
+      ...activeScene,
+      revision: activeRevision + 1,
+      objects: [...activeScene.objects, { ...point, source: 'construction' }],
     };
     await handleSceneEdit(editedScene);
   }
@@ -1016,6 +1054,7 @@ export default function App() {
                     onOcrImage={handleOcrImage}
                     onOcrClipboardImage={handleOcrClipboardImage}
                     onSubmit={handleSubmit}
+                    modelOptions={modelOptions}
                   />
                   {user && (
                     <div className="history-drawer-wrap">
@@ -1027,7 +1066,7 @@ export default function App() {
                   )}
                 </>
               ) : effectiveResult?.scene && user ? (
-                <SolverPanel scene={effectiveResult.scene} runtimeSettings={runtimeSettings} onHighlight={setHighlightedObjects} />
+                <SolverPanel scene={effectiveResult.scene} response={effectiveResult} runtimeSettings={runtimeSettings} onHighlight={setHighlightedObjects} />
               ) : (
                 <div className="solver-disabled-state">
                   <strong>Chưa thể giải từng bước</strong>
@@ -1039,6 +1078,15 @@ export default function App() {
             <div className="result-area" ref={resultAnchorRef}>
               <div className="render-stage">
                 <RendererPanel result={effectiveResult} threeInteraction={threeInteraction} onGeoGebraPointChange={handlePointDragEnd} highlightedObjects={highlightedObjects} saving={editorSaving} onThreeImageCaptureReady={handleThreeImageCaptureReady} />
+                {effectiveResult && shouldShowConfirmationPrompt(effectiveResult) && (
+                  <div className="warning-box render-confirmation-box">
+                    <div>
+                      <strong>Cần xác nhận trước khi dùng tiếp</strong>
+                      <p>Hình hiện tại có fallback, giả định hoặc sửa chữa cần bạn kiểm tra. Sau khi đã đối chiếu nội dung hình với đề bài, hãy xác nhận để bật xuất file, giải bài và sinh đề biến thể.</p>
+                    </div>
+                    <button type="button" className="secondary-button" onClick={confirmCurrentScene}>Tôi đã kiểm tra hình này</button>
+                  </div>
+                )}
                 {effectiveResult?.scene && (
                   <div ref={renderToolsMenuRef} className="render-tools-floating" style={{ top: editorButtonTop }}>
                     <button
@@ -1089,7 +1137,7 @@ export default function App() {
                           aria-expanded={renderToolsPanel === 'export'}
                         >
                           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h7l4 4v14H7z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /><path d="M14 3v5h5M9 15h6M9 18h4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
-                          <span><strong>Xuất hình</strong><small>PNG, JPG, SVG, HTML KaTeX, TikZ.</small></span>
+                          <span><strong>Xuất hình</strong><small>PNG, JPG, SVG, HTML KaTeX, TikZ, PDF, GGB.</small></span>
                         </button>
                         {renderToolsPanel === 'export' && (
                           <div className="render-tools-submenu render-tools-export-submenu">
@@ -1098,6 +1146,7 @@ export default function App() {
                               advancedSettings={lastAdvancedSettings}
                               captureCurrentView={threeImageCapture}
                               preferCurrentViewCapture={Boolean(effectiveResult.payload.three_scene)}
+                              response={effectiveResult}
                               onError={(msg) => showNotification('Xuất hình thất bại', msg, [], 'error')}
                               onAfterDownload={() => {
                                 setRenderToolsOpen(false);
@@ -1119,14 +1168,14 @@ export default function App() {
                         </button>
                         {renderToolsPanel === 'variants' && (
                           <div className="render-tools-submenu">
-                            <ProblemVariantTool scene={effectiveResult.scene} originalProblem={problemText} runtimeSettings={runtimeSettings} onError={(msg) => showNotification('Công cụ hình', msg, [], 'info')} />
+                            <ProblemVariantTool scene={effectiveResult.scene} response={effectiveResult} originalProblem={problemText} runtimeSettings={runtimeSettings} onError={(msg) => showNotification('Công cụ hình', msg, [], 'info')} />
                           </div>
                         )}
                       </div>
                     )}
                   </div>
                 )}
-                {sceneEditorOpen && result?.scene && (
+                {sceneEditorOpen && effectiveResult?.scene && (
                   <div className="scene-editor-layer" role="presentation" onMouseDown={() => setSceneEditorOpen(false)}>
                     <div className="scene-editor-popover" role="dialog" aria-modal="true" aria-label="Sửa hình học" onMouseDown={(event) => event.stopPropagation()}>
                       <div className="scene-editor-popover-header">
@@ -1134,7 +1183,7 @@ export default function App() {
                         <button type="button" className="scene-editor-close" onClick={() => setSceneEditorOpen(false)} aria-label="Đóng sửa hình học"><CloseIcon /></button>
                       </div>
                       <SceneEditorPanel
-                        scene={result.scene}
+                        scene={effectiveResult.scene}
                         saving={editorSaving}
                         editTool={editTool}
                         selectedPoint={pointToSegmentSource}
@@ -1147,10 +1196,10 @@ export default function App() {
                           setPointToSegmentSource(null);
                         }}
                         onChange={handleSceneEdit}
-                        parameters={result.scene.parameters}
+                        parameters={effectiveResult.scene.parameters}
                         parameterValues={paramValues}
                         onParameterValuesChange={setParamValues}
-                        onParameterReset={() => setParamValues(getDefaultParamValues(result.scene.parameters))}
+                        onParameterReset={() => setParamValues(getDefaultParamValues(effectiveResult.scene.parameters))}
                       />
                     </div>
                   </div>
@@ -1378,6 +1427,53 @@ function PageLoadingFallback() {
       <p>Đang tải công cụ...</p>
     </section>
   );
+}
+
+function shouldShowConfirmationPrompt(response: RenderResponse) {
+  return !response.user_confirmed && (
+    response.status === 'fallback'
+    || response.status === 'needs_confirmation'
+    || response.requires_user_confirmation
+    || response.source.fallback_used
+    || response.repair_report.requires_confirmation
+  );
+}
+
+function buildLegacyHistoryResponse(detail: AdminRenderHistoryDetail): RenderResponse {
+  return {
+    status: detail.fallback_source && detail.fallback_source !== 'none' ? 'fallback' : 'partially_verified',
+    source: {
+      kind: detail.ai_source === 'byok' ? 'byok' : detail.fallback_source === 'mock' ? 'mock' : 'ai',
+      provider: detail.provider,
+      model: detail.model,
+      fallback_used: Boolean(detail.degraded || (detail.fallback_source && detail.fallback_source !== 'none')),
+      fallback_reason: detail.fallback_source && detail.fallback_source !== 'none' ? detail.fallback_source : null,
+      candidate_attempts: [],
+    },
+    scene: detail.scene,
+    payload: detail.payload,
+    warnings: detail.warnings,
+    validation_report: { status: 'passed', items: [] },
+    verification_report: { status: 'partial', relations: [], summary: { verified: 0, failed: 0, unsupported: 0, unverifiable: 0, error: 0 } },
+    repair_report: { status: 'none', changes: [], requires_confirmation: false, warnings: [] },
+    renderer_compatibility: { status: 'requires_confirmation', renderer: detail.scene.renderer, dimension: detail.scene.view.dimension, messages: ['Lịch sử này không có full metadata render v2.'], unsupported_objects: [], unsupported_relations: [] },
+    requires_user_confirmation: true,
+    cas_issues: detail.scene.cas_issues ?? [],
+    advisory: null,
+    degraded: detail.degraded,
+    fallback_source: detail.fallback_source ?? 'none',
+    ai_source: detail.ai_source ?? 'none',
+  };
+}
+
+function advancedSettingsFromHistory(value: Record<string, unknown> | null | undefined): AdvancedRenderSettings {
+  if (!value) return defaultAdvancedSettings;
+  return { ...defaultAdvancedSettings, ...value } as AdvancedRenderSettings;
+}
+
+function runtimeSettingsFromHistory(value: Record<string, unknown> | null | undefined, fallback: RuntimeSettings): RuntimeSettings {
+  if (!value) return fallback;
+  return { ...fallback, ...value } as RuntimeSettings;
 }
 
 function toApiError(caught: unknown, fallback: string): ApiError {

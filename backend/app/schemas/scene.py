@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 from typing import Any, Literal
+from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
 
@@ -18,6 +21,14 @@ AiProvider = Literal["auto", "router9", "openrouter", "openrouter_gpt_oss", "ope
 CoordinateAssignment = Literal["ai", "auto_origin", "prefer_o_origin"]
 ReasoningLayerMode = Literal["off", "auto", "force"]
 RenderJobStatus = Literal["queued", "running", "completed", "failed"]
+RenderStatus = Literal["verified", "partially_verified", "needs_confirmation", "fallback", "failed"]
+RenderSourceKind = Literal["ai", "byok", "mock", "scene_edit", "manual", "none"]
+VerificationStatus = Literal["verified", "failed", "unsupported", "unverifiable", "error"]
+ReportStatus = Literal["passed", "partial", "failed"]
+RepairStatus = Literal["none", "applied", "proposal", "rejected"]
+ObjectSource = Literal["given", "ai_inferred", "construction", "user_created", "user_edited"]
+RelationSource = Literal["given", "ai_inferred", "construction", "user_created"]
+RendererCompatibilityStatus = Literal["compatible", "incompatible", "requires_confirmation"]
 Topic = Literal[
     "coordinate_2d",
     "function_graph",
@@ -29,7 +40,28 @@ Topic = Literal[
 ]
 
 
-class Point2D(BaseModel):
+class SceneObjectBase(BaseModel):
+    id: str | None = None
+    source: ObjectSource = "ai_inferred"
+    locked: bool = False
+    user_edited: bool = False
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_serializer("metadata")
+    def serialize_object_metadata(self, value: dict[str, Any]) -> dict[str, Any]:
+        return _json_safe(value)
+
+    @model_validator(mode="after")
+    def ensure_object_identity(self) -> "SceneObjectBase":
+        if not self.id:
+            raw_name = getattr(self, "name", None)
+            prefix = str(raw_name).strip() if raw_name else self.__class__.__name__.lower()
+            safe_prefix = "".join(ch if ch.isalnum() else "_" for ch in prefix).strip("_") or "obj"
+            self.id = f"obj_{safe_prefix}_{uuid4().hex[:8]}"
+        return self
+
+
+class Point2D(SceneObjectBase):
     type: Literal["point_2d"] = "point_2d"
     name: str
     x: float
@@ -40,7 +72,7 @@ class Point2D(BaseModel):
     y_expr: str | None = None
 
 
-class Point3D(BaseModel):
+class Point3D(SceneObjectBase):
     type: Literal["point_3d"] = "point_3d"
     name: str
     x: float
@@ -51,7 +83,7 @@ class Point3D(BaseModel):
     z_expr: str | None = None
 
 
-class Segment(BaseModel):
+class Segment(SceneObjectBase):
     type: Literal["segment"] = "segment"
     name: str | None = None
     points: list[str] = Field(min_length=2, max_length=2)
@@ -61,20 +93,20 @@ class Segment(BaseModel):
     style: Literal["solid", "dashed", "dotted"] | None = None
 
 
-class Line2D(BaseModel):
+class Line2D(SceneObjectBase):
     type: Literal["line_2d"] = "line_2d"
     name: str | None = None
     through: list[str] = Field(min_length=2, max_length=2)
 
 
-class Vector2D(BaseModel):
+class Vector2D(SceneObjectBase):
     type: Literal["vector_2d"] = "vector_2d"
     name: str | None = None
     from_point: str
     to_point: str
 
 
-class Vector3D(BaseModel):
+class Vector3D(SceneObjectBase):
     type: Literal["vector_3d"] = "vector_3d"
     name: str | None = None
     from_point: str
@@ -82,14 +114,14 @@ class Vector3D(BaseModel):
     color: str = "#7c3aed"
 
 
-class Line3D(BaseModel):
+class Line3D(SceneObjectBase):
     type: Literal["line_3d"] = "line_3d"
     name: str | None = None
     through: list[str] = Field(min_length=2, max_length=2)
     color: str = "#1d3557"
 
 
-class Circle2D(BaseModel):
+class Circle2D(SceneObjectBase):
     type: Literal["circle_2d"] = "circle_2d"
     name: str | None = None
     center: str
@@ -98,14 +130,14 @@ class Circle2D(BaseModel):
     radius_expr: str | None = None
 
 
-class FunctionGraph(BaseModel):
+class FunctionGraph(SceneObjectBase):
     type: Literal["function_graph"] = "function_graph"
     name: str = "f"
     expression: str
     domain: tuple[float | str, float | str] | None = None
 
 
-class Face(BaseModel):
+class Face(SceneObjectBase):
     type: Literal["face"] = "face"
     name: str | None = None
     points: list[str] = Field(min_length=3)
@@ -113,7 +145,7 @@ class Face(BaseModel):
     opacity: float = 0.22
 
 
-class Sphere(BaseModel):
+class Sphere(SceneObjectBase):
     type: Literal["sphere"] = "sphere"
     name: str | None = None
     center: str
@@ -123,7 +155,7 @@ class Sphere(BaseModel):
     opacity: float = 0.18
 
 
-class Plane(BaseModel):
+class Plane(SceneObjectBase):
     type: Literal["plane"] = "plane"
     name: str | None = None
     points: list[str] = Field(min_length=3)
@@ -132,18 +164,124 @@ class Plane(BaseModel):
     show_normal: bool = True
 
 
+class ValidationItem(BaseModel):
+    code: str
+    severity: Literal["info", "warning", "error"] = "warning"
+    message: str
+    path: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_serializer("metadata")
+    def serialize_validation_metadata(self, value: dict[str, Any]) -> dict[str, Any]:
+        return _json_safe(value)
+
+
+class ValidationReportResponse(BaseModel):
+    status: ReportStatus = "passed"
+    items: list[ValidationItem] = Field(default_factory=list)
+
+
+class RelationVerificationResponse(BaseModel):
+    relation_id: str
+    status: VerificationStatus
+    method: str | None = None
+    tolerance: float | None = None
+    evidence: str | None = None
+    message: str | None = None
+    verifier_version: str = "cas-v2"
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_serializer("metadata")
+    def serialize_verification_metadata(self, value: dict[str, Any]) -> dict[str, Any]:
+        return _json_safe(value)
+
+
+class VerificationSummary(BaseModel):
+    verified: int = 0
+    failed: int = 0
+    unsupported: int = 0
+    unverifiable: int = 0
+    error: int = 0
+
+
+class VerificationReportResponse(BaseModel):
+    status: ReportStatus = "passed"
+    relations: list[RelationVerificationResponse] = Field(default_factory=list)
+    summary: VerificationSummary = Field(default_factory=VerificationSummary)
+
+
+class RepairChange(BaseModel):
+    target_id: str | None = None
+    target_name: str | None = None
+    field: str
+    before: Any = None
+    after: Any = None
+    reason: str | None = None
+
+
+class RepairReportResponse(BaseModel):
+    status: RepairStatus = "none"
+    changes: list[RepairChange] = Field(default_factory=list)
+    requires_confirmation: bool = False
+    warnings: list[str] = Field(default_factory=list)
+
+
+class RendererCompatibilityReport(BaseModel):
+    status: RendererCompatibilityStatus = "compatible"
+    renderer: Renderer | None = None
+    dimension: Literal["2d", "3d"] | None = None
+    messages: list[str] = Field(default_factory=list)
+    unsupported_objects: list[str] = Field(default_factory=list)
+    unsupported_relations: list[str] = Field(default_factory=list)
+
+
+class CandidateAttemptResponse(BaseModel):
+    provider: str | None = None
+    model: str | None = None
+    stage: str
+    success: bool = False
+    message: str | None = None
+
+
+class RenderSourceResponse(BaseModel):
+    kind: RenderSourceKind = "none"
+    provider: str | None = None
+    model: str | None = None
+    fallback_used: bool = False
+    fallback_reason: str | None = None
+    candidate_attempts: list[CandidateAttemptResponse] = Field(default_factory=list)
+
+
 class Relation(BaseModel):
+    id: str | None = None
     type: str  # perpendicular, equal_length, parallel, ...
     object_1: str
     object_2: str | None = None
+    args: dict[str, Any] = Field(default_factory=dict)
+    source: RelationSource = "ai_inferred"
+    verification: RelationVerificationResponse | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_serializer("args")
+    def serialize_args(self, value: dict[str, Any]) -> dict[str, Any]:
+        return _json_safe(value)
 
     @field_serializer("metadata")
     def serialize_metadata(self, value: dict[str, Any]) -> dict[str, Any]:
         return _json_safe(value)
 
+    @model_validator(mode="after")
+    def ensure_relation_identity(self) -> "Relation":
+        if not self.id:
+            self.id = f"rel_{uuid4().hex[:12]}"
+        if self.verification is not None and self.verification.relation_id != self.id:
+            self.verification.relation_id = self.id
+        return self
+
 
 class Annotation(BaseModel):
+    id: str | None = None
+    source: ObjectSource = "ai_inferred"
     """Annotation to display on the rendered figure.
 
     Supported types:
@@ -162,6 +300,12 @@ class Annotation(BaseModel):
     @field_serializer("metadata")
     def serialize_metadata(self, value: dict[str, Any]) -> dict[str, Any]:
         return _json_safe(value)
+
+    @model_validator(mode="after")
+    def ensure_annotation_identity(self) -> "Annotation":
+        if not self.id:
+            self.id = f"ann_{uuid4().hex[:12]}"
+        return self
 
 
 class SceneView(BaseModel):
@@ -215,7 +359,39 @@ def _json_safe(value: Any) -> Any:
 SceneObject = Point2D | Point3D | Segment | Line2D | Vector2D | Vector3D | Line3D | Circle2D | FunctionGraph | Face | Sphere | Plane
 
 
+class SceneInterpretation(BaseModel):
+    objects: list[dict[str, Any]] = Field(default_factory=list)
+    relations: list[dict[str, Any]] = Field(default_factory=list)
+    values: list[dict[str, Any]] = Field(default_factory=list)
+    missing_data: list[str] = Field(default_factory=list)
+    assumptions: list[str] = Field(default_factory=list)
+
+
+class SceneAudit(BaseModel):
+    created_by: RenderSourceKind = "ai"
+    generator_provider: str | None = None
+    generator_model: str | None = None
+    generator_prompt_version: str | None = None
+    updated_at: str | None = None
+
+
+class ConstructionStep(BaseModel):
+    id: str | None = None
+    description: str
+    object_ids: list[str] = Field(default_factory=list)
+    relation_ids: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def ensure_step_identity(self) -> "ConstructionStep":
+        if not self.id:
+            self.id = f"step_{uuid4().hex[:12]}"
+        return self
+
+
 class MathScene(BaseModel):
+    scene_id: str | None = None
+    schema_version: str = "2.0"
+    revision: int = 1
     problem_text: str = Field(max_length=MAX_PROBLEM_TEXT_CHARS)
     grade: int | None = Field(default=None, ge=10, le=12)
     topic: Topic = "unknown"
@@ -225,7 +401,18 @@ class MathScene(BaseModel):
     annotations: list[Annotation] = Field(default_factory=list)
     parameters: list[Parameter] = Field(default_factory=list)
     view: SceneView
+    interpretation: SceneInterpretation = Field(default_factory=SceneInterpretation)
+    construction_steps: list[ConstructionStep] = Field(default_factory=list)
+    audit: SceneAudit = Field(default_factory=SceneAudit)
     cas_issues: list[CasIssueResponse] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def ensure_scene_identity(self) -> "MathScene":
+        if not self.scene_id:
+            self.scene_id = f"scene_{uuid4().hex[:12]}"
+        if self.schema_version != "2.0":
+            self.schema_version = "2.0"
+        return self
 
 
 class AdvancedRenderSettings(BaseModel):
@@ -351,6 +538,7 @@ class DiagramOcrResponse(BaseModel):
 
 class ProblemVariantsRequest(BaseModel):
     scene: MathScene
+    response: RenderResponse | None = None
     count: int = Field(default=3, ge=1, le=10)
     original_problem: str | None = Field(default=None, max_length=MAX_PROBLEM_TEXT_CHARS)
     preferred_ai_model: str | None = Field(default=None, max_length=MAX_MODEL_ID_CHARS)
@@ -463,6 +651,7 @@ class RenderRequest(BaseModel):
 class SceneRenderRequest(BaseModel):
     scene: MathScene
     advanced_settings: AdvancedRenderSettings = Field(default_factory=AdvancedRenderSettings)
+    response: RenderResponse | None = None
 
 
 class RenderPayload(BaseModel):
@@ -472,14 +661,38 @@ class RenderPayload(BaseModel):
 
 
 class RenderResponse(BaseModel):
+    status: RenderStatus = "partially_verified"
+    source: RenderSourceResponse = Field(default_factory=RenderSourceResponse)
     scene: MathScene
     payload: RenderPayload
     warnings: list[str] = Field(default_factory=list)
+    validation_report: ValidationReportResponse = Field(default_factory=ValidationReportResponse)
+    verification_report: VerificationReportResponse = Field(default_factory=VerificationReportResponse)
+    repair_report: RepairReportResponse = Field(default_factory=RepairReportResponse)
+    renderer_compatibility: RendererCompatibilityReport = Field(default_factory=RendererCompatibilityReport)
+    requires_user_confirmation: bool = False
+    user_confirmed: bool = False
     cas_issues: list[CasIssueResponse] = Field(default_factory=list)
     advisory: QualityRiskAdvisory | None = None
     degraded: bool = False
     fallback_source: Literal["none", "mock", "provider_fallback"] = "none"
     ai_source: Literal["admin", "byok", "none"] = "none"
+
+    @model_validator(mode="after")
+    def sync_legacy_metadata(self) -> "RenderResponse":
+        if self.fallback_source != "none" or self.degraded:
+            self.source.fallback_used = True
+            if self.source.kind == "none":
+                self.source.kind = "mock" if self.fallback_source == "mock" else "ai"
+        if self.fallback_source != "none" and not self.source.fallback_reason:
+            self.source.fallback_reason = self.fallback_source
+        if self.status == "fallback" or self.source.fallback_used:
+            self.requires_user_confirmation = True
+        return self
+
+
+SceneRenderRequest.model_rebuild()
+ProblemVariantsRequest.model_rebuild()
 
 
 class RenderJobCreateResponse(BaseModel):

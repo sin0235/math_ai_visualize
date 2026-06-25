@@ -66,22 +66,42 @@ function EmptyState() {
 }
 
 function RenderMetadataBanner({ result }: { result: RenderResponse }) {
-  const degraded = result.degraded || result.fallback_source === 'mock' || result.fallback_source === 'provider_fallback';
-  if (!degraded && result.ai_source !== 'byok') return null;
+  const degraded = result.degraded || result.source.fallback_used || result.fallback_source === 'mock' || result.fallback_source === 'provider_fallback';
+  const needsAttention = degraded
+    || result.status !== 'verified'
+    || result.requires_user_confirmation
+    || result.ai_source === 'byok'
+    || result.source.kind === 'byok'
+    || result.renderer_compatibility.status !== 'compatible';
+  if (!needsAttention) return null;
 
+  const warning = degraded || result.requires_user_confirmation || result.status === 'failed' || result.renderer_compatibility.status === 'incompatible';
   return (
-    <div className={`renderer-metadata-banner${degraded ? ' warning' : ''}`}>
-      <strong>{degraded ? 'Kết quả render có fallback' : 'Đang dùng BYOK'}</strong>
+    <div className={`renderer-metadata-banner${warning ? ' warning' : ''}`}>
+      <strong>{renderMetadataTitle(result)}</strong>
       <span>{renderMetadataMessage(result)}</span>
     </div>
   );
 }
 
+function renderMetadataTitle(result: RenderResponse) {
+  if (result.renderer_compatibility.status === 'incompatible') return 'Renderer không tương thích';
+  if (result.status === 'fallback') return 'Kết quả fallback';
+  if (result.requires_user_confirmation) return 'Cần người dùng xác nhận';
+  if (result.status === 'partially_verified') return 'Kết quả kiểm chứng một phần';
+  if (result.source.kind === 'byok' || result.ai_source === 'byok') return 'Đang dùng BYOK';
+  return 'Trạng thái dựng hình';
+}
+
 function renderMetadataMessage(result: RenderResponse) {
-  if (result.fallback_source === 'mock') return 'Hệ thống đã dùng mock fallback, hình chỉ mang tính tham khảo.';
-  if (result.fallback_source === 'provider_fallback') return 'Hệ thống đã dùng provider fallback, nên kiểm tra lại nội dung hình.';
-  if (result.ai_source === 'byok') return 'Kết quả được sinh bằng provider OpenAI-compatible của tài khoản.';
-  return 'Nguồn dựng hình có trạng thái degraded.';
+  const compatibilityMessage = result.renderer_compatibility.messages[0];
+  if (compatibilityMessage) return compatibilityMessage;
+  if (result.source.fallback_reason) return result.source.fallback_reason;
+  if (result.fallback_source === 'mock' || result.source.kind === 'mock') return 'Hệ thống đã dùng mock fallback, hình chỉ mang tính tham khảo.';
+  if (result.fallback_source === 'provider_fallback' || result.source.fallback_used) return 'Hệ thống đã dùng provider fallback, nên kiểm tra lại nội dung hình.';
+  if (result.source.kind === 'byok' || result.ai_source === 'byok') return 'Kết quả được sinh bằng provider OpenAI-compatible của tài khoản.';
+  if (result.verification_report.status !== 'passed') return 'Một số quan hệ hình học chưa được kiểm chứng đầy đủ.';
+  return 'Nguồn dựng hình có trạng thái cần chú ý.';
 }
 
 function GeometryIllustration() {

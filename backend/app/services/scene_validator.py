@@ -39,6 +39,7 @@ from app.schemas.scene import (
 )
 from app.services.expression_eval import _ALLOWED_CONSTS, _ALLOWED_FUNCS
 from app.services.linalg import bbox_diagonal, cross, distance, norm, plane_from_points, sub, vec3
+from app.services.relation_registry import known_relation_types, normalize_relation_type
 
 
 @dataclass
@@ -75,12 +76,7 @@ _VALID_OBJECT_TYPES = {
     "face", "sphere", "plane",
 }
 
-_VALID_RELATION_TYPES = {
-    "perpendicular", "parallel", "equal_length", "midpoint",
-    "intersection", "tangent", "collinear", "coplanar",
-    "on_line", "on_plane", "on_sphere", "on_circle",
-    "distance", "angle",
-}
+_VALID_RELATION_TYPES = known_relation_types()
 
 _VALID_ANNOTATION_TYPES = {
     "length", "angle", "right_angle", "equal_marks", "coordinate_label",
@@ -126,9 +122,8 @@ def pre_validate_raw(scene_json: dict) -> tuple[dict, list[str]]:
                 continue
             rtype = (rel.get("type") or "").strip().lower()
             if rtype not in _VALID_RELATION_TYPES:
-                warnings.append(f"relations[{idx}] type='{rel.get('type')}' không hợp lệ — đã bỏ")
-                continue
-            rel["type"] = rtype
+                warnings.append(f"relations[{idx}] type='{rel.get('type')}' chưa được hỗ trợ — giữ lại để verification báo unsupported")
+            rel["type"] = normalize_relation_type(rtype)
             cleaned_rels.append(rel)
         data["relations"] = cleaned_rels
 
