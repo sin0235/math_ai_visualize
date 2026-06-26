@@ -203,6 +203,7 @@ export default function App() {
   const renderToolsMenuRef = useRef<HTMLDivElement | null>(null);
   const ocrInFlightRef = useRef(false);
   const editorButtonDragRef = useRef<{ pointerId: number; startY: number; startTop: number; moved: boolean } | null>(null);
+  const renderToolsMenuTop = Math.min(Math.max(editorButtonTop - 8, 72), Math.max(72, window.innerHeight - 430));
 
   function applyRenderResponse(response: RenderResponse, nextConfirmation: ConfirmationState = defaultConfirmation) {
     setResult(response);
@@ -257,6 +258,11 @@ export default function App() {
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [accountMenuOpen, toolsMenuOpen, renderToolsOpen]);
+
+  useEffect(() => {
+    renderToolsMenuRef.current?.style.setProperty('--render-tools-floating-top', `${editorButtonTop}px`);
+    renderToolsMenuRef.current?.style.setProperty('--render-tools-menu-top', `${renderToolsMenuTop}px`);
+  }, [editorButtonTop, renderToolsMenuTop, activeScene]);
 
   useEffect(() => {
     let cancelled = false;
@@ -708,18 +714,24 @@ export default function App() {
   }
 
   async function handlePointDragEnd(name: string, point: Vec3) {
-    if (!activeScene || editorSaving) return;
+    const scene = effectiveResult?.scene ?? activeScene;
+    if (!scene || editorSaving) return;
+    const target = scene.objects.find((obj) => (obj.type === 'point_2d' || obj.type === 'point_3d') && obj.name === name);
+    if (target?.locked) {
+      showNotification('Không thể sửa điểm', `Điểm ${name} đang bị khóa theo dữ kiện đề bài.`, [], 'warning');
+      return;
+    }
     const editedScene: MathScene = {
-      ...activeScene,
-      revision: activeRevision + 1,
-      objects: activeScene.objects.map((obj) => {
+      ...scene,
+      revision: (scene.revision ?? activeRevision) + 1,
+      objects: scene.objects.map((obj) => {
         if ((obj.type === 'point_2d' || obj.type === 'point_3d') && obj.name === name) {
           // Khi user tự kéo điểm, xoá biểu thức tham số (nếu có) cho điểm đó
           // vì giá trị mới do user đặt thủ công, không còn phụ thuộc tham số.
           if (obj.type === 'point_3d') {
-            return { ...obj, x: round(point.x), y: round(point.y), z: round(point.z), x_expr: null, y_expr: null, z_expr: null };
+            return { ...obj, x: round(point.x), y: round(point.y), z: round(point.z), x_expr: null, y_expr: null, z_expr: null, source: 'user_edited' as const, user_edited: true };
           }
-          return { ...obj, x: round(point.x), y: round(point.y), x_expr: null, y_expr: null };
+          return { ...obj, x: round(point.x), y: round(point.y), x_expr: null, y_expr: null, source: 'user_edited' as const, user_edited: true };
         }
         return obj;
       }),
@@ -728,31 +740,33 @@ export default function App() {
   }
 
   async function handleConnectPoints(start: string, end: string) {
-    if (!activeScene || editorSaving) return;
+    const scene = effectiveResult?.scene ?? activeScene;
+    if (!scene || editorSaving) return;
     if (start === end) {
       const message = 'Chọn hai điểm khác nhau để nối đoạn.';
       showNotification('Không thể nối đoạn', message);
       return;
     }
-    if (hasSegment(activeScene, start, end)) {
+    if (hasSegment(scene, start, end)) {
       const message = `Đoạn ${start}${end} đã tồn tại.`;
       showNotification('Không thể nối đoạn', message);
       return;
     }
     const editedScene: MathScene = {
-      ...activeScene,
-      revision: activeRevision + 1,
+      ...scene,
+      revision: (scene.revision ?? activeRevision) + 1,
       objects: [
-        ...activeScene.objects,
+        ...scene.objects,
         { type: 'segment', points: [start, end], hidden: false, color: '#111111', line_width: 3, style: 'solid', source: 'construction' },
       ],
     };
     await handleSceneEdit(editedScene);
   }
 
-  async function handlePointToSegmentClick(segmentPoints: [string, string], clickedPoint: Vec3) {
+  async function handlePointToSegmentClick(segmentPoints: [string, string]) {
+    const scene = effectiveResult?.scene ?? activeScene;
     if (editorSaving) return;
-    if (!activeScene || !pointToSegmentSource || editTool !== 'project_to_segment') {
+    if (!scene || !pointToSegmentSource || editTool !== 'project_to_segment') {
       const message = 'Chọn công cụ tạo chân nối, chọn một điểm nguồn, rồi click vào đoạn đích.';
       showNotification('Không thể tạo chân nối', message);
       return;
@@ -763,9 +777,9 @@ export default function App() {
       return;
     }
 
-    const source = findPoint(activeScene, pointToSegmentSource);
-    const start = findPoint(activeScene, segmentPoints[0]);
-    const end = findPoint(activeScene, segmentPoints[1]);
+    const source = findPoint(scene, pointToSegmentSource);
+    const start = findPoint(scene, segmentPoints[0]);
+    const end = findPoint(scene, segmentPoints[1]);
     if (!source || !start || !end) {
       const message = 'Không tìm thấy điểm nguồn hoặc đoạn đích trong scene.';
       showNotification('Không thể tạo chân nối', message);
@@ -773,20 +787,21 @@ export default function App() {
     }
 
     const newPoint = projectPointToLine(source, start, end);
-    const newName = nextPointName(activeScene);
+    const newName = nextPointName(scene);
+    const sourceSegment = `${pointToSegmentSource}-${newName}`;
     const targetSegment = `${segmentPoints[0]}-${segmentPoints[1]}`;
     const editedScene: MathScene = {
-      ...activeScene,
-      revision: activeRevision + 1,
+      ...scene,
+      revision: (scene.revision ?? activeRevision) + 1,
       objects: [
-        ...activeScene.objects,
+        ...scene.objects,
         { type: 'point_3d', name: newName, x: round(newPoint.x), y: round(newPoint.y), z: round(newPoint.z), source: 'construction' },
         { type: 'segment', points: [pointToSegmentSource, newName], hidden: false, color: '#111111', line_width: 3, style: 'solid', source: 'construction' },
       ],
       relations: [
-        ...(activeScene.relations ?? []),
-        { type: 'perpendicular', object_1: `${pointToSegmentSource}-${newName}`, object_2: targetSegment, source: 'construction', metadata: { source: 'construction', confidence: 'unverified' } },
-        { type: 'on_line', object_1: newName, object_2: targetSegment, source: 'construction', metadata: { source: 'construction', confidence: 'unverified', t: newPoint.t } },
+        ...(scene.relations ?? []),
+        { type: 'perpendicular', object_1: sourceSegment, object_2: targetSegment, source: 'construction', args: { source_point: pointToSegmentSource, foot_point: newName, target_segment: segmentPoints }, metadata: { source: 'construction', confidence: 'unverified' } },
+        { type: 'on_line', object_1: newName, object_2: targetSegment, source: 'construction', args: { source_point: pointToSegmentSource, target_segment: segmentPoints, t: newPoint.t }, metadata: { source: 'construction', confidence: 'unverified', t: newPoint.t } },
       ],
     };
 
@@ -799,19 +814,19 @@ export default function App() {
   }
 
   async function handleCanvasClickToAddPoint(clickedPoint: Vec3) {
-    if (!activeScene) return;
-    if (editorSaving) return;
+    const scene = effectiveResult?.scene ?? activeScene;
+    if (!scene || editorSaving) return;
 
-    const dim = activeScene.view.dimension;
-    const name = nextPointName(activeScene);
+    const dim = scene.view.dimension;
+    const name = nextPointName(scene);
     const point = dim === '3d'
-      ? { type: 'point_3d' as const, name, x: round(clickedPoint.x), y: round(clickedPoint.y), z: round(clickedPoint.z) }
-      : { type: 'point_2d' as const, name, x: round(clickedPoint.x), y: round(clickedPoint.y) };
+      ? { type: 'point_3d' as const, name, x: round(clickedPoint.x), y: round(clickedPoint.y), z: round(clickedPoint.z), source: 'user_created' as const, user_edited: true }
+      : { type: 'point_2d' as const, name, x: round(clickedPoint.x), y: round(clickedPoint.y), source: 'user_created' as const, user_edited: true };
 
     const editedScene: MathScene = {
-      ...activeScene,
-      revision: activeRevision + 1,
-      objects: [...activeScene.objects, { ...point, source: 'construction' }],
+      ...scene,
+      revision: (scene.revision ?? activeRevision) + 1,
+      objects: [...scene.objects, point],
     };
     await handleSceneEdit(editedScene);
   }
@@ -886,7 +901,7 @@ export default function App() {
         </div>
         <nav className="header-nav">
           <div className="tools-menu" ref={toolsMenuRef}>
-            <button type="button" className={`nav-item ${activeView === 'render' || activeView === 'analyzer' || activeView === 'algebra-solver' || activeView === 'analyzer-guide' || activeView === 'simulation' || activeView === 'geogebra-lab' || activeView === 'pdf-to-word' ? 'active' : ''}`} aria-haspopup="menu" aria-expanded={toolsMenuOpen} onClick={() => setToolsMenuOpen((open) => !open)}>
+            <button type="button" className={`nav-item ${activeView === 'render' || activeView === 'analyzer' || activeView === 'algebra-solver' || activeView === 'analyzer-guide' || activeView === 'simulation' || activeView === 'geogebra-lab' || activeView === 'pdf-to-word' ? 'active' : ''}`} aria-haspopup="menu" aria-expanded={toolsMenuOpen ? 'true' : 'false'} onClick={() => setToolsMenuOpen((open) => !open)}>
               <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3v18"></path><path d="M3 12h18"></path><path d="M5 5l14 14"></path><path d="M19 5L5 19"></path></svg>
               Công cụ
               <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
@@ -954,7 +969,7 @@ export default function App() {
           )}
           {user ? (
             <div className="account-menu" ref={accountMenuRef}>
-              <button type="button" className={`account-menu-trigger ${activeView === 'history' || activeView === 'account' || activeView === 'feedback' ? 'active' : ''}`} aria-haspopup="menu" aria-expanded={accountMenuOpen} onClick={() => setAccountMenuOpen((open) => !open)}>
+              <button type="button" className={`account-menu-trigger ${activeView === 'history' || activeView === 'account' || activeView === 'feedback' ? 'active' : ''}`} aria-haspopup="menu" aria-expanded={accountMenuOpen ? 'true' : 'false'} onClick={() => setAccountMenuOpen((open) => !open)}>
                 <span className="account-avatar" aria-hidden="true">{(user.display_name || user.email).slice(0, 1).toUpperCase()}</span>
                 <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
                 <span className="sr-only">Mở menu tài khoản</span>
@@ -1023,7 +1038,7 @@ export default function App() {
           <section className="workspace">
             <div className="workspace-sidebar">
               <div className="workspace-sidebar-tabs" role="tablist" aria-label="Workspace tools">
-                <button type="button" className={sidebarTool === 'input' ? 'active' : ''} onClick={() => setSidebarTool('input')} role="tab" aria-selected={sidebarTool === 'input'}>
+                <button type="button" className={sidebarTool === 'input' ? 'active' : ''} onClick={() => setSidebarTool('input')} role="tab" aria-selected={sidebarTool === 'input' ? 'true' : 'false'}>
                   Mô tả hình
                 </button>
                 <button
@@ -1034,8 +1049,8 @@ export default function App() {
                     setSidebarTool('solver');
                   }}
                   role="tab"
-                  aria-selected={sidebarTool === 'solver'}
-                  aria-disabled={!result?.scene}
+                  aria-selected={sidebarTool === 'solver' ? 'true' : 'false'}
+                  aria-disabled={result?.scene ? undefined : 'true'}
                   title={!result?.scene ? 'Dựng hình trước để giải từng bước các câu hỏi' : undefined}
                 >
                   Giải từng bước
@@ -1088,7 +1103,7 @@ export default function App() {
                   </div>
                 )}
                 {effectiveResult?.scene && (
-                  <div ref={renderToolsMenuRef} className="render-tools-floating" style={{ top: editorButtonTop }}>
+                  <div ref={renderToolsMenuRef} className="render-tools-floating">
                     <button
                       type="button"
                       className="render-editor-trigger"
@@ -1106,7 +1121,7 @@ export default function App() {
                       }}
                       aria-label="Mở công cụ hình"
                       aria-haspopup="menu"
-                      aria-expanded={renderToolsOpen}
+                      aria-expanded={renderToolsOpen ? 'true' : 'false'}
                       title="Công cụ hình"
                     >
                       <ToolboxIcon />
@@ -1115,7 +1130,6 @@ export default function App() {
                       <div
                         className="render-tools-menu"
                         role="menu"
-                        style={{ top: Math.min(Math.max(editorButtonTop - 8, 72), Math.max(72, window.innerHeight - 430)) }}
                       >
                         <button
                           type="button"
@@ -1134,7 +1148,7 @@ export default function App() {
                           role="menuitem"
                           className="render-tools-menu-item"
                           onClick={() => setRenderToolsPanel((panel) => panel === 'export' ? null : 'export')}
-                          aria-expanded={renderToolsPanel === 'export'}
+                          aria-expanded={renderToolsPanel === 'export' ? 'true' : 'false'}
                         >
                           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h7l4 4v14H7z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /><path d="M14 3v5h5M9 15h6M9 18h4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
                           <span><strong>Xuất hình</strong><small>PNG, JPG, SVG, HTML KaTeX, TikZ, PDF, GGB.</small></span>
@@ -1161,7 +1175,7 @@ export default function App() {
                           role="menuitem"
                           className="render-tools-menu-item"
                           onClick={() => setRenderToolsPanel((panel) => panel === 'variants' ? null : 'variants')}
-                          aria-expanded={renderToolsPanel === 'variants'}
+                          aria-expanded={renderToolsPanel === 'variants' ? 'true' : 'false'}
                         >
                           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 7h12M6 12h12M6 17h8" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /><path d="M16 15l2 2 3-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
                           <span><strong>Sinh đề</strong><small>Chọn số lượng đề biến thể.</small></span>

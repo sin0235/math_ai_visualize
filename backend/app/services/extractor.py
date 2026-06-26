@@ -462,45 +462,7 @@ def build_scene_with_cas_fix(
             for issue in all_issues
         ]
     })
-    fixed_scene = _apply_relation_verification_metadata(fixed_scene, verify=verify)
-
     return fixed_scene, warnings
-
-
-def _apply_relation_verification_metadata(scene: MathScene, *, verify: bool) -> MathScene:
-    if not verify:
-        return scene
-    from app.services.cas_verifier import verify_scene_relations
-
-    report = verify_scene_relations(scene)
-    by_id = {item.relation_id: item for item in report.relations}
-    data = scene.model_dump()
-    changed = False
-    for rel in data.get("relations", []):
-        if not isinstance(rel, dict):
-            continue
-        rel_id = rel.get("id")
-        verification = by_id.get(str(rel_id)) if rel_id is not None else None
-        if verification is None:
-            continue
-        metadata = rel.get("metadata") if isinstance(rel.get("metadata"), dict) else {}
-        new_metadata = dict(metadata)
-        if verification.status == "verified":
-            if new_metadata.get("confidence") != "verified":
-                new_metadata["confidence"] = "verified"
-                changed = True
-            if new_metadata.get("verified_by") != "cas":
-                new_metadata["verified_by"] = "cas"
-                changed = True
-        elif new_metadata.get("confidence") == "verified":
-            new_metadata["confidence"] = "partial"
-            changed = True
-        if new_metadata != metadata:
-            rel["metadata"] = new_metadata
-    if changed:
-        return MathScene.model_validate(data)
-    return scene
-
 
 
 def _normalize_parameter(param: dict[str, Any]) -> dict[str, Any] | None:

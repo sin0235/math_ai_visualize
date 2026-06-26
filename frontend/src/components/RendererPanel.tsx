@@ -34,6 +34,7 @@ export function RendererPanel({ result, threeInteraction, onGeoGebraPointChange,
   if (result.payload.three_scene) {
     return (
       <div className="renderer-frame">
+        <RenderMetadataBanner result={result} />
         <Suspense fallback={<div className="renderer-loading-state">Đang tải trình dựng 3D...</div>}>
           <ThreeGeometryView scene={result.payload.three_scene} interaction={threeInteraction} highlightedObjects={highlightedObjects} onImageCaptureReady={onThreeImageCaptureReady} />
         </Suspense>

@@ -62,8 +62,8 @@ def validate_normalize_verify_scene(
         pipeline_warnings.extend(compatibility.messages)
     else:
         payload = build_render_payload(scene, settings)
-        status = _status_from_reports(verification_report.status, source, repair_report.requires_confirmation)
-        requires_confirmation = status in {"fallback", "needs_confirmation", "partially_verified"} or repair_report.requires_confirmation
+        status = _status_from_reports(validation_report.status, verification_report.status, source, repair_report.requires_confirmation)
+        requires_confirmation = status in {"failed", "fallback", "needs_confirmation", "partially_verified"} or repair_report.requires_confirmation
 
     advisory = None
     if get_settings().advisory_enabled:
@@ -121,7 +121,9 @@ def _attach_relation_verification(scene: MathScene, verification_report) -> Math
     return MathScene.model_validate(data)
 
 
-def _status_from_reports(verification_status: str, source: RenderSourceResponse | None, repair_requires_confirmation: bool = False):
+def _status_from_reports(validation_status: str, verification_status: str, source: RenderSourceResponse | None, repair_requires_confirmation: bool = False):
+    if validation_status == "failed":
+        return "failed"
     if source and source.kind == "mock":
         return "fallback"
     if source and source.fallback_used:

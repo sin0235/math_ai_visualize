@@ -65,7 +65,7 @@ def test_pipeline_autofix_midpoint():
     assert any("midpoint" in w.lower() and "tự sửa" in w.lower() for w in warns)
 
 
-def test_pipeline_marks_verified_relation_metadata_after_cas():
+def test_pipeline_does_not_mark_relation_metadata_verified_after_cas():
     raw = _scene(
         problem_text="AB vuông góc BC.",
         objects=[
@@ -82,8 +82,8 @@ def test_pipeline_marks_verified_relation_metadata_after_cas():
 
     metadata = scene.relations[0].metadata
     assert metadata["source"] == "inferred"
-    assert metadata["confidence"] == "verified"
-    assert metadata["verified_by"] == "cas"
+    assert metadata["confidence"] == "partial"
+    assert "verified_by" not in metadata
 
 
 def test_pipeline_autofix_on_line():
