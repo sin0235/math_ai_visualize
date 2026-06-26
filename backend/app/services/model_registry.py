@@ -280,6 +280,7 @@ async def upsert_scanned_models(db: DatabaseClient, provider_id: str, models: li
     scanned_ids = {model.id for model in canonical_models if model.id}
     for stale_id in existing_scanned - scanned_ids:
         await repo.disable_scanned_model(provider_id, stale_id)
+        await repo.clear_provider_default_model(provider_id, stale_id)
     for model in canonical_models:
         await upsert_model(db, provider_id, model, allowed=model.id in existing_allowed, source="scan")
 

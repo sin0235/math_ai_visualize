@@ -7,7 +7,9 @@ from app.db.migrations import apply_sqlite_migrations
 from app.db.session import SQLiteClient
 from app.schemas.scene import AiModelInfo, RuntimeSettings
 from app.services.admin_settings import build_ai_settings_drift, sync_ai_profiles_to_registry, sync_ai_settings_to_registry
+from app.services.model_provider import explicit_provider_from_model
 from app.services.model_registry import (
+    effective_provider_default_model,
     load_model_registry,
     resolve_effective_settings,
     resolve_task_profile,
@@ -149,6 +151,31 @@ async def test_registry_disables_stale_scanned_models_after_rescan(db):
     assert stale.allowed is False
     assert registry.allowed_model_ids("router9") == ["fresh-model"]
     assert [model.id for model in registry.scanned_model_infos("router9")] == ["fresh-model"]
+
+
+@pytest.mark.anyio
+async def test_rescan_clears_stale_openai_compat_default(db):
+    settings = Settings(_env_file=None)
+    await load_model_registry(db, settings)
+    await upsert_scanned_models(db, "openai_compat", [
+        AiModelInfo(id="stale-model", label="Stale", provider="openai_compat"),
+        AiModelInfo(id="fresh-model", label="Fresh", provider="openai_compat"),
+    ])
+    await set_allowed_models(db, "openai_compat", ["stale-model", "fresh-model"])
+    await save_provider_config(db, "openai_compat", "https://compat.example/v1", "stale-model")
+
+    await upsert_scanned_models(db, "openai_compat", [
+        AiModelInfo(id="fresh-model", label="Fresh", provider="openai_compat"),
+    ])
+
+    registry = await load_model_registry(db, settings)
+    stale = next(model for model in registry.models["openai_compat"] if model.id == "stale-model")
+
+    assert stale.enabled is False
+    assert stale.allowed is False
+    assert registry.allowed_model_ids("openai_compat") == ["fresh-model"]
+    assert registry.providers["openai_compat"].default_model_id == ""
+    assert effective_provider_default_model(registry, "openai_compat", "") == "fresh-model"
 
 
 @pytest.mark.anyio
@@ -639,6 +666,10 @@ async def test_ai_profiles_sync_to_registry_task_profiles(db):
     assert registry.task_profiles["solver_explanation"].provider_id == "router9"
     assert registry.task_profiles["solver_explanation"].model_id == "solver"
     assert registry.task_profiles["solver_explanation"].fallbacks == ["fallback", "openrouter/fallback"]
+
+
+def test_nvidia_prefixed_model_ref_allows_nested_model_id():
+    assert explicit_provider_from_model("nvidia/mistralai/mistral-nemotron") == "nvidia"
 
 
 @pytest.mark.anyio

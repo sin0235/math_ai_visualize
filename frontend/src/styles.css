@@ -4393,6 +4393,7 @@ button:disabled {
 
 .render-tools-floating {
   position: fixed;
+  top: var(--render-tools-floating-top, 220px);
   right: 24px;
   z-index: 170;
   touch-action: none;
@@ -4427,6 +4428,7 @@ button:disabled {
 
 .render-tools-menu {
   position: fixed;
+  top: var(--render-tools-menu-top, 212px);
   right: 78px;
   width: min(360px, calc(100vw - 108px));
   max-height: min(420px, calc(100vh - 96px));

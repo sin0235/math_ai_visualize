@@ -90,7 +90,7 @@ class ModelRegistryRepository:
         )
 
     async def enabled_allowed_model_ids(self, provider_id: str) -> set[str]:
-        rows = await self.db.fetch_all("SELECT id FROM ai_models WHERE provider_id = ? AND allowed = 1", [provider_id])
+        rows = await self.db.fetch_all("SELECT id FROM ai_models WHERE provider_id = ? AND allowed = 1 AND enabled = 1", [provider_id])
         return {str(row["id"]) for row in rows}
 
     async def scanned_model_ids(self, provider_id: str) -> set[str]:
@@ -103,6 +103,16 @@ class ModelRegistryRepository:
             UPDATE ai_models
             SET enabled = 0, allowed = 0, updated_at = CURRENT_TIMESTAMP
             WHERE provider_id = ? AND source = 'scan' AND id = ?
+            """,
+            [provider_id, model_id],
+        )
+
+    async def clear_provider_default_model(self, provider_id: str, model_id: str) -> None:
+        await self.db.execute(
+            """
+            UPDATE ai_providers
+            SET default_model_id = '', updated_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND default_model_id = ?
             """,
             [provider_id, model_id],
         )

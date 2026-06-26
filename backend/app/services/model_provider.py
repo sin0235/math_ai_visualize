@@ -25,6 +25,7 @@ EXPLICIT_PROVIDER_PREFIXES = {
     "local": ("local/",),
     "router9": ("router9/",),
     "openrouter": ("openrouter/",),
+    "nvidia": ("nvidia/",),
     "ollama": ("ollama/",),
     "openai_compat": ("openai_compat/", "openai-compat/"),
 }

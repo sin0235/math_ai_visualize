@@ -79,7 +79,7 @@ def test_phase5_solver_rejects_construction_metric_pipeline_scene():
     assert result.data_issues
 
 
-def test_phase5_pipeline_preserves_inferred_source_and_marks_cas_verified():
+def test_phase5_pipeline_preserves_inferred_source_without_metadata_verification():
     raw = _scene(
         problem_text="ABCD là hình vuông.",
         objects=[
@@ -110,6 +110,6 @@ def test_phase5_pipeline_preserves_inferred_source_and_marks_cas_verified():
     result = solve(scene.model_dump(), "góc giữa AB và BC", geometry_method="classical")
 
     assert scene.relations[0].metadata["source"] == "inferred"
-    assert scene.relations[0].metadata["confidence"] == "verified"
+    assert scene.relations[0].metadata["confidence"] == "partial"
     assert result.answer == "\\angle(AB,BC) = 90°"
-    assert any(fact["source"] == "verified" and "ABCD là hình vuông" in fact["text"] for fact in result.used_facts)
+    assert any(fact["source"] == "inferred" and "ABCD là hình vuông" in fact["text"] for fact in result.used_facts)

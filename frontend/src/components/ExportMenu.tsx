@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { exportScene, type ExportFormat } from '../api/client';
 import { buildExportFilename } from '../utils/exportFilename';
-import { downstreamGateMessage } from '../utils/renderQualityGate';
+import { downstreamGateMessage, partialVerificationWarning } from '../utils/renderQualityGate';
 import type { ThreeSceneImageCapture } from './ThreeGeometryView';
 import type { AdvancedRenderSettings, MathScene, RenderResponse } from '../types/scene';
 
@@ -17,6 +17,7 @@ export interface ExportMenuProps {
 interface ExportMenuItemsProps extends ExportMenuProps {
   itemClassName?: string;
   onAfterDownload?: () => void;
+  menuRole?: boolean;
 }
 
 const EXPORT_FORMATS: ExportFormat[] = ['png', 'jpg', 'svg', 'katex-html', 'tikz', 'pdf', 'ggb'];
@@ -77,10 +78,11 @@ function exportLock(
   return { locked: false };
 }
 
-export function ExportMenuItems({ scene, advancedSettings, onError, captureCurrentView, preferCurrentViewCapture = false, response, itemClassName = 'export-menu-item', onAfterDownload }: ExportMenuItemsProps): JSX.Element {
+export function ExportMenuItems({ scene, advancedSettings, onError, captureCurrentView, preferCurrentViewCapture = false, response, itemClassName = 'export-menu-item', onAfterDownload, menuRole = false }: ExportMenuItemsProps): JSX.Element {
   const [busy, setBusy] = useState<ExportFormat | null>(null);
   const labels = formatLabelsForContext(preferCurrentViewCapture);
   const gateMessage = response ? downstreamGateMessage(response, 'xuất file', true) : null;
+  const partialWarning = response && !gateMessage ? partialVerificationWarning(response, 'xuất file') : null;
 
   async function handleDownload(format: ExportFormat) {
     if (busy || gateMessage) return;
@@ -109,6 +111,7 @@ export function ExportMenuItems({ scene, advancedSettings, onError, captureCurre
   return (
     <>
       {gateMessage && <div className="export-menu-warning" role="note">{gateMessage}</div>}
+      {partialWarning && <div className="export-menu-warning" role="note">{partialWarning}</div>}
       {EXPORT_FORMATS.map((fmt) => {
         const { locked: isLocked, reason: lockReason } = exportLock(fmt, captureCurrentView, preferCurrentViewCapture);
         const disabledByGate = Boolean(gateMessage);
@@ -118,10 +121,10 @@ export function ExportMenuItems({ scene, advancedSettings, onError, captureCurre
           <button
             key={fmt}
             type="button"
-            role="menuitem"
+            role={menuRole ? 'menuitem' : undefined}
             className={`${itemClassName}${isLocked || disabledByGate ? ' is-locked' : ''}`}
             disabled={busy !== null || disabledByGate}
-            aria-disabled={isLocked || disabledByGate || undefined}
+            aria-disabled={isLocked || disabledByGate ? 'true' : undefined}
             title={tooltip}
             onClick={() => handleDownload(fmt)}
           >
@@ -238,12 +241,12 @@ export function ExportMenu({ scene, advancedSettings, onError, captureCurrentVie
 
   return (
     <div className="export-menu">
-      <button type="button" className="export-menu-trigger" onClick={() => setOpen((v) => !v)} aria-haspopup="menu" aria-expanded={open}>
+      <button type="button" className="export-menu-trigger" onClick={() => setOpen((v) => !v)} aria-haspopup="menu" aria-expanded={open ? 'true' : 'false'}>
         Xuất hình
       </button>
       {open && (
         <div className="export-menu-dropdown" role="menu">
-          <ExportMenuItems scene={scene} advancedSettings={advancedSettings} onError={onError} captureCurrentView={captureCurrentView} preferCurrentViewCapture={preferCurrentViewCapture} response={response} onAfterDownload={() => setOpen(false)} />
+          <ExportMenuItems scene={scene} advancedSettings={advancedSettings} onError={onError} captureCurrentView={captureCurrentView} preferCurrentViewCapture={preferCurrentViewCapture} response={response} onAfterDownload={() => setOpen(false)} menuRole />
         </div>
       )}
     </div>

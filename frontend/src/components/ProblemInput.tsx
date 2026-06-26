@@ -199,6 +199,8 @@ export function ProblemInput({
             type="file"
             accept="image/*"
             className="hidden-file-input"
+            aria-label="Tải ảnh đề bài để OCR"
+            title="Tải ảnh đề bài để OCR"
             onChange={(event) => {
               pickImageFile(event.target.files);
               event.target.value = '';

@@ -145,7 +145,7 @@ class RenderHistoryRepository:
             SELECT id, user_id, problem_text, provider, model, warnings_json, created_at, source_type, renderer,
                    status, error_json, started_at, finished_at, degraded, fallback_source, ai_source, response_json, schema_version
             FROM render_jobs
-            WHERE user_id = ? AND status = 'completed'
+            WHERE user_id = ? AND status = 'completed' AND response_json IS NOT NULL
             ORDER BY created_at DESC
             LIMIT ?
             """,

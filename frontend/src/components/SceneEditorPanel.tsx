@@ -74,7 +74,7 @@ export function SceneEditorPanel({
 
   function submit(nextScene: MathScene) {
     setError(null);
-    onChange(nextScene);
+    onChange({ ...nextScene, revision: (activeScene.revision ?? 0) + 1 });
   }
 
   function addPoint(event: FormEvent) {
@@ -82,8 +82,8 @@ export function SceneEditorPanel({
     try {
       const name = validateNewName(activeScene, nextPointName);
       const point = dimension === '3d'
-        ? { type: 'point_3d' as const, name, x: parseNumber(x, 'x'), y: parseNumber(y, 'y'), z: parseNumber(z, 'z') }
-        : { type: 'point_2d' as const, name, x: parseNumber(x, 'x'), y: parseNumber(y, 'y') };
+        ? { type: 'point_3d' as const, name, x: parseNumber(x, 'x'), y: parseNumber(y, 'y'), z: parseNumber(z, 'z'), source: 'user_created' as const, user_edited: true }
+        : { type: 'point_2d' as const, name, x: parseNumber(x, 'x'), y: parseNumber(y, 'y'), source: 'user_created' as const, user_edited: true };
       submit({ ...activeScene, objects: [...activeScene.objects, point] });
       setPointName(nextName([...points.map((point) => point.name), name], 'P'));
     } catch (caught) {
@@ -95,6 +95,8 @@ export function SceneEditorPanel({
     event.preventDefault();
     try {
       if (!deletePointName) throw new Error('Chọn điểm cần xóa.');
+      const target = points.find((point) => point.name === deletePointName);
+      if (target?.locked) throw new Error(`Điểm ${deletePointName} đang bị khóa theo dữ kiện đề bài.`);
       submit({
         ...activeScene,
         objects: activeScene.objects.filter((obj) => !objectReferencesPoint(obj, deletePointName)),
@@ -113,13 +115,13 @@ export function SceneEditorPanel({
       if (!startPoint || !endPoint || startPoint === endPoint) throw new Error('Chọn hai điểm khác nhau.');
       if (connectionKind === 'line') {
         const line = dimension === '3d'
-          ? { type: 'line_3d' as const, name: nextLineName(activeScene), through: [startPoint, endPoint] as [string, string], color: lineColor }
-          : { type: 'line_2d' as const, name: nextLineName(activeScene), through: [startPoint, endPoint] as [string, string] };
+          ? { type: 'line_3d' as const, name: nextLineName(activeScene), through: [startPoint, endPoint] as [string, string], color: lineColor, source: 'construction' as const }
+          : { type: 'line_2d' as const, name: nextLineName(activeScene), through: [startPoint, endPoint] as [string, string], source: 'construction' as const };
         submit({ ...activeScene, objects: [...activeScene.objects, line] });
       } else {
         submit({
           ...activeScene,
-          objects: [...activeScene.objects, { type: 'segment' as const, points: [startPoint, endPoint], hidden: false, color: lineColor, line_width: 3, style: 'solid' }],
+          objects: [...activeScene.objects, { type: 'segment' as const, points: [startPoint, endPoint], hidden: false, color: lineColor, line_width: 3, style: 'solid', source: 'construction' as const }],
         });
       }
     } catch (caught) {
@@ -165,8 +167,8 @@ export function SceneEditorPanel({
       const baseName = vector.name && /^[A-Za-z][A-Za-z0-9_]*$/.test(`m${vector.name}`) ? `m${vector.name}` : 'v';
       const name = nextName(usedNames, baseName);
       const opposite = vector.type === 'vector_3d'
-        ? { ...vector, name, from_point: vector.to_point, to_point: vector.from_point, color: vector.color || vectorColor }
-        : { ...vector, name, from_point: vector.to_point, to_point: vector.from_point };
+        ? { ...vector, name, from_point: vector.to_point, to_point: vector.from_point, color: vector.color || vectorColor, source: 'construction' as const }
+        : { ...vector, name, from_point: vector.to_point, to_point: vector.from_point, source: 'construction' as const };
       submit({ ...activeScene, objects: [...activeScene.objects, opposite] });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Không tạo được vector đối.');
@@ -378,8 +380,8 @@ function nextLineName(scene: MathScene) {
 }
 
 function makePoint(dimension: '2d' | '3d', name: string, point: Vec3): PointLike {
-  if (dimension === '3d') return { type: 'point_3d', name, x: round(point.x), y: round(point.y), z: round(point.z) };
-  return { type: 'point_2d', name, x: round(point.x), y: round(point.y) };
+  if (dimension === '3d') return { type: 'point_3d', name, x: round(point.x), y: round(point.y), z: round(point.z), source: 'construction' };
+  return { type: 'point_2d', name, x: round(point.x), y: round(point.y), source: 'construction' };
 }
 
 function objectReferencesPoint(obj: SceneObject, name: string) {
