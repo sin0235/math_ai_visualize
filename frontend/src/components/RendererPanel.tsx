@@ -67,16 +67,24 @@ function EmptyState() {
 }
 
 function RenderMetadataBanner({ result }: { result: RenderResponse }) {
-  const degraded = result.degraded || result.source.fallback_used || result.fallback_source === 'mock' || result.fallback_source === 'provider_fallback';
-  const needsAttention = degraded
-    || result.status !== 'verified'
+  const pendingUserReview = !result.user_confirmed && (
+    result.status === 'fallback'
     || result.requires_user_confirmation
+    || result.source.fallback_used
+    || result.repair_report.requires_confirmation
+    || result.renderer_compatibility.status === 'requires_confirmation'
+  );
+  if (pendingUserReview) return null;
+
+  const degraded = !result.user_confirmed && (result.degraded || result.source.fallback_used || result.fallback_source === 'mock' || result.fallback_source === 'provider_fallback');
+  const needsAttention = degraded
+    || (!result.user_confirmed && result.status !== 'verified')
     || result.ai_source === 'byok'
     || result.source.kind === 'byok'
     || result.renderer_compatibility.status !== 'compatible';
   if (!needsAttention) return null;
 
-  const warning = degraded || result.requires_user_confirmation || result.status === 'failed' || result.renderer_compatibility.status === 'incompatible';
+  const warning = degraded || (!result.user_confirmed && result.requires_user_confirmation) || result.status === 'failed' || result.renderer_compatibility.status === 'incompatible';
   return (
     <div className={`renderer-metadata-banner${warning ? ' warning' : ''}`}>
       <strong>{renderMetadataTitle(result)}</strong>

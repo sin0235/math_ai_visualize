@@ -152,7 +152,7 @@ def _sample_graph_points(expression: str) -> list[dict[str, float]]:
 
 
 def _geogebra_expression(expression: str) -> str:
-    return expression.replace("**", "^").replace(" ", "")
+    return expression.replace("**", "^").replace("Abs(", "abs(").replace(" ", "")
 
 
 def _point_from_values(name: str, raw_x, raw_y) -> Point2D | None:

@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 
 import type { SessionResponse, UserResponse } from '../api/client';
-import { ByokSettingsPanel } from './ByokSettingsPanel';
 
 type AccountIconName = 'profile' | 'lock' | 'sessions' | 'shield' | 'workspace' | 'logout';
 type ToastKind = 'error' | 'warning' | 'info';
@@ -11,6 +10,7 @@ interface AccountPageProps {
   authLoading: boolean;
   onToast: (title: string, message: string, kind?: ToastKind) => void;
   onBackWorkspace: () => void;
+  onOpenSettings: () => void;
   onLogout: () => Promise<void>;
   onResendVerification: () => Promise<string>;
   onUpdateProfile: (displayName: string) => Promise<void>;
@@ -25,6 +25,7 @@ export function AccountPage({
   authLoading,
   onToast,
   onBackWorkspace,
+  onOpenSettings,
   onLogout,
   onResendVerification,
   onUpdateProfile,
@@ -181,8 +182,6 @@ export function AccountPage({
           </form>
         </div>
 
-        <ByokSettingsPanel onToast={onToast} />
-
         <div className="account-panel">
           <div className="account-section-title">
             <div className="account-panel-title"><AccountIcon name="sessions" /><h3>Phiên đăng nhập</h3></div>
@@ -205,6 +204,7 @@ export function AccountPage({
 
         <div className="auth-actions">
           <button type="button" className="icon-button-content" onClick={onBackWorkspace}><AccountIcon name="workspace" />Vào workspace</button>
+          <button type="button" className="secondary-button" onClick={onOpenSettings}>Cài đặt AI</button>
           <button type="button" className="secondary-button icon-button-content" onClick={onLogout} disabled={authLoading}><AccountIcon name="logout" />Đăng xuất</button>
         </div>
       </div>

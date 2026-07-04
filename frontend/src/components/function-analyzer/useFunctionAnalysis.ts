@@ -42,6 +42,7 @@ export function useFunctionAnalysis(initialExpression: string, onWarnings?: (war
   const analyzeRequestRef = useRef(0);
   const sliderDebounceRef = useRef<number | null>(null);
   const animationRef = useRef<number | null>(null);
+  const baseResultRef = useRef<AnalyzeResponse | null>(null);
 
   useEffect(() => {
     return () => {
@@ -95,10 +96,20 @@ export function useFunctionAnalysis(initialExpression: string, onWarnings?: (war
   function scheduleToolAnalyze(overrides?: AnalyzeOptionOverrides) {
     const expr = expression.trim();
     if (!expr || !result) return;
+    const requestOptions = buildAnalyzeOptions(overrides);
+    if (requestOptions.transform && !requestOptions.interval && !requestOptions.line) {
+      applyLocalTransform(requestOptions.transform);
+      return;
+    }
+    if (!requestOptions.interval && !requestOptions.line && !requestOptions.transform) {
+      analyzeRequestRef.current += 1;
+      setResult(baseResultRef.current ?? stripToolArtifacts(result));
+      return;
+    }
     if (sliderDebounceRef.current !== null) window.clearTimeout(sliderDebounceRef.current);
     sliderDebounceRef.current = window.setTimeout(() => {
-      void runAnalyze(expr, { slider: true, requestOptions: buildAnalyzeOptions(overrides) });
-    }, 220);
+      void runAnalyze(expr, { slider: true, requestOptions });
+    }, 280);
   }
 
   async function runAnalyze(expr: string, options?: { slider?: boolean; clearResult?: boolean; requestOptions?: AnalyzeOptions }) {
@@ -111,6 +122,7 @@ export function useFunctionAnalysis(initialExpression: string, onWarnings?: (war
       if (requestId !== analyzeRequestRef.current) return;
       if (res.error) setError(res.error);
       else {
+        if (!options?.slider) baseResultRef.current = stripToolArtifacts(res);
         setResult(res);
         if (!options?.slider) onWarnings?.(res.warnings);
       }
@@ -139,6 +151,7 @@ export function useFunctionAnalysis(initialExpression: string, onWarnings?: (war
       if (res.ocr_expression) setExpression(res.ocr_expression);
       if (res.error) setError(res.error);
       else {
+        baseResultRef.current = stripToolArtifacts(res);
         setResult(res);
         onWarnings?.(res.warnings);
       }
@@ -147,6 +160,19 @@ export function useFunctionAnalysis(initialExpression: string, onWarnings?: (war
     } finally {
       if (requestId === analyzeRequestRef.current) setOcrLoading(false);
     }
+  }
+
+  function applyLocalTransform(transform: NonNullable<AnalyzeOptions['transform']>, baseOverride?: AnalyzeResponse | null) {
+    if (sliderDebounceRef.current !== null) window.clearTimeout(sliderDebounceRef.current);
+    analyzeRequestRef.current += 1;
+    const base = baseOverride ?? baseResultRef.current ?? (result ? stripToolArtifacts(result) : null);
+    if (!base) return;
+    const preview = buildLocalTransformPreview(transform.type, transform.value);
+    setResult({
+      ...base,
+      transform_preview: preview,
+      geogebra_commands: buildLocalTransformCommands(base.geogebra_commands, preview.expression),
+    });
   }
 
   function updateToolEnabled(key: ToolKey, enabled: boolean) {
@@ -163,11 +189,27 @@ export function useFunctionAnalysis(initialExpression: string, onWarnings?: (war
       setIsAnimatingTransform(false);
     }
 
-    scheduleToolAnalyze({
+    const baseResult = baseResultRef.current ?? (result ? stripToolArtifacts(result) : null);
+    if (baseResult) setResult(baseResult);
+
+    const requestOptions = buildAnalyzeOptions({
       enableInterval: nextEnableInterval,
       enableLine: nextEnableLine,
       enableTransform: nextEnableTransform,
     });
+    if (requestOptions.transform && !requestOptions.interval && !requestOptions.line) {
+      applyLocalTransform(requestOptions.transform, baseResult);
+      return;
+    }
+    if (!requestOptions.interval && !requestOptions.line && !requestOptions.transform) {
+      analyzeRequestRef.current += 1;
+      return;
+    }
+
+    const expr = expression.trim();
+    if (!expr) return;
+    if (sliderDebounceRef.current !== null) window.clearTimeout(sliderDebounceRef.current);
+    void runAnalyze(expr, { slider: true, requestOptions });
   }
 
   return {
@@ -207,4 +249,79 @@ export function useFunctionAnalysis(initialExpression: string, onWarnings?: (war
     setIsAnimatingTransform,
     scheduleToolAnalyze,
   };
+}
+
+function stripToolArtifacts(result: AnalyzeResponse): AnalyzeResponse {
+  return {
+    ...result,
+    interval_analysis: null,
+    line_analysis: null,
+    transform_preview: null,
+    geogebra_commands: stripToolCommands(result.geogebra_commands),
+    graph_scene: result.graph_scene
+      ? {
+          ...result.graph_scene,
+          objects: result.graph_scene.objects.map((object) => object.type === 'function_graph' ? { ...object, domain: null } : object),
+        }
+      : result.graph_scene,
+  };
+}
+
+function stripToolCommands(commands: string[]) {
+  return commands.filter((command) => !/^\s*(h\(x\)\s*=|g\(x\)\s*=|Set(Color|LineThickness)\((f|g|h),)/i.test(command));
+}
+
+function buildLocalTransformPreview(type: string, value: number): NonNullable<AnalyzeResponse['transform_preview']> {
+  const a = formatToolNumber(value);
+  const meta = localTransformMeta(type, a);
+  return {
+    type,
+    value: a,
+    label: meta.label,
+    expression: meta.expression,
+    expression_latex: meta.expressionLatex,
+    pedagogical_steps: meta.steps,
+  };
+}
+
+function buildLocalTransformCommands(baseCommands: string[], expression: string) {
+  return [
+    ...stripToolCommands(baseCommands),
+    `h(x)=${expression}`,
+    'SetColor(f, "#94a3b8")',
+    'SetLineThickness(f, 2)',
+    'SetColor(h, "#111827")',
+    'SetLineThickness(h, 5)',
+  ];
+}
+
+function localTransformMeta(type: string, a: string) {
+  const signedA = signedToolNumber(a);
+  switch (type) {
+    case 'horizontal_shift':
+      return { label: `f(x${signedA})`, expression: `f(x${signedA})`, expressionLatex: `f(x${signedA})`, steps: [`Dịch đồ thị theo phương ngang với tham số a = ${a}.`] };
+    case 'vertical_scale':
+      return { label: `${a}f(x)`, expression: `${a}*f(x)`, expressionLatex: `${a}f(x)`, steps: [`Kéo dãn/co đồ thị theo phương thẳng đứng với hệ số ${a}.`] };
+    case 'horizontal_scale':
+      return { label: `f(${a}x)`, expression: `f(${a}*x)`, expressionLatex: `f(${a}x)`, steps: [`Kéo dãn/co đồ thị theo phương ngang với hệ số ${a}.`] };
+    case 'reflect_x':
+      return { label: '-f(x)', expression: '-f(x)', expressionLatex: '-f(x)', steps: ['Lấy đối xứng toàn bộ đồ thị qua trục hoành.'] };
+    case 'reflect_y':
+      return { label: 'f(-x)', expression: 'f(-x)', expressionLatex: 'f(-x)', steps: ['Lấy đối xứng toàn bộ đồ thị qua trục tung.'] };
+    case 'absolute_all':
+      return { label: '|f(x)|', expression: 'abs(f(x))', expressionLatex: '|f(x)|', steps: ['Giữ phần phía trên trục hoành, đối xứng phần phía dưới lên trên.'] };
+    case 'absolute_x':
+      return { label: 'f(|x|)', expression: 'f(abs(x))', expressionLatex: 'f(|x|)', steps: ['Giữ nửa phải đồ thị rồi đối xứng qua trục tung.'] };
+    default:
+      return { label: `f(x)${signedA}`, expression: `f(x)${signedA}`, expressionLatex: `f(x)${signedA}`, steps: [`Tịnh tiến đồ thị theo phương thẳng đứng với a = ${a}.`] };
+  }
+}
+
+function signedToolNumber(value: string) {
+  return value.startsWith('-') ? value : `+${value}`;
+}
+
+function formatToolNumber(value: number) {
+  if (!Number.isFinite(value)) return '0';
+  return Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
 }

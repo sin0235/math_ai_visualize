@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { ApiError, changePassword, deleteRenderHistory, forgotPassword, getCurrentUser, getHealth, getRenderHistory, getRenderHistoryDetail, getSessions, getSettingsDefaults, login, loginWithGoogle, logout, ocrImageByUploadId, register, renderEditedScene, renderProblem, resendVerification, resetPassword, revokeOtherSessions, revokeSession, updateProfile, uploadOcrImage, verifyEmail, type AdminRenderHistoryDetail, type RenderHistoryItem, type SessionResponse, type UserResponse } from './api/client';
 import { defaultAdvancedSettings, ProblemInput, type ModelOption, type TierKey } from './components/ProblemInput';
 import { AccountPage } from './components/AccountPage';
+import { SettingsPage } from './components/SettingsPage';
 import { FeedbackPage } from './components/FeedbackPage';
 import { ChatBubble } from './components/ChatBubble';
 import { HomePage } from './components/HomePage';
@@ -41,7 +42,7 @@ const CONTACT_ZALO_PHONE = '0347952503';
 const CONTACT_ZALO_URL = `https://zalo.me/${CONTACT_ZALO_PHONE}`;
 const MINERU_API_BASE_URL = normalizeMineruBaseUrl(import.meta.env.VITE_MINERU_API_BASE_URL);
 
-type AppView = 'home' | 'render' | 'analyzer' | 'algebra-solver' | 'analyzer-guide' | 'simulation' | 'geogebra-lab' | 'pdf-to-word' | 'history' | 'guide' | 'about' | 'privacy-policy' | 'terms' | 'login' | 'admin' | 'account' | 'feedback' | 'reset-password' | 'verify-email';
+type AppView = 'home' | 'render' | 'analyzer' | 'algebra-solver' | 'analyzer-guide' | 'simulation' | 'geogebra-lab' | 'pdf-to-word' | 'history' | 'guide' | 'about' | 'privacy-policy' | 'terms' | 'login' | 'admin' | 'account' | 'settings' | 'feedback' | 'reset-password' | 'verify-email';
 type EditTool = 'move' | 'connect' | 'project_to_segment' | 'add_point';
 type BackendStatus = {
   state: 'checking' | 'online' | 'offline';
@@ -77,6 +78,7 @@ const viewPaths: Record<AppView, string> = {
   login: '/login',
   admin: '/admin',
   account: '/account',
+  settings: '/settings',
   feedback: '/feedback',
   'reset-password': '/reset-password',
   'verify-email': '/verify-email',
@@ -84,7 +86,6 @@ const viewPaths: Record<AppView, string> = {
 
 function pathToView(pathname: string): AppView {
   const normalized = pathname.replace(/\/+$/, '') || '/';
-  if (normalized === '/settings') return 'render';
   const match = Object.entries(viewPaths).find(([, path]) => path === normalized);
   return match ? match[0] as AppView : 'home';
 }
@@ -499,7 +500,7 @@ export default function App() {
       applyRenderResponse(response);
       if (user) void refreshHistory();
       scrollToResultOnMobile();
-      showWarnings(response.warnings);
+      if (!shouldShowConfirmationPrompt(response)) showWarnings(response.warnings);
     } catch (caught) {
       const apiError = toApiError(caught, 'Không thể dựng hình từ đề bài này.');
       await reportWorkspaceError('Dựng hình thất bại', apiError, 'Hãy thử mức độ chất lượng khác hoặc viết đề bài rõ hơn.');
@@ -969,7 +970,7 @@ export default function App() {
           )}
           {user ? (
             <div className="account-menu" ref={accountMenuRef}>
-              <button type="button" className={`account-menu-trigger ${activeView === 'history' || activeView === 'account' || activeView === 'feedback' ? 'active' : ''}`} aria-haspopup="menu" aria-expanded={accountMenuOpen ? 'true' : 'false'} onClick={() => setAccountMenuOpen((open) => !open)}>
+              <button type="button" className={`account-menu-trigger ${activeView === 'history' || activeView === 'account' || activeView === 'settings' || activeView === 'feedback' ? 'active' : ''}`} aria-haspopup="menu" aria-expanded={accountMenuOpen ? 'true' : 'false'} onClick={() => setAccountMenuOpen((open) => !open)}>
                 <span className="account-avatar" aria-hidden="true">{(user.display_name || user.email).slice(0, 1).toUpperCase()}</span>
                 <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
                 <span className="sr-only">Mở menu tài khoản</span>
@@ -998,7 +999,14 @@ export default function App() {
                       navigateTo('account');
                     }}>
                       <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
-                      Đổi mật khẩu
+                      Tài khoản
+                    </button>
+                    <button type="button" role="menuitem" onClick={() => {
+                      setAccountMenuOpen(false);
+                      navigateTo('settings');
+                    }}>
+                      <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 8.92 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.36.64.98 1 1.6 1h.09a2 2 0 1 1 0 4H21c-.62 0-1.24.36-1.6 1Z"></path></svg>
+                      Cài đặt
                     </button>
                   </div>
                   <div className="account-dropdown-group danger">
@@ -1094,13 +1102,14 @@ export default function App() {
               <div className="render-stage">
                 <RendererPanel result={effectiveResult} threeInteraction={threeInteraction} onGeoGebraPointChange={handlePointDragEnd} highlightedObjects={highlightedObjects} saving={editorSaving} onThreeImageCaptureReady={handleThreeImageCaptureReady} />
                 {effectiveResult && shouldShowConfirmationPrompt(effectiveResult) && (
-                  <div className="warning-box render-confirmation-box">
-                    <div>
-                      <strong>Cần xác nhận trước khi dùng tiếp</strong>
-                      <p>Hình hiện tại có fallback, giả định hoặc sửa chữa cần bạn kiểm tra. Sau khi đã đối chiếu nội dung hình với đề bài, hãy xác nhận để bật xuất file, giải bài và sinh đề biến thể.</p>
-                    </div>
-                    <button type="button" className="secondary-button" onClick={confirmCurrentScene}>Tôi đã kiểm tra hình này</button>
-                  </div>
+                  <aside className="render-review-chip" role="status" aria-live="polite">
+                    <span className="render-review-dot" aria-hidden="true" />
+                    <span className="render-review-copy">
+                      <strong>Cần kiểm tra hình</strong>
+                      <small>Hình có fallback hoặc giả định. Xác nhận sau khi đối chiếu với đề bài.</small>
+                    </span>
+                    <button type="button" className="secondary-button" onClick={confirmCurrentScene}>Đã kiểm tra</button>
+                  </aside>
                 )}
                 {effectiveResult?.scene && (
                   <div ref={renderToolsMenuRef} className="render-tools-floating">
@@ -1287,6 +1296,7 @@ export default function App() {
             authLoading={authLoading}
             onToast={(title, message, kind = 'info') => showNotification(title, message, [], kind)}
             onBackWorkspace={() => navigateTo('render')}
+            onOpenSettings={() => navigateTo('settings')}
             onLogout={handleLogout}
             onResendVerification={handleResendVerification}
             onUpdateProfile={handleUpdateProfile}
@@ -1294,6 +1304,13 @@ export default function App() {
             onLoadSessions={handleLoadSessions}
             onRevokeSession={handleRevokeSession}
             onRevokeOtherSessions={handleRevokeOtherSessions}
+          />
+        )}
+        {activeView === 'settings' && user && (
+          <SettingsPage
+            onToast={(title, message, kind = 'info') => showNotification(title, message, [], kind)}
+            onBackWorkspace={() => navigateTo('render')}
+            onOpenAccount={() => navigateTo('account')}
           />
         )}
         {activeView === 'reset-password' && (
@@ -1432,8 +1449,18 @@ export default function App() {
 function PageLoadingFallback() {
   return (
     <section className="product-page-card page-loading-fallback" aria-live="polite">
-      <span className="sp-spinner" aria-hidden="true" />
-      <p>Đang tải công cụ...</p>
+      <div className="tool-loading-orb" aria-hidden="true">
+        <span />
+      </div>
+      <div className="tool-loading-copy">
+        <strong>Đang tải công cụ</strong>
+        <span>Chuẩn bị module, canvas và dữ liệu cần thiết.</span>
+      </div>
+      <div className="tool-loading-skeleton" aria-hidden="true">
+        <i />
+        <i />
+        <i />
+      </div>
     </section>
   );
 }

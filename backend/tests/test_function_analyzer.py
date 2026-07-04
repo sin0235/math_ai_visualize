@@ -1,4 +1,5 @@
 from app.services.function_analyzer import analyze_function
+from app.services.function_graph_builder import build_function_graph
 
 
 def test_analyze_function_accepts_latex_fraction():
@@ -75,3 +76,14 @@ def test_analyze_line_position_uses_exact_roots_before_numeric_fallback():
     intersections = result["line_analysis"]["intersections"]
     assert {item["x_exact"] for item in intersections} == {"-2**(1/4)", "2**(1/4)"}
     assert result["line_analysis"]["intersection_count"] == 2
+
+
+def test_absolute_transform_uses_geogebra_safe_abs_command():
+    result = analyze_function("x^3 - 3*x + 2", transform={"type": "absolute_all", "value": 1})
+
+    assert "error" not in result
+    _, commands, _ = build_function_graph(result)
+    transform_commands = [command for command in commands if command.startswith("h(x)=")]
+    assert transform_commands
+    assert "Abs(" not in transform_commands[0]
+    assert "abs(" in transform_commands[0]
