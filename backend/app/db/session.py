@@ -1,4 +1,5 @@
 from pathlib import Path
+from sqlite3 import IntegrityError
 from typing import Any, Protocol
 
 import aiosqlite
@@ -95,6 +96,73 @@ class D1Client:
         rows = result[0].get("results") or []
         return [dict(row) for row in rows]
 
+class PostgresClient:
+    backend = "postgres"
+
+    def __init__(self, database_url: str) -> None:
+        self.database_url = database_url
+
+    async def execute(self, sql: str, params: list[Any] | tuple[Any, ...] | None = None) -> None:
+        await self.execute_many([(sql, params)])
+
+    async def execute_many(self, statements: list[tuple[str, list[Any] | tuple[Any, ...] | None]]) -> None:
+        asyncpg = import_asyncpg()
+        connection = await asyncpg.connect(self.database_url)
+        try:
+            async with connection.transaction():
+                for sql, params in statements:
+                    await connection.execute(postgres_sql(sql), *(params or []))
+        except asyncpg.UniqueViolationError as error:
+            raise IntegrityError(str(error)) from error
+        finally:
+            await connection.close()
+
+    async def fetch_one(self, sql: str, params: list[Any] | tuple[Any, ...] | None = None) -> DbRow | None:
+        rows = await self.fetch_all(sql, params)
+        return rows[0] if rows else None
+
+    async def fetch_all(self, sql: str, params: list[Any] | tuple[Any, ...] | None = None) -> list[DbRow]:
+        asyncpg = import_asyncpg()
+        connection = await asyncpg.connect(self.database_url)
+        try:
+            rows = await connection.fetch(postgres_sql(sql), *(params or []))
+        except asyncpg.UniqueViolationError as error:
+            raise IntegrityError(str(error)) from error
+        finally:
+            await connection.close()
+        return [dict(row) for row in rows]
+
+def import_asyncpg():
+    try:
+        import asyncpg
+    except ImportError as error:
+        raise RuntimeError("PostgreSQL backend requires asyncpg. Install backend requirements first.") from error
+    return asyncpg
+
+
+def postgres_sql(sql: str) -> str:
+    output: list[str] = []
+    index = 1
+    in_single_quote = False
+    in_double_quote = False
+    escaped = False
+    for char in sql:
+        if char == "'" and not in_double_quote and not escaped:
+            in_single_quote = not in_single_quote
+            output.append(char)
+        elif char == '"' and not in_single_quote and not escaped:
+            in_double_quote = not in_double_quote
+            output.append(char)
+        elif char == "?" and not in_single_quote and not in_double_quote:
+            output.append(f"${index}")
+            index += 1
+        else:
+            output.append(char)
+        escaped = char == "\\" and not escaped
+        if char != "\\":
+            escaped = False
+    return "".join(output).replace("CURRENT_TIMESTAMP", "(CURRENT_TIMESTAMP::text)")
+
 
 def resolve_sqlite_path(path: str) -> Path:
     sqlite_path = Path(path)
@@ -120,6 +188,10 @@ def create_database_client(settings: Settings) -> DatabaseClient:
         if not settings.d1_account_id or not settings.d1_database_id or not settings.d1_api_token:
             raise RuntimeError("D1 is selected but D1_ACCOUNT_ID, D1_DATABASE_ID, or D1_API_TOKEN is missing.")
         return D1Client(settings.d1_account_id, settings.d1_database_id, settings.d1_api_token)
+    if settings.database_backend == "postgres":
+        if not settings.database_url:
+            raise RuntimeError("PostgreSQL is selected but DATABASE_URL is missing.")
+        return PostgresClient(settings.database_url)
     raise RuntimeError(f"Unsupported database backend: {settings.database_backend}")
 
 

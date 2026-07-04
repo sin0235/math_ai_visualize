@@ -1,4 +1,5 @@
 import json
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 from app.db.models import AuditLogRecord, DbRow, PlanRecord, RenderJobRecord, SessionRecord, SystemSettingsRecord, UserRecord
@@ -12,24 +13,27 @@ class AdminRepository:
         self.db = db
 
     async def summary(self) -> dict[str, int | float]:
+        today_start = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
+        stats_start = (datetime.now(UTC) - timedelta(days=14)).strftime("%Y-%m-%d %H:%M:%S")
         users = await self.db.fetch_one("SELECT COUNT(*) AS count FROM users")
         active_users = await self.db.fetch_one("SELECT COUNT(*) AS count FROM users WHERE status = 'active'")
         admins = await self.db.fetch_one("SELECT COUNT(*) AS count FROM users WHERE role = 'admin'")
         renders = await self.db.fetch_one("SELECT COUNT(*) AS count FROM render_jobs")
-        renders_today = await self.db.fetch_one("SELECT COUNT(*) AS count FROM render_jobs WHERE date(created_at) = date('now')")
-        users_today = await self.db.fetch_one("SELECT COUNT(*) AS count FROM users WHERE date(created_at) = date('now')")
+        renders_today = await self.db.fetch_one("SELECT COUNT(*) AS count FROM render_jobs WHERE created_at >= ?", [today_start])
+        users_today = await self.db.fetch_one("SELECT COUNT(*) AS count FROM users WHERE created_at >= ?", [today_start])
         warning_jobs = await self.db.fetch_one("SELECT COUNT(*) AS count FROM render_jobs WHERE warnings_json IS NOT NULL AND warnings_json NOT IN ('[]', '')")
         render_count = int((renders or {}).get("count") or 0)
         warning_count = int((warning_jobs or {}).get("count") or 0)
 
         daily_stats_rows = await self.db.fetch_all(
             """
-            SELECT date(created_at) as day, COUNT(*) as count
+            SELECT substr(created_at, 1, 10) as day, COUNT(*) as count
             FROM render_jobs
-            WHERE created_at >= date('now', '-14 days')
+            WHERE created_at >= ?
             GROUP BY day
             ORDER BY day ASC
-            """
+            """,
+            [stats_start],
         )
         daily_stats = [{"day": row["day"], "count": row["count"]} for row in daily_stats_rows]
 

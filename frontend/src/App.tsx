@@ -1234,12 +1234,7 @@ export default function App() {
         {activeView === 'geogebra-lab' && <Suspense fallback={<PageLoadingFallback />}><GeoGebraLabPage /></Suspense>}
         {activeView === 'pdf-to-word' && (
           <Suspense fallback={<PageLoadingFallback />}>
-            <PdfToWordPage
-              apiBaseUrl={MINERU_API_BASE_URL}
-              modelOptions={modelOptions}
-              runtimeSettings={runtimeSettings}
-              router9Only={settingsDefaults?.router9.only_mode ?? false}
-            />
+            <PdfToWordPage apiBaseUrl={MINERU_API_BASE_URL} />
           </Suspense>
         )}
         {activeView === 'analyzer-guide' && <AnalyzerGuidePage onOpenGeneralGuide={() => navigateTo('guide')} />}

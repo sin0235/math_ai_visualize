@@ -3,7 +3,7 @@ import subprocess
 from pathlib import Path
 
 from app.db.migrations import apply_sqlite_migrations, build_migration_drift, duplicate_migration_prefixes, warn_duplicate_migration_prefixes
-from app.db.session import SQLiteClient
+from app.db.session import SQLiteClient, postgres_sql
 
 
 def test_warn_duplicate_migration_prefixes_ignores_known_legacy_duplicate(caplog):
@@ -71,7 +71,12 @@ def test_system_hardening_migration_adds_byok_and_render_metadata(tmp_path):
     assert "idx_render_jobs_status_created" in {str(row["name"]) for row in render_indexes}
 
 
-def test_local_artifacts_are_not_tracked_by_git():
+def test_postgres_sql_translates_placeholders_outside_literals():
+    assert postgres_sql("SELECT * FROM users WHERE email = ? AND note = '?' AND created_at >= CURRENT_TIMESTAMP") == (
+        "SELECT * FROM users WHERE email = $1 AND note = '?' AND created_at >= (CURRENT_TIMESTAMP::text)"
+    )
+
+
     blocked = {
         ".wrangler/cache/wrangler-account.json",
         "backend/.data/hinh.db",

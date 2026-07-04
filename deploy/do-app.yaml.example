@@ -1,0 +1,45 @@
+name: math-ai-visualize
+region: sgp
+services:
+  - name: web
+    github:
+      repo: <github-owner>/<repo-name>
+      branch: main
+      deploy_on_push: true
+    dockerfile_path: Dockerfile
+    source_dir: /
+    http_port: 8080
+    instance_count: 1
+    instance_size_slug: basic-xs
+    health_check:
+      http_path: /api/health
+    envs:
+      - key: ENVIRONMENT
+        value: production
+      - key: DATABASE_BACKEND
+        value: postgres
+      - key: DATABASE_URL
+        scope: RUN_TIME
+        value: ${db.DATABASE_URL}
+        type: SECRET
+      - key: PUBLIC_APP_URL
+        value: https://<your-domain>
+      - key: CORS_ORIGINS
+        value: '["https://<your-domain>"]'
+      - key: SESSION_COOKIE_SECURE
+        value: "true"
+      - key: ALLOW_MISSING_ORIGIN_FOR_COOKIE_MUTATIONS
+        value: "false"
+      - key: LOCAL_OCR_ENABLED
+        value: "false"
+      - key: LOCAL_OCR_PREFER
+        value: never
+      - key: OCR_UPLOAD_STORAGE_PROVIDER
+        value: auto
+      - key: OCR_UPLOAD_BASE64_RETENTION
+        value: external_only
+databases:
+  - name: db
+    engine: PG
+    version: "16"
+    production: true

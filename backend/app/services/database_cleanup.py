@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app.core.config import Settings, get_settings
@@ -37,64 +38,68 @@ DEV_RESET_GLOBAL_TABLES = [
 ]
 
 
+def cutoff_text(*, days: int = 0, hours: int = 0) -> str:
+    return (datetime.now(UTC) - timedelta(days=days, hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
+
+
 def cleanup_rules() -> dict[str, CleanupRule]:
     return {
         "rate_limit_events": CleanupRule(
             table="rate_limit_events",
-            key_column="rowid",
+            key_column="key || ':' || bucket",
             where_sql="expires_at <= CURRENT_TIMESTAMP",
             order_sql="expires_at ASC",
         ),
         "oauth_states": CleanupRule(
             table="oauth_states",
             key_column="state_hash",
-            where_sql="expires_at <= CURRENT_TIMESTAMP OR (consumed_at IS NOT NULL AND consumed_at <= datetime('now', ?))",
+            where_sql="expires_at <= CURRENT_TIMESTAMP OR (consumed_at IS NOT NULL AND consumed_at <= ?)",
             order_sql="expires_at ASC",
-            params=("-7 days",),
+            params=(cutoff_text(days=7),),
         ),
         "auth_tokens": CleanupRule(
             table="auth_tokens",
             key_column="id",
-            where_sql="expires_at <= CURRENT_TIMESTAMP OR (consumed_at IS NOT NULL AND consumed_at <= datetime('now', ?))",
+            where_sql="expires_at <= CURRENT_TIMESTAMP OR (consumed_at IS NOT NULL AND consumed_at <= ?)",
             order_sql="expires_at ASC",
-            params=("-7 days",),
+            params=(cutoff_text(days=7),),
         ),
         "sessions": CleanupRule(
             table="sessions",
             key_column="id",
-            where_sql="expires_at <= CURRENT_TIMESTAMP OR (revoked_at IS NOT NULL AND revoked_at <= datetime('now', ?))",
+            where_sql="expires_at <= CURRENT_TIMESTAMP OR (revoked_at IS NOT NULL AND revoked_at <= ?)",
             order_sql="expires_at ASC",
-            params=("-30 days",),
+            params=(cutoff_text(days=30),),
         ),
         "model_scan_jobs": CleanupRule(
             table="model_scan_jobs",
             key_column="id",
-            where_sql="status IN ('completed', 'failed') AND COALESCE(finished_at, created_at) <= datetime('now', ?)",
+            where_sql="status IN ('completed', 'failed') AND COALESCE(finished_at, created_at) <= ?",
             order_sql="created_at ASC",
-            params=("-30 days",),
+            params=(cutoff_text(days=30),),
         ),
         "usage_events": CleanupRule(
             table="usage_events",
             key_column="id",
-            where_sql="created_at <= datetime('now', ?)",
+            where_sql="created_at <= ?",
             order_sql="created_at ASC",
-            params=("-180 days",),
+            params=(cutoff_text(days=180),),
             default_enabled=False,
         ),
         "audit_logs": CleanupRule(
             table="audit_logs",
             key_column="id",
-            where_sql="created_at <= datetime('now', ?)",
+            where_sql="created_at <= ?",
             order_sql="created_at ASC",
-            params=("-365 days",),
+            params=(cutoff_text(days=365),),
             default_enabled=False,
         ),
         "render_jobs": CleanupRule(
             table="render_jobs",
             key_column="id",
-            where_sql="status IN ('queued', 'running', 'failed') AND created_at <= datetime('now', ?)",
+            where_sql="status IN ('queued', 'running', 'failed') AND created_at <= ?",
             order_sql="created_at ASC",
-            params=("-30 days",),
+            params=(cutoff_text(days=30),),
             default_enabled=False,
         ),
     }
@@ -364,7 +369,7 @@ async def uploaded_files_base64_candidates(db: DatabaseClient, limit: int, min_a
         WHERE storage_provider IN ({placeholders})
           AND data_base64 IS NOT NULL
           AND data_base64 != ''
-          AND created_at <= datetime('now', ?)
+          AND created_at <= ?
           AND (
             (storage_provider = 'appwrite' AND external_file_id IS NOT NULL AND external_file_id != '')
             OR (storage_provider = 'r2' AND storage_key IS NOT NULL AND storage_key != '')
@@ -372,7 +377,7 @@ async def uploaded_files_base64_candidates(db: DatabaseClient, limit: int, min_a
         ORDER BY created_at ASC
         LIMIT ?
         """,
-        [*sorted(providers), f"-{max(1, int(min_age_hours))} hours", limit],
+        [*sorted(providers), cutoff_text(hours=max(1, int(min_age_hours))), limit],
     )
 
 
@@ -383,7 +388,7 @@ async def uploaded_files_remote_candidates(db: DatabaseClient, limit: int, min_a
         SELECT *
         FROM uploaded_files
         WHERE storage_provider IN ({placeholders})
-          AND created_at <= datetime('now', ?)
+          AND created_at <= ?
           AND (
             (storage_provider = 'appwrite' AND external_file_id IS NOT NULL AND external_file_id != '')
             OR (storage_provider = 'r2' AND storage_key IS NOT NULL AND storage_key != '')
@@ -391,7 +396,7 @@ async def uploaded_files_remote_candidates(db: DatabaseClient, limit: int, min_a
         ORDER BY created_at ASC
         LIMIT ?
         """,
-        [*sorted(providers), f"-{max(1, int(min_age_hours))} hours", limit],
+        [*sorted(providers), cutoff_text(hours=max(1, int(min_age_hours))), limit],
     )
 
 

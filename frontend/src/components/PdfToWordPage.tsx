@@ -1,29 +1,33 @@
-import { FormEvent, useEffect, useMemo, useRef, useState, memo } from 'react';
+import { FormEvent, memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
-import { convertPdfWithMineru, getMineruJob, getMineruLlmProviders, getMineruStatus, mineruUrl, normalizeMineruBaseUrl, type MineruJobSnapshot, type MineruResult } from '../api/mineru';
-import type { ModelOption } from './ProblemInput';
-import type { RuntimeSettings } from '../types/settings';
+import {
+  convertPdfWithMineru,
+  getDefaultMineruPageConfig,
+  getMineruDocxPreview,
+  getMineruJob,
+  getMineruLlmProviders,
+  getMineruPageConfig,
+  getMineruStatus,
+  mineruUrl,
+  normalizeMineruBaseUrl,
+  type MineruArtifact,
+  type MineruJobSnapshot,
+  type MineruPageConfig,
+  type MineruProviderDefaults,
+  type MineruResult,
+  type MineruSelectOption,
+} from '../api/mineru';
 
 type UploadState = 'idle' | 'queued' | 'running' | 'completed' | 'failed';
+type PreviewState = { title: string; kind: string; url: string; html?: string; loading?: boolean; error?: string } | null;
 
 interface PdfToWordPageProps {
   apiBaseUrl: string;
-  modelOptions: ModelOption[];
-  runtimeSettings: RuntimeSettings;
-  router9Only: boolean;
 }
 
 const MAX_LOCAL_UPLOAD_MB = 128;
 const MINERU_API_BASE_URL_STORAGE_KEY = 'pdfWordMineruApiBaseUrl';
 const ALLOWED_LLM_PROVIDERS = new Set(['auto', 'openrouter', 'router9', 'nvidia']);
-const backendOptions = [
-  { value: 'auto', label: 'Tự động chọn', description: 'Tự chọn engine phù hợp với môi trường đang chạy; ưu tiên VLM khi có GPU, fallback ổn định khi thiếu tài nguyên.' },
-  { value: 'pipeline', label: 'Ổn định cơ bản', description: 'Pipeline truyền thống, nhẹ và ổn định hơn trên CPU nhưng chất lượng nhận dạng layout/công thức thường thấp hơn VLM.' },
-  { value: 'hybrid-engine', label: 'Cân bằng chất lượng', description: 'Kết hợp pipeline và VLM engine cục bộ để cân bằng tốc độ, độ ổn định và chất lượng nhận dạng.' },
-  { value: 'hybrid-auto-engine', label: 'Cân bằng tự động', description: 'Bản tự động của hybrid engine; phù hợp khi muốn chất lượng tốt nhưng vẫn có cơ chế tự xử lý theo môi trường.' },
-  { value: 'vlm-engine', label: 'Chất lượng cao', description: 'Dùng VLM engine cục bộ, thường cho chất lượng layout/công thức tốt hơn nhưng cần tài nguyên mạnh hơn.' },
-  { value: 'vlm-auto-engine', label: 'Chất lượng cao tự động', description: 'Bản tự động của VLM engine; ưu tiên chất lượng cao và để MinerU tự xử lý một phần cấu hình runtime.' },
-];
 const guideStrokeIcon = {
   viewBox: '0 0 24 24',
   width: 20,
@@ -36,33 +40,9 @@ const guideStrokeIcon = {
   'aria-hidden': true as const,
 };
 
-const languageOptions = [
-  { value: 'latin', label: 'Latin/Vietnamese' },
-  { value: 'en', label: 'English' },
-  { value: 'ch', label: 'Chinese + English' },
-  { value: 'ch_lite', label: 'Chinese Lite' },
-  { value: 'ch_server', label: 'Chinese Server' },
-  { value: 'korean', label: 'Korean' },
-  { value: 'japan', label: 'Japanese' },
-  { value: 'chinese_cht', label: 'Traditional Chinese' },
-  { value: 'arabic', label: 'Arabic' },
-  { value: 'cyrillic', label: 'Cyrillic' },
-  { value: 'east_slavic', label: 'East Slavic' },
-  { value: 'devanagari', label: 'Devanagari' },
-  { value: 'ta', label: 'Tamil' },
-  { value: 'te', label: 'Telugu' },
-  { value: 'ka', label: 'Kannada' },
-  { value: 'th', label: 'Thai' },
-  { value: 'el', label: 'Greek' },
-];
-
-export function PdfToWordPage({
-  apiBaseUrl,
-  modelOptions,
-  runtimeSettings,
-  router9Only,
-}: PdfToWordPageProps) {
-  const [selectedModelKey, setSelectedModelKey] = useState(modelOptions[0]?.key ?? 'provider:auto');
+export function PdfToWordPage({ apiBaseUrl }: PdfToWordPageProps) {
+  const [pageConfig, setPageConfig] = useState<MineruPageConfig>(() => getDefaultMineruPageConfig());
+  const [providerDefaults, setProviderDefaults] = useState<MineruProviderDefaults>({});
   const [file, setFile] = useState<File | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const [status, setStatus] = useState<UploadState>('idle');
@@ -75,58 +55,45 @@ export function PdfToWordPage({
   const [remoteMaxUploadMb, setRemoteMaxUploadMb] = useState<number | null>(null);
   const [readinessMessage, setReadinessMessage] = useState('');
   const [readinessReady, setReadinessReady] = useState<boolean | null>(null);
-  const [reviewApiReady, setReviewApiReady] = useState<boolean | null>(null);
-  const [mineruReviewProvider, setMineruReviewProvider] = useState('auto');
-  const [mineruReviewModel, setMineruReviewModel] = useState('');
   const [guideOpen, setGuideOpen] = useState(false);
-  const [backend, setBackend] = useState('auto');
-  const [parseMethod, setParseMethod] = useState('auto');
-  const [language, setLanguage] = useState('ch');
-  const [latexDelimitersType, setLatexDelimitersType] = useState('b');
-  const [formulaEnable, setFormulaEnable] = useState(true);
-  const [tableEnable, setTableEnable] = useState(true);
+  const [backend, setBackend] = useState(pageConfig.values.backend);
+  const [parseMethod, setParseMethod] = useState(pageConfig.values.parseMethod);
+  const [language, setLanguage] = useState(pageConfig.values.language);
+  const [latexDelimitersType, setLatexDelimitersType] = useState(pageConfig.values.latexDelimitersType);
+  const [formulaEnable, setFormulaEnable] = useState(pageConfig.values.formulaEnable);
+  const [tableEnable, setTableEnable] = useState(pageConfig.values.tableEnable);
   const [forceOcr, setForceOcr] = useState(false);
-  const [llmMode, setLlmMode] = useState('off');
-  const [examFormat, setExamFormat] = useState(false);
+  const [llmMode, setLlmMode] = useState(pageConfig.values.llmMode);
+  const [, setLlmProvider] = useState(pageConfig.values.llmProvider);
+  const [llmModel, setLlmModel] = useState(pageConfig.values.llmModel);
+  const [, setLlmReasoning] = useState(pageConfig.values.llmReasoning);
+  const [, setRouter9Only] = useState(pageConfig.values.router9Only);
+  const [serverUrl, setServerUrl] = useState(pageConfig.values.serverUrl);
+  const [examFormat, setExamFormat] = useState(pageConfig.values.examFormat);
   const [startPage, setStartPage] = useState('1');
   const [endPage, setEndPage] = useState('');
   const [mineruApiBaseUrl, setMineruApiBaseUrl] = useState(() => loadMineruApiBaseUrl(apiBaseUrl));
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const progressFillRef = useRef<HTMLSpanElement>(null);
   const pollAbortRef = useRef(false);
 
   const activeApiBaseUrl = normalizeMineruBaseUrl(mineruApiBaseUrl) || apiBaseUrl;
   const maxUploadMb = remoteMaxUploadMb ?? Number(import.meta.env.VITE_PDF_WORD_MAX_UPLOAD_MB || MAX_LOCAL_UPLOAD_MB);
-  const selectedBackendDescription = backendOptions.find((option) => option.value === backend)?.description ?? '';
-  const canUseReview = reviewApiReady === true;
-  const effectiveLlmMode = canUseReview ? llmMode : 'off';
   const busy = status === 'queued' || status === 'running';
+  const selectedProviderReady = providerReady(providerDefaults, 'nvidia');
+  const showLlmReviewMode = selectedProviderReady;
+  const showServerUrl = backend === 'hybrid-http-client' || backend === 'vlm-http-client';
+  const effectiveLlmMode = selectedProviderReady ? llmMode : 'off';
 
   const readinessLabel = useMemo(() => {
     if (!activeApiBaseUrl) return 'Cần link xử lý';
     if (readinessReady === null) return 'Đang kiểm tra';
-    return readinessReady ? 'Sẵn sàng xử lý' : 'Chưa sẵn sàng';
+    return readinessReady ? 'MinerU sẵn sàng' : 'MinerU chưa sẵn sàng';
   }, [activeApiBaseUrl, readinessReady]);
-
-  useEffect(() => {
-    if (!modelOptions.some((option) => option.key === selectedModelKey)) {
-      setSelectedModelKey(modelOptions[0]?.key ?? 'provider:auto');
-    }
-  }, [modelOptions, selectedModelKey]);
 
   useEffect(() => {
     const clamped = Math.max(0, Math.min(100, progress));
     progressFillRef.current?.style.setProperty('--pdf-word-progress', `${clamped}%`);
   }, [progress, status, result]);
-
-  useEffect(() => {
-    if (canUseReview && llmMode === 'off') {
-      setLlmMode('review');
-    }
-    if (!canUseReview && llmMode !== 'off') {
-      setLlmMode('off');
-    }
-  }, [canUseReview, llmMode]);
 
   useEffect(() => {
     const saved = window.localStorage.getItem(MINERU_API_BASE_URL_STORAGE_KEY);
@@ -140,17 +107,26 @@ export function PdfToWordPage({
     }
     const objectUrl = URL.createObjectURL(file);
     setPdfPreviewUrl(objectUrl);
-    return () => {
-      URL.revokeObjectURL(objectUrl);
-    };
+    return () => URL.revokeObjectURL(objectUrl);
   }, [file]);
 
   useEffect(() => {
     pollAbortRef.current = false;
     setReadinessReady(null);
     setReadinessMessage('');
-    setReviewApiReady(null);
     if (!activeApiBaseUrl) return;
+
+    getMineruPageConfig(activeApiBaseUrl)
+      .then((config) => {
+        setPageConfig(config);
+        applyPageConfigValues(config);
+      })
+      .catch(() => {
+        const config = getDefaultMineruPageConfig();
+        setPageConfig(config);
+        applyPageConfigValues(config);
+      });
+
     getMineruStatus(activeApiBaseUrl)
       .then((snapshot) => {
         setRemoteMaxUploadMb(snapshot.max_upload_mb ?? null);
@@ -161,30 +137,42 @@ export function PdfToWordPage({
         setReadinessReady(false);
         setReadinessMessage(caught instanceof Error ? caught.message : 'Không kiểm tra được dịch vụ.');
       });
+
     getMineruLlmProviders(activeApiBaseUrl)
       .then((snapshot) => {
-        const providers = snapshot.providers;
-        const defaultProvider = snapshot.default_provider;
-        const nvidiaReady = providers?.nvidia?.api_key_configured === true;
-        const openrouterReady = providers?.openrouter?.api_key_configured === true;
-        const router9Ready = providers?.router9?.api_key_configured === true;
-        setReviewApiReady(nvidiaReady || openrouterReady || router9Ready);
-
-        // Use provider/model from MinerU notebook config, not main app
-        const resolvedProvider = defaultProvider && defaultProvider !== 'auto'
-          ? defaultProvider
-          : nvidiaReady ? 'nvidia' : openrouterReady ? 'openrouter' : router9Ready ? 'router9' : 'auto';
-        const resolvedModel = providers?.[resolvedProvider as keyof typeof providers]?.model || '';
-        setMineruReviewProvider(resolvedProvider);
-        setMineruReviewModel(resolvedModel);
+        const providers = snapshot.providers ?? {};
+        setProviderDefaults(providers);
+        const nvidiaReady = providers.nvidia?.api_key_configured === true;
+        setRouter9Only((current) => current || providers.router9?.only_mode === true);
+        setLlmProvider('nvidia');
+        setLlmModel((currentModel) => modelForProvider('nvidia', providers) || currentModel || 'google/gemma-3-27b-it');
+        if (!nvidiaReady) setLlmMode('off');
       })
       .catch(() => {
-        setReviewApiReady(false);
+        setProviderDefaults({});
+        setLlmMode('off');
       });
+
     return () => {
       pollAbortRef.current = true;
     };
   }, [activeApiBaseUrl]);
+
+  function applyPageConfigValues(config: MineruPageConfig) {
+    setBackend(config.values.backend);
+    setParseMethod(config.values.parseMethod);
+    setLanguage(config.values.language);
+    setLatexDelimitersType(config.values.latexDelimitersType);
+    setFormulaEnable(config.values.formulaEnable);
+    setTableEnable(config.values.tableEnable);
+    setExamFormat(config.values.examFormat);
+    setLlmMode(config.values.llmMode);
+    setLlmProvider('nvidia');
+    setLlmModel(config.values.llmModel || 'google/gemma-3-27b-it');
+    setLlmReasoning(config.values.llmReasoning);
+    setRouter9Only(config.values.router9Only);
+    setServerUrl(config.values.serverUrl);
+  }
 
   function pickFile(nextFile: File | null) {
     setError('');
@@ -236,14 +224,14 @@ export function PdfToWordPage({
         examFormat,
         startPage,
         endPage,
-        serverUrl: '',
+        serverUrl: showServerUrl ? serverUrl : '',
         llmMode: effectiveLlmMode,
-        llmProvider: effectiveLlmMode === 'off' ? 'auto' : mineruReviewProvider,
-        llmModel: effectiveLlmMode === 'off' ? '' : mineruReviewModel,
+        llmProvider: 'nvidia',
+        llmModel: llmModel || 'google/gemma-3-27b-it',
         llmApiKey: '',
         llmBaseUrl: '',
-        llmReasoning: effectiveLlmMode !== 'off' && mineruReviewProvider === 'openrouter' && runtimeSettings.openrouter_reasoning_enabled,
-        router9Only: router9Only || runtimeSettings.router9.only_mode,
+        llmReasoning: false,
+        router9Only: false,
       });
       applyJobSnapshot(initial);
       await pollJob(initial.job_id);
@@ -266,7 +254,7 @@ export function PdfToWordPage({
     const nextProgress = typeof snapshot.progress === 'number' ? snapshot.progress : progress;
     setProgress(nextProgress);
     setMessage(snapshot.message || snapshot.stage || snapshot.status);
-    setTerminalLines(snapshot.terminal_lines?.slice(-8) ?? []);
+    setTerminalLines(snapshot.terminal_lines?.slice(-400) ?? []);
     if (snapshot.status === 'completed' || snapshot.done && snapshot.result) {
       setStatus('completed');
       setProgress(100);
@@ -286,17 +274,15 @@ export function PdfToWordPage({
       <div className="pdf-word-shell">
         <div className="pdf-word-intro">
           <p className="eyebrow">PDF sang Word</p>
-          <h2>Chuyển đề toán PDF sang Word</h2>
-          <p>
-            Tải lên đề PDF để tạo file Word có thể chỉnh sửa, giữ công thức, bảng và cấu trúc câu hỏi trắc nghiệm.
-          </p>
+          <h2>MinerU PDF to Word</h2>
+          <p>Gọi trực tiếp API MinerU đang chọn. Config form lấy từ trang gốc MinerU khi endpoint phản hồi.</p>
         </div>
 
         <aside className="pdf-word-status-panel" aria-label="Trạng thái MinerU">
           <span className={`pdf-word-status-dot ${readinessReady ? 'ready' : ''}`} aria-hidden="true" />
           <div>
             <strong>{readinessLabel}</strong>
-            <span>{formatReadinessMessage(readinessReady, readinessMessage)}</span>
+            <span>{readinessMessage || 'Chưa có message từ MinerU.'}</span>
           </div>
           <button type="button" className="pdf-word-guide-button" aria-label="Hướng dẫn chạy MinerU Colab" onClick={() => setGuideOpen(true)}>
             <svg {...guideStrokeIcon}>
@@ -326,119 +312,66 @@ export function PdfToWordPage({
                 if (!busy) pickFile(event.dataTransfer.files?.[0] ?? null);
               }}
             >
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".pdf,application/pdf"
-                disabled={busy}
-                onChange={(event) => pickFile(event.target.files?.[0] ?? null)}
-              />
+              <input type="file" accept=".pdf,application/pdf" disabled={busy} onChange={(event) => pickFile(event.target.files?.[0] ?? null)} />
               <span className="pdf-word-drop-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" /><path d="M12 18v-6" /><path d="m9 15 3 3 3-3" /></svg>
               </span>
-              <strong>{file ? file.name : 'Kéo thả PDF hoặc bấm để chọn'}</strong>
-              <span>{file ? `${formatBytes(file.size)} · sẵn sàng chuyển đổi` : `Tối đa ${maxUploadMb} MB`}</span>
+              <strong>{file ? file.name : 'Chọn file PDF'}</strong>
+              <span>{file ? `${formatBytes(file.size)} · ready` : `Max ${maxUploadMb} MB`}</span>
             </label>
 
-            {file && pdfPreviewUrl && (
-              <PdfOriginalPreview fileName={file.name} url={pdfPreviewUrl} />
-            )}
+            {file && pdfPreviewUrl && <PdfOriginalPreview fileName={file.name} url={pdfPreviewUrl} />}
 
             <div className="pdf-word-field-grid">
-              <label className="field-label" title={selectedBackendDescription}>
-                Chế độ xử lý
-                <select value={backend} disabled={busy} onChange={(event) => setBackend(event.target.value)} aria-describedby="pdf-word-backend-help">
-                  {backendOptions.map((option) => (
-                    <option key={option.value} value={option.value} title={option.description}>{option.label}</option>
-                  ))}
-                </select>
-                <span id="pdf-word-backend-help" className="field-help">{selectedBackendDescription}</span>
-              </label>
+              <OptionSelect label="Backend" value={backend} disabled={busy} options={pageConfig.options.backends} onChange={setBackend} />
+              <OptionSelect label="Phương thức" value={parseMethod} disabled={busy || forceOcr} options={pageConfig.options.parseMethods} onChange={setParseMethod} />
+              <OptionSelect label="OCR language" value={language} disabled={busy} options={pageConfig.options.languages} onChange={setLanguage} />
+              <OptionSelect label="LaTeX delimiter" value={latexDelimitersType} disabled={busy} options={pageConfig.options.latexDelimiters} onChange={setLatexDelimitersType} />
               <label className="field-label">
-                Kiểu đọc PDF
-                <select value={parseMethod} disabled={busy || forceOcr} onChange={(event) => setParseMethod(event.target.value)}>
-                  <option value="auto">Tự động</option>
-                  <option value="ocr">OCR</option>
-                  <option value="txt">Ưu tiên chữ có sẵn</option>
-                </select>
-              </label>
-              <label className="field-label">
-                Ngôn ngữ
-                <select value={language} disabled={busy} onChange={(event) => setLanguage(event.target.value)}>
-                  {languageOptions.map((option) => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="field-label">
-                Định dạng công thức
-                <select value={latexDelimitersType} disabled={busy} onChange={(event) => setLatexDelimitersType(event.target.value)}>
-                  <option value="b">Phổ biến trong tài liệu học thuật</option>
-                  <option value="a">Phổ biến trong đề thi</option>
-                  <option value="all">Tự nhận dạng</option>
-                </select>
-              </label>
-              <label className="field-label">
-                Trang bắt đầu
+                Từ trang
                 <input value={startPage} disabled={busy} inputMode="numeric" onChange={(event) => setStartPage(event.target.value)} />
               </label>
               <label className="field-label">
-                Trang kết thúc
-                <input value={endPage} disabled={busy} inputMode="numeric" placeholder="Để trống" onChange={(event) => setEndPage(event.target.value)} />
+                Đến trang
+                <input value={endPage} disabled={busy} inputMode="numeric" placeholder="Tất cả" onChange={(event) => setEndPage(event.target.value)} />
               </label>
             </div>
 
-            <div className="pdf-word-option-toggles" aria-label="Tùy chọn đề toán">
-              <label className="checkbox-label">
-                <input type="checkbox" checked={formulaEnable} disabled={busy} onChange={(event) => setFormulaEnable(event.target.checked)} />
-                Nhận diện công thức toán
-              </label>
-              <label className="checkbox-label">
-                <input type="checkbox" checked={tableEnable} disabled={busy} onChange={(event) => setTableEnable(event.target.checked)} />
-                Giữ bảng trong đề
-              </label>
-              <label className="checkbox-label">
-                <input type="checkbox" checked={forceOcr} disabled={busy} onChange={(event) => setForceOcr(event.target.checked)} />
-                Ép OCR
-              </label>
-              <label className="checkbox-label">
-                <input type="checkbox" checked={examFormat} disabled={busy} onChange={(event) => setExamFormat(event.target.checked)} />
-                Tối ưu cấu trúc đề trắc nghiệm
-              </label>
+            <div className="pdf-word-option-toggles" aria-label="Tùy chọn MinerU">
+              <CheckboxLabel checked={formulaEnable} disabled={busy} onChange={setFormulaEnable}>Nhận diện công thức</CheckboxLabel>
+              <CheckboxLabel checked={tableEnable} disabled={busy} onChange={setTableEnable}>Nhận diện bảng</CheckboxLabel>
+              <CheckboxLabel checked={forceOcr} disabled={busy} onChange={setForceOcr}>Ép OCR</CheckboxLabel>
+              <CheckboxLabel checked={examFormat} disabled={busy} onChange={setExamFormat}>Format đề thi trắc nghiệm</CheckboxLabel>
             </div>
 
             <div className="warning-box">
-              File PDF sẽ được tải lên dịch vụ MinerU tại link xử lý đang chọn. Chỉ dùng endpoint bạn tin tưởng và tránh gửi tài liệu chứa thông tin nhạy cảm.
+              PDF upload tới MinerU endpoint đang chọn. Không gửi tài liệu nhạy cảm vào endpoint không kiểm soát.
             </div>
 
             <details className="pdf-word-advanced-options" open={!activeApiBaseUrl}>
-              <summary>Tuỳ chọn nâng cao</summary>
+              <summary>Endpoint</summary>
               <label className="field-label">
                 Link xử lý MinerU
-                <input
-                  value={mineruApiBaseUrl}
-                  disabled={busy}
-                  placeholder="https://...trycloudflare.com"
-                  onChange={(event) => updateMineruApiBaseUrl(event.target.value, setMineruApiBaseUrl)}
-                />
+                <input value={mineruApiBaseUrl} disabled={busy} placeholder="https://...trycloudflare.com" onChange={(event) => updateMineruApiBaseUrl(event.target.value, setMineruApiBaseUrl)} />
               </label>
+              {showServerUrl && (
+                <label className="field-label">
+                  OpenAI-compatible URL
+                  <input value={serverUrl} disabled={busy} placeholder="Chỉ dùng với http-client backend" onChange={(event) => setServerUrl(event.target.value)} />
+                </label>
+              )}
             </details>
           </div>
 
           <div className="pdf-word-options-column">
-            <div className="panel-title">Kiểm tra kết quả</div>
-            <label className="field-label">
-              Mức kiểm tra
-              <select value={llmMode} disabled={busy || !canUseReview} onChange={(event) => setLlmMode(event.target.value)}>
-                <option value="review">Kiểm tra công thức và bảng</option>
-                <option value="correct">Tự sửa lỗi rõ ràng</option>
-                <option value="off">Không kiểm tra thêm</option>
-              </select>
-              {!canUseReview && <span className="field-help review-disabled-help">Notebook MinerU chưa có API key (NVIDIA, OpenRouter, hoặc 9router) nên chức năng review đang bị khoá.</span>}
-            </label>
+            <div className="panel-title">LLM review</div>
+            {showLlmReviewMode && <OptionSelect label="LLM review" value={llmMode} disabled={busy} options={pageConfig.options.llmModes} onChange={setLlmMode} />}
+            <div className={`pdf-word-provider-status ${selectedProviderReady ? 'ready' : 'blocked'}`}>
+              {providerStatusText(providerDefaults, llmModel)}
+            </div>
             <button className="submit-button" type="submit" disabled={busy || !file || !activeApiBaseUrl}>
               {busy && <Spinner />}
-              {busy ? 'Đang chuyển đổi...' : 'Chuyển PDF sang Word'}
+              {busy ? 'Đang chuyển đổi...' : 'Chuyển sang Word'}
             </button>
             {error && <div className="pdf-word-error" role="alert">{error}</div>}
           </div>
@@ -447,24 +380,42 @@ export function PdfToWordPage({
         {(busy || result) && (
           <section className="pdf-word-result-strip" aria-live="polite">
             <div className="pdf-word-progress-head">
-              <strong>{status === 'completed' ? 'Hoàn tất' : 'Đang xử lý'}</strong>
+              <strong>{status === 'completed' ? 'Completed' : 'Running'}</strong>
               <span>{Math.round(progress)}%</span>
             </div>
             <div className="pdf-word-progress-track"><span ref={progressFillRef} className="pdf-word-progress-fill" /></div>
             <p>{message}</p>
             {terminalLines.length > 0 && (
               <details className="pdf-word-log-panel">
-                <summary>Xem nhật ký xử lý</summary>
+                <summary>Terminal realtime</summary>
                 <pre className="pdf-word-terminal">{terminalLines.join('\n')}</pre>
               </details>
             )}
-            {result && (
-              <ResultDownloads baseUrl={activeApiBaseUrl} result={result} />
-            )}
+            {result && <ResultDownloads baseUrl={activeApiBaseUrl} result={result} />}
           </section>
         )}
       </div>
     </section>
+  );
+}
+
+function OptionSelect({ label, value, disabled, options, onChange }: { label: string; value: string; disabled?: boolean; options: MineruSelectOption[]; onChange: (value: string) => void }) {
+  return (
+    <label className="field-label">
+      {label}
+      <select value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)}>
+        {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+      </select>
+    </label>
+  );
+}
+
+function CheckboxLabel({ checked, disabled, onChange, children }: { checked: boolean; disabled?: boolean; onChange: (checked: boolean) => void; children: ReactNode }) {
+  return (
+    <label className="checkbox-label">
+      <input type="checkbox" checked={checked} disabled={disabled} onChange={(event) => onChange(event.target.checked)} />
+      {children}
+    </label>
   );
 }
 
@@ -488,38 +439,17 @@ function MineruColabGuide({ onClose }: { onClose: () => void }) {
         <ol className="pdf-word-guide-steps">
           <li className="pdf-word-guide-inline-step">
             <strong>Mở notebook Colab.</strong>
-            <a href="https://colab.research.google.com/github/sin0235/MinerU/blob/main/colab_pdf_to_word_cloudflare.ipynb" target="_blank" rel="noreferrer noopener">
-              Mở MinerU Colab
-            </a>
+            <a href="https://colab.research.google.com/github/sin0235/MinerU/blob/main/colab_pdf_to_word_cloudflare.ipynb" target="_blank" rel="noreferrer noopener">Mở MinerU Colab</a>
           </li>
-          <li>
-            <strong>Bật GPU đúng cách.</strong>
-            Vào <span>Runtime → Change runtime type</span>, chọn <span>T4 GPU</span> hoặc GPU đang có, rồi bấm <span>Save</span>.
-          </li>
-          <li>
-            <strong>Chạy lần lượt các cell từ trên xuống.</strong>
-            Nếu Colab hỏi quyền Drive hoặc cài package, chấp nhận và đợi đến khi server khởi động xong. Không đóng tab trong lúc xử lý.
-          </li>
-          <li>
-            <strong>Lấy link API Cloudflare.</strong>
-            Sau cell tunnel chạy xong, copy link dạng <span>https://...trycloudflare.com</span>. Mở thử link đó trên trình duyệt: nếu thấy web PDF sang Word hoặc gọi được <span>/api/status</span> là link đúng.
-          </li>
-          <li>
-            <strong>Dán link vào ô “Link xử lý MinerU”.</strong>
-            Dán nguyên link Cloudflare vào ô trong trang này. Hệ thống sẽ dùng link đó thay cho URL trong <span>.env</span> và tự lưu lại cho lần refresh sau.
-          </li>
-          <li>
-            <strong>Khi đổi runtime hoặc chạy lại notebook.</strong>
-            Link Cloudflare có thể đổi. Nếu xử lý báo lỗi hoặc mất kết nối, copy link mới từ Colab rồi dán lại vào ô “Link xử lý MinerU”.
-          </li>
-          <li>
-            <strong>Tắt GPU khi dùng xong.</strong>
-            Trong Colab chọn <span>Runtime → Disconnect and delete runtime</span>. Nếu dùng Kaggle, bấm <span>Stop session</span> hoặc tắt notebook session để tránh giữ GPU lãng phí.
-          </li>
+          <li><strong>Bật GPU đúng cách.</strong> Vào <span>Runtime → Change runtime type</span>, chọn <span>T4 GPU</span>, rồi bấm <span>Save</span>.</li>
+          <li><strong>Chạy cell từ trên xuống.</strong> Đợi server khởi động xong. Không đóng tab trong lúc xử lý.</li>
+          <li><strong>Lấy Cloudflare URL.</strong> Copy link dạng <span>https://...trycloudflare.com</span>. Kiểm tra được <span>/api/status</span> là đúng.</li>
+          <li><strong>Dán link vào ô “Link xử lý MinerU”.</strong> Link được lưu localStorage cho lần refresh sau.</li>
+          <li><strong>Khi runtime đổi.</strong> Cloudflare URL có thể đổi. Copy URL mới và dán lại.</li>
         </ol>
 
         <div className="pdf-word-guide-note">
-          Không paste link này vào “server_url” của MinerU CLI. Trang này dùng nó làm base API cho các endpoint <span>/api/status</span>, <span>/api/convert</span> và <span>/api/jobs</span>.
+          Ô “Link xử lý MinerU” là base API cho <span>/api/status</span>, <span>/api/convert</span>, <span>/api/jobs</span>. Ô <span>OpenAI-compatible URL</span> chỉ dùng với backend http-client.
         </div>
       </div>
     </div>
@@ -527,16 +457,98 @@ function MineruColabGuide({ onClose }: { onClose: () => void }) {
 }
 
 function ResultDownloads({ baseUrl, result }: { baseUrl: string; result: MineruResult }) {
+  const [preview, setPreview] = useState<PreviewState>(null);
   const artifacts = result.artifacts ?? [];
   const docx = artifacts.find((artifact) => artifact.kind === 'docx') ?? artifacts.find((artifact) => artifact.filename?.toLowerCase().endsWith('.docx'));
+  const previewArtifacts = artifacts.filter((artifact) => artifact.preview_url).slice(0, 6);
+  const docxHref = mineruUrl(baseUrl, docx?.download_url || result.docx_url || '');
+  const zipHref = mineruUrl(baseUrl, result.artifacts_zip_url || '');
+
+  async function openPreview(artifact: MineruArtifact) {
+    const url = mineruUrl(baseUrl, artifact.preview_url || '');
+    const title = artifact.filename || artifact.label || 'Preview';
+    const kind = artifact.preview_kind || '';
+    if (kind === 'docx') {
+      setPreview({ title, kind, url, loading: true });
+      try {
+        const data = await getMineruDocxPreview(baseUrl, artifact.preview_url || '');
+        setPreview({ title: data.filename || title, kind, url, html: data.html });
+      } catch (caught) {
+        setPreview({ title, kind, url, error: caught instanceof Error ? caught.message : 'Không tải được preview DOCX.' });
+      }
+      return;
+    }
+    setPreview({ title, kind, url });
+  }
 
   return (
-    <div className="pdf-word-downloads">
-      {docx && (
-        <a className="pdf-word-download-primary" href={mineruUrl(baseUrl, docx.download_url || result.docx_url || '')} target="_blank" rel="noreferrer">
-          Tải file Word
-        </a>
+    <div className="pdf-word-result-detail">
+      <div className="pdf-word-result-summary">
+        <SummaryCell label="File" value={result.download_name || result.original_filename || docx?.filename || 'output.docx'} />
+        <SummaryCell label="Backend" value={result.backend_used || '-'} />
+        <SummaryCell label="Thời gian" value={result.elapsed_seconds == null ? '-' : `${result.elapsed_seconds.toFixed(2)}s`} />
+        <SummaryCell label="Số trang" value={result.page_count == null ? '-' : String(result.page_count)} />
+      </div>
+
+      <div className="pdf-word-downloads">
+        {(docx || result.docx_url) && <a className="pdf-word-download-primary" href={docxHref} target="_blank" rel="noreferrer">Tải DOCX</a>}
+        {result.artifacts_zip_url && <a className="pdf-word-download-link" href={zipHref} target="_blank" rel="noreferrer">Tải ZIP artifact</a>}
+      </div>
+
+      {artifacts.length > 0 && (
+        <div className="pdf-word-artifact-list">
+          {artifacts.map((artifact) => (
+            <a key={`${artifact.kind}-${artifact.relative_path}-${artifact.filename}`} href={mineruUrl(baseUrl, artifact.download_url || '')} target="_blank" rel="noreferrer">
+              <span>{artifact.kind || 'file'}</span>
+              <strong>{artifact.filename || artifact.label || artifact.relative_path}</strong>
+              <em>{formatBytes(artifact.size_bytes ?? 0)}</em>
+            </a>
+          ))}
+        </div>
       )}
+
+      {previewArtifacts.length > 0 && (
+        <div className="pdf-word-preview-actions">
+          {previewArtifacts.map((artifact) => (
+            <button key={`${artifact.preview_kind}-${artifact.preview_url}`} className="pdf-word-download-link" type="button" onClick={() => openPreview(artifact)}>
+              Preview {artifact.preview_kind?.toUpperCase() || artifact.kind || 'file'}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {preview && <ArtifactPreview preview={preview} onClose={() => setPreview(null)} />}
+
+      {(result.warnings ?? []).length > 0 && (
+        <div className="pdf-word-warning-list">
+          {result.warnings?.map((warning) => <div key={warning}>{warning}</div>)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SummaryCell({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function ArtifactPreview({ preview, onClose }: { preview: Exclude<PreviewState, null>; onClose: () => void }) {
+  const srcDoc = preview.html ? `<!doctype html><meta charset="utf-8"><style>body{font-family:Arial,sans-serif;line-height:1.5;padding:16px;color:#111827}table{border-collapse:collapse;width:100%}td,th{border:1px solid #d1d5db;padding:4px 6px}</style>${preview.html}` : '';
+  return (
+    <div className="pdf-word-artifact-preview">
+      <div className="pdf-word-preview-head">
+        <strong>{preview.title}</strong>
+        <button className="pdf-word-preview-close" type="button" onClick={onClose}>Đóng</button>
+      </div>
+      {preview.loading && <div className="pdf-word-preview-note">Đang tải preview...</div>}
+      {preview.error && <div className="pdf-word-error" role="alert">{preview.error}</div>}
+      {!preview.loading && !preview.error && preview.kind === 'docx' && <iframe title={preview.title} sandbox="" srcDoc={srcDoc} />}
+      {!preview.loading && !preview.error && preview.kind !== 'docx' && <iframe title={preview.title} src={preview.url} />}
     </div>
   );
 }
@@ -545,7 +557,7 @@ const PdfOriginalPreview = memo(function PdfOriginalPreview({ fileName, url }: {
   return (
     <div className="pdf-word-preview-panel">
       <div className="pdf-word-preview-head">
-        <strong>Bản PDF đã tải lên</strong>
+        <strong>Preview PDF upload</strong>
         <a href={url} target="_blank" rel="noreferrer">Mở tab mới</a>
       </div>
       <iframe src={url} title={`Xem trước ${fileName}`} />
@@ -560,27 +572,37 @@ function loadMineruApiBaseUrl(fallback: string) {
 function updateMineruApiBaseUrl(value: string, setValue: (value: string) => void) {
   setValue(value);
   const normalized = normalizeMineruBaseUrl(value);
-  if (normalized) {
-    window.localStorage.setItem(MINERU_API_BASE_URL_STORAGE_KEY, normalized);
-  } else {
-    window.localStorage.removeItem(MINERU_API_BASE_URL_STORAGE_KEY);
-  }
+  if (normalized) window.localStorage.setItem(MINERU_API_BASE_URL_STORAGE_KEY, normalized);
+  else window.localStorage.removeItem(MINERU_API_BASE_URL_STORAGE_KEY);
 }
 
 function normalizePdfLlmProvider(provider: string | undefined) {
   const value = (provider || 'auto').trim().toLowerCase();
-  if (value === '9route') return 'router9';
+  if (value === '9route' || value === '9router') return 'router9';
   return ALLOWED_LLM_PROVIDERS.has(value) ? value : 'auto';
 }
 
-function formatReadinessMessage(ready: boolean | null, message: string) {
-  if (ready) return 'Bạn có thể tải file PDF lên để chuyển đổi.';
-  if (!message) return 'Vui lòng thử lại sau ít phút.';
-  const lower = message.toLowerCase();
-  if (lower.includes('cors') || lower.includes('api') || lower.includes('env') || lower.includes('mineru') || lower.includes('cli')) {
-    return 'Dịch vụ xử lý tài liệu chưa sẵn sàng.';
-  }
-  return message;
+function providerReady(defaults: MineruProviderDefaults, provider: string): boolean {
+  if (provider === 'auto') return providerReady(defaults, 'nvidia') || providerReady(defaults, 'openrouter') || providerReady(defaults, 'router9');
+  return defaults[provider as 'nvidia' | 'openrouter' | 'router9']?.api_key_configured === true;
+}
+
+function modelForProvider(provider: string, defaults: MineruProviderDefaults) {
+  const normalized = normalizePdfLlmProvider(provider);
+  if (normalized === 'auto') return '';
+  const model = defaults[normalized as 'nvidia' | 'openrouter' | 'router9']?.model || '';
+  if (!model) return '';
+  if (normalized === 'openrouter' && !model.startsWith('openrouter/')) return `openrouter/${model}`;
+  if (normalized === 'router9' && !model.startsWith('router9/') && !model.startsWith('9route/')) return `router9/${model}`;
+  return model;
+}
+
+function providerStatusText(defaults: MineruProviderDefaults, model: string) {
+  const defaultsForProvider = defaults.nvidia;
+  const envName = defaultsForProvider?.api_key_env || 'NVIDIA_API_KEY';
+  if (!defaultsForProvider?.api_key_configured) return `Chưa cấu hình ${envName} trong notebook MinerU. LLM review đang tắt.`;
+  const base = defaultsForProvider.base_url ? ` · ${defaultsForProvider.base_url}` : '';
+  return `API key sẵn sàng cho NVIDIA${model ? ` · ${model}` : ''}${base}`;
 }
 
 function formatBytes(value: number) {

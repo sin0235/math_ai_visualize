@@ -46,7 +46,8 @@ class Settings(BaseSettings):
     router9_only: bool = False
     router9_allowed_models: list[str] = []
     ai_provider: str = "auto"
-    database_backend: str = "d1"
+    database_backend: Literal["sqlite", "d1", "postgres"] = "d1"
+    database_url: str | None = None
     sqlite_path: str = "backend/.data/hinh.db"
     d1_account_id: str | None = None
     d1_database_id: str | None = None

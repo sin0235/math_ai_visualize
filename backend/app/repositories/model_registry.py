@@ -18,7 +18,7 @@ class ModelRegistryRepository:
         return await self.db.fetch_all("SELECT * FROM ai_providers ORDER BY id")
 
     async def list_models(self) -> list[Any]:
-        return await self.db.fetch_all("SELECT * FROM ai_models ORDER BY provider_id, label COLLATE NOCASE, id COLLATE NOCASE")
+        return await self.db.fetch_all("SELECT * FROM ai_models ORDER BY provider_id, lower(label), lower(id)")
 
     async def list_task_profiles(self) -> list[Any]:
         return await self.db.fetch_all("SELECT * FROM ai_task_profiles ORDER BY task")
@@ -83,8 +83,15 @@ class ModelRegistryRepository:
     async def insert_seed_provider(self, provider_id: str, label: str, base_url: str, default_model_id: str, api_key_configured: bool) -> None:
         await self.db.execute(
             """
-            INSERT OR REPLACE INTO ai_providers (id, label, base_url, default_model_id, api_key_configured, enabled)
+            INSERT INTO ai_providers (id, label, base_url, default_model_id, api_key_configured, enabled)
             VALUES (?, ?, ?, ?, ?, 1)
+            ON CONFLICT(id) DO UPDATE SET
+              label = excluded.label,
+              base_url = excluded.base_url,
+              default_model_id = excluded.default_model_id,
+              api_key_configured = excluded.api_key_configured,
+              enabled = 1,
+              updated_at = CURRENT_TIMESTAMP
             """,
             [provider_id, label, base_url, default_model_id, int(api_key_configured)],
         )
@@ -195,4 +202,4 @@ class ModelRegistryRepository:
         )
 
     async def ensure_provider(self, provider_id: str, label: str) -> None:
-        await self.db.execute("INSERT OR IGNORE INTO ai_providers (id, label) VALUES (?, ?)", [provider_id, label])
+        await self.db.execute("INSERT INTO ai_providers (id, label) VALUES (?, ?) ON CONFLICT(id) DO NOTHING", [provider_id, label])
