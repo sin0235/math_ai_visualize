@@ -362,7 +362,7 @@ class RateLimitRepository:
             INSERT INTO rate_limit_events (key, bucket, count, expires_at)
             VALUES (?, ?, 1, ?)
             ON CONFLICT(key, bucket) DO UPDATE SET
-              count = count + 1,
+              count = rate_limit_events.count + 1,
               updated_at = CURRENT_TIMESTAMP
             """,
             [key, bucket, expires_at],
