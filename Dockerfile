@@ -21,6 +21,8 @@ COPY backend/requirements-ocr.txt ./backend/requirements-ocr.txt
 RUN pip install --no-cache-dir -r backend/requirements.txt \
     && pip install --no-cache-dir -r backend/requirements-ocr.txt
 COPY backend/ ./backend/
+COPY migrations/ ./migrations/
+COPY migrations_postgres/ ./migrations_postgres/
 COPY --from=frontend-build /app/frontend/dist /usr/share/nginx/html
 COPY deploy/nginx.conf /etc/nginx/nginx.conf
 COPY deploy/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
