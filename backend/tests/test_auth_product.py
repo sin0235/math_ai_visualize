@@ -9,12 +9,31 @@ from app.core.config import Settings, get_settings
 from app.db.migrations import apply_sqlite_migrations
 from app.db.session import SQLiteClient, get_database
 from app.main import app
-from app.repositories.auth import AuthTokenRepository, OAUTH_PASSWORD_SENTINEL, OAUTH_PROVIDER_GOOGLE, OAuthIdentityRepository, OAuthStateRepository, TOKEN_PURPOSE_EMAIL_VERIFICATION, TOKEN_PURPOSE_PASSWORD_RESET, UserRepository, pwd_context
+from app.repositories.auth import AuthTokenRepository, OAUTH_PASSWORD_SENTINEL, OAUTH_PROVIDER_GOOGLE, OAuthIdentityRepository, OAuthStateRepository, RateLimitRepository, TOKEN_PURPOSE_EMAIL_VERIFICATION, TOKEN_PURPOSE_PASSWORD_RESET, UserRepository, pwd_context
 from app.services.google_oauth import GoogleUserInfo
 
 
 def register_payload(email: str, password: str = "StrongPass123") -> dict:
     return {"email": email, "password": password, "accept_privacy_policy": True, "accept_terms": True}
+
+
+class RecordingRateLimitDb:
+    def __init__(self):
+        self.executed_sql = ""
+
+    async def execute(self, sql, params=None):
+        self.executed_sql = sql
+
+    async def fetch_one(self, sql, params=None):
+        return {"count": 1, "expires_at": "2099-01-01T00:00:00+00:00"}
+
+
+def test_rate_limit_upsert_qualifies_count_for_postgres():
+    db = RecordingRateLimitDb()
+
+    asyncio.run(RateLimitRepository(db).hit("auth:google:start:ip:test", 20, 900))
+
+    assert "count = rate_limit_events.count + 1" in db.executed_sql
 
 
 def test_bcrypt_hashing_does_not_emit_backend_version_traceback(capsys):
