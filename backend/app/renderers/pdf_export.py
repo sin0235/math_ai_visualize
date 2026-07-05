@@ -16,6 +16,8 @@ nhận ra khối; không thử rendering thực tế shading vì scope là "snap
 
 from __future__ import annotations
 
+import base64
+import binascii
 import io
 from math import cos, pi, sin
 
@@ -40,6 +42,7 @@ from app.schemas.scene import (
     Vector2D,
     Vector3D,
     RenderResponse,
+    ExportViewCapture,
 )
 from app.services.scene_trust import export_notice_lines, scene_with_trusted_annotations
 
@@ -313,4 +316,49 @@ def build_svg(scene: MathScene, problem_text: str | None = None, response: Rende
     return buffer.getvalue()
 
 
-__all__ = ["build_pdf", "build_png", "build_jpg", "build_svg"]
+def build_pdf_from_capture(scene: MathScene, capture: ExportViewCapture, response: RenderResponse | None = None) -> bytes:
+    image_bytes = _decode_capture_data_url(capture)
+    image = plt.imread(io.BytesIO(image_bytes))
+    _, hidden_annotations = scene_with_trusted_annotations(scene)
+    notices = export_notice_lines(scene, response, hidden_annotations)
+
+    buffer = io.BytesIO()
+    with PdfPages(buffer) as pdf:
+        fig = plt.figure(figsize=(8.27, 11.69), facecolor="white")
+        title_ax = fig.add_axes((0.08, 0.84, 0.84, 0.11))
+        title_ax.axis("off")
+        title_ax.text(0.0, 1.0, "Đề bài", fontsize=11, fontweight="bold", color="#111111", ha="left", va="top")
+        title_ax.text(0.0, 0.75, _wrap_text(scene.problem_text or "Hình", 90), fontsize=10, color="#0b0c10", ha="left", va="top", wrap=True)
+        title_ax.text(
+            0.0,
+            0.16,
+            _wrap_text(" | ".join([*notices, "Ảnh chụp theo góc nhìn Three.js hiện tại."]), 110),
+            fontsize=8.5,
+            color="#b45309" if "Hình minh họa" in notices[0] else "#166534",
+            ha="left",
+            va="top",
+            wrap=True,
+        )
+        image_ax = fig.add_axes((0.06, 0.06, 0.88, 0.74))
+        image_ax.imshow(image)
+        image_ax.axis("off")
+        try:
+            pdf.savefig(fig)
+        finally:
+            plt.close(fig)
+    return buffer.getvalue()
+
+
+def _decode_capture_data_url(capture: ExportViewCapture) -> bytes:
+    prefix = f"data:{capture.mime_type};base64,"
+    payload = capture.data_url[len(prefix):]
+    try:
+        data = base64.b64decode(payload, validate=True)
+    except (binascii.Error, ValueError) as error:
+        raise ValueError("view_capture.data_url không phải base64 hợp lệ.") from error
+    if len(data) > 12_000_000:
+        raise ValueError("view_capture vượt quá giới hạn 12MB.")
+    return data
+
+
+__all__ = ["build_pdf", "build_pdf_from_capture", "build_png", "build_jpg", "build_svg"]

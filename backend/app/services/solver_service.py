@@ -48,6 +48,9 @@ class SolverStep:
         substitution_latex: str | None = None,
         result_latex: str | None = None,
         sub_steps: list["SolverStep"] | None = None,
+        theorem: str | None = None,
+        claim: str | None = None,
+        depends_on: list[str] | None = None,
     ) -> None:
         self.index = index
         self.title = title
@@ -60,6 +63,9 @@ class SolverStep:
         self.substitution_latex = substitution_latex
         self.result_latex = result_latex
         self.sub_steps = sub_steps or []
+        self.theorem = theorem
+        self.claim = claim
+        self.depends_on = depends_on or []
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -74,6 +80,9 @@ class SolverStep:
             "substitution_latex": self.substitution_latex,
             "result_latex": self.result_latex,
             "sub_steps": [s.to_dict() for s in self.sub_steps],
+            "theorem": self.theorem,
+            "claim": self.claim,
+            "depends_on": self.depends_on,
         }
 
 
@@ -89,6 +98,7 @@ class SolverResult:
         method: str = "oxyz",
         used_facts: list[dict[str, str]] | None = None,
         data_issues: list[str] | None = None,
+        used_theorems: list[dict[str, str]] | None = None,
     ) -> None:
         self.question = question
         self.answer = answer
@@ -98,6 +108,7 @@ class SolverResult:
         self.method = method
         self.used_facts = used_facts or []
         self.data_issues = data_issues or []
+        self.used_theorems = used_theorems or []
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -109,6 +120,7 @@ class SolverResult:
             "method": self.method,
             "used_facts": self.used_facts,
             "data_issues": self.data_issues,
+            "used_theorems": self.used_theorems,
         }
 
 
@@ -805,6 +817,16 @@ def _classicalize_result(result: SolverResult, scene_dict: dict, points: dict[st
         ]
         return SolverResult(result.question, "Không đủ dữ kiện", [], warnings)
 
+    proof = _classical_proof_for_result(result, scene_dict, kind, highlight)
+    if proof is not None:
+        result.steps = proof["steps"]
+        result.used_theorems = proof["used_theorems"]
+        result.warnings = [
+            *result.warnings,
+            "Mode Tương quan hình học đang dùng proof planner deterministic; template deterministic an toàn vẫn là fallback; AI không được phép tự thêm định lý, dữ kiện hoặc thay đổi kết quả.",
+        ]
+        return result
+
     facts = _relevant_scene_facts(scene_dict, highlight)
     fact_sub_steps = [
         SolverStep(index + 1, "Dữ kiện từ đề/hình", fact, None, None, highlight, kind="fact")
@@ -852,6 +874,39 @@ def _classicalize_result(result: SolverResult, scene_dict: dict, points: dict[st
         "Mode Tương quan hình học đang dùng template deterministic an toàn; AI không được phép tự thêm định lý, dữ kiện hoặc thay đổi kết quả.",
     ]
     return result
+
+
+def _classical_proof_for_result(result: SolverResult, scene_dict: dict, kind: str, highlight: list[str]) -> dict[str, list] | None:
+    from app.services.classical_proof import build_classical_proof
+
+    proof = build_classical_proof(
+        scene_dict,
+        result.question,
+        kind,
+        highlight,
+        result.answer,
+        result.steps[-1].result_latex if result.steps else None,
+    )
+    if proof is None:
+        return None
+    steps = [
+        SolverStep(
+            index=index,
+            title=step.title,
+            explanation=step.explanation,
+            expression=None,
+            result=step.result_latex,
+            highlight=step.highlight,
+            kind=step.kind,
+            formula_latex=step.formula_latex,
+            result_latex=step.result_latex,
+            theorem=step.theorem,
+            claim=step.claim,
+            depends_on=step.depends_on,
+        )
+        for index, step in enumerate(proof.steps, start=1)
+    ]
+    return {"steps": steps, "used_theorems": [{"name": item} for item in proof.used_theorems if item]}
 
 
 def _classical_method_step(kind: str, highlight: list[str], question: str = "", scene_dict: dict | None = None) -> SolverStep:

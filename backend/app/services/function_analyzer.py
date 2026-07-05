@@ -16,16 +16,18 @@ import re
 from math import isfinite
 from typing import Any, Mapping
 
+import sympy as sp
 from sympy import (
     S, Symbol, oo, simplify, diff, solve, limit,
     Rational, zoo, nan, latex,
-    sympify, SympifyError, fraction, cancel,
+    fraction, cancel,
     sin, cos, tan, cot, asin, acos, atan, log, exp, sqrt, pi, E, Abs,
     solveset, Interval, Poly, discriminant, Eq, FiniteSet, solve_univariate_inequality, default_sort_key,
 )
 from sympy.calculus.util import continuous_domain, function_range
 from sympy.calculus.singularities import singularities
-from sympy.parsing.sympy_parser import implicit_multiplication_application, standard_transformations, parse_expr
+
+from app.services.safe_math_parser import SafeMathComplexityError, SafeMathParseError, SafeMathParseResult, parse_safe_math_expression
 
 
 x = Symbol("x", real=True)
@@ -35,44 +37,18 @@ _PARAMETER_RANGES = {"m": {"min": -10.0, "max": 10.0, "step": 0.1}}
 _CLEAN_RE = re.compile(r"\s+")
 
 
-def _parse_expr(expression: str):
+def _parse_expr(expression: str) -> SafeMathParseResult:
     cleaned = _preprocess_expression(expression)
-    locals_map = {
-        "x": x,
-        "m": m,
-        "sin": sin,
-        "cos": cos,
-        "tan": tan,
-        "cot": cot,
-        "asin": asin,
-        "acos": acos,
-        "atan": atan,
-        "arcsin": asin,
-        "arccos": acos,
-        "arctan": atan,
-        "log": log,
-        "ln": log,
-        "exp": exp,
-        "sqrt": sqrt,
-        "abs": Abs,
-        "Abs": Abs,
-        "pi": pi,
-        "E": E,
-    }
     try:
-        expr = parse_expr(
-            cleaned,
-            local_dict=locals_map,
-            transformations=standard_transformations + (implicit_multiplication_application,),
-        )
-    except (SympifyError, SyntaxError, TypeError, ValueError) as e:
+        parsed = parse_safe_math_expression(cleaned)
+    except (SafeMathParseError, SafeMathComplexityError) as e:
         raise ValueError(f"Không thể phân tích biểu thức: {expression!r}. Lỗi: {e}") from e
 
-    unsupported = expr.free_symbols - {x, m}
+    unsupported = parsed.expr.free_symbols - {x, m}
     if unsupported:
         names = ", ".join(sorted(str(symbol) for symbol in unsupported))
         raise ValueError(f"Chỉ hỗ trợ biến x và tham số m trong phiên bản này. Ký hiệu chưa hỗ trợ: {names}.")
-    return expr
+    return parsed
 
 
 def _preprocess_expression(expression: str) -> str:
@@ -315,9 +291,11 @@ def analyze_function(
     warnings: list[str] = []
 
     try:
-        parsed = _parse_expr(expression)
+        parse_result = _parse_expr(expression)
+        parsed = parse_result.expr
     except ValueError as e:
-        return {"error": str(e), "warnings": [str(e)]}
+        code = getattr(e.__cause__, "code", "ANALYZER_PARSE_FAILED")
+        return {"error": str(e), "error_code": code, "warnings": [str(e)]}
 
     detected_parameters = ["m"] if m in parsed.free_symbols else []
     active_parameters: dict[str, float] = {}
@@ -342,6 +320,9 @@ def analyze_function(
             "active": active_parameters,
             "ranges": {name: dict(config) for name, config in _PARAMETER_RANGES.items() if name in detected_parameters},
         },
+        "complexity_score": parse_result.complexity_score,
+        "_parsed_expr": parsed,
+        "_evaluated_expr": f,
     }
 
     try:

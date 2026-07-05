@@ -43,6 +43,9 @@ class SolveStepResponse(BaseModel):
     substitution_latex: str | None = None
     result_latex: str | None = None
     sub_steps: list["SolveStepResponse"] = Field(default_factory=list)
+    theorem: str | None = None
+    claim: str | None = None
+    depends_on: list[str] = Field(default_factory=list)
 
 SolveStepResponse.model_rebuild()
 
@@ -55,6 +58,7 @@ class SolveResponse(BaseModel):
     confidence: str = "verified"
     method: str = "oxyz"
     used_facts: list[dict[str, str]] = Field(default_factory=list)
+    used_theorems: list[dict[str, str]] = Field(default_factory=list)
     data_issues: list[str] = Field(default_factory=list)
     advisory: QualityRiskAdvisory | None = None
 
@@ -118,6 +122,9 @@ async def solve_problem(
             substitution_latex=s.substitution_latex,
             result_latex=s.result_latex,
             sub_steps=[_map_step(sub) for sub in getattr(s, "sub_steps", [])],
+            theorem=getattr(s, "theorem", None),
+            claim=getattr(s, "claim", None),
+            depends_on=getattr(s, "depends_on", []),
         )
 
     return SolveResponse(
@@ -128,6 +135,7 @@ async def solve_problem(
         confidence=getattr(result, "confidence", "verified"),
         method=getattr(result, "method", "oxyz"),
         used_facts=getattr(result, "used_facts", []),
+        used_theorems=getattr(result, "used_theorems", []),
         data_issues=getattr(result, "data_issues", []),
         advisory=advisory,
     )

@@ -8037,6 +8037,20 @@ pre {
   line-height: 1.55;
   white-space: pre-line;
 }
+.sp-step-proof-note {
+  display: grid;
+  gap: 4px;
+  border-left: 3px solid var(--line-2);
+  padding: 8px 10px;
+  background: var(--surface);
+  border-radius: 8px;
+  color: var(--ink-3);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+.sp-step-proof-note p { margin: 0; }
+.sp-step-proof-note strong { color: var(--ink); }
+
 .sp-step-formula {
   display: flex;
   align-items: center;

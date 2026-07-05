@@ -662,10 +662,25 @@ class RenderRequest(BaseModel):
     runtime_settings: RuntimeSettings | None = None
 
 
+class ExportViewCapture(BaseModel):
+    mime_type: Literal["image/png", "image/jpeg"]
+    data_url: str = Field(max_length=MAX_IMAGE_DATA_URL_CHARS)
+    width: int = Field(ge=8, le=8192)
+    height: int = Field(ge=8, le=8192)
+
+    @model_validator(mode="after")
+    def validate_data_url_prefix(self) -> "ExportViewCapture":
+        prefix = f"data:{self.mime_type};base64,"
+        if not self.data_url.startswith(prefix):
+            raise ValueError("view_capture.data_url không khớp mime_type.")
+        return self
+
+
 class SceneRenderRequest(BaseModel):
     scene: MathScene
     advanced_settings: AdvancedRenderSettings = Field(default_factory=AdvancedRenderSettings)
     response: RenderResponse | None = None
+    view_capture: ExportViewCapture | None = None
 
 
 class RenderPayload(BaseModel):

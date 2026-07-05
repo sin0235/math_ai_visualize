@@ -79,6 +79,13 @@ Metadata nguồn dữ kiện (BẮT BUỘC cho relations và annotations):
 - Không gán source="given" cho giá trị tự chọn để render đẹp, parameter default, độ dài/góc suy ra không được đề ghi trực tiếp, hoặc toạ độ minh hoạ.
 - Với length/angle annotation có label số hoặc biểu thức, chỉ tạo nếu giá trị đó nằm trực tiếp trong đề; metadata.source phải là "given" và evidence phải ghi đúng mẩu đề tương ứng.
 
+Semantic hints cho solver hình học:
+- Khi đề nêu rõ hình chóp/lăng trụ/tứ diện/hình hộp, thêm metadata.solid_type vào face/plane/relation liên quan: "pyramid", "prism", "tetrahedron", "box".
+- Với hình chóp S.ABCD, đánh dấu đỉnh và đáy bằng metadata semantic: điểm S có semantic_roles=["apex"], các điểm A/B/C/D có "base_vertex", face/plane ABCD có role="base".
+- Nếu có quan hệ đường cao như SA ⟂ plane(ABCD), relation perpendicular phải có metadata.role="height", metadata.apex="S", metadata.projection_foot="A", metadata.base=["A","B","C","D"].
+- Nếu đề nêu chân hình chiếu H, điểm H có semantic_roles=["projection_foot"], relation liên quan giữ source="given" chỉ khi H xuất hiện trực tiếp trong đề; nếu H do dựng thêm thì source="construction".
+- Các semantic hints chỉ mô tả vai trò; không dùng chúng để bịa độ dài/góc/kết quả số nếu đề không cho đủ dữ kiện.
+
 Quy tắc gán toạ độ (RẤT QUAN TRỌNG):
 - Không được làm sai dữ kiện để ép một điểm về gốc. Không tịnh tiến/đổi toạ độ nếu đề đã cho toạ độ cụ thể.
 - Ký hiệu O thường là gốc hệ trục O(0,0,0) hoặc tâm hình; nếu đề nói tâm O/trung điểm O/giao điểm O thì O phải đúng vai trò đó, không được coi O là đỉnh tuỳ ý.

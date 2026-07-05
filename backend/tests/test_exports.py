@@ -1,11 +1,14 @@
 import io
 import zipfile
 
+import pytest
+from pydantic import ValidationError
+
 from app.renderers.ggb_export import build_ggb
 from app.renderers.katex_html_export import build_katex_html
-from app.renderers.pdf_export import build_jpg, build_pdf, build_png, build_svg
+from app.renderers.pdf_export import build_jpg, build_pdf, build_pdf_from_capture, build_png, build_svg
 from app.renderers.tikz_export import build_tikz, build_tikz_document
-from app.schemas.scene import MathScene
+from app.schemas.scene import ExportViewCapture, MathScene, SceneRenderRequest
 
 
 def _scene_2d() -> MathScene:
@@ -105,6 +108,35 @@ def test_pdf_export_returns_pdf_bytes():
     pdf_bytes = build_pdf(_scene_2d())
     assert pdf_bytes.startswith(b"%PDF-")
     assert len(pdf_bytes) > 1000
+
+
+def test_pdf_export_from_current_view_capture_returns_pdf_bytes():
+    capture = ExportViewCapture(
+        mime_type="image/png",
+        data_url="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=",
+        width=16,
+        height=16,
+    )
+
+    pdf_bytes = build_pdf_from_capture(_scene_3d(), capture)
+
+    assert pdf_bytes.startswith(b"%PDF-")
+    assert len(pdf_bytes) > 1000
+
+
+def test_scene_render_request_rejects_mismatched_view_capture_mime():
+    with pytest.raises(ValidationError):
+        SceneRenderRequest.model_validate(
+            {
+                "scene": _scene_2d().model_dump(),
+                "view_capture": {
+                    "mime_type": "image/png",
+                    "data_url": "data:image/jpeg;base64,AAAA",
+                    "width": 16,
+                    "height": 16,
+                },
+            }
+        )
 
 
 def test_png_export_returns_png_bytes():

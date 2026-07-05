@@ -388,7 +388,155 @@ def normalize_scene_json(scene_json: dict) -> dict:
         data["parameters"] = [_normalize_parameter(dict(p)) for p in data["parameters"] if isinstance(p, dict)]
         data["parameters"] = [p for p in data["parameters"] if p is not None]
     apply_parameters_to_scene(data)
+    _enrich_scene_semantic_hints(data)
     return data
+
+
+def _enrich_scene_semantic_hints(data: dict[str, Any]) -> None:
+    objects = data.get("objects")
+    relations = data.get("relations")
+    if not isinstance(objects, list) or not isinstance(relations, list):
+        return
+
+    problem_text = str(data.get("problem_text") or "")
+    solid_type = _solid_type_hint(problem_text)
+    pyramid = _pyramid_signature(problem_text)
+    if pyramid:
+        apex, base = pyramid
+        _mark_point_role(objects, apex, "apex")
+        for point in base:
+            _mark_point_role(objects, point, "base_vertex")
+        _mark_base_object(objects, base, solid_type or "pyramid")
+        _append_interpretation_hint(data, "objects", {"role": "apex", "point": apex, "solid_type": solid_type or "pyramid"})
+        _append_interpretation_hint(data, "objects", {"role": "base", "points": list(base), "solid_type": solid_type or "pyramid"})
+
+    for relation in relations:
+        if not isinstance(relation, dict) or str(relation.get("type") or "").lower() != "perpendicular":
+            continue
+        segment, plane = _perpendicular_segment_plane_hint(relation)
+        if not segment or not plane:
+            continue
+        apex, foot = _height_endpoints(segment, plane)
+        if not apex or not foot:
+            continue
+        metadata = relation.get("metadata") if isinstance(relation.get("metadata"), dict) else {}
+        relation["metadata"] = metadata
+        metadata.setdefault("role", "height")
+        metadata.setdefault("apex", apex)
+        metadata.setdefault("projection_foot", foot)
+        metadata.setdefault("base", list(plane))
+        if solid_type:
+            metadata.setdefault("solid_type", solid_type)
+        _mark_point_role(objects, apex, "apex")
+        _mark_point_role(objects, foot, "projection_foot")
+        for point in plane:
+            _mark_point_role(objects, point, "base_vertex")
+        _mark_base_object(objects, plane, solid_type)
+        _append_interpretation_hint(data, "relations", {
+            "role": "height",
+            "line": "".join(segment),
+            "apex": apex,
+            "projection_foot": foot,
+            "base": list(plane),
+            "solid_type": solid_type,
+            "source_relation": relation.get("id") or relation.get("type"),
+        })
+
+
+def _solid_type_hint(text: str) -> str | None:
+    lowered = text.lower()
+    if "tứ diện" in lowered or "tu dien" in lowered:
+        return "tetrahedron"
+    if "hình chóp" in lowered or "hinh chop" in lowered:
+        return "pyramid"
+    if "lăng trụ" in lowered or "lang tru" in lowered:
+        return "prism"
+    if "hình hộp" in lowered or "hinh hop" in lowered or "hộp chữ nhật" in lowered:
+        return "box"
+    return None
+
+
+def _pyramid_signature(text: str) -> tuple[str, tuple[str, ...]] | None:
+    match = re.search(r"(?:hình\s*chóp|hinh\s*chop)\s+([A-Z])\.([A-Z]{3,6})", text, re.IGNORECASE)
+    if not match:
+        return None
+    return match.group(1).upper(), tuple(match.group(2).upper())
+
+
+def _perpendicular_segment_plane_hint(relation: dict[str, Any]) -> tuple[tuple[str, str] | None, tuple[str, ...] | None]:
+    first = _parse_segment_hint(relation.get("object_1"))
+    second = _parse_plane_hint(relation.get("object_2"))
+    if first and second:
+        return first, second
+    first = _parse_segment_hint(relation.get("object_2"))
+    second = _parse_plane_hint(relation.get("object_1"))
+    return first, second
+
+
+def _parse_segment_hint(value: Any) -> tuple[str, str] | None:
+    compact = re.sub(r"\s+", "", str(value or ""))
+    compact = re.sub(r"^(segment|line)\((.*)\)$", r"\2", compact, flags=re.IGNORECASE)
+    if "-" in compact:
+        parts = [part.upper() for part in compact.split("-") if part]
+        return (parts[0], parts[1]) if len(parts) == 2 else None
+    return (compact[0].upper(), compact[1].upper()) if len(compact) == 2 and compact.isalpha() else None
+
+
+def _parse_plane_hint(value: Any) -> tuple[str, ...] | None:
+    text = str(value or "").strip()
+    if text.lower().startswith("plane(") and text.endswith(")"):
+        text = text[6:-1]
+    elif text.startswith("(") and text.endswith(")"):
+        text = text[1:-1]
+    points = tuple(match.group(0).upper() for match in re.finditer(r"[A-Za-z](?:[0-9]+|')?", text))
+    return points if len(points) >= 3 else None
+
+
+def _height_endpoints(segment: tuple[str, str], plane: tuple[str, ...]) -> tuple[str | None, str | None]:
+    first, second = segment
+    plane_points = set(plane)
+    if first not in plane_points and second in plane_points:
+        return first, second
+    if second not in plane_points and first in plane_points:
+        return second, first
+    return None, None
+
+
+def _mark_point_role(objects: list[Any], point: str, role: str) -> None:
+    for obj in objects:
+        if not isinstance(obj, dict) or obj.get("type") not in {"point_2d", "point_3d"} or obj.get("name") != point:
+            continue
+        metadata = obj.get("metadata") if isinstance(obj.get("metadata"), dict) else {}
+        obj["metadata"] = metadata
+        roles = metadata.get("semantic_roles") if isinstance(metadata.get("semantic_roles"), list) else []
+        if role not in roles:
+            roles.append(role)
+        metadata["semantic_roles"] = roles
+        return
+
+
+def _mark_base_object(objects: list[Any], base: tuple[str, ...], solid_type: str | None) -> None:
+    base_set = set(base)
+    for obj in objects:
+        if not isinstance(obj, dict) or obj.get("type") not in {"face", "plane"}:
+            continue
+        points = obj.get("points")
+        if not isinstance(points, list) or not base_set.issubset({str(point).upper() for point in points}):
+            continue
+        metadata = obj.get("metadata") if isinstance(obj.get("metadata"), dict) else {}
+        obj["metadata"] = metadata
+        metadata.setdefault("role", "base")
+        if solid_type:
+            metadata.setdefault("solid_type", solid_type)
+
+
+def _append_interpretation_hint(data: dict[str, Any], key: str, item: dict[str, Any]) -> None:
+    interpretation = data.get("interpretation") if isinstance(data.get("interpretation"), dict) else {}
+    data["interpretation"] = interpretation
+    items = interpretation.get(key) if isinstance(interpretation.get(key), list) else []
+    if item not in items:
+        items.append(item)
+    interpretation[key] = items
 
 
 def build_scene_with_cas_fix(

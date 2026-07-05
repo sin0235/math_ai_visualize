@@ -1,4 +1,4 @@
-from sympy import E, Symbol, cos, cot, exp, lambdify, log, pi, sin, sympify, tan
+from sympy import Symbol, lambdify
 
 from app.renderers.geogebra_commands import build_geogebra_commands
 from app.schemas.scene import Annotation, FunctionGraph, MathScene, Point2D, SceneView, Segment
@@ -128,12 +128,14 @@ def build_function_graph(analysis: dict) -> tuple[MathScene, list[str], list[dic
         if isinstance(obj, Point2D) and obj.name.startswith(("VA", "HA", "ProjX", "ProjY")):
             commands.append(f"SetVisibleInView({obj.name}, 1, false)")
 
-    return scene, commands, _sample_graph_points(graph_expression)
+    sample_expr = analysis.get("_evaluated_expr") or analysis.get("_parsed_expr")
+    return scene, commands, _sample_graph_points(sample_expr)
 
 
-def _sample_graph_points(expression: str) -> list[dict[str, float]]:
+def _sample_graph_points(expr) -> list[dict[str, float]]:
+    if expr is None:
+        return []
     try:
-        expr = sympify(expression.replace("^", "**"), locals={"x": x, "m": m, "sin": sin, "cos": cos, "tan": tan, "cot": cot, "log": log, "ln": log, "exp": exp, "pi": pi, "E": E})
         fn = lambdify(x, expr, "math")
     except Exception:
         return []

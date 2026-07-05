@@ -86,6 +86,9 @@ async def explain_solver_result(result: SolverResult, scene: dict[str, Any], set
                         result_latex=None,
                     ) for sub in steps_by_index.get(step.index, {}).get("sub_steps", [])
                 ],
+                theorem=step.theorem,
+                claim=step.claim,
+                depends_on=step.depends_on,
             )
             for step in result.steps
         ]

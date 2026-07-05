@@ -227,7 +227,7 @@ export default function App() {
       if (payload.geogebra_commands && payload.geogebra_commands.length > 0) {
         payload = { ...payload, geogebra_commands: patchGeogebraCommandsForScene(payload.geogebra_commands, scene) };
       }
-      return { ...current, scene, payload, user_confirmed: false };
+      return pendingValidationResponse(current, scene, payload, 'Chỉnh sửa cục bộ đang chờ server kiểm chứng lại.');
     });
   }
 
@@ -381,6 +381,15 @@ export default function App() {
     setParamValues(getDefaultParamValues(activeScene?.parameters));
   }, [activeScene]);
 
+  const parameterValuesChanged = useMemo(
+    () => !paramValuesMatchDefaults(activeScene?.parameters, paramValues),
+    [activeScene?.parameters, paramValues],
+  );
+
+  function handleParameterValuesChange(values: Record<string, number>) {
+    setParamValues(values);
+  }
+
   // Tạo result đã được recompute theo paramValues. Khi không có parameters, trả result gốc.
   const effectiveResult = useMemo<RenderResponse | null>(() => {
     if (!result || !activeScene) return null;
@@ -393,8 +402,11 @@ export default function App() {
     if (payload.geogebra_commands && payload.geogebra_commands.length > 0) {
       payload = { ...payload, geogebra_commands: patchGeogebraCommandsForScene(payload.geogebra_commands, baseScene) };
     }
-    return { ...result, scene: baseScene, payload, user_confirmed: confirmation.fallback_confirmed && confirmation.assumptions_confirmed && confirmation.repair_confirmed };
-  }, [result, activeScene, paramValues, confirmation]);
+    const nextResult = { ...result, scene: baseScene, payload, user_confirmed: confirmation.fallback_confirmed && confirmation.assumptions_confirmed && confirmation.repair_confirmed };
+    return parameterValuesChanged
+      ? pendingValidationResponse(nextResult, baseScene, payload, 'Tham số đã đổi cục bộ, cần dựng/kiểm chứng lại trước khi export hoặc giải.')
+      : nextResult;
+  }, [result, activeScene, paramValues, confirmation, parameterValuesChanged]);
 
   const threeInteraction = sceneEditorOpen && effectiveResult?.scene.renderer === 'threejs_3d'
     ? {
@@ -1151,8 +1163,8 @@ export default function App() {
                   <aside className="render-review-chip" role="status" aria-live="polite">
                     <span className="render-review-dot" aria-hidden="true" />
                     <span className="render-review-copy">
-                      <strong>Cần kiểm tra hình</strong>
-                      <small>Hình có fallback hoặc giả định. Xác nhận sau khi đối chiếu với đề bài.</small>
+                      <strong>{pendingValidationMessage(effectiveResult) ? 'Đang chờ kiểm chứng' : 'Cần kiểm tra hình'}</strong>
+                      <small>{pendingValidationMessage(effectiveResult) ?? 'Hình có fallback hoặc giả định. Xác nhận sau khi đối chiếu với đề bài.'}</small>
                     </span>
                     <button type="button" className="secondary-button" onClick={confirmCurrentScene}>Đã kiểm tra</button>
                   </aside>
@@ -1270,7 +1282,7 @@ export default function App() {
                         onChange={(scene) => { void handleSceneEdit(scene, { optimistic: true }); }}
                         parameters={effectiveResult.scene.parameters}
                         parameterValues={paramValues}
-                        onParameterValuesChange={setParamValues}
+                        onParameterValuesChange={handleParameterValuesChange}
                         onParameterReset={() => setParamValues(getDefaultParamValues(effectiveResult.scene.parameters))}
                         onHighlightObjects={setHighlightedObjects}
                       />
@@ -1516,6 +1528,42 @@ function PageLoadingFallback() {
       </div>
     </section>
   );
+}
+
+function pendingValidationResponse(response: RenderResponse, scene: MathScene, payload: RenderResponse['payload'], message: string): RenderResponse {
+  const pendingItem = { code: 'pending_validation', severity: 'warning' as const, message };
+  return {
+    ...response,
+    status: 'needs_confirmation',
+    scene,
+    payload,
+    warnings: Array.from(new Set([message, ...response.warnings])),
+    validation_report: {
+      ...response.validation_report,
+      status: 'partial',
+      items: [pendingItem, ...response.validation_report.items.filter((item) => item.code !== 'pending_validation')],
+    },
+    renderer_compatibility: {
+      ...response.renderer_compatibility,
+      status: 'requires_confirmation',
+      messages: Array.from(new Set([message, ...response.renderer_compatibility.messages])),
+    },
+    requires_user_confirmation: true,
+    user_confirmed: false,
+  };
+}
+
+function paramValuesMatchDefaults(parameters: MathScene['parameters'] | undefined, values: Record<string, number>) {
+  const defaults = getDefaultParamValues(parameters);
+  const keys = new Set([...Object.keys(defaults), ...Object.keys(values)]);
+  for (const key of keys) {
+    if (Math.abs((values[key] ?? 0) - (defaults[key] ?? 0)) > 1e-9) return false;
+  }
+  return true;
+}
+
+function pendingValidationMessage(response: RenderResponse) {
+  return response.validation_report.items.find((item) => item.code === 'pending_validation')?.message ?? null;
 }
 
 function shouldShowConfirmationPrompt(response: RenderResponse) {

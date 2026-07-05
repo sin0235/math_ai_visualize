@@ -89,10 +89,17 @@ async def export_pdf(
 ) -> Response:
     await enforce_rate_limit(db, http_request, user, "export_pdf", 30 if user else 8, 60)
     await enforce_render_access(db, user)
-    from app.renderers.pdf_export import build_pdf
+    from app.renderers.pdf_export import build_pdf, build_pdf_from_capture
 
     scene = _safe_export_scene(request)
-    body = build_pdf(scene, response=request.response)
+    try:
+        body = build_pdf_from_capture(scene, request.view_capture, request.response) if request.view_capture else build_pdf(scene, response=request.response)
+    except ValueError as error:
+        from fastapi import status
+
+        from app.services.api_errors import api_error
+
+        raise api_error(status.HTTP_400_BAD_REQUEST, str(error), "EXPORT_VIEW_CAPTURE_INVALID") from error
     return Response(
         content=body,
         media_type="application/pdf",

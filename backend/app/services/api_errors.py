@@ -52,6 +52,10 @@ ERROR_SUGGESTIONS: dict[str, list[str]] = {
         "Kiểm tra scene đã có đủ điểm, đoạn và đối tượng cần giải.",
         "Thử dựng lại hình hoặc hỏi câu cụ thể hơn.",
     ],
+    "SCENE_EDIT_STALE": [
+        "Tải lại phiên bản scene mới nhất hoặc dựng lại hình trước khi chỉnh tiếp.",
+        "Không chỉnh sửa trên response cũ hoặc scene đã thay đổi cục bộ chưa đồng bộ.",
+    ],
 }
 
 

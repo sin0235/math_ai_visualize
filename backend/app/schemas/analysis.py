@@ -81,5 +81,7 @@ class AnalyzeResponse(BaseModel):
     parameter_conditions: list[dict[str, Any]] = Field(default_factory=list)
     transform_preview: dict[str, Any] | None = None
     capabilities: dict[str, Any] | None = None
+    complexity_score: int | None = None
     warnings: list[str] = Field(default_factory=list)
     error: str | None = None
+    error_code: str | None = None

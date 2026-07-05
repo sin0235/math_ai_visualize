@@ -1,6 +1,8 @@
 import type { RenderResponse } from '../types/scene';
 
 export function downstreamGateMessage(response: RenderResponse, operation: string, allowPartial = false): string | null {
+  const pending = response.validation_report.items.find((item) => item.code === 'pending_validation');
+  if (pending) return `${pending.message} Chưa thể ${operation}.`;
   if (response.status === 'failed') return `Scene dựng hình thất bại nên chưa thể ${operation}.`;
   if (!response.user_confirmed && (response.status === 'fallback' || response.status === 'needs_confirmation' || response.requires_user_confirmation || response.source.fallback_used)) {
     return `Scene cần được xác nhận hoặc dựng lại trước khi ${operation}.`;

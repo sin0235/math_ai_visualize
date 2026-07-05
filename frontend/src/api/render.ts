@@ -96,6 +96,9 @@ export interface SolveStep {
   substitution_latex?: string | null;
   result_latex?: string | null;
   sub_steps?: SolveStep[];
+  theorem?: string | null;
+  claim?: string | null;
+  depends_on?: string[];
 }
 
 export type SolveConfidence = 'verified' | 'partial' | 'insufficient';
@@ -103,6 +106,11 @@ export type SolveConfidence = 'verified' | 'partial' | 'insufficient';
 export interface SolveFact {
   source: 'given' | 'verified' | 'parameter_default' | 'construction_only' | string;
   text: string;
+}
+
+export interface SolveTheorem {
+  name: string;
+  statement?: string;
 }
 
 export interface SolveResponse {
@@ -113,6 +121,7 @@ export interface SolveResponse {
   confidence?: SolveConfidence;
   method?: 'oxyz' | 'classical' | string;
   used_facts?: SolveFact[];
+  used_theorems?: SolveTheorem[];
   data_issues?: string[];
   advisory?: QualityRiskAdvisory | null;
 }
@@ -295,11 +304,19 @@ export async function generateProblemVariants(
   );
 }
 
+export interface ExportViewCapture {
+  mime_type: 'image/png' | 'image/jpeg';
+  data_url: string;
+  width: number;
+  height: number;
+}
+
 export async function exportScene(
   format: ExportFormat,
   scene: MathScene,
   advancedSettings: AdvancedRenderSettings,
   renderResponse?: RenderResponse | null,
+  viewCapture?: ExportViewCapture | null,
 ): Promise<{ blob: Blob; filename: string }> {
   const meta = EXPORT_META[format];
   try {
@@ -307,7 +324,7 @@ export async function exportScene(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ scene, response: renderResponse, advanced_settings: advancedSettings }),
+      body: JSON.stringify({ scene, response: renderResponse, advanced_settings: advancedSettings, view_capture: viewCapture ?? undefined }),
     });
     if (!response.ok) throw await parseApiError(response, `${meta.errorMessage} HTTP ${response.status}`);
     const blob = await response.blob();

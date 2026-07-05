@@ -94,8 +94,10 @@ export interface AnalyzeResponse {
   parameter_conditions?: Array<{ label: string; condition_latex?: string; solution: string; solution_latex?: string; warnings?: string[] }>;
   transform_preview?: { type: string; value: string; label: string; expression: string; expression_latex: string; pedagogical_steps?: string[] } | null;
   capabilities?: Record<string, unknown> | null;
+  complexity_score?: number | null;
   warnings: string[];
   error?: string | null;
+  error_code?: string | null;
 }
 
 export async function analyzeFunction(expression: string, options?: AnalyzeOptions | { m?: number }): Promise<AnalyzeResponse> {

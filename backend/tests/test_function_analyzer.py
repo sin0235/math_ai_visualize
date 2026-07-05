@@ -1,5 +1,51 @@
+from app.api.routes_function_analysis import _apply_analyzer_output_limits, _run_analyzer_job_sync
 from app.services.function_analyzer import analyze_function
 from app.services.function_graph_builder import build_function_graph
+
+
+def test_analyzer_api_worker_returns_clean_payload():
+    result = _run_analyzer_job_sync("x^2 - 1", None, None, None, None, None)
+
+    assert "error" not in result
+    assert "_parsed_expr" not in result
+    assert "_evaluated_expr" not in result
+    assert result["graph_points"]
+    assert result["complexity_score"] > 0
+
+
+def test_analyzer_output_limit_returns_error_code():
+    result = _apply_analyzer_output_limits({"geogebra_commands": ["A=(0,0)"] * 301})
+
+    assert result["error_code"] == "ANALYZER_OUTPUT_LIMIT"
+
+
+def test_analyzer_rejects_unsafe_parser_constructs():
+    cases = [
+        "Matrix([[1]])",
+        "lambda x: x",
+        "'x'",
+        "x.__class__",
+        "__import__('os')",
+    ]
+
+    for expression in cases:
+        result = analyze_function(expression)
+        assert result["error_code"] == "ANALYZER_PARSE_FAILED", expression
+
+
+def test_analyzer_returns_complexity_code_for_large_exponent():
+    result = analyze_function("x^100")
+
+    assert result["error_code"] == "ANALYZER_COMPLEXITY_LIMIT"
+
+
+def test_graph_builder_uses_preparsed_expression_for_samples():
+    result = analyze_function("x^2 - 1")
+
+    assert "error" not in result
+    _, _, graph_points = build_function_graph(result)
+    assert graph_points
+    assert any(point["x"] == 0 and point["y"] == -1 for point in graph_points)
 
 
 def test_analyze_function_accepts_latex_fraction():

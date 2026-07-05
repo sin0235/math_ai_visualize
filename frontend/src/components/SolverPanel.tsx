@@ -438,6 +438,12 @@ function SolverStepItem({
           )}
         </div>
         {explanationText && <p className="sp-step-text">{explanationText}</p>}
+        {(step.claim || step.theorem) && (
+          <div className="sp-step-proof-note">
+            {step.claim && <p><strong>Luận điểm:</strong> {step.claim}</p>}
+            {step.theorem && <p><strong>Định lý dùng:</strong> {step.theorem}</p>}
+          </div>
+        )}
         {showFormula && (
           <div className="sp-step-formula">
             <KatexSpan tex={formulaLatex} className="sp-step-formula-math" />

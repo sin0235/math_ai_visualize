@@ -120,7 +120,7 @@ export function useFunctionAnalysis(initialExpression: string, onWarnings?: (war
     try {
       const res = await analyzeFunction(expr, options?.requestOptions ?? {});
       if (requestId !== analyzeRequestRef.current) return;
-      if (res.error) setError(res.error);
+      if (res.error) setError(formatAnalyzeError(res));
       else {
         if (!options?.slider) baseResultRef.current = stripToolArtifacts(res);
         setResult(res);
@@ -149,7 +149,7 @@ export function useFunctionAnalysis(initialExpression: string, onWarnings?: (war
       const res = await analyzeFunctionImageFile(file);
       if (requestId !== analyzeRequestRef.current) return;
       if (res.ocr_expression) setExpression(res.ocr_expression);
-      if (res.error) setError(res.error);
+      if (res.error) setError(formatAnalyzeError(res));
       else {
         baseResultRef.current = stripToolArtifacts(res);
         setResult(res);
@@ -249,6 +249,11 @@ export function useFunctionAnalysis(initialExpression: string, onWarnings?: (war
     setIsAnimatingTransform,
     scheduleToolAnalyze,
   };
+}
+
+function formatAnalyzeError(response: AnalyzeResponse): string {
+  if (!response.error_code) return response.error ?? 'Không thể phân tích hàm số.';
+  return `${response.error ?? 'Không thể phân tích hàm số.'} Mã lỗi: ${response.error_code}.`;
 }
 
 function stripToolArtifacts(result: AnalyzeResponse): AnalyzeResponse {

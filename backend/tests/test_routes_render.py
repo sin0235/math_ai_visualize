@@ -95,5 +95,21 @@ def test_render_routes_cas_issues(monkeypatch):
         assert len(payload_scene["cas_issues"]) == 1
         assert payload_scene["cas_issues"][0]["relation_type"] == "midpoint"
         assert payload_scene["advisory"]["classification"]["task_type"] == "render_scene"
+
+        stale_edit = client.post("/api/render/scene", json={
+            "scene": payload_scene["scene"],
+            "response": payload_scene,
+            "advanced_settings": {}
+        })
+        assert stale_edit.status_code == 409
+        assert stale_edit.json()["detail"]["code"] == "SCENE_EDIT_STALE"
+
+        next_scene = {**payload_scene["scene"], "revision": payload_scene["scene"]["revision"] + 1}
+        accepted_edit = client.post("/api/render/scene", json={
+            "scene": next_scene,
+            "response": payload_scene,
+            "advanced_settings": {}
+        })
+        assert accepted_edit.status_code == 200
     finally:
         app.dependency_overrides.clear()

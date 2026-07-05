@@ -180,6 +180,7 @@ async def render_scene(
     if db is not None:
         await enforce_rate_limit(db, http_request, user, "render_scene", 40 if user else 12, 60)
         await enforce_render_access(db, user)
+    assert_scene_edit_revision(request)
     response = validate_normalize_verify_scene(
         request.scene,
         request.advanced_settings,
@@ -188,6 +189,26 @@ async def render_scene(
         build_problem_advisory=False,
     ).response
     return response
+
+
+def assert_scene_edit_revision(request: SceneRenderRequest) -> None:
+    if request.response is None:
+        return
+    base = request.response.scene
+    scene = request.scene
+    if base.scene_id and scene.scene_id and base.scene_id != scene.scene_id:
+        raise api_error(
+            status.HTTP_409_CONFLICT,
+            "Scene đang sửa không khớp kết quả dựng hình hiện tại; hãy tải lại hoặc dựng lại hình.",
+            "SCENE_EDIT_STALE",
+        )
+    expected_revision = (base.revision or 0) + 1
+    if scene.revision != expected_revision:
+        raise api_error(
+            status.HTTP_409_CONFLICT,
+            f"Revision chỉnh sửa không hợp lệ: cần {expected_revision}, nhận {scene.revision}.",
+            "SCENE_EDIT_STALE",
+        )
 
 
 def optional_database_for_scene_render(user: UserRecord | None) -> DatabaseClient | None:

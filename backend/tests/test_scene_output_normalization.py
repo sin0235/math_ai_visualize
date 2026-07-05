@@ -84,6 +84,39 @@ def test_normalize_segment_target_and_color_names():
     assert data["annotations"][0]["target"] == "A-B"
 
 
+def test_normalize_scene_adds_solid_semantic_hints():
+    data = normalize_scene_json({
+        "problem_text": "Cho hình chóp S.ABCD có SA vuông góc với đáy ABCD.",
+        "renderer": "threejs_3d",
+        "objects": [
+            {"type": "point_3d", "name": "S", "x": 0, "y": 3, "z": 0},
+            {"type": "point_3d", "name": "A", "x": 0, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "B", "x": 1, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "C", "x": 1, "y": 0, "z": 1},
+            {"type": "point_3d", "name": "D", "x": 0, "y": 0, "z": 1},
+            {"type": "face", "name": "ABCD", "points": ["A", "B", "C", "D"]},
+        ],
+        "relations": [
+            {"type": "perpendicular", "object_1": "SA", "object_2": "plane(ABCD)", "metadata": {"source": "given"}},
+        ],
+        "view": {"dimension": "3d"},
+    })
+
+    relation_metadata = data["relations"][0]["metadata"]
+    assert relation_metadata["role"] == "height"
+    assert relation_metadata["apex"] == "S"
+    assert relation_metadata["projection_foot"] == "A"
+    assert relation_metadata["base"] == ["A", "B", "C", "D"]
+    assert relation_metadata["source"] == "given"
+    points = {obj["name"]: obj for obj in data["objects"] if obj["type"] == "point_3d"}
+    assert "apex" in points["S"]["metadata"]["semantic_roles"]
+    assert "projection_foot" in points["A"]["metadata"]["semantic_roles"]
+    base = next(obj for obj in data["objects"] if obj["type"] == "face")
+    assert base["metadata"]["role"] == "base"
+    assert base["metadata"]["solid_type"] == "pyramid"
+    assert {"role": "height", "line": "SA", "apex": "S", "projection_foot": "A", "base": ["A", "B", "C", "D"], "solid_type": "pyramid", "source_relation": "perpendicular"} in data["interpretation"]["relations"]
+
+
 def test_segment_style_reaches_three_scene_payload():
     scene = MathScene(
         problem_text="test",
@@ -132,10 +165,10 @@ def test_geogebra_commands_include_basic_annotations():
             {"type": "point_2d", "name": "C", "x": 1, "y": 1},
         ],
         annotations=[
-            {"type": "length", "target": "A-B", "label": "a", "metadata": {}},
-            {"type": "equal_marks", "target": "B-C", "metadata": {}},
-            {"type": "right_angle", "target": "B", "label": "90°", "metadata": {"arms": ["A", "C"]}},
-            {"type": "coordinate_label", "target": "A", "metadata": {}},
+            {"type": "length", "target": "A-B", "label": "a", "metadata": {"source": "given"}},
+            {"type": "equal_marks", "target": "B-C", "metadata": {"source": "given"}},
+            {"type": "right_angle", "target": "B", "label": "90°", "metadata": {"arms": ["A", "C"], "source": "given"}},
+            {"type": "coordinate_label", "target": "A", "metadata": {"source": "given"}},
         ],
         view=SceneView(dimension="2d"),
     )

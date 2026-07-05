@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { exportScene, type ExportFormat } from '../api/client';
+import { exportScene, type ExportFormat, type ExportViewCapture } from '../api/client';
 import { buildExportFilename } from '../utils/exportFilename';
 import { downstreamGateMessage, partialVerificationWarning } from '../utils/renderQualityGate';
 import type { ThreeSceneImageCapture } from './ThreeGeometryView';
@@ -51,11 +51,11 @@ function formatLabelsForContext(preferThreeView: boolean): Record<ExportFormat, 
     },
     pdf: {
       ...base.pdf,
-      hint: 'PDF dùng phép chiếu backend cố định cho hình 3D.',
+      hint: 'PDF nhúng ảnh chụp đúng góc nhìn Three.js hiện tại.',
     },
     ggb: {
       ...base.ggb,
-      hint: 'GeoGebra file dùng dữ liệu scene đã kiểm chứng.',
+      hint: 'GeoGebra là export semantic, không giữ exact góc nhìn Three.js.',
     },
   };
 }
@@ -65,10 +65,10 @@ function exportLock(
   captureCurrentView: ThreeSceneImageCapture | null | undefined,
   preferCurrentViewCapture: boolean,
 ): { locked: boolean; reason?: string } {
-  if (format === 'tikz' && preferCurrentViewCapture) {
-    return { locked: true, reason: 'TikZ chưa hỗ trợ giữ góc nhìn Three.js hiện tại. Hãy dùng PNG, JPG, SVG hoặc HTML.' };
+  if ((format === 'tikz' || format === 'ggb') && preferCurrentViewCapture) {
+    return { locked: true, reason: `${format === 'tikz' ? 'TikZ' : 'GeoGebra'} là export semantic nên chưa giữ exact góc nhìn Three.js. Hãy dùng PNG, JPG, SVG, HTML hoặc PDF.` };
   }
-  if (format === 'png' || format === 'jpg' || (preferCurrentViewCapture && (format === 'svg' || format === 'katex-html'))) {
+  if (format === 'png' || format === 'jpg' || (preferCurrentViewCapture && (format === 'svg' || format === 'katex-html' || format === 'pdf'))) {
     const ready = typeof captureCurrentView === 'function';
     if (preferCurrentViewCapture && !ready) {
       return { locked: true, reason: 'Chưa sẵn sàng chụp góc nhìn — đợi hình Three.js hiển thị xong rồi thử lại.' };
@@ -169,7 +169,26 @@ async function getExportBlob(format: ExportFormat, scene: MathScene, advancedSet
     };
   }
 
+  if (preferCurrentViewCapture && typeof captureCurrentView === 'function' && format === 'pdf') {
+    const imageBlob = await captureCurrentView('image/png');
+    const dataUrl = await blobToDataUrl(imageBlob);
+    const size = await imageSizeFromDataUrl(dataUrl);
+    return exportScene(format, scene, advancedSettings, response, currentViewCapturePayload(dataUrl, size));
+  }
+
   return exportScene(format, scene, advancedSettings, response);
+}
+
+function currentViewCapturePayload(dataUrl: string, size: { width: number; height: number }): ExportViewCapture {
+  if (!dataUrl.startsWith('data:image/png;base64,')) {
+    throw new Error('Ảnh chụp góc nhìn hiện tại không đúng định dạng PNG.');
+  }
+  return {
+    mime_type: 'image/png',
+    data_url: dataUrl,
+    width: size.width,
+    height: size.height,
+  };
 }
 
 function blobToDataUrl(blob: Blob): Promise<string> {
