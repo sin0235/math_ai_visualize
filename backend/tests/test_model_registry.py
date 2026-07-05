@@ -481,11 +481,12 @@ async def test_tier_profiles_store_explicit_provider_and_keep_vendor_namespaced_
     })
 
     registry = await load_model_registry(db, Settings(_env_file=None))
-    row = await db.fetch_one("SELECT provider_id, model_id, fallbacks_json FROM ai_task_profiles WHERE task = ?", ["render_tier1"])
+    row = await db.fetch_one("SELECT provider_id, model_id, fallbacks_json, tier FROM ai_task_profiles WHERE task = ?", ["render_tier1"])
     candidates = resolve_render_tier_candidates(registry, "tier1")
 
     assert row["provider_id"] == "openrouter"
     assert row["model_id"] == "nvidia/llama"
+    assert row["tier"] == "tier1"
     assert json.loads(row["fallbacks_json"]) == ["nvidia::llama"]
     assert [(candidate.provider_id, candidate.model_id) for candidate in candidates] == [("openrouter", "nvidia/llama"), ("nvidia", "llama")]
 

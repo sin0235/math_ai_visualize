@@ -871,17 +871,17 @@ export function AdminAiProfilesForm({ value, aiSettings, defaults, onSave, onToa
       const solver = parseProfileModelId(solverModel);
       const ocr = parseProfileModelId(ocrModel);
       await onSave({ version: 1, geometry_reasoning: { provider: geometry.provider, model: geometry.model, fallbacks: [] }, solver_explanation: { provider: solver.provider, model: solver.model, fallbacks: solverFallbacks }, ocr: { provider: ocr.provider, model: ocr.model, fallbacks: ocrFallbacks } });
-      onToast?.('Hồ sơ AI', 'Đã lưu hồ sơ AI.', 'info');
+      onToast?.('Hồ sơ tác vụ', 'Đã lưu hồ sơ tác vụ.', 'info');
     } catch (error) {
-      onToast?.('Hồ sơ AI', getErrorMessage(error, 'Không thể lưu hồ sơ AI.'), 'error');
+      onToast?.('Hồ sơ tác vụ', getErrorMessage(error, 'Không thể lưu hồ sơ tác vụ.'), 'error');
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <section className="admin-settings-section"><h4>Hồ sơ AI</h4><div className="admin-field-grid">
-      <label className="field-label">Model hình học<select value={geometryModel} onChange={(event) => setGeometryModel(event.target.value)} disabled={saving}><option value="">Chọn model từ allowlist</option>{modelOptions(geometryModel).map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.label}</option>)}</select></label>
+    <section className="admin-settings-section"><h4>Hồ sơ AI theo tác vụ</h4><p className="field-hint">Các mục này chọn model cho tác vụ phụ. Dựng hình chính dùng phần "Routing model dựng hình theo tier" bên dưới.</p><div className="admin-field-grid">
+      <label className="field-label">Model reasoning hình học<select value={geometryModel} onChange={(event) => setGeometryModel(event.target.value)} disabled={saving}><option value="">Chọn model từ allowlist</option>{modelOptions(geometryModel).map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.label}</option>)}</select></label>
       <label className="field-label">Model diễn giải lời giải<select value={solverModel} onChange={(event) => setSolverModel(event.target.value)} disabled={saving}><option value="">Chọn model từ allowlist</option>{modelOptions(solverModel, solverFallbacks).map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.label}</option>)}</select></label>
       <label className="field-label">Model OCR<select value={ocrModel} onChange={(event) => setOcrModel(event.target.value)} disabled={saving}><option value="">Chọn model từ allowlist</option>{modelOptions(ocrModel, ocrFallbacks).map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.label}</option>)}</select></label>
     </div>
@@ -889,7 +889,7 @@ export function AdminAiProfilesForm({ value, aiSettings, defaults, onSave, onToa
       <ModelFallbackChecklist title="Model dự phòng diễn giải lời giải" options={fallbackModelOptions(solverModel, solverFallbacks)} selected={solverFallbacks} onToggle={(modelId, checked) => updateFallbacks('solver', modelId, checked)} disabled={saving} />
       <ModelFallbackChecklist title="Model dự phòng OCR" options={fallbackModelOptions(ocrModel, ocrFallbacks)} selected={ocrFallbacks} onToggle={(modelId, checked) => updateFallbacks('ocr', modelId, checked)} disabled={saving} />
     </div>
-    <button type="button" className="secondary-button" onClick={() => void saveProfiles()} disabled={saving} aria-busy={saving}>{saving ? 'Đang lưu...' : 'Lưu hồ sơ AI'}</button></section>
+    <button type="button" className="secondary-button" onClick={() => void saveProfiles()} disabled={saving} aria-busy={saving}>{saving ? 'Đang lưu...' : 'Lưu hồ sơ tác vụ'}</button></section>
   );
 }
 
@@ -1053,16 +1053,16 @@ export function AdminAiTierProfilesForm({ value, aiSettings, defaults, onSave, o
 
   return (
     <section className="admin-settings-section">
-      <h4>Tier model dựng hình</h4>
-      <p className="field-hint">Tier chỉ áp dụng cho tác vụ dựng hình. Mỗi tier có model mặc định riêng và một pool model riêng; model đã nằm ở tier này sẽ tự rời tier khác.</p>
+      <h4>Routing model dựng hình theo tier</h4>
+      <p className="field-hint">Đây là nguồn chọn model chính cho render. Mỗi tier ghi vào task render_tier1/2/3; model phải có dạng provider::model.</p>
       {TIER_LEVELS.map((level) => (
         <div key={level.key} className="admin-tier-task">
           <h5>{level.label}</h5>
           <div className="admin-field-grid">
             <label className="field-label">
-              Model mặc định
+              Model chính của tier
               <select value={tierState[level.key].defaultModel} onChange={(event) => selectTierDefault(level.key, event.target.value)} disabled={saving}>
-                <option value="">Chưa chọn model mặc định</option>
+                <option value="">Chưa chọn model chính</option>
                 {allProviderModelOptions(allSelectedModels()).map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.label}</option>)}
               </select>
             </label>

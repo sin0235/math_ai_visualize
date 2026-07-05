@@ -225,8 +225,12 @@ CREATE TABLE IF NOT EXISTS ai_task_profiles (
   provider_id TEXT NOT NULL DEFAULT 'auto',
   model_id TEXT NOT NULL DEFAULT '',
   fallbacks_json TEXT NOT NULL DEFAULT '[]',
+  tier TEXT,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  tier TEXT
+  CHECK (
+    (task IN ('render_tier1', 'render_tier2', 'render_tier3') AND tier = replace(task, 'render_', ''))
+    OR (task NOT IN ('render_tier1', 'render_tier2', 'render_tier3') AND tier IS NULL)
+  )
 );
 
 CREATE INDEX IF NOT EXISTS idx_ai_task_profiles_provider_model ON ai_task_profiles(provider_id, model_id);

@@ -7,6 +7,10 @@ from app.db.session import DatabaseClient
 from app.schemas.scene import AiModelInfo
 
 
+def render_tier_for_task(task: str) -> str | None:
+    return task.removeprefix("render_") if task in {"render_tier1", "render_tier2", "render_tier3"} else None
+
+
 class ModelRegistryRepository:
     def __init__(self, db: DatabaseClient) -> None:
         self.db = db
@@ -245,17 +249,19 @@ class ModelRegistryRepository:
         )
 
     async def upsert_task_profile(self, task: str, provider_id: str, model_id: str, fallbacks: list[str]) -> None:
+        tier = render_tier_for_task(task)
         await self.db.execute(
             """
-            INSERT INTO ai_task_profiles (task, provider_id, model_id, fallbacks_json, updated_at)
-            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+            INSERT INTO ai_task_profiles (task, provider_id, model_id, fallbacks_json, tier, updated_at)
+            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(task) DO UPDATE SET
               provider_id = excluded.provider_id,
               model_id = excluded.model_id,
               fallbacks_json = excluded.fallbacks_json,
+              tier = excluded.tier,
               updated_at = CURRENT_TIMESTAMP
             """,
-            [task, provider_id, model_id, json.dumps(fallbacks)],
+            [task, provider_id, model_id, json.dumps(fallbacks), tier],
         )
 
     async def task_profile_exists(self, task: str) -> bool:
@@ -268,10 +274,10 @@ class ModelRegistryRepository:
         await self.db.execute(
             """
             UPDATE ai_task_profiles
-            SET provider_id = ?, model_id = ?, fallbacks_json = ?, updated_at = CURRENT_TIMESTAMP
+            SET provider_id = ?, model_id = ?, fallbacks_json = ?, tier = ?, updated_at = CURRENT_TIMESTAMP
             WHERE task = ?
             """,
-            [provider_id, model_id, json.dumps(fallbacks), task],
+            [provider_id, model_id, json.dumps(fallbacks), render_tier_for_task(task), task],
         )
 
     async def set_model_setting(self, key: str, value: Any) -> None:
