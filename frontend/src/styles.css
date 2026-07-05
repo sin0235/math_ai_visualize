@@ -521,8 +521,12 @@ select {
 }
 
 .header-logo {
-  width: 34px;
-  height: 34px;
+  display: block;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  max-width: 28px;
+  max-height: 28px;
   border-radius: 6px;
   object-fit: cover;
   box-shadow: none;
@@ -1560,17 +1564,21 @@ select {
 }
 
 .account-avatar {
-  width: 34px;
-  height: 34px;
   display: inline-flex;
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  max-width: 32px;
+  max-height: 32px;
   align-items: center;
   justify-content: center;
   border-radius: 999px;
   color: #fafafa;
   background: #111111;
   border: 1px solid #2a2a2a;
-  font-size: 0.9rem;
+  font-size: 0.88rem;
   font-weight: 900;
+  line-height: 1;
 }
 
 .account-dropdown {
@@ -6219,6 +6227,206 @@ button:disabled {
   color: #64748b;
   font-size: 0.88rem;
   overflow-wrap: anywhere;
+}
+
+.app-shell:has(.account-page) {
+  max-width: none;
+  padding: 16px 20px 0;
+}
+
+.account-page {
+  width: 100%;
+  min-height: calc(100dvh - 72px);
+  font-size: 0.88rem;
+}
+
+.account-card.account-shell {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.account-hero {
+  grid-template-columns: minmax(260px, 0.8fr) minmax(460px, 1.2fr);
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  padding: 10px 0 16px;
+}
+
+.account-page .account-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  font-size: 1rem;
+}
+
+.account-menu .account-avatar {
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  max-width: 32px;
+  max-height: 32px;
+  border-radius: 999px;
+  font-size: 0.88rem;
+  line-height: 1;
+}
+
+.account-hero h2 {
+  margin-top: 6px;
+  font-size: clamp(1.1rem, 1.8vw, 1.45rem);
+  letter-spacing: -0.02em;
+}
+
+.account-stat-grid,
+.account-info-grid,
+.account-panel-card,
+.session-item {
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.account-stat-grid,
+.account-info-grid {
+  border-color: var(--line);
+}
+
+.account-layout {
+  grid-template-columns: minmax(0, 1.25fr) minmax(300px, 0.75fr);
+  gap: clamp(18px, 2vw, 28px);
+  padding-top: 18px;
+}
+
+.account-panel-card {
+  border: 0;
+  border-top: 1px solid var(--line);
+  padding: 14px 0 0;
+}
+
+.account-panel h3 {
+  font-size: 0.95rem;
+}
+
+.account-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+}
+
+.account-stat {
+  padding: 10px 12px;
+}
+
+.account-stat span,
+.account-info-row span {
+  font-size: 0.68rem;
+  letter-spacing: 0.05em;
+}
+
+.account-stat strong,
+.account-info-row strong {
+  font-size: 0.82rem;
+}
+
+.account-info-row,
+.session-item {
+  padding: 10px 0;
+}
+
+.session-item {
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+
+.session-item p,
+.session-item span {
+  font-size: 0.78rem;
+}
+
+.status-pill {
+  padding: 5px 8px;
+  font-size: 0.7rem;
+}
+
+@media (max-width: 900px) {
+  .account-hero,
+  .account-layout,
+  .account-form-grid,
+  .account-stat-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .app-shell:has(.account-page) {
+    padding: 12px 14px 0;
+  }
+}
+
+.settings-shell {
+  gap: 18px;
+}
+
+.settings-hero {
+  grid-template-columns: minmax(260px, 1fr) auto;
+}
+
+.settings-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.settings-page .account-panel {
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+
+.settings-page .nested-panel {
+  margin-top: 4px;
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+
+.settings-page .account-grid,
+.settings-page .byok-model-row {
+  gap: 10px;
+}
+
+.settings-page .account-panel h3,
+.settings-page .account-panel h4 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.settings-page .field-hint,
+.settings-page .byok-model-row label {
+  font-size: 0.78rem;
+}
+
+.settings-page input,
+.settings-page select,
+.settings-page button {
+  font-size: 0.84rem;
+}
+
+.settings-page .auth-actions {
+  justify-content: flex-start;
+}
+
+@media (max-width: 900px) {
+  .settings-hero,
+  .settings-page .account-grid,
+  .settings-page .byok-model-row {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-action-row {
+    justify-content: flex-start;
+  }
 }
 
 .json-panel summary {

@@ -10,24 +10,24 @@ interface SettingsPageProps {
 
 export function SettingsPage({ onToast, onBackWorkspace, onOpenAccount }: SettingsPageProps) {
   return (
-    <section className="login-page">
-      <div className="account-card settings-card">
-        <div className="account-header">
-          <div className="account-header-title">
+    <section className="login-page account-page settings-page">
+      <div className="account-card account-shell settings-shell">
+        <div className="account-hero settings-hero">
+          <div className="account-identity">
             <SettingsIcon />
             <div>
+              <div className="status-pill success">Cấu hình cá nhân</div>
               <h2>Cài đặt</h2>
               <p className="field-hint">Cấu hình AI cá nhân và model theo tác vụ.</p>
             </div>
           </div>
-          <button type="button" className="secondary-button" onClick={onOpenAccount}>Tài khoản</button>
+          <div className="settings-action-row">
+            <button type="button" className="secondary-button" onClick={onOpenAccount}>Tài khoản</button>
+            <button type="button" className="secondary-button" onClick={onBackWorkspace}>Vào workspace</button>
+          </div>
         </div>
 
         <ByokSettingsPanel onToast={onToast} />
-
-        <div className="auth-actions">
-          <button type="button" className="secondary-button" onClick={onBackWorkspace}>Vào workspace</button>
-        </div>
       </div>
     </section>
   );
