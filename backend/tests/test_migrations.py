@@ -2,7 +2,7 @@ import asyncio
 import subprocess
 from pathlib import Path
 
-from app.db.migrations import apply_sqlite_migrations, build_migration_drift, duplicate_migration_prefixes, warn_duplicate_migration_prefixes
+from app.db.migrations import apply_sqlite_migrations, build_migration_drift, duplicate_migration_prefixes, list_postgres_migration_files, warn_duplicate_migration_prefixes
 from app.db.session import SQLiteClient, postgres_sql
 
 
@@ -94,6 +94,17 @@ def test_ai_model_capabilities_migration_adds_registry_metadata(tmp_path):
     }.issubset({str(row["name"]) for row in model_indexes})
     assert {"runtime_json", "base_url", "result_count", "free_count", "thinking_count", "warnings_json", "updated_at"}.issubset({str(row["name"]) for row in scan_columns})
     assert "model_scan_job_models" in {str(row["name"]) for row in tables}
+
+
+def test_postgres_ai_model_capabilities_migration_exists():
+    migration_names = {migration.name for migration in list_postgres_migration_files()}
+    migration = Path(__file__).resolve().parents[2] / "migrations_postgres" / "0002_ai_model_capabilities.sql"
+    sql = migration.read_text(encoding="utf-8")
+
+    assert "0002_ai_model_capabilities.sql" in migration_names
+    assert "ALTER TABLE ai_models ADD COLUMN IF NOT EXISTS is_free_endpoint" in sql
+    assert "ALTER TABLE ai_models ADD COLUMN IF NOT EXISTS supports_thinking" in sql
+    assert "CREATE TABLE IF NOT EXISTS model_scan_job_models" in sql
 
 
 def test_postgres_sql_translates_placeholders_outside_literals():

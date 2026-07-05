@@ -27,18 +27,18 @@ function OrbitingElements() {
       <group ref={ringRef}>
         <mesh>
           <torusGeometry args={[3.2, 0.015, 16, 100]} />
-          <meshBasicMaterial color="#111111" transparent opacity={0.14} />
+          <meshBasicMaterial color="#38bdf8" transparent opacity={0.3} />
         </mesh>
         <mesh rotation={[Math.PI / 2.5, 0, 0]}>
           <torusGeometry args={[3.8, 0.01, 16, 100]} />
-          <meshBasicMaterial color="#525252" transparent opacity={0.1} />
+          <meshBasicMaterial color="#f97316" transparent opacity={0.22} />
         </mesh>
       </group>
       
       <mesh ref={satelliteRef}>
         <tetrahedronGeometry args={[0.25]} />
-        <meshStandardMaterial color="#ffffff" emissive="#ffffff" emissiveIntensity={1.5} />
-        <pointLight intensity={8} color="#ffffff" distance={3} />
+        <meshStandardMaterial color="#fef08a" emissive="#facc15" emissiveIntensity={1.2} />
+        <pointLight intensity={8} color="#facc15" distance={3} />
         <Edges color="#ffffff" threshold={10} />
       </mesh>
     </group>
@@ -47,7 +47,7 @@ function OrbitingElements() {
 
 function PolyhedronFaces() {
   const groupRef = useRef<THREE.Group>(null);
-  const palette = ['#111111', '#262626', '#3f3f3f', '#525252', '#737373', '#8a8a8a', '#a3a3a3', '#c9c9c2', '#eeeeeb', '#ffffff'];
+  const palette = ['#2563eb', '#06b6d4', '#22c55e', '#84cc16', '#f59e0b', '#f97316', '#ef4444', '#ec4899', '#8b5cf6', '#6366f1'];
   const geometry = useMemo(() => {
     const shape = new THREE.IcosahedronGeometry(2.05, 0);
     shape.clearGroups();
@@ -100,7 +100,7 @@ function BackgroundParticles() {
       const yFactor = -10 + Math.random() * 20;
       const zFactor = -10 + Math.random() * 20;
       const type = Math.floor(Math.random() * 3); // 0: octa, 1: sphere, 2: cube
-      temp.push({ t, factor, speed, xFactor, yFactor, zFactor, type, color: Math.random() > 0.5 ? '#525252' : '#a3a3a3' });
+      temp.push({ t, factor, speed, xFactor, yFactor, zFactor, type, color: Math.random() > 0.5 ? '#38bdf8' : '#f472b6' });
     }
     return temp;
   }, [count]);
@@ -145,11 +145,11 @@ function Scene({ hideHelpers = false }: { hideHelpers?: boolean }) {
 
   return (
     <>
-      <ambientLight intensity={0.58} />
-      <spotLight ref={lightRef} position={[15, 15, 15]} angle={0.2} penumbra={1} intensity={10} color="#ffffff" />
-      <pointLight position={[-15, -15, -15]} intensity={5} color="#d4d4d4" />
+      <ambientLight intensity={0.7} />
+      <spotLight ref={lightRef} position={[15, 15, 15]} angle={0.2} penumbra={1} intensity={10} color="#e0f2fe" />
+      <pointLight position={[-15, -15, -15]} intensity={5} color="#fce7f3" />
       
-      <Sparkles count={80} scale={12} size={2} speed={0.5} opacity={0.4} color="#ffffff" />
+      <Sparkles count={80} scale={12} size={2} speed={0.5} opacity={0.42} color="#60a5fa" />
       
       <BackgroundParticles />
       <OrbitingElements />
@@ -162,11 +162,11 @@ function Scene({ hideHelpers = false }: { hideHelpers?: boolean }) {
       <group>
         <mesh position={[-10, 8, -15]} rotation={[0.5, 0.5, 0.5]}>
           <boxGeometry args={[5, 5, 5]} />
-          <meshBasicMaterial color="#cbd5e1" wireframe transparent opacity={0.04} />
+          <meshBasicMaterial color="#60a5fa" wireframe transparent opacity={0.08} />
         </mesh>
         <mesh position={[12, -5, -18]} rotation={[-0.2, 0.8, 0.3]}>
           <dodecahedronGeometry args={[4]} />
-          <meshBasicMaterial color="#cbd5e1" wireframe transparent opacity={0.04} />
+          <meshBasicMaterial color="#c084fc" wireframe transparent opacity={0.08} />
         </mesh>
       </group>
 
@@ -177,10 +177,10 @@ function Scene({ hideHelpers = false }: { hideHelpers?: boolean }) {
           fadeDistance={25}
           fadeStrength={5}
           sectionSize={1.5}
-          sectionColor="#737373"
+          sectionColor="#38bdf8"
           sectionThickness={2}
           cellSize={0.75}
-          cellColor="#d4d4d4"
+          cellColor="#c4b5fd"
           cellThickness={1}
           position={[0, -2.5, 0]}
         />
@@ -202,7 +202,7 @@ function Scene({ hideHelpers = false }: { hideHelpers?: boolean }) {
       {/* Visual Axis Indicator */}
       {!hideHelpers && (
         <GizmoHelper alignment="bottom-right" margin={[80, 80]}>
-          <GizmoViewport axisColors={['#111111', '#525252', '#a3a3a3']} labelColor="white" />
+          <GizmoViewport axisColors={['#ef4444', '#22c55e', '#3b82f6']} labelColor="white" />
         </GizmoHelper>
       )}
     </>
