@@ -1,6 +1,6 @@
 import pytest
 
-from app.schemas.scene import AdvancedRenderSettings, Line3D, MathScene, Plane, Point3D, Relation, SceneView, Segment, Sphere
+from app.schemas.scene import AdvancedRenderSettings, Face, Line3D, MathScene, Plane, Point3D, Relation, SceneView, Segment, Sphere
 from app.services.geometry_engine import (
     calculate_line_equation,
     calculate_line_line_angle,
@@ -87,6 +87,22 @@ def test_calculate_point_plane_distance():
     assert result["status"] == "ok"
     assert result["result_value"] == pytest.approx(3)
     assert_point_close(result["foot"], (0, 0, 0))
+
+
+def test_compute_three_geometry_adds_point_plane_distance_from_face():
+    computed = compute_three_geometry(scene_with([
+        point("A", 0, 0, 3),
+        point("B", 0, 0, 0),
+        point("C", 4, 0, 0),
+        point("D", 0, 4, 0),
+        Face(points=["B", "C", "D"], color="#94a3b8", opacity=0.2),
+    ]))
+
+    measurement = next(item for item in computed["measurements"] if item["type"] == "point_plane_distance")
+    assert measurement["point"] == "A"
+    assert measurement["plane_points"] == ["B", "C", "D"]
+    assert measurement["distance"] == pytest.approx(3)
+    assert_point_close(measurement["foot"], (0, 0, 0))
 
 
 def test_calculate_angles():

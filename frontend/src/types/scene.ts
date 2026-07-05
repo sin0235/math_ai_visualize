@@ -13,6 +13,7 @@ export type RendererCompatibilityStatus = 'compatible' | 'incompatible' | 'requi
 export interface AdvancedRenderSettings {
   coordinate_assignment: CoordinateAssignment;
   reasoning_layer: ReasoningLayerMode;
+  thinking_enabled?: boolean | null;
   show_coordinates?: boolean | null;
   auto_segments_from_faces: boolean;
   verify_scene: boolean;
@@ -203,18 +204,29 @@ export interface ComputedVector {
   target?: string | null;
 }
 
-export interface ComputedMeasurement {
-  type: 'sphere_plane_distance';
-  sphere: string;
-  plane: string;
-  status: 'separate' | 'tangent' | 'intersect' | 'degenerate';
-  center_distance?: number | null;
-  signed_center_distance?: number | null;
-  minimum_distance?: number | null;
-  radius: number;
-  plane_foot?: { x: number; y: number; z: number } | null;
-  nearest_sphere_point?: { x: number; y: number; z: number } | null;
-}
+export type ComputedMeasurement =
+  | {
+      type: 'sphere_plane_distance';
+      sphere: string;
+      plane: string;
+      status: 'separate' | 'tangent' | 'intersect' | 'degenerate';
+      center_distance?: number | null;
+      signed_center_distance?: number | null;
+      minimum_distance?: number | null;
+      radius: number;
+      plane_foot?: { x: number; y: number; z: number } | null;
+      nearest_sphere_point?: { x: number; y: number; z: number } | null;
+    }
+  | {
+      type: 'point_plane_distance';
+      point: string;
+      plane: string;
+      plane_points: string[];
+      status: 'ok' | 'degenerate';
+      distance?: number | null;
+      signed_distance?: number | null;
+      foot?: { x: number; y: number; z: number } | null;
+    };
 
 export interface ValidationItem {
   code: string;

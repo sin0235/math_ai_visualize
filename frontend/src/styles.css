@@ -4441,26 +4441,23 @@ button:disabled {
   position: sticky;
   top: 88px;
   align-self: stretch;
+  display: grid;
+  gap: 10px;
   width: 100%;
 }
 
 .render-review-chip {
-  position: absolute;
-  right: 14px;
-  top: 14px;
-  z-index: 30;
+  justify-self: end;
   display: flex;
   align-items: center;
   gap: 10px;
-  max-width: min(560px, calc(100% - 28px));
+  max-width: min(560px, 100%);
   border: 1px solid rgba(245, 158, 11, 0.32);
   border-radius: 999px;
   padding: 8px 10px 8px 12px;
   color: #78350f;
   background: rgba(255, 251, 235, 0.94);
-  box-shadow: 0 16px 42px rgba(120, 53, 15, 0.16);
-  -webkit-backdrop-filter: blur(16px) saturate(1.15);
-  backdrop-filter: blur(16px) saturate(1.15);
+  box-shadow: 0 10px 28px rgba(120, 53, 15, 0.10);
 }
 
 .render-review-dot {
@@ -4512,8 +4509,7 @@ button:disabled {
   }
 
   .render-review-chip {
-    right: 10px;
-    left: 10px;
+    justify-self: stretch;
     align-items: flex-start;
     border-radius: 18px;
   }
@@ -4896,19 +4892,19 @@ button:disabled {
 
 .renderer-frame {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   min-height: inherit;
+  overflow: hidden;
 }
 
 .render-trust-badges {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  z-index: 22;
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  max-width: min(620px, calc(100% - 24px));
-  pointer-events: none;
+  max-width: 100%;
+  padding: 12px 12px 0;
 }
 
 .render-trust-badge {
@@ -4933,22 +4929,16 @@ button:disabled {
 
 .renderer-metadata-banner,
 .renderer-saving-overlay {
-  position: absolute;
-  left: 50%;
-  z-index: 20;
-  transform: translateX(-50%);
   border: 1px solid rgba(17, 17, 17, 0.16);
   background: rgba(255, 255, 255, 0.94);
   color: var(--ink);
-  box-shadow: 0 12px 32px rgba(17, 17, 17, 0.12);
-  pointer-events: none;
+  box-shadow: 0 8px 22px rgba(17, 17, 17, 0.08);
 }
 
 .renderer-metadata-banner {
-  top: 12px;
   display: grid;
   gap: 2px;
-  width: min(620px, calc(100% - 28px));
+  margin: 0 12px;
   border-radius: 14px;
   padding: 10px 14px;
   font-size: 0.84rem;
@@ -4966,11 +4956,16 @@ button:disabled {
 }
 
 .renderer-saving-overlay {
+  position: absolute;
   top: 14px;
+  left: 50%;
+  z-index: 20;
+  transform: translateX(-50%);
   border-radius: 999px;
   padding: 8px 14px;
   font-size: 0.88rem;
   font-weight: 700;
+  pointer-events: none;
 }
 
 .scene-editor-layer {
@@ -13993,4 +13988,303 @@ button.analyzer-guide-label:hover {
   display: grid;
   gap: 3px;
   padding-left: 18px;
+}
+
+/* Settings/BYOK polish */
+.settings-page {
+  --settings-control-height: 36px;
+}
+
+.settings-page .account-hero {
+  align-items: end;
+  padding: 8px 0 14px;
+}
+
+.settings-page .account-identity {
+  gap: 10px;
+}
+
+.settings-page .account-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+}
+
+.settings-page .account-hero h2 {
+  margin-top: 4px;
+  font-size: clamp(1.08rem, 1.5vw, 1.35rem);
+  line-height: 1.08;
+}
+
+.settings-action-row .secondary-button,
+.settings-page .auth-actions button,
+.settings-page .account-section-title > .secondary-button,
+.settings-page .nested-panel > button,
+.settings-page .byok-model-row button {
+  width: auto;
+  min-width: 0;
+  min-height: var(--settings-control-height);
+  justify-self: start;
+  border-radius: 10px;
+  padding: 0 12px;
+  font-size: 0.78rem;
+  font-weight: 760;
+}
+
+.settings-page .auth-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 8px;
+  margin-top: -2px;
+}
+
+.settings-page .auth-actions button:first-child,
+.settings-page .nested-panel > button {
+  background: var(--ink);
+  color: var(--accent-fg);
+}
+
+.settings-page .auth-actions button:first-child:hover:not(:disabled),
+.settings-page .nested-panel > button:hover:not(:disabled) {
+  background: var(--ink-2);
+}
+
+.settings-page .account-grid {
+  grid-template-columns: repeat(2, minmax(260px, 1fr));
+  gap: 12px 14px;
+  align-items: end;
+}
+
+.settings-page .field-label {
+  gap: 6px;
+  color: var(--ink-2);
+  font-size: 0.76rem;
+  font-weight: 760;
+}
+
+.settings-page input,
+.settings-page select {
+  min-height: var(--settings-control-height);
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: #fff;
+}
+
+.settings-page .byok-toggle-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  align-self: stretch;
+  min-height: var(--settings-control-height);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: #fff;
+}
+
+.settings-page .byok-toggle-row input {
+  width: 16px;
+  min-height: 16px;
+  height: 16px;
+  accent-color: var(--ink);
+}
+
+.settings-page .nested-panel {
+  gap: 12px;
+  padding-top: 12px;
+}
+
+.settings-page .byok-model-list {
+  display: grid;
+  gap: 8px;
+}
+
+.settings-page .byok-model-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.2fr) minmax(180px, 1fr) auto auto auto;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 8px;
+  background: #fff;
+}
+
+.settings-page .byok-model-row label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  color: var(--ink-3);
+  font-weight: 760;
+}
+
+.settings-page .byok-model-row label input {
+  width: 15px;
+  min-height: 15px;
+  height: 15px;
+  accent-color: var(--ink);
+}
+
+.settings-page .nested-panel > button {
+  margin-top: 2px;
+}
+
+.byok-loading {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  width: fit-content;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 7px 11px;
+  background: #fff;
+  color: var(--ink-2);
+  font-size: 0.78rem;
+}
+
+.byok-loading::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(17, 17, 17, 0.06), transparent);
+  animation: settings-shimmer 1.2s linear infinite;
+}
+
+.byok-loading span {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--ink);
+  box-shadow: 0 0 0 4px rgba(17, 17, 17, 0.08);
+}
+
+.byok-loading strong {
+  position: relative;
+  z-index: 1;
+  font-weight: 820;
+}
+
+.page-loading-fallback {
+  min-height: min(520px, calc(100dvh - 140px));
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 18px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background:
+    radial-gradient(circle at 50% 38%, rgba(17, 17, 17, 0.055), transparent 28%),
+    transparent;
+  box-shadow: none;
+}
+
+.tool-loading-orb {
+  position: relative;
+  width: 62px;
+  height: 62px;
+  border: 1px solid var(--line-2);
+  border-radius: 50%;
+  background: #fff;
+}
+
+.tool-loading-orb::before,
+.tool-loading-orb::after,
+.tool-loading-orb span {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+}
+
+.tool-loading-orb::before {
+  inset: 8px;
+  border: 1px solid var(--line);
+}
+
+.tool-loading-orb::after {
+  inset: -1px;
+  border: 2px solid transparent;
+  border-top-color: var(--ink);
+  animation: spin 900ms linear infinite;
+}
+
+.tool-loading-orb span {
+  inset: 22px;
+  background: var(--ink);
+}
+
+.tool-loading-copy {
+  display: grid;
+  gap: 5px;
+  max-width: 360px;
+  text-align: center;
+}
+
+.tool-loading-copy strong {
+  color: var(--ink);
+  font-size: 0.98rem;
+}
+
+.tool-loading-copy span {
+  color: var(--ink-4);
+  font-size: 0.84rem;
+}
+
+.tool-loading-skeleton {
+  display: grid;
+  gap: 7px;
+  width: min(320px, 62vw);
+}
+
+.tool-loading-skeleton i {
+  height: 9px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--line);
+}
+
+.tool-loading-skeleton i::after {
+  content: '';
+  display: block;
+  width: 45%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.9), transparent);
+  animation: settings-skeleton 1.15s ease-in-out infinite;
+}
+
+.tool-loading-skeleton i:nth-child(2) {
+  width: 78%;
+  justify-self: center;
+}
+
+.tool-loading-skeleton i:nth-child(3) {
+  width: 56%;
+  justify-self: center;
+}
+
+@keyframes settings-shimmer {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
+
+@keyframes settings-skeleton {
+  from { transform: translateX(-120%); }
+  to { transform: translateX(240%); }
+}
+
+@media (max-width: 900px) {
+  .settings-page .account-grid,
+  .settings-page .byok-model-row {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-page .auth-actions,
+  .settings-action-row {
+    justify-content: flex-start;
+  }
 }

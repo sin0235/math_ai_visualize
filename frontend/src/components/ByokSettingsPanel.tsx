@@ -149,6 +149,12 @@ export function ByokSettingsPanel({ onToast }: ByokSettingsPanelProps) {
         <div className={provider.enabled ? 'status-pill success' : 'status-pill warning'}>{provider.enabled ? 'Đang bật' : 'Đang tắt'}</div>
       </div>
       <p className="field-hint">Cấu hình API key riêng cho tài khoản. API key chỉ gửi lên server khi lưu hoặc kiểm tra, không lưu trong trình duyệt.</p>
+      {loading && (
+        <div className="byok-loading" role="status" aria-live="polite">
+          <span aria-hidden="true" />
+          <strong>Đang đồng bộ cấu hình</strong>
+        </div>
+      )}
 
       <form className="account-grid" onSubmit={saveProvider}>
         <label className="field-label">

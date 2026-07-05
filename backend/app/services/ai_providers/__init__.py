@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import asyncio
+import html as html_lib
+import re
 from typing import Any
 
 import httpx
@@ -21,6 +24,8 @@ CAPABILITY_KEYS = (
 )
 OLLAMA_CAPABILITY_KEYS = ("details", "size", "digest", "modified_at")
 THINKING_PARAMETERS = {"reasoning", "reasoning_effort", "thinking"}
+NVIDIA_BUILD_BASE_URL = "https://build.nvidia.com"
+NVIDIA_PREVIEW_MODELS_URL = f"{NVIDIA_BUILD_BASE_URL}/models?filters=nimType%3Anim_type_preview"
 
 
 @dataclass(frozen=True)
@@ -199,6 +204,24 @@ class NvidiaAdapter(OpenAIStyleAdapter):
     label = "NVIDIA"
     api_key_required = True
 
+    def is_free_endpoint_model(self, model_id: str, metadata: dict[str, Any], pricing: dict[str, Any]) -> tuple[bool, str | None]:
+        if _nvidia_is_preview_endpoint(metadata) or _explicit_free(metadata) or _pricing_is_free(pricing):
+            return True, None
+        return False, None
+
+    async def _fetch_models(self, headers: dict[str, str], normalized_base: str) -> tuple[list[AiModelInfo], list[str]]:
+        response = await _get_openai_models(self.id, headers, normalized_base)
+        parsed, warnings = super()._parse_openai_style_models(response)
+        preview_slugs, preview_warning = await _fetch_nvidia_preview_model_slugs()
+        if preview_warning:
+            warnings.append(preview_warning)
+        models = _filter_nvidia_free_endpoint_models(parsed, preview_slugs)
+        skipped = len(parsed) - len(models)
+        if skipped > 0:
+            source = NVIDIA_PREVIEW_MODELS_URL if preview_slugs else "metadata Free Endpoint/nim_type_preview"
+            warnings.append(f"Đã bỏ {skipped} NVIDIA model không thuộc Free Endpoint. Nguồn lọc: {source}")
+        return models, warnings
+
     def _add_thinking_payload(self, payload: dict[str, Any], supported_parameters: list[str]) -> None:
         chat_template_kwargs = dict(payload.get("chat_template_kwargs") or {})
         if "reasoning_effort" in supported_parameters:
@@ -372,6 +395,56 @@ async def _get_ollama_tags(api_key: str | None, normalized_base: str) -> httpx.R
         raise RuntimeError(f"ollama models request lỗi: {message}") from error
 
 
+async def _fetch_nvidia_preview_model_slugs() -> tuple[set[str], str | None]:
+    from app.services.http_pool import TIMEOUT_MODELS, get_client
+
+    client = get_client(NVIDIA_BUILD_BASE_URL, TIMEOUT_MODELS)
+    urls = [f"{NVIDIA_PREVIEW_MODELS_URL}&page={page}" for page in range(1, 5)]
+    responses = await asyncio.gather(*(client.get(url, timeout=TIMEOUT_MODELS) for url in urls), return_exceptions=True)
+    slugs: set[str] = set()
+    failures = 0
+    for response in responses:
+        if isinstance(response, Exception):
+            failures += 1
+            continue
+        if response.status_code >= 400:
+            failures += 1
+            continue
+        slugs.update(_parse_nvidia_preview_slugs(response.text))
+    warning = None
+    if failures and not slugs:
+        warning = "Không đọc được NVIDIA Free Endpoint catalog; chỉ dùng metadata trong /v1/models để lọc."
+    return slugs, warning
+
+
+def _parse_nvidia_preview_slugs(html: str) -> set[str]:
+    slugs: set[str] = set()
+    for href in re.findall(r'href="/([^"/?#]+/[^"/?#]+)"', html):
+        if href.startswith("explore/"):
+            continue
+        slugs.add(html_lib.unescape(href.rsplit("/", 1)[-1]).strip().lower())
+    return slugs
+
+
+def _filter_nvidia_free_endpoint_models(models: list[AiModelInfo], preview_slugs: set[str]) -> list[AiModelInfo]:
+    filtered: list[AiModelInfo] = []
+    for model in models:
+        matches_catalog = bool(preview_slugs) and _nvidia_model_matches_preview_catalog(model.id, preview_slugs)
+        if not model.is_free_endpoint and not matches_catalog:
+            continue
+        metadata = dict(model.endpoint_metadata)
+        if matches_catalog:
+            metadata["nvidia_free_endpoint_source"] = NVIDIA_PREVIEW_MODELS_URL
+        filtered.append(model.model_copy(update={"is_free_endpoint": True, "endpoint_metadata": metadata}))
+    return sorted(filtered, key=lambda item: item.id.lower())
+
+
+def _nvidia_model_matches_preview_catalog(model_id: str, preview_slugs: set[str]) -> bool:
+    normalized = model_id.strip().lower()
+    tail = normalized.rsplit("/", 1)[-1]
+    return tail in preview_slugs or normalized in preview_slugs
+
+
 def _model_info(provider: str, model_id: str, item: dict[str, Any], detected: CapabilityResult, label: str | None = None, owned_by: str | None = None) -> AiModelInfo:
     return AiModelInfo(
         id=model_id,
@@ -494,6 +567,13 @@ def _walk_values(value: Any):
 
 def _explicit_free(metadata: dict[str, Any]) -> bool:
     return _truthy_capability(metadata, ("free", "is_free", "free_endpoint", "is_free_endpoint"))
+
+
+def _nvidia_is_preview_endpoint(metadata: dict[str, Any]) -> bool:
+    for value in _walk_values(metadata):
+        if isinstance(value, str) and value.strip().lower() == "nim_type_preview":
+            return True
+    return False
 
 
 def _pricing_is_free(pricing: dict[str, Any]) -> bool:

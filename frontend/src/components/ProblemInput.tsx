@@ -6,6 +6,7 @@ import type { RenderModelOption } from '../utils/settingsOptions';
 export const defaultAdvancedSettings: AdvancedRenderSettings = {
   coordinate_assignment: 'ai',
   reasoning_layer: 'off',
+  thinking_enabled: null,
   show_coordinates: null,
   auto_segments_from_faces: true,
   verify_scene: true,
@@ -118,6 +119,7 @@ export function ProblemInput({
   const selectedModelOption = modelOptions.find((option) => option.key === effectiveModelKey);
   const groupedModelOptions = useMemo(() => groupModelOptions(modelOptions), [modelOptions]);
   const modelHint = formatModelHint(selectedModelOption, advancedSettings.reasoning_layer);
+  const thinkingHint = formatThinkingHint(selectedModelOption);
 
   function updateAdvancedSettings(next: Partial<AdvancedRenderSettings>) {
     setAdvancedSettings((current) => ({ ...current, ...next }));
@@ -273,6 +275,18 @@ export function ProblemInput({
           <span className="field-hint">Hữu ích cho toán thực tế hoặc đề cần xác định mô hình/hình cần vẽ trước.</span>
         </label>
         <label className="field-label">
+          Thinking native của model
+          <select
+            value={formatNullableBoolean(advancedSettings.thinking_enabled)}
+            onChange={(event) => updateAdvancedSettings({ thinking_enabled: parseNullableBoolean(event.target.value as NullableBooleanSelectValue) })}
+          >
+            <option value="auto">Theo mặc định hệ thống</option>
+            <option value="true">Bật nếu model hỗ trợ</option>
+            <option value="false">Tắt cho request này</option>
+          </select>
+          <span className="field-hint">{thinkingHint}</span>
+        </label>
+        <label className="field-label">
           Công cụ vẽ
           <select value={preferredRenderer} onChange={(event) => setPreferredRenderer(event.target.value as 'auto' | Renderer)}>
             <option value="auto">Tự động (AI chọn 2D hoặc 3D)</option>
@@ -379,6 +393,12 @@ function formatModelHint(option: ModelOption | undefined, reasoningLayer: Reason
     return `${option.description} Lớp suy luận đang bật bắt buộc; model này chưa có Thinking metadata.`;
   }
   return option.description;
+}
+
+function formatThinkingHint(option: ModelOption | undefined) {
+  if (!option || !option.modelId) return 'Áp dụng theo task profile/model backend chọn; backend vẫn chặn nếu model không hỗ trợ.';
+  if (option.supportsThinking) return 'Model đang chọn có Thinking metadata; bật sẽ gửi reasoning/thinking payload nếu provider hỗ trợ.';
+  return 'Model đang chọn chưa có Thinking metadata; backend sẽ không gửi reasoning/thinking payload.';
 }
 
 function Spinner({ className }: { className?: string }) {

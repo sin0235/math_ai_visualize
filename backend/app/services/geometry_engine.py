@@ -12,6 +12,7 @@ from app.services.linalg import Vec3, add as _add, bbox_diagonal, centroid as li
 EPS = 1e-9
 DISPLAY_EPS = 1e-6
 MAX_COMPUTED_PAIRS = 100
+MAX_POINT_PLANE_MEASUREMENTS = 8
 _SAFE_SYMPY_LOCALS = {
     "sqrt": sp.sqrt,
     "pi": sp.pi,
@@ -396,6 +397,7 @@ def compute_three_geometry(scene: MathScene) -> dict[str, Any]:
     points = _point_map(scene)
     lines = [obj for obj in scene.objects if isinstance(obj, Line3D)]
     planes = [obj for obj in scene.objects if isinstance(obj, Plane)]
+    faces = [obj for obj in scene.objects if isinstance(obj, Face)]
     vectors = [obj for obj in scene.objects if isinstance(obj, Vector3D)]
     spheres = [obj for obj in scene.objects if isinstance(obj, Sphere)]
     warnings: list[str] = []
@@ -460,6 +462,8 @@ def compute_three_geometry(scene: MathScene) -> dict[str, Any]:
             measurements.append(result)
             if result["status"] == "degenerate":
                 warnings.append(f"Sphere-plane measurement {result['sphere']} and {result['plane']}: degenerate.")
+
+    measurements.extend(_point_plane_distances(points, [*planes, *faces]))
 
     return {"intersections": intersections, "vectors": computed_vectors, "measurements": measurements, "warnings": warnings}
 
@@ -1124,6 +1128,41 @@ def _sphere_plane_distance(sphere: Sphere, plane: Plane, points: dict[str, Point
     return result
 
 
+def _point_plane_distances(points: dict[str, Point3D], planes: list[Plane | Face]) -> list[dict[str, Any]]:
+    results: list[dict[str, Any]] = []
+    seen: set[tuple[str, tuple[str, ...]]] = set()
+    for plane in planes:
+        plane_points = list(plane.points)
+        plane_data = _plane_data_from_object_points(plane_points, points)
+        if plane_data is None:
+            continue
+        plane_point, normal = plane_data
+        plane_label = plane.name or "".join(plane_points)
+        for point_name, point in points.items():
+            key = (point_name, tuple(plane_points))
+            if point_name in plane_points or key in seen:
+                continue
+            signed_distance = _dot(normal, _sub(_point_tuple(point), plane_point))
+            distance = abs(signed_distance)
+            if distance <= DISPLAY_EPS:
+                continue
+            seen.add(key)
+            foot = _sub(_point_tuple(point), _scale(normal, signed_distance))
+            results.append({
+                "type": "point_plane_distance",
+                "point": point_name,
+                "plane": plane_label,
+                "plane_points": plane_points,
+                "status": "ok",
+                "distance": distance,
+                "signed_distance": signed_distance,
+                "foot": _as_point(foot),
+            })
+            if len(results) >= MAX_POINT_PLANE_MEASUREMENTS:
+                return results
+    return results
+
+
 def _line_data(line: Line3D, points: dict[str, Point3D]) -> tuple[Vec3, Vec3] | None:
     start = points.get(line.through[0])
     end = points.get(line.through[1])
@@ -1134,7 +1173,11 @@ def _line_data(line: Line3D, points: dict[str, Point3D]) -> tuple[Vec3, Vec3] | 
 
 
 def _plane_data(plane: Plane, points: dict[str, Point3D]) -> tuple[Vec3, Vec3] | None:
-    resolved = [_point_tuple(points[name]) for name in plane.points if name in points]
+    return _plane_data_from_object_points(plane.points, points)
+
+
+def _plane_data_from_object_points(point_names: list[str], points: dict[str, Point3D]) -> tuple[Vec3, Vec3] | None:
+    resolved = [_point_tuple(points[name]) for name in point_names if name in points]
     return plane_from_points(resolved, EPS)
 
 

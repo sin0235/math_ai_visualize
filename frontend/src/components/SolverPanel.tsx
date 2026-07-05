@@ -128,10 +128,12 @@ function buildExamples(scene: MathScene) {
     .map((point) => point.name);
   const face = scene.objects.find((obj): obj is Extract<MathScene['objects'][number], { type: 'face' }> => obj.type === 'face' && obj.points.length >= 3);
   const base = face?.points ?? pointNames.slice(0, 4);
+  const distanceBase = face?.points ?? (pointNames.length >= 4 ? pointNames.slice(0, 3) : base);
+  const distancePoint = pointNames.find((name) => !distanceBase.includes(name));
   const apex = pointNames.find((name) => !base.includes(name)) ?? pointNames[0];
   const edge = base.length >= 2 ? `${base[0]}${base[1]}` : '';
   const secondEdge = base.length >= 4 ? `${base[2]}${base[3]}` : edge;
-  const plane = base.length >= 3 ? `(${base.join('')})` : '';
+  const plane = distanceBase.length >= 3 ? `(${distanceBase.join('')})` : '';
   const top = base.map((name) => `${name}'`);
   const hasMatchingTop = top.length >= 3 && top.every((name) => pointNames.includes(name));
   const volumeExample = hasMatchingTop
@@ -140,7 +142,7 @@ function buildExamples(scene: MathScene) {
   const examples = [
     pointNames.length >= 2 ? `d(${pointNames[0]},${pointNames[1]})` : '',
     apex && edge && !edge.includes(apex) ? `d(${apex},${edge})` : '',
-    apex && plane && !base.includes(apex) ? `d(${apex},${plane})` : '',
+    distancePoint && plane ? `d(${distancePoint},${plane})` : '',
     edge && secondEdge && edge !== secondEdge ? `Góc giữa ${edge} và ${secondEdge}` : '',
     apex && edge && plane && !base.includes(apex) ? `Góc giữa ${apex}${base[0]} và ${plane}` : '',
     base.length >= 3 ? `S(${base.join('')})` : '',

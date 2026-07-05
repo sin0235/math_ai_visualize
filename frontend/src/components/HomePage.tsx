@@ -89,7 +89,7 @@ export function HomePage({ backendStatus, onOpenLogin }: HomePageProps) {
 
         <div className="home-visual-card home-visual-card--3d" role="region" aria-label="Minh họa tứ diện đều SABC, kéo để xoay góc nhìn.">
           <Suspense fallback={<div className="home-visual-placeholder" aria-hidden="true" />}>
-            <HomeTetrahedronShowcase />
+            <HomeTetrahedronShowcase hideHelpers />
           </Suspense>
         </div>
       </div>

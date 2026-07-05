@@ -419,6 +419,7 @@ class MathScene(BaseModel):
 class AdvancedRenderSettings(BaseModel):
     coordinate_assignment: CoordinateAssignment = "ai"
     reasoning_layer: ReasoningLayerMode = "off"
+    thinking_enabled: bool | None = None
     show_coordinates: bool | None = None
     auto_segments_from_faces: bool = True
     verify_scene: bool = True

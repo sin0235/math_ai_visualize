@@ -31,6 +31,7 @@ class OpenRouterClient:
         self.settings = settings
         self.model = model or settings.openrouter_text_model
         self.reasoning_enabled = settings.openrouter_reasoning_enabled if reasoning_enabled is None else reasoning_enabled
+        self.reasoning_enabled_explicit = reasoning_enabled is not None
         self.supports_thinking = supports_thinking
         self.supported_parameters = supported_parameters or []
 
@@ -58,7 +59,7 @@ class OpenRouterClient:
             request_thinking=self.reasoning_enabled,
             supports_thinking=self.supports_thinking,
             supported_parameters=self.supported_parameters,
-            allow_unknown_thinking=self.reasoning_enabled,
+            allow_unknown_thinking=self.reasoning_enabled and not self.reasoning_enabled_explicit,
         )
 
         from app.services.http_pool import TIMEOUT_SCENE, get_client
@@ -104,7 +105,7 @@ class OpenRouterClient:
             request_thinking=self.reasoning_enabled,
             supports_thinking=self.supports_thinking,
             supported_parameters=self.supported_parameters,
-            allow_unknown_thinking=self.reasoning_enabled,
+            allow_unknown_thinking=self.reasoning_enabled and not self.reasoning_enabled_explicit,
         )
 
         from app.services.http_pool import TIMEOUT_REASONING, get_client

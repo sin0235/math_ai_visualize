@@ -693,6 +693,26 @@ function ComputedMeasurements({ scene }: ThreeGeometryViewProps) {
   return (
     <>
       {(scene.computed?.measurements ?? []).map((measurement, index) => {
+        if (measurement.type === 'point_plane_distance') {
+          const start = scene.points[measurement.point];
+          const end = measurement.foot;
+          if (measurement.status !== 'ok' || measurement.distance == null || !start || !end) return null;
+          const mid = midpoint(start, end);
+          const label = `d(${measurement.point},(${measurement.plane_points.join('')})) = ${fmtN(measurement.distance)}`;
+          return (
+            <group key={`measurement-${index}`}>
+              <Line points={[[start.x, start.y, start.z], [end.x, end.y, end.z]]} color="#f97316" lineWidth={3} dashed dashSize={0.12} gapSize={0.08} />
+              <mesh position={[end.x, end.y, end.z]}>
+                <sphereGeometry args={[0.07, 16, 16]} />
+                <meshStandardMaterial color="#111111" />
+              </mesh>
+              <LabelText position={[mid.x, mid.y + 0.2, mid.z]} fontSize={0.22} color="#c2410c" anchorX="center" anchorY="middle" fontWeight={700}>
+                {label}
+              </LabelText>
+            </group>
+          );
+        }
+
         if (measurement.type !== 'sphere_plane_distance' || measurement.minimum_distance == null) return null;
         const label = `dmin = ${fmtN(measurement.minimum_distance)}`;
         const start = measurement.nearest_sphere_point;
