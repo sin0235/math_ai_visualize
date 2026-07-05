@@ -461,7 +461,7 @@ class AiTierProfile(BaseModel):
         elif model:
             default_model = _format_tier_model_ref(provider, model)
         if isinstance(value.get("models"), list):
-            models.extend(str(item).strip() for item in value["models"])
+            models.extend(_format_tier_model_ref(provider, str(item).strip()) for item in value["models"])
         elif default_model:
             models.append(default_model)
         return {"tier": value.get("tier"), "default_model": default_model, "models": models}
@@ -477,11 +477,10 @@ class AiTierProfile(BaseModel):
         cleaned = [value.strip() for value in values]
         if any(not value for value in cleaned):
             raise ValueError("Danh sách model tier không được chứa giá trị trống.")
-        primary_provider = _tier_provider_from_model(cleaned[0]) if cleaned else None
+        if any(_tier_provider_from_model(value) is None for value in cleaned):
+            raise ValueError("Model tier phải có dạng provider::model.")
         deduped: list[str] = []
         for value in cleaned:
-            if primary_provider and _tier_provider_from_model(value) is None:
-                value = f"{primary_provider}/{value}"
             if value not in deduped:
                 deduped.append(value)
         return deduped
@@ -491,15 +490,10 @@ class AiTierProfile(BaseModel):
         if not self.default_model and self.models:
             self.default_model = self.models[0]
         if self.default_model:
-            default_model = self.default_model
-            provider = _tier_provider_from_model(default_model)
-            if provider is None and self.models:
-                model_provider = _tier_provider_from_model(self.models[0])
-                if model_provider is not None:
-                    default_model = f"{model_provider}/{default_model}"
-            if default_model not in self.models:
-                self.models = [default_model, *self.models]
-            self.default_model = default_model
+            if _tier_provider_from_model(self.default_model) is None:
+                raise ValueError("Model mặc định của tier phải có dạng provider::model.")
+            if self.default_model not in self.models:
+                self.models = [self.default_model, *self.models]
         return self
 
 
@@ -531,19 +525,35 @@ class SystemAiTierProfiles(BaseModel):
 def _format_tier_model_ref(provider: str, model: str) -> str:
     if not model:
         return ""
-    if _tier_provider_from_model(model) is not None:
-        return model
+    parsed = _parse_tier_model_ref(model, allow_legacy_slash=True)
+    if parsed is not None:
+        return f"{parsed[0]}::{parsed[1]}"
     if provider in {"openrouter", "nvidia", "ollama", "openai_compat", "router9"}:
-        return f"{provider}/{model}"
+        return f"{provider}::{model}"
     return model
 
 
 def _tier_provider_from_model(model: str) -> str | None:
+    parsed = _parse_tier_model_ref(model, allow_legacy_slash=False)
+    return parsed[0] if parsed is not None else None
+
+
+def _parse_tier_model_ref(model: str, *, allow_legacy_slash: bool) -> tuple[str, str] | None:
+    value = model.strip()
+    if "::" in value:
+        provider, model_id = value.split("::", 1)
+        provider = "openai_compat" if provider == "openai-compat" else provider
+        if provider in {"openrouter", "nvidia", "ollama", "openai_compat", "router9"} and model_id:
+            return provider, model_id
+        return None
+    if not allow_legacy_slash:
+        return None
     for provider in ("openrouter", "nvidia", "ollama", "openai_compat", "router9"):
-        if model.startswith(f"{provider}/"):
-            return provider
-    if model.startswith("openai-compat/"):
-        return "openai_compat"
+        prefix = f"{provider}/"
+        if value.startswith(prefix) and value != prefix:
+            return provider, value.removeprefix(prefix)
+    if value.startswith("openai-compat/") and value != "openai-compat/":
+        return "openai_compat", value.removeprefix("openai-compat/")
     return None
 
 

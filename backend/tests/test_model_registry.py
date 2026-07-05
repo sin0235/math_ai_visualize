@@ -6,12 +6,13 @@ from app.core.config import Settings
 from app.db.migrations import apply_sqlite_migrations
 from app.db.session import SQLiteClient
 from app.schemas.scene import AiModelInfo, RuntimeSettings
-from app.services.admin_settings import build_ai_settings_drift, sync_ai_profiles_to_registry, sync_ai_settings_to_registry
+from app.services.admin_settings import build_ai_settings_drift, sync_ai_profiles_to_registry, sync_ai_settings_to_registry, sync_ai_tier_profiles_to_registry
 from app.services.model_provider import explicit_provider_from_model
 from app.services.model_registry import (
     effective_provider_default_model,
     load_model_registry,
     resolve_effective_settings,
+    resolve_render_tier_candidates,
     resolve_task_profile,
     save_provider_config,
     save_task_profile,
@@ -278,7 +279,7 @@ async def test_save_task_profile_rejects_provider_model_mismatch(db):
     await load_model_registry(db, settings)
 
     with pytest.raises(ValueError, match="thuộc provider openrouter"):
-        await save_task_profile(db, "ocr", "router9", "openrouter/google/gemma-4-26b-a4b-it:free", [])
+        await save_task_profile(db, "ocr", "router9", "openrouter::google/gemma-4-26b-a4b-it:free", [])
 
 
 @pytest.mark.anyio
@@ -345,7 +346,7 @@ def test_validate_system_setting_rejects_mismatched_provider_model():
     with pytest.raises(HTTPException) as error:
         validate_system_setting("ai_profiles", {
             "version": 1,
-            "ocr": {"provider": "router9", "model": "openrouter/google/gemma-4-26b-it:free"},
+            "ocr": {"provider": "router9", "model": "openrouter::google/gemma-4-26b-it:free"},
         })
 
     assert error.value.status_code == 422
@@ -460,6 +461,69 @@ async def test_openrouter_scan_accepts_vendor_namespaced_models(db):
     registry = await load_model_registry(db, Settings(_env_file=None))
 
     assert any(model.id == "nvidia/llama-3.3-nemotron-super-49b-v1.5" for model in registry.models["openrouter"])
+
+
+@pytest.mark.anyio
+async def test_tier_profiles_store_explicit_provider_and_keep_vendor_namespaced_model(db):
+    await load_model_registry(db, Settings(_env_file=None))
+    await upsert_scanned_models(db, "openrouter", [
+        AiModelInfo(id="nvidia/llama", label="OpenRouter NVIDIA", provider="openrouter"),
+    ])
+    await upsert_scanned_models(db, "nvidia", [
+        AiModelInfo(id="llama", label="NVIDIA", provider="nvidia"),
+    ])
+
+    await sync_ai_tier_profiles_to_registry(db, {
+        "version": 3,
+        "tier1": {"tier": "tier1", "default_model": "openrouter::nvidia/llama", "models": ["openrouter::nvidia/llama", "nvidia::llama"]},
+    }, {
+        "tier1": {"tier": "tier1", "default_model": "openrouter::nvidia/llama", "models": ["openrouter::nvidia/llama", "nvidia::llama"]},
+    })
+
+    registry = await load_model_registry(db, Settings(_env_file=None))
+    row = await db.fetch_one("SELECT provider_id, model_id, fallbacks_json FROM ai_task_profiles WHERE task = ?", ["render_tier1"])
+    candidates = resolve_render_tier_candidates(registry, "tier1")
+
+    assert row["provider_id"] == "openrouter"
+    assert row["model_id"] == "nvidia/llama"
+    assert json.loads(row["fallbacks_json"]) == ["nvidia::llama"]
+    assert [(candidate.provider_id, candidate.model_id) for candidate in candidates] == [("openrouter", "nvidia/llama"), ("nvidia", "llama")]
+
+
+def test_validate_tier_profiles_rejects_model_only_refs():
+    from fastapi import HTTPException
+    from app.api.routes_admin import validate_system_setting
+
+    with pytest.raises(HTTPException) as error:
+        validate_system_setting("ai_tier_profiles", {
+            "version": 3,
+            "tier1": {"tier": "tier1", "default_model": "llama", "models": ["llama"]},
+        })
+
+    assert error.value.status_code == 422
+    assert "provider::model" in str(error.value.detail)
+
+
+@pytest.mark.anyio
+async def test_legacy_auto_tier_profile_is_backfilled_once_before_runtime(db):
+    await load_model_registry(db, Settings(_env_file=None))
+    await upsert_scanned_models(db, "nvidia", [AiModelInfo(id="llama", label="NVIDIA", provider="nvidia")])
+    await db.execute(
+        """
+        INSERT INTO ai_task_profiles (task, provider_id, model_id, fallbacks_json)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(task) DO UPDATE SET provider_id = excluded.provider_id, model_id = excluded.model_id, fallbacks_json = excluded.fallbacks_json
+        """,
+        ["render_tier1", "auto", "nvidia/llama", json.dumps([])],
+    )
+
+    registry = await load_model_registry(db, Settings(_env_file=None))
+    row = await db.fetch_one("SELECT provider_id, model_id FROM ai_task_profiles WHERE task = ?", ["render_tier1"])
+    candidates = resolve_render_tier_candidates(registry, "tier1")
+
+    assert row["provider_id"] == "nvidia"
+    assert row["model_id"] == "llama"
+    assert [(candidate.provider_id, candidate.model_id) for candidate in candidates] == [("nvidia", "llama")]
 
 
 @pytest.mark.anyio

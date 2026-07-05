@@ -405,12 +405,15 @@ select {
 
 .page-loading-fallback {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 14px 16px;
-  align-items: center;
+  grid-template-columns: minmax(0, 360px);
+  justify-content: center;
+  justify-items: center;
+  align-content: center;
+  gap: 14px;
   overflow: hidden;
-  min-height: 180px;
+  min-height: min(520px, calc(100dvh - 160px));
   position: relative;
+  text-align: center;
 }
 
 .page-loading-fallback::before {
@@ -444,6 +447,7 @@ select {
 
 .tool-loading-copy {
   display: grid;
+  justify-items: center;
   gap: 4px;
 }
 
@@ -459,13 +463,15 @@ select {
 }
 
 .tool-loading-skeleton {
-  grid-column: 1 / -1;
   display: grid;
+  justify-self: center;
+  width: min(220px, 100%);
   gap: 9px;
 }
 
 .tool-loading-skeleton i {
   display: block;
+  justify-self: center;
   height: 12px;
   border-radius: 999px;
   background: linear-gradient(90deg, #e5e7eb 0%, #f8fafc 45%, #e5e7eb 100%);
@@ -4614,11 +4620,20 @@ button:disabled {
   width: 100%;
 }
 
+.viewer-controls-main {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+}
+
 .viewer-status-badges {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
+  flex: 0 0 auto;
   flex-wrap: wrap;
   gap: 6px;
+  margin-left: auto;
   margin-right: 2px;
 }
 

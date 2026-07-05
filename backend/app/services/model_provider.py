@@ -29,6 +29,37 @@ EXPLICIT_PROVIDER_PREFIXES = {
     "ollama": ("ollama/",),
     "openai_compat": ("openai_compat/", "openai-compat/"),
 }
+PROVIDER_MODEL_REF_SEPARATOR = "::"
+
+
+def format_provider_model_ref(provider: str, model: str) -> str:
+    provider_id = canonical_provider_id(provider) or provider
+    model_id = normalize_model_for_provider(provider_id, model) or ""
+    return f"{provider_id}{PROVIDER_MODEL_REF_SEPARATOR}{model_id}" if provider_id and model_id else ""
+
+
+def parse_provider_model_ref(value: str | None, *, allow_legacy_slash: bool = False) -> CanonicalModelRef | None:
+    model_ref = (value or "").strip()
+    if not model_ref:
+        return None
+    if PROVIDER_MODEL_REF_SEPARATOR in model_ref:
+        provider_id, model_id = model_ref.split(PROVIDER_MODEL_REF_SEPARATOR, 1)
+        provider_id = canonical_provider_id(provider_id.strip()) or ""
+        model_id = model_id.strip()
+        if not provider_id or provider_id not in CANONICAL_PROVIDERS or not model_id:
+            raise ValueError(f"Model ref không hợp lệ: {model_ref}")
+        normalized_model = normalize_model_for_provider(provider_id, model_id) or ""
+        return CanonicalModelRef(provider_id=provider_id, model_id=normalized_model, changed=model_ref != format_provider_model_ref(provider_id, normalized_model))
+    if not allow_legacy_slash:
+        return None
+    for provider_id, prefixes in EXPLICIT_PROVIDER_PREFIXES.items():
+        for prefix in prefixes:
+            if model_ref.startswith(prefix):
+                model_id = model_ref.removeprefix(prefix).strip()
+                if not model_id:
+                    raise ValueError(f"Model ref không hợp lệ: {model_ref}")
+                return CanonicalModelRef(provider_id=provider_id, model_id=model_id, changed=True)
+    return None
 
 
 def canonical_provider_id(provider: str | None) -> str | None:
@@ -76,8 +107,29 @@ def _model_id_from_item(model: object) -> str:
 
 
 def _model_belongs_to_provider(provider_id: str, model_id: str) -> bool:
-    inferred = explicit_provider_from_model(model_id)
-    return inferred is None or inferred == provider_id
+    try:
+        ref = parse_provider_model_ref(model_id, allow_legacy_slash=False)
+    except ValueError:
+        return False
+    return ref is None or ref.provider_id == provider_id
+
+
+def canonicalize_explicit_provider_model(provider: str, model: str | None, *, allow_auto: bool = False) -> CanonicalModelRef:
+    provider_id = canonical_provider_id(provider) or "auto"
+    model_id = (model or "").strip()
+    if provider_id == "" or provider_id == "mock":
+        provider_id = "auto"
+    if provider_id == "auto" and not allow_auto:
+        raise ValueError("Model cụ thể phải đi kèm provider rõ ràng.")
+    if provider_id != "auto" and provider_id not in CANONICAL_PROVIDERS:
+        raise ValueError(f"Provider không hỗ trợ: {provider_id}")
+    explicit_ref = parse_provider_model_ref(model_id, allow_legacy_slash=False)
+    if explicit_ref is not None:
+        if explicit_ref.provider_id != provider_id:
+            raise ValueError(f"Model {model_id} thuộc provider {explicit_ref.provider_id}, không thể lưu dưới provider {provider_id}.")
+        model_id = explicit_ref.model_id
+    normalized_model = normalize_model_for_provider(provider_id, model_id) or ""
+    return CanonicalModelRef(provider_id=provider_id, model_id=normalized_model, changed=provider_id != provider or normalized_model != (model or ""))
 
 
 def normalize_model_for_provider(provider: str, model: str | None) -> str | None:
@@ -152,6 +204,12 @@ def canonicalize_fallback_models(provider: str, fallbacks: list[str], *, strict:
         return canonical, warnings
     for fallback in fallbacks:
         if not fallback or not fallback.strip():
+            continue
+        explicit_ref = parse_provider_model_ref(fallback, allow_legacy_slash=False)
+        if explicit_ref is not None:
+            fallback_id = explicit_ref.model_id if explicit_ref.provider_id == provider_id else format_provider_model_ref(explicit_ref.provider_id, explicit_ref.model_id)
+            if fallback_id not in canonical:
+                canonical.append(fallback_id)
             continue
         ref = canonicalize_model_ref(provider_id, fallback, strict=False, allow_auto=False)
         fallback_id = ref.model_id if ref.provider_id == provider_id else f"{ref.provider_id}/{ref.model_id}"

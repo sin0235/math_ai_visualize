@@ -13,11 +13,15 @@ from app.schemas.auth import SystemAiSettings
 from app.schemas.scene import AiModelInfo, RuntimeSettings
 from app.services.ai_fallback import provider_configured
 from app.services.model_provider import (
+    CanonicalModelRef,
     canonical_provider_id,
+    canonicalize_explicit_provider_model,
     canonicalize_fallback_models,
     canonicalize_legacy_model_ref,
     canonicalize_model_ref,
+    format_provider_model_ref,
     normalize_model_for_provider,
+    parse_provider_model_ref,
 )
 
 PROVIDER_LABELS = {
@@ -323,7 +327,7 @@ async def set_allowed_models(db: DatabaseClient, provider_id: str, model_ids: li
     await repo.clear_allowed_models(provider_id)
     canonical_ids = []
     for model_id in model_ids:
-        ref = canonicalize_model_ref(provider_id, model_id, strict=True, allow_auto=False)
+        ref = canonicalize_explicit_provider_model(provider_id, model_id)
         if ref.model_id not in canonical_ids:
             canonical_ids.append(ref.model_id)
     for model_id in canonical_ids:
@@ -332,7 +336,7 @@ async def set_allowed_models(db: DatabaseClient, provider_id: str, model_ids: li
 
 async def save_provider_config(db: DatabaseClient, provider_id: str, base_url: str, default_model_id: str, enabled: bool = True, api_key_configured: bool | None = None) -> None:
     provider_id = canonical_provider_id(provider_id) or provider_id
-    default_model_id = canonicalize_model_ref(provider_id, default_model_id, strict=True, allow_auto=False).model_id if default_model_id else ""
+    default_model_id = canonicalize_explicit_provider_model(provider_id, default_model_id).model_id if default_model_id else ""
     await ModelRegistryRepository(db).upsert_provider(provider_id, PROVIDER_LABELS.get(provider_id, provider_id), base_url, default_model_id, enabled, api_key_configured)
 
 
@@ -346,7 +350,9 @@ async def save_task_profile(db: DatabaseClient, task: str, provider_id: str, mod
         fallbacks, _ = canonicalize_fallback_models(provider_id, fallbacks, strict=True)
         await ModelRegistryRepository(db).upsert_task_profile(task, provider_id, "", fallbacks)
         return
-    ref = canonicalize_model_ref(provider_id, model_id, strict=True)
+    if provider_id == "auto" and model_id:
+        raise ValueError("Task profile có model cụ thể phải lưu provider_id rõ ràng, không dùng auto.")
+    ref = canonicalize_explicit_provider_model(provider_id, model_id)
     provider_id = ref.provider_id
     model_id = ref.model_id
     fallbacks, _ = canonicalize_fallback_models(provider_id, fallbacks, strict=True)
@@ -409,6 +415,40 @@ def _canonical_model_info(provider_id: str, model: AiModelInfo) -> AiModelInfo:
     return model.model_copy(update={"provider": provider_id, "id": ref.model_id, "label": label})
 
 
+def _canonicalize_legacy_tier_model_ref(provider_id: str, model_id: str) -> CanonicalModelRef:
+    provider_id = canonical_provider_id(provider_id) or "auto"
+    model_id = (model_id or "").strip()
+    if not model_id:
+        return CanonicalModelRef(provider_id=provider_id, model_id="")
+    explicit_ref = parse_provider_model_ref(model_id, allow_legacy_slash=False)
+    if explicit_ref is not None:
+        return explicit_ref
+    if provider_id != "auto":
+        normalized = normalize_model_for_provider(provider_id, model_id) or ""
+        return CanonicalModelRef(provider_id=provider_id, model_id=normalized, changed=normalized != model_id)
+    legacy_ref = parse_provider_model_ref(model_id, allow_legacy_slash=True)
+    if legacy_ref is not None:
+        return legacy_ref
+    return CanonicalModelRef(provider_id="auto", model_id=model_id)
+
+
+def _canonicalize_legacy_tier_fallbacks(provider_id: str, fallbacks: list[str]) -> list[str]:
+    output: list[str] = []
+    for fallback in fallbacks:
+        value = (fallback or "").strip()
+        if not value:
+            continue
+        ref = parse_provider_model_ref(value, allow_legacy_slash=True)
+        if ref is None and provider_id != "auto":
+            ref = canonicalize_model_ref(provider_id, value, strict=False, allow_auto=False)
+        if ref is None:
+            continue
+        model_ref = format_provider_model_ref(ref.provider_id, ref.model_id)
+        if model_ref and model_ref not in output:
+            output.append(model_ref)
+    return output
+
+
 async def ensure_model_registry_canonical(db: DatabaseClient) -> None:
     repo = ModelRegistryRepository(db)
     rows = await repo.canonical_task_profile_rows()
@@ -419,6 +459,13 @@ async def ensure_model_registry_canonical(db: DatabaseClient) -> None:
         provider_id = str(row["provider_id"] or "auto")
         model_id = str(row["model_id"] or "")
         fallbacks = _json_list(row.get("fallbacks_json"))
+        if task.startswith("render_tier"):
+            ref = _canonicalize_legacy_tier_model_ref(provider_id, model_id)
+            canonical_fallbacks = _canonicalize_legacy_tier_fallbacks(ref.provider_id, fallbacks)
+            if ref.provider_id != provider_id or ref.model_id != model_id or canonical_fallbacks != fallbacks:
+                await repo.update_task_profile(task, ref.provider_id, ref.model_id, canonical_fallbacks)
+                changed += 1
+            continue
         ref = canonicalize_legacy_model_ref(provider_id, model_id)
         canonical_fallbacks, fallback_warnings = canonicalize_fallback_models(ref.provider_id, fallbacks, strict=False)
         canonical_model_id = model_id if task == "ocr" and provider_id == ref.provider_id and model_id.startswith(f"{ref.provider_id}/") else ref.model_id
@@ -625,6 +672,8 @@ def _tier_profile_candidates(registry: ModelRegistry, profile: TaskProfile | Non
     if profile is None:
         return []
     provider_id = normalize_registry_provider_id(profile.provider_id)
+    if provider_id == "auto" and profile.model_id:
+        return []
     if provider_id == "auto":
         default_provider = registry.settings.get("default_provider")
         provider_id = default_provider if isinstance(default_provider, str) and provider_is_enabled(registry, default_provider) else None
@@ -638,7 +687,7 @@ def _tier_profile_candidates(registry: ModelRegistry, profile: TaskProfile | Non
         candidates.append(TierModelCandidate(provider_id, model_id))
 
     for fallback in profile.fallbacks:
-        fallback_provider, fallback_model = _fallback_provider_model(fallback, provider_id)
+        fallback_provider, fallback_model = _tier_fallback_provider_model(fallback)
         if fallback_model and model_is_allowed(registry, fallback_provider, fallback_model):
             candidate = TierModelCandidate(fallback_provider, fallback_model)
             if candidate not in candidates:
@@ -660,6 +709,12 @@ def _resolve_profile_fallbacks(registry: ModelRegistry, fallbacks: list[str], pr
 
 
 def _fallback_provider_model(fallback: str, primary_provider_id: str) -> tuple[str, str]:
+    try:
+        explicit_ref = parse_provider_model_ref(fallback, allow_legacy_slash=False)
+    except ValueError:
+        explicit_ref = None
+    if explicit_ref is not None:
+        return explicit_ref.provider_id, explicit_ref.model_id
     provider_id = primary_provider_id
     model_id = fallback
     for candidate in ("openrouter", "nvidia", "ollama", "openai_compat", "router9"):
@@ -669,6 +724,16 @@ def _fallback_provider_model(fallback: str, primary_provider_id: str) -> tuple[s
             model_id = fallback.removeprefix(prefix)
             break
     return provider_id, normalize_model_for_provider(provider_id, model_id) or ""
+
+
+def _tier_fallback_provider_model(fallback: str) -> tuple[str, str]:
+    try:
+        ref = parse_provider_model_ref(fallback, allow_legacy_slash=False)
+    except ValueError:
+        ref = None
+    if ref is None:
+        return "", ""
+    return ref.provider_id, ref.model_id
 
 
 def normalize_registry_provider_id(provider_id: str | None) -> str | None:

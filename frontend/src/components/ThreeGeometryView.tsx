@@ -172,14 +172,7 @@ export function ThreeGeometryView({ scene, interaction, embedded = false, highli
   return (
     <div className="viewer-card">
       <div className="viewer-header viewer-header-row">
-        <div className="viewer-controls">
-          {trustLabels.length > 0 && (
-            <div className="viewer-status-badges" aria-label="Trạng thái độ tin cậy hình dựng">
-              {trustLabels.map((label) => (
-                <span key={label} className={`render-trust-badge ${label === 'Dựng theo dữ kiện' ? 'exact' : 'warning'}`}>{label}</span>
-              ))}
-            </div>
-          )}
+        <div className="viewer-controls viewer-controls-main">
           <span className="viewer-hint">{viewerHint(interaction?.mode, dragViewEnabled)}</span>
           <button type="button" className="viewer-toggle" onClick={() => setDragViewEnabled((current) => !current)}>
             {dragViewEnabled ? 'Tắt kéo góc nhìn' : 'Bật kéo góc nhìn'}
@@ -188,6 +181,13 @@ export function ThreeGeometryView({ scene, interaction, embedded = false, highli
             {showAxes ? 'Tắt hệ trục' : 'Bật hệ trục'}
           </button>
         </div>
+        {trustLabels.length > 0 && (
+          <div className="viewer-status-badges" aria-label="Trạng thái độ tin cậy hình dựng">
+            {trustLabels.map((label) => (
+              <span key={label} className={`render-trust-badge ${label === 'Dựng theo dữ kiện' ? 'exact' : 'warning'}`}>{label}</span>
+            ))}
+          </div>
+        )}
       </div>
       {content}
     </div>

@@ -278,10 +278,6 @@ function parseProfileModelId(value: string) {
   return { provider: 'openrouter', model: modelId };
 }
 
-function hasAdminProviderPrefix(modelId: string) {
-  return ['openrouter/', 'nvidia/', 'ollama/', 'openai_compat/', 'openai-compat/', 'router9/'].some((prefix) => modelId.startsWith(prefix));
-}
-
 function adminProviderFromPrefixedModel(modelId: string) {
   for (const provider of ['openrouter', 'nvidia', 'ollama', 'openai_compat', 'router9'] as const) {
     if (modelId.startsWith(`${provider}/`)) return provider;
@@ -290,12 +286,30 @@ function adminProviderFromPrefixedModel(modelId: string) {
   return '';
 }
 
+function formatTierModelId(provider: string, model: string) {
+  const modelId = model.trim();
+  if (!modelId) return '';
+  const splitAt = modelId.indexOf('::');
+  if (splitAt > 0) return modelId;
+  const legacyProvider = adminProviderFromPrefixedModel(modelId);
+  if (legacyProvider) return `${legacyProvider}::${modelId.slice(modelId.indexOf('/') + 1)}`;
+  if (provider === 'openrouter' || provider === 'nvidia' || provider === 'ollama' || provider === 'openai_compat' || provider === 'router9') return `${provider}::${modelId}`;
+  return modelId;
+}
+
+function adminProviderFromTierModel(modelId: string) {
+  const splitAt = modelId.indexOf('::');
+  if (splitAt > 0) return modelId.slice(0, splitAt) === 'openai-compat' ? 'openai_compat' : modelId.slice(0, splitAt);
+  return adminProviderFromPrefixedModel(modelId);
+}
+
 function normalizeTierModelRefs(models: string[], preferredProvider = '') {
-  const primaryProvider = preferredProvider || models.map(adminProviderFromPrefixedModel).find(Boolean) || '';
+  const primaryProvider = preferredProvider || models.map(adminProviderFromTierModel).find(Boolean) || '';
   return models
     .map((modelId) => modelId.trim())
     .filter(Boolean)
-    .map((modelId) => hasAdminProviderPrefix(modelId) || !primaryProvider ? modelId : `${primaryProvider}/${modelId}`);
+    .map((modelId) => formatTierModelId(adminProviderFromTierModel(modelId) || primaryProvider, modelId))
+    .filter((modelId) => modelId.includes('::'));
 }
 
 function normalizeTierState(state: TierState): TierState {
@@ -306,7 +320,7 @@ function normalizeTierState(state: TierState): TierState {
     tier3: { defaultModel: '', models: [] },
   };
   for (const level of TIER_LEVELS) {
-    const preferredProvider = state[level.key].models.map(adminProviderFromPrefixedModel).find(Boolean) || adminProviderFromPrefixedModel(state[level.key].defaultModel);
+    const preferredProvider = state[level.key].models.map(adminProviderFromTierModel).find(Boolean) || adminProviderFromTierModel(state[level.key].defaultModel);
     const defaultModel = normalizeTierModelRefs([state[level.key].defaultModel], preferredProvider)[0] || '';
     const orderedModels = normalizeTierModelRefs([defaultModel, ...state[level.key].models], preferredProvider);
     for (const modelId of orderedModels) {
@@ -602,7 +616,7 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave, onToast }
                 <div className={`admin-field-grid ${provider === 'router9' ? 'admin-field-grid-router9' : ''}`}>
                   <label className="field-label">Base URL<input type="url" value={providerValue.base_url} onChange={(event) => updateProvider(provider, { base_url: event.target.value })} placeholder="https://..." /></label>
                   <label className="field-label">API key<input type="password" value={(providerValue as any).api_key ?? ''} onChange={(event) => updateProvider(provider, { ...( { api_key: event.target.value } as any) })} placeholder={defaults?.[provider]?.api_key_configured ? 'Đã cấu hình, nhập để thay' : 'Nhập API key'} /></label>
-                  <label className="field-label">Model mặc định hệ thống<select value={providerValue.model} onChange={(event) => updateProvider(provider, { model: event.target.value })}><option value="">Chọn model</option>{modelOptions.map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.name}</option>)}</select></label>
+                  <label className="field-label">Model fallback của provider<select value={providerValue.model} onChange={(event) => updateProvider(provider, { model: event.target.value })}><option value="">Chọn model fallback</option>{modelOptions.map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.name}</option>)}</select><span className="field-hint">Render chính dùng Hồ sơ AI theo tier; mục này chỉ dùng khi provider cần model dự phòng.</span></label>
                 </div>
                 {result && <div className={`admin-status-box ${result.status}`}><strong>{result.status === 'ok' ? 'Thành công' : 'Lỗi'}</strong><p>{result.message}</p></div>}
                 {provider === 'router9' && (
@@ -930,16 +944,16 @@ function getTierState(value: unknown, tier: TierLevelKey): TierModelState {
     const directData = direct as Record<string, unknown>;
     if (Array.isArray(directData.models)) {
       const models = normalizeTierModelRefs(directData.models.map(String));
-      const defaultModel = normalizeTierModelRefs([getStringValue(directData.default_model, '')], models.map(adminProviderFromPrefixedModel).find(Boolean) || '')[0] || models[0] || '';
+      const defaultModel = normalizeTierModelRefs([getStringValue(directData.default_model, '')], models.map(adminProviderFromTierModel).find(Boolean) || '')[0] || models[0] || '';
       return { defaultModel, models };
     }
     const directProfile = getAiTaskProfile(direct);
-    const defaultModel = formatProfileModelId(directProfile.provider, directProfile.model);
+    const defaultModel = formatTierModelId(directProfile.provider, directProfile.model);
     return { defaultModel, models: defaultModel ? [defaultModel] : [] };
   }
   const legacyRender = data.render && typeof data.render === 'object' ? data.render as Record<string, unknown> : {};
   const legacyProfile = getAiTaskProfile(legacyRender[tier]);
-  const defaultModel = formatProfileModelId(legacyProfile.provider, legacyProfile.model);
+  const defaultModel = formatTierModelId(legacyProfile.provider, legacyProfile.model);
   return { defaultModel, models: defaultModel ? [defaultModel] : [] };
 }
 
@@ -964,10 +978,10 @@ export function AdminAiTierProfilesForm({ value, aiSettings, defaults, onSave, o
       const providerDefaults = settingsDefaults[provider];
       const registryAllowed = settingsDefaults.registry_models
         ?.filter((model) => model.provider_id === provider && model.enabled && model.allowed)
-        .map((model) => ({ id: formatProfileModelId(provider, model.id), label: `${providerLabels[provider]}: ${model.label || model.id}` })) ?? [];
+        .map((model) => ({ id: formatTierModelId(provider, model.id), label: `${providerLabels[provider]}: ${model.label || model.id}` })) ?? [];
       const allowedIds = providerDefaults.allowed_model_ids.map((id) => {
         const scanned = providerDefaults.scanned_models.find((model) => model.id === id);
-        return { id: formatProfileModelId(provider, id), label: `${providerLabels[provider]}: ${scanned?.label ?? id}` };
+        return { id: formatTierModelId(provider, id), label: `${providerLabels[provider]}: ${scanned?.label ?? id}` };
       });
       [...registryAllowed, ...allowedIds].forEach((option) => {
         if (!seen.has(option.id)) { seen.add(option.id); combined.push(option); }

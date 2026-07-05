@@ -9,7 +9,7 @@ from app.db.session import DatabaseClient, sqlite_path_diagnostics
 from app.repositories.admin import AdminRepository
 from app.schemas.auth import SystemAiProfiles, SystemAiSettings
 from app.schemas.scene import AiModelInfo
-from app.services.model_provider import normalize_provider_defaults
+from app.services.model_provider import normalize_provider_defaults, parse_provider_model_ref
 from app.services.model_registry import (
     load_model_registry,
     save_provider_config,
@@ -171,12 +171,18 @@ async def sync_ai_tier_profiles_to_registry(db: DatabaseClient, value: dict, pat
     for tier_name in ["tier1", "tier2", "tier3"]:
         tier_profile = getattr(profiles, tier_name)
         primary = tier_profile.default_model or (tier_profile.models[0] if tier_profile.models else "")
+        if not primary:
+            await save_task_profile(db, f"render_{tier_name}", "auto", "", [])
+            continue
+        primary_ref = parse_provider_model_ref(primary, allow_legacy_slash=False)
+        if primary_ref is None:
+            raise ValueError("Tier profile phải dùng model ref provider::model.")
         fallbacks = [model for model in tier_profile.models if model != primary]
         await save_task_profile(
             db,
             f"render_{tier_name}",
-            "auto",
-            primary,
+            primary_ref.provider_id,
+            primary_ref.model_id,
             fallbacks,
         )
 

@@ -1,7 +1,6 @@
-import { DragEvent, FormEvent, MouseEvent, useMemo, useRef, useState } from 'react';
+import { DragEvent, FormEvent, MouseEvent, useRef, useState } from 'react';
 
 import type { AdvancedRenderSettings, CoordinateAssignment, ReasoningLayerMode, Renderer } from '../types/scene';
-import type { RenderModelOption } from '../utils/settingsOptions';
 
 export const defaultAdvancedSettings: AdvancedRenderSettings = {
   coordinate_assignment: 'ai',
@@ -20,8 +19,6 @@ const nullableBooleanOptions = [
   { value: 'true', label: 'Bật' },
   { value: 'false', label: 'Tắt' },
 ] as const;
-
-export type ModelOption = RenderModelOption;
 
 export type TierKey = 'tier1' | 'tier2' | 'tier3';
 
@@ -88,9 +85,7 @@ interface ProblemInputProps {
     tier: TierKey,
     advancedSettings?: AdvancedRenderSettings,
     preferredRenderer?: Renderer,
-    preferredAiModel?: string,
   ) => void;
-  modelOptions?: ModelOption[];
 }
 
 export function ProblemInput({
@@ -104,22 +99,14 @@ export function ProblemInput({
   onOcrImage,
   onOcrClipboardImage,
   onSubmit,
-  modelOptions = [],
 }: ProblemInputProps) {
   const [preferredRenderer, setPreferredRenderer] = useState<'auto' | Renderer>('auto');
-  const [preferredModelKey, setPreferredModelKey] = useState('default:auto');
   const [advancedSettings, setAdvancedSettings] = useState<AdvancedRenderSettings>(defaultAdvancedSettings);
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const busy = loading || ocrLoading;
   const submitDisabled = busy;
-  const effectiveModelKey = modelOptions.some((option) => option.key === preferredModelKey)
-    ? preferredModelKey
-    : modelOptions[0]?.key ?? 'default:auto';
-  const selectedModelOption = modelOptions.find((option) => option.key === effectiveModelKey);
-  const groupedModelOptions = useMemo(() => groupModelOptions(modelOptions), [modelOptions]);
-  const modelHint = formatModelHint(selectedModelOption, advancedSettings.reasoning_layer);
-  const thinkingHint = formatThinkingHint(selectedModelOption);
+  const thinkingHint = formatThinkingHint(advancedSettings.thinking_enabled);
 
   function updateAdvancedSettings(next: Partial<AdvancedRenderSettings>) {
     setAdvancedSettings((current) => ({ ...current, ...next }));
@@ -132,7 +119,6 @@ export function ProblemInput({
       tier,
       advancedSettings,
       preferredRenderer === 'auto' ? undefined : preferredRenderer,
-      selectedModelOption?.key,
     );
   }
 
@@ -295,21 +281,6 @@ export function ProblemInput({
             <option value="threejs_3d">Three.js 3D</option>
           </select>
         </label>
-        {modelOptions.length > 0 && (
-          <label className="field-label">
-            Chiến lược model dựng hình
-            <select value={effectiveModelKey} onChange={(event) => setPreferredModelKey(event.target.value)}>
-              {groupedModelOptions.map((group) => (
-                <optgroup key={group.label} label={group.label}>
-                  {group.options.map((option) => (
-                    <option key={option.key} value={option.key} title={option.description}>{option.label}</option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
-            <span className="field-hint">{modelHint}</span>
-          </label>
-        )}
         <label className="field-label">
           Hiển thị tọa độ điểm
           <select
@@ -376,29 +347,10 @@ export function ProblemInput({
   );
 }
 
-function groupModelOptions(options: ModelOption[]) {
-  const groups: Array<{ label: string; options: ModelOption[] }> = [];
-  options.forEach((option) => {
-    const label = option.group || 'Khác';
-    const group = groups.find((item) => item.label === label);
-    if (group) group.options.push(option);
-    else groups.push({ label, options: [option] });
-  });
-  return groups;
-}
-
-function formatModelHint(option: ModelOption | undefined, reasoningLayer: ReasoningLayerMode) {
-  if (!option) return 'Backend tự chọn task profile phù hợp.';
-  if (reasoningLayer === 'force' && option.modelId && option.supportsThinking === false) {
-    return `${option.description} Lớp suy luận đang bật bắt buộc; model này chưa có Thinking metadata.`;
-  }
-  return option.description;
-}
-
-function formatThinkingHint(option: ModelOption | undefined) {
-  if (!option || !option.modelId) return 'Áp dụng theo task profile/model backend chọn; backend vẫn chặn nếu model không hỗ trợ.';
-  if (option.supportsThinking) return 'Model đang chọn có Thinking metadata; bật sẽ gửi reasoning/thinking payload nếu provider hỗ trợ.';
-  return 'Model đang chọn chưa có Thinking metadata; backend sẽ không gửi reasoning/thinking payload.';
+function formatThinkingHint(value: boolean | null | undefined) {
+  if (value === true) return 'Backend chỉ bật reasoning/thinking nếu task profile chọn model có metadata hỗ trợ.';
+  if (value === false) return 'Tắt reasoning/thinking native cho request này.';
+  return 'Áp dụng theo task profile/model backend chọn; backend vẫn chặn nếu model không hỗ trợ.';
 }
 
 function Spinner({ className }: { className?: string }) {

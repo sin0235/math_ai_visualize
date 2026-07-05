@@ -24,7 +24,6 @@ import { getDefaultParamValues, patchGeogebraCommandsForScene, recomputeSceneWit
 import { clamp, findPoint, hasSegment, nextPointName, projectPointToLine, round, type Vec3 } from './utils/sceneEditing';
 import type { AdvancedRenderSettings, MathScene, RenderResponse, Renderer } from './types/scene';
 import { defaultRuntimeSettings, type RuntimeSettings, type SettingsDefaults } from './types/settings';
-import { buildRenderModelOptions } from './utils/settingsOptions';
 import logoUrl from '../img.svg';
 import './styles.css';
 
@@ -397,7 +396,6 @@ export default function App() {
     return { ...result, scene: baseScene, payload, user_confirmed: confirmation.fallback_confirmed && confirmation.assumptions_confirmed && confirmation.repair_confirmed };
   }, [result, activeScene, paramValues, confirmation]);
 
-  const modelOptions = buildRenderModelOptions(settingsDefaults, renderTier);
   const threeInteraction = sceneEditorOpen && effectiveResult?.scene.renderer === 'threejs_3d'
     ? {
         mode: editTool,
@@ -503,7 +501,6 @@ export default function App() {
     tier: TierKey,
     advancedSettings?: AdvancedRenderSettings,
     preferredRenderer?: Renderer,
-    preferredAiModel?: string,
   ) {
     if (!user) {
       showNotification('Cần đăng nhập', 'Vui lòng đăng nhập trước khi dựng hình.', [], 'warning');
@@ -515,7 +512,7 @@ export default function App() {
     setEditTool('move');
     setLastAdvancedSettings(advancedSettings ?? defaultAdvancedSettings);
     try {
-      const response = await renderProblem(problemText, tier, advancedSettings, preferredRenderer, runtimeSettings, preferredAiModel);
+      const response = await renderProblem(problemText, tier, advancedSettings, preferredRenderer, runtimeSettings);
       applyRenderResponse(response);
       if (user) void refreshHistory();
       scrollToResultOnMobile();
@@ -1127,7 +1124,6 @@ export default function App() {
                     onOcrImage={handleOcrImage}
                     onOcrClipboardImage={handleOcrClipboardImage}
                     onSubmit={handleSubmit}
-                    modelOptions={modelOptions}
                   />
                   {user && (
                     <div className="history-drawer-wrap">
