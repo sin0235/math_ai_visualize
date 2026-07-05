@@ -143,6 +143,33 @@ def test_postgres_structured_user_history_migration_exists():
     assert "CREATE TABLE IF NOT EXISTS scene_revisions" in sql
 
 
+def test_user_activity_events_migration_adds_activity_table(tmp_path):
+    db = SQLiteClient(str(tmp_path / "test.db"))
+
+    asyncio.run(apply_sqlite_migrations(db))
+    tables = asyncio.run(db.fetch_all("SELECT name FROM sqlite_master WHERE type = 'table'"))
+    columns = asyncio.run(db.fetch_all("PRAGMA table_info(user_activity_events)"))
+    indexes = asyncio.run(db.fetch_all("PRAGMA index_list(user_activity_events)"))
+
+    assert "user_activity_events" in {str(row["name"]) for row in tables}
+    assert {"user_id", "event_type", "target_type", "target_id", "metadata_json", "created_at"}.issubset({str(row["name"]) for row in columns})
+    assert {
+        "idx_user_activity_events_user_created",
+        "idx_user_activity_events_type_created",
+        "idx_user_activity_events_target",
+    }.issubset({str(row["name"]) for row in indexes})
+
+
+def test_postgres_user_activity_events_migration_exists():
+    migration_names = {migration.name for migration in list_postgres_migration_files()}
+    migration = Path(__file__).resolve().parents[2] / "migrations_postgres" / "0005_user_activity_events.sql"
+    sql = migration.read_text(encoding="utf-8")
+
+    assert "0005_user_activity_events.sql" in migration_names
+    assert "CREATE TABLE IF NOT EXISTS user_activity_events" in sql
+    assert "CREATE INDEX IF NOT EXISTS idx_user_activity_events_user_created" in sql
+
+
 def test_postgres_sql_translates_placeholders_outside_literals():
     assert postgres_sql("SELECT * FROM users WHERE email = ? AND note = '?' AND created_at >= CURRENT_TIMESTAMP") == (
         "SELECT * FROM users WHERE email = $1 AND note = '?' AND created_at >= (CURRENT_TIMESTAMP::text)"

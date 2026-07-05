@@ -32,6 +32,7 @@ DIAGNOSTIC_TABLES = [
     "oauth_identities",
     "oauth_states",
     "usage_events",
+    "user_activity_events",
     "ai_providers",
     "ai_models",
     "ai_task_profiles",

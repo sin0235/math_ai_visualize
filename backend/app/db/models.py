@@ -160,6 +160,19 @@ class SceneRevisionRecord:
 
 
 @dataclass(frozen=True)
+class UserActivityEventRecord:
+    id: str
+    user_id: str
+    session_id: str | None
+    event_type: str
+    target_type: str | None
+    target_id: str | None
+    source: str
+    metadata_json: str
+    created_at: str
+
+
+@dataclass(frozen=True)
 class UserSettingsRecord:
     user_id: str
     settings_json: str

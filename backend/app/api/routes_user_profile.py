@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends
 from app.api.deps import get_current_user, require_trusted_origin
 from app.db.models import UserRecord
 from app.db.session import DatabaseClient, get_database
+from app.repositories.activity import try_log_user_activity
 from app.repositories.user_profile import UserLearningProfileRepository, json_list, json_object, parse_json_list, parse_json_object
 from app.schemas.auth import UserLearningProfileResponse, UserLearningProfileUpdateRequest
 
@@ -27,6 +28,7 @@ async def patch_learning_profile(
     db: DatabaseClient = Depends(get_database),
 ) -> UserLearningProfileResponse:
     payload = request.model_dump(exclude_unset=True)
+    changed_fields = sorted(payload.keys())
     patch = dict(payload)
     if "learning_goals" in payload:
         patch["learning_goals_json"] = json_list(payload.pop("learning_goals") or [])
@@ -39,6 +41,14 @@ async def patch_learning_profile(
     for legacy_key in ("learning_goals", "subject_focus", "accessibility_needs", "profile"):
         patch.pop(legacy_key, None)
     profile = await UserLearningProfileRepository(db).upsert(user.id, patch)
+    await try_log_user_activity(
+        db,
+        user.id,
+        "learning_profile.updated",
+        target_type="user_learning_profiles",
+        target_id=user.id,
+        metadata={"changed_fields": changed_fields},
+    )
     return profile_response(profile)
 
 

@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from app.api.deps import get_current_user, require_trusted_origin
 from app.db.models import UserRecord
 from app.db.session import DatabaseClient, get_database
+from app.repositories.activity import try_log_user_activity
 from app.repositories.history import RenderHistoryRepository
 from app.schemas.auth import RenderHistoryDetail, RenderHistoryItem, RenderHistoryPatchRequest, SceneRevisionResponse
 from app.schemas.scene import MathScene, RenderPayload, RenderResponse
@@ -65,6 +66,14 @@ async def patch_history(
     job = await repo.patch_item(user.id, job_id, patch)
     if job is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy lịch sử dựng hình.")
+    await try_log_user_activity(
+        db,
+        user.id,
+        "history_item.updated",
+        target_type="render_job",
+        target_id=job_id,
+        metadata={"changed_fields": sorted(patch.keys())},
+    )
     return await render_history_item(repo, job)
 
 
@@ -88,6 +97,7 @@ async def list_history_revisions(job_id: str, user: UserRecord = Depends(get_cur
 @router.delete("/{job_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_trusted_origin)])
 async def delete_history(job_id: str, user: UserRecord = Depends(get_current_user), db: DatabaseClient = Depends(get_database)) -> None:
     await RenderHistoryRepository(db).delete_for_user(user.id, job_id)
+    await try_log_user_activity(db, user.id, "history_item.deleted", target_type="render_job", target_id=job_id)
 
 
 async def render_history_item(repo: RenderHistoryRepository, job) -> RenderHistoryItem:

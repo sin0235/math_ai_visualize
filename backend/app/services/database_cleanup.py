@@ -21,7 +21,7 @@ class CleanupRule:
 
 
 LOW_RISK_TABLES = {"rate_limit_events", "oauth_states", "auth_tokens", "sessions", "model_scan_jobs"}
-REPORT_ONLY_TABLES = {"usage_events", "audit_logs", "render_jobs", "uploaded_files_base64", "uploaded_files_remote"}
+REPORT_ONLY_TABLES = {"usage_events", "user_activity_events", "audit_logs", "render_jobs", "uploaded_files_base64", "uploaded_files_remote"}
 REMOTE_UPLOAD_PROVIDERS = {"appwrite", "r2"}
 DELETE_TEST_UPLOADS_CONFIRM = "DELETE_TEST_UPLOADS"
 RESET_DEV_DATA_CONFIRM = "RESET_DEV_DATA_KEEP_ADMIN_CONFIG"
@@ -31,6 +31,7 @@ DEV_RESET_GLOBAL_TABLES = [
     "chat_conversations",
     "feedback",
     "usage_events",
+    "user_activity_events",
     "history_item_tags",
     "history_tags",
     "scene_revisions",
@@ -87,6 +88,14 @@ def cleanup_rules() -> dict[str, CleanupRule]:
             table="usage_events",
             key_column="id",
             where_sql="created_at <= ?",
+            order_sql="created_at ASC",
+            params=(cutoff_text(days=180),),
+            default_enabled=False,
+        ),
+        "user_activity_events": CleanupRule(
+            table="user_activity_events",
+            key_column="id",
+            where_sql="created_at < ?",
             order_sql="created_at ASC",
             params=(cutoff_text(days=180),),
             default_enabled=False,

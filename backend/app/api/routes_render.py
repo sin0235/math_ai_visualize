@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Request, status
 from app.api.deps import enforce_rate_limit, require_active_user, require_trusted_origin
 from app.db.models import UserRecord
 from app.db.session import DatabaseClient, create_database_client, get_database
+from app.repositories.activity import try_log_user_activity
 from app.repositories.admin import AdminRepository
 from app.repositories.history import RenderHistoryRepository
 from app.core.config import get_settings
@@ -43,6 +44,13 @@ async def render_problem(
     try:
         response = await asyncio.wait_for(build_problem_render_response(request, db, user, byok=byok), timeout=RENDER_TIMEOUT_SECONDS)
     except TimeoutError as error:
+        await try_log_user_activity(
+            db,
+            user.id,
+            "render.failed",
+            target_type="render_job",
+            metadata={"code": "TIMEOUT", "tier": request.tier, "renderer": request.preferred_renderer, "byok": byok is not None},
+        )
         raise api_error(
             status.HTTP_504_GATEWAY_TIMEOUT,
             f"Render vượt quá {RENDER_TIMEOUT_SECONDS}s.",
@@ -51,9 +59,16 @@ async def render_problem(
         ) from error
     except (RuntimeError, ValueError, KeyError) as error:
         payload = render_error_payload(error)
+        await try_log_user_activity(
+            db,
+            user.id,
+            "render.failed",
+            target_type="render_job",
+            metadata={"code": payload["code"], "tier": request.tier, "renderer": request.preferred_renderer, "byok": byok is not None},
+        )
         raise api_error(status.HTTP_400_BAD_REQUEST, payload["debug_message"], payload["code"], payload["suggestions"]) from error
     if user is not None:
-        await RenderHistoryRepository(db).create(
+        job = await RenderHistoryRepository(db).create(
             user.id,
             request.problem_text,
             response.source.provider,
@@ -64,6 +79,22 @@ async def render_problem(
             runtime_settings_json=request.runtime_settings.model_dump_json(exclude_none=True) if request.runtime_settings is not None else None,
             source_type="problem",
             renderer=response.scene.renderer,
+        )
+        await try_log_user_activity(
+            db,
+            user.id,
+            "render.completed",
+            target_type="render_job",
+            target_id=job.id,
+            metadata={
+                "tier": request.tier,
+                "renderer": response.scene.renderer,
+                "provider": response.source.provider,
+                "model": response.source.model,
+                "source_kind": response.source.kind,
+                "degraded": response.degraded,
+                "fallback_source": response.fallback_source,
+            },
         )
     return response
 
