@@ -9,6 +9,13 @@ export interface ScannedModelInfo {
   owned_by?: string | null;
   created?: number | null;
   context_length?: number | null;
+  capabilities?: Record<string, unknown>;
+  is_free_endpoint?: boolean;
+  supports_thinking?: boolean;
+  supports_vision?: boolean;
+  supported_parameters?: string[];
+  pricing?: Record<string, unknown>;
+  endpoint_metadata?: Record<string, unknown>;
 }
 
 export interface ProviderConnectionSettings {
@@ -102,6 +109,13 @@ export interface RegistryModelDefaults {
   label: string;
   owned_by?: string | null;
   context_length?: number | null;
+  capabilities?: Record<string, unknown>;
+  is_free_endpoint?: boolean;
+  supports_thinking?: boolean;
+  supports_vision?: boolean;
+  supported_parameters?: string[];
+  pricing?: Record<string, unknown>;
+  endpoint_metadata?: Record<string, unknown>;
   enabled: boolean;
   allowed: boolean;
   source: string;

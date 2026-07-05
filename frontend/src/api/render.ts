@@ -136,10 +136,30 @@ export async function renderProblem(
       tier,
       preferred_renderer: preferredRenderer,
       advanced_settings: advancedSettings,
-      preferred_ai_model: preferredAiModel,
+      ...preferredAiModelPayload(preferredAiModel),
       runtime_settings: compactRuntimeSettings(runtimeSettings),
     }),
   }, 'Không thể dựng hình.');
+}
+
+function preferredAiModelPayload(selection?: string) {
+  const value = selection?.trim();
+  if (!value || value === 'default:auto') return {};
+  if (value.startsWith('default:')) {
+    const provider = value.slice('default:'.length);
+    return provider ? { preferred_ai_provider: provider } : {};
+  }
+  if (value.startsWith('model:')) {
+    const payload = value.slice('model:'.length);
+    const separator = payload.indexOf(':');
+    if (separator > 0) {
+      return {
+        preferred_ai_provider: payload.slice(0, separator),
+        preferred_ai_model: payload.slice(separator + 1),
+      };
+    }
+  }
+  return { preferred_ai_model: value };
 }
 
 export async function uploadOcrImage(file: File): Promise<OcrUploadResponse> {

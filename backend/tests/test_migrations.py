@@ -71,12 +71,38 @@ def test_system_hardening_migration_adds_byok_and_render_metadata(tmp_path):
     assert "idx_render_jobs_status_created" in {str(row["name"]) for row in render_indexes}
 
 
+def test_ai_model_capabilities_migration_adds_registry_metadata(tmp_path):
+    db = SQLiteClient(str(tmp_path / "test.db"))
+
+    asyncio.run(apply_sqlite_migrations(db))
+    model_columns = asyncio.run(db.fetch_all("PRAGMA table_info(ai_models)"))
+    model_indexes = asyncio.run(db.fetch_all("PRAGMA index_list(ai_models)"))
+    scan_columns = asyncio.run(db.fetch_all("PRAGMA table_info(model_scan_jobs)"))
+    tables = asyncio.run(db.fetch_all("SELECT name FROM sqlite_master WHERE type = 'table'"))
+
+    assert {
+        "is_free_endpoint",
+        "supports_thinking",
+        "supports_vision",
+        "pricing_json",
+        "endpoint_metadata_json",
+        "supported_parameters_json",
+    }.issubset({str(row["name"]) for row in model_columns})
+    assert {
+        "idx_ai_models_provider_free_allowed",
+        "idx_ai_models_provider_thinking_allowed",
+    }.issubset({str(row["name"]) for row in model_indexes})
+    assert {"runtime_json", "base_url", "result_count", "free_count", "thinking_count", "warnings_json", "updated_at"}.issubset({str(row["name"]) for row in scan_columns})
+    assert "model_scan_job_models" in {str(row["name"]) for row in tables}
+
+
 def test_postgres_sql_translates_placeholders_outside_literals():
     assert postgres_sql("SELECT * FROM users WHERE email = ? AND note = '?' AND created_at >= CURRENT_TIMESTAMP") == (
         "SELECT * FROM users WHERE email = $1 AND note = '?' AND created_at >= (CURRENT_TIMESTAMP::text)"
     )
 
 
+def test_secret_files_are_not_tracked():
     blocked = {
         ".wrangler/cache/wrangler-account.json",
         "backend/.data/hinh.db",

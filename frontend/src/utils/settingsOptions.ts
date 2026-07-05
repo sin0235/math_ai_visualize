@@ -1,4 +1,4 @@
-import type { OcrProvider, ProviderSettingsDefaults, SettingsDefaults } from '../types/settings';
+import type { OcrProvider, ProviderSettingsDefaults, RegistryModelDefaults, SettingsDefaults } from '../types/settings';
 
 export type Option = { id: string; label: string };
 
@@ -23,6 +23,175 @@ export const providerLabels: Record<string, string> = {
   local: 'Local OCR',
   mock: 'Mock extractor',
 };
+
+type RenderProviderKey = 'openrouter' | 'nvidia' | 'ollama' | 'openai_compat' | 'router9';
+
+export interface RenderModelOption {
+  key: string;
+  label: string;
+  provider: string;
+  description: string;
+  group: string;
+  modelId?: string;
+  supportsThinking?: boolean;
+}
+
+const RENDER_PROVIDER_ORDER: RenderProviderKey[] = ['router9', 'openrouter', 'nvidia', 'ollama', 'openai_compat'];
+const EXPLICIT_RENDER_MODEL_LIMIT = 32;
+const EXPLICIT_RENDER_MODEL_LIMIT_PER_PROVIDER = 8;
+
+export function buildRenderModelOptions(defaults: SettingsDefaults | null, tier = 'tier1'): RenderModelOption[] {
+  const providerOrder = orderRenderProviders(defaults?.default_provider);
+  const providerDefaults = providerOrder.flatMap((provider) => {
+    if (!isRenderProviderUsable(defaults, provider)) return [];
+    return [{
+      key: `default:${provider}`,
+      provider,
+      label: `${renderProviderLabel(provider)} mặc định`,
+      description: `Dùng provider ${renderProviderLabel(provider)} với model mặc định hoặc task profile do admin cấu hình.`,
+      group: 'Mặc định provider',
+    }];
+  });
+  const explicitModels = buildExplicitRenderModelOptions(defaults, providerOrder, tier);
+
+  if (defaults?.router9.only_mode) {
+    const router9Defaults = providerDefaults.filter((option) => option.provider === 'router9');
+    const router9Models = explicitModels.filter((option) => option.provider === 'router9');
+    return [
+      {
+        key: 'default:auto',
+        provider: 'auto',
+        label: 'Mặc định hệ thống (9router)',
+        description: '9router-only đang bật; backend dùng task profile hoặc model 9router được phép.',
+        group: 'Chiến lược',
+      },
+      ...router9Defaults,
+      ...router9Models,
+    ];
+  }
+
+  return [
+    {
+      key: 'default:auto',
+      provider: 'auto',
+      label: 'Mặc định hệ thống',
+      description: 'Backend dùng task profile, provider mặc định và fallback do admin cấu hình.',
+      group: 'Chiến lược',
+    },
+    ...providerDefaults,
+    ...explicitModels,
+  ];
+}
+
+function buildExplicitRenderModelOptions(defaults: SettingsDefaults | null, providerOrder: RenderProviderKey[], tier: string): RenderModelOption[] {
+  if (!defaults) return [];
+  const preferredKeys = preferredRenderModelKeys(defaults, tier);
+  const byProvider = new Map<RenderProviderKey, RegistryModelDefaults[]>();
+  for (const provider of providerOrder) {
+    const models = registryModelsForRenderProvider(defaults, provider);
+    const preferred = models.filter((model) => preferredKeys.has(modelKey(provider, model.id)));
+    const rest = models.filter((model) => !preferredKeys.has(modelKey(provider, model.id)));
+    byProvider.set(provider, [...preferred, ...rest].slice(0, EXPLICIT_RENDER_MODEL_LIMIT_PER_PROVIDER));
+  }
+  return providerOrder
+    .flatMap((provider) => (byProvider.get(provider) ?? []).map((model) => renderModelOption(provider, model, preferredKeys.has(modelKey(provider, model.id)))))
+    .slice(0, EXPLICIT_RENDER_MODEL_LIMIT);
+}
+
+function registryModelsForRenderProvider(defaults: SettingsDefaults, provider: RenderProviderKey): RegistryModelDefaults[] {
+  const models = defaults.registry_models?.filter((model) => model.provider_id === provider && model.enabled) ?? [];
+  if (models.length === 0) return [];
+  const hasAllowlist = models.some((model) => model.allowed);
+  return (hasAllowlist ? models.filter((model) => model.allowed) : models)
+    .sort((left, right) => Number(Boolean(right.supports_thinking)) - Number(Boolean(left.supports_thinking))
+      || Number(Boolean(right.is_free_endpoint)) - Number(Boolean(left.is_free_endpoint))
+      || (left.label || left.id).localeCompare(right.label || right.id));
+}
+
+function preferredRenderModelKeys(defaults: SettingsDefaults, tier: string) {
+  const keys = new Set<string>();
+  const tasks = [`render_${tier}`, 'render', 'reasoning'];
+  defaults.registry_task_profiles?.filter((profile) => tasks.includes(profile.task)).forEach((profile) => {
+    const provider = normalizeRenderProvider(profile.provider_id || defaults.default_provider);
+    if (!provider) return;
+    addProfileModelKey(keys, provider, profile.model_id);
+    profile.fallbacks.forEach((fallback) => addProfileModelKey(keys, provider, fallback));
+  });
+  return keys;
+}
+
+function addProfileModelKey(keys: Set<string>, provider: RenderProviderKey, modelRef: string) {
+  const value = modelRef.trim();
+  if (!value) return;
+  const explicitProvider = normalizeRenderProvider(value.split('/')[0]);
+  if (explicitProvider && value.startsWith(`${explicitProvider}/`)) {
+    keys.add(modelKey(explicitProvider, value.slice(explicitProvider.length + 1)));
+    return;
+  }
+  keys.add(modelKey(provider, value));
+}
+
+function renderModelOption(provider: RenderProviderKey, model: RegistryModelDefaults, preferred: boolean): RenderModelOption {
+  const labelParts = [model.label || model.id, ...compactCapabilityParts(model)];
+  return {
+    key: `model:${provider}:${model.id}`,
+    provider,
+    modelId: model.id,
+    supportsThinking: model.supports_thinking,
+    label: `${renderProviderLabel(provider)}: ${labelParts.join(' · ')}`,
+    description: `${preferred ? 'Task profile ưu tiên. ' : ''}${renderProviderLabel(provider)} model ${model.id}${model.context_length ? `, context ${formatContextLength(model.context_length)}` : ''}. ${capabilitySentence(model)}`.trim(),
+    group: renderProviderLabel(provider),
+  };
+}
+
+function compactCapabilityParts(model: RegistryModelDefaults) {
+  const parts: string[] = [];
+  if (model.is_free_endpoint) parts.push('Free');
+  if (model.supports_thinking) parts.push('Thinking');
+  else parts.push('Không Thinking');
+  if (model.supports_vision) parts.push('Vision');
+  if (model.context_length) parts.push(formatContextLength(model.context_length));
+  return parts;
+}
+
+function capabilitySentence(model: RegistryModelDefaults) {
+  const parts = compactCapabilityParts(model);
+  return parts.length ? parts.join(', ') : 'Chưa có capability metadata.';
+}
+
+function formatContextLength(value: number) {
+  return value >= 1000 ? `${Math.round(value / 1000)}K ctx` : `${value} ctx`;
+}
+
+function orderRenderProviders(defaultProvider: string | undefined): RenderProviderKey[] {
+  const normalized = normalizeRenderProvider(defaultProvider);
+  if (!normalized) return [...RENDER_PROVIDER_ORDER];
+  return [normalized, ...RENDER_PROVIDER_ORDER.filter((provider) => provider !== normalized)];
+}
+
+function normalizeRenderProvider(provider: string | null | undefined): RenderProviderKey | null {
+  if (provider === 'ollama_gpt_oss') return 'ollama';
+  if (provider === 'openrouter_gpt_oss' || provider === 'opencode_nemotron') return 'openrouter';
+  return RENDER_PROVIDER_ORDER.includes(provider as RenderProviderKey) ? provider as RenderProviderKey : null;
+}
+
+function isRenderProviderUsable(defaults: SettingsDefaults | null, provider: RenderProviderKey) {
+  if (!defaults) return false;
+  const registryProvider = defaults.registry_providers?.find((item) => item.id === provider);
+  if (registryProvider) {
+    return registryProvider.enabled && (registryProvider.api_key_configured || Boolean(registryProvider.default_model_id) || provider === 'ollama');
+  }
+  const item = defaults[provider];
+  return Boolean(item.api_key_configured || item.model || item.allowed_model_ids.length || item.scanned_models.length || provider === 'ollama');
+}
+
+function modelKey(provider: RenderProviderKey, modelId: string) {
+  return `${provider}:${normalizeModelForProvider(provider, modelId)}`;
+}
+
+function renderProviderLabel(provider: RenderProviderKey) {
+  return provider === 'router9' ? '9router' : providerLabels[provider] || provider;
+}
 
 export function buildProviderOptions(defaults: SettingsDefaults | null, includeMock = false): Option[] {
   const options: Option[] = [{ id: 'auto', label: providerLabels.auto }];

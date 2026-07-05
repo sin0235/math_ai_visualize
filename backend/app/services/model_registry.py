@@ -53,6 +53,12 @@ class ModelRegistryItem:
     owned_by: str | None = None
     context_length: int | None = None
     capabilities: dict[str, Any] = field(default_factory=dict)
+    is_free_endpoint: bool = False
+    supports_thinking: bool = False
+    supports_vision: bool = False
+    supported_parameters: list[str] = field(default_factory=list)
+    pricing: dict[str, Any] = field(default_factory=dict)
+    endpoint_metadata: dict[str, Any] = field(default_factory=dict)
     enabled: bool = True
     allowed: bool = False
     source: str = "scan"
@@ -92,7 +98,20 @@ class ModelRegistry:
 
     def scanned_model_infos(self, provider_id: str) -> list[AiModelInfo]:
         return [
-            AiModelInfo(id=model.id, label=model.label, provider=provider_id, owned_by=model.owned_by, context_length=model.context_length, capabilities=model.capabilities)
+            AiModelInfo(
+                id=model.id,
+                label=model.label,
+                provider=provider_id,
+                owned_by=model.owned_by,
+                context_length=model.context_length,
+                capabilities=model.capabilities,
+                is_free_endpoint=model.is_free_endpoint,
+                supports_thinking=model.supports_thinking,
+                supports_vision=model.supports_vision,
+                supported_parameters=model.supported_parameters,
+                pricing=model.pricing,
+                endpoint_metadata=model.endpoint_metadata,
+            )
             for model in self.models.get(provider_id, []) if model.enabled
         ]
 
@@ -136,6 +155,12 @@ async def load_model_registry(db: DatabaseClient, settings: Settings | None = No
             owned_by=row.get("owned_by"),
             context_length=int(row["context_length"]) if row.get("context_length") is not None else None,
             capabilities=_json_dict(row.get("capabilities_json")),
+            is_free_endpoint=bool(row.get("is_free_endpoint", 0)),
+            supports_thinking=bool(row.get("supports_thinking", 0)),
+            supports_vision=bool(row.get("supports_vision", 0)),
+            supported_parameters=_json_list(row.get("supported_parameters_json")),
+            pricing=_json_dict(row.get("pricing_json")),
+            endpoint_metadata=_json_dict(row.get("endpoint_metadata_json")),
             enabled=bool(row["enabled"]),
             allowed=bool(row["allowed"]),
             source=str(row["source"] or "scan"),
@@ -374,6 +399,9 @@ async def ensure_local_ocr_provider(db: DatabaseClient, settings: Settings) -> N
 
 
 def _canonical_model_info(provider_id: str, model: AiModelInfo) -> AiModelInfo:
+    if provider_id == "openrouter" and model.provider == "openrouter" and not model.id.startswith("openrouter/"):
+        model_id = model.id.strip()
+        return model.model_copy(update={"provider": provider_id, "id": model_id, "label": model.label or model_id})
     ref = canonicalize_model_ref(provider_id, model.id, strict=True, allow_auto=False)
     label = model.label or model.id
     if label == model.id:
@@ -461,6 +489,12 @@ def registry_from_settings(settings: Settings) -> ModelRegistry:
                 owned_by=model.owned_by,
                 context_length=model.context_length,
                 capabilities=model.capabilities,
+                is_free_endpoint=model.is_free_endpoint,
+                supports_thinking=model.supports_thinking,
+                supports_vision=model.supports_vision,
+                supported_parameters=model.supported_parameters,
+                pricing=model.pricing,
+                endpoint_metadata=model.endpoint_metadata,
                 allowed=model.id in data["allowed_model_ids"],
                 source="env",
             )
@@ -577,6 +611,8 @@ def resolve_task_profile(registry: ModelRegistry, task: str, preferred_provider:
     fallbacks = []
     if profile:
         fallbacks = _resolve_profile_fallbacks(registry, profile.fallbacks, provider_id)
+    if task == "reasoning":
+        provider_id, model_id, fallbacks = _prefer_thinking_model(registry, provider_id, model_id, fallbacks)
     return TaskProfile(task, provider_id, model_id, fallbacks)
 
 
@@ -641,6 +677,40 @@ def normalize_registry_provider_id(provider_id: str | None) -> str | None:
     if provider_id in {"openrouter_gpt_oss", "opencode_nemotron"}:
         return "openrouter"
     return provider_id
+
+
+def model_supports_thinking(registry: ModelRegistry, provider_id: str | None, model_id: str | None) -> bool | None:
+    provider_id = normalize_registry_provider_id(provider_id)
+    model_id = normalize_model_for_provider(provider_id, model_id or "") if provider_id else model_id
+    if not provider_id or not model_id:
+        return None
+    for model in registry.models.get(provider_id, []):
+        if model.id == model_id:
+            return model.supports_thinking
+    return None
+
+
+def _prefer_thinking_model(registry: ModelRegistry, provider_id: str, model_id: str, fallbacks: list[str]) -> tuple[str, str, list[str]]:
+    candidates: list[tuple[str, str, str | None]] = []
+    if model_id:
+        candidates.append((provider_id, model_id, None))
+    for fallback in fallbacks:
+        fallback_provider, fallback_model = _fallback_provider_model(fallback, provider_id)
+        if fallback_model:
+            candidates.append((fallback_provider, fallback_model, fallback))
+    for candidate_provider, candidate_model, fallback_value in candidates:
+        if model_supports_thinking(registry, candidate_provider, candidate_model) is True:
+            if fallback_value is None:
+                return provider_id, model_id, fallbacks
+            remaining = [_format_fallback_model(provider_id, model_id, candidate_provider), *[fallback for fallback in fallbacks if fallback != fallback_value]]
+            return candidate_provider, candidate_model, [fallback for fallback in remaining if fallback]
+    return provider_id, model_id, fallbacks
+
+
+def _format_fallback_model(provider_id: str, model_id: str, primary_provider_id: str) -> str:
+    if not model_id:
+        return ""
+    return model_id if provider_id == primary_provider_id else f"{provider_id}/{model_id}"
 
 
 # Backwards-compatible private alias for older imports/tests.

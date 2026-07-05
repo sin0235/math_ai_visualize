@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError, changePassword, deleteRenderHistory, forgotPassword, getCurrentUser, getHealth, getRenderHistory, getRenderHistoryDetail, getSessions, getSettingsDefaults, login, loginWithGoogle, logout, ocrImageByUploadId, register, renderEditedScene, renderProblem, resendVerification, resetPassword, revokeOtherSessions, revokeSession, updateProfile, uploadOcrImage, verifyEmail, type AdminRenderHistoryDetail, type RenderHistoryItem, type SessionResponse, type UserResponse } from './api/client';
-import { defaultAdvancedSettings, ProblemInput, type ModelOption, type TierKey } from './components/ProblemInput';
+import { defaultAdvancedSettings, ProblemInput, type TierKey } from './components/ProblemInput';
 import { AccountPage } from './components/AccountPage';
 import { SettingsPage } from './components/SettingsPage';
 import { FeedbackPage } from './components/FeedbackPage';
@@ -24,6 +24,7 @@ import { getDefaultParamValues, patchGeogebraCommandsForScene, recomputeSceneWit
 import { clamp, findPoint, hasSegment, nextPointName, projectPointToLine, round, type Vec3 } from './utils/sceneEditing';
 import type { AdvancedRenderSettings, MathScene, RenderResponse, Renderer } from './types/scene';
 import { defaultRuntimeSettings, type RuntimeSettings, type SettingsDefaults } from './types/settings';
+import { buildRenderModelOptions } from './utils/settingsOptions';
 import logoUrl from '../img.svg';
 import './styles.css';
 
@@ -378,7 +379,7 @@ export default function App() {
     return { ...result, scene: baseScene, payload, user_confirmed: confirmation.fallback_confirmed && confirmation.assumptions_confirmed && confirmation.repair_confirmed };
   }, [result, activeScene, paramValues, confirmation]);
 
-  const modelOptions = buildModelOptions(runtimeSettings, settingsDefaults);
+  const modelOptions = buildRenderModelOptions(settingsDefaults, renderTier);
   const threeInteraction = effectiveResult?.scene.renderer === 'threejs_3d'
     ? {
         mode: editTool,
@@ -1564,102 +1565,4 @@ function providerSettingsFromAdminDefaults(defaults: SettingsDefaults['openroute
     allowed_model_ids: defaults.allowed_model_ids,
     last_scanned_at: '',
   };
-}
-
-function buildModelOptions(settings: RuntimeSettings, defaults?: SettingsDefaults | null): ModelOption[] {
-  const providerOrder = orderRenderProviders(settings.default_provider);
-  const providerOptions = providerOrder.flatMap((provider) => {
-    const providerDefaults = defaults?.[provider];
-    const ids = modelIdsForProvider(providerDefaults, settings[provider].model, defaults, provider);
-    const exactModelOptions = ids.map((modelId) => {
-      const model = providerDefaults?.scanned_models.find((item) => item.id === modelId);
-      return {
-        key: `model:${provider}:${modelId}`,
-        provider,
-        modelId,
-        label: `${renderProviderLabel(provider)}: ${model?.label ?? modelId}`,
-        description: `${renderProviderLabel(provider)} model ${modelId}${model?.context_length ? ` — context ${model.context_length}` : ''}`,
-      };
-    });
-    const canUseProviderDefault = Boolean(providerDefaults?.model || providerDefaults?.allowed_model_ids.length || providerDefaults?.scanned_models.length || settings[provider].model);
-    const defaultOption = canUseProviderDefault
-      ? [{
-          key: `default:${provider}`,
-          provider,
-          label: `${renderProviderLabel(provider)} mặc định`,
-          description: `Dùng provider ${renderProviderLabel(provider)} với model mặc định do admin cấu hình.`,
-        }]
-      : [];
-    return [...defaultOption, ...exactModelOptions];
-  });
-
-  if (defaults?.router9.only_mode) {
-    const router9Options = providerOptions.filter((option) => option.provider === 'router9');
-    return router9Options.length > 0
-      ? [
-          { key: 'default:auto', provider: 'auto', label: 'Mặc định hệ thống (9router)', description: '9router-only đang bật, backend tự chọn model 9router được phép.' },
-          ...router9Options,
-        ]
-      : [];
-  }
-
-  return [
-    { key: 'default:auto', provider: 'auto', label: 'Mặc định hệ thống', description: 'Tự động dùng provider/model và fallback do admin cấu hình.' },
-    ...providerOptions,
-  ];
-}
-
-type RenderProviderKey = 'openrouter' | 'nvidia' | 'ollama' | 'openai_compat' | 'router9';
-
-function orderRenderProviders(defaultProvider: RuntimeSettings['default_provider']): RenderProviderKey[] {
-  const providers = ['openrouter', 'nvidia', 'ollama', 'openai_compat', 'router9'] as const;
-  const normalized = normalizeRenderProvider(defaultProvider);
-  if (!normalized) {
-    return [...providers];
-  }
-  return [normalized, ...providers.filter((provider) => provider !== normalized)];
-}
-
-function normalizeRenderProvider(provider: RuntimeSettings['default_provider']): RenderProviderKey | null {
-  if (!provider || provider === 'auto' || provider === 'mock' || provider === 'openrouter_gpt_oss' || provider === 'opencode_nemotron') return null;
-  if (provider === 'ollama_gpt_oss') return 'ollama';
-  if (provider === 'openrouter' || provider === 'nvidia' || provider === 'ollama' || provider === 'openai_compat' || provider === 'router9') return provider;
-  return null;
-}
-
-function modelIdsForProvider(providerDefaults: SettingsDefaults['openrouter'] | SettingsDefaults['nvidia'] | SettingsDefaults['ollama'] | SettingsDefaults['openai_compat'] | SettingsDefaults['router9'] | undefined, currentModel: string, defaults: SettingsDefaults | null | undefined, providerId: string) {
-  const ids: string[] = [];
-  const add = (modelId: string | null | undefined) => {
-    const id = String(modelId ?? '').trim();
-    if (id && !ids.includes(id)) ids.push(id);
-  };
-  const registryModels = defaults?.registry_models?.filter((model) => model.provider_id === providerId && model.enabled) ?? [];
-  if (registryModels.length > 0) {
-    const visibleModels = registryModels.some((model) => model.allowed) ? registryModels.filter((model) => model.allowed) : registryModels;
-    visibleModels.forEach((model) => add(model.id));
-    providerDefaults?.allowed_model_ids.forEach(add);
-    add(providerDefaults?.model);
-    add(currentModel);
-    return ids;
-  }
-  if (!providerDefaults) {
-    add(currentModel);
-    return ids;
-  }
-  if (providerDefaults.allowed_model_ids.length > 0) providerDefaults.allowed_model_ids.forEach(add);
-  else add(providerDefaults.model);
-  add(currentModel);
-  return ids;
-}
-
-function providerLabel(provider: 'openrouter' | 'nvidia' | 'ollama' | 'openai_compat') {
-  if (provider === 'openrouter') return 'OpenRouter';
-  if (provider === 'nvidia') return 'NVIDIA';
-  if (provider === 'openai_compat') return 'OpenAI-Compatible';
-  return 'Ollama';
-}
-
-function renderProviderLabel(provider: RenderProviderKey) {
-  if (provider === 'router9') return '9router';
-  return providerLabel(provider);
 }

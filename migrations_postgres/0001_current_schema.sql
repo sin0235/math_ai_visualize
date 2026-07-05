@@ -201,6 +201,12 @@ CREATE TABLE IF NOT EXISTS ai_models (
   owned_by TEXT,
   context_length INTEGER,
   capabilities_json TEXT NOT NULL DEFAULT '{}',
+  is_free_endpoint INTEGER NOT NULL DEFAULT 0,
+  supports_thinking INTEGER NOT NULL DEFAULT 0,
+  supports_vision INTEGER NOT NULL DEFAULT 0,
+  pricing_json TEXT NOT NULL DEFAULT '{}',
+  endpoint_metadata_json TEXT NOT NULL DEFAULT '{}',
+  supported_parameters_json TEXT NOT NULL DEFAULT '[]',
   source TEXT NOT NULL DEFAULT 'scan',
   enabled INTEGER NOT NULL DEFAULT 1,
   allowed INTEGER NOT NULL DEFAULT 0,
@@ -210,6 +216,8 @@ CREATE TABLE IF NOT EXISTS ai_models (
 );
 
 CREATE INDEX IF NOT EXISTS idx_ai_models_provider_allowed ON ai_models(provider_id, allowed, enabled);
+CREATE INDEX IF NOT EXISTS idx_ai_models_provider_free_allowed ON ai_models(provider_id, is_free_endpoint, enabled, allowed);
+CREATE INDEX IF NOT EXISTS idx_ai_models_provider_thinking_allowed ON ai_models(provider_id, supports_thinking, enabled, allowed);
 CREATE INDEX IF NOT EXISTS idx_ai_models_last_seen ON ai_models(last_seen_at DESC);
 
 CREATE TABLE IF NOT EXISTS ai_task_profiles (
@@ -265,12 +273,36 @@ CREATE TABLE IF NOT EXISTS model_scan_jobs (
   status TEXT NOT NULL DEFAULT 'queued',
   models_json TEXT NOT NULL DEFAULT '[]',
   error_json TEXT,
+  runtime_json TEXT NOT NULL DEFAULT '{}',
+  base_url TEXT NOT NULL DEFAULT '',
+  result_count INTEGER NOT NULL DEFAULT 0,
+  free_count INTEGER NOT NULL DEFAULT 0,
+  thinking_count INTEGER NOT NULL DEFAULT 0,
+  warnings_json TEXT NOT NULL DEFAULT '[]',
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   started_at TEXT,
-  finished_at TEXT
+  finished_at TEXT,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_model_scan_jobs_user_created ON model_scan_jobs(user_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS model_scan_job_models (
+  scan_id TEXT NOT NULL REFERENCES model_scan_jobs(id) ON DELETE CASCADE,
+  provider_id TEXT NOT NULL,
+  model_id TEXT NOT NULL,
+  label TEXT NOT NULL,
+  is_free_endpoint INTEGER NOT NULL DEFAULT 0,
+  supports_thinking INTEGER NOT NULL DEFAULT 0,
+  supports_vision INTEGER NOT NULL DEFAULT 0,
+  context_length INTEGER,
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (scan_id, provider_id, model_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_model_scan_job_models_scan ON model_scan_job_models(scan_id);
+CREATE INDEX IF NOT EXISTS idx_model_scan_job_models_provider ON model_scan_job_models(provider_id, model_id);
 
 CREATE TABLE IF NOT EXISTS uploaded_files (
   id TEXT PRIMARY KEY,

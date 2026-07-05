@@ -110,6 +110,7 @@ function normalizeScannedModels(models: any[]) {
       const id = typeof modelItem === 'string' ? modelItem : modelItem?.id;
       if (!id) return null;
       return {
+        ...(typeof modelItem === 'object' ? modelItem : {}),
         id,
         label: typeof modelItem === 'object' && modelItem.label ? modelItem.label : typeof modelItem === 'object' && modelItem.name ? modelItem.name : id,
         provider: typeof modelItem === 'object' && modelItem.provider ? modelItem.provider : '',
@@ -140,9 +141,9 @@ function adminProviderToDefaults(value: Record<string, unknown>, provider: strin
 }
 
 function adminModelOptions(providerValue: ReturnType<typeof defaultAdminProviderSettings>, preferredIds: string[] = []) {
-  const byId = new Map<string, { id: string; name: string }>();
-  function add(id: string, name = id) {
-    if (id && !byId.has(id)) byId.set(id, { id, name });
+  const byId = new Map<string, { id: string; name: string; model?: ScannedModelInfo }>();
+  function add(id: string, name = id, model?: ScannedModelInfo) {
+    if (id && !byId.has(id)) byId.set(id, { id, name, model });
   }
   preferredIds.forEach((id) => add(id));
   add(providerValue.model);
@@ -150,7 +151,7 @@ function adminModelOptions(providerValue: ReturnType<typeof defaultAdminProvider
   providerValue.scanned_models.forEach((modelItem: any) => {
     const id = typeof modelItem === 'string' ? modelItem : modelItem?.id;
     const name = typeof modelItem === 'object' ? modelItem.label || modelItem.name || id : id;
-    add(id, name);
+    add(id, name, typeof modelItem === 'object' ? modelItem : undefined);
   });
   return [...byId.values()];
 }
@@ -172,7 +173,7 @@ function orderedAllowlistModelOptions(
   allowedModelIds: string[]
 ) {
   const optionMap = new Map(adminModelOptions(providerValue, allowedModelIds).map((o) => [o.id, o]));
-  const ordered: Array<{ id: string; name: string }> = [];
+  const ordered: Array<{ id: string; name: string; model?: ScannedModelInfo }> = [];
   for (const modelItem of providerValue.scanned_models) {
     const id = typeof modelItem === 'string' ? modelItem : modelItem?.id;
     if (id && optionMap.has(id)) ordered.push(optionMap.get(id)!);
@@ -324,7 +325,6 @@ function normalizeTierState(state: TierState): TierState {
 
 export function AdminAiSettingsForm({ value, defaults, saving, onSave, onToast }: { value: Record<string, unknown>; defaults: SettingsDefaults | null; saving: boolean; onSave: (patch: Record<string, unknown>) => Promise<void>; onToast?: AdminToast }) {
   const providers = ['openrouter', 'nvidia', 'ollama', 'openai_compat', 'router9'] as const;
-  const scannableProviders = new Set<(typeof providers)[number]>(['openrouter', 'openai_compat', 'router9']);
   const ocrValue = getAdminOcrSettings(value);
   const [draft, setDraft] = useState(() => Object.fromEntries(providers.map((provider) => [provider, getAdminProviderSettings(value, provider, defaults)])) as Record<(typeof providers)[number], ReturnType<typeof getAdminProviderSettings>>);
   const [ocrProvider, setOcrProvider] = useState(ocrValue.provider);
@@ -501,6 +501,21 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave, onToast }
     bulkSetModelIds(provider, ids, true);
   }
 
+  function bulkSelectByCapability(provider: (typeof providers)[number], modelItems: Array<{ id: string; model?: ScannedModelInfo }>, key: 'is_free_endpoint' | 'supports_thinking' | 'supports_vision') {
+    const ids = modelItems.filter((modelItem) => modelItem.model?.[key] === true).map((modelItem) => modelItem.id);
+    bulkSetModelIds(provider, ids, true);
+  }
+
+  function modelCapabilityBadges(model?: ScannedModelInfo) {
+    if (!model) return ['Unknown capability'];
+    const badges = [
+      model.is_free_endpoint ? 'Free' : '',
+      model.supports_thinking ? 'Thinking' : '',
+      model.supports_vision ? 'Vision' : '',
+    ].filter(Boolean);
+    return badges.length > 0 ? badges : ['Unknown capability'];
+  }
+
   function addManualModel(provider: (typeof providers)[number]) {
     const modelId = (manualModelInputs[provider] ?? '').trim();
     if (!modelId) return;
@@ -552,7 +567,7 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave, onToast }
         <div className="admin-section-heading-row">
           <div>
             <h4>Provider & model</h4>
-            <p className="field-hint">OpenRouter, OpenAI-compatible và 9router có thể quét endpoint /models. NVIDIA và Ollama quản lý model thủ công.</p>
+            <p className="field-hint">OpenRouter, NVIDIA, OpenAI-compatible, 9router và Ollama cloud có thể quét endpoint /models. Ollama local dùng /api/tags.</p>
           </div>
           <button type="button" className="secondary-button" onClick={() => void checkAllProviders()} disabled={saving || checkingAll || checking !== null}>
             {checkingAll ? 'Đang kiểm tra...' : 'Kiểm tra tất cả'}
@@ -578,7 +593,7 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave, onToast }
                   ) : (
                     <div className="admin-row-actions admin-provider-card-head-actions">
                       <button type="button" className="secondary-button" onClick={() => void checkProvider(provider)} disabled={saving || checking === provider}>{checking === provider ? 'Đang kiểm tra...' : 'Kiểm tra'}</button>
-                      {scannableProviders.has(provider) && <button type="button" className="secondary-button" onClick={() => void scanProvider(provider)} disabled={saving || scanning === provider}>{scanning === provider ? 'Đang quét...' : 'Quét model'}</button>}
+                      <button type="button" className="secondary-button" onClick={() => void scanProvider(provider)} disabled={saving || scanning === provider}>{scanning === provider ? 'Đang quét...' : 'Quét model'}</button>
                       <button type="button" className="secondary-button" onClick={() => void saveProvider(provider)} disabled={saving}>{saving ? 'Đang lưu...' : 'Lưu provider'}</button>
                     </div>
                   )}
@@ -607,8 +622,9 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave, onToast }
                     <button type="button" className="secondary-button" onClick={() => bulkSetModelIds(provider, filteredAllowlistOptions.map((modelItem) => modelItem.id), true)} disabled={filteredAllowlistOptions.length === 0}>Chọn tất cả đang lọc</button>
                     <button type="button" className="secondary-button" onClick={() => bulkSetModelIds(provider, filteredAllowlistOptions.map((modelItem) => modelItem.id), false)} disabled={filteredAllowlistOptions.length === 0}>Bỏ chọn đang lọc</button>
                     <button type="button" className="secondary-button" onClick={() => bulkSetModelIds(provider, allowlistOptions.map((modelItem) => modelItem.id), false)} disabled={allowlistOptions.length === 0}>Bỏ chọn tất cả</button>
-                    <button type="button" className="secondary-button" onClick={() => bulkSelectByKeyword(provider, filteredAllowlistOptions, ['image', 'vision', 'vl', 'ocr'])} disabled={filteredAllowlistOptions.length === 0}>Chọn image/OCR</button>
-                    <button type="button" className="secondary-button" onClick={() => bulkSelectByKeyword(provider, filteredAllowlistOptions, ['free'])} disabled={filteredAllowlistOptions.length === 0}>Chọn free</button>
+                    <button type="button" className="secondary-button" onClick={() => bulkSelectByCapability(provider, filteredAllowlistOptions, 'supports_vision')} disabled={filteredAllowlistOptions.length === 0}>Chọn Vision</button>
+                    <button type="button" className="secondary-button" onClick={() => bulkSelectByCapability(provider, filteredAllowlistOptions, 'is_free_endpoint')} disabled={filteredAllowlistOptions.length === 0}>Chọn Free</button>
+                    <button type="button" className="secondary-button" onClick={() => bulkSelectByCapability(provider, filteredAllowlistOptions, 'supports_thinking')} disabled={filteredAllowlistOptions.length === 0}>Chọn Thinking</button>
                     <button type="button" className="secondary-button" onClick={() => bulkSelectByKeyword(provider, filteredAllowlistOptions, ['gpt', 'codex'])} disabled={filteredAllowlistOptions.length === 0}>Chọn GPT/Codex</button>
                   </div>
                   {isManualProvider && (
@@ -627,7 +643,12 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave, onToast }
                       <div key={modelItem.id} className="admin-model-checkbox">
                         <label>
                           <input type="checkbox" checked={providerValue.allowed_model_ids.includes(modelItem.id)} onChange={() => toggleModelId(provider, modelItem.id)} />
-                          <span className="model-label"><strong>{modelItem.name}</strong>{modelItem.id !== modelItem.name && <small>{modelItem.id}</small>}</span>
+                          <span className="model-label">
+                            <strong>{modelItem.name}</strong>{modelItem.id !== modelItem.name && <small>{modelItem.id}</small>}
+                            <span className="model-capability-badges" aria-label={`Capabilities for ${modelItem.id}`}>
+                              {modelCapabilityBadges(modelItem.model).map((badge) => <small key={badge} className="model-capability-badge">{badge}</small>)}
+                            </span>
+                          </span>
                         </label>
                         {isManualProvider && <button type="button" className="history-delete" onClick={() => removeManualModel(provider, modelItem.id)} aria-label={`Xoá ${modelItem.id}`}>×</button>}
                       </div>

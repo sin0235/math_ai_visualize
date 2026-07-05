@@ -236,6 +236,11 @@ def test_settings_defaults_exposes_model_capabilities(settings_defaults_client):
             label="Vision model",
             provider="openrouter",
             capabilities={"input_modalities": ["text", "image"]},
+            supports_vision=True,
+            is_free_endpoint=True,
+            supports_thinking=True,
+            supported_parameters=["reasoning"],
+            pricing={"prompt": "0"},
         )
     ]))
 
@@ -244,7 +249,13 @@ def test_settings_defaults_exposes_model_capabilities(settings_defaults_client):
     assert response.status_code == 200
     payload = response.json()
     assert payload["openrouter"]["scanned_models"][0]["capabilities"] == {"input_modalities": ["text", "image"]}
-    assert next(model for model in payload["registry_models"] if model["id"] == "vision/model")["capabilities"] == {"input_modalities": ["text", "image"]}
+    assert payload["openrouter"]["scanned_models"][0]["supports_vision"] is True
+    assert payload["openrouter"]["scanned_models"][0]["is_free_endpoint"] is True
+    assert payload["openrouter"]["scanned_models"][0]["supports_thinking"] is True
+    assert "openrouter-secret" not in response.text
+    registry_model = next(model for model in payload["registry_models"] if model["id"] == "vision/model")
+    assert registry_model["capabilities"] == {"input_modalities": ["text", "image"]}
+    assert registry_model["supported_parameters"] == ["reasoning"]
 
 
 def test_settings_defaults_reports_nvidia_ocr_profile(settings_defaults_client):

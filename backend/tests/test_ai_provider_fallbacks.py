@@ -15,6 +15,7 @@ from app.main import app
 from app.schemas.scene import AiModelInfo, OcrRequest, RenderRequest, RuntimeSettings
 from app.services.extractor import extract_scene, _provider_order
 from app.services.openai_compat_client import OpenAICompatClient
+from app.services.openrouter_client import OpenRouterClient
 from app.services.provider_logging import format_provider_error, redact_sensitive
 from app.services.provider_ping import check_provider_connection
 from app.services.solver_explainer import _call_explainer
@@ -168,6 +169,68 @@ def test_openai_compat_scene_payload_limits_output_and_requests_json(monkeypatch
     assert captured["payload"]["stream"] is False
     assert captured["payload"]["max_tokens"] == 8192
     assert captured["payload"]["response_format"] == {"type": "json_object"}
+
+
+def test_openrouter_runtime_skips_reasoning_for_known_non_thinking_model(monkeypatch):
+    captured = {}
+
+    class FakeClient:
+        async def post(self, url, headers, json, timeout):
+            captured["payload"] = json
+            return httpx.Response(200, json={"choices": [{"message": {"content": "{}"}}]})
+
+    monkeypatch.setattr("app.services.http_pool.get_client", lambda *args, **kwargs: FakeClient())
+
+    asyncio.run(
+        OpenRouterClient(
+            Settings(_env_file=None, openrouter_api_key="secret", openrouter_reasoning_enabled=True),
+            model="plain-model",
+            supports_thinking=False,
+        ).reason_about_problem("Vẽ điểm A")
+    )
+
+    assert "reasoning" not in captured["payload"]
+
+
+def test_openrouter_runtime_sends_reasoning_for_known_thinking_model(monkeypatch):
+    captured = {}
+
+    class FakeClient:
+        async def post(self, url, headers, json, timeout):
+            captured["payload"] = json
+            return httpx.Response(200, json={"choices": [{"message": {"content": "{}"}}]})
+
+    monkeypatch.setattr("app.services.http_pool.get_client", lambda *args, **kwargs: FakeClient())
+
+    asyncio.run(
+        OpenRouterClient(
+            Settings(_env_file=None, openrouter_api_key="secret", openrouter_reasoning_enabled=True),
+            model="thinking-model",
+            supports_thinking=True,
+        ).reason_about_problem("Vẽ điểm A")
+    )
+
+    assert captured["payload"]["reasoning"] == {"enabled": True}
+
+
+def test_openrouter_runtime_preserves_reasoning_for_unknown_model_with_global_policy(monkeypatch):
+    captured = {}
+
+    class FakeClient:
+        async def post(self, url, headers, json, timeout):
+            captured["payload"] = json
+            return httpx.Response(200, json={"choices": [{"message": {"content": "{}"}}]})
+
+    monkeypatch.setattr("app.services.http_pool.get_client", lambda *args, **kwargs: FakeClient())
+
+    asyncio.run(
+        OpenRouterClient(
+            Settings(_env_file=None, openrouter_api_key="secret", openrouter_reasoning_enabled=True),
+            model="unknown-model",
+        ).reason_about_problem("Vẽ điểm A")
+    )
+
+    assert captured["payload"]["reasoning"] == {"enabled": True}
 
 
 def test_openai_compat_recovers_non_json_sse_response(monkeypatch):

@@ -127,19 +127,45 @@ class ModelRegistryRepository:
     async def upsert_model(self, provider_id: str, model: AiModelInfo, allowed: bool, source: str) -> None:
         await self.db.execute(
             """
-            INSERT INTO ai_models (provider_id, id, label, owned_by, context_length, capabilities_json, source, enabled, allowed, last_seen_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            INSERT INTO ai_models (
+              provider_id, id, label, owned_by, context_length, capabilities_json,
+              is_free_endpoint, supports_thinking, supports_vision, pricing_json,
+              endpoint_metadata_json, supported_parameters_json,
+              source, enabled, allowed, last_seen_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             ON CONFLICT(provider_id, id) DO UPDATE SET
               label = excluded.label,
               owned_by = excluded.owned_by,
               context_length = excluded.context_length,
               capabilities_json = excluded.capabilities_json,
+              is_free_endpoint = excluded.is_free_endpoint,
+              supports_thinking = excluded.supports_thinking,
+              supports_vision = excluded.supports_vision,
+              pricing_json = excluded.pricing_json,
+              endpoint_metadata_json = excluded.endpoint_metadata_json,
+              supported_parameters_json = excluded.supported_parameters_json,
               source = excluded.source,
               enabled = 1,
               last_seen_at = CURRENT_TIMESTAMP,
               updated_at = CURRENT_TIMESTAMP
             """,
-            [provider_id, model.id, model.label or model.id, model.owned_by, model.context_length, json.dumps(model.capabilities, ensure_ascii=False, sort_keys=True), source, int(allowed)],
+            [
+                provider_id,
+                model.id,
+                model.label or model.id,
+                model.owned_by,
+                model.context_length,
+                json.dumps(model.capabilities, ensure_ascii=False, sort_keys=True),
+                int(model.is_free_endpoint),
+                int(model.supports_thinking),
+                int(model.supports_vision),
+                json.dumps(model.pricing, ensure_ascii=False, sort_keys=True),
+                json.dumps(model.endpoint_metadata, ensure_ascii=False, sort_keys=True),
+                json.dumps(model.supported_parameters, ensure_ascii=False, sort_keys=True),
+                source,
+                int(allowed),
+            ],
         )
 
     async def clear_allowed_models(self, provider_id: str) -> None:
@@ -148,12 +174,69 @@ class ModelRegistryRepository:
     async def allow_model(self, provider_id: str, model_id: str) -> None:
         await self.db.execute(
             """
-            INSERT INTO ai_models (provider_id, id, label, capabilities_json, source, enabled, allowed, updated_at)
-            VALUES (?, ?, ?, '{}', 'manual', 1, 1, CURRENT_TIMESTAMP)
+            INSERT INTO ai_models (
+              provider_id, id, label, capabilities_json, pricing_json, endpoint_metadata_json,
+              supported_parameters_json, source, enabled, allowed, updated_at
+            )
+            VALUES (?, ?, ?, '{}', '{}', '{}', '[]', 'manual', 1, 1, CURRENT_TIMESTAMP)
             ON CONFLICT(provider_id, id) DO UPDATE SET allowed = 1, enabled = 1, updated_at = CURRENT_TIMESTAMP
             """,
             [provider_id, model_id, model_id],
         )
+
+    async def record_model_scan_job(
+        self,
+        scan_id: str,
+        user_id: str,
+        provider_id: str,
+        base_url: str,
+        runtime_json: dict[str, Any],
+        models: list[AiModelInfo],
+        warnings: list[str],
+    ) -> None:
+        await self.db.execute(
+            """
+            INSERT INTO model_scan_jobs (
+              id, user_id, provider, status, models_json, runtime_json, base_url,
+              result_count, free_count, thinking_count, warnings_json,
+              created_at, started_at, finished_at, updated_at
+            )
+            VALUES (?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            """,
+            [
+                scan_id,
+                user_id,
+                provider_id,
+                json.dumps([model.model_dump() for model in models], ensure_ascii=False, sort_keys=True),
+                json.dumps(runtime_json, ensure_ascii=False, sort_keys=True),
+                base_url,
+                len(models),
+                sum(1 for model in models if model.is_free_endpoint),
+                sum(1 for model in models if model.supports_thinking),
+                json.dumps(warnings, ensure_ascii=False, sort_keys=True),
+            ],
+        )
+        for model in models:
+            await self.db.execute(
+                """
+                INSERT INTO model_scan_job_models (
+                  scan_id, provider_id, model_id, label, is_free_endpoint, supports_thinking,
+                  supports_vision, context_length, metadata_json
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    scan_id,
+                    provider_id,
+                    model.id,
+                    model.label,
+                    int(model.is_free_endpoint),
+                    int(model.supports_thinking),
+                    int(model.supports_vision),
+                    model.context_length,
+                    json.dumps(model.model_dump(), ensure_ascii=False, sort_keys=True),
+                ],
+            )
 
     async def update_provider_check(self, provider_id: str, status: str, message: str) -> None:
         await self.db.execute(

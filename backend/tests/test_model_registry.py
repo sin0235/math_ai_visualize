@@ -131,6 +131,56 @@ async def test_registry_preserves_allowed_models_after_scan(db):
 
 
 @pytest.mark.anyio
+async def test_registry_persists_scanned_model_capabilities(db):
+    settings = Settings(_env_file=None)
+    await load_model_registry(db, settings)
+
+    await upsert_scanned_models(db, "openrouter", [
+        AiModelInfo(
+            id="openai/gpt-oss-120b:free",
+            label="GPT OSS",
+            provider="openrouter",
+            context_length=131072,
+            is_free_endpoint=True,
+            supports_thinking=True,
+            supports_vision=False,
+            supported_parameters=["reasoning_effort"],
+            pricing={"prompt": "0", "completion": "0"},
+            endpoint_metadata={"id": "openai/gpt-oss-120b:free", "supported_parameters": ["reasoning_effort"]},
+        )
+    ])
+
+    registry = await load_model_registry(db, settings)
+    model = next(item for item in registry.models["openrouter"] if item.id == "openai/gpt-oss-120b:free")
+
+    assert model.is_free_endpoint is True
+    assert model.supports_thinking is True
+    assert model.supported_parameters == ["reasoning_effort"]
+    assert model.pricing == {"completion": "0", "prompt": "0"}
+    assert registry.scanned_model_infos("openrouter")[0].endpoint_metadata["id"] == "openai/gpt-oss-120b:free"
+
+
+@pytest.mark.anyio
+async def test_reasoning_profile_prefers_thinking_capable_fallback(db):
+    settings = Settings(_env_file=None)
+    await load_model_registry(db, settings)
+    await upsert_scanned_models(db, "openrouter", [
+        AiModelInfo(id="plain-model", label="Plain", provider="openrouter", supports_thinking=False),
+        AiModelInfo(id="thinking-model", label="Thinking", provider="openrouter", supports_thinking=True, supported_parameters=["reasoning"]),
+    ])
+    await set_allowed_models(db, "openrouter", ["plain-model", "thinking-model"])
+    await save_task_profile(db, "reasoning", "openrouter", "plain-model", ["thinking-model"])
+
+    registry = await load_model_registry(db, settings)
+    profile = resolve_task_profile(registry, "reasoning")
+
+    assert profile is not None
+    assert profile.provider_id == "openrouter"
+    assert profile.model_id == "thinking-model"
+    assert "plain-model" in profile.fallbacks
+
+
+@pytest.mark.anyio
 async def test_registry_disables_stale_scanned_models_after_rescan(db):
     settings = Settings(_env_file=None)
     await load_model_registry(db, settings)

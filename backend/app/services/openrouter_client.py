@@ -20,10 +20,19 @@ Nếu có công thức khó biểu diễn bằng Unicode, dùng LaTeX ngắn g�
 
 
 class OpenRouterClient:
-    def __init__(self, settings: Settings, model: str | None = None, reasoning_enabled: bool | None = None) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        model: str | None = None,
+        reasoning_enabled: bool | None = None,
+        supports_thinking: bool | None = None,
+        supported_parameters: list[str] | None = None,
+    ) -> None:
         self.settings = settings
         self.model = model or settings.openrouter_text_model
         self.reasoning_enabled = settings.openrouter_reasoning_enabled if reasoning_enabled is None else reasoning_enabled
+        self.supports_thinking = supports_thinking
+        self.supported_parameters = supported_parameters or []
 
     async def extract_scene_json(
         self,
@@ -39,23 +48,25 @@ class OpenRouterClient:
         sys_prompt = system_prompt or SCENE_EXTRACTION_SYSTEM_PROMPT
 
         headers = _build_headers(self.settings)
-        payload = {
-            "model": _normalize_model_id(self.model),
-            "messages": [
+        payload = _build_chat_payload(
+            self.model,
+            [
                 {"role": "system", "content": sys_prompt},
                 {"role": "user", "content": build_scene_extraction_prompt(problem_text, grade, reasoning_layer, reasoning_plan=reasoning_plan)},
             ],
-            "temperature": 0.1,
-        }
-        if self.reasoning_enabled:
-            payload["reasoning"] = {"enabled": True}
+            temperature=0.1,
+            request_thinking=self.reasoning_enabled,
+            supports_thinking=self.supports_thinking,
+            supported_parameters=self.supported_parameters,
+            allow_unknown_thinking=self.reasoning_enabled,
+        )
 
         from app.services.http_pool import TIMEOUT_SCENE, get_client
 
         base_url = openrouter_api_base_url(self.settings)
         url = f"{base_url}/chat/completions"
         started_at = time.perf_counter()
-        log_provider_request("openrouter", "scene", url, payload["model"], problem_chars=len(problem_text), input_chars=chat_message_input_chars(payload.get("messages")), reasoning=self.reasoning_enabled)
+        log_provider_request("openrouter", "scene", url, payload["model"], problem_chars=len(problem_text), input_chars=chat_message_input_chars(payload.get("messages")), reasoning="reasoning" in payload)
         client = get_client(base_url, TIMEOUT_SCENE)
         try:
             content, response_chars = await collect_openai_chat_stream(client, url, headers=headers, payload=payload, timeout=TIMEOUT_SCENE)
@@ -83,23 +94,25 @@ class OpenRouterClient:
         sys_prompt = system_prompt or REASONING_SYSTEM_PROMPT
 
         headers = _build_headers(self.settings)
-        payload = {
-            "model": _normalize_model_id(self.model),
-            "messages": [
+        payload = _build_chat_payload(
+            self.model,
+            [
                 {"role": "system", "content": sys_prompt},
                 {"role": "user", "content": build_reasoning_prompt(problem_text, grade)},
             ],
-            "temperature": 0.15,
-        }
-        if self.reasoning_enabled:
-            payload["reasoning"] = {"enabled": True}
+            temperature=0.15,
+            request_thinking=self.reasoning_enabled,
+            supports_thinking=self.supports_thinking,
+            supported_parameters=self.supported_parameters,
+            allow_unknown_thinking=self.reasoning_enabled,
+        )
 
         from app.services.http_pool import TIMEOUT_REASONING, get_client
 
         base_url = openrouter_api_base_url(self.settings)
         url = f"{base_url}/chat/completions"
         started_at = time.perf_counter()
-        log_provider_request("openrouter", "reasoning", url, payload["model"], problem_chars=len(problem_text), input_chars=chat_message_input_chars(payload.get("messages")), reasoning=self.reasoning_enabled)
+        log_provider_request("openrouter", "reasoning", url, payload["model"], problem_chars=len(problem_text), input_chars=chat_message_input_chars(payload.get("messages")), reasoning="reasoning" in payload)
         client = get_client(base_url, TIMEOUT_REASONING)
         response = await client.post(url, headers=headers, json=payload, timeout=TIMEOUT_REASONING)
         elapsed_ms = int((time.perf_counter() - started_at) * 1000)
@@ -127,9 +140,9 @@ class OpenRouterClient:
 
         errors: list[str] = []
         for selected_model in models:
-            payload = {
-                "model": _normalize_model_id(selected_model),
-                "messages": [
+            payload = _build_chat_payload(
+                selected_model,
+                [
                     {"role": "system", "content": OCR_SYSTEM_PROMPT},
                     {
                         "role": "user",
@@ -139,9 +152,12 @@ class OpenRouterClient:
                         ],
                     },
                 ],
-                "temperature": 0,
-                "reasoning": {"enabled": True},
-            }
+                temperature=0,
+                request_thinking=True,
+                supports_thinking=self.supports_thinking,
+                supported_parameters=self.supported_parameters,
+                allow_unknown_thinking=True,
+            )
 
             try:
                 from app.services.http_pool import TIMEOUT_OCR, get_client
@@ -195,6 +211,29 @@ def _api_key(settings: Settings) -> str:
 
 def _normalize_model_id(model: str) -> str:
     return model.removeprefix("openrouter/")
+
+
+def _build_chat_payload(
+    model: str,
+    messages: list[dict],
+    *,
+    request_thinking: bool,
+    supports_thinking: bool | None,
+    supported_parameters: list[str] | None,
+    allow_unknown_thinking: bool,
+    **kwargs,
+) -> dict:
+    from app.services.ai_providers import get_provider_adapter
+
+    return get_provider_adapter("openrouter").build_chat_payload(
+        model,
+        messages,
+        request_thinking=request_thinking,
+        supports_thinking=supports_thinking,
+        supported_parameters=supported_parameters,
+        allow_unknown_thinking=allow_unknown_thinking,
+        **kwargs,
+    )
 
 
 def _extract_message(response: httpx.Response) -> dict:

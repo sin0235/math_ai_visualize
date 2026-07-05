@@ -1,6 +1,7 @@
-import { DragEvent, FormEvent, MouseEvent, useRef, useState } from 'react';
+import { DragEvent, FormEvent, MouseEvent, useMemo, useRef, useState } from 'react';
 
 import type { AdvancedRenderSettings, CoordinateAssignment, ReasoningLayerMode, Renderer } from '../types/scene';
+import type { RenderModelOption } from '../utils/settingsOptions';
 
 export const defaultAdvancedSettings: AdvancedRenderSettings = {
   coordinate_assignment: 'ai',
@@ -19,13 +20,7 @@ const nullableBooleanOptions = [
   { value: 'false', label: 'Tắt' },
 ] as const;
 
-export interface ModelOption {
-  key: string;
-  label: string;
-  provider: string;
-  description: string;
-  modelId?: string;
-}
+export type ModelOption = RenderModelOption;
 
 export type TierKey = 'tier1' | 'tier2' | 'tier3';
 
@@ -117,6 +112,12 @@ export function ProblemInput({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const busy = loading || ocrLoading;
   const submitDisabled = busy;
+  const effectiveModelKey = modelOptions.some((option) => option.key === preferredModelKey)
+    ? preferredModelKey
+    : modelOptions[0]?.key ?? 'default:auto';
+  const selectedModelOption = modelOptions.find((option) => option.key === effectiveModelKey);
+  const groupedModelOptions = useMemo(() => groupModelOptions(modelOptions), [modelOptions]);
+  const modelHint = formatModelHint(selectedModelOption, advancedSettings.reasoning_layer);
 
   function updateAdvancedSettings(next: Partial<AdvancedRenderSettings>) {
     setAdvancedSettings((current) => ({ ...current, ...next }));
@@ -124,13 +125,12 @@ export function ProblemInput({
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    const selectedModel = modelOptions.find((option) => option.key === preferredModelKey);
     onSubmit(
       problemText,
       tier,
       advancedSettings,
       preferredRenderer === 'auto' ? undefined : preferredRenderer,
-      selectedModel?.modelId,
+      selectedModelOption?.key,
     );
   }
 
@@ -283,13 +283,17 @@ export function ProblemInput({
         </label>
         {modelOptions.length > 0 && (
           <label className="field-label">
-            Model dựng hình
-            <select value={preferredModelKey} onChange={(event) => setPreferredModelKey(event.target.value)}>
-              {modelOptions.map((option) => (
-                <option key={option.key} value={option.key} title={option.description}>{option.label}</option>
+            Chiến lược model dựng hình
+            <select value={effectiveModelKey} onChange={(event) => setPreferredModelKey(event.target.value)}>
+              {groupedModelOptions.map((group) => (
+                <optgroup key={group.label} label={group.label}>
+                  {group.options.map((option) => (
+                    <option key={option.key} value={option.key} title={option.description}>{option.label}</option>
+                  ))}
+                </optgroup>
               ))}
             </select>
-            <span className="field-hint">{modelOptions.find((option) => option.key === preferredModelKey)?.description ?? 'Backend tự chọn model phù hợp.'}</span>
+            <span className="field-hint">{modelHint}</span>
           </label>
         )}
         <label className="field-label">
@@ -356,6 +360,25 @@ export function ProblemInput({
       </details>
     </form>
   );
+}
+
+function groupModelOptions(options: ModelOption[]) {
+  const groups: Array<{ label: string; options: ModelOption[] }> = [];
+  options.forEach((option) => {
+    const label = option.group || 'Khác';
+    const group = groups.find((item) => item.label === label);
+    if (group) group.options.push(option);
+    else groups.push({ label, options: [option] });
+  });
+  return groups;
+}
+
+function formatModelHint(option: ModelOption | undefined, reasoningLayer: ReasoningLayerMode) {
+  if (!option) return 'Backend tự chọn task profile phù hợp.';
+  if (reasoningLayer === 'force' && option.modelId && option.supportsThinking === false) {
+    return `${option.description} Lớp suy luận đang bật bắt buộc; model này chưa có Thinking metadata.`;
+  }
+  return option.description;
 }
 
 function Spinner({ className }: { className?: string }) {

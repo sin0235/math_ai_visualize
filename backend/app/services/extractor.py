@@ -20,7 +20,7 @@ from app.services.openrouter_client import OpenRouterClient
 from app.services.router9_bootstrap import select_router9_render_model_ids_from_ids
 from app.services.router9_client import Router9Client
 from app.services.provider_logging import redact_sensitive
-from app.services.model_registry import TierModelCandidate, load_model_registry, registry_from_settings, resolve_effective_settings, resolve_render_tier_candidates, resolve_task_profile
+from app.services.model_registry import TierModelCandidate, load_model_registry, model_supports_thinking, registry_from_settings, resolve_effective_settings, resolve_render_tier_candidates, resolve_task_profile
 from app.services.solid_presets import equilateral_triangle, rectangular_box, square_pyramid, triangular_prism, triangular_pyramid
 
 _HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
@@ -125,6 +125,7 @@ async def extract_scene(
                 settings, problem_text, grade,
                 reasoning_provider, reasoning_model,
                 warnings, system_prompt=reasoning_sys_prompt,
+                model_supports_thinking=model_supports_thinking(registry, reasoning_provider, reasoning_model),
             )
             if reasoning_plan is not None:
                 warnings.append("Đã hoàn thành tầng suy luận (reasoning layer).")
@@ -150,6 +151,7 @@ async def extract_scene(
                             preferred_ai_model=candidate.model_id,
                             reasoning_plan=reasoning_plan,
                             system_prompt=scene_sys_prompt,
+                            model_supports_thinking=model_supports_thinking(registry, candidate.provider_id, candidate.model_id),
                         ),
                         timeout=attempt_timeout,
                     )
@@ -215,6 +217,7 @@ async def extract_scene(
             settings, problem_text, grade,
             reasoning_provider, reasoning_model,
             warnings, system_prompt=reasoning_sys_prompt,
+            model_supports_thinking=model_supports_thinking(registry, reasoning_provider, reasoning_model),
         )
         if reasoning_plan is not None:
             warnings.append("Đã hoàn thành tầng suy luận (reasoning layer).")
@@ -243,6 +246,7 @@ async def extract_scene(
                             preferred_ai_model=model,
                             reasoning_plan=reasoning_plan,
                             system_prompt=scene_sys_prompt,
+                            model_supports_thinking=model_supports_thinking(registry, provider, model),
                         ),
                         timeout=attempt_timeout,
                     )
@@ -319,6 +323,7 @@ async def _run_reasoning_stage(
     preferred_ai_model: str | None,
     warnings: list[str],
     system_prompt: str | None = None,
+    model_supports_thinking: bool | None = None,
 ) -> dict | None:
     """Run the reasoning layer (Task 1) and return the reasoning plan.
 
@@ -341,7 +346,15 @@ async def _run_reasoning_stage(
                     return None
                 attempts += 1
                 try:
-                    plan = await _reason_with_provider(provider, settings, problem_text, grade, model, system_prompt=system_prompt)
+                    plan = await _reason_with_provider(
+                        provider,
+                        settings,
+                        problem_text,
+                        grade,
+                        model,
+                        system_prompt=system_prompt,
+                        model_supports_thinking=model_supports_thinking if provider == requested_provider and model == preferred_ai_model else None,
+                    )
                     if isinstance(plan, dict):
                         logger.info("Reasoning stage succeeded via %s/%s", provider, model)
                         return plan
@@ -945,14 +958,24 @@ def _router9_model_candidates(settings: Settings, preferred_ai_model: str | None
     return candidates
 
 
-async def _extract_with_provider(provider: str, settings: Settings, problem_text: str, grade: int | None, reasoning_layer: str, preferred_ai_model: str | None = None, reasoning_plan: dict | None = None, system_prompt: str | None = None) -> dict:
+async def _extract_with_provider(
+    provider: str,
+    settings: Settings,
+    problem_text: str,
+    grade: int | None,
+    reasoning_layer: str,
+    preferred_ai_model: str | None = None,
+    reasoning_plan: dict | None = None,
+    system_prompt: str | None = None,
+    model_supports_thinking: bool | None = None,
+) -> dict:
     if provider == "nvidia":
         return await NvidiaClient(settings, model=preferred_ai_model).extract_scene_json(problem_text, grade, reasoning_layer, reasoning_plan=reasoning_plan, system_prompt=system_prompt)
     if provider == "router9":
         model = _router9_model(settings, preferred_ai_model)
         return await Router9Client(settings, model=model).extract_scene_json(problem_text, grade, reasoning_layer, reasoning_plan=reasoning_plan, system_prompt=system_prompt)
     if provider == "openrouter":
-        return await OpenRouterClient(settings, model=preferred_ai_model).extract_scene_json(problem_text, grade, reasoning_layer, reasoning_plan=reasoning_plan, system_prompt=system_prompt)
+        return await OpenRouterClient(settings, model=preferred_ai_model, supports_thinking=model_supports_thinking).extract_scene_json(problem_text, grade, reasoning_layer, reasoning_plan=reasoning_plan, system_prompt=system_prompt)
     if provider == "openai_compat":
         return await OpenAICompatClient(settings, model=preferred_ai_model).extract_scene_json(problem_text, grade, reasoning_layer, reasoning_plan=reasoning_plan, system_prompt=system_prompt)
     if provider == "opencode_nemotron":
@@ -960,11 +983,19 @@ async def _extract_with_provider(provider: str, settings: Settings, problem_text
     if provider == "ollama_gpt_oss":
         return await OllamaClient(settings, model=preferred_ai_model).extract_scene_json(problem_text, grade, reasoning_layer, reasoning_plan=reasoning_plan, system_prompt=system_prompt)
     if provider == "openrouter_gpt_oss":
-        return await OpenRouterClient(settings, model="openai/gpt-oss-120b:free", reasoning_enabled=True).extract_scene_json(problem_text, grade, reasoning_layer, reasoning_plan=reasoning_plan, system_prompt=system_prompt)
+        return await OpenRouterClient(settings, model="openai/gpt-oss-120b:free", reasoning_enabled=True, supports_thinking=True).extract_scene_json(problem_text, grade, reasoning_layer, reasoning_plan=reasoning_plan, system_prompt=system_prompt)
     raise RuntimeError(f"Provider không hỗ trợ: {provider}")
 
 
-async def _reason_with_provider(provider: str, settings: Settings, problem_text: str, grade: int | None, preferred_ai_model: str | None = None, system_prompt: str | None = None) -> dict:
+async def _reason_with_provider(
+    provider: str,
+    settings: Settings,
+    problem_text: str,
+    grade: int | None,
+    preferred_ai_model: str | None = None,
+    system_prompt: str | None = None,
+    model_supports_thinking: bool | None = None,
+) -> dict:
     """Run reasoning task (Task 1) with the given provider."""
     if provider == "nvidia":
         return await NvidiaClient(settings, model=preferred_ai_model).reason_about_problem(problem_text, grade, system_prompt=system_prompt)
@@ -972,7 +1003,7 @@ async def _reason_with_provider(provider: str, settings: Settings, problem_text:
         model = _router9_model(settings, preferred_ai_model)
         return await Router9Client(settings, model=model).reason_about_problem(problem_text, grade, system_prompt=system_prompt)
     if provider == "openrouter":
-        return await OpenRouterClient(settings, model=preferred_ai_model).reason_about_problem(problem_text, grade, system_prompt=system_prompt)
+        return await OpenRouterClient(settings, model=preferred_ai_model, supports_thinking=model_supports_thinking).reason_about_problem(problem_text, grade, system_prompt=system_prompt)
     if provider == "openai_compat":
         return await OpenAICompatClient(settings, model=preferred_ai_model).reason_about_problem(problem_text, grade, system_prompt=system_prompt)
     if provider == "opencode_nemotron":
@@ -980,7 +1011,7 @@ async def _reason_with_provider(provider: str, settings: Settings, problem_text:
     if provider == "ollama_gpt_oss":
         return await OllamaClient(settings, model=preferred_ai_model).reason_about_problem(problem_text, grade, system_prompt=system_prompt)
     if provider == "openrouter_gpt_oss":
-        return await OpenRouterClient(settings, model="openai/gpt-oss-120b:free", reasoning_enabled=True).reason_about_problem(problem_text, grade, system_prompt=system_prompt)
+        return await OpenRouterClient(settings, model="openai/gpt-oss-120b:free", reasoning_enabled=True, supports_thinking=True).reason_about_problem(problem_text, grade, system_prompt=system_prompt)
     raise RuntimeError(f"Provider không hỗ trợ reasoning: {provider}")
 
 

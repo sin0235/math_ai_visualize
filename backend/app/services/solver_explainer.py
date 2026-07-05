@@ -9,9 +9,8 @@ import httpx
 from app.core.config import Settings
 from app.services.model_registry import TaskProfile
 from app.services.ai_fallback import Attempt, dedupe, format_attempts, provider_configured, text_model_candidates, text_provider_order
-from app.services.model_provider import normalize_model_for_provider
 from app.services.openai_compat_client import OpenAICompatClient
-from app.services.openrouter_client import _build_headers as _build_openrouter_headers, _extract_message as _extract_openrouter_message, openrouter_api_base_url
+from app.services.openrouter_client import _build_chat_payload as _build_openrouter_chat_payload, _build_headers as _build_openrouter_headers, _extract_message as _extract_openrouter_message, openrouter_api_base_url
 from app.services.chat_response import extract_chat_message_content
 from app.services.router9_client import Router9Client, _extract_message_content as _extract_router9_message_content
 from app.services.solver_service import SolverResult, SolverStep
@@ -239,16 +238,18 @@ async def _call_openrouter_model(prompt: str, settings: Settings, model: str, re
         raise RuntimeError("Chưa cấu hình OpenRouter cho diễn giải solver.")
     from app.services.http_pool import TIMEOUT_FAST, get_client
 
-    payload = {
-        "model": normalize_model_for_provider("openrouter", model),
-        "messages": [
+    payload = _build_openrouter_chat_payload(
+        model,
+        [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt},
         ],
-        "temperature": 0.2,
-    }
-    if reasoning_enabled:
-        payload["reasoning"] = {"enabled": True}
+        temperature=0.2,
+        request_thinking=reasoning_enabled,
+        supports_thinking=None,
+        supported_parameters=None,
+        allow_unknown_thinking=reasoning_enabled,
+    )
     base_url = openrouter_api_base_url(settings)
     client = get_client(base_url, TIMEOUT_FAST)
     response = await client.post(f"{base_url}/chat/completions", headers=_build_openrouter_headers(settings), json=payload, timeout=TIMEOUT_FAST)
