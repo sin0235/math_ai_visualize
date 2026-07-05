@@ -236,6 +236,7 @@ export interface RelationVerification {
   tolerance?: number | null;
   evidence?: string | null;
   message?: string | null;
+  verified_at?: string | null;
   verifier_version: string;
   metadata?: Record<string, unknown>;
 }
@@ -344,7 +345,7 @@ export interface SceneAudit {
 }
 
 export interface ThreeScene {
-  points: Record<string, { x: number; y: number; z: number }>;
+  points: Record<string, { x: number; y: number; z: number; hidden?: boolean }>;
   segments: Array<{ points: [string, string]; hidden: boolean; name?: string | null; color?: string | null; line_width?: number | null; style?: 'solid' | 'dashed' | 'dotted' | null }>;
   faces: Array<{ points: string[]; name?: string | null; color: string; opacity: number }>;
   spheres?: Array<{ center: string; radius: number; name?: string | null; color: string; opacity: number }>;

@@ -63,12 +63,12 @@ export function recomputeThreeScene(
   three: ThreeScene,
   recomputedMath: MathScene,
 ): ThreeScene {
-  const newPoints: Record<string, { x: number; y: number; z: number }> = {};
+  const newPoints: Record<string, { x: number; y: number; z: number; hidden?: boolean }> = {};
   for (const obj of recomputedMath.objects) {
     if (obj.type === 'point_3d') {
-      newPoints[obj.name] = { x: obj.x, y: obj.y, z: obj.z };
+      newPoints[obj.name] = { x: obj.x, y: obj.y, z: obj.z, hidden: three.points[obj.name]?.hidden };
     } else if (obj.type === 'point_2d') {
-      newPoints[obj.name] = { x: obj.x, y: obj.y, z: 0 };
+      newPoints[obj.name] = { x: obj.x, y: obj.y, z: 0, hidden: three.points[obj.name]?.hidden };
     }
   }
   // giữ lại các điểm ThreeScene có nhưng MathScene không có (phòng trường hợp computed/auxiliary)

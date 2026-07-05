@@ -3,13 +3,16 @@ from __future__ import annotations
 from html import escape
 
 from app.renderers.tikz_export import build_tikz
-from app.schemas.scene import Annotation, Face, Line2D, Line3D, MathScene, Point2D, Point3D, Segment, Vector2D, Vector3D
+from app.schemas.scene import Annotation, Face, Line2D, Line3D, MathScene, Point2D, Point3D, Segment, Vector2D, Vector3D, RenderResponse
+from app.services.scene_trust import export_notice_lines, scene_with_trusted_annotations
 
 
-def build_katex_html(scene: MathScene) -> str:
+def build_katex_html(scene: MathScene, response: RenderResponse | None = None) -> str:
+    scene, hidden_annotations = scene_with_trusted_annotations(scene)
     title = escape(scene.problem_text or "Hình")
     topic = escape(scene.topic.replace("_", " ").title())
     renderer = escape(scene.renderer)
+    notices = "".join(f"<li>{escape(line)}</li>" for line in export_notice_lines(scene, response, hidden_annotations))
     objects = "\n".join(_object_item(obj) for obj in scene.objects)
     annotations = "\n".join(_annotation_item(annotation) for annotation in scene.annotations)
     tikz = escape(build_tikz(scene))
@@ -35,6 +38,7 @@ def build_katex_html(scene: MathScene) -> str:
     li {{ margin: 4px 0; }}
     pre {{ white-space: pre-wrap; overflow: auto; border: 1px solid #d4d4d4; border-radius: 12px; padding: 14px; background: #fafafa; }}
     .meta {{ color: #525252; font-size: 0.9rem; }}
+    .warning {{ border: 1px solid #f59e0b; background: #fffbeb; border-radius: 12px; padding: 12px 16px; color: #92400e; }}
   </style>
 </head>
 <body>
@@ -42,6 +46,7 @@ def build_katex_html(scene: MathScene) -> str:
     <h1>Đề bài</h1>
     <p>{title}</p>
     <p class="meta">Loại: {topic} · Renderer: {renderer}</p>
+    <section class="warning" aria-label="Cảnh báo dựng hình"><strong>Trạng thái hình</strong><ul>{notices}</ul></section>
     <h2>Đối tượng hình học</h2>
     <ul>{objects or '<li>Không có đối tượng.</li>'}</ul>
     <h2>Ghi chú</h2>

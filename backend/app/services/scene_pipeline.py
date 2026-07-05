@@ -16,6 +16,7 @@ from app.services.cas_verifier import build_repair_report, verify_scene, verify_
 from app.services.geometry_engine import normalize_scene
 from app.services.quality_advisory import build_render_advisory, build_scene_advisory
 from app.services.renderer_router import build_render_payload, validate_renderer_compatibility
+from app.services.scene_trust import scene_assumption_items
 from app.services.scene_validator import validate_and_repair
 
 
@@ -54,6 +55,7 @@ def validate_normalize_verify_scene(
     scene = _attach_relation_verification(scene, verification_report)
     scene = normalize_scene(scene, settings)
     compatibility = validate_renderer_compatibility(scene)
+    has_scene_assumptions = bool(scene_assumption_items(scene))
     payload: RenderPayload
     if compatibility.status == "incompatible":
         payload = RenderPayload(renderer=scene.renderer)
@@ -62,8 +64,8 @@ def validate_normalize_verify_scene(
         pipeline_warnings.extend(compatibility.messages)
     else:
         payload = build_render_payload(scene, settings)
-        status = _status_from_reports(validation_report.status, verification_report.status, source, repair_report.requires_confirmation)
-        requires_confirmation = status in {"failed", "fallback", "needs_confirmation", "partially_verified"} or repair_report.requires_confirmation
+        status = _status_from_reports(validation_report.status, verification_report.status, source, repair_report.requires_confirmation, has_scene_assumptions)
+        requires_confirmation = status in {"failed", "fallback", "needs_confirmation", "partially_verified"} or repair_report.requires_confirmation or has_scene_assumptions
 
     advisory = None
     if get_settings().advisory_enabled:
@@ -121,14 +123,14 @@ def _attach_relation_verification(scene: MathScene, verification_report) -> Math
     return MathScene.model_validate(data)
 
 
-def _status_from_reports(validation_status: str, verification_status: str, source: RenderSourceResponse | None, repair_requires_confirmation: bool = False):
+def _status_from_reports(validation_status: str, verification_status: str, source: RenderSourceResponse | None, repair_requires_confirmation: bool = False, has_scene_assumptions: bool = False):
     if validation_status == "failed":
         return "failed"
     if source and source.kind == "mock":
         return "fallback"
     if source and source.fallback_used:
         return "needs_confirmation"
-    if repair_requires_confirmation:
+    if repair_requires_confirmation or has_scene_assumptions:
         return "needs_confirmation"
     if verification_status == "passed":
         return "verified"

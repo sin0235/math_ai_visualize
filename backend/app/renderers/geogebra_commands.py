@@ -18,6 +18,7 @@ from app.schemas.scene import (
     Vector2D,
     Vector3D,
 )
+from app.services.scene_trust import trusted_display_annotations
 
 _SAFE_EXPRESSION_RE = re.compile(r"^[0-9xXyY+\-*/^()., sincostanlogsqrtexp abs]+$")
 _HEX_COLOR_RE = re.compile(r"^#?([0-9a-fA-F]{6})$")
@@ -126,7 +127,7 @@ def _annotation_commands(scene: MathScene) -> list[str]:
     label_count = 0
     angle_count = 0
 
-    for annotation in scene.annotations:
+    for annotation in trusted_display_annotations(scene.annotations):
         if annotation.type == "coordinate_label" and annotation.target in points:
             point = points[annotation.target]
             caption = annotation.label or _coordinate_caption(point)

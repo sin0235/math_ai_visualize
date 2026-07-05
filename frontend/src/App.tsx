@@ -791,18 +791,26 @@ export default function App() {
     const newName = nextPointName(scene);
     const sourceSegment = `${pointToSegmentSource}-${newName}`;
     const targetSegment = `${segmentPoints[0]}-${segmentPoints[1]}`;
+    const constructionMetadata = {
+      constructed_by: 'project_to_segment',
+      source_point: pointToSegmentSource,
+      target_segment: segmentPoints,
+      projection: 'orthogonal_to_line',
+      t: newPoint.t,
+      outside_segment: newPoint.outside,
+    };
     const editedScene: MathScene = {
       ...scene,
       revision: (scene.revision ?? activeRevision) + 1,
       objects: [
         ...scene.objects,
-        { type: 'point_3d', name: newName, x: round(newPoint.x), y: round(newPoint.y), z: round(newPoint.z), source: 'construction' },
-        { type: 'segment', points: [pointToSegmentSource, newName], hidden: false, color: '#111111', line_width: 3, style: 'solid', source: 'construction' },
+        { type: 'point_3d', name: newName, x: round(newPoint.x), y: round(newPoint.y), z: round(newPoint.z), source: 'construction', metadata: constructionMetadata },
+        { type: 'segment', points: [pointToSegmentSource, newName], hidden: false, color: '#111111', line_width: 3, style: 'solid', source: 'construction', metadata: constructionMetadata },
       ],
       relations: [
         ...(scene.relations ?? []),
-        { type: 'perpendicular', object_1: sourceSegment, object_2: targetSegment, source: 'construction', args: { source_point: pointToSegmentSource, foot_point: newName, target_segment: segmentPoints }, metadata: { source: 'construction', confidence: 'unverified' } },
-        { type: 'on_line', object_1: newName, object_2: targetSegment, source: 'construction', args: { source_point: pointToSegmentSource, target_segment: segmentPoints, t: newPoint.t }, metadata: { source: 'construction', confidence: 'unverified', t: newPoint.t } },
+        { type: 'perpendicular', object_1: sourceSegment, object_2: targetSegment, source: 'construction', args: { source_point: pointToSegmentSource, foot_point: newName, target_segment: segmentPoints }, metadata: { ...constructionMetadata, confidence: 'unverified' } },
+        { type: 'on_line', object_1: newName, object_2: targetSegment, source: 'construction', args: { source_point: pointToSegmentSource, target_segment: segmentPoints, t: newPoint.t }, metadata: { ...constructionMetadata, confidence: 'unverified' } },
       ],
     };
 
@@ -1223,6 +1231,7 @@ export default function App() {
                         parameterValues={paramValues}
                         onParameterValuesChange={setParamValues}
                         onParameterReset={() => setParamValues(getDefaultParamValues(effectiveResult.scene.parameters))}
+                        onHighlightObjects={setHighlightedObjects}
                       />
                     </div>
                   </div>
@@ -1466,12 +1475,14 @@ function PageLoadingFallback() {
 }
 
 function shouldShowConfirmationPrompt(response: RenderResponse) {
+  const hasAssumptions = Boolean(response.scene.interpretation?.assumptions?.length || response.scene.interpretation?.missing_data?.length);
   return !response.user_confirmed && (
     response.status === 'fallback'
     || response.status === 'needs_confirmation'
     || response.requires_user_confirmation
     || response.source.fallback_used
     || response.repair_report.requires_confirmation
+    || hasAssumptions
   );
 }
 

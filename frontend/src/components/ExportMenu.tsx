@@ -159,12 +159,12 @@ async function getExportBlob(format: ExportFormat, scene: MathScene, advancedSet
     const size = await imageSizeFromDataUrl(dataUrl);
     if (format === 'svg') {
       return {
-        blob: new Blob([buildCurrentViewSvg(scene, dataUrl, size)], { type: 'image/svg+xml;charset=utf-8' }),
+        blob: new Blob([buildCurrentViewSvg(scene, dataUrl, size, response)], { type: 'image/svg+xml;charset=utf-8' }),
         filename: buildExportFilename(scene, format),
       };
     }
     return {
-      blob: new Blob([buildCurrentViewHtml(scene, dataUrl, size)], { type: 'text/html;charset=utf-8' }),
+      blob: new Blob([buildCurrentViewHtml(scene, dataUrl, size, response)], { type: 'text/html;charset=utf-8' }),
       filename: buildExportFilename(scene, format),
     };
   }
@@ -190,18 +190,41 @@ function imageSizeFromDataUrl(dataUrl: string): Promise<{ width: number; height:
   });
 }
 
-function buildCurrentViewSvg(scene: MathScene, imageHref: string, size: { width: number; height: number }) {
+function exportWarningLines(scene: MathScene, response?: RenderResponse | null) {
+  const assumptions = [
+    ...(scene.interpretation?.assumptions ?? []),
+    ...(scene.interpretation?.missing_data ?? []).map((item) => `Thiếu dữ kiện: ${item}`),
+  ].filter(Boolean);
+  const exact = response?.status === 'verified'
+    && response.verification_report.status === 'passed'
+    && response.renderer_compatibility.status === 'compatible'
+    && !response.requires_user_confirmation
+    && !response.source.fallback_used
+    && !response.degraded
+    && assumptions.length === 0;
+  const lines = [exact ? 'Dựng theo dữ kiện' : 'Hình minh họa · Không theo tỉ lệ'];
+  if (!exact) lines.push('Không dùng hình minh họa để suy ra quan hệ.');
+  if (assumptions.length > 0) lines.push(`Có giả định: ${assumptions.slice(0, 3).join('; ')}`);
+  return lines;
+}
+
+function buildCurrentViewSvg(scene: MathScene, imageHref: string, size: { width: number; height: number }, response?: RenderResponse | null) {
   const title = escapeXml(scene.problem_text || 'Hinh');
+  const warnings = exportWarningLines(scene, response);
+  const warningText = escapeXml(warnings.join(' | '));
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${size.width}" height="${size.height}" viewBox="0 0 ${size.width} ${size.height}" role="img" aria-label="${title}">
   <title>${title}</title>
   <image href="${imageHref}" x="0" y="0" width="${size.width}" height="${size.height}" preserveAspectRatio="xMidYMid meet"/>
+  <rect x="16" y="16" width="${Math.max(320, Math.min(size.width - 32, 900))}" height="34" rx="12" fill="${warnings[0].startsWith('Dựng') ? '#f0fdf4' : '#fffbeb'}" stroke="${warnings[0].startsWith('Dựng') ? '#bbf7d0' : '#fde68a'}"/>
+  <text x="30" y="38" fill="${warnings[0].startsWith('Dựng') ? '#166534' : '#92400e'}" font-family="Arial, sans-serif" font-size="14" font-weight="700">${warningText}</text>
 </svg>
 `;
 }
 
-function buildCurrentViewHtml(scene: MathScene, imageSrc: string, size: { width: number; height: number }) {
+function buildCurrentViewHtml(scene: MathScene, imageSrc: string, size: { width: number; height: number }, response?: RenderResponse | null) {
   const title = escapeHtml(scene.problem_text || 'Hình');
   const topic = escapeHtml(scene.topic.replace(/_/g, ' '));
+  const warnings = exportWarningLines(scene, response).map(escapeHtml);
   return `<!doctype html>
 <html lang="vi">
 <head>
@@ -214,6 +237,7 @@ function buildCurrentViewHtml(scene: MathScene, imageSrc: string, size: { width:
     main { max-width: ${Math.max(720, Math.min(size.width, 1200))}px; margin: 0 auto; }
     h1 { font-size: 20px; margin: 0 0 8px; }
     p { margin: 0 0 16px; color: #475569; }
+    .warning { margin: 0 0 16px; border: 1px solid #fde68a; border-radius: 12px; padding: 10px 12px; background: #fffbeb; color: #92400e; font-weight: 700; }
     img { width: 100%; height: auto; display: block; border: 1px solid #dbe3ef; background: #fff; }
   </style>
 </head>
@@ -221,6 +245,7 @@ function buildCurrentViewHtml(scene: MathScene, imageSrc: string, size: { width:
   <main>
     <h1>${title}</h1>
     <p>${topic} · ảnh chụp từ góc nhìn Three.js hiện tại</p>
+    <div class="warning">${warnings.join('<br />')}</div>
     <img src="${imageSrc}" width="${size.width}" height="${size.height}" alt="${title}" />
   </main>
 </body>

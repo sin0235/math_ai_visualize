@@ -24,6 +24,7 @@ export function RendererPanel({ result, threeInteraction, onGeoGebraPointChange,
   if (result.payload.renderer === 'geogebra_2d' || result.payload.renderer === 'geogebra_3d') {
     return (
       <div className="renderer-frame">
+        <RenderTrustBadges result={result} />
         <RenderMetadataBanner result={result} />
         <GeoGebraView commands={result.payload.geogebra_commands} renderer={result.payload.renderer} scene={result.scene} view={result.scene.view} onPointChange={onGeoGebraPointChange} />
         {saving && <div className="renderer-saving-overlay">Đang dựng lại hình...</div>}
@@ -34,6 +35,7 @@ export function RendererPanel({ result, threeInteraction, onGeoGebraPointChange,
   if (result.payload.three_scene) {
     return (
       <div className="renderer-frame">
+        <RenderTrustBadges result={result} />
         <RenderMetadataBanner result={result} />
         <Suspense fallback={<div className="renderer-loading-state">Đang tải trình dựng 3D...</div>}>
           <ThreeGeometryView scene={result.payload.three_scene} interaction={threeInteraction} highlightedObjects={highlightedObjects} onImageCaptureReady={onThreeImageCaptureReady} />
@@ -64,6 +66,38 @@ function EmptyState() {
       </div>
     </div>
   );
+}
+
+function RenderTrustBadges({ result }: { result: RenderResponse }) {
+  const labels = renderTrustLabels(result);
+  return (
+    <div className="render-trust-badges" aria-label="Trạng thái độ tin cậy hình dựng">
+      {labels.map((label) => (
+        <span key={label} className={`render-trust-badge ${label === 'Dựng theo dữ kiện' ? 'exact' : 'warning'}`}>{label}</span>
+      ))}
+    </div>
+  );
+}
+
+function renderTrustLabels(result: RenderResponse) {
+  const hasAssumptions = sceneAssumptionCount(result) > 0;
+  const exact = result.status === 'verified'
+    && result.verification_report.status === 'passed'
+    && result.renderer_compatibility.status === 'compatible'
+    && !result.requires_user_confirmation
+    && !result.source.fallback_used
+    && !result.degraded
+    && result.fallback_source !== 'mock'
+    && result.fallback_source !== 'provider_fallback'
+    && !hasAssumptions;
+  const labels = [exact ? 'Dựng theo dữ kiện' : 'Hình minh họa'];
+  if (!exact) labels.push('Không theo tỉ lệ');
+  if (hasAssumptions) labels.push('Có giả định');
+  return labels;
+}
+
+function sceneAssumptionCount(result: RenderResponse) {
+  return (result.scene.interpretation?.assumptions?.length ?? 0) + (result.scene.interpretation?.missing_data?.length ?? 0);
 }
 
 function RenderMetadataBanner({ result }: { result: RenderResponse }) {

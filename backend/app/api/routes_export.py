@@ -52,7 +52,7 @@ async def export_tikz(
     from app.renderers.tikz_export import build_tikz_document
 
     scene = _safe_export_scene(request)
-    body = build_tikz_document(scene)
+    body = build_tikz_document(scene, response=request.response)
     return Response(
         content=body,
         media_type="application/x-tex",
@@ -72,7 +72,7 @@ async def export_ggb(
     from app.renderers.ggb_export import build_ggb
 
     scene = _safe_export_scene(request)
-    body = build_ggb(scene, request.advanced_settings)
+    body = build_ggb(scene, request.advanced_settings, request.response)
     return Response(
         content=body,
         media_type="application/vnd.geogebra.file",
@@ -92,7 +92,7 @@ async def export_pdf(
     from app.renderers.pdf_export import build_pdf
 
     scene = _safe_export_scene(request)
-    body = build_pdf(scene)
+    body = build_pdf(scene, response=request.response)
     return Response(
         content=body,
         media_type="application/pdf",
@@ -112,7 +112,7 @@ async def export_png(
     from app.renderers.pdf_export import build_png
 
     scene = _safe_export_scene(request)
-    body = build_png(scene)
+    body = build_png(scene, response=request.response)
     return Response(
         content=body,
         media_type="image/png",
@@ -132,7 +132,7 @@ async def export_jpg(
     from app.renderers.pdf_export import build_jpg
 
     scene = _safe_export_scene(request)
-    body = build_jpg(scene)
+    body = build_jpg(scene, response=request.response)
     return Response(
         content=body,
         media_type="image/jpeg",
@@ -152,7 +152,7 @@ async def export_svg(
     from app.renderers.pdf_export import build_svg
 
     scene = _safe_export_scene(request)
-    body = build_svg(scene)
+    body = build_svg(scene, response=request.response)
     return Response(
         content=body,
         media_type="image/svg+xml; charset=utf-8",
@@ -172,7 +172,7 @@ async def export_katex_html(
     from app.renderers.katex_html_export import build_katex_html
 
     scene = _safe_export_scene(request)
-    body = build_katex_html(scene)
+    body = build_katex_html(scene, request.response)
     return Response(
         content=body,
         media_type="text/html; charset=utf-8",

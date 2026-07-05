@@ -131,3 +131,36 @@ def test_katex_html_export_contains_katex_assets():
     assert "katex.min.css" in html
     assert "renderMathInElement" in html
     assert "Tam giác ABC" in html
+
+
+def test_export_filters_untrusted_measurement_labels_and_keeps_warning():
+    scene = MathScene.model_validate(
+        {
+            "problem_text": "Tam giác ABC",
+            "renderer": "geogebra_2d",
+            "topic": "coordinate_2d",
+            "view": {"dimension": "2d"},
+            "objects": [
+                {"type": "point_2d", "name": "A", "x": 0, "y": 0},
+                {"type": "point_2d", "name": "B", "x": 1, "y": 0},
+                {"type": "segment", "points": ["A", "B"]},
+            ],
+            "interpretation": {"assumptions": ["B chọn để minh họa"], "missing_data": []},
+            "annotations": [
+                {"type": "length", "target": "A-B", "label": "99", "metadata": {"source": "construction", "confidence": "unverified"}},
+            ],
+        }
+    )
+
+    tikz = build_tikz_document(scene)
+    html = build_katex_html(scene)
+    ggb_bytes = build_ggb(scene)
+
+    assert "Hình minh họa" in tikz
+    assert "99" not in tikz
+    assert "Hình minh họa" in html
+    assert "99" not in html
+    with zipfile.ZipFile(io.BytesIO(ggb_bytes)) as zf:
+        xml = zf.read("geogebra.xml").decode("utf-8")
+    assert "Hình minh họa" in xml
+    assert "99" not in xml

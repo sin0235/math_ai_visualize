@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from app.schemas.scene import MathScene, RelationVerificationResponse, RenderResponse
 from app.services.cas_verifier import verify_scene, verify_scene_relations
+from app.services.scene_trust import assert_no_unconfirmed_scene_assumptions
 
 _UNSAFE_VERIFICATION_STATUSES = {"failed", "error"}
 _PARTIAL_VERIFICATION_STATUSES = {"unsupported", "unverifiable"}
@@ -42,6 +43,7 @@ def assert_scene_safe_for_downstream(
 ) -> None:
     """Chặn solver/variants/export dùng scene chưa đạt ngưỡng tin cậy tối thiểu."""
     created_by = scene.audit.created_by if scene.audit else "none"
+    assert_no_unconfirmed_scene_assumptions(scene, operation=operation, user_confirmed=user_confirmed)
     if created_by == "mock" and not user_confirmed:
         raise ValueError(f"Scene fallback/mock cần được người dùng xác nhận trước khi {operation}.")
 

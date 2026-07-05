@@ -19,7 +19,8 @@ import zipfile
 from xml.sax.saxutils import escape as xml_escape
 
 from app.renderers.geogebra_commands import build_geogebra_commands
-from app.schemas.scene import AdvancedRenderSettings, MathScene
+from app.schemas.scene import AdvancedRenderSettings, MathScene, RenderResponse
+from app.services.scene_trust import export_notice_lines, scene_with_trusted_annotations
 
 _DEF_RE = re.compile(r"^([A-Za-z][A-Za-z0-9_]*)\s*=\s*(.+)$")
 
@@ -112,11 +113,22 @@ def _build_xml(scene: MathScene, commands: list[str]) -> str:
     return xml
 
 
+def _notice_commands(scene: MathScene, response: RenderResponse | None, hidden_annotations: int) -> list[str]:
+    lines = export_notice_lines(scene, response, hidden_annotations)
+    commands: list[str] = []
+    for index, line in enumerate(lines[:4], start=1):
+        text = line.replace('\\', '\\\\').replace('"', '\\"')
+        commands.append(f'exportNotice{index} = Text("{text}", (0, {-index}))')
+    return commands
+
+
 def build_ggb(
-    scene: MathScene, settings: AdvancedRenderSettings | None = None
+    scene: MathScene, settings: AdvancedRenderSettings | None = None, response: RenderResponse | None = None
 ) -> bytes:
     """Trả về nội dung file .ggb (zip)."""
-    commands = build_geogebra_commands(scene, settings or AdvancedRenderSettings())
+    filtered_scene, hidden_annotations = scene_with_trusted_annotations(scene)
+    commands = build_geogebra_commands(filtered_scene, settings or AdvancedRenderSettings())
+    commands.extend(_notice_commands(scene, response, hidden_annotations))
     xml = _build_xml(scene, commands)
 
     buffer = io.BytesIO()

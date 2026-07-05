@@ -4873,6 +4873,38 @@ button:disabled {
   min-height: inherit;
 }
 
+.render-trust-badges {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 22;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: min(620px, calc(100% - 24px));
+  pointer-events: none;
+}
+
+.render-trust-badge {
+  border: 1px solid rgba(120, 53, 15, 0.24);
+  border-radius: 999px;
+  padding: 5px 9px;
+  background: rgba(255, 251, 235, 0.94);
+  color: #78350f;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  box-shadow: 0 10px 28px rgba(17, 17, 17, 0.12);
+  -webkit-backdrop-filter: blur(14px) saturate(1.1);
+  backdrop-filter: blur(14px) saturate(1.1);
+}
+
+.render-trust-badge.exact {
+  border-color: rgba(22, 101, 52, 0.24);
+  background: rgba(240, 253, 244, 0.94);
+  color: #166534;
+}
+
 .renderer-metadata-banner,
 .renderer-saving-overlay {
   position: absolute;
@@ -5899,6 +5931,92 @@ button:disabled {
   padding: clamp(22px, 4vw, 42px);
 }
 
+.account-shell {
+  width: min(1180px, 100%);
+  gap: clamp(16px, 2vw, 22px);
+}
+
+.account-hero {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.9fr) minmax(420px, 1.1fr);
+  gap: clamp(16px, 2.2vw, 28px);
+  align-items: stretch;
+}
+
+.account-identity {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 16px;
+  align-items: center;
+  min-width: 0;
+}
+
+.account-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: clamp(58px, 6vw, 76px);
+  height: clamp(58px, 6vw, 76px);
+  border-radius: 24px;
+  color: #ffffff;
+  background: #111111;
+  font-size: clamp(1.35rem, 2.6vw, 1.8rem);
+  font-weight: 950;
+}
+
+.account-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.account-stat {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  border-right: 1px solid var(--line);
+  padding: 14px;
+}
+
+.account-stat:last-child {
+  border-right: 0;
+}
+
+.account-stat span,
+.account-info-row span {
+  color: #64748b;
+  font-size: 0.78rem;
+  font-weight: 850;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.account-stat strong,
+.account-info-row strong {
+  min-width: 0;
+  color: #111827;
+  font-size: 0.94rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.account-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.42fr);
+  gap: clamp(16px, 2.2vw, 24px);
+  align-items: start;
+}
+
+.account-main,
+.account-side {
+  display: grid;
+  gap: clamp(14px, 1.8vw, 18px);
+  min-width: 0;
+}
+
 .account-header,
 .account-header-title,
 .account-section-title,
@@ -5922,6 +6040,40 @@ button:disabled {
   justify-content: flex-start;
 }
 
+.account-section-title {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.account-form-grid,
+.account-info-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.account-form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.account-info-grid {
+  gap: 0;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.account-info-row {
+  display: grid;
+  gap: 4px;
+  border-bottom: 1px solid #e5e7eb;
+  padding: 12px;
+}
+
+.account-info-row:last-child {
+  border-bottom: 0;
+}
+
 .account-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -5938,9 +6090,30 @@ button:disabled {
   background: transparent;
 }
 
+.account-panel-card {
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: clamp(14px, 2vw, 18px);
+  background: #ffffff;
+}
+
+.account-sessions-panel {
+  align-content: start;
+}
+
 .account-panel h3,
-.account-header h2 {
+.account-header h2,
+.account-hero h2 {
   margin: 0;
+}
+
+.account-hero h2 {
+  margin-top: 8px;
+  color: #111827;
+  font-size: clamp(1.55rem, 2.6vw, 2.1rem);
+  line-height: 1.08;
+  letter-spacing: -0.04em;
+  overflow-wrap: anywhere;
 }
 
 .account-icon,
@@ -5977,12 +6150,17 @@ button:disabled {
   background: transparent;
 }
 
+.account-quick-actions {
+  grid-template-columns: 1fr;
+}
+
 .highlight-panel {
   border-color: #fde68a;
   background: #fffbeb;
 }
 
 .status-pill {
+  width: fit-content;
   border-radius: 999px;
   padding: 8px 12px;
   font-size: 0.82rem;
@@ -6006,10 +6184,15 @@ button:disabled {
 }
 
 .session-item {
+  align-items: flex-start;
   border: 1px solid #e5e7eb;
   border-radius: 16px;
   padding: 12px;
   background: #ffffff;
+}
+
+.session-item > div {
+  min-width: 0;
 }
 
 .session-item p,
@@ -6017,6 +6200,7 @@ button:disabled {
   margin: 4px 0 0;
   color: #64748b;
   font-size: 0.88rem;
+  overflow-wrap: anywhere;
 }
 
 .json-panel summary {
@@ -6284,8 +6468,23 @@ pre {
   .about-capabilities,
   .about-audience,
   .legal-section-grid,
-  .account-grid {
+  .account-grid,
+  .account-hero,
+  .account-layout,
+  .account-form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .account-stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .account-stat:nth-child(2n) {
+    border-right: 0;
+  }
+
+  .account-stat:nth-child(-n + 2) {
+    border-bottom: 1px solid var(--line);
   }
 
   .legal-hero-row {
@@ -13396,4 +13595,176 @@ button.analyzer-guide-label:hover {
   font-size: 0.85rem;
   color: #a4b0be;
   line-height: 1.4;
+}
+
+.scene-object-tree {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: #fff;
+  box-shadow: var(--shadow-subtle);
+}
+
+.scene-object-tree-head,
+.scene-object-tree-detail-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.scene-object-tree-head strong,
+.scene-object-tree-detail-title strong {
+  display: block;
+  color: var(--ink);
+  font-weight: 900;
+}
+
+.scene-object-tree-head span,
+.scene-object-tree-detail-title span {
+  display: block;
+  color: var(--ink-4);
+  font-size: 0.82rem;
+}
+
+.scene-object-tree-filters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.scene-object-tree-body {
+  display: grid;
+  max-height: 360px;
+  overflow: auto;
+  gap: 8px;
+  padding-right: 4px;
+}
+
+.scene-object-tree-body details {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: #fafafa;
+}
+
+.scene-object-tree-body summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 10px;
+  cursor: pointer;
+  font-weight: 850;
+}
+
+.scene-object-tree-list {
+  display: grid;
+  gap: 4px;
+  padding: 0 8px 8px;
+}
+
+.scene-object-tree-item {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+}
+
+.scene-object-tree-item:hover,
+.scene-object-tree-item.active,
+.scene-object-tree-item.context-active {
+  border-color: var(--line-2);
+  background: #fff;
+}
+
+.scene-object-tree-item.context-active {
+  box-shadow: inset 3px 0 0 #f97316;
+}
+
+.scene-object-tree-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 800;
+}
+
+.scene-object-tree-item small,
+.scene-object-tree-body summary span {
+  color: var(--ink-4);
+  font-size: 0.76rem;
+}
+
+.scene-object-tree-detail {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: #fafafa;
+}
+
+.scene-object-tree-actions,
+.scene-object-tree-rename {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.scene-object-tree-actions button,
+.scene-object-tree-rename button {
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-sm);
+  padding: 7px 10px;
+  background: #fff;
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.scene-object-tree-actions button:disabled,
+.scene-object-tree-rename button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.scene-object-tree-actions .danger-button {
+  border-color: #fecaca;
+  color: #991b1b;
+  background: #fef2f2;
+}
+
+.scene-object-tree-rename input {
+  min-width: 0;
+  flex: 1;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-sm);
+  padding: 7px 10px;
+}
+
+.scene-object-tree-info {
+  display: grid;
+  gap: 6px;
+}
+
+.scene-object-tree-info strong {
+  color: var(--ink-3);
+  font-size: 0.82rem;
+}
+
+.scene-object-tree-info ul,
+.scene-object-tree-info p {
+  margin: 0;
+  color: var(--ink-4);
+  font-size: 0.82rem;
+}
+
+.scene-object-tree-info ul {
+  display: grid;
+  gap: 3px;
+  padding-left: 18px;
 }

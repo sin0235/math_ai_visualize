@@ -31,7 +31,9 @@ from app.schemas.scene import (
     Segment,
     Vector2D,
     Vector3D,
+    RenderResponse,
 )
+from app.services.scene_trust import export_notice_lines, scene_with_trusted_annotations
 
 OBLIQUE_ANGLE_DEG = 30
 OBLIQUE_SCALE = 0.5
@@ -87,6 +89,7 @@ def _line_options(color_name: str | None, dashed: bool, thick: bool = True) -> s
 
 def build_tikz(scene: MathScene) -> str:
     """Trả về chuỗi LaTeX trong môi trường ``tikzpicture`` (chưa wrap document)."""
+    scene, _ = scene_with_trusted_annotations(scene)
     points: dict[str, Point2D | Point3D] = {
         obj.name: obj for obj in scene.objects if isinstance(obj, (Point2D, Point3D))
     }
@@ -251,11 +254,13 @@ def _escape_label(label: str) -> str:
     return label.replace("°", "^{\\circ}").replace("&", "\\&")
 
 
-def build_tikz_document(scene: MathScene, problem_text: str | None = None) -> str:
+def build_tikz_document(scene: MathScene, problem_text: str | None = None, response: RenderResponse | None = None) -> str:
     """Wrap TikZ trong document LaTeX standalone (compile được trực tiếp)."""
-    body = build_tikz(scene)
+    filtered_scene, hidden_annotations = scene_with_trusted_annotations(scene)
+    body = build_tikz(filtered_scene)
     title = problem_text or scene.problem_text or "Hình"
     title_escaped = title.replace("\\", "\\\\").replace("{", "\\{").replace("}", "\\}")
+    notices = " \\quad ".join(_escape_label(line) for line in export_notice_lines(scene, response, hidden_annotations))
     return (
         "\\documentclass[border=10pt]{standalone}\n"
         "\\usepackage{tikz}\n"
@@ -264,6 +269,7 @@ def build_tikz_document(scene: MathScene, problem_text: str | None = None) -> st
         "\\usepackage[T5]{fontenc}\n"
         "\\begin{document}\n"
         f"% {title_escaped}\n"
+        f"\\begin{{minipage}}{{12cm}}\\small\\textbf{{Cảnh báo:}} {notices}\\end{{minipage}}\n\\vspace{{6pt}}\n"
         f"{body}\n"
         "\\end{document}\n"
     )

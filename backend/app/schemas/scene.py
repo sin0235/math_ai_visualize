@@ -188,6 +188,7 @@ class RelationVerificationResponse(BaseModel):
     tolerance: float | None = None
     evidence: str | None = None
     message: str | None = None
+    verified_at: str | None = None
     verifier_version: str = "cas-v2"
     metadata: dict[str, Any] = Field(default_factory=dict)
 

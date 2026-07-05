@@ -39,6 +39,7 @@ Các loại quan hệ được verify:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 import logging
 from math import acos, degrees, isfinite, sqrt
 from typing import Any
@@ -1015,30 +1016,33 @@ def verify_scene_relations(scene: MathScene) -> VerificationReportResponse:
     results: list[RelationVerificationResponse] = []
     for rel in scene.relations:
         relation_id = rel.id or f"rel_{len(results) + 1}"
+        method = f"cas:{rel.type.strip().lower()}"
+        metadata = _relation_verification_metadata(rel)
         spec = relation_spec(rel.type)
-        metadata = {"relation_type": rel.type, "object_1": rel.object_1, "object_2": rel.object_2}
         if spec is None:
-            results.append(RelationVerificationResponse(
-                relation_id=relation_id,
-                status="unsupported",
+            results.append(_relation_verification(
+                relation_id,
+                "unsupported",
+                method=method,
                 message=f"Relation '{rel.type}' chưa được hỗ trợ để kiểm chứng.",
                 metadata=metadata,
             ))
             continue
         if spec.verify != "supported":
-            results.append(RelationVerificationResponse(
-                relation_id=relation_id,
-                status="unsupported",
+            results.append(_relation_verification(
+                relation_id,
+                "unsupported",
+                method=method,
                 message=f"Relation '{rel.type}' chưa có verifier CAS.",
                 metadata=metadata,
             ))
             continue
         unverifiable_reason = _relation_unverifiable_reason(rel, points, circles, spheres)
         if unverifiable_reason is not None:
-            results.append(RelationVerificationResponse(
-                relation_id=relation_id,
-                status="unverifiable",
-                method=rel.type,
+            results.append(_relation_verification(
+                relation_id,
+                "unverifiable",
+                method=method,
                 message=unverifiable_reason,
                 metadata=metadata,
             ))
@@ -1047,29 +1051,29 @@ def verify_scene_relations(scene: MathScene) -> VerificationReportResponse:
             issue = _dispatch(rel, points, circles, spheres)
         except Exception as exc:  # pragma: no cover - defensive logging path
             logger.exception("CAS verifier failed for relation %s (%s)", relation_id, rel.type)
-            results.append(RelationVerificationResponse(
-                relation_id=relation_id,
-                status="error",
+            results.append(_relation_verification(
+                relation_id,
+                "error",
+                method=method,
                 message=f"Verifier lỗi khi kiểm chứng relation '{rel.type}'.",
-                metadata={**metadata, "error_type": exc.__class__.__name__},
+                metadata={**metadata, "code": "verification_error", "error_type": exc.__class__.__name__},
             ))
             continue
         if issue is None:
-            results.append(RelationVerificationResponse(
-                relation_id=relation_id,
-                status="verified",
-                method=rel.type,
-                evidence="Verifier không phát hiện sai lệch trong tolerance hiện tại.",
-                tolerance=REL_EPS,
+            results.append(_relation_verification(
+                relation_id,
+                "verified",
+                method=method,
+                evidence="Relation được kiểm chứng bằng CAS trên chính instance này và sai lệch nằm trong tolerance.",
                 metadata=metadata,
             ))
         else:
-            results.append(RelationVerificationResponse(
-                relation_id=relation_id,
-                status="failed",
-                method=rel.type,
+            results.append(_relation_verification(
+                relation_id,
+                "failed",
+                method=method,
                 message=issue.description,
-                tolerance=REL_EPS,
+                evidence=issue.description,
                 metadata={**metadata, **issue.metadata},
             ))
     summary = VerificationSummary(
@@ -1088,6 +1092,41 @@ def verify_scene_relations(scene: MathScene) -> VerificationReportResponse:
     return VerificationReportResponse(status=status, relations=results, summary=summary)
 
 
+def _relation_verification_metadata(rel: Relation) -> dict[str, Any]:
+    return {
+        "relation_id": rel.id,
+        "relation_type": rel.type,
+        "object_1": rel.object_1,
+        "object_2": rel.object_2,
+    }
+
+
+def _verification_timestamp() -> str:
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _relation_verification(
+    relation_id: str,
+    status: str,
+    *,
+    method: str,
+    message: str | None = None,
+    evidence: str | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> RelationVerificationResponse:
+    return RelationVerificationResponse(
+        relation_id=relation_id,
+        status=status,  # type: ignore[arg-type]
+        method=method,
+        tolerance=REL_EPS,
+        evidence=evidence,
+        message=message,
+        verified_at=_verification_timestamp(),
+        verifier_version="cas-v2",
+        metadata=metadata or {},
+    )
+
+
 def _relation_unverifiable_reason(
     rel: Relation,
     points: dict[str, Point2D | Point3D],
@@ -1103,13 +1142,37 @@ def _relation_unverifiable_reason(
         seg = _parse_segment_token(value or "")
         if not seg or not has_points([seg[0], seg[1]]):
             return None
+        vector = _segment_vector(points, *seg)
+        if vector is None or _length(vector) < REL_EPS:
+            return None
         return seg
 
     def plane_names(value: str | None) -> list[str] | None:
         plane = _parse_plane_token(value or "") or _parse_point_list(value or "")
         if len(plane) < 3 or not has_points(plane[:3]):
             return None
+        if _plane_normal(points, plane) is None:
+            return None
         return plane
+
+    def valid_circle(name: str) -> bool:
+        circle = circles.get(name)
+        if circle is None:
+            return False
+        center = points.get(circle.center)
+        if not isinstance(center, Point2D):
+            return False
+        if isinstance(circle.radius, (int, float)) and circle.radius > REL_EPS:
+            return True
+        through = points.get(circle.through or "")
+        return isinstance(through, Point2D) and _length(_vec_sub(_coords(through), _coords(center))) >= REL_EPS
+
+    def valid_sphere(name: str) -> bool:
+        sphere = spheres.get(name)
+        if sphere is None:
+            return False
+        center = points.get(sphere.center)
+        return isinstance(center, Point3D) and isinstance(sphere.radius, (int, float)) and sphere.radius > REL_EPS
 
     if rtype == "perpendicular":
         seg1 = segment_names(rel.object_1)
@@ -1137,18 +1200,23 @@ def _relation_unverifiable_reason(
     if rtype in {"collinear", "coplanar"}:
         names = _parse_point_list(rel.object_1 or "") + _parse_point_list(rel.object_2 or "")
         required = 3 if rtype == "collinear" else 4
-        return None if len(names) >= required and has_points(names) else "Không đủ điểm tham chiếu để kiểm chứng relation."
+        if len(names) < required or not has_points(names):
+            return "Không đủ điểm tham chiếu để kiểm chứng relation."
+        if rtype == "collinear":
+            anchors = _segment_vector(points, names[0], names[1])
+            return None if anchors is not None and _length(anchors) >= REL_EPS else "Hai điểm neo bị trùng nên không xác định được đường thẳng."
+        return None if _plane_normal(points, names) is not None else "Các điểm neo không xác định được mặt phẳng kiểm chứng."
     if rtype == "on_sphere":
         point_name = (rel.object_1 or "").strip()
         sphere_name = (rel.object_2 or "").strip()
-        return None if point_name in points and sphere_name in spheres else "Thiếu điểm hoặc mặt cầu tham chiếu."
+        return None if point_name in points and valid_sphere(sphere_name) else "Thiếu điểm hoặc mặt cầu tham chiếu."
     if rtype == "on_circle":
         point_name = (rel.object_1 or "").strip()
         circle_name = (rel.object_2 or "").strip()
-        return None if point_name in points and circle_name in circles else "Thiếu điểm hoặc đường tròn tham chiếu."
+        return None if point_name in points and valid_circle(circle_name) else "Thiếu điểm hoặc đường tròn tham chiếu."
     if rtype == "tangent":
         target = (rel.object_2 or "").strip()
-        return None if segment_names(rel.object_1) and (target in circles or target in spheres) else "Thiếu đường thẳng hoặc đường tròn/mặt cầu tiếp xúc."
+        return None if segment_names(rel.object_1) and (valid_circle(target) or valid_sphere(target)) else "Thiếu đường thẳng hoặc đường tròn/mặt cầu tiếp xúc."
     if rtype == "distance":
         expected_value = rel.metadata.get("value") if rel.metadata else None
         return None if (segment_names(rel.object_1) or segment_names(rel.object_2)) and isinstance(expected_value, (int, float)) else "Thiếu đoạn hoặc giá trị khoảng cách cần kiểm chứng."

@@ -1,6 +1,7 @@
 import { FormEvent, useMemo, useState } from 'react';
 
 import { ParameterSliders } from './ParameterSliders';
+import { SceneObjectTree } from './SceneObjectTree';
 import type { Annotation, Line2D, Line3D, MathScene, Parameter, Point2D, Point3D, Relation, SceneObject, Segment, Vector2D, Vector3D } from '../types/scene';
 
 export type PointPlacementPlane = 'xy' | 'xz' | 'yz';
@@ -21,6 +22,7 @@ interface SceneEditorPanelProps {
   parameterValues?: Record<string, number>;
   onParameterValuesChange?: (next: Record<string, number>) => void;
   onParameterReset?: () => void;
+  onHighlightObjects?: (names: string[]) => void;
 }
 
 type PointLike = Point2D | Point3D;
@@ -46,6 +48,7 @@ export function SceneEditorPanel({
   parameterValues = {},
   onParameterValuesChange,
   onParameterReset,
+  onHighlightObjects,
 }: SceneEditorPanelProps) {
   const [error, setError] = useState<string | null>(null);
   const [pointName, setPointName] = useState('');
@@ -238,6 +241,8 @@ export function SceneEditorPanel({
 
           {error && <div className="error-box">{error}</div>}
           {saving && <div className="warning-box">Đang dựng lại hình...</div>}
+
+          <SceneObjectTree scene={activeScene} saving={saving} onChange={submit} onHighlightObjects={onHighlightObjects} />
 
           <form className="editor-grid" onSubmit={addPoint}>
             <label className="field-label">Tên điểm<input value={pointName} onChange={(event) => setPointName(event.target.value)} placeholder={nextPointName} /></label>

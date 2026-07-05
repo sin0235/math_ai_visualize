@@ -125,87 +125,123 @@ export function AccountPage({
     }
   }
 
+  const accountStats = [
+    { label: 'Gói', value: formatLabel(user.plan) },
+    { label: 'Vai trò', value: user.role === 'admin' ? 'Admin' : 'Người dùng' },
+    { label: 'Tạo tài khoản', value: formatDate(user.created_at) },
+    { label: 'Đăng nhập gần nhất', value: formatOptionalDate(user.last_login_at) },
+  ];
+  const securityRows = [
+    { label: 'Trạng thái tài khoản', value: user.status === 'active' ? 'Đang hoạt động' : 'Đã vô hiệu hóa' },
+    { label: 'Xác minh email', value: user.email_verified_at ? formatDate(user.email_verified_at) : 'Chưa xác minh' },
+    { label: 'Đổi mật khẩu gần nhất', value: formatOptionalDate(user.password_changed_at) },
+    { label: 'Phiên đang mở', value: String(sessions.length) },
+  ];
+
   return (
-    <section className="login-page">
-      <div className="account-card">
-        <div className="account-header">
-          <div className="account-header-title">
-            <AccountIcon name="shield" />
+    <section className="login-page account-page">
+      <div className="account-card account-shell">
+        <div className="account-hero">
+          <div className="account-identity">
+            <div className="account-avatar" aria-hidden="true">{getInitial(user.display_name || user.email)}</div>
             <div>
+              <div className={user.email_verified_at ? 'status-pill success' : 'status-pill warning'}>
+                {user.email_verified_at ? 'Email đã xác minh' : 'Chưa xác minh email'}
+              </div>
               <h2>{user.display_name || user.email}</h2>
-              <p className="field-hint">Quản lý bảo mật, hồ sơ và các phiên đăng nhập của bạn.</p>
+              <p className="field-hint">Quản lý hồ sơ, bảo mật và thiết bị đăng nhập.</p>
             </div>
           </div>
-          <div className={user.email_verified_at ? 'status-pill success' : 'status-pill warning'}>
-            {user.email_verified_at ? 'Email đã xác minh' : 'Chưa xác minh email'}
-          </div>
-        </div>
-
-        {!user.email_verified_at && (
-          <div className="account-panel highlight-panel">
-            <div className="account-panel-title"><AccountIcon name="shield" /><strong>Xác minh email để bảo vệ tài khoản.</strong></div>
-            <p className="field-hint">Nếu chưa thấy email, bạn có thể gửi lại liên kết xác minh.</p>
-            <button type="button" onClick={handleResendVerification} disabled={loading}>Gửi lại email xác minh</button>
-          </div>
-        )}
-
-        <div className="account-grid">
-          <form className="account-panel" onSubmit={submitProfile}>
-            <div className="account-panel-title"><AccountIcon name="profile" /><h3>Hồ sơ</h3></div>
-            <label className="field-label">
-              Email
-              <input value={user.email} disabled />
-            </label>
-            <label className="field-label">
-              Tên hiển thị
-              <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="Tên của bạn" maxLength={256} />
-            </label>
-            <button type="submit" disabled={loading}>Lưu hồ sơ</button>
-          </form>
-
-          <form className="account-panel" onSubmit={submitPassword}>
-            <div className="account-panel-title"><AccountIcon name="lock" /><h3>Đổi mật khẩu</h3></div>
-            <label className="field-label">
-              Mật khẩu hiện tại
-              <input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} autoComplete="current-password" required />
-            </label>
-            <label className="field-label">
-              Mật khẩu mới
-              <input type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} autoComplete="new-password" minLength={10} required />
-            </label>
-            <label className="field-label">
-              Nhập lại mật khẩu mới
-              <input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} autoComplete="new-password" minLength={10} required />
-            </label>
-            <p className="field-hint">Mật khẩu mới nên dài ít nhất 10 ký tự và kết hợp chữ với số hoặc ký tự khác.</p>
-            <button type="submit" disabled={loading}>Đổi mật khẩu</button>
-          </form>
-        </div>
-
-        <div className="account-panel">
-          <div className="account-section-title">
-            <div className="account-panel-title"><AccountIcon name="sessions" /><h3>Phiên đăng nhập</h3></div>
-            <button type="button" className="secondary-button" onClick={handleRevokeOthers} disabled={loading}>Đăng xuất thiết bị khác</button>
-          </div>
-          <div className="session-list">
-            {sessions.map((session) => (
-              <div className="session-item" key={session.id}>
-                <div>
-                  <strong>{session.current ? 'Phiên hiện tại' : 'Thiết bị khác'}</strong>
-                  <p>{session.user_agent || 'Không rõ trình duyệt'}</p>
-                  <span>{session.ip_address || 'Không rõ IP'} · hoạt động {formatDate(session.last_seen_at || session.created_at)}</span>
-                </div>
-                {!session.current && <button type="button" className="secondary-button" onClick={() => handleRevokeSession(session.id)} disabled={loading}>Thu hồi</button>}
+          <div className="account-stat-grid">
+            {accountStats.map((item) => (
+              <div className="account-stat" key={item.label}>
+                <span>{item.label}</span>
+                <strong>{item.value}</strong>
               </div>
             ))}
-            {sessions.length === 0 && <p className="field-hint">Chưa có phiên đăng nhập nào.</p>}
           </div>
         </div>
 
-        <div className="auth-actions">
-          <button type="button" className="icon-button-content" onClick={onBackWorkspace}><AccountIcon name="workspace" />Vào workspace</button>
-          <button type="button" className="secondary-button" onClick={onOpenSettings}>Cài đặt AI</button>
-          <button type="button" className="secondary-button icon-button-content" onClick={onLogout} disabled={authLoading}><AccountIcon name="logout" />Đăng xuất</button>
+        <div className="account-layout">
+          <main className="account-main">
+            <form className="account-panel account-panel-card" onSubmit={submitProfile}>
+              <div className="account-section-title">
+                <div className="account-panel-title"><AccountIcon name="profile" /><h3>Hồ sơ</h3></div>
+                <button type="submit" className="secondary-button" disabled={loading}>Lưu hồ sơ</button>
+              </div>
+              <div className="account-form-grid">
+                <label className="field-label">
+                  Email
+                  <input value={user.email} disabled />
+                </label>
+                <label className="field-label">
+                  Tên hiển thị
+                  <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="Tên của bạn" maxLength={256} />
+                </label>
+              </div>
+            </form>
+
+            <div className="account-panel account-panel-card account-sessions-panel">
+              <div className="account-section-title">
+                <div className="account-panel-title"><AccountIcon name="sessions" /><h3>Phiên đăng nhập</h3></div>
+                <button type="button" className="secondary-button" onClick={handleRevokeOthers} disabled={loading || sessions.length <= 1}>Đăng xuất thiết bị khác</button>
+              </div>
+              <div className="session-list">
+                {sessions.map((session) => (
+                  <div className="session-item" key={session.id}>
+                    <div>
+                      <strong>{session.current ? 'Phiên hiện tại' : 'Thiết bị khác'}</strong>
+                      <p>{session.user_agent || 'Không rõ trình duyệt'}</p>
+                      <span>{session.ip_address || 'Không rõ IP'} · hoạt động {formatDate(session.last_seen_at || session.created_at)}</span>
+                    </div>
+                    {!session.current && <button type="button" className="secondary-button" onClick={() => handleRevokeSession(session.id)} disabled={loading}>Thu hồi</button>}
+                  </div>
+                ))}
+                {sessions.length === 0 && <p className="field-hint">Chưa có phiên đăng nhập nào.</p>}
+              </div>
+            </div>
+          </main>
+
+          <aside className="account-side">
+            <div className="account-panel account-panel-card">
+              <div className="account-panel-title"><AccountIcon name="shield" /><h3>Bảo mật</h3></div>
+              <div className="account-info-grid">
+                {securityRows.map((item) => (
+                  <div className="account-info-row" key={item.label}>
+                    <span>{item.label}</span>
+                    <strong>{item.value}</strong>
+                  </div>
+                ))}
+              </div>
+              {!user.email_verified_at && (
+                <button type="button" onClick={handleResendVerification} disabled={loading}>Gửi lại email xác minh</button>
+              )}
+            </div>
+
+            <form className="account-panel account-panel-card" onSubmit={submitPassword}>
+              <div className="account-panel-title"><AccountIcon name="lock" /><h3>Đổi mật khẩu</h3></div>
+              <label className="field-label">
+                Mật khẩu hiện tại
+                <input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} autoComplete="current-password" required />
+              </label>
+              <label className="field-label">
+                Mật khẩu mới
+                <input type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} autoComplete="new-password" minLength={10} required />
+              </label>
+              <label className="field-label">
+                Nhập lại mật khẩu mới
+                <input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} autoComplete="new-password" minLength={10} required />
+              </label>
+              <p className="field-hint">Tối thiểu 10 ký tự, nên có chữ và số hoặc ký tự khác.</p>
+              <button type="submit" disabled={loading}>Đổi mật khẩu</button>
+            </form>
+
+            <div className="account-panel account-panel-card account-quick-actions">
+              <button type="button" className="icon-button-content" onClick={onBackWorkspace}><AccountIcon name="workspace" />Vào workspace</button>
+              <button type="button" className="secondary-button" onClick={onOpenSettings}>Cài đặt AI</button>
+              <button type="button" className="secondary-button icon-button-content" onClick={onLogout} disabled={authLoading}><AccountIcon name="logout" />Đăng xuất</button>
+            </div>
+          </aside>
         </div>
       </div>
     </section>
@@ -226,6 +262,18 @@ function AccountIcon({ name }: { name: AccountIconName }) {
       </svg>
     </span>
   );
+}
+
+function getInitial(value: string) {
+  return (value.trim()[0] || 'A').toUpperCase();
+}
+
+function formatLabel(value: string) {
+  return value ? value.replace(/[_-]+/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase()) : 'Free';
+}
+
+function formatOptionalDate(value?: string | null) {
+  return value ? formatDate(value) : 'Chưa có dữ liệu';
 }
 
 function formatDate(value: string) {

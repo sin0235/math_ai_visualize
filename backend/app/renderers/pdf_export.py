@@ -39,7 +39,9 @@ from app.schemas.scene import (
     Segment,
     Vector2D,
     Vector3D,
+    RenderResponse,
 )
+from app.services.scene_trust import export_notice_lines, scene_with_trusted_annotations
 
 OBLIQUE_ANGLE_DEG = 30
 OBLIQUE_SCALE = 0.5
@@ -223,11 +225,13 @@ def _scaled_unit(
     return (length * dx / norm, length * dy / norm)
 
 
-def _build_scene_figure(scene: MathScene, problem_text: str | None = None) -> plt.Figure:
+def _build_scene_figure(scene: MathScene, problem_text: str | None = None, response: RenderResponse | None = None) -> plt.Figure:
+    scene, hidden_annotations = scene_with_trusted_annotations(scene)
     title = problem_text or scene.problem_text or "Hình"
+    notices = export_notice_lines(scene, response, hidden_annotations)
     fig = plt.figure(figsize=(8.27, 11.69), facecolor="white")
 
-    title_ax = fig.add_axes((0.08, 0.85, 0.84, 0.10))
+    title_ax = fig.add_axes((0.08, 0.82, 0.84, 0.13))
     title_ax.axis("off")
     wrapped = _wrap_text(title, max_chars=90)
     title_ax.text(
@@ -250,18 +254,28 @@ def _build_scene_figure(scene: MathScene, problem_text: str | None = None) -> pl
         va="top",
         wrap=True,
     )
+    title_ax.text(
+        0.0,
+        0.22,
+        _wrap_text(" | ".join(notices), max_chars=110),
+        fontsize=8.5,
+        color="#b45309" if "Hình minh họa" in notices[0] else "#166534",
+        ha="left",
+        va="top",
+        wrap=True,
+    )
 
-    figure_ax = fig.add_axes((0.08, 0.10, 0.84, 0.72))
+    figure_ax = fig.add_axes((0.08, 0.08, 0.84, 0.70))
     _draw_scene(scene, figure_ax)
     figure_ax.set_title(scene.topic.replace("_", " ").title(), fontsize=10, color="#525252", loc="left")
     return fig
 
 
-def build_pdf(scene: MathScene, problem_text: str | None = None) -> bytes:
+def build_pdf(scene: MathScene, problem_text: str | None = None, response: RenderResponse | None = None) -> bytes:
     """Trả về bytes của file PDF 1 trang gồm đề bài + hình minh hoạ."""
     buffer = io.BytesIO()
     with PdfPages(buffer) as pdf:
-        fig = _build_scene_figure(scene, problem_text)
+        fig = _build_scene_figure(scene, problem_text, response)
         try:
             pdf.savefig(fig)
         finally:
@@ -269,9 +283,9 @@ def build_pdf(scene: MathScene, problem_text: str | None = None) -> bytes:
     return buffer.getvalue()
 
 
-def build_png(scene: MathScene, problem_text: str | None = None) -> bytes:
+def build_png(scene: MathScene, problem_text: str | None = None, response: RenderResponse | None = None) -> bytes:
     buffer = io.BytesIO()
-    fig = _build_scene_figure(scene, problem_text)
+    fig = _build_scene_figure(scene, problem_text, response)
     try:
         fig.savefig(buffer, format="png", dpi=180, bbox_inches="tight", facecolor="white")
     finally:
@@ -279,9 +293,9 @@ def build_png(scene: MathScene, problem_text: str | None = None) -> bytes:
     return buffer.getvalue()
 
 
-def build_jpg(scene: MathScene, problem_text: str | None = None) -> bytes:
+def build_jpg(scene: MathScene, problem_text: str | None = None, response: RenderResponse | None = None) -> bytes:
     buffer = io.BytesIO()
-    fig = _build_scene_figure(scene, problem_text)
+    fig = _build_scene_figure(scene, problem_text, response)
     try:
         fig.savefig(buffer, format="jpg", dpi=180, bbox_inches="tight", facecolor="white")
     finally:
@@ -289,9 +303,9 @@ def build_jpg(scene: MathScene, problem_text: str | None = None) -> bytes:
     return buffer.getvalue()
 
 
-def build_svg(scene: MathScene, problem_text: str | None = None) -> str:
+def build_svg(scene: MathScene, problem_text: str | None = None, response: RenderResponse | None = None) -> str:
     buffer = io.StringIO()
-    fig = _build_scene_figure(scene, problem_text)
+    fig = _build_scene_figure(scene, problem_text, response)
     try:
         fig.savefig(buffer, format="svg", bbox_inches="tight", facecolor="white")
     finally:

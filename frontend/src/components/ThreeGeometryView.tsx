@@ -28,7 +28,7 @@ export interface ThreeSceneInteraction {
   pointPlacementPlane: 'xy' | 'xz' | 'yz';
   pointPlacementDepth: number;
   onPointClick: (name: string) => void;
-  onSegmentClick: (points: [string, string], point: Vec3) => void;
+  onSegmentClick: (points: [string, string]) => void;
   onPointDragEnd: (name: string, point: Vec3) => void;
   onConnectPoints: (start: string, end: string) => void;
   onCanvasClick: (point: Vec3) => void;
@@ -50,7 +50,7 @@ export function ThreeGeometryView({ scene, interaction, embedded = false, highli
   const [dragViewEnabled, setDragViewEnabled] = useState(false);
   const frame = getSceneFrame(scene);
   const editingEnabled = Boolean(interaction);
-  const controlsEnabled = !draggingPoint && !connectStart;
+  const controlsEnabled = !connectStart;
   const controlsMouseButtons = editingEnabled
     ? { MIDDLE: THREE.MOUSE.DOLLY, RIGHT: dragViewEnabled ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE }
     : { LEFT: dragViewEnabled ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: dragViewEnabled ? THREE.MOUSE.ROTATE : THREE.MOUSE.PAN };
@@ -622,7 +622,7 @@ function Segments({ scene, frame, interaction }: ThreeGeometryViewProps & { fram
             onClick={(event) => {
               if (interaction?.mode !== 'project_to_segment') return;
               event.stopPropagation();
-              interaction.onSegmentClick(segment.points, worldToScene(event.point, frame));
+              interaction.onSegmentClick(segment.points);
             }}
             onPointerOver={(event) => {
               if (interaction?.mode !== 'project_to_segment') return;
@@ -785,11 +785,13 @@ function Points({
   saving,
 }: PointsProps) {
   const showCoords = scene.view.show_coordinates;
+  const highlighted = React.useContext(HighlightContext);
   const sortedPoints = useMemo(() => Object.entries(scene.points).sort(([nameA], [nameB]) => nameA.localeCompare(nameB)), [scene.points]);
 
   return (
     <>
       {sortedPoints.map(([name, point], index) => {
+        if (point.hidden) return null;
         const coordLabel = scene.annotations?.find(ann => ann.type === 'coordinate_label' && ann.target === name);
         const displayName = coordLabel?.label || name;
         const coordText = `(${fmtN(point.x)}; ${fmtN(point.y)}; ${fmtN(point.z)})`;
@@ -804,7 +806,7 @@ function Points({
             labelOffset={labelOffset}
             frame={frame}
             isDragging={draggingPoint === name}
-            isSelected={interaction?.selectedPoint === name}
+            isSelected={interaction?.selectedPoint === name || highlighted.includes(name)}
             isConnectSource={connectStart === name}
             isConnectHover={connectHover === name}
             showCoords={showCoords && !coordLabel} // Hide default coords if explicit label has them
@@ -858,8 +860,39 @@ function DraggablePoint({ name, displayName, point, coordText, labelOffset, fram
   const [hovered, setHovered] = useState(false);
   const dragPlaneRef = useRef<THREE.Plane | null>(null);
   const intersectionRef = useRef(new THREE.Vector3());
+  const pendingPointRef = useRef<Vec3 | null>(null);
+  const dragFrameRef = useRef<number | null>(null);
+
+  useEffect(() => () => {
+    if (dragFrameRef.current != null) cancelAnimationFrame(dragFrameRef.current);
+  }, []);
+
+  function flushDragPoint() {
+    if (dragFrameRef.current != null) {
+      cancelAnimationFrame(dragFrameRef.current);
+      dragFrameRef.current = null;
+    }
+    const pending = pendingPointRef.current;
+    if (!pending) return point;
+    onPointChange(name, pending);
+    pendingPointRef.current = null;
+    return pending;
+  }
+
+  function queuePointChange(nextPoint: Vec3) {
+    pendingPointRef.current = nextPoint;
+    if (dragFrameRef.current != null) return;
+    dragFrameRef.current = requestAnimationFrame(() => {
+      dragFrameRef.current = null;
+      const pending = pendingPointRef.current;
+      if (!pending) return;
+      pendingPointRef.current = null;
+      onPointChange(name, pending);
+    });
+  }
 
   function beginDrag(event: ThreeEvent<PointerEvent>) {
+    if (event.button !== 0) return;
     event.stopPropagation();
     if (mode === 'add_point') {
       interactionBlockedPointClick?.(name);
@@ -895,7 +928,7 @@ function DraggablePoint({ name, displayName, point, coordText, labelOffset, fram
     event.stopPropagation();
     const hit = event.ray.intersectPlane(dragPlaneRef.current, intersectionRef.current);
     if (!hit) return;
-    onPointChange(name, worldToScene(hit, frame));
+    queuePointChange(worldToScene(hit, frame));
   }
 
   function endDrag(event: ThreeEvent<PointerEvent>) {
@@ -912,7 +945,7 @@ function DraggablePoint({ name, displayName, point, coordText, labelOffset, fram
     }
     dragPlaneRef.current = null;
     gl.domElement.style.cursor = hovered ? 'grab' : '';
-    onDragEnd(name, point);
+    onDragEnd(name, flushDragPoint());
   }
 
   return (

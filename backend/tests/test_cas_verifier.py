@@ -1,5 +1,7 @@
+import pytest
+
 from app.schemas.scene import MathScene
-from app.services.cas_verifier import auto_fix_scene, infer_point_coordinates, verify_scene
+from app.services.cas_verifier import auto_fix_scene, infer_point_coordinates, verify_scene, verify_scene_relations
 
 
 def _make_scene(objects, relations=None) -> MathScene:
@@ -929,4 +931,82 @@ def test_optimizer_repairs_perpendicular_planes():
     fixed, issues = auto_fix_scene(scene, use_optimizer=True)
     assert any(issue.relation_type == "optimizer" and issue.auto_fixed for issue in issues)
     assert verify_scene(fixed) == []
+
+
+def test_relation_verification_is_per_instance_not_relation_type():
+    scene = _make_scene(
+        objects=[
+            {"type": "point_3d", "name": "A", "x": 0, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "B", "x": 1, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "C", "x": 0, "y": 1, "z": 0},
+            {"type": "point_3d", "name": "D", "x": 2, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "E", "x": 2, "y": 1, "z": 0},
+        ],
+        relations=[
+            {"id": "rel_ok", "type": "perpendicular", "object_1": "A-B", "object_2": "A-C"},
+            {"id": "rel_bad", "type": "perpendicular", "object_1": "A-B", "object_2": "A-D"},
+            {"id": "rel_ok_2", "type": "perpendicular", "object_1": "D-E", "object_2": "D-A"},
+        ],
+    )
+
+    report = verify_scene_relations(scene)
+    by_id = {item.relation_id: item for item in report.relations}
+
+    assert by_id["rel_ok"].status == "verified"
+    assert by_id["rel_bad"].status == "failed"
+    assert by_id["rel_ok_2"].status == "verified"
+    assert all(item.method == "cas:perpendicular" for item in report.relations)
+    assert all(item.tolerance is not None for item in report.relations)
+    assert all(item.verified_at for item in report.relations)
+    assert all(item.verifier_version == "cas-v2" for item in report.relations)
+
+
+def test_relation_verification_marks_unsupported_and_unverifiable_without_implicit_pass():
+    scene = _make_scene(
+        objects=[
+            {"type": "point_3d", "name": "A", "x": 0, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "B", "x": 0, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "C", "x": 1, "y": 0, "z": 0},
+        ],
+        relations=[
+            {"id": "rel_unknown", "type": "custom_magic", "object_1": "A", "object_2": "B"},
+            {"id": "rel_degenerate", "type": "parallel", "object_1": "A-B", "object_2": "A-C"},
+            {"id": "rel_missing", "type": "on_line", "object_1": "P", "object_2": "A-C"},
+        ],
+    )
+
+    report = verify_scene_relations(scene)
+    by_id = {item.relation_id: item for item in report.relations}
+
+    assert by_id["rel_unknown"].status == "unsupported"
+    assert by_id["rel_degenerate"].status == "unverifiable"
+    assert by_id["rel_missing"].status == "unverifiable"
+    assert report.summary.verified == 0
+    assert report.status == "partial"
+
+
+def test_relation_verification_exception_becomes_error(monkeypatch: pytest.MonkeyPatch):
+    import app.services.cas_verifier as cas_verifier
+
+    def broken_dispatch(*_args, **_kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(cas_verifier, "_dispatch", broken_dispatch)
+    scene = _make_scene(
+        objects=[
+            {"type": "point_3d", "name": "A", "x": 0, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "B", "x": 1, "y": 0, "z": 0},
+            {"type": "point_3d", "name": "C", "x": 0, "y": 1, "z": 0},
+        ],
+        relations=[{"id": "rel_error", "type": "perpendicular", "object_1": "A-B", "object_2": "A-C"}],
+    )
+
+    report = verify_scene_relations(scene)
+    result = report.relations[0]
+
+    assert result.relation_id == "rel_error"
+    assert result.status == "error"
+    assert result.metadata["code"] == "verification_error"
+    assert result.metadata["error_type"] == "RuntimeError"
+    assert result.verified_at
 
