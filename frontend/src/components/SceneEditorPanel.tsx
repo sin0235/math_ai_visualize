@@ -6,6 +6,7 @@ import type { Annotation, Line2D, Line3D, MathScene, Parameter, Point2D, Point3D
 
 export type PointPlacementPlane = 'xy' | 'xz' | 'yz';
 type EditTool = 'move' | 'connect' | 'project_to_segment' | 'add_point';
+type EditorTab = 'direct' | 'objects' | 'construct' | 'review' | 'parameters';
 
 interface SceneEditorPanelProps {
   scene: MathScene | null;
@@ -64,6 +65,7 @@ export function SceneEditorPanel({
   const [intersectionLineA, setIntersectionLineA] = useState('');
   const [intersectionLineB, setIntersectionLineB] = useState('');
   const [vectorForOpposite, setVectorForOpposite] = useState('');
+  const [activeTab, setActiveTab] = useState<EditorTab>('direct');
 
   const points = useMemo(() => (scene ? getPoints(scene) : []), [scene]);
   const lines = useMemo(() => (scene ? getLines(scene) : []), [scene]);
@@ -186,14 +188,22 @@ export function SceneEditorPanel({
           <span className="viewer-hint">Bấm để mở công cụ sửa</span>
         </summary>
         <p className="field-hint">{dimension === '3d' ? '3D' : '2D'}: kéo điểm trực tiếp; dùng form để thêm, xóa, nối và tạo quan hệ hình học.</p>
+        <div className="scene-editor-tabs" role="tablist" aria-label="Nhóm công cụ sửa hình">
+          <EditorTabButton id="direct" active={activeTab === 'direct'} onClick={setActiveTab}>Trực tiếp</EditorTabButton>
+          <EditorTabButton id="objects" active={activeTab === 'objects'} onClick={setActiveTab}>Đối tượng</EditorTabButton>
+          <EditorTabButton id="construct" active={activeTab === 'construct'} onClick={setActiveTab}>Dựng thêm</EditorTabButton>
+          <EditorTabButton id="review" active={activeTab === 'review'} onClick={setActiveTab}>Kiểm tra</EditorTabButton>
+          {parameters.length > 0 && <EditorTabButton id="parameters" active={activeTab === 'parameters'} onClick={setActiveTab}>Tham số</EditorTabButton>}
+        </div>
         <div className="scene-editor-content">
-          <div className="click-tool">
+          {activeTab === 'direct' && (
+            <div className="click-tool">
             <span className="field-label">Công cụ trực tiếp trên hình 3D</span>
             <div className="tool-mode-grid">
-              <ToolModeButton active={editTool === 'move'} disabled={saving} onClick={() => onEditToolChange('move')} title="Kéo điểm" description="Kéo điểm để đổi vị trí." />
-              <ToolModeButton active={editTool === 'connect'} disabled={saving || activeScene.renderer !== 'threejs_3d'} onClick={() => onEditToolChange('connect')} title="Kéo nối đoạn" description="Kéo từ điểm này sang điểm khác để tạo đoạn." />
-              <ToolModeButton active={editTool === 'project_to_segment'} disabled={saving || activeScene.renderer !== 'threejs_3d'} onClick={() => onEditToolChange('project_to_segment')} title="Tạo chân nối" description="Click điểm nguồn rồi click đoạn đích." />
-              <ToolModeButton active={editTool === 'add_point'} disabled={saving || activeScene.renderer !== 'threejs_3d'} onClick={() => onEditToolChange('add_point')} title="Chấm để thêm điểm" description="Chọn mặt phẳng rồi click lên hình." />
+              <ToolModeButton active={editTool === 'move'} disabled={false} onClick={() => onEditToolChange('move')} title="Kéo điểm" description="Kéo điểm để đổi vị trí." />
+              <ToolModeButton active={editTool === 'connect'} disabled={activeScene.renderer !== 'threejs_3d'} onClick={() => onEditToolChange('connect')} title="Kéo nối đoạn" description="Kéo từ điểm này sang điểm khác để tạo đoạn." />
+              <ToolModeButton active={editTool === 'project_to_segment'} disabled={activeScene.renderer !== 'threejs_3d'} onClick={() => onEditToolChange('project_to_segment')} title="Tạo chân nối" description="Click điểm nguồn rồi click đoạn đích." />
+              <ToolModeButton active={editTool === 'add_point'} disabled={activeScene.renderer !== 'threejs_3d'} onClick={() => onEditToolChange('add_point')} title="Chấm để thêm điểm" description="Chọn mặt phẳng rồi click lên hình." />
             </div>
             <span className="field-hint">{activeScene.renderer === 'threejs_3d' ? toolHint(editTool, selectedPoint) : 'Renderer này chỉ hỗ trợ kéo điểm; các thao tác còn lại dùng form bên dưới.'}</span>
             {dimension === '3d' && editTool === 'add_point' && (
@@ -212,15 +222,16 @@ export function SceneEditorPanel({
                 </label>
               </div>
             )}
-          </div>
+            </div>
+          )}
 
-          {parameters.length > 0 && onParameterValuesChange && (
+          {activeTab === 'parameters' && parameters.length > 0 && onParameterValuesChange && (
             <div className="scene-editor-parameters">
               <ParameterSliders parameters={parameters} values={parameterValues} onChange={onParameterValuesChange} onReset={onParameterReset} />
             </div>
           )}
 
-          {activeScene.cas_issues && activeScene.cas_issues.length > 0 && (
+          {activeTab === 'review' && activeScene.cas_issues && activeScene.cas_issues.length > 0 && (
             <div className="cas-issues-panel">
               <strong className="cas-issues-title">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px', verticalAlign: 'text-bottom' }}>
@@ -242,10 +253,12 @@ export function SceneEditorPanel({
           {error && <div className="error-box">{error}</div>}
           {saving && <div className="warning-box">Đang dựng lại hình...</div>}
 
-          <SceneObjectTree scene={activeScene} saving={saving} onChange={submit} onHighlightObjects={onHighlightObjects} />
+          {activeTab === 'objects' && <SceneObjectTree scene={activeScene} saving={saving} onChange={submit} onHighlightObjects={onHighlightObjects} />}
 
-          <form className="editor-grid" onSubmit={addPoint}>
-            <label className="field-label">Tên điểm<input value={pointName} onChange={(event) => setPointName(event.target.value)} placeholder={nextPointName} /></label>
+          {activeTab === 'construct' && (
+            <div className="scene-editor-form-stack">
+              <form className="editor-grid" onSubmit={addPoint}>
+                <label className="field-label">Tên điểm<input value={pointName} onChange={(event) => setPointName(event.target.value)} placeholder={nextPointName} /></label>
             <label className="field-label">x<input type="number" step="any" value={x} onChange={(event) => setX(event.target.value)} /></label>
             <label className="field-label">y<input type="number" step="any" value={y} onChange={(event) => setY(event.target.value)} /></label>
             {dimension === '3d' && <label className="field-label">z<input type="number" step="any" value={z} onChange={(event) => setZ(event.target.value)} /></label>}
@@ -280,10 +293,16 @@ export function SceneEditorPanel({
             <LineSelect label="Đường 2" value={intersectionLineB} lines={lines} onChange={setIntersectionLineB} />
             <button type="submit" disabled={saving || lines.length < 2}>Tạo giao điểm</button>
           </form>
+            </div>
+          )}
         </div>
       </details>
     </section>
   );
+}
+
+function EditorTabButton({ id, active, onClick, children }: { id: EditorTab; active: boolean; onClick: (id: EditorTab) => void; children: string }) {
+  return <button type="button" role="tab" aria-selected={active ? 'true' : 'false'} className={active ? 'active' : ''} onClick={() => onClick(id)}>{children}</button>;
 }
 
 function ToolModeButton({ active, disabled, onClick, title, description }: { active: boolean; disabled: boolean; onClick: () => void; title: string; description: string }) {

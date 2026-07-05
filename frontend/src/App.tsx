@@ -205,6 +205,7 @@ export default function App() {
   const renderToolsMenuRef = useRef<HTMLDivElement | null>(null);
   const ocrInFlightRef = useRef(false);
   const editorButtonDragRef = useRef<{ pointerId: number; startY: number; startTop: number; moved: boolean } | null>(null);
+  const editSaveSeqRef = useRef(0);
   const renderToolsMenuTop = Math.min(Math.max(editorButtonTop - 8, 72), Math.max(72, window.innerHeight - 430));
 
   function applyRenderResponse(response: RenderResponse, nextConfirmation: ConfirmationState = defaultConfirmation) {
@@ -212,6 +213,22 @@ export default function App() {
     setActiveScene(response.scene);
     setActiveRevision(response.scene.revision ?? 1);
     setConfirmation(nextConfirmation);
+  }
+
+  function applyLocalSceneEdit(scene: MathScene) {
+    setActiveScene(scene);
+    setActiveRevision(scene.revision ?? 1);
+    setResult((current) => {
+      if (!current) return current;
+      let payload = current.payload;
+      if (payload.three_scene) {
+        payload = { ...payload, three_scene: recomputeThreeScene(payload.three_scene, scene) };
+      }
+      if (payload.geogebra_commands && payload.geogebra_commands.length > 0) {
+        payload = { ...payload, geogebra_commands: patchGeogebraCommandsForScene(payload.geogebra_commands, scene) };
+      }
+      return { ...current, scene, payload, user_confirmed: false };
+    });
   }
 
   function confirmCurrentScene() {
@@ -380,7 +397,7 @@ export default function App() {
   }, [result, activeScene, paramValues, confirmation]);
 
   const modelOptions = buildRenderModelOptions(settingsDefaults, renderTier);
-  const threeInteraction = effectiveResult?.scene.renderer === 'threejs_3d'
+  const threeInteraction = sceneEditorOpen && effectiveResult?.scene.renderer === 'threejs_3d'
     ? {
         mode: editTool,
         selectedPoint: pointToSegmentSource,
@@ -392,7 +409,7 @@ export default function App() {
         pointPlacementDepth: Number(pointPlacementDepth),
         onCanvasClick: handleCanvasClickToAddPoint,
         onBlockedPointClick: handleAddPointBlockedClick,
-        saving: editorSaving,
+        saving: false,
       }
     : undefined;
 
@@ -700,24 +717,29 @@ export default function App() {
     }
   }
 
-  async function handleSceneEdit(scene: MathScene) {
+  async function handleSceneEdit(scene: MathScene, options: { optimistic?: boolean } = {}) {
+    const saveSeq = editSaveSeqRef.current + 1;
+    editSaveSeqRef.current = saveSeq;
+    if (options.optimistic) applyLocalSceneEdit(scene);
     setEditorSaving(true);
     try {
       const response = await renderEditedScene(scene, lastAdvancedSettings, effectiveResult);
+      if (editSaveSeqRef.current !== saveSeq) return;
       applyRenderResponse(response);
       if (user) void refreshHistory();
       showWarnings(response.warnings);
     } catch (caught) {
+      if (editSaveSeqRef.current !== saveSeq) return;
       const apiError = toApiError(caught, 'Không thể lưu chỉnh sửa hình.');
-      showApiError('Không thể lưu chỉnh sửa', apiError, 'Hãy kiểm tra thao tác vừa chỉnh có làm thiếu điểm, thiếu đoạn hoặc dữ liệu hình không hợp lệ không.');
+      showApiError('Không thể lưu chỉnh sửa', apiError, 'Hình đã được chỉnh cục bộ. Hãy thử lưu/chỉnh lại nếu cần đồng bộ server.');
     } finally {
-      setEditorSaving(false);
+      if (editSaveSeqRef.current === saveSeq) setEditorSaving(false);
     }
   }
 
   async function handlePointDragEnd(name: string, point: Vec3) {
     const scene = effectiveResult?.scene ?? activeScene;
-    if (!scene || editorSaving) return;
+    if (!scene) return;
     const target = scene.objects.find((obj) => (obj.type === 'point_2d' || obj.type === 'point_3d') && obj.name === name);
     if (target?.locked) {
       showNotification('Không thể sửa điểm', `Điểm ${name} đang bị khóa theo dữ kiện đề bài.`, [], 'warning');
@@ -738,7 +760,7 @@ export default function App() {
         return obj;
       }),
     };
-    await handleSceneEdit(editedScene);
+    void handleSceneEdit(editedScene, { optimistic: true });
   }
 
   async function handleConnectPoints(start: string, end: string) {
@@ -762,7 +784,7 @@ export default function App() {
         { type: 'segment', points: [start, end], hidden: false, color: '#111111', line_width: 3, style: 'solid', source: 'construction' },
       ],
     };
-    await handleSceneEdit(editedScene);
+    await handleSceneEdit(editedScene, { optimistic: true });
   }
 
   async function handlePointToSegmentClick(segmentPoints: [string, string]) {
@@ -816,7 +838,7 @@ export default function App() {
     };
 
     setPointToSegmentSource(null);
-    await handleSceneEdit(editedScene);
+    await handleSceneEdit(editedScene, { optimistic: true });
   }
 
   function handleAddPointBlockedClick(name: string) {
@@ -838,7 +860,7 @@ export default function App() {
       revision: (scene.revision ?? activeRevision) + 1,
       objects: [...scene.objects, point],
     };
-    await handleSceneEdit(editedScene);
+    await handleSceneEdit(editedScene, { optimistic: true });
   }
 
   function handleEditorButtonPointerDown(event: React.PointerEvent<HTMLButtonElement>) {
@@ -1209,9 +1231,12 @@ export default function App() {
                 )}
                 {sceneEditorOpen && effectiveResult?.scene && (
                   <div className="scene-editor-layer" role="presentation" onMouseDown={() => setSceneEditorOpen(false)}>
-                    <div className="scene-editor-popover" role="dialog" aria-modal="true" aria-label="Sửa hình học" onMouseDown={(event) => event.stopPropagation()}>
+                    <aside className="scene-editor-drawer" role="dialog" aria-modal="true" aria-label="Sửa hình học" onMouseDown={(event) => event.stopPropagation()}>
                       <div className="scene-editor-popover-header">
-                        <strong>Sửa hình học</strong>
+                        <div className="scene-editor-heading">
+                          <strong>Sửa hình học</strong>
+                          <span>{editorSaving ? 'Đang đồng bộ thay đổi' : 'Chỉnh hình trực tiếp trên canvas'}</span>
+                        </div>
                         <button type="button" className="scene-editor-close" onClick={() => setSceneEditorOpen(false)} aria-label="Đóng sửa hình học"><CloseIcon /></button>
                       </div>
                       <SceneEditorPanel
@@ -1227,14 +1252,14 @@ export default function App() {
                           setEditTool(tool);
                           setPointToSegmentSource(null);
                         }}
-                        onChange={handleSceneEdit}
+                        onChange={(scene) => { void handleSceneEdit(scene, { optimistic: true }); }}
                         parameters={effectiveResult.scene.parameters}
                         parameterValues={paramValues}
                         onParameterValuesChange={setParamValues}
                         onParameterReset={() => setParamValues(getDefaultParamValues(effectiveResult.scene.parameters))}
                         onHighlightObjects={setHighlightedObjects}
                       />
-                    </div>
+                    </aside>
                   </div>
                 )}
               </div>

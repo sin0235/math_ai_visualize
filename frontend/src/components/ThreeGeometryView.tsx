@@ -14,6 +14,7 @@ interface ThreeGeometryViewProps {
   interaction?: ThreeSceneInteraction;
   embedded?: boolean;
   highlightedObjects?: string[];
+  trustLabels?: string[];
   onImageCaptureReady?: (capture: ThreeSceneImageCapture | null) => void;
 }
 
@@ -39,7 +40,7 @@ export interface ThreeSceneInteraction {
 type Vec3 = { x: number; y: number; z: number };
 type SceneFrame = ReturnType<typeof getSceneFrame>;
 
-export function ThreeGeometryView({ scene, interaction, embedded = false, highlightedObjects = [], onImageCaptureReady }: ThreeGeometryViewProps) {
+export function ThreeGeometryView({ scene, interaction, embedded = false, highlightedObjects = [], trustLabels = [], onImageCaptureReady }: ThreeGeometryViewProps) {
   const [workingScene, setWorkingScene] = useState(scene);
   const [draggingPoint, setDraggingPoint] = useState<string | null>(null);
   const [hoveredPoint, setHoveredPoint] = useState<string | null>(null);
@@ -47,7 +48,7 @@ export function ThreeGeometryView({ scene, interaction, embedded = false, highli
   const [connectHover, setConnectHover] = useState<string | null>(null);
   const [connectPreview, setConnectPreview] = useState<Vec3 | null>(null);
   const [showAxes, setShowAxes] = useState(scene.view.show_axes);
-  const [dragViewEnabled, setDragViewEnabled] = useState(false);
+  const [dragViewEnabled, setDragViewEnabled] = useState(true);
   const frame = getSceneFrame(scene);
   const editingEnabled = Boolean(interaction);
   const controlsEnabled = !connectStart;
@@ -172,6 +173,13 @@ export function ThreeGeometryView({ scene, interaction, embedded = false, highli
     <div className="viewer-card">
       <div className="viewer-header viewer-header-row">
         <div className="viewer-controls">
+          {trustLabels.length > 0 && (
+            <div className="viewer-status-badges" aria-label="Trạng thái độ tin cậy hình dựng">
+              {trustLabels.map((label) => (
+                <span key={label} className={`render-trust-badge ${label === 'Dựng theo dữ kiện' ? 'exact' : 'warning'}`}>{label}</span>
+              ))}
+            </div>
+          )}
           <span className="viewer-hint">{viewerHint(interaction?.mode, dragViewEnabled)}</span>
           <button type="button" className="viewer-toggle" onClick={() => setDragViewEnabled((current) => !current)}>
             {dragViewEnabled ? 'Tắt kéo góc nhìn' : 'Bật kéo góc nhìn'}

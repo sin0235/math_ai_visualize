@@ -35,10 +35,15 @@ export function RendererPanel({ result, threeInteraction, onGeoGebraPointChange,
   if (result.payload.three_scene) {
     return (
       <div className="renderer-frame">
-        <RenderTrustBadges result={result} />
         <RenderMetadataBanner result={result} />
         <Suspense fallback={<div className="renderer-loading-state">Đang tải trình dựng 3D...</div>}>
-          <ThreeGeometryView scene={result.payload.three_scene} interaction={threeInteraction} highlightedObjects={highlightedObjects} onImageCaptureReady={onThreeImageCaptureReady} />
+          <ThreeGeometryView
+            scene={result.payload.three_scene}
+            interaction={threeInteraction}
+            highlightedObjects={highlightedObjects}
+            onImageCaptureReady={onThreeImageCaptureReady}
+            trustLabels={renderTrustLabels(result)}
+          />
         </Suspense>
         {saving && <div className="renderer-saving-overlay">Đang dựng lại hình...</div>}
       </div>
