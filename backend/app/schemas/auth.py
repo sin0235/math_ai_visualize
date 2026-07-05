@@ -121,6 +121,53 @@ class UserResponse(BaseModel):
     password_changed_at: str | None = None
 
 
+class UserLearningProfileResponse(BaseModel):
+    preferred_name: str | None = None
+    locale: str = "vi-VN"
+    timezone: str | None = None
+    education_level: str | None = None
+    grade_level: str | None = None
+    math_level: str | None = None
+    learning_goals: list[str] = Field(default_factory=list)
+    subject_focus: list[str] = Field(default_factory=list)
+    preferred_explanation_style: str | None = None
+    accessibility_needs: list[str] = Field(default_factory=list)
+    profile: dict[str, Any] = Field(default_factory=dict)
+    onboarding_completed_at: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+class UserLearningProfileUpdateRequest(BaseModel):
+    preferred_name: str | None = Field(default=None, max_length=128)
+    locale: str | None = Field(default=None, max_length=32)
+    timezone: str | None = Field(default=None, max_length=64)
+    education_level: str | None = Field(default=None, max_length=64)
+    grade_level: str | None = Field(default=None, max_length=64)
+    math_level: str | None = Field(default=None, max_length=64)
+    learning_goals: list[str] | None = Field(default=None, max_length=24)
+    subject_focus: list[str] | None = Field(default=None, max_length=24)
+    preferred_explanation_style: str | None = Field(default=None, max_length=64)
+    accessibility_needs: list[str] | None = Field(default=None, max_length=24)
+    profile: dict[str, Any] | None = None
+    onboarding_completed_at: str | None = Field(default=None, max_length=64)
+
+    @field_validator("preferred_name", "locale", "timezone", "education_level", "grade_level", "math_level", "preferred_explanation_style", "onboarding_completed_at")
+    @classmethod
+    def clean_optional_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        text = value.strip()
+        return text or None
+
+    @field_validator("learning_goals", "subject_focus", "accessibility_needs")
+    @classmethod
+    def clean_text_list(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return None
+        return [item.strip()[:128] for item in value if item.strip()]
+
+
 class AuthResponse(BaseModel):
     user: UserResponse
 
@@ -239,6 +286,54 @@ class RenderHistoryItem(BaseModel):
     fallback_source: Literal["none", "mock", "provider_fallback"] = "none"
     ai_source: Literal["admin", "byok", "none"] = "none"
     schema_version: str = "1.0"
+    title: str | None = None
+    problem_preview: str | None = None
+    topic: str = "unknown"
+    grade: str | None = None
+    tier: str | None = None
+    is_favorite: bool = False
+    archived_at: str | None = None
+    last_opened_at: str | None = None
+    updated_at: str | None = None
+    tags: list[str] = Field(default_factory=list)
+
+
+class RenderHistoryPatchRequest(BaseModel):
+    title: str | None = Field(default=None, max_length=256)
+    project_id: str | None = Field(default=None, max_length=128)
+    is_favorite: bool | None = None
+    archived: bool | None = None
+    tags: list[str] | None = Field(default=None, max_length=24)
+
+    @field_validator("title", "project_id")
+    @classmethod
+    def clean_optional_history_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        text = value.strip()
+        return text or None
+
+    @field_validator("tags")
+    @classmethod
+    def clean_tags(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return None
+        cleaned = []
+        for item in value:
+            label = item.strip()[:64]
+            if label and label not in cleaned:
+                cleaned.append(label)
+        return cleaned
+
+
+class SceneRevisionResponse(BaseModel):
+    id: str
+    history_item_id: str
+    render_job_id: str | None = None
+    revision_no: int
+    change_source: str
+    change_summary: str | None = None
+    created_at: str
 
 
 class RenderHistoryDetail(RenderHistoryItem):

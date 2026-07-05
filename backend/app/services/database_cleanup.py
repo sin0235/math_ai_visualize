@@ -25,12 +25,17 @@ REPORT_ONLY_TABLES = {"usage_events", "audit_logs", "render_jobs", "uploaded_fil
 REMOTE_UPLOAD_PROVIDERS = {"appwrite", "r2"}
 DELETE_TEST_UPLOADS_CONFIRM = "DELETE_TEST_UPLOADS"
 RESET_DEV_DATA_CONFIRM = "RESET_DEV_DATA_KEEP_ADMIN_CONFIG"
-DEV_RESET_USER_TABLES = ["model_scan_jobs", "oauth_identities", "auth_tokens", "sessions", "legal_acceptances", "user_settings"]
+DEV_RESET_USER_TABLES = ["model_scan_jobs", "oauth_identities", "auth_tokens", "sessions", "legal_acceptances", "user_learning_profiles", "user_settings"]
 DEV_RESET_GLOBAL_TABLES = [
     "chat_messages",
     "chat_conversations",
     "feedback",
     "usage_events",
+    "history_item_tags",
+    "history_tags",
+    "scene_revisions",
+    "history_items",
+    "history_projects",
     "render_jobs",
     "uploaded_files",
     "rate_limit_events",

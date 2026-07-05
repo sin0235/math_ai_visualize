@@ -1,7 +1,7 @@
 import json
 from uuid import uuid4
 
-from app.db.models import DbRow, RenderJobRecord
+from app.db.models import DbRow, RenderJobRecord, SceneRevisionRecord
 from app.db.session import DatabaseClient
 from app.schemas.scene import RenderResponse
 
@@ -58,7 +58,9 @@ class RenderHistoryRepository:
         row = await self.db.fetch_one("SELECT * FROM render_jobs WHERE id = ?", [job_id])
         if row is None:
             raise RuntimeError("Không thể lưu lịch sử dựng hình.")
-        return render_job_from_row(row)
+        job = render_job_from_row(row)
+        await self.ensure_history_item(job, response=response, tier=request_tier(render_request_json))
+        return job
 
     async def create_pending(
         self,
@@ -139,26 +141,219 @@ class RenderHistoryRepository:
             [json.dumps(error, ensure_ascii=False), job_id],
         )
 
-    async def list_for_user(self, user_id: str, limit: int = 30) -> list[RenderJobRecord]:
+    async def list_for_user(
+        self,
+        user_id: str,
+        limit: int = 30,
+        *,
+        q: str | None = None,
+        renderer: str | None = None,
+        topic: str | None = None,
+        favorite: bool | None = None,
+        archived: bool | None = None,
+    ) -> list[RenderJobRecord]:
+        clauses = ["r.user_id = ?", "r.status = 'completed'", "r.response_json IS NOT NULL"]
+        params: list[object] = [user_id]
+        if q:
+            clauses.append("(lower(r.problem_text) LIKE ? OR lower(COALESCE(h.title, '')) LIKE ? OR r.id LIKE ?)")
+            params.extend([f"%{q.lower()}%", f"%{q.lower()}%", f"%{q}%"])
+        if renderer:
+            clauses.append("COALESCE(h.renderer, r.renderer) = ?")
+            params.append(renderer)
+        if topic:
+            clauses.append("COALESCE(h.topic, 'unknown') = ?")
+            params.append(topic)
+        if favorite is not None:
+            clauses.append("COALESCE(h.is_favorite, 0) = ?")
+            params.append(1 if favorite else 0)
+        if archived is False:
+            clauses.append("h.archived_at IS NULL")
+        elif archived is True:
+            clauses.append("h.archived_at IS NOT NULL")
+        params.append(min(max(limit, 1), 100))
         rows = await self.db.fetch_all(
-            """
-            SELECT id, user_id, problem_text, provider, model, warnings_json, created_at, source_type, renderer,
-                   status, error_json, started_at, finished_at, degraded, fallback_source, ai_source, response_json, schema_version
-            FROM render_jobs
-            WHERE user_id = ? AND status = 'completed' AND response_json IS NOT NULL
-            ORDER BY created_at DESC
+            f"""
+            SELECT r.id, r.user_id, r.problem_text, r.provider, r.model, r.warnings_json, r.created_at, r.source_type, r.renderer,
+                   r.status, r.error_json, r.started_at, r.finished_at, r.degraded, r.fallback_source, r.ai_source, r.response_json, r.schema_version,
+                   h.id AS history_item_id, h.title, h.problem_preview, h.topic, h.grade, h.tier, h.is_favorite, h.archived_at,
+                   h.last_opened_at, h.updated_at AS history_updated_at
+            FROM render_jobs r
+            LEFT JOIN history_items h ON h.render_job_id = r.id
+            WHERE {' AND '.join(clauses)}
+            ORDER BY COALESCE(h.updated_at, r.created_at) DESC
             LIMIT ?
             """,
-            [user_id, limit],
+            params,
         )
         return [render_job_from_row(row) for row in rows]
 
     async def find_for_user(self, user_id: str, job_id: str) -> RenderJobRecord | None:
-        row = await self.db.fetch_one("SELECT * FROM render_jobs WHERE user_id = ? AND id = ?", [user_id, job_id])
+        row = await self.db.fetch_one(
+            """
+            SELECT r.*, h.id AS history_item_id, h.title, h.problem_preview, h.topic, h.grade, h.tier, h.is_favorite,
+                   h.archived_at, h.last_opened_at, h.updated_at AS history_updated_at
+            FROM render_jobs r
+            LEFT JOIN history_items h ON h.render_job_id = r.id
+            WHERE r.user_id = ? AND r.id = ?
+            """,
+            [user_id, job_id],
+        )
+        if row:
+            await self.db.execute("UPDATE history_items SET last_opened_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE render_job_id = ? AND user_id = ?", [job_id, user_id])
         return render_job_from_row(row) if row else None
 
     async def delete_for_user(self, user_id: str, job_id: str) -> None:
         await self.db.execute("DELETE FROM render_jobs WHERE user_id = ? AND id = ?", [user_id, job_id])
+
+    async def ensure_history_item(self, job: RenderJobRecord, *, response: RenderResponse | None = None, tier: str | None = None) -> None:
+        if job.user_id is None:
+            return
+        topic = response.scene.topic if response else "unknown"
+        grade = str(response.scene.grade) if response and response.scene.grade is not None else None
+        await self.db.execute(
+            """
+            INSERT INTO history_items (
+              id, user_id, render_job_id, problem_preview, topic, grade, tier, renderer, provider, model,
+              source_type, status, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(render_job_id) DO UPDATE SET
+              problem_preview = excluded.problem_preview,
+              topic = excluded.topic,
+              grade = excluded.grade,
+              tier = COALESCE(excluded.tier, history_items.tier),
+              renderer = excluded.renderer,
+              provider = excluded.provider,
+              model = excluded.model,
+              source_type = excluded.source_type,
+              status = excluded.status,
+              updated_at = CURRENT_TIMESTAMP
+            """,
+            [
+                job.id,
+                job.user_id,
+                job.id,
+                job.problem_text[:240],
+                topic,
+                grade,
+                tier,
+                job.renderer,
+                job.provider,
+                job.model,
+                job.source_type,
+                job.status,
+                job.created_at,
+            ],
+        )
+        await self.db.execute(
+            """
+            INSERT INTO scene_revisions (
+              id, history_item_id, render_job_id, revision_no, change_source, change_summary, scene_json, response_json, created_at
+            ) VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?)
+            ON CONFLICT(history_item_id, revision_no) DO NOTHING
+            """,
+            [f"{job.id}:r1", job.id, job.id, job.source_type, "Bản dựng đầu tiên", job.scene_json, job.response_json, job.created_at],
+        )
+
+    async def patch_item(self, user_id: str, job_id: str, patch: dict) -> RenderJobRecord | None:
+        job = await self.find_for_user(user_id, job_id)
+        if job is None:
+            return None
+        await self.ensure_history_item(job)
+        assignments: list[str] = []
+        params: list[object] = []
+        for field in ("title", "project_id", "is_favorite"):
+            if field in patch:
+                assignments.append(f"{field} = ?")
+                value = patch[field]
+                params.append(1 if field == "is_favorite" and value else 0 if field == "is_favorite" else value)
+        if "archived" in patch:
+            assignments.append("archived_at = CASE WHEN ? THEN CURRENT_TIMESTAMP ELSE NULL END")
+            params.append(1 if patch["archived"] else 0)
+        if assignments:
+            params.extend([job_id, user_id])
+            await self.db.execute(
+                f"UPDATE history_items SET {', '.join(assignments)}, updated_at = CURRENT_TIMESTAMP WHERE render_job_id = ? AND user_id = ?",
+                params,
+            )
+        if "tags" in patch:
+            await self.replace_tags(user_id, job_id, patch["tags"] or [])
+        return await self.find_for_user(user_id, job_id)
+
+    async def replace_tags(self, user_id: str, job_id: str, tags: list[str]) -> None:
+        item = await self.db.fetch_one("SELECT id FROM history_items WHERE user_id = ? AND render_job_id = ?", [user_id, job_id])
+        if item is None:
+            return
+        history_item_id = str(item["id"])
+        await self.db.execute("DELETE FROM history_item_tags WHERE history_item_id = ?", [history_item_id])
+        for label in tags:
+            tag_id = f"{user_id}:{label.lower()}"
+            await self.db.execute(
+                """
+                INSERT INTO history_tags (id, user_id, label, updated_at)
+                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(user_id, label) DO UPDATE SET updated_at = CURRENT_TIMESTAMP
+                """,
+                [tag_id, user_id, label],
+            )
+            row = await self.db.fetch_one("SELECT id FROM history_tags WHERE user_id = ? AND label = ?", [user_id, label])
+            if row:
+                await self.db.execute(
+                    "INSERT INTO history_item_tags (history_item_id, tag_id) VALUES (?, ?) ON CONFLICT(history_item_id, tag_id) DO NOTHING",
+                    [history_item_id, row["id"]],
+                )
+
+    async def tags_for_item(self, history_item_id: str | None) -> list[str]:
+        if not history_item_id:
+            return []
+        rows = await self.db.fetch_all(
+            """
+            SELECT t.label
+            FROM history_item_tags it
+            JOIN history_tags t ON t.id = it.tag_id
+            WHERE it.history_item_id = ?
+            ORDER BY t.label ASC
+            """,
+            [history_item_id],
+        )
+        return [str(row["label"]) for row in rows]
+
+    async def list_revisions_for_user(self, user_id: str, job_id: str) -> list[SceneRevisionRecord]:
+        rows = await self.db.fetch_all(
+            """
+            SELECT sr.*
+            FROM scene_revisions sr
+            JOIN history_items h ON h.id = sr.history_item_id
+            WHERE h.user_id = ? AND h.render_job_id = ?
+            ORDER BY sr.revision_no DESC
+            """,
+            [user_id, job_id],
+        )
+        return [scene_revision_from_row(row) for row in rows]
+
+
+def request_tier(render_request_json: str | None) -> str | None:
+    if not render_request_json:
+        return None
+    try:
+        parsed = json.loads(render_request_json)
+    except json.JSONDecodeError:
+        return None
+    tier = parsed.get("tier") if isinstance(parsed, dict) else None
+    return str(tier) if tier else None
+
+
+def scene_revision_from_row(row: DbRow) -> SceneRevisionRecord:
+    return SceneRevisionRecord(
+        id=str(row["id"]),
+        history_item_id=str(row["history_item_id"]),
+        render_job_id=str(row["render_job_id"]) if row.get("render_job_id") is not None else None,
+        revision_no=int(row["revision_no"]),
+        change_source=str(row.get("change_source") or "render"),
+        change_summary=str(row["change_summary"]) if row.get("change_summary") is not None else None,
+        scene_json=str(row["scene_json"]),
+        response_json=str(row["response_json"]) if row.get("response_json") is not None else None,
+        created_at=str(row["created_at"]),
+    )
 
 
 def render_job_from_row(row: DbRow) -> RenderJobRecord:
@@ -186,4 +381,14 @@ def render_job_from_row(row: DbRow) -> RenderJobRecord:
         ai_source=str(row.get("ai_source") or "none"),
         response_json=str(row["response_json"]) if row.get("response_json") is not None else None,
         schema_version=str(row.get("schema_version") or "1.0"),
+        history_item_id=str(row["history_item_id"]) if row.get("history_item_id") is not None else None,
+        title=str(row["title"]) if row.get("title") is not None else None,
+        problem_preview=str(row["problem_preview"]) if row.get("problem_preview") is not None else None,
+        topic=str(row.get("topic") or "unknown"),
+        grade=str(row["grade"]) if row.get("grade") is not None else None,
+        tier=str(row["tier"]) if row.get("tier") is not None else None,
+        is_favorite=bool(row.get("is_favorite") or 0),
+        archived_at=str(row["archived_at"]) if row.get("archived_at") is not None else None,
+        last_opened_at=str(row["last_opened_at"]) if row.get("last_opened_at") is not None else None,
+        history_updated_at=str(row["history_updated_at"]) if row.get("history_updated_at") is not None else None,
     )

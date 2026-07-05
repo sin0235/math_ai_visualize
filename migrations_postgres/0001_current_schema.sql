@@ -398,3 +398,97 @@ CREATE TABLE IF NOT EXISTS user_ai_task_profiles (
 );
 
 CREATE INDEX IF NOT EXISTS idx_user_ai_task_profiles_user_enabled ON user_ai_task_profiles(user_id, enabled);
+
+CREATE TABLE IF NOT EXISTS user_learning_profiles (
+  user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  preferred_name TEXT,
+  locale TEXT NOT NULL DEFAULT 'vi-VN',
+  timezone TEXT,
+  education_level TEXT,
+  grade_level TEXT,
+  math_level TEXT,
+  learning_goals_json TEXT NOT NULL DEFAULT '[]',
+  subject_focus_json TEXT NOT NULL DEFAULT '[]',
+  preferred_explanation_style TEXT,
+  accessibility_needs_json TEXT NOT NULL DEFAULT '[]',
+  profile_json TEXT NOT NULL DEFAULT '{}',
+  onboarding_completed_at TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS history_projects (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  description TEXT,
+  archived_at TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_history_projects_user_updated ON history_projects(user_id, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS history_items (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  render_job_id TEXT UNIQUE REFERENCES render_jobs(id) ON DELETE CASCADE,
+  project_id TEXT REFERENCES history_projects(id) ON DELETE SET NULL,
+  title TEXT,
+  problem_preview TEXT NOT NULL DEFAULT '',
+  topic TEXT NOT NULL DEFAULT 'unknown',
+  grade TEXT,
+  tier TEXT,
+  renderer TEXT,
+  provider TEXT,
+  model TEXT,
+  source_type TEXT NOT NULL DEFAULT 'problem',
+  status TEXT NOT NULL DEFAULT 'completed',
+  is_favorite INTEGER NOT NULL DEFAULT 0 CHECK (is_favorite IN (0, 1)),
+  archived_at TEXT,
+  last_opened_at TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_history_items_user_created ON history_items(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_history_items_user_updated ON history_items(user_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_history_items_user_favorite ON history_items(user_id, is_favorite, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_history_items_user_topic ON history_items(user_id, topic, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_history_items_project_updated ON history_items(project_id, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS scene_revisions (
+  id TEXT PRIMARY KEY,
+  history_item_id TEXT NOT NULL REFERENCES history_items(id) ON DELETE CASCADE,
+  render_job_id TEXT REFERENCES render_jobs(id) ON DELETE SET NULL,
+  revision_no INTEGER NOT NULL,
+  change_source TEXT NOT NULL DEFAULT 'render',
+  change_summary TEXT,
+  scene_json TEXT NOT NULL,
+  response_json TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(history_item_id, revision_no)
+);
+
+CREATE INDEX IF NOT EXISTS idx_scene_revisions_item_created ON scene_revisions(history_item_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS history_tags (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  label TEXT NOT NULL,
+  color TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(user_id, label)
+);
+
+CREATE INDEX IF NOT EXISTS idx_history_tags_user_label ON history_tags(user_id, label);
+
+CREATE TABLE IF NOT EXISTS history_item_tags (
+  history_item_id TEXT NOT NULL REFERENCES history_items(id) ON DELETE CASCADE,
+  tag_id TEXT NOT NULL REFERENCES history_tags(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (history_item_id, tag_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_history_item_tags_tag ON history_item_tags(tag_id, history_item_id);

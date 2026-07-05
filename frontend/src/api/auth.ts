@@ -13,6 +13,38 @@ export interface UserResponse {
   password_changed_at?: string | null;
 }
 
+export interface UserLearningProfileResponse {
+  preferred_name?: string | null;
+  locale: string;
+  timezone?: string | null;
+  education_level?: string | null;
+  grade_level?: string | null;
+  math_level?: string | null;
+  learning_goals: string[];
+  subject_focus: string[];
+  preferred_explanation_style?: string | null;
+  accessibility_needs: string[];
+  profile: Record<string, unknown>;
+  onboarding_completed_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface UserLearningProfileUpdateRequest {
+  preferred_name?: string | null;
+  locale?: string | null;
+  timezone?: string | null;
+  education_level?: string | null;
+  grade_level?: string | null;
+  math_level?: string | null;
+  learning_goals?: string[] | null;
+  subject_focus?: string[] | null;
+  preferred_explanation_style?: string | null;
+  accessibility_needs?: string[] | null;
+  profile?: Record<string, unknown> | null;
+  onboarding_completed_at?: string | null;
+}
+
 export interface AuthResponse {
   user: UserResponse;
 }
@@ -135,6 +167,19 @@ export async function updateProfile(displayName: string): Promise<AuthResponse> 
     credentials: 'include',
     body: JSON.stringify({ display_name: displayName }),
   }, 'Không thể cập nhật hồ sơ.');
+}
+
+export async function getLearningProfile(): Promise<UserLearningProfileResponse> {
+  return requestJson('/api/user/profile', { credentials: 'include' }, 'Không thể tải hồ sơ học tập.');
+}
+
+export async function updateLearningProfile(request: UserLearningProfileUpdateRequest): Promise<UserLearningProfileResponse> {
+  return requestJson('/api/user/profile', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(request),
+  }, 'Không thể cập nhật hồ sơ học tập.');
 }
 
 export async function getSessions(): Promise<SessionResponse[]> {

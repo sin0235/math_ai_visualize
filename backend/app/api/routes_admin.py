@@ -220,6 +220,19 @@ async def admin_render_jobs(
             created_at=job.created_at,
             source_type=job.source_type,
             renderer=job.renderer,
+            degraded=job.degraded,
+            fallback_source=job.fallback_source,  # type: ignore[arg-type]
+            ai_source=job.ai_source,  # type: ignore[arg-type]
+            schema_version=job.schema_version,
+            title=job.title,
+            problem_preview=job.problem_preview,
+            topic=job.topic,
+            grade=job.grade,
+            tier=job.tier,
+            is_favorite=job.is_favorite,
+            archived_at=job.archived_at,
+            last_opened_at=job.last_opened_at,
+            updated_at=job.history_updated_at,
         )
         for job in jobs
     ]
@@ -239,6 +252,19 @@ async def admin_render_job(job_id: str, _: UserRecord = Depends(require_admin_us
         created_at=job.created_at,
         source_type=job.source_type,
         renderer=job.renderer,
+        degraded=job.degraded,
+        fallback_source=job.fallback_source,  # type: ignore[arg-type]
+        ai_source=job.ai_source,  # type: ignore[arg-type]
+        schema_version=job.schema_version,
+        title=job.title,
+        problem_preview=job.problem_preview,
+        topic=job.topic,
+        grade=job.grade,
+        tier=job.tier,
+        is_favorite=job.is_favorite,
+        archived_at=job.archived_at,
+        last_opened_at=job.last_opened_at,
+        updated_at=job.history_updated_at,
         scene=MathScene.model_validate_json(job.scene_json),
         payload=RenderPayload.model_validate_json(job.payload_json),
         warnings=json.loads(job.warnings_json),

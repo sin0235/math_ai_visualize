@@ -114,14 +114,25 @@ class AdminRepository:
         params: list[object] = []
         for column, value in (("provider", provider), ("model", model), ("renderer", renderer), ("source_type", source_type), ("user_id", user_id)):
             if value:
-                clauses.append(f"{column} = ?")
+                clauses.append(f"r.{column} = ?")
                 params.append(value)
         if query:
-            clauses.append("(lower(problem_text) LIKE ? OR id LIKE ?)")
-            params.extend([f"%{query.lower()}%", f"%{query}%"])
+            clauses.append("(lower(r.problem_text) LIKE ? OR lower(COALESCE(h.title, '')) LIKE ? OR r.id LIKE ?)")
+            params.extend([f"%{query.lower()}%", f"%{query.lower()}%", f"%{query}%"])
         where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
         params.append(min(max(limit, 1), 200))
-        rows = await self.db.fetch_all(f"SELECT * FROM render_jobs{where} ORDER BY created_at DESC LIMIT ?", params)
+        rows = await self.db.fetch_all(
+            f"""
+            SELECT r.*, h.id AS history_item_id, h.title, h.problem_preview, h.topic, h.grade, h.tier, h.is_favorite,
+                   h.archived_at, h.last_opened_at, h.updated_at AS history_updated_at
+            FROM render_jobs r
+            LEFT JOIN history_items h ON h.render_job_id = r.id
+            {where}
+            ORDER BY r.created_at DESC
+            LIMIT ?
+            """,
+            params,
+        )
         return [render_job_from_row(row) for row in rows]
 
     async def count_user_render_jobs_since(self, user_id: str, since_iso: str, source_type: str | None = None, ai_source: str | None = None) -> int:
@@ -160,7 +171,16 @@ class AdminRepository:
         )
 
     async def find_render_job(self, job_id: str) -> RenderJobRecord | None:
-        row = await self.db.fetch_one("SELECT * FROM render_jobs WHERE id = ?", [job_id])
+        row = await self.db.fetch_one(
+            """
+            SELECT r.*, h.id AS history_item_id, h.title, h.problem_preview, h.topic, h.grade, h.tier, h.is_favorite,
+                   h.archived_at, h.last_opened_at, h.updated_at AS history_updated_at
+            FROM render_jobs r
+            LEFT JOIN history_items h ON h.render_job_id = r.id
+            WHERE r.id = ?
+            """,
+            [job_id],
+        )
         return render_job_from_row(row) if row else None
 
     async def delete_render_job(self, job_id: str) -> None:

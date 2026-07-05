@@ -1,6 +1,6 @@
 import { lazy, Suspense } from 'react';
 import { KatexSpan } from './KatexSpan';
-import type { RenderHistoryItem, UserResponse } from '../api/client';
+import type { RenderHistoryItem, RenderHistoryPatchRequest, UserResponse } from '../api/client';
 
 const HomeTetrahedronShowcase = lazy(() => import('./HomeTetrahedronShowcase').then((module) => ({ default: module.HomeTetrahedronShowcase })));
 
@@ -308,7 +308,9 @@ export function AboutPage({ onStart, onGuide }: { onStart: () => void; onGuide: 
 }
 
 
-export function HistoryPage({ user, items, loading, openingId, onOpen, onDelete, onLogin, onWorkspace }: { user: UserResponse | null; items: RenderHistoryItem[]; loading: boolean; openingId: string | null; onOpen: (id: string) => void; onDelete: (id: string) => void; onLogin: () => void; onWorkspace: () => void }) {
+type HistoryPatchHandler = (id: string, patch: RenderHistoryPatchRequest) => void | Promise<void>;
+
+export function HistoryPage({ user, items, loading, openingId, onOpen, onDelete, onPatch, onLogin, onWorkspace }: { user: UserResponse | null; items: RenderHistoryItem[]; loading: boolean; openingId: string | null; onOpen: (id: string) => void; onDelete: (id: string) => void; onPatch?: HistoryPatchHandler; onLogin: () => void; onWorkspace: () => void }) {
   if (!user) {
     return (
       <section className="product-page-card">
@@ -330,7 +332,7 @@ export function HistoryPage({ user, items, loading, openingId, onOpen, onDelete,
         </div>
         <button type="button" onClick={onWorkspace}>Dựng hình mới</button>
       </div>
-      <HistoryPanel items={items} loading={loading} openingId={openingId} onOpen={onOpen} onDelete={onDelete} />
+      <HistoryPanel items={items} loading={loading} openingId={openingId} onOpen={onOpen} onDelete={onDelete} onPatch={onPatch} />
     </section>
   );
 }
@@ -345,7 +347,7 @@ export function MetricCard({ label, value, suffix = '' }: { label: string; value
   );
 }
 
-export function HistoryPanel({ items, loading, openingId, onOpen, onDelete }: { items: RenderHistoryItem[]; loading: boolean; openingId: string | null; onOpen: (id: string) => void; onDelete: (id: string) => void }) {
+export function HistoryPanel({ items, loading, openingId, onOpen, onDelete, onPatch }: { items: RenderHistoryItem[]; loading: boolean; openingId: string | null; onOpen: (id: string) => void; onDelete: (id: string) => void; onPatch?: HistoryPatchHandler }) {
   return (
     <section className="history-panel">
       <div className="history-panel-header">
@@ -358,16 +360,39 @@ export function HistoryPanel({ items, loading, openingId, onOpen, onDelete }: { 
         <div className="history-list">
           {items.map((item) => {
             const opening = openingId === item.id;
+            const title = historyTitle(item);
+            const preview = item.problem_preview && item.problem_preview !== title ? item.problem_preview : item.problem_text;
             return (
-              <article className={`history-item${opening ? ' opening' : ''}`} key={item.id}>
-                <button type="button" onClick={() => onOpen(item.id)} disabled={opening} aria-busy={opening}>
+              <article className={`history-item${opening ? ' opening' : ''}${item.archived_at ? ' archived' : ''}`} key={item.id}>
+                <button type="button" className="history-open-button" onClick={() => onOpen(item.id)} disabled={opening} aria-busy={opening}>
                   <span className="history-item-copy">
-                    <strong>{item.problem_text}</strong>
-                    <span>{formatHistoryDate(item.created_at)} · {historySourceLabel(item.source_type)}{item.renderer ? ` · ${item.renderer}` : ''}{item.model ? ` · ${item.model}` : ''}</span>
+                    <strong>{title}</strong>
+                    <span>{preview}</span>
+                    <small>{historyMetaLine(item)}</small>
+                    <span className="history-badge-row">
+                      {item.is_favorite && <em>Yêu thích</em>}
+                      {item.archived_at && <em>Lưu trữ</em>}
+                      {item.topic && <em>{item.topic}</em>}
+                      {item.grade && <em>Lớp {item.grade}</em>}
+                      {item.tier && <em>{item.tier}</em>}
+                      {item.tags?.map((tag) => <em key={tag}>{tag}</em>)}
+                    </span>
                   </span>
                   {opening && <span className="history-opening-indicator" aria-hidden="true"><span className="sp-spinner" /></span>}
                 </button>
-                <button type="button" className="history-delete" onClick={() => onDelete(item.id)} disabled={opening} aria-label="Xoá lịch sử">×</button>
+                <div className="history-item-actions">
+                  {onPatch && (
+                    <>
+                      <button type="button" className="secondary-button" onClick={() => void onPatch(item.id, { is_favorite: !item.is_favorite })} disabled={opening}>
+                        {item.is_favorite ? 'Bỏ thích' : 'Yêu thích'}
+                      </button>
+                      <button type="button" className="secondary-button" onClick={() => void onPatch(item.id, { archived: !item.archived_at })} disabled={opening}>
+                        {item.archived_at ? 'Bỏ lưu trữ' : 'Lưu trữ'}
+                      </button>
+                    </>
+                  )}
+                  <button type="button" className="history-delete" onClick={() => onDelete(item.id)} disabled={opening} aria-label="Xoá lịch sử">×</button>
+                </div>
               </article>
             );
           })}
@@ -381,6 +406,20 @@ function formatHistoryDate(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' });
+}
+
+function historyTitle(item: RenderHistoryItem) {
+  return item.title?.trim() || item.problem_preview?.trim() || item.problem_text;
+}
+
+function historyMetaLine(item: RenderHistoryItem) {
+  return [
+    formatHistoryDate(item.created_at),
+    historySourceLabel(item.source_type),
+    item.renderer,
+    item.provider,
+    item.model,
+  ].filter(Boolean).join(' · ') + historyMetadataLabel(item);
 }
 
 function historySourceLabel(sourceType: string) {

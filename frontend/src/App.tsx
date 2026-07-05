@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ApiError, changePassword, deleteRenderHistory, forgotPassword, getCurrentUser, getHealth, getRenderHistory, getRenderHistoryDetail, getSessions, getSettingsDefaults, login, loginWithGoogle, logout, ocrImageByUploadId, register, renderEditedScene, renderProblem, resendVerification, resetPassword, revokeOtherSessions, revokeSession, updateProfile, uploadOcrImage, verifyEmail, type AdminRenderHistoryDetail, type RenderHistoryItem, type SessionResponse, type UserResponse } from './api/client';
+import { ApiError, changePassword, deleteRenderHistory, forgotPassword, getCurrentUser, getHealth, getLearningProfile, getRenderHistory, getRenderHistoryDetail, getSessions, getSettingsDefaults, login, loginWithGoogle, logout, ocrImageByUploadId, patchRenderHistory, register, renderEditedScene, renderProblem, resendVerification, resetPassword, revokeOtherSessions, revokeSession, updateLearningProfile, updateProfile, uploadOcrImage, verifyEmail, type AdminRenderHistoryDetail, type RenderHistoryItem, type SessionResponse, type UserLearningProfileResponse, type UserLearningProfileUpdateRequest, type UserResponse } from './api/client';
 import { defaultAdvancedSettings, ProblemInput, type TierKey } from './components/ProblemInput';
 import { AccountPage } from './components/AccountPage';
 import { SettingsPage } from './components/SettingsPage';
@@ -194,6 +194,7 @@ export default function App() {
   const [authToken, setAuthToken] = useState('');
   const [pendingVerificationEmail, setPendingVerificationEmail] = useState('');
   const [historyItems, setHistoryItems] = useState<RenderHistoryItem[]>([]);
+  const [learningProfile, setLearningProfile] = useState<UserLearningProfileResponse | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [openingHistoryId, setOpeningHistoryId] = useState<string | null>(null);
@@ -547,6 +548,7 @@ export default function App() {
 
   function clearSessionState() {
     setUser(null);
+    setLearningProfile(null);
     setHistoryItems([]);
     setHistoryOpen(false);
     setAccountMenuOpen(false);
@@ -650,6 +652,10 @@ export default function App() {
     setUser(response.user);
   }
 
+  async function handleUpdateLearningProfile(patch: UserLearningProfileUpdateRequest) {
+    setLearningProfile(await updateLearningProfile(patch));
+  }
+
   async function handleChangePassword(currentPassword: string, newPassword: string) {
     const response = await changePassword(currentPassword, newPassword);
     return response.message;
@@ -670,7 +676,10 @@ export default function App() {
   }
 
   async function loadRemoteWorkspace(_: UserResponse) {
-    await refreshHistory();
+    await Promise.all([
+      refreshHistory(),
+      getLearningProfile().then(setLearningProfile).catch(() => setLearningProfile(null)),
+    ]);
   }
 
   async function refreshHistory() {
@@ -714,6 +723,16 @@ export default function App() {
     } catch (caught) {
       const apiError = toApiError(caught, 'Không thể xoá lịch sử dựng hình.');
       showApiError('Không thể xoá lịch sử', apiError, 'Hãy thử lại sau.');
+    }
+  }
+
+  async function updateHistoryItem(id: string, patch: Parameters<typeof patchRenderHistory>[1]) {
+    try {
+      const updated = await patchRenderHistory(id, patch);
+      setHistoryItems((current) => current.map((item) => item.id === id ? { ...item, ...updated } : item));
+    } catch (caught) {
+      const apiError = toApiError(caught, 'Không thể cập nhật lịch sử dựng hình.');
+      showApiError('Không thể cập nhật lịch sử', apiError, 'Hãy thử lại sau.');
     }
   }
 
@@ -1115,7 +1134,7 @@ export default function App() {
                       <button type="button" className="secondary-button history-toggle" onClick={() => setHistoryOpen((open) => !open)}>
                         {historyOpen ? 'Ẩn lịch sử' : `Lịch sử (${historyItems.length})`}
                       </button>
-                      {historyOpen && <HistoryPanel items={historyItems} loading={historyLoading} openingId={openingHistoryId} onOpen={openHistoryItem} onDelete={removeHistoryItem} />}
+                      {historyOpen && <HistoryPanel items={historyItems} loading={historyLoading} openingId={openingHistoryId} onOpen={openHistoryItem} onDelete={removeHistoryItem} onPatch={updateHistoryItem} />}
                     </div>
                   )}
                 </>
@@ -1290,6 +1309,7 @@ export default function App() {
             openingId={openingHistoryId}
             onOpen={openHistoryItem}
             onDelete={removeHistoryItem}
+            onPatch={updateHistoryItem}
             onLogin={() => navigateTo('login')}
             onWorkspace={() => navigateTo('render')}
           />
@@ -1335,6 +1355,8 @@ export default function App() {
             onLogout={handleLogout}
             onResendVerification={handleResendVerification}
             onUpdateProfile={handleUpdateProfile}
+            learningProfile={learningProfile}
+            onUpdateLearningProfile={handleUpdateLearningProfile}
             onChangePassword={handleChangePassword}
             onLoadSessions={handleLoadSessions}
             onRevokeSession={handleRevokeSession}

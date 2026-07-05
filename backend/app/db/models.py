@@ -115,6 +115,48 @@ class RenderJobRecord:
     ai_source: str = "none"
     response_json: str | None = None
     schema_version: str = "1.0"
+    history_item_id: str | None = None
+    title: str | None = None
+    problem_preview: str | None = None
+    topic: str = "unknown"
+    grade: str | None = None
+    tier: str | None = None
+    is_favorite: bool = False
+    archived_at: str | None = None
+    last_opened_at: str | None = None
+    history_updated_at: str | None = None
+
+
+@dataclass(frozen=True)
+class UserLearningProfileRecord:
+    user_id: str
+    preferred_name: str | None
+    locale: str
+    timezone: str | None
+    education_level: str | None
+    grade_level: str | None
+    math_level: str | None
+    learning_goals_json: str
+    subject_focus_json: str
+    preferred_explanation_style: str | None
+    accessibility_needs_json: str
+    profile_json: str
+    onboarding_completed_at: str | None
+    created_at: str
+    updated_at: str
+
+
+@dataclass(frozen=True)
+class SceneRevisionRecord:
+    id: str
+    history_item_id: str
+    render_job_id: str | None
+    revision_no: int
+    change_source: str
+    change_summary: str | None
+    scene_json: str
+    response_json: str | None
+    created_at: str
 
 
 @dataclass(frozen=True)

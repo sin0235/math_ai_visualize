@@ -36,6 +36,34 @@ export interface RenderHistoryItem {
   fallback_source?: RenderFallbackSource;
   ai_source?: RenderAiSource;
   schema_version?: string;
+  title?: string | null;
+  problem_preview?: string | null;
+  topic?: string;
+  grade?: string | null;
+  tier?: string | null;
+  is_favorite?: boolean;
+  archived_at?: string | null;
+  last_opened_at?: string | null;
+  updated_at?: string | null;
+  tags?: string[];
+}
+
+export interface RenderHistoryPatchRequest {
+  title?: string | null;
+  project_id?: string | null;
+  is_favorite?: boolean | null;
+  archived?: boolean | null;
+  tags?: string[] | null;
+}
+
+export interface SceneRevisionResponse {
+  id: string;
+  history_item_id: string;
+  render_job_id?: string | null;
+  revision_no: number;
+  change_source: string;
+  change_summary?: string | null;
+  created_at: string;
 }
 
 export interface RenderHistoryDetail extends RenderHistoryItem {
@@ -109,6 +137,19 @@ export async function getSettingsDefaults(): Promise<SettingsDefaults> {
 
 export async function getRenderHistory(): Promise<RenderHistoryItem[]> {
   return requestJson('/api/history', { credentials: 'include' }, 'Không thể tải lịch sử dựng hình.');
+}
+
+export async function patchRenderHistory(id: string, patch: RenderHistoryPatchRequest): Promise<RenderHistoryItem> {
+  return requestJson(`/api/history/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(patch),
+  }, 'Không thể cập nhật lịch sử.');
+}
+
+export async function getRenderHistoryRevisions(id: string): Promise<SceneRevisionResponse[]> {
+  return requestJson(`/api/history/${encodeURIComponent(id)}/revisions`, { credentials: 'include' }, 'Không thể tải phiên bản scene.');
 }
 
 export async function getRenderHistoryDetail(id: string): Promise<RenderHistoryDetail> {

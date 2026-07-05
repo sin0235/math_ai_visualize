@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-import type { SessionResponse, UserResponse } from '../api/client';
+import type { SessionResponse, UserLearningProfileResponse, UserLearningProfileUpdateRequest, UserResponse } from '../api/client';
 
 type AccountIconName = 'profile' | 'lock' | 'sessions' | 'shield' | 'workspace' | 'logout';
 type ToastKind = 'error' | 'warning' | 'info';
@@ -14,6 +14,8 @@ interface AccountPageProps {
   onLogout: () => Promise<void>;
   onResendVerification: () => Promise<string>;
   onUpdateProfile: (displayName: string) => Promise<void>;
+  learningProfile: UserLearningProfileResponse | null;
+  onUpdateLearningProfile: (patch: UserLearningProfileUpdateRequest) => Promise<void>;
   onChangePassword: (currentPassword: string, newPassword: string) => Promise<string>;
   onLoadSessions: () => Promise<SessionResponse[]>;
   onRevokeSession: (id: string) => Promise<string>;
@@ -29,12 +31,21 @@ export function AccountPage({
   onLogout,
   onResendVerification,
   onUpdateProfile,
+  learningProfile,
+  onUpdateLearningProfile,
   onChangePassword,
   onLoadSessions,
   onRevokeSession,
   onRevokeOtherSessions,
 }: AccountPageProps) {
   const [displayName, setDisplayName] = useState(user.display_name ?? '');
+  const [preferredName, setPreferredName] = useState(learningProfile?.preferred_name ?? '');
+  const [educationLevel, setEducationLevel] = useState(learningProfile?.education_level ?? '');
+  const [gradeLevel, setGradeLevel] = useState(learningProfile?.grade_level ?? '');
+  const [mathLevel, setMathLevel] = useState(learningProfile?.math_level ?? '');
+  const [explanationStyle, setExplanationStyle] = useState(learningProfile?.preferred_explanation_style ?? '');
+  const [learningGoals, setLearningGoals] = useState(toCommaText(learningProfile?.learning_goals));
+  const [subjectFocus, setSubjectFocus] = useState(toCommaText(learningProfile?.subject_focus));
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -44,6 +55,16 @@ export function AccountPage({
   useEffect(() => {
     setDisplayName(user.display_name ?? '');
   }, [user.display_name]);
+
+  useEffect(() => {
+    setPreferredName(learningProfile?.preferred_name ?? '');
+    setEducationLevel(learningProfile?.education_level ?? '');
+    setGradeLevel(learningProfile?.grade_level ?? '');
+    setMathLevel(learningProfile?.math_level ?? '');
+    setExplanationStyle(learningProfile?.preferred_explanation_style ?? '');
+    setLearningGoals(toCommaText(learningProfile?.learning_goals));
+    setSubjectFocus(toCommaText(learningProfile?.subject_focus));
+  }, [learningProfile]);
 
   useEffect(() => {
     refreshSessions().catch((error) =>
@@ -64,6 +85,27 @@ export function AccountPage({
       onToast('Hồ sơ', 'Hồ sơ đã được cập nhật.', 'info');
     } catch (error) {
       onToast('Hồ sơ', error instanceof Error ? error.message : 'Không thể cập nhật hồ sơ.', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function submitLearningProfile(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setLoading(true);
+    try {
+      await onUpdateLearningProfile({
+        preferred_name: emptyToNull(preferredName),
+        education_level: emptyToNull(educationLevel),
+        grade_level: emptyToNull(gradeLevel),
+        math_level: emptyToNull(mathLevel),
+        preferred_explanation_style: emptyToNull(explanationStyle),
+        learning_goals: toTextList(learningGoals),
+        subject_focus: toTextList(subjectFocus),
+      });
+      onToast('Hồ sơ học tập', 'Hồ sơ học tập đã được cập nhật.', 'info');
+    } catch (error) {
+      onToast('Hồ sơ học tập', error instanceof Error ? error.message : 'Không thể cập nhật hồ sơ học tập.', 'error');
     } finally {
       setLoading(false);
     }
@@ -181,6 +223,44 @@ export function AccountPage({
               </div>
             </form>
 
+            <form className="account-panel account-panel-card" onSubmit={submitLearningProfile}>
+              <div className="account-section-title">
+                <div className="account-panel-title"><AccountIcon name="profile" /><h3>Hồ sơ học tập</h3></div>
+                <button type="submit" className="secondary-button" disabled={loading}>Lưu học tập</button>
+              </div>
+              <div className="account-form-grid account-learning-grid">
+                <label className="field-label">
+                  Tên gọi khi học
+                  <input value={preferredName} onChange={(event) => setPreferredName(event.target.value)} placeholder="Ví dụ: Minh" maxLength={256} />
+                </label>
+                <label className="field-label">
+                  Cấp học
+                  <input value={educationLevel} onChange={(event) => setEducationLevel(event.target.value)} placeholder="THCS, THPT, đại học..." maxLength={64} />
+                </label>
+                <label className="field-label">
+                  Lớp
+                  <input value={gradeLevel} onChange={(event) => setGradeLevel(event.target.value)} placeholder="Ví dụ: 12" maxLength={64} />
+                </label>
+                <label className="field-label">
+                  Mức toán
+                  <input value={mathLevel} onChange={(event) => setMathLevel(event.target.value)} placeholder="cơ bản, nâng cao..." maxLength={64} />
+                </label>
+                <label className="field-label">
+                  Mục tiêu học
+                  <input value={learningGoals} onChange={(event) => setLearningGoals(event.target.value)} placeholder="ôn thi, hiểu hình không gian" />
+                </label>
+                <label className="field-label">
+                  Chủ đề ưu tiên
+                  <input value={subjectFocus} onChange={(event) => setSubjectFocus(event.target.value)} placeholder="hình Oxyz, hàm số" />
+                </label>
+                <label className="field-label account-learning-wide">
+                  Cách giải thích ưa thích
+                  <input value={explanationStyle} onChange={(event) => setExplanationStyle(event.target.value)} placeholder="ngắn gọn, từng bước, trực quan..." maxLength={128} />
+                </label>
+              </div>
+              <p className="field-hint">Các mục nhiều giá trị cách nhau bằng dấu phẩy.</p>
+            </form>
+
             <div className="account-panel account-panel-card account-sessions-panel">
               <div className="account-section-title">
                 <div className="account-panel-title"><AccountIcon name="sessions" /><h3>Phiên đăng nhập</h3></div>
@@ -266,6 +346,19 @@ function AccountIcon({ name }: { name: AccountIconName }) {
 
 function getInitial(value: string) {
   return (value.trim()[0] || 'A').toUpperCase();
+}
+
+function toCommaText(values?: string[] | null) {
+  return values?.join(', ') ?? '';
+}
+
+function toTextList(value: string) {
+  return value.split(',').map((item) => item.trim()).filter(Boolean);
+}
+
+function emptyToNull(value: string) {
+  const normalized = value.trim();
+  return normalized ? normalized : null;
 }
 
 function formatLabel(value: string) {

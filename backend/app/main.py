@@ -18,6 +18,7 @@ from app.api.routes_ocr import router as ocr_router
 from app.api.routes_render import router as render_router
 from app.api.routes_settings import router as settings_router
 from app.api.routes_solve import router as solve_router
+from app.api.routes_user_profile import router as user_profile_router
 from app.api.routes_user_settings import router as user_settings_router
 from app.core.config import get_settings
 from app.core.logging import configure_logging
@@ -62,6 +63,7 @@ app.include_router(export_router)
 app.include_router(diagram_router)
 app.include_router(feedback_router)
 app.include_router(settings_router)
+app.include_router(user_profile_router)
 app.include_router(user_settings_router)
 app.include_router(solve_router)
 app.include_router(function_analysis_router)

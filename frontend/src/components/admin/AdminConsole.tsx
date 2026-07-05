@@ -884,7 +884,10 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
             <div className="admin-table">
               {renderJobs.map((job) => (
                 <article className="admin-row" key={job.id}>
-                  <div><strong>{job.problem_text}</strong><span>{formatHistoryDate(job.created_at)} · {job.user_id || 'guest'} · {job.provider || 'auto'} · {job.model || 'default'} · {job.renderer || 'auto'}</span></div>
+                  <div>
+                    <strong>{job.title || job.problem_preview || job.problem_text}</strong>
+                    <span>{formatHistoryDate(job.created_at)} · {job.user_email || job.user_display_name || job.user_id || 'guest'} · {job.provider || 'auto'} · {job.model || 'default'} · {job.renderer || 'auto'}{job.topic ? ` · ${job.topic}` : ''}{job.is_favorite ? ' · yêu thích' : ''}{job.archived_at ? ' · lưu trữ' : ''}</span>
+                  </div>
                   <div className="admin-row-actions"><button type="button" className="secondary-button" onClick={() => void inspectRenderJob(job.id)}>Chi tiết</button><button type="button" className="history-delete" onClick={() => onDeleteRenderJob(job.id)} aria-label="Xoá render job">×</button></div>
                 </article>
               ))}

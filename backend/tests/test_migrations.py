@@ -107,6 +107,42 @@ def test_postgres_ai_model_capabilities_migration_exists():
     assert "CREATE TABLE IF NOT EXISTS model_scan_job_models" in sql
 
 
+def test_structured_user_history_migration_adds_profile_history_tables(tmp_path):
+    db = SQLiteClient(str(tmp_path / "test.db"))
+
+    asyncio.run(apply_sqlite_migrations(db))
+    tables = asyncio.run(db.fetch_all("SELECT name FROM sqlite_master WHERE type = 'table'"))
+    table_names = {str(row["name"]) for row in tables}
+    history_columns = asyncio.run(db.fetch_all("PRAGMA table_info(history_items)"))
+    history_indexes = asyncio.run(db.fetch_all("PRAGMA index_list(history_items)"))
+
+    assert {
+        "user_learning_profiles",
+        "history_projects",
+        "history_items",
+        "scene_revisions",
+        "history_tags",
+        "history_item_tags",
+    }.issubset(table_names)
+    assert {"render_job_id", "title", "topic", "is_favorite", "archived_at", "last_opened_at"}.issubset({str(row["name"]) for row in history_columns})
+    assert {
+        "idx_history_items_user_updated",
+        "idx_history_items_user_favorite",
+        "idx_history_items_user_topic",
+    }.issubset({str(row["name"]) for row in history_indexes})
+
+
+def test_postgres_structured_user_history_migration_exists():
+    migration_names = {migration.name for migration in list_postgres_migration_files()}
+    migration = Path(__file__).resolve().parents[2] / "migrations_postgres" / "0003_structured_user_history.sql"
+    sql = migration.read_text(encoding="utf-8")
+
+    assert "0003_structured_user_history.sql" in migration_names
+    assert "CREATE TABLE IF NOT EXISTS user_learning_profiles" in sql
+    assert "CREATE TABLE IF NOT EXISTS history_items" in sql
+    assert "CREATE TABLE IF NOT EXISTS scene_revisions" in sql
+
+
 def test_postgres_sql_translates_placeholders_outside_literals():
     assert postgres_sql("SELECT * FROM users WHERE email = ? AND note = '?' AND created_at >= CURRENT_TIMESTAMP") == (
         "SELECT * FROM users WHERE email = $1 AND note = '?' AND created_at >= (CURRENT_TIMESTAMP::text)"

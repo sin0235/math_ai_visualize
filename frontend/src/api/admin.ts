@@ -60,10 +60,14 @@ export interface AdminSessionResponse {
 
 export interface AdminRenderHistoryItem extends RenderHistoryItem {
   user_id?: string | null;
+  user_email?: string | null;
+  user_display_name?: string | null;
 }
 
 export interface AdminRenderHistoryDetail extends RenderHistoryDetail {
   user_id?: string | null;
+  user_email?: string | null;
+  user_display_name?: string | null;
 }
 
 export interface AuditLogResponse {

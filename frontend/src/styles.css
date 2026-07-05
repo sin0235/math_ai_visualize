@@ -2071,6 +2071,24 @@ select {
   background: var(--surface);
 }
 
+.account-learning-wide {
+  grid-column: 1 / -1;
+}
+
+.account-learning-grid .field-hint {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 760px) {
+  .history-item {
+    grid-template-columns: 1fr;
+  }
+
+  .history-item-actions {
+    justify-content: flex-start;
+  }
+}
+
 .product-page-card,
 .admin-console {
   width: min(1180px, 100%);
@@ -4000,6 +4018,53 @@ select {
   width: 14px;
   height: 14px;
   border-width: 2px;
+}
+
+.history-item.archived {
+  opacity: 0.72;
+}
+
+.history-open-button {
+  width: 100%;
+}
+
+.history-item-actions {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: start;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.history-item-actions .secondary-button {
+  min-height: 30px;
+  padding: 6px 9px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+}
+
+.history-badge-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.history-badge-row em {
+  border: 1px solid #e5e7eb;
+  border-radius: 999px;
+  padding: 2px 7px;
+  background: #f8fafc;
+  color: #334155;
+  font-style: normal;
+  font-size: 0.72rem;
+  font-weight: 650;
+}
+
+.history-item-copy small {
+  color: #64748b;
+  font-size: 0.78rem;
 }
 
 .history-delete {
