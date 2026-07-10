@@ -50,6 +50,14 @@ def solve_inequality(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
             result_set = result_set.intersect(next_set)
     except Exception as exc:
         return _unsupported(problem, f"SymPy chưa giải được bất phương trình này: {exc}")
+    # Radical / log expressions: intersect with continuous domain so ĐKXĐ is enforced.
+    expr_domain = _expression_domain_set(raw_expression, variable)
+    if expr_domain is not None:
+        try:
+            result_set = result_set.intersect(expr_domain)
+            assumptions = _unique(assumptions + [f"Điều kiện xác định: {sp.latex(expr_domain)}"])
+        except Exception:
+            pass
     result_set = _apply_problem_domain(result_set, problem.sympy_domain)
     interval_warning: str | None = None
     if problem.solve_interval is not None:
@@ -83,8 +91,17 @@ def solve_inequality(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
         kind="transform",
         confidence="symbolic",
     ))
-    sign_steps = _sign_chart_steps(expression, variable, primary.rel_op, result_set, len(steps) + 1) if len(relations) == 1 and primary.rel_op != "!=" else []
-    steps.extend(sign_steps)
+    abs_steps = (
+        _abs_inequality_steps(primary, expression, variable, result_set, len(steps) + 1)
+        if len(relations) == 1
+        else []
+    )
+    sign_steps = (
+        _sign_chart_steps(expression, variable, primary.rel_op, result_set, len(steps) + 1)
+        if len(relations) == 1 and primary.rel_op != "!=" and not abs_steps
+        else []
+    )
+    steps.extend(abs_steps or sign_steps)
     result_set_for_verification = result_set if isinstance(result_set, sp.Set) else sp.S.UniversalSet
     verification = verify_inequality_solution_set(problem, result_set_for_verification, _verification_samples(expression, variable, result_set_for_verification))
     answer = format_interval_set(result_set)
@@ -106,7 +123,7 @@ def solve_inequality(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
         verification=verification,
         assumptions=assumptions,
         warnings=[
-            *([] if sign_steps else ["Bất phương trình được kiểm chứng ở mức tập nghiệm symbolic; chưa tạo được bảng xét dấu chi tiết cho dạng này."]),
+            *([] if (sign_steps or abs_steps) else ["Bất phương trình được kiểm chứng ở mức tập nghiệm symbolic; chưa tạo được bảng xét dấu chi tiết cho dạng này."]),
             *([interval_warning] if interval_warning else []),
         ],
         errors=[],
@@ -120,6 +137,95 @@ def _apply_problem_domain(result_set: sp.Set, domain: sp.Set) -> sp.Set:
         return result_set.intersect(domain)
     except Exception:
         return result_set
+
+
+def _expression_domain_set(expression: sp.Expr, variable: sp.Symbol) -> sp.Set | None:
+    """Domain restrictions from even roots / logs (SymPy continuous_domain)."""
+    needs = False
+    for power in expression.atoms(sp.Pow):
+        if power.base.has(variable) and power.exp.is_Rational and power.exp.q % 2 == 0:
+            needs = True
+            break
+    if not needs and expression.atoms(sp.log):
+        needs = any(arg.has(variable) for log_expr in expression.atoms(sp.log) for arg in log_expr.args[:1])
+    if not needs and expression.atoms(sp.Abs):
+        # Abs defined on R; no extra domain cut required
+        return None
+    if not needs:
+        return None
+    try:
+        from sympy.calculus.util import continuous_domain
+        return continuous_domain(expression, variable, sp.S.Reals)
+    except Exception:
+        # Fallback: even-root bases >= 0
+        constraints: list[sp.Set] = [sp.S.Reals]
+        for power in expression.atoms(sp.Pow):
+            if power.base.has(variable) and power.exp.is_Rational and power.exp.q % 2 == 0:
+                try:
+                    constraints.append(sp.solveset(sp.Ge(power.base, 0), variable, domain=sp.S.Reals))
+                except Exception:
+                    pass
+        domain = constraints[0]
+        for part in constraints[1:]:
+            domain = domain.intersect(part)
+        return domain
+
+
+def _abs_inequality_steps(
+    relation: sp.Relational,
+    expression: sp.Expr,
+    variable: sp.Symbol,
+    result_set: sp.Set,
+    start_index: int,
+) -> list[AlgebraSolveStep]:
+    abs_atoms = [atom for atom in expression.atoms(sp.Abs) if atom.args and atom.args[0].has(variable)]
+    if not abs_atoms or len(abs_atoms) > 2:
+        return []
+    notes = []
+    for atom in abs_atoms:
+        g = atom.args[0]
+        notes.append(
+            rf"{sp.latex(atom)}:\ g={sp.latex(g)}\ge 0 \Rightarrow {sp.latex(g)};\ "
+            rf"g<0 \Rightarrow {sp.latex(-g)}"
+        )
+    return [
+        AlgebraSolveStep(
+            index=start_index,
+            title="Xét dấu trị tuyệt đối (bất phương trình)",
+            explanation=(
+                "Bất phương trình có |·|; chia miền theo zero của biểu thức trong Abs rồi ghép nghiệm. "
+                + " ".join(notes)
+            ),
+            short_explanation="Case-split |g| trên từng miền.",
+            method="abs_inequality_case_split",
+            goal="Chia miền theo định nghĩa trị tuyệt đối.",
+            why="|g| đổi biểu thức tuyến tính theo dấu của g.",
+            rule="Định nghĩa |g|",
+            operation="Viết các trường hợp g≥0 và g<0, giải từng BPT, lấy hợp nghiệm hợp lệ.",
+            before_latex=sp.latex(relation),
+            after_latex="; ".join(notes),
+            pitfall="Nghiệm của mỗi case phải thuộc đúng miền giả sử.",
+            check="Thử điểm trong từng khoảng nghiệm cuối.",
+            expression=sp.sstr(expression),
+            expression_latex=sp.latex(expression),
+            kind="transform",
+            confidence="symbolic",
+        ),
+        AlgebraSolveStep(
+            index=start_index + 1,
+            title="Tập nghiệm sau khi ghép miền Abs",
+            explanation="Dùng solver symbolic trên R (SymPy); các case Abs được phản ánh trong tập nghiệm cuối.",
+            method="abs_inequality_solveset",
+            goal="Viết tập nghiệm bất phương trình Abs.",
+            why="solve_univariate_inequality/solveset xử lý Abs trên miền thực.",
+            rule="Ghép case + giao ĐKXĐ",
+            operation="Giải BPT Abs rồi ghi khoảng nghiệm.",
+            result=sp.sstr(result_set),
+            result_latex=sp.latex(result_set),
+            kind="solve",
+            confidence="symbolic",
+        ),
+    ]
 
 
 def _solve_relation_set(relation: sp.Relational, variable: sp.Symbol) -> sp.Set:
