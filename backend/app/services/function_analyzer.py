@@ -13,6 +13,9 @@ Nhận biểu thức hàm số → dùng SymPy tính:
 from __future__ import annotations
 
 import re
+import signal
+import threading
+from contextlib import contextmanager
 from math import isfinite
 from typing import Any, Mapping
 
@@ -27,6 +30,7 @@ from sympy import (
 from sympy.calculus.util import continuous_domain, function_range
 from sympy.calculus.singularities import singularities
 
+from app.services.function_domain import DomainPartition, FunctionDomain, filter_domain_values, in_domain, intersect_domain, removable_holes
 from app.services.safe_math_parser import SafeMathComplexityError, SafeMathParseError, SafeMathParseResult, parse_safe_math_expression
 
 
@@ -35,6 +39,63 @@ m = Symbol("m", real=True)
 
 _PARAMETER_RANGES = {"m": {"min": -10.0, "max": 10.0, "step": 0.1}}
 _CLEAN_RE = re.compile(r"\s+")
+
+ANALYZER_STAGE_TIMEOUT = "ANALYZER_STAGE_TIMEOUT"
+_STAGE_TIMEOUT_SECONDS = {
+    "parse": 1.0,
+    "domain": 2.0,
+    "range": 2.0,
+    "simplify": 1.0,
+    "derivative": 2.0,
+    "root_solving": 3.0,
+    "limits": 2.0,
+    "interval_tool": 3.0,
+    "line_tool": 3.0,
+    "parameter_conditions": 3.0,
+    "transform": 2.0,
+}
+
+
+class AnalyzerStageTimeout(TimeoutError):
+    code = ANALYZER_STAGE_TIMEOUT
+
+    def __init__(self, stage: str):
+        self.stage = stage
+        super().__init__(f"Stage analyzer quá thời gian: {stage}.")
+
+
+@contextmanager
+def analyzer_stage_timeout(stage: str, seconds: float | None = None):
+    timeout = seconds if seconds is not None else _STAGE_TIMEOUT_SECONDS.get(stage, 2.0)
+    if threading.current_thread() is not threading.main_thread() or not hasattr(signal, "SIGALRM"):
+        yield
+        return
+    previous_handler = signal.getsignal(signal.SIGALRM)
+    previous_timer = signal.getitimer(signal.ITIMER_REAL)
+
+    def _raise_timeout(signum, frame):
+        raise AnalyzerStageTimeout(stage)
+
+    signal.signal(signal.SIGALRM, _raise_timeout)
+    signal.setitimer(signal.ITIMER_REAL, timeout)
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous_handler)
+        if previous_timer[0] > 0:
+            signal.setitimer(signal.ITIMER_REAL, *previous_timer)
+
+
+def _record_stage_timeout(result: dict[str, Any], warnings: list[str], error: AnalyzerStageTimeout, *, core: bool = False) -> None:
+    result.setdefault("stage_statuses", {})[error.stage] = {"status": "timeout", "error_code": error.code}
+    warnings.append(str(error))
+    if core:
+        result["_skip_graph"] = True
+
+
+def _record_stage_ok(result: dict[str, Any], stage: str) -> None:
+    result.setdefault("stage_statuses", {})[stage] = {"status": "ok"}
 
 
 def _parse_expr(expression: str) -> SafeMathParseResult:
@@ -267,6 +328,38 @@ def _fmt_num(val) -> str:
         return str(val)
 
 
+def _expr_payload(value) -> dict[str, Any]:
+    exact = _fmt_sym(value)
+    payload: dict[str, Any] = {"exact": exact, "latex": latex(value), "approx": None, "precision": None}
+    try:
+        numeric = float(sp.N(value))
+        if isfinite(numeric):
+            payload["approx"] = _fmt_num(numeric)
+            payload["precision"] = "4dp"
+    except Exception:
+        pass
+    return payload
+
+
+def _limit_payload_v2(value) -> dict[str, Any]:
+    if value == oo:
+        return {"value": "+∞", "value_exact": "oo", "value_latex": r"\infty", "status": "infinite"}
+    if value == -oo:
+        return {"value": "-∞", "value_exact": "-oo", "value_latex": r"-\infty", "status": "infinite"}
+    if value in (zoo, nan, S.NaN) or str(value).startswith("AccumBounds") or isinstance(value, sp.Limit):
+        return {"value": None, "value_exact": None, "value_latex": None, "status": "dne"}
+    try:
+        simplified = simplify(value)
+    except Exception:
+        simplified = value
+    payload = _expr_payload(simplified)
+    return {"value": payload["approx"] or payload["exact"], "value_exact": payload["exact"], "value_latex": payload["latex"], "status": "finite"}
+
+
+def _is_limit_finite(value) -> bool:
+    return value not in (oo, -oo, zoo, nan, S.NaN) and not str(value).startswith("AccumBounds") and not isinstance(value, sp.Limit)
+
+
 def _parameter_value(parameters: Mapping[str, float] | None, name: str) -> float:
     raw = 1.0 if parameters is None else parameters.get(name, 1.0)
     try:
@@ -279,6 +372,320 @@ def _parameter_value(parameters: Mapping[str, float] | None, name: str) -> float
     return min(max(value, config["min"]), config["max"])
 
 
+def _periodicity_payload(f_expr, domain_info: FunctionDomain | None) -> dict[str, Any] | None:
+    if not any(f_expr.has(func) for func in (sin, cos, tan, cot)):
+        return None
+    try:
+        period = sp.periodicity(f_expr, x)
+    except Exception:
+        period = None
+    if period is None:
+        return None
+    payload = {
+        "status": "periodic",
+        "period": _fmt_sym(period),
+        "period_latex": latex(period),
+        "parameter": "k",
+        "parameter_domain": "Z",
+        "base_interval": {"left": "0", "left_exact": "0", "right": _fmt_sym(period), "right_exact": _fmt_sym(period)},
+        "families": [],
+        "warnings": [],
+    }
+    if f_expr.has(tan):
+        payload["families"].append({"kind": "vertical_asymptote", "x_exact": "pi/2 + k*pi", "x_latex": r"\frac{\pi}{2}+k\pi", "parameter": "k", "domain": "Z"})
+    if f_expr.has(cot):
+        payload["families"].append({"kind": "vertical_asymptote", "x_exact": "k*pi", "x_latex": r"k\pi", "parameter": "k", "domain": "Z"})
+    partition = domain_info.partition if domain_info is not None else None
+    if partition is not None and partition.excluded_families and not payload["families"]:
+        for family in partition.excluded_families:
+            payload["families"].append({"kind": "excluded_domain", "x_exact": str(family.expression), "x_latex": latex(family.expression), "parameter": family.variable, "domain": family.domain})
+    return payload
+
+
+def _monotonicity_payload(chart: dict[str, Any], periodicity: dict[str, Any] | None = None) -> dict[str, Any]:
+    segments = []
+    for item in chart.get("segments", []):
+        direction = "increasing" if item["sign"] == "+" else "decreasing" if item["sign"] == "-" else "constant"
+        segments.append({**item, "direction": direction, "derivative_sign": item["sign"]})
+    payload = {"status": chart["status"], "method": chart["method"], "segments": segments, "warnings": chart.get("warnings", [])}
+    if periodicity is not None:
+        payload["periodic"] = True
+        payload["period"] = periodicity["period"]
+        payload["base_interval"] = periodicity["base_interval"]
+        payload["parameter"] = periodicity["parameter"]
+    return payload
+
+
+def _periodic_monotonicity_payload(f_expr, periodicity: dict[str, Any] | None) -> dict[str, Any] | None:
+    if periodicity is None:
+        return None
+    try:
+        simplified = simplify(f_expr)
+    except Exception:
+        simplified = f_expr
+    period = periodicity["period"]
+    segments: list[dict[str, Any]] = []
+
+    def add(left: str, right: str, direction: str, sign: str) -> None:
+        segments.append({
+            "left": left,
+            "right": right,
+            "left_exact": left,
+            "right_exact": right,
+            "direction": direction,
+            "derivative_sign": sign,
+            "verification": "periodic_exact",
+            "parameter": "k",
+            "parameter_domain": "Z",
+        })
+
+    if simplify(simplified - sin(x)) == 0:
+        add("-pi/2 + 2*k*pi", "pi/2 + 2*k*pi", "increasing", "+")
+        add("pi/2 + 2*k*pi", "3*pi/2 + 2*k*pi", "decreasing", "-")
+    elif simplify(simplified - cos(x)) == 0:
+        add("2*k*pi", "pi + 2*k*pi", "decreasing", "-")
+        add("pi + 2*k*pi", "2*pi + 2*k*pi", "increasing", "+")
+    elif simplify(simplified - tan(x)) == 0:
+        add("-pi/2 + k*pi", "pi/2 + k*pi", "increasing", "+")
+    elif simplify(simplified - cot(x)) == 0:
+        add("k*pi", "pi + k*pi", "decreasing", "-")
+    else:
+        return None
+    return {"status": "complete", "method": "periodic_exact", "periodic": True, "period": period, "parameter": "k", "parameter_domain": "Z", "base_interval": periodicity["base_interval"], "segments": segments, "warnings": []}
+
+
+def _concavity_payload(chart: dict[str, Any]) -> dict[str, Any]:
+    segments = []
+    for item in chart.get("segments", []):
+        kind = "convex" if item["sign"] == "+" else "concave" if item["sign"] == "-" else "flat"
+        segments.append({**item, "kind": kind, "second_derivative_sign": item["sign"]})
+    return {"status": chart["status"], "method": chart["method"], "segments": segments, "warnings": chart.get("warnings", [])}
+
+
+def _inflection_points_from_chart(f_expr, fpp_expr, domain_info: FunctionDomain | None, chart: dict[str, Any]) -> tuple[list[dict[str, str]], list[dict[str, Any]]]:
+    points: list[dict[str, str]] = []
+    points_v2: list[dict[str, Any]] = []
+    try:
+        roots, _exact = _solve_domain_roots(fpp_expr, domain_info)
+    except Exception:
+        roots = []
+    try:
+        singular_set = singularities(fpp_expr, x)
+        if isinstance(singular_set, FiniteSet):
+            roots.extend(list(singular_set))
+    except Exception:
+        pass
+
+    seen: set[str] = set()
+    for point in sorted(set(roots), key=default_sort_key):
+        key = _fmt_sym(point)
+        if key in seen or not in_domain(domain_info, point):
+            continue
+        seen.add(key)
+        left_sign = _chart_side_sign(chart, point, "left")
+        right_sign = _chart_side_sign(chart, point, "right")
+        if left_sign is None or right_sign is None or left_sign == right_sign:
+            continue
+        try:
+            if not _is_continuous_at(f_expr, point):
+                continue
+            y_val = simplify(f_expr.subs(x, point))
+        except Exception:
+            continue
+        legacy = {"x": _fmt_num(point), "x_exact": key, "y": _fmt_num(y_val)}
+        points.append(legacy)
+        points_v2.append({**legacy, "y_exact": _fmt_sym(y_val), "kind": "inflection", "evidence": "second_derivative_sign_change", "left_sign": left_sign, "right_sign": right_sign, "verification": chart["method"]})
+    return points, points_v2
+
+
+def _is_continuous_at(f_expr, point) -> bool:
+    try:
+        left = limit(f_expr, x, point, dir="-")
+        right = limit(f_expr, x, point, dir="+")
+        value = simplify(f_expr.subs(x, point))
+        return simplify(left - value) == 0 and simplify(right - value) == 0
+    except Exception:
+        return False
+
+
+def _chart_side_sign(chart: dict[str, Any], point, side: str) -> str | None:
+    try:
+        p = sp.sympify(point)
+    except Exception:
+        return None
+    for segment in chart.get("segments", []):
+        try:
+            left = sp.sympify(segment["left_exact"])
+            right = sp.sympify(segment["right_exact"])
+            if side == "left" and left < p <= right:
+                return segment["sign"]
+            if side == "right" and left <= p < right:
+                return segment["sign"]
+        except Exception:
+            continue
+    return None
+
+
+def _critical_points_v2(points: list[dict[str, Any]], fprime_chart: dict[str, Any] | None, fpp_chart: dict[str, Any] | None) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    for point in points:
+        raw = point.get("x_exact") or point.get("x")
+        try:
+            exact_point = sp.sympify(raw)
+        except Exception:
+            exact_point = raw
+        left_sign = _chart_side_sign(fprime_chart or {}, exact_point, "left")
+        right_sign = _chart_side_sign(fprime_chart or {}, exact_point, "right")
+        kind = "unknown"
+        evidence = "unknown"
+        if left_sign == "-" and right_sign == "+":
+            kind = "local_min"
+            evidence = "first_derivative_sign_change"
+        elif left_sign == "+" and right_sign == "-":
+            kind = "local_max"
+            evidence = "first_derivative_sign_change"
+        elif left_sign in {"+", "-"} and left_sign == right_sign:
+            fpp_left = _chart_side_sign(fpp_chart or {}, exact_point, "left")
+            fpp_right = _chart_side_sign(fpp_chart or {}, exact_point, "right")
+            if fpp_left is not None and fpp_right is not None and fpp_left != fpp_right:
+                kind = "stationary_inflection"
+                evidence = "second_derivative_sign_change"
+            else:
+                kind = "stationary_point"
+                evidence = "no_first_derivative_sign_change"
+        result.append({
+            "x": point.get("x"),
+            "x_exact": point.get("x_exact"),
+            "x_latex": latex(exact_point) if not isinstance(exact_point, str) else point.get("x_exact"),
+            "y": point.get("y"),
+            "y_exact": point.get("y_exact") or point.get("y"),
+            "kind": kind,
+            "legacy_kind": point.get("kind"),
+            "left_derivative_sign": left_sign,
+            "right_derivative_sign": right_sign,
+            "evidence": evidence,
+            "verification": (fprime_chart or {}).get("method", "unknown"),
+        })
+    return result
+
+
+def _asymptotes_v2(f_expr, domain_info: FunctionDomain | None, periodicity: dict[str, Any] | None) -> dict[str, Any]:
+    vertical_points: list[Any] = []
+    sources: dict[str, set[str]] = {}
+
+    def add_point(point, source: str) -> None:
+        try:
+            simplified = simplify(point)
+            if simplified in (oo, -oo) or simplified.is_real is False:
+                return
+            key = _fmt_sym(simplified)
+        except Exception:
+            return
+        if any(hole.get("x_exact") == key for hole in []):
+            return
+        vertical_points.append(simplified)
+        sources.setdefault(key, set()).add(source)
+
+    try:
+        _, denom_expr = fraction(cancel(f_expr))
+        for root in solve(denom_expr, x):
+            add_point(root, "denominator")
+    except Exception:
+        pass
+    try:
+        singular_set = singularities(f_expr, x)
+        if isinstance(singular_set, FiniteSet):
+            for point in singular_set:
+                add_point(point, "singularity")
+    except Exception:
+        pass
+    for component in list(domain_info.components) if domain_info is not None else []:
+        if getattr(component.start, "is_finite", False):
+            add_point(component.start, "domain_boundary")
+        if getattr(component.end, "is_finite", False):
+            add_point(component.end, "domain_boundary")
+
+    vertical = []
+    seen: set[str] = set()
+    for point in sorted(set(vertical_points), key=default_sort_key):
+        key = _fmt_sym(point)
+        if key in seen:
+            continue
+        seen.add(key)
+        try:
+            left = limit(f_expr, x, point, dir="-")
+        except Exception:
+            left = None
+        try:
+            right = limit(f_expr, x, point, dir="+")
+        except Exception:
+            right = None
+        left_payload = _limit_payload_v2(left) if left is not None else {"value": None, "value_exact": None, "value_latex": None, "status": "unknown"}
+        right_payload = _limit_payload_v2(right) if right is not None else {"value": None, "value_exact": None, "value_latex": None, "status": "unknown"}
+        if left_payload["status"] != "infinite" and right_payload["status"] != "infinite":
+            continue
+        expr_data = _expr_payload(point)
+        vertical.append({
+            "kind": "vertical",
+            "x": expr_data["approx"] or expr_data["exact"],
+            "x_exact": expr_data["exact"],
+            "x_latex": expr_data["latex"],
+            "approx": expr_data["approx"],
+            "precision": expr_data["precision"],
+            "left_limit": left_payload,
+            "right_limit": right_payload,
+            "source": sorted(sources.get(key, {"unknown"})),
+        })
+
+    horizontal = []
+    for direction, target in (("+∞", oo), ("-∞", -oo)):
+        try:
+            value = limit(f_expr, x, target)
+        except Exception:
+            continue
+        if not _is_limit_finite(value):
+            continue
+        data = _expr_payload(simplify(value))
+        horizontal.append({"kind": "horizontal", "direction": direction, "value": data["approx"] or data["exact"], "value_exact": data["exact"], "value_latex": data["latex"], "approx": data["approx"], "precision": data["precision"]})
+
+    oblique = []
+    for direction, target in (("+∞", oo), ("-∞", -oo)):
+        try:
+            slope = simplify(limit(f_expr / x, x, target))
+            if not _is_limit_finite(slope) or slope == 0:
+                continue
+            intercept = simplify(limit(f_expr - slope * x, x, target))
+            if not _is_limit_finite(intercept):
+                continue
+            validation = limit(f_expr - (slope * x + intercept), x, target)
+            if validation != 0:
+                continue
+        except Exception:
+            continue
+        slope_data = _expr_payload(slope)
+        intercept_data = _expr_payload(intercept)
+        equation = slope * x + intercept
+        oblique.append({
+            "kind": "oblique",
+            "direction": direction,
+            "slope": slope_data["approx"] or slope_data["exact"],
+            "slope_exact": slope_data["exact"],
+            "slope_latex": slope_data["latex"],
+            "intercept": intercept_data["approx"] or intercept_data["exact"],
+            "intercept_exact": intercept_data["exact"],
+            "intercept_latex": intercept_data["latex"],
+            "equation": f"y = {_fmt_sym(equation)}",
+            "equation_latex": f"y={latex(equation)}",
+            "validation_limit": "0",
+            "precision": slope_data["precision"] or intercept_data["precision"],
+        })
+
+    families = []
+    if periodicity is not None:
+        families = [family for family in periodicity.get("families", []) if family.get("kind") == "vertical_asymptote"]
+    return {"vertical": vertical, "horizontal": horizontal, "oblique": oblique, "periodic_vertical_families": families}
+
+
 def analyze_function(
     expression: str,
     parameters: Mapping[str, float] | None = None,
@@ -289,13 +696,17 @@ def analyze_function(
     transform: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     warnings: list[str] = []
+    method_details: dict[str, str] = {}
 
     try:
-        parse_result = _parse_expr(expression)
+        with analyzer_stage_timeout("parse"):
+            parse_result = _parse_expr(expression)
         parsed = parse_result.expr
     except ValueError as e:
         code = getattr(e.__cause__, "code", "ANALYZER_PARSE_FAILED")
         return {"error": str(e), "error_code": code, "warnings": [str(e)]}
+    except AnalyzerStageTimeout as e:
+        return {"error": str(e), "error_code": e.code, "warnings": [str(e)], "stage_statuses": {e.stage: {"status": "timeout", "error_code": e.code}}}
 
     detected_parameters = ["m"] if m in parsed.free_symbols else []
     active_parameters: dict[str, float] = {}
@@ -321,44 +732,77 @@ def analyze_function(
             "ranges": {name: dict(config) for name, config in _PARAMETER_RANGES.items() if name in detected_parameters},
         },
         "complexity_score": parse_result.complexity_score,
+        "stage_statuses": {"parse": {"status": "ok"}},
         "_parsed_expr": parsed,
         "_evaluated_expr": f,
     }
 
+    domain_info = FunctionDomain.from_set(None)
     try:
-        dom = continuous_domain(f, x, S.Reals)
+        with analyzer_stage_timeout("domain"):
+            dom = continuous_domain(f, x, S.Reals)
+        domain_info = FunctionDomain.from_set(dom)
         result["domain"] = str(dom)
         result["domain_latex"] = latex(dom)
+        result["_domain_set"] = dom
+        result["_domain_info"] = domain_info
+        result["domain_components"] = [str(component) for component in domain_info.components]
+        _record_stage_ok(result, "domain")
+    except AnalyzerStageTimeout as e:
+        _record_stage_timeout(result, warnings, e)
+        result["domain"] = None
+        result["domain_latex"] = None
     except Exception as e:
         warnings.append(f"Không tính được tập xác định: {e}")
         result["domain"] = None
         result["domain_latex"] = None
 
+    result["domain_partition_v2"] = domain_info.partition.model_payload() if domain_info.partition is not None else None
+    result["periodicity"] = _periodicity_payload(f, domain_info)
+
     try:
-        rng = function_range(f, x, S.Reals)
+        with analyzer_stage_timeout("range"):
+            rng = function_range(f, x, S.Reals)
         result["range"] = str(rng)
         result["range_latex"] = latex(rng)
+        _record_stage_ok(result, "range")
+    except AnalyzerStageTimeout as e:
+        _record_stage_timeout(result, warnings, e)
+        result["range"] = None
+        result["range_latex"] = None
     except Exception as e:
         warnings.append(f"Không tính được tập giá trị: {e}")
         result["range"] = None
         result["range_latex"] = None
 
     try:
-        f_neg = simplify(f.subs(x, -x))
-        if simplify(f_neg - f) == 0:
-            result["parity"] = "even"
-        elif simplify(f_neg + f) == 0:
-            result["parity"] = "odd"
-        else:
-            result["parity"] = "neither"
+        with analyzer_stage_timeout("simplify"):
+            f_neg = simplify(f.subs(x, -x))
+            if simplify(f_neg - f) == 0:
+                result["parity"] = "even"
+            elif simplify(f_neg + f) == 0:
+                result["parity"] = "odd"
+            else:
+                result["parity"] = "neither"
+        _record_stage_ok(result, "simplify")
+    except AnalyzerStageTimeout as e:
+        _record_stage_timeout(result, warnings, e)
+        result["parity"] = "neither"
     except Exception:
         result["parity"] = "neither"
 
     try:
-        fp = diff(f, x)
-        fp_simplified = simplify(fp)
+        with analyzer_stage_timeout("derivative"):
+            fp = diff(f, x)
+            fp_simplified = simplify(fp)
         result["derivative"] = _fmt_sym(fp_simplified)
         result["derivative_latex"] = latex(fp_simplified)
+        _record_stage_ok(result, "derivative")
+    except AnalyzerStageTimeout as e:
+        _record_stage_timeout(result, warnings, e, core=True)
+        fp_simplified = None
+        result["derivative"] = None
+        result["derivative_latex"] = None
     except Exception as e:
         warnings.append(f"Không tính được đạo hàm: {e}")
         fp_simplified = None
@@ -368,18 +812,41 @@ def analyze_function(
     fpp_simplified = None
     if fp_simplified is not None:
         try:
-            fpp_simplified = simplify(diff(fp_simplified, x))
+            with analyzer_stage_timeout("derivative"):
+                fpp_simplified = simplify(diff(fp_simplified, x))
             result["second_derivative"] = _fmt_sym(fpp_simplified)
             result["second_derivative_latex"] = latex(fpp_simplified)
+        except AnalyzerStageTimeout as e:
+            _record_stage_timeout(result, warnings, e)
         except Exception as e:
             warnings.append(f"Không tính được đạo hàm cấp 2: {e}")
     result.setdefault("second_derivative", None)
     result.setdefault("second_derivative_latex", None)
 
+    try:
+        simplified_for_holes = simplify(f)
+        holes = removable_holes(f, simplified_for_holes, x, domain_info)
+        result["removable_holes"] = [
+            {
+                "x": _fmt_num(hole["x"]),
+                "x_exact": _fmt_sym(hole["x"]),
+                "y": _fmt_num(hole["y"]),
+                "y_exact": _fmt_sym(hole["y"]),
+                "label": "điểm khuyết",
+            }
+            for hole in holes
+        ]
+        result["_graph_expr"] = str(f if result["removable_holes"] else simplified_for_holes)
+    except (TypeError, ValueError, AttributeError, NotImplementedError):
+        result["removable_holes"] = []
+        result["_graph_expr"] = str(f)
+
     critical_points: list[dict[str, Any]] = []
     if fp_simplified is not None:
         try:
-            for cp in _collect_stationary_candidates(f, fp_simplified):
+            with analyzer_stage_timeout("root_solving"):
+                stationary_candidates = _collect_stationary_candidates(f, fp_simplified, domain_info)
+            for cp in stationary_candidates:
                 try:
                     cp_float = float(cp.evalf())
                 except Exception:
@@ -397,69 +864,87 @@ def analyze_function(
                     kind_label = "Điểm đặc biệt"
 
                 try:
-                    y_val = float(f.subs(x, cp).evalf())
+                    y_expr = simplify(f.subs(x, cp))
+                    y_val = float(y_expr.evalf())
                 except Exception:
+                    y_expr = None
                     y_val = None
 
                 critical_points.append({
                     "x": _fmt_num(cp_float),
                     "x_exact": _fmt_sym(cp),
                     "y": _fmt_num(y_val) if y_val is not None else None,
+                    "y_exact": _fmt_sym(y_expr) if y_expr is not None else None,
                     "kind": kind,
                     "kind_label": kind_label,
                 })
+        except AnalyzerStageTimeout as e:
+            _record_stage_timeout(result, warnings, e)
         except Exception as e:
             warnings.append(f"Không giải được f'(x) = 0: {e}")
 
     result["critical_points"] = critical_points
 
-    inflection_pts: list[dict[str, str]] = []
-    concavity_breakpoints: list[float] = []
+    fpp_chart = None
     if fpp_simplified is not None:
         try:
-            for z in _solve_real_roots(fpp_simplified):
-                try:
-                    z_f = float(z.evalf())
-                    left = float(fpp_simplified.subs(x, z - Rational(1, 1000)).evalf())
-                    right = float(fpp_simplified.subs(x, z + Rational(1, 1000)).evalf())
-                except Exception:
-                    continue
-                if left * right < 0:
-                    try:
-                        y_val = float(f.subs(x, z).evalf())
-                    except Exception:
-                        continue
-                    inflection_pts.append({"x": _fmt_num(z_f), "x_exact": _fmt_sym(z), "y": _fmt_num(y_val)})
-                    concavity_breakpoints.append(z_f)
+            with analyzer_stage_timeout("root_solving"):
+                fpp_chart = _sign_chart(fpp_simplified, domain_info, role="concavity")
+                inflection_pts, inflection_pts_v2 = _inflection_points_from_chart(f, fpp_simplified, domain_info, fpp_chart)
+            result["concavity_v2"] = _concavity_payload(fpp_chart)
+            result["inflection_points"] = inflection_pts
+            result["inflection_points_v2"] = inflection_pts_v2
+            result["concave_up_intervals"] = _chart_intervals(fpp_chart, "+")
+            result["concave_down_intervals"] = _chart_intervals(fpp_chart, "-")
+            method_details["concavity"] = fpp_chart["method"]
+        except AnalyzerStageTimeout as e:
+            _record_stage_timeout(result, warnings, e)
+            result["inflection_points"] = []
+            result["inflection_points_v2"] = []
+            result["concavity_v2"] = {"status": "unknown", "method": "unknown", "segments": [], "warnings": [str(e)]}
+            result["concave_up_intervals"] = []
+            result["concave_down_intervals"] = []
         except Exception as e:
             warnings.append(f"Không tính được điểm uốn: {e}")
-    result["inflection_points"] = inflection_pts
-    if fpp_simplified is not None and concavity_breakpoints:
-        result["concave_up_intervals"], result["concave_down_intervals"] = _sign_intervals(fpp_simplified, sorted(concavity_breakpoints))
+            result["inflection_points"] = []
+            result["inflection_points_v2"] = []
+            result["concavity_v2"] = {"status": "unknown", "method": "unknown", "segments": [], "warnings": [str(e)]}
+            result["concave_up_intervals"] = []
+            result["concave_down_intervals"] = []
     else:
+        result["inflection_points"] = []
+        result["inflection_points_v2"] = []
+        result["concavity_v2"] = {"status": "unknown", "method": "unknown", "segments": [], "warnings": ["Không có đạo hàm cấp 2."]}
         result["concave_up_intervals"] = []
         result["concave_down_intervals"] = []
 
     ha: list[dict] = []
     try:
-        lim_pos = limit(f, x, oo)
-        lim_neg = limit(f, x, -oo)
+        with analyzer_stage_timeout("limits"):
+            lim_pos = limit(f, x, oo)
+            lim_neg = limit(f, x, -oo)
         if lim_pos not in (oo, -oo, zoo, nan, S.NaN):
             ha.append({"direction": "+∞", "value": _fmt_num(lim_pos)})
         if lim_neg not in (oo, -oo, zoo, nan, S.NaN) and lim_neg != lim_pos:
             ha.append({"direction": "-∞", "value": _fmt_num(lim_neg)})
+        _record_stage_ok(result, "limits")
+    except AnalyzerStageTimeout as e:
+        _record_stage_timeout(result, warnings, e)
     except Exception as e:
         warnings.append(f"Không tính được tiệm cận ngang: {e}")
     result["horizontal_asymptotes"] = ha
 
     va: list[dict] = []
     try:
-        _, denom_expr = fraction(cancel(f))
-        for z in solve(denom_expr, x):
+        with analyzer_stage_timeout("limits"):
+            _, denom_expr = fraction(cancel(f))
+            denom_roots = solve(denom_expr, x)
+        for z in denom_roots:
             try:
                 z_f = float(z.evalf())
-                lim_right = limit(f, x, z, "+")
-                lim_left = limit(f, x, z, "-")
+                with analyzer_stage_timeout("limits"):
+                    lim_right = limit(f, x, z, "+")
+                    lim_left = limit(f, x, z, "-")
                 if lim_right in (oo, -oo, zoo) or lim_left in (oo, -oo, zoo):
                     va.append({
                         "x": _fmt_num(z_f),
@@ -468,36 +953,64 @@ def analyze_function(
                     })
             except Exception:
                 pass
+    except AnalyzerStageTimeout as e:
+        _record_stage_timeout(result, warnings, e)
     except Exception as e:
         warnings.append(f"Không tính được tiệm cận đứng: {e}")
     result["vertical_asymptotes"] = va
 
     if fp_simplified is not None:
-        mono_breakpoints = [float(cp["x"]) for cp in critical_points if _is_numeric(cp.get("x", ""))]
-        mono_breakpoints.extend(float(item["x"]) for item in va if _is_numeric(item.get("x", "")))
-        bps = sorted(set(mono_breakpoints))
-        result["intervals_increasing"], result["intervals_decreasing"] = _sign_intervals(fp_simplified, bps)
+        mono_breakpoints = [sp.sympify(cp["x_exact"]) for cp in critical_points if cp.get("x_exact")]
+        mono_breakpoints.extend(sp.sympify(item.get("x_exact") or item["x"]) for item in va if item.get("x_exact") or item.get("x"))
+        monotonicity_chart = _sign_chart(fp_simplified, domain_info, role="monotonicity", known_breakpoints=mono_breakpoints)
+        periodic_monotonicity = _periodic_monotonicity_payload(f, result.get("periodicity"))
+        result["monotonicity_v2"] = periodic_monotonicity or _monotonicity_payload(monotonicity_chart, result.get("periodicity"))
+        result["critical_points_v2"] = _critical_points_v2(critical_points, monotonicity_chart, fpp_chart)
+        result["intervals_increasing"] = _chart_intervals(monotonicity_chart, "+")
+        result["intervals_decreasing"] = _chart_intervals(monotonicity_chart, "-")
+        method_details["monotonicity"] = result["monotonicity_v2"]["method"]
     else:
+        result["monotonicity_v2"] = {"status": "unknown", "method": "unknown", "segments": [], "warnings": ["Không có đạo hàm."]}
+        result["critical_points_v2"] = _critical_points_v2(critical_points, None, fpp_chart)
         result["intervals_increasing"] = []
         result["intervals_decreasing"] = []
 
     oblique = None
     try:
-        a_coef = limit(f / x, x, oo)
-        if a_coef not in (oo, -oo, zoo, nan, S.NaN, S.Zero):
-            b_coef = limit(f - a_coef * x, x, oo)
-            if b_coef not in (oo, -oo, zoo, nan, S.NaN):
-                oblique = f"y = {_fmt_num(a_coef)}x + {_fmt_num(b_coef)}"
+        with analyzer_stage_timeout("limits"):
+            a_coef = limit(f / x, x, oo)
+            if a_coef not in (oo, -oo, zoo, nan, S.NaN, S.Zero):
+                b_coef = limit(f - a_coef * x, x, oo)
+                if b_coef not in (oo, -oo, zoo, nan, S.NaN):
+                    oblique = f"y = {_fmt_num(a_coef)}x + {_fmt_num(b_coef)}"
+    except AnalyzerStageTimeout as e:
+        _record_stage_timeout(result, warnings, e)
     except Exception:
         pass
     result["oblique_asymptote"] = oblique
+    result["asymptotes_v2"] = _asymptotes_v2(f, domain_info, result.get("periodicity"))
+    result["horizontal_asymptotes"] = [
+        {"direction": item["direction"], "value": item["value"], "value_exact": item["value_exact"], "value_latex": item["value_latex"]}
+        for item in result["asymptotes_v2"].get("horizontal", [])
+    ]
+    result["vertical_asymptotes"] = [
+        {
+            "x": item["x"],
+            "lim_right": item["right_limit"].get("value") or "?",
+            "lim_left": item["left_limit"].get("value") or "?",
+        }
+        for item in result["asymptotes_v2"].get("vertical", [])
+    ]
+    result["oblique_asymptote"] = result["asymptotes_v2"].get("oblique", [{}])[0].get("equation") if result["asymptotes_v2"].get("oblique") else None
 
     x_intercepts: list[str] = []
     seen_intercepts: set[str] = set()
     seen_roots_float: list[float] = []
     root_eps = 1e-5
     try:
-        for z in solve(f, x)[:6]:
+        with analyzer_stage_timeout("root_solving"):
+            intercept_roots = filter_domain_values(solve(f, x)[:6], domain_info)
+        for z in intercept_roots:
             try:
                 val = float(z.evalf())
             except Exception:
@@ -516,21 +1029,28 @@ def analyze_function(
                 continue
             seen_intercepts.add(item)
             x_intercepts.append(item)
+    except AnalyzerStageTimeout as e:
+        _record_stage_timeout(result, warnings, e)
     except Exception:
         pass
     result["x_intercepts"] = x_intercepts
 
     y_intercept = None
     try:
-        y0 = float(f.subs(x, 0).evalf())
-        y_intercept = _fmt_num(y0)
+        if in_domain(domain_info, S.Zero):
+            y0 = float(f.subs(x, 0).evalf())
+            y_intercept = _fmt_num(y0)
     except Exception:
         pass
     result["y_intercept"] = y_intercept
 
     if interval:
         try:
-            result["interval_analysis"] = _analyze_interval(f, fp_simplified, interval)
+            with analyzer_stage_timeout("interval_tool"):
+                result["interval_analysis"] = _analyze_interval(f, fp_simplified, interval, domain_info)
+            _record_stage_ok(result, "interval_tool")
+        except AnalyzerStageTimeout as e:
+            _record_stage_timeout(result, warnings, e)
         except ValueError as e:
             warnings.append(str(e))
         except Exception as e:
@@ -538,31 +1058,47 @@ def analyze_function(
 
     if line:
         try:
-            result["line_analysis"] = _analyze_line_position(f, line)
+            with analyzer_stage_timeout("line_tool"):
+                result["line_analysis"] = _analyze_line_position(f, line, domain_info, method_details)
+            _record_stage_ok(result, "line_tool")
+        except AnalyzerStageTimeout as e:
+            _record_stage_timeout(result, warnings, e)
         except ValueError as e:
             warnings.append(str(e))
         except Exception as e:
             warnings.append(f"Không xét được tương giao với đường thẳng: {e}")
 
     if parameter_conditions:
-        result["parameter_conditions"] = _solve_parameter_conditions(parsed, parameter_conditions)
+        try:
+            with analyzer_stage_timeout("parameter_conditions"):
+                result["parameter_conditions"] = _solve_parameter_conditions(parsed, parameter_conditions)
+            _record_stage_ok(result, "parameter_conditions")
+        except AnalyzerStageTimeout as e:
+            _record_stage_timeout(result, warnings, e)
+            result["parameter_conditions"] = []
 
     if transform:
         try:
-            result["transform_preview"] = _build_transform_preview(f, transform)
+            with analyzer_stage_timeout("transform"):
+                result["transform_preview"] = _build_transform_preview(f, transform)
+            _record_stage_ok(result, "transform")
+        except AnalyzerStageTimeout as e:
+            _record_stage_timeout(result, warnings, e)
         except ValueError as e:
             warnings.append(str(e))
         except Exception as e:
             warnings.append(f"Không dựng được biến đổi đồ thị: {e}")
 
     result["variation_table"] = _build_variation_table(result, critical_points)
+    result["variation_table_v2"] = _build_variation_table_v2(f, fp_simplified, domain_info, critical_points, result)
     result["capabilities"] = {"trig_periodic": True, "exact_solving": True, "numeric_fallback": True}
+    result["method_used"] = method_details
     result["warnings"] = warnings
 
     return result
 
 
-def _analyze_interval(f_expr, fp_expr, interval: Mapping[str, Any]) -> dict[str, Any]:
+def _analyze_interval(f_expr, fp_expr, interval: Mapping[str, Any], domain_info: FunctionDomain | None = None) -> dict[str, Any]:
     a = _finite_float(interval.get("a", -10), "a")
     b = _finite_float(interval.get("b", 10), "b")
     open_a = bool(interval.get("open_a", False))
@@ -586,9 +1122,11 @@ def _analyze_interval(f_expr, fp_expr, interval: Mapping[str, Any]) -> dict[str,
     else:
         candidates.append({"x": b, "x_exact": _fmt_num(b), "y": _eval_float(f_expr, b), "kind": "endpoint", "label": f"f({_fmt_num(b)})"})
 
+    candidates = [item for item in candidates if item["kind"] == "limit" or in_domain(domain_info, item["x"])]
+
     extrema_inside = []
     if fp_expr is not None:
-        for cp in _collect_stationary_candidates(f_expr, fp_expr):
+        for cp in _collect_stationary_candidates(f_expr, fp_expr, domain_info):
             try:
                 cp_float = float(cp.evalf())
             except Exception:
@@ -629,11 +1167,13 @@ def _analyze_interval(f_expr, fp_expr, interval: Mapping[str, Any]) -> dict[str,
     }
 
 
-def _analyze_line_position(f_expr, line: Mapping[str, Any]) -> dict[str, Any]:
+def _analyze_line_position(f_expr, line: Mapping[str, Any], domain_info: FunctionDomain | None = None, method_details: dict[str, str] | None = None) -> dict[str, Any]:
     mode = str(line.get("mode", "intersect"))
     
     if mode == "tangent_at":
         x0 = _finite_float(line.get("x0", 0), "x0")
+        if not in_domain(domain_info, x0):
+            raise ValueError(f"x0={_fmt_num(x0)} không thuộc tập xác định.")
         y0 = _eval_float(f_expr, x0)
         try:
             fp_expr = diff(f_expr, x)
@@ -656,9 +1196,9 @@ def _analyze_line_position(f_expr, line: Mapping[str, Any]) -> dict[str, Any]:
     diff_expr = simplify(f_expr - line_expr)
     intersections: list[dict[str, str]] = []
     
-    roots = _solve_real_roots(diff_expr)[:12]
-    if not roots:
-        roots = _numeric_roots(diff_expr)
+    roots, exact_complete = _solve_domain_roots(diff_expr, domain_info)
+    if not roots and not exact_complete:
+        roots = filter_domain_values(_numeric_roots(diff_expr), domain_info)
     for root in roots:
         try:
             root_f = float(root.evalf() if hasattr(root, "evalf") else root)
@@ -670,7 +1210,7 @@ def _analyze_line_position(f_expr, line: Mapping[str, Any]) -> dict[str, Any]:
             continue
     
     split = sorted({float(item["x"]) for item in intersections if _is_numeric(item["x"])})
-    above, below = _sign_intervals(diff_expr, split)
+    above, below = _sign_intervals(diff_expr, split, domain_info, method_details, "line_position")
     
     area_text = None
     if len(split) >= 2:
@@ -819,6 +1359,28 @@ def _solve_extrema_count(poly, expected: int) -> dict[str, Any]:
     return {"label": f"Có {expected} cực trị", "solution": "Chưa hỗ trợ dạng này.", "solution_latex": "", "warnings": warnings}
 
 
+def _solve_domain_roots(expr, domain_info: FunctionDomain | None = None) -> tuple[list[Any], bool]:
+    try:
+        solution_set = intersect_domain(solveset(expr, x, domain=S.Reals), domain_info)
+    except (NotImplementedError, TypeError, ValueError, AttributeError):
+        return filter_domain_values(_solve_real_roots(expr)[:12], domain_info), False
+    if solution_set is S.EmptySet:
+        return [], True
+    if isinstance(solution_set, FiniteSet):
+        roots = []
+        for root in solution_set:
+            try:
+                simplified = simplify(root)
+                if simplified.is_real is False:
+                    continue
+                float(simplified.evalf())
+                roots.append(simplified)
+            except Exception:
+                continue
+        return sorted(roots, key=default_sort_key), True
+    return filter_domain_values(_solve_real_roots(expr)[:12], domain_info), False
+
+
 def _solve_real_roots(expr) -> list:
     try:
         polynomial = Poly(expr, x)
@@ -896,49 +1458,487 @@ def _point_result(item: Mapping[str, Any]) -> dict[str, str]:
     return {"x": _fmt_num(item["x"]), "y": _fmt_num(item["y"]), "label": str(item.get("label", ""))}
 
 
-def _sign_intervals(expr, breakpoints: list[float]) -> tuple[list[str], list[str]]:
-    positive: list[str] = []
-    negative: list[str] = []
-    bounds = [-1e9] + breakpoints + [1e9]
-    
-    # 1. Analytical try
+def _sign_chart(
+    expr,
+    domain_info: FunctionDomain | None = None,
+    *,
+    role: str = "sign",
+    known_breakpoints: list[Any] | None = None,
+) -> dict[str, Any]:
+    if expr is None:
+        return {"status": "unknown", "method": "unknown", "segments": [], "positive_intervals": [], "negative_intervals": [], "zero_points": [], "singular_points": [], "warnings": ["Không có biểu thức để xét dấu."]}
+
+    domain_set = domain_info.set if domain_info is not None else S.Reals
+    warnings: list[str] = []
     try:
-        pos_set = sp.solveset(expr > 0, x, domain=sp.S.Reals)
-        neg_set = sp.solveset(expr < 0, x, domain=sp.S.Reals)
-        
-        if not pos_set.has(sp.ConditionSet) and not neg_set.has(sp.ConditionSet):
-            def format_set(s):
-                res = []
-                args = s.args if isinstance(s, sp.Union) else [s]
-                for arg in args:
-                    if isinstance(arg, sp.Interval):
-                        a_str = _bound_label(float(arg.start)) if arg.start.is_finite else ("-∞" if arg.start == -sp.oo else "+∞")
-                        b_str = _bound_label(float(arg.end)) if arg.end.is_finite else ("-∞" if arg.end == -sp.oo else "+∞")
-                        res.append(f"({a_str}; {b_str})")
-                return res
-            
-            positive = format_set(pos_set)
-            negative = format_set(neg_set)
-            if positive or negative:
-                return positive, negative
-    except Exception:
+        simplified = simplify(expr)
+        if simplified == 0:
+            intervals = _domain_interval_payloads(domain_set)
+            return {"status": "complete", "method": "symbolic_exact", "segments": [{**interval, "sign": "0", "verification": "exact"} for interval in intervals], "positive_intervals": [], "negative_intervals": [], "zero_points": [], "singular_points": [], "warnings": []}
+        positive_set = intersect_domain(solveset(simplified > 0, x, domain=S.Reals), domain_info)
+        negative_set = intersect_domain(solveset(simplified < 0, x, domain=S.Reals), domain_info)
+        zero_set = intersect_domain(solveset(simplified, x, domain=S.Reals), domain_info)
+        if not positive_set.has(sp.ConditionSet) and not negative_set.has(sp.ConditionSet):
+            positive = _set_interval_payloads(positive_set, "+")
+            negative = _set_interval_payloads(negative_set, "-")
+            zero_points = _finite_set_payloads(zero_set)
+            segments = [*positive, *negative]
+            segments.sort(key=lambda item: _variation_order_key(item["left_exact"]))
+            return {"status": "complete", "method": "symbolic_exact", "segments": segments, "positive_intervals": positive, "negative_intervals": negative, "zero_points": zero_points, "singular_points": [], "warnings": []}
+    except (NotImplementedError, TypeError, ValueError, AttributeError):
         pass
 
-    # 2. Fallback numeric sampling
-    positive = []
-    negative = []
-    for i in range(len(bounds) - 1):
-        mid = (bounds[i] + bounds[i + 1]) / 2
+    sampled = _adaptive_sign_chart(expr, domain_info, known_breakpoints or [])
+    sampled["warnings"] = [*sampled.get("warnings", []), f"{role}: chưa chứng minh được dấu bằng symbolic, dùng adaptive sampling."]
+    return sampled
+
+
+def _adaptive_sign_chart(expr, domain_info: FunctionDomain | None, known_breakpoints: list[Any]) -> dict[str, Any]:
+    components = list(domain_info.components) if domain_info is not None else [Interval(-oo, oo)]
+    if not components:
+        return {"status": "unknown", "method": "unknown", "segments": [], "positive_intervals": [], "negative_intervals": [], "zero_points": [], "singular_points": [], "warnings": ["Không có miền liên thông hữu hạn để sampling."]}
+
+    positive: list[dict[str, Any]] = []
+    negative: list[dict[str, Any]] = []
+    warnings: list[str] = []
+    sample_count = 0
+    for component in components:
+        points = [component.start, *[point for point in known_breakpoints if _point_inside_interval(point, component)], component.end]
+        points = sorted(set(points), key=default_sort_key)
+        for left, right in zip(points, points[1:]):
+            probe_points = _adaptive_probe_points(left, right)
+            if not probe_points:
+                warnings.append(f"Bỏ qua khoảng ({_fmt_boundary(left)}; {_fmt_boundary(right)}) vì không có điểm kiểm chứng ổn định.")
+                continue
+            signs: list[int] = []
+            for probe in probe_points:
+                sign = _safe_expr_sign(expr, probe)
+                sample_count += 1
+                if sign is not None:
+                    signs.append(sign)
+            if not signs or any(sign != signs[0] for sign in signs):
+                warnings.append(f"Dấu chưa ổn định trên ({_fmt_boundary(left)}; {_fmt_boundary(right)}).")
+                continue
+            segment = _interval_payload(left, right, "+" if signs[0] > 0 else "-", "sampled", error_bound=_sampling_error_bound(probe_points))
+            if signs[0] > 0:
+                positive.append(segment)
+            else:
+                negative.append(segment)
+    segments = [*positive, *negative]
+    segments.sort(key=lambda item: _variation_order_key(item["left_exact"]))
+    status = "partial" if segments else "unknown"
+    return {"status": status, "method": "numeric_adaptive" if segments else "unknown", "segments": segments, "positive_intervals": positive, "negative_intervals": negative, "zero_points": [], "singular_points": [], "sample_count": sample_count, "warnings": _unique_texts(warnings)}
+
+
+def _safe_expr_sign(expr, value) -> int | None:
+    try:
+        numeric = float(expr.subs(x, value).evalf())
+    except Exception:
+        return None
+    if not isfinite(numeric) or abs(numeric) < 1e-12:
+        return None
+    return 1 if numeric > 0 else -1
+
+
+def _adaptive_probe_points(left, right) -> list[Any]:
+    try:
+        if left in (-oo, oo) or right in (-oo, oo):
+            if left == -oo and right == oo:
+                return [S.Zero, S.One, -S.One]
+            if left == -oo:
+                return [right - 1, right - 2, right - 4]
+            if right == oo:
+                return [left + 1, left + 2, left + 4]
+            return []
+        span = right - left
+        return [left + span / 4, left + span / 2, left + 3 * span / 4]
+    except (TypeError, ValueError, AttributeError):
+        return []
+
+
+def _sampling_error_bound(points: list[Any]) -> str | None:
+    try:
+        numeric = [abs(float(sp.N(point))) for point in points]
+    except Exception:
+        return None
+    scale = max([1.0, *numeric])
+    return f"<= {scale * 1e-12:.3g} quanh mẫu"
+
+
+def _point_inside_interval(point, interval) -> bool:
+    try:
+        if point == interval.start or point == interval.end:
+            return False
+        return interval.contains(point) is S.true
+    except (TypeError, ValueError, AttributeError, NotImplementedError):
+        return False
+
+
+def _domain_interval_payloads(domain_set) -> list[dict[str, Any]]:
+    return [_interval_payload(part.start, part.end, "0", "exact") for part in _iter_intervals(domain_set)]
+
+
+def _set_interval_payloads(value_set, sign: str) -> list[dict[str, Any]]:
+    return [_interval_payload(part.start, part.end, sign, "exact") for part in _iter_intervals(value_set)]
+
+
+def _iter_intervals(value_set) -> list[Any]:
+    if value_set in (S.EmptySet, None):
+        return []
+    if value_set == S.Reals:
+        return [Interval(-oo, oo)]
+    if isinstance(value_set, Interval):
+        return [value_set]
+    if isinstance(value_set, sp.Union):
+        return [part for part in value_set.args if isinstance(part, Interval)]
+    return []
+
+
+def _interval_payload(left, right, sign: str, verification: str, *, error_bound: str | None = None) -> dict[str, Any]:
+    payload = {
+        "left": _fmt_boundary(left),
+        "right": _fmt_boundary(right),
+        "left_exact": _fmt_sym(left),
+        "right_exact": _fmt_sym(right),
+        "sign": sign,
+        "verification": verification,
+    }
+    if error_bound:
+        payload["error_bound"] = error_bound
+    return payload
+
+
+def _finite_set_payloads(value_set) -> list[dict[str, Any]]:
+    if not isinstance(value_set, FiniteSet):
+        return []
+    result: list[dict[str, Any]] = []
+    for item in sorted(value_set, key=default_sort_key):
+        result.append({"x": _fmt_num(item), "x_exact": _fmt_sym(item), "x_latex": latex(item)})
+    return result
+
+
+def _chart_intervals(chart: dict[str, Any], sign: str) -> list[str]:
+    key = "positive_intervals" if sign == "+" else "negative_intervals"
+    return [f"({_format_chart_bound(item['left_exact'])}; {_format_chart_bound(item['right_exact'])})" for item in chart.get(key, [])]
+
+
+def _format_chart_bound(value: str) -> str:
+    if value in {"-oo", "-∞"}:
+        return "-∞"
+    if value in {"oo", "+∞", "∞"}:
+        return "+∞"
+    return value
+
+
+def _sign_intervals(
+    expr,
+    breakpoints: list[float],
+    domain_info: FunctionDomain | None = None,
+    method_details: dict[str, str] | None = None,
+    method_key: str | None = None,
+) -> tuple[list[str], list[str]]:
+    chart = _sign_chart(expr, domain_info, role=method_key or "sign", known_breakpoints=breakpoints)
+    if method_details is not None and method_key:
+        method_details[method_key] = chart["method"]
+    return _chart_intervals(chart, "+"), _chart_intervals(chart, "-")
+
+
+def _format_real_interval_set(value_set) -> list[str]:
+    result: list[str] = []
+    parts = value_set.args if isinstance(value_set, sp.Union) else [value_set]
+    for part in parts:
+        if not isinstance(part, sp.Interval):
+            continue
+        a_str = _bound_label(float(part.start)) if part.start.is_finite else ("-∞" if part.start == -sp.oo else "+∞")
+        b_str = _bound_label(float(part.end)) if part.end.is_finite else ("-∞" if part.end == -sp.oo else "+∞")
+        left = "(" if part.left_open else "["
+        right = ")" if part.right_open else "]"
+        result.append(f"{left}{a_str}; {b_str}{right}")
+    return result
+
+
+def _periodic_variation_table_v2(result: dict[str, Any]) -> dict[str, Any] | None:
+    monotonicity = result.get("monotonicity_v2") or {}
+    if not monotonicity.get("periodic"):
+        return None
+    segments = monotonicity.get("segments", [])
+    if not segments:
+        return None
+    nodes_by_key: dict[str, dict[str, Any]] = {}
+    table_segments: list[dict[str, Any]] = []
+    for segment in segments:
+        for side in ("left", "right"):
+            value = segment.get(side)
+            exact = segment.get(f"{side}_exact") or value
+            if not value:
+                continue
+            nodes_by_key.setdefault(str(exact), {"kind": "boundary", "x": str(value), "x_exact": str(exact), "label": "mốc chu kỳ"})
+        table_segments.append({
+            "left": str(segment.get("left")),
+            "right": str(segment.get("right")),
+            "direction": segment.get("direction", "unknown"),
+            "verification": segment.get("verification", monotonicity.get("method", "unknown")),
+            "derivative_sign": segment.get("derivative_sign", "unknown"),
+        })
+    return {
+        "status": "complete",
+        "warnings": ["Bảng biến thiên biểu diễn theo một chu kỳ, với k ∈ Z."],
+        "nodes": list(nodes_by_key.values()),
+        "segments": table_segments,
+    }
+
+
+def _build_variation_table_v2(f_expr, fp_expr, domain_info: FunctionDomain, cps: list[dict], result: dict[str, Any]) -> dict[str, Any]:
+    periodic_table = _periodic_variation_table_v2(result)
+    if periodic_table is not None:
+        return periodic_table
+    warnings: list[str] = []
+    components = list(domain_info.components)
+    if not components:
+        return {"status": "unknown", "warnings": ["Chưa phân rã được tập xác định thành các miền liên thông."], "nodes": [], "segments": []}
+
+    vertical_map = {item.get("x"): item for item in result.get("vertical_asymptotes", [])}
+    critical_by_x = {item.get("x_exact") or item.get("x"): item for item in cps}
+    holes_by_x = {item.get("x_exact") or item.get("x"): item for item in result.get("removable_holes", [])}
+    nodes_by_key: dict[str, dict[str, Any]] = {}
+    segments: list[dict[str, Any]] = []
+
+    sign_sets = _derivative_sign_sets(fp_expr, domain_info)
+    if sign_sets["verification"] == "unknown":
+        warnings.append("Chưa chứng minh được dấu đạo hàm trên toàn bộ miền; một số khoảng được đánh dấu chưa xác định.")
+
+    def add_node(node: dict[str, Any]) -> None:
+        key = node["x_exact"] or node["x"]
+        existing = nodes_by_key.get(key)
+        if existing is None or _node_priority(node["kind"]) >= _node_priority(existing["kind"]):
+            merged = {**(existing or {}), **node}
+            if existing and existing.get("left_limit") and not merged.get("left_limit"):
+                merged["left_limit"] = existing["left_limit"]
+            if existing and existing.get("right_limit") and not merged.get("right_limit"):
+                merged["right_limit"] = existing["right_limit"]
+            nodes_by_key[key] = merged
+
+    for component in components:
+        split_points = _component_split_points(component, critical_by_x, vertical_map, holes_by_x)
+        ordered = [component.start, *split_points, component.end]
+        for index, point in enumerate(ordered):
+            add_node(_variation_node_for_point(f_expr, point, component, index, len(ordered), critical_by_x, vertical_map, holes_by_x))
+        for left, right in zip(ordered, ordered[1:]):
+            if left == right:
+                continue
+            segment = _variation_segment(fp_expr, left, right, sign_sets)
+            segments.append(segment)
+            if segment["direction"] == "unknown":
+                warnings.append(f"Chưa xác định được chiều biến thiên trên ({segment['left']}; {segment['right']}).")
+
+    nodes = sorted(nodes_by_key.values(), key=lambda node: _variation_order_key(node.get("x_exact") or node["x"]))
+    status = "complete" if not warnings else "partial"
+    return {"status": status, "warnings": _unique_texts(warnings), "nodes": nodes, "segments": segments}
+
+
+def _node_priority(kind: str) -> int:
+    return {"boundary": 1, "critical": 2, "min": 3, "max": 3, "hole": 4, "asymptote": 5}.get(kind, 0)
+
+
+def _component_split_points(component, critical_by_x: dict[str, dict], vertical_map: dict[str, dict], holes_by_x: dict[str, dict]) -> list[Any]:
+    points: list[Any] = []
+    for data in list(critical_by_x.values()) + list(vertical_map.values()) + list(holes_by_x.values()):
+        raw = data.get("x_exact") or data.get("x")
         try:
-            sign = float(expr.subs(x, mid).evalf())
-            interval_str = f"({_bound_label(bounds[i])}; {_bound_label(bounds[i + 1])})"
-            if sign > 0:
-                positive.append(interval_str)
-            elif sign < 0:
-                negative.append(interval_str)
+            point = sp.sympify(raw)
+        except (TypeError, ValueError, AttributeError, sp.SympifyError):
+            continue
+        try:
+            if point == component.start or point == component.end:
+                continue
+            if component.contains(point) is sp.S.true:
+                points.append(point)
+        except (TypeError, ValueError, AttributeError, NotImplementedError):
+            continue
+    return sorted(set(points), key=default_sort_key)
+
+
+def _variation_node_for_point(
+    f_expr,
+    point,
+    component,
+    index: int,
+    total: int,
+    critical_by_x: dict[str, dict],
+    vertical_map: dict[str, dict],
+    holes_by_x: dict[str, dict],
+) -> dict[str, Any]:
+    key = _fmt_sym(point)
+    if key in vertical_map:
+        data = vertical_map[key]
+        return {
+            "kind": "asymptote",
+            "x": data.get("x", key),
+            "x_exact": key,
+            "label": "tiệm cận đứng",
+            "left_limit": _limit_from_text(data.get("lim_left")),
+            "right_limit": _limit_from_text(data.get("lim_right")),
+        }
+    if key in holes_by_x:
+        data = holes_by_x[key]
+        return {
+            "kind": "hole",
+            "x": data.get("x", key),
+            "x_exact": key,
+            "y": data.get("y"),
+            "y_exact": data.get("y_exact") or data.get("y"),
+            "label": data.get("label", "điểm khuyết"),
+        }
+    if key in critical_by_x:
+        data = critical_by_x[key]
+        return {
+            "kind": data.get("kind", "critical"),
+            "x": data.get("x", key),
+            "x_exact": key,
+            "y": data.get("y"),
+            "y_exact": data.get("y") or data.get("y_exact"),
+            "label": data.get("kind_label"),
+        }
+
+    node: dict[str, Any] = {"kind": "boundary", "x": _fmt_boundary(point), "x_exact": key, "label": "biên miền"}
+    if index == 0:
+        node["right_limit"] = _limit_payload(f_expr, point, "+")
+    if index == total - 1:
+        node["left_limit"] = _limit_payload(f_expr, point, "-")
+    return node
+
+
+def _derivative_sign_sets(fp_expr, domain_info: FunctionDomain) -> dict[str, Any]:
+    if fp_expr is None:
+        return {"verification": "unknown", "positive": S.EmptySet, "negative": S.EmptySet, "zero": S.EmptySet}
+    try:
+        if simplify(fp_expr) == 0:
+            return {"verification": "exact", "positive": S.EmptySet, "negative": S.EmptySet, "zero": domain_info.set or S.Reals}
+        positive = intersect_domain(sp.solveset(fp_expr > 0, x, domain=S.Reals), domain_info)
+        negative = intersect_domain(sp.solveset(fp_expr < 0, x, domain=S.Reals), domain_info)
+        zero = intersect_domain(sp.solveset(fp_expr, x, domain=S.Reals), domain_info)
+        if positive.has(sp.ConditionSet) or negative.has(sp.ConditionSet):
+            raise NotImplementedError
+        return {"verification": "exact", "positive": positive, "negative": negative, "zero": zero}
+    except (NotImplementedError, TypeError, ValueError, AttributeError):
+        return {"verification": "unknown", "positive": S.EmptySet, "negative": S.EmptySet, "zero": S.EmptySet}
+
+
+def _variation_segment(fp_expr, left, right, sign_sets: dict[str, Any]) -> dict[str, Any]:
+    mid = _segment_probe(left, right)
+    direction = "unknown"
+    derivative_sign = "unknown"
+    verification = sign_sets["verification"]
+    if mid is not None and verification == "exact":
+        if _set_contains(sign_sets["positive"], mid):
+            direction = "increasing"
+            derivative_sign = "+"
+        elif _set_contains(sign_sets["negative"], mid):
+            direction = "decreasing"
+            derivative_sign = "-"
+        elif sign_sets["zero"] != S.EmptySet and _set_contains(sign_sets["zero"], mid):
+            direction = "constant"
+            derivative_sign = "0"
+    if direction == "unknown" and fp_expr is not None and mid is not None:
+        try:
+            val = float(fp_expr.subs(x, mid).evalf())
+            if isfinite(val) and abs(val) >= 1e-12:
+                direction = "increasing" if val > 0 else "decreasing"
+                derivative_sign = "+" if val > 0 else "-"
+                verification = "sampled"
         except Exception:
             pass
-    return positive, negative
+    if direction == "unknown":
+        verification = "unknown"
+    return {"left": _fmt_boundary(left), "right": _fmt_boundary(right), "direction": direction, "verification": verification, "derivative_sign": derivative_sign}
+
+
+def _segment_probe(left, right):
+    try:
+        if left == -oo and right == oo:
+            return S.Zero
+        if left == -oo:
+            return right - 1
+        if right == oo:
+            return left + 1
+        return (left + right) / 2
+    except (TypeError, ValueError, AttributeError):
+        return None
+
+
+def _set_contains(value_set, point) -> bool:
+    try:
+        membership = value_set.contains(point)
+        return membership is sp.S.true or sp.simplify(membership) is sp.S.true
+    except (TypeError, ValueError, AttributeError, NotImplementedError):
+        return False
+
+
+def _limit_payload(f_expr, point, direction: str) -> dict[str, str | None]:
+    try:
+        if point == -oo:
+            value = limit(f_expr, x, -oo)
+        elif point == oo:
+            value = limit(f_expr, x, oo)
+        else:
+            value = limit(f_expr, x, point, dir=direction)
+    except Exception:
+        return {"value": None, "status": "unknown"}
+    return _limit_from_value(value)
+
+
+def _limit_from_text(value: str | None) -> dict[str, str | None]:
+    if value is None:
+        return {"value": None, "status": "unknown"}
+    if value in {"+∞", "∞", "oo"}:
+        return {"value": "+∞", "status": "infinite"}
+    if value in {"-∞", "-oo"}:
+        return {"value": "-∞", "status": "infinite"}
+    return {"value": value, "status": "finite"}
+
+
+def _limit_from_value(value) -> dict[str, str | None]:
+    if value == oo:
+        return {"value": "+∞", "status": "infinite"}
+    if value == -oo:
+        return {"value": "-∞", "status": "infinite"}
+    if value in (zoo, nan, S.NaN) or str(value).startswith("AccumBounds"):
+        return {"value": None, "status": "dne"}
+    try:
+        simplified = simplify(value)
+    except Exception:
+        simplified = value
+    return {"value": _fmt_sym(simplified), "status": "finite"}
+
+
+def _fmt_boundary(value) -> str:
+    if value == -oo:
+        return "-∞"
+    if value == oo:
+        return "+∞"
+    return _fmt_sym(value)
+
+
+def _variation_order_key(value: str):
+    if value in {"-∞", "-oo"}:
+        return (0, 0.0)
+    if value in {"+∞", "∞", "oo"}:
+        return (2, 0.0)
+    try:
+        return (1, float(sp.N(sp.sympify(value))))
+    except (TypeError, ValueError, AttributeError, sp.SympifyError):
+        return (1, 0.0)
+
+
+def _unique_texts(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        result.append(value)
+    return result
 
 
 def _build_variation_table(result: dict, cps: list[dict]) -> list[dict]:
@@ -1101,7 +2101,7 @@ def _safe_derivative_sign(fp_simplified, x_val: float) -> int | None:
     return 1 if val > 0 else -1
 
 
-def _collect_stationary_candidates(f_expr, fp_expr) -> list:
+def _collect_stationary_candidates(f_expr, fp_expr, domain_info: FunctionDomain | None = None) -> list:
     """
     Gom ứng viên điểm tới hạn:
     1) nghiệm f'(x)=0
@@ -1137,6 +2137,8 @@ def _collect_stationary_candidates(f_expr, fp_expr) -> list:
             cp_s = simplify(cp)
             key = str(cp_s)
             if key in seen:
+                continue
+            if not in_domain(domain_info, cp_s):
                 continue
             # Chỉ giữ điểm mà hàm gốc f(x) xác định hữu hạn
             f_at_cp = f_expr.subs(x, cp_s).evalf()

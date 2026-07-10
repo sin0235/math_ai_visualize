@@ -33,7 +33,7 @@ export function AnalyzerResult({ result, toolControls }: { result: AnalyzeRespon
   const hasShapeDetails = result.concave_up_intervals.length > 0 || result.concave_down_intervals.length > 0 || result.horizontal_asymptotes.length > 0 || result.vertical_asymptotes.length > 0 || !!result.oblique_asymptote;
   const [variationBbtOpen, setVariationBbtOpen] = useState(false);
   const [activeResultTab, setActiveResultTab] = useState<'quick' | 'tools'>('quick');
-  const hasVariationTable = !!result.variation_table && result.variation_table.length > 0;
+  const hasVariationTable = !!result.variation_table_v2?.nodes.length || (!!result.variation_table && result.variation_table.length > 0);
 
   return (
     <div className="fa2-result">
@@ -68,7 +68,7 @@ export function AnalyzerResult({ result, toolControls }: { result: AnalyzeRespon
                   >
                     <div className="fa2-formula-row"><KatexSpan tex="f'(x)=" className="fa2-label-mono fa2-label-katex" /><KatexSpan tex={result.derivative_latex || sympyToLatex(result.derivative || '')} className="fa2-katex" /></div>
                     {result.second_derivative && <div className="fa2-formula-row"><KatexSpan tex="f''(x)=" className="fa2-label-mono fa2-label-katex" /><KatexSpan tex={result.second_derivative_latex || sympyToLatex(result.second_derivative)} className="fa2-katex" /></div>}
-                    <VariationTable rows={result.variation_table} expanded={variationBbtOpen} onExpandedChange={setVariationBbtOpen} hideZoomButton />
+                    <VariationTable rows={result.variation_table} tableV2={result.variation_table_v2 ?? null} expanded={variationBbtOpen} onExpandedChange={setVariationBbtOpen} hideZoomButton />
                   </Section>
 
                   {hasShapeDetails && (

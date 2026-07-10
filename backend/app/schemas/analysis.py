@@ -43,6 +43,37 @@ class VariationRow(BaseModel):
     arrow_to_next: str | None = None
 
 
+class VariationLimit(BaseModel):
+    value: str | None = None
+    status: str = "unknown"
+
+
+class VariationNode(BaseModel):
+    kind: str
+    x: str
+    x_exact: str | None = None
+    y: str | None = None
+    y_exact: str | None = None
+    label: str | None = None
+    left_limit: VariationLimit | None = None
+    right_limit: VariationLimit | None = None
+
+
+class VariationSegment(BaseModel):
+    left: str
+    right: str
+    direction: str
+    verification: str
+    derivative_sign: str
+
+
+class VariationTableV2(BaseModel):
+    status: str = "unknown"
+    warnings: list[str] = Field(default_factory=list)
+    nodes: list[VariationNode] = Field(default_factory=list)
+    segments: list[VariationSegment] = Field(default_factory=list)
+
+
 class AnalyzeResponse(BaseModel):
     expression: str
     expression_latex: str | None = None
@@ -66,6 +97,14 @@ class AnalyzeResponse(BaseModel):
     x_intercepts: list[str] = Field(default_factory=list)
     y_intercept: str | None = None
     variation_table: list[VariationRow] = Field(default_factory=list)
+    variation_table_v2: VariationTableV2 | None = None
+    domain_partition_v2: dict[str, Any] | None = None
+    periodicity: dict[str, Any] | None = None
+    monotonicity_v2: dict[str, Any] | None = None
+    concavity_v2: dict[str, Any] | None = None
+    critical_points_v2: list[dict[str, Any]] = Field(default_factory=list)
+    inflection_points_v2: list[dict[str, Any]] = Field(default_factory=list)
+    asymptotes_v2: dict[str, Any] | None = None
     domain: str | None = None
     domain_latex: str | None = None
     range_val: str | None = None
@@ -81,7 +120,9 @@ class AnalyzeResponse(BaseModel):
     parameter_conditions: list[dict[str, Any]] = Field(default_factory=list)
     transform_preview: dict[str, Any] | None = None
     capabilities: dict[str, Any] | None = None
+    method_used: dict[str, Any] | None = None
     complexity_score: int | None = None
+    stage_statuses: dict[str, Any] | None = None
     warnings: list[str] = Field(default_factory=list)
     error: str | None = None
     error_code: str | None = None

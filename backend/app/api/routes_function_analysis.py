@@ -4,19 +4,23 @@ API routes for:
   POST /api/analyze/ocr      — OCR image → function analysis
 """
 import asyncio
+import copy
+import hashlib
 import json
 import multiprocessing as mp
 import queue
+import threading
+import time
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from app.api.deps import enforce_rate_limit, require_active_user, require_trusted_origin
+from app.api.deps import enforce_rate_limit, get_optional_current_user, require_active_user, require_trusted_origin
 from app.api.routes_ocr import enforce_ocr_access, resolve_image_source
 from app.db.models import UserRecord
 from app.db.session import DatabaseClient, get_database
 from app.repositories.admin import AdminRepository
-from app.schemas.analysis import AnalyzeOcrRequest, AnalyzeRequest, AnalyzeResponse, CriticalPoint, VariationRow
+from app.schemas.analysis import AnalyzeOcrRequest, AnalyzeRequest, AnalyzeResponse, CriticalPoint, VariationRow, VariationTableV2
 from app.schemas.scene import MAX_PROBLEM_TEXT_CHARS
 from app.services.ai_resolution import resolve_byok_ai_config, settings_with_byok_connection
 from app.services.api_errors import api_error
@@ -31,6 +35,13 @@ MAX_ANALYZER_GEOGEBRA_COMMANDS = 300
 MAX_ANALYZER_GRAPH_POINTS = 500
 MAX_ANALYZER_RESPONSE_CHARS = 200_000
 ANALYZER_OUTPUT_LIMIT = "ANALYZER_OUTPUT_LIMIT"
+ANALYZER_OVERLOADED = "ANALYZER_OVERLOADED"
+ANALYZER_CONCURRENCY_LIMIT = 2
+ANALYZER_OVERLOAD_RETRY_SECONDS = 3
+ANALYZER_CACHE_TTL_SECONDS = 15
+_ANALYZER_SEMAPHORE = threading.BoundedSemaphore(ANALYZER_CONCURRENCY_LIMIT)
+_ANALYZER_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
+_ANALYZER_INFLIGHT: dict[str, asyncio.Task[dict[str, Any]]] = {}
 
 FUNCTION_EXTRACT_PROMPT = """Từ văn bản OCR, trích xuất biểu thức hàm số.
 Trả về CHỈ biểu thức dạng: x^3 - 3*x + 2
@@ -44,10 +55,17 @@ Văn bản: {text}"""
 async def analyze_function_endpoint(
     request: AnalyzeRequest,
     http_request: Request,
+    user: UserRecord | None = Depends(get_optional_current_user),
     db: DatabaseClient = Depends(get_database),
 ) -> AnalyzeResponse:
-    await enforce_rate_limit(db, http_request, None, "analyze", 30, 60)
-    data = await _run_analyzer_job(
+    await enforce_rate_limit(db, http_request, None, "analyze_ip", 30, 60)
+    if user is not None:
+        await enforce_rate_limit(db, http_request, user, "analyze_user", 60, 60)
+    if request.interval or request.line or request.parameter_conditions or request.transform:
+        await enforce_rate_limit(db, http_request, None, "analyze_tool_ip", 90, 60)
+        if user is not None:
+            await enforce_rate_limit(db, http_request, user, "analyze_tool_user", 120, 60)
+    data = await _run_cached_analyzer_job(
         request.expression,
         request.parameters,
         interval=request.interval,
@@ -101,7 +119,7 @@ async def analyze_from_ocr(
         expression = await _extract_function_from_text(ocr_result.text, settings)
         if expression == "NONE":
             return AnalyzeResponse(expression="", error="Không tìm thấy biểu thức hàm số trong ảnh.", ocr_text=ocr_result.text, warnings=ocr_result.warnings)
-        data = await _run_analyzer_job(expression)
+        data = await _run_cached_analyzer_job(expression)
         data["ocr_text"] = ocr_result.text
         data["ocr_expression"] = expression
         data["warnings"] = [*data.get("warnings", []), *ocr_result.warnings]
@@ -115,6 +133,65 @@ async def analyze_from_ocr(
     return _analysis_response(expression, data)
 
 
+async def _run_cached_analyzer_job(
+    expression: str,
+    parameters: dict[str, float] | None = None,
+    *,
+    interval: dict[str, Any] | None = None,
+    line: dict[str, Any] | None = None,
+    parameter_conditions: dict[str, Any] | None = None,
+    transform: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    key = _analyzer_request_key(expression, parameters, interval, line, parameter_conditions, transform)
+    now = time.monotonic()
+    cached = _ANALYZER_CACHE.get(key)
+    if cached and cached[0] > now:
+        return copy.deepcopy(cached[1])
+    task = _ANALYZER_INFLIGHT.get(key)
+    if task is None:
+        task = asyncio.create_task(_run_analyzer_job(expression, parameters, interval=interval, line=line, parameter_conditions=parameter_conditions, transform=transform))
+        _ANALYZER_INFLIGHT[key] = task
+    try:
+        data = await task
+    finally:
+        if _ANALYZER_INFLIGHT.get(key) is task:
+            _ANALYZER_INFLIGHT.pop(key, None)
+    if "error" not in data:
+        _ANALYZER_CACHE[key] = (time.monotonic() + ANALYZER_CACHE_TTL_SECONDS, copy.deepcopy(data))
+        if len(_ANALYZER_CACHE) > 128:
+            _prune_analyzer_cache()
+    return copy.deepcopy(data)
+
+
+def _analyzer_request_key(
+    expression: str,
+    parameters: dict[str, float] | None,
+    interval: dict[str, Any] | None,
+    line: dict[str, Any] | None,
+    parameter_conditions: dict[str, Any] | None,
+    transform: dict[str, Any] | None,
+) -> str:
+    payload = {
+        "expression": expression,
+        "parameters": parameters or {},
+        "interval": interval,
+        "line": line,
+        "parameter_conditions": parameter_conditions,
+        "transform": transform,
+    }
+    raw = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _prune_analyzer_cache() -> None:
+    now = time.monotonic()
+    expired = [key for key, (expires_at, _) in _ANALYZER_CACHE.items() if expires_at <= now]
+    for key in expired:
+        _ANALYZER_CACHE.pop(key, None)
+    while len(_ANALYZER_CACHE) > 128:
+        _ANALYZER_CACHE.pop(next(iter(_ANALYZER_CACHE)))
+
+
 async def _run_analyzer_job(
     expression: str,
     parameters: dict[str, float] | None = None,
@@ -124,15 +201,24 @@ async def _run_analyzer_job(
     parameter_conditions: dict[str, Any] | None = None,
     transform: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    return await asyncio.to_thread(
-        _run_analyzer_job_sync,
-        expression,
-        parameters,
-        interval,
-        line,
-        parameter_conditions,
-        transform,
-    )
+    if not _ANALYZER_SEMAPHORE.acquire(blocking=False):
+        raise HTTPException(
+            status_code=429,
+            detail="Analyzer đang quá tải. Hãy thử lại sau.",
+            headers={"Retry-After": str(ANALYZER_OVERLOAD_RETRY_SECONDS), "X-Error-Code": ANALYZER_OVERLOADED},
+        )
+    try:
+        return await asyncio.to_thread(
+            _run_analyzer_job_sync,
+            expression,
+            parameters,
+            interval,
+            line,
+            parameter_conditions,
+            transform,
+        )
+    finally:
+        _ANALYZER_SEMAPHORE.release()
 
 
 def _run_analyzer_job_sync(
@@ -177,7 +263,7 @@ def _analyzer_worker(
     transform: dict[str, Any] | None,
 ) -> None:
     try:
-        from app.services.function_analyzer import analyze_function
+        from app.services.function_analyzer import AnalyzerStageTimeout, analyze_function, analyzer_stage_timeout
         from app.services.function_graph_builder import build_function_graph
 
         data = analyze_function(
@@ -188,11 +274,23 @@ def _analyzer_worker(
             parameter_conditions=parameter_conditions,
             transform=transform,
         )
-        if "error" not in data:
-            scene, data["geogebra_commands"], data["graph_points"] = build_function_graph(data)
-            data["graph_scene"] = scene.model_dump(mode="json")
+        if "error" not in data and not data.get("_skip_graph"):
+            try:
+                with analyzer_stage_timeout("graph", 2.0):
+                    scene, data["geogebra_commands"], data["graph_points"] = build_function_graph(data)
+                    data["graph_scene"] = scene.model_dump(mode="json")
+                data.setdefault("stage_statuses", {})["graph"] = {"status": "ok"}
+            except AnalyzerStageTimeout as error:
+                data.setdefault("stage_statuses", {})[error.stage] = {"status": "timeout", "error_code": error.code}
+                data.setdefault("warnings", []).append(str(error))
+        elif data.get("_skip_graph"):
+            data.setdefault("stage_statuses", {})["graph"] = {"status": "skipped"}
         data.pop("_parsed_expr", None)
         data.pop("_evaluated_expr", None)
+        data.pop("_domain_set", None)
+        data.pop("_domain_info", None)
+        data.pop("_graph_expr", None)
+        data.pop("_skip_graph", None)
         result_queue.put(("ok", _apply_analyzer_output_limits(data)))
     except Exception as error:  # pragma: no cover - child-process defensive path
         result_queue.put(("error", f"Lỗi khi phân tích hàm số: {error}"))
@@ -217,7 +315,7 @@ def _analyzer_error(message: str, code: str) -> dict[str, Any]:
 
 def _analysis_response(expression: str, data: dict[str, Any]) -> AnalyzeResponse:
     if "error" in data:
-        return AnalyzeResponse(expression=expression, error=data["error"], error_code=data.get("error_code"), warnings=data.get("warnings", []), ocr_text=data.get("ocr_text"), ocr_expression=data.get("ocr_expression"))
+        return AnalyzeResponse(expression=expression, error=data["error"], error_code=data.get("error_code"), stage_statuses=data.get("stage_statuses"), warnings=data.get("warnings", []), ocr_text=data.get("ocr_text"), ocr_expression=data.get("ocr_expression"))
 
     return AnalyzeResponse(
         expression=data["expression"],
@@ -242,6 +340,14 @@ def _analysis_response(expression: str, data: dict[str, Any]) -> AnalyzeResponse
         x_intercepts=data.get("x_intercepts", []),
         y_intercept=data.get("y_intercept"),
         variation_table=[VariationRow(**row) for row in data.get("variation_table", [])],
+        variation_table_v2=VariationTableV2(**data["variation_table_v2"]) if data.get("variation_table_v2") else None,
+        domain_partition_v2=data.get("domain_partition_v2"),
+        periodicity=data.get("periodicity"),
+        monotonicity_v2=data.get("monotonicity_v2"),
+        concavity_v2=data.get("concavity_v2"),
+        critical_points_v2=data.get("critical_points_v2", []),
+        inflection_points_v2=data.get("inflection_points_v2", []),
+        asymptotes_v2=data.get("asymptotes_v2"),
         domain=data.get("domain"),
         domain_latex=data.get("domain_latex"),
         range_val=data.get("range"),
@@ -257,7 +363,9 @@ def _analysis_response(expression: str, data: dict[str, Any]) -> AnalyzeResponse
         parameter_conditions=data.get("parameter_conditions", []),
         transform_preview=data.get("transform_preview"),
         capabilities=data.get("capabilities"),
+        method_used=data.get("method_used"),
         complexity_score=data.get("complexity_score"),
+        stage_statuses=data.get("stage_statuses"),
         warnings=data.get("warnings", []),
     )
 

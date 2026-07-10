@@ -709,6 +709,8 @@ export default function App() {
 
   async function openHistoryItem(id: string) {
     setOpeningHistoryId(id);
+    setHistoryOpen(false);
+    if (activeView !== 'render') navigateTo('render');
     try {
       const detail = await getRenderHistoryDetail(id);
       setProblemText(detail.problem_text);
@@ -1158,7 +1160,7 @@ export default function App() {
             {result && <button type="button" className="mobile-scroll-notice" onClick={scrollToResult}>↓ Xem hình vừa dựng</button>}
             <div className="result-area" ref={resultAnchorRef}>
               <div className="render-stage">
-                <RendererPanel result={effectiveResult} threeInteraction={threeInteraction} onGeoGebraPointChange={handlePointDragEnd} highlightedObjects={highlightedObjects} saving={editorSaving} onThreeImageCaptureReady={handleThreeImageCaptureReady} />
+                <RendererPanel result={effectiveResult} threeInteraction={threeInteraction} onGeoGebraPointChange={handlePointDragEnd} highlightedObjects={highlightedObjects} saving={editorSaving || Boolean(openingHistoryId)} savingLabel={openingHistoryId ? 'Đang mở lịch sử...' : undefined} onThreeImageCaptureReady={handleThreeImageCaptureReady} />
                 {effectiveResult && shouldShowConfirmationPrompt(effectiveResult) && (
                   <aside className="render-review-chip" role="status" aria-live="polite">
                     <span className="render-review-dot" aria-hidden="true" />
@@ -1385,7 +1387,8 @@ export default function App() {
           <VerifyEmailPage token={authToken} email={pendingVerificationEmail} onVerifyEmail={handleVerifyEmail} onBackWorkspace={() => navigateTo('render')} onBackLogin={() => navigateTo('login')} onToast={(title, message, kind = 'info') => showNotification(title, message, [], kind)} />
         )}
       </main>
-      <footer className="app-footer">
+      {activeView !== 'render' && (
+        <footer className="app-footer">
         <div className="footer-top">
           <div className="footer-brand-block">
             <div className="footer-brand">
@@ -1506,7 +1509,8 @@ export default function App() {
             </a>
           </span>
         </div>
-      </footer>
+        </footer>
+      )}
     </>
   );
 }

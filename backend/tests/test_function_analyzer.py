@@ -1,4 +1,12 @@
-from app.api.routes_function_analysis import _apply_analyzer_output_limits, _run_analyzer_job_sync
+import asyncio
+import time
+
+import pytest
+from fastapi import HTTPException
+
+from app.api import routes_function_analysis
+from app.api.routes_function_analysis import _apply_analyzer_output_limits, _run_analyzer_job, _run_analyzer_job_sync
+from app.services import function_analyzer
 from app.services.function_analyzer import analyze_function
 from app.services.function_graph_builder import build_function_graph
 
@@ -9,8 +17,57 @@ def test_analyzer_api_worker_returns_clean_payload():
     assert "error" not in result
     assert "_parsed_expr" not in result
     assert "_evaluated_expr" not in result
+    assert "_domain_set" not in result
+    assert "_domain_info" not in result
     assert result["graph_points"]
+    assert result["method_used"]["monotonicity"] == "symbolic_exact"
     assert result["complexity_score"] > 0
+
+
+def test_analyzer_stage_timeout_returns_partial_response(monkeypatch):
+    def slow_domain(*args, **kwargs):
+        time.sleep(1)
+
+    monkeypatch.setattr(function_analyzer, "continuous_domain", slow_domain)
+    monkeypatch.setitem(function_analyzer._STAGE_TIMEOUT_SECONDS, "domain", 0.01)
+
+    result = analyze_function("x^2 - 1")
+
+    assert "error" not in result
+    assert result["domain"] is None
+    assert result["stage_statuses"]["domain"]["status"] == "timeout"
+    assert result["derivative"] is not None
+
+
+def test_analyzer_core_timeout_marks_graph_skip(monkeypatch):
+    def slow_diff(*args, **kwargs):
+        time.sleep(1)
+
+    monkeypatch.setattr(function_analyzer, "diff", slow_diff)
+    monkeypatch.setitem(function_analyzer._STAGE_TIMEOUT_SECONDS, "derivative", 0.01)
+
+    result = analyze_function("x^2 - 1")
+
+    assert "error" not in result
+    assert result["stage_statuses"]["derivative"]["status"] == "timeout"
+    assert result["_skip_graph"] is True
+
+
+def test_analyzer_concurrency_limit_returns_429():
+    acquired_slots = []
+    for _ in range(routes_function_analysis.ANALYZER_CONCURRENCY_LIMIT):
+        acquired = routes_function_analysis._ANALYZER_SEMAPHORE.acquire(blocking=False)
+        assert acquired
+        acquired_slots.append(acquired)
+    try:
+        with pytest.raises(HTTPException) as exc_info:
+            asyncio.run(_run_analyzer_job("x^2 - 1"))
+    finally:
+        for _ in acquired_slots:
+            routes_function_analysis._ANALYZER_SEMAPHORE.release()
+
+    assert exc_info.value.status_code == 429
+    assert exc_info.value.headers["Retry-After"] == str(routes_function_analysis.ANALYZER_OVERLOAD_RETRY_SECONDS)
 
 
 def test_analyzer_output_limit_returns_error_code():
@@ -133,3 +190,181 @@ def test_absolute_transform_uses_geogebra_safe_abs_command():
     assert transform_commands
     assert "Abs(" not in transform_commands[0]
     assert "abs(" in transform_commands[0]
+
+
+def test_analyzer_keeps_domain_hole_out_of_intersections_and_graph():
+    result = analyze_function("(x^2 - 1)/(x - 1)", line={"k": 0, "b": 2})
+
+    assert "error" not in result
+    assert result["removable_holes"] == [{"x": "1", "x_exact": "1", "y": "2", "y_exact": "2", "label": "điểm khuyết"}]
+    assert result["line_analysis"]["intersections"] == []
+    assert result["intervals_increasing"] == ["(-∞; 1)", "(1; +∞)"]
+
+    scene, commands, _ = build_function_graph(result)
+    assert all(command != "f(x) = x+1" for command in commands)
+    assert any(command.startswith("f1 = Function(") for command in commands)
+    assert any(command.startswith("f2 = Function(") for command in commands)
+    assert any(command.startswith("H1 = (1.0, 2.0)") for command in commands)
+    hole_objects = [obj for obj in scene.model_dump(mode="json")["objects"] if obj.get("name") == "H1"]
+    assert hole_objects and hole_objects[0]["metadata"]["kind"] == "removable_hole"
+
+
+def test_symbolic_sign_branch_records_exact_method():
+    result = analyze_function("x^3 - 3*x")
+
+    assert "error" not in result
+    assert result["method_used"]["monotonicity"] == "symbolic_exact"
+    assert result["intervals_increasing"] == ["(-∞; -1)", "(1; +∞)"]
+    assert result["intervals_decreasing"] == ["(-1; 1)"]
+
+
+def test_domain_restricts_symbolic_intervals():
+    result = analyze_function("sqrt(x)")
+
+    assert "error" not in result
+    assert result["method_used"]["monotonicity"] == "symbolic_exact"
+    assert result["intervals_increasing"] == ["(0; +∞)"]
+    assert result["intervals_decreasing"] == []
+
+
+def _variation_v2(expression: str) -> dict:
+    result = analyze_function(expression)
+    assert "error" not in result
+    table = result["variation_table_v2"]
+    assert table is not None
+    return table
+
+
+def test_variation_table_v2_uses_explicit_boundary_limits():
+    table = _variation_v2("exp(x)")
+
+    assert table["status"] == "complete"
+    assert table["nodes"][0]["x"] == "-∞"
+    assert table["nodes"][0]["right_limit"] == {"value": "0", "status": "finite"}
+    assert table["nodes"][-1]["left_limit"] == {"value": "+∞", "status": "infinite"}
+    assert table["segments"] == [{"left": "-∞", "right": "+∞", "direction": "increasing", "verification": "exact", "derivative_sign": "+"}]
+
+
+def test_variation_table_v2_preserves_finite_infinite_boundary_limits():
+    table = _variation_v2("atan(x)")
+
+    assert table["status"] == "complete"
+    assert table["nodes"][0]["right_limit"] == {"value": "-pi/2", "status": "finite"}
+    assert table["nodes"][-1]["left_limit"] == {"value": "pi/2", "status": "finite"}
+    assert table["segments"][0]["direction"] == "increasing"
+
+
+def test_variation_table_v2_splits_domain_at_vertical_asymptote():
+    table = _variation_v2("1/x")
+
+    assert [node["kind"] for node in table["nodes"]] == ["boundary", "asymptote", "boundary"]
+    asymptote = table["nodes"][1]
+    assert asymptote["x_exact"] == "0"
+    assert asymptote["left_limit"] == {"value": "-∞", "status": "infinite"}
+    assert asymptote["right_limit"] == {"value": "+∞", "status": "infinite"}
+    assert [(segment["left"], segment["right"], segment["direction"]) for segment in table["segments"]] == [
+        ("-∞", "0", "decreasing"),
+        ("0", "+∞", "decreasing"),
+    ]
+
+
+def test_variation_table_v2_preserves_two_sided_infinite_asymptote():
+    table = _variation_v2("1/(x-1)^2")
+
+    asymptote = table["nodes"][1]
+    assert asymptote["kind"] == "asymptote"
+    assert asymptote["x_exact"] == "1"
+    assert asymptote["left_limit"] == {"value": "+∞", "status": "infinite"}
+    assert asymptote["right_limit"] == {"value": "+∞", "status": "infinite"}
+    assert [segment["direction"] for segment in table["segments"]] == ["increasing", "decreasing"]
+
+
+def test_variation_table_v2_starts_at_domain_boundary_for_log():
+    table = _variation_v2("log(x)")
+
+    assert [node["x"] for node in table["nodes"]] == ["0", "+∞"]
+    assert table["nodes"][0]["right_limit"] == {"value": "-∞", "status": "infinite"}
+    assert table["nodes"][-1]["left_limit"] == {"value": "+∞", "status": "infinite"}
+
+
+def test_variation_table_v2_renders_periodic_domain_by_cycle():
+    result = analyze_function("tan(x)")
+    table = result["variation_table_v2"]
+
+    assert result["periodicity"]["period"] == "pi"
+    assert table["status"] == "complete"
+    assert table["warnings"] == ["Bảng biến thiên biểu diễn theo một chu kỳ, với k ∈ Z."]
+    assert table["segments"] == [{"left": "-pi/2 + k*pi", "right": "pi/2 + k*pi", "direction": "increasing", "verification": "periodic_exact", "derivative_sign": "+"}]
+
+
+def test_variation_table_v2_keeps_removable_hole_as_hole_node():
+    table = _variation_v2("(x^2 - 1)/(x - 1)")
+
+    hole = table["nodes"][1]
+    assert hole["kind"] == "hole"
+    assert hole["x_exact"] == "1"
+    assert hole["y_exact"] == "2"
+    assert [segment["direction"] for segment in table["segments"]] == ["increasing", "increasing"]
+
+
+def test_variation_table_v2_can_mark_unknown_direction(monkeypatch):
+    monkeypatch.setattr(function_analyzer, "_segment_probe", lambda *_args: None)
+    table = _variation_v2("exp(x)")
+
+    assert table["status"] == "partial"
+    assert table["segments"][0]["direction"] == "unknown"
+    assert table["segments"][0]["verification"] == "unknown"
+    assert table["segments"][0]["derivative_sign"] == "unknown"
+
+
+def test_monotonicity_v2_records_periodic_general_intervals():
+    result = analyze_function("sin(x)")
+
+    assert result["periodicity"]["period"] == "2*pi"
+    assert result["monotonicity_v2"]["method"] == "periodic_exact"
+    assert result["monotonicity_v2"]["segments"][0]["left_exact"] == "-pi/2 + 2*k*pi"
+    assert result["monotonicity_v2"]["segments"][0]["parameter_domain"] == "Z"
+
+
+def test_concavity_v2_handles_constant_second_derivative():
+    result = analyze_function("x^2")
+
+    assert result["concavity_v2"]["method"] == "symbolic_exact"
+    assert result["concavity_v2"]["segments"] == [{"left": "-∞", "right": "+∞", "left_exact": "-oo", "right_exact": "oo", "sign": "+", "verification": "exact", "kind": "convex", "second_derivative_sign": "+"}]
+    assert result["concave_up_intervals"] == ["(-∞; +∞)"]
+
+
+def test_log_concavity_and_vertical_asymptote_from_domain_boundary():
+    result = analyze_function("log(x)")
+
+    assert result["concavity_v2"]["segments"][0]["kind"] == "concave"
+    vertical = result["asymptotes_v2"]["vertical"][0]
+    assert vertical["x_exact"] == "0"
+    assert "domain_boundary" in vertical["source"]
+    assert vertical["right_limit"]["status"] == "infinite"
+
+
+def test_stationary_inflection_is_not_local_extremum():
+    result = analyze_function("x^3")
+
+    assert result["critical_points_v2"][0]["kind"] == "stationary_inflection"
+    assert result["critical_points_v2"][0]["evidence"] == "second_derivative_sign_change"
+    assert result["inflection_points_v2"][0]["x_exact"] == "0"
+
+
+def test_periodic_tan_cot_asymptote_families():
+    tan_result = analyze_function("tan(x)")
+    cot_result = analyze_function("cot(x)")
+
+    assert tan_result["asymptotes_v2"]["periodic_vertical_families"][0]["x_exact"] == "pi/2 + k*pi"
+    assert cot_result["asymptotes_v2"]["periodic_vertical_families"][0]["x_exact"] == "k*pi"
+
+
+def test_asymptote_v2_preserves_exact_values_and_two_oblique_directions():
+    rational = analyze_function("1/(x-sqrt(2))")
+    oblique = analyze_function("sqrt(x^2 + 1)")
+
+    assert rational["asymptotes_v2"]["vertical"][0]["x_exact"] == "sqrt(2)"
+    assert rational["asymptotes_v2"]["vertical"][0]["approx"] == "1.4142"
+    directions = {item["direction"] for item in oblique["asymptotes_v2"]["oblique"]}
+    assert directions == {"+∞", "-∞"}

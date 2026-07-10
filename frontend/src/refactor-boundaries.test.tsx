@@ -53,6 +53,25 @@ const analyzeResponse: AnalyzeResponse = {
   x_intercepts: [],
   y_intercept: null,
   variation_table: [],
+  variation_table_v2: {
+    status: 'complete',
+    warnings: [],
+    nodes: [
+      {
+        kind: 'boundary',
+        x: '-∞',
+        x_exact: '-oo',
+        right_limit: { value: '0', status: 'finite' },
+      },
+      {
+        kind: 'boundary',
+        x: '+∞',
+        x_exact: 'oo',
+        left_limit: { value: '+∞', status: 'infinite' },
+      },
+    ],
+    segments: [{ left: '-∞', right: '+∞', direction: 'increasing', verification: 'exact', derivative_sign: '+' }],
+  },
   domain: 'R',
   domain_latex: '\\mathbb{R}',
   range_val: null,

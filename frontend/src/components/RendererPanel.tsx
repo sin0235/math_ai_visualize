@@ -13,12 +13,18 @@ interface RendererPanelProps {
   onGeoGebraPointChange?: (name: string, point: Vec3) => void | Promise<void>;
   highlightedObjects?: string[];
   saving?: boolean;
+  savingLabel?: string;
   onThreeImageCaptureReady?: (capture: ThreeSceneImageCapture | null) => void;
 }
 
-export function RendererPanel({ result, threeInteraction, onGeoGebraPointChange, highlightedObjects, saving, onThreeImageCaptureReady }: RendererPanelProps) {
+export function RendererPanel({ result, threeInteraction, onGeoGebraPointChange, highlightedObjects, saving, savingLabel = 'Đang dựng lại hình...', onThreeImageCaptureReady }: RendererPanelProps) {
   if (!result) {
-    return <EmptyState />;
+    return (
+      <div className="renderer-frame">
+        <EmptyState />
+        {saving && <RendererBusyOverlay label={savingLabel} />}
+      </div>
+    );
   }
 
   if (result.payload.renderer === 'geogebra_2d' || result.payload.renderer === 'geogebra_3d') {
@@ -27,7 +33,7 @@ export function RendererPanel({ result, threeInteraction, onGeoGebraPointChange,
         <RenderTrustBadges result={result} />
         <RenderMetadataBanner result={result} />
         <GeoGebraView commands={result.payload.geogebra_commands} renderer={result.payload.renderer} scene={result.scene} view={result.scene.view} onPointChange={onGeoGebraPointChange} />
-        {saving && <div className="renderer-saving-overlay">Đang dựng lại hình...</div>}
+        {saving && <RendererBusyOverlay label={savingLabel} />}
       </div>
     );
   }
@@ -45,7 +51,7 @@ export function RendererPanel({ result, threeInteraction, onGeoGebraPointChange,
             trustLabels={renderTrustLabels(result)}
           />
         </Suspense>
-        {saving && <div className="renderer-saving-overlay">Đang dựng lại hình...</div>}
+        {saving && <RendererBusyOverlay label={savingLabel} />}
       </div>
     );
   }
@@ -59,6 +65,10 @@ export function RendererPanel({ result, threeInteraction, onGeoGebraPointChange,
       </div>
     </div>
   );
+}
+
+function RendererBusyOverlay({ label }: { label: string }) {
+  return <div className="renderer-saving-overlay">{label}</div>;
 }
 
 function EmptyState() {

@@ -2,6 +2,7 @@ from sympy import Symbol, lambdify
 
 from app.renderers.geogebra_commands import build_geogebra_commands
 from app.schemas.scene import Annotation, FunctionGraph, MathScene, Point2D, SceneView, Segment
+from app.services.function_domain import in_domain
 
 x = Symbol("x", real=True)
 m = Symbol("m", real=True)
@@ -11,7 +12,7 @@ def build_function_graph(analysis: dict) -> tuple[MathScene, list[str], list[dic
     objects = []
     annotations = []
 
-    graph_expression = analysis.get("evaluated_expression") or analysis["expression"]
+    graph_expression = analysis.get("_graph_expr") or analysis.get("evaluated_expression") or analysis["expression"]
     interval_analysis = analysis.get("interval_analysis")
     
     domain = None
@@ -19,8 +20,14 @@ def build_function_graph(analysis: dict) -> tuple[MathScene, list[str], list[dic
         a = interval_analysis["a"]
         b = interval_analysis["b"]
         domain = (a, b)
-        
-    objects.append(FunctionGraph(name="f", expression=_geogebra_expression(graph_expression), domain=domain))
+
+    graph_domains = [domain] if domain is not None else _graph_domains_from_analysis(analysis)
+    if graph_domains:
+        for index, graph_domain in enumerate(graph_domains):
+            graph_name = "f" if len(graph_domains) == 1 else f"f{index + 1}"
+            objects.append(FunctionGraph(name=graph_name, expression=_geogebra_expression(graph_expression), domain=graph_domain))
+    else:
+        objects.append(FunctionGraph(name="f", expression=_geogebra_expression(graph_expression), domain=None))
 
     for i, cp in enumerate(analysis.get("critical_points", [])):
         x_val = _safe_float(cp.get("x"))
@@ -93,6 +100,13 @@ def build_function_graph(analysis: dict) -> tuple[MathScene, list[str], list[dic
     if y_intercept is not None:
         objects.append(Point2D(name="Y", x=0, y=y_intercept))
 
+    for i, hole in enumerate(analysis.get("removable_holes", [])):
+        point = _point_from_values(f"H{i + 1}", hole.get("x"), hole.get("y"))
+        if point is not None:
+            point.metadata["kind"] = "removable_hole"
+            objects.append(point)
+            annotations.append(Annotation(type="coordinate_label", target=point.name, label=hole.get("label", "điểm khuyết"), color="#dc2626"))
+
     scene = MathScene(
         problem_text=f"Đồ thị y = {analysis['expression']}",
         topic="function_graph",
@@ -120,6 +134,12 @@ def build_function_graph(analysis: dict) -> tuple[MathScene, list[str], list[dic
         commands.append(f'SetColor({name}, "#e63946")')
         commands.append(f"SetPointSize({name}, 6)")
 
+    for i in range(len(analysis.get("removable_holes", []))):
+        name = f"H{i + 1}"
+        commands.append(f'SetColor({name}, "#dc2626")')
+        commands.append(f"SetPointStyle({name}, 2)")
+        commands.append(f"SetPointSize({name}, 6)")
+
     for i in range(len(analysis.get("inflection_points", []))):
         commands.append(f'SetColor(U{i + 1}, "#f4a261")')
         commands.append(f"SetPointSize(U{i + 1}, 4)")
@@ -129,10 +149,10 @@ def build_function_graph(analysis: dict) -> tuple[MathScene, list[str], list[dic
             commands.append(f"SetVisibleInView({obj.name}, 1, false)")
 
     sample_expr = analysis.get("_evaluated_expr") or analysis.get("_parsed_expr")
-    return scene, commands, _sample_graph_points(sample_expr)
+    return scene, commands, _sample_graph_points(sample_expr, analysis.get("_domain_info"))
 
 
-def _sample_graph_points(expr) -> list[dict[str, float]]:
+def _sample_graph_points(expr, domain_info=None) -> list[dict[str, float]]:
     if expr is None:
         return []
     try:
@@ -143,6 +163,8 @@ def _sample_graph_points(expr) -> list[dict[str, float]]:
     points: list[dict[str, float]] = []
     for i in range(161):
         x_val = -8 + i * 0.1
+        if not in_domain(domain_info, x_val):
+            continue
         try:
             y_val = float(fn(x_val))
         except (ValueError, ZeroDivisionError, OverflowError, TypeError):
@@ -151,6 +173,31 @@ def _sample_graph_points(expr) -> list[dict[str, float]]:
             continue
         points.append({"x": round(x_val, 4), "y": round(y_val, 4)})
     return points
+
+
+def _graph_domains_from_analysis(analysis: dict) -> list[tuple[float | str, float | str]]:
+    domain_info = analysis.get("_domain_info")
+    components = getattr(domain_info, "components", ())
+    domains: list[tuple[float | str, float | str]] = []
+    for component in components:
+        start = _geogebra_bound(component.start)
+        end = _geogebra_bound(component.end)
+        if start is None or end is None:
+            continue
+        domains.append((start, end))
+    return domains
+
+
+def _geogebra_bound(value) -> float | str | None:
+    text = str(value)
+    if text in ("-oo", "-∞"):
+        return "-∞"
+    if text in ("oo", "+∞", "∞"):
+        return "+∞"
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _geogebra_expression(expression: str) -> str:

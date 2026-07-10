@@ -361,9 +361,9 @@ export function HistoryPanel({ items, loading, openingId, onOpen, onDelete, onPa
           {items.map((item) => {
             const opening = openingId === item.id;
             const title = historyTitle(item);
-            const preview = item.problem_preview && item.problem_preview !== title ? item.problem_preview : item.problem_text;
+            const preview = compactHistoryText(item.problem_preview && item.problem_preview !== title ? item.problem_preview : item.problem_text, 120);
             return (
-              <article className={`history-item${opening ? ' opening' : ''}${item.archived_at ? ' archived' : ''}`} key={item.id}>
+              <article className={`history-item${item.archived_at ? ' archived' : ''}`} key={item.id}>
                 <button type="button" className="history-open-button" onClick={() => onOpen(item.id)} disabled={opening} aria-busy={opening}>
                   <span className="history-item-copy">
                     <strong>{title}</strong>
@@ -378,7 +378,6 @@ export function HistoryPanel({ items, loading, openingId, onOpen, onDelete, onPa
                       {item.tags?.map((tag) => <em key={tag}>{tag}</em>)}
                     </span>
                   </span>
-                  {opening && <span className="history-opening-indicator" aria-hidden="true"><span className="sp-spinner" /></span>}
                 </button>
                 <div className="history-item-actions">
                   {onPatch && (
@@ -409,7 +408,13 @@ function formatHistoryDate(value: string) {
 }
 
 function historyTitle(item: RenderHistoryItem) {
-  return item.title?.trim() || item.problem_preview?.trim() || item.problem_text;
+  return compactHistoryText(item.title?.trim() || item.problem_preview?.trim() || item.problem_text, 72);
+}
+
+function compactHistoryText(value: string, limit: number) {
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  if (normalized.length <= limit) return normalized;
+  return `${normalized.slice(0, limit).trimEnd()}…`;
 }
 
 function historyMetaLine(item: RenderHistoryItem) {

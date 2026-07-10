@@ -17,6 +17,70 @@ export interface VariationRow {
   arrow_to_next: string | null;
 }
 
+export interface VariationLimit {
+  value: string | null;
+  status: 'finite' | 'infinite' | 'dne' | 'unknown' | string;
+}
+
+export interface VariationNodeV2 {
+  kind: 'boundary' | 'critical' | 'max' | 'min' | 'asymptote' | 'hole' | string;
+  x: string;
+  x_exact?: string | null;
+  y?: string | null;
+  y_exact?: string | null;
+  label?: string | null;
+  left_limit?: VariationLimit | null;
+  right_limit?: VariationLimit | null;
+}
+
+export interface VariationSegmentV2 {
+  left: string;
+  right: string;
+  direction: 'increasing' | 'decreasing' | 'constant' | 'unknown' | string;
+  verification: 'exact' | 'sampled' | 'unknown' | string;
+  derivative_sign: '+' | '-' | '0' | 'unknown' | string;
+}
+
+export interface VariationTableV2 {
+  status: 'complete' | 'partial' | 'unknown' | string;
+  warnings: string[];
+  nodes: VariationNodeV2[];
+  segments: VariationSegmentV2[];
+}
+
+export interface AnalysisSegmentV2 {
+  left: string;
+  right: string;
+  left_exact?: string | null;
+  right_exact?: string | null;
+  sign?: string | null;
+  direction?: string | null;
+  kind?: string | null;
+  verification: string;
+  error_bound?: string | null;
+  parameter?: string | null;
+  parameter_domain?: string | null;
+}
+
+export interface AnalysisChartV2 {
+  status: 'complete' | 'partial' | 'unknown' | string;
+  method: string;
+  segments: AnalysisSegmentV2[];
+  warnings: string[];
+  periodic?: boolean;
+  period?: string | null;
+  parameter?: string | null;
+  parameter_domain?: string | null;
+  base_interval?: Record<string, string> | null;
+}
+
+export interface AnalyzeAsymptotesV2 {
+  vertical: Array<Record<string, unknown>>;
+  horizontal: Array<Record<string, unknown>>;
+  oblique: Array<Record<string, unknown>>;
+  periodic_vertical_families: Array<Record<string, unknown>>;
+}
+
 export interface AnalyzeParameterRange {
   min: number;
   max: number;
@@ -60,6 +124,14 @@ export interface AnalyzeResponse {
   x_intercepts: string[];
   y_intercept: string | null;
   variation_table: VariationRow[];
+  variation_table_v2?: VariationTableV2 | null;
+  domain_partition_v2?: Record<string, unknown> | null;
+  periodicity?: Record<string, unknown> | null;
+  monotonicity_v2?: AnalysisChartV2 | null;
+  concavity_v2?: AnalysisChartV2 | null;
+  critical_points_v2?: Array<Record<string, unknown>>;
+  inflection_points_v2?: Array<Record<string, unknown>>;
+  asymptotes_v2?: AnalyzeAsymptotesV2 | null;
   domain: string | null;
   domain_latex: string | null;
   range_val: string | null;
@@ -95,6 +167,7 @@ export interface AnalyzeResponse {
   transform_preview?: { type: string; value: string; label: string; expression: string; expression_latex: string; pedagogical_steps?: string[] } | null;
   capabilities?: Record<string, unknown> | null;
   complexity_score?: number | null;
+  stage_statuses?: Record<string, { status: string; error_code?: string }> | null;
   warnings: string[];
   error?: string | null;
   error_code?: string | null;
