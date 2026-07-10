@@ -67,9 +67,9 @@ class NvidiaClient:
             started_at = time.perf_counter()
             log_provider_request("nvidia", "scene", url, payload["model"], problem_chars=len(problem_text), input_chars=chat_message_input_chars(payload.get("messages")), thinking=self.thinking)
             client = get_client(self.settings.nvidia_base_url.rstrip("/"), TIMEOUT_SCENE)
-            content, response_chars = await collect_openai_chat_stream(client, url, headers=headers, payload=payload, timeout=TIMEOUT_SCENE)
+            content, response_chars, usage = await collect_openai_chat_stream(client, url, headers=headers, payload=payload, timeout=TIMEOUT_SCENE)
             elapsed_ms = int((time.perf_counter() - started_at) * 1000)
-            log_provider_response("nvidia", "scene", 200, elapsed_ms, response_chars, payload["model"])
+            log_provider_response("nvidia", "scene", 200, elapsed_ms, response_chars, payload["model"], usage=usage)
         except httpx.HTTPStatusError as error:
             elapsed_ms = int((time.perf_counter() - started_at) * 1000)
             log_provider_response("nvidia", "scene", error.response.status_code, elapsed_ms, len(error.response.text), payload["model"])

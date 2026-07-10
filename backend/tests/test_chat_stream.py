@@ -48,7 +48,7 @@ async def test_collect_openai_chat_stream_concatenates_delta_content():
         'data: [DONE]',
     ]))
 
-    content, response_chars = await collect_openai_chat_stream(
+    content, response_chars, usage = await collect_openai_chat_stream(
         client,
         "https://example.test/chat/completions",
         headers={},
@@ -58,7 +58,28 @@ async def test_collect_openai_chat_stream_concatenates_delta_content():
 
     assert content == '{"a":1}'
     assert response_chars > 0
+    assert usage is None
     assert client.payload["stream"] is True
+    assert client.payload.get("stream_options", {}).get("include_usage") is True
+
+
+@pytest.mark.anyio
+async def test_collect_openai_chat_stream_captures_usage_chunk():
+    client = FakeClient(FakeStreamResponse([
+        'data: {"choices":[{"delta":{"content":"hi"}}]}',
+        'data: {"choices":[], "usage":{"prompt_tokens":11,"completion_tokens":4,"total_tokens":15}}',
+        'data: [DONE]',
+    ]))
+
+    content, _, usage = await collect_openai_chat_stream(
+        client,
+        "https://example.test/chat/completions",
+        headers={},
+        payload={"model": "m"},
+        timeout=httpx.Timeout(10),
+    )
+    assert content == "hi"
+    assert usage == {"prompt_tokens": 11, "completion_tokens": 4, "total_tokens": 15}
 
 
 @pytest.mark.anyio

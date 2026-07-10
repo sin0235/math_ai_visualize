@@ -122,16 +122,42 @@ async def render_problem(
             ["Chờ vài giây rồi thử lại.", "Giảm số tab/render song song."],
         )
 
+    import time
+
+    from app.core.logging import get_request_id
+    from app.repositories.errors import try_record_error_event
+
+    started = time.perf_counter()
     try:
         try:
             response = await asyncio.wait_for(build_problem_render_response(request, db, user, byok=byok), timeout=RENDER_TIMEOUT_SECONDS)
         except TimeoutError as error:
+            duration_ms = int((time.perf_counter() - started) * 1000)
             await try_log_user_activity(
                 db,
                 user.id,
                 "render.failed",
                 target_type="render_job",
-                metadata={"code": "TIMEOUT", "tier": request.tier, "renderer": request.preferred_renderer, "byok": byok is not None},
+                metadata={
+                    "code": "TIMEOUT",
+                    "tier": request.tier,
+                    "renderer": request.preferred_renderer,
+                    "byok": byok is not None,
+                    "duration_ms": duration_ms,
+                    "async": False,
+                },
+            )
+            await try_record_error_event(
+                db,
+                message=f"Render vượt quá {RENDER_TIMEOUT_SECONDS}s.",
+                source="server",
+                request_id=get_request_id(),
+                user_id=user.id,
+                route="/api/render",
+                method="POST",
+                status_code=504,
+                error_code="TIMEOUT",
+                metadata={"duration_ms": duration_ms, "tier": request.tier},
             )
             raise api_error(
                 status.HTTP_504_GATEWAY_TIMEOUT,
@@ -140,15 +166,36 @@ async def render_problem(
                 ["Thử lại sau hoặc chọn tier thấp hơn (tier1 nhanh hơn tier3)."],
             ) from error
         except (RuntimeError, ValueError, KeyError) as error:
+            duration_ms = int((time.perf_counter() - started) * 1000)
             payload = render_error_payload(error)
             await try_log_user_activity(
                 db,
                 user.id,
                 "render.failed",
                 target_type="render_job",
-                metadata={"code": payload["code"], "tier": request.tier, "renderer": request.preferred_renderer, "byok": byok is not None},
+                metadata={
+                    "code": payload["code"],
+                    "tier": request.tier,
+                    "renderer": request.preferred_renderer,
+                    "byok": byok is not None,
+                    "duration_ms": duration_ms,
+                    "async": False,
+                },
+            )
+            await try_record_error_event(
+                db,
+                message=payload.get("debug_message") or payload.get("message") or str(error),
+                source="server",
+                request_id=get_request_id(),
+                user_id=user.id,
+                route="/api/render",
+                method="POST",
+                status_code=400,
+                error_code=payload.get("code") or "RENDER_FAILED",
+                metadata={"duration_ms": duration_ms, "tier": request.tier},
             )
             raise api_error(status.HTTP_400_BAD_REQUEST, payload["debug_message"], payload["code"], payload["suggestions"]) from error
+        duration_ms = int((time.perf_counter() - started) * 1000)
         if user is not None:
             job = await RenderHistoryRepository(db).create(
                 user.id,
@@ -162,6 +209,11 @@ async def render_problem(
                 source_type="problem",
                 renderer=response.scene.renderer,
             )
+            # Persist duration on completed history row when column exists.
+            try:
+                await db.execute("UPDATE render_jobs SET duration_ms = ? WHERE id = ?", [duration_ms, job.id])
+            except Exception:
+                pass
             await try_log_user_activity(
                 db,
                 user.id,
@@ -176,6 +228,8 @@ async def render_problem(
                     "source_kind": response.source.kind,
                     "degraded": response.degraded,
                     "fallback_source": response.fallback_source,
+                    "duration_ms": duration_ms,
+                    "async": False,
                 },
             )
         return response

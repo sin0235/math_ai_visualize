@@ -23,6 +23,8 @@ ALGEBRA_FAILED = "algebra.failed"
 SOLVE_COMPLETED = "solve.completed"
 SOLVE_FAILED = "solve.failed"
 EXPORT_COMPLETED = "export.completed"
+ANALYZE_COMPLETED = "analyze.completed"
+ANALYZE_FAILED = "analyze.failed"
 
 # Client
 CLIENT_ERROR = "client.error"

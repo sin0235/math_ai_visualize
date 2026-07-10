@@ -4,6 +4,7 @@ from typing import Any
 import httpx
 
 from app.services.chat_response import extract_chat_message_content
+from app.services.provider_logging import extract_token_usage
 
 
 async def collect_openai_chat_stream(
@@ -13,12 +14,26 @@ async def collect_openai_chat_stream(
     headers: dict[str, str],
     payload: dict[str, Any],
     timeout: httpx.Timeout,
-) -> tuple[str, int]:
+    include_usage: bool = True,
+) -> tuple[str, int, dict[str, int] | None]:
+    """Collect streamed chat content and optional token usage.
+
+    Returns (content, response_chars, usage_dict|None).
+    """
     streamed_payload = dict(payload)
     streamed_payload["stream"] = True
+    if include_usage:
+        # OpenAI-compatible: ask provider to include usage on the final stream chunk when supported.
+        stream_options = streamed_payload.get("stream_options")
+        if not isinstance(stream_options, dict):
+            stream_options = {}
+        stream_options = {**stream_options, "include_usage": True}
+        streamed_payload["stream_options"] = stream_options
+
     chunks: list[str] = []
     response_chars = 0
     event_type = "message"
+    usage: dict[str, int] | None = None
 
     async with client.stream("POST", url, headers=headers, json=streamed_payload, timeout=timeout) as response:
         if response.status_code >= 400:
@@ -47,12 +62,16 @@ async def collect_openai_chat_stream(
             except json.JSONDecodeError:
                 event_type = "message"
                 continue
+            if isinstance(event, dict):
+                chunk_usage = extract_token_usage(event)
+                if chunk_usage:
+                    usage = chunk_usage
             content = _content_from_stream_event(event)
             if content:
                 chunks.append(content)
             event_type = "message"
 
-    return "".join(chunks), response_chars
+    return "".join(chunks), response_chars, usage
 
 
 def extract_openai_chat_stream_content(text: str) -> str:

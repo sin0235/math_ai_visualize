@@ -13,10 +13,15 @@ from fastapi import APIRouter, Depends, Request, Response
 from app.api.deps import enforce_rate_limit, require_active_user, require_trusted_origin
 from app.db.models import UserRecord
 from app.db.session import DatabaseClient, get_database
+from app.repositories.activity import try_log_user_activity
 from app.schemas.scene import MathScene, SceneRenderRequest
 from app.api.routes_render import enforce_render_access
 
 router = APIRouter(prefix="/api/export", tags=["export"])
+
+
+async def _log_export(db: DatabaseClient, user: UserRecord, fmt: str) -> None:
+    await try_log_user_activity(db, user.id, "export.completed", target_type="export", metadata={"format": fmt})
 
 
 def _safe_export_scene(request: SceneRenderRequest) -> MathScene:
@@ -52,11 +57,10 @@ async def export_tikz(
     await enforce_rate_limit(db, http_request, user, "export_tikz", 30 if user else 8, 60)
     await enforce_render_access(db, user)
     from app.renderers.tikz_export import build_tikz_document
-    from app.repositories.activity import try_log_user_activity
 
     scene = await asyncio.to_thread(_safe_export_scene, request)
     body = await asyncio.to_thread(build_tikz_document, scene, None, request.response)
-    await try_log_user_activity(db, user.id, "export.completed", target_type="export", metadata={"format": "tikz"})
+    await _log_export(db, user, "tikz")
     return Response(
         content=body,
         media_type="application/x-tex",
@@ -77,6 +81,7 @@ async def export_ggb(
 
     scene = await asyncio.to_thread(_safe_export_scene, request)
     body = await asyncio.to_thread(build_ggb, scene, request.advanced_settings, request.response)
+    await _log_export(db, user, "ggb")
     return Response(
         content=body,
         media_type="application/vnd.geogebra.file",
@@ -107,6 +112,7 @@ async def export_pdf(
         from app.services.api_errors import api_error
 
         raise api_error(status.HTTP_400_BAD_REQUEST, str(error), "EXPORT_VIEW_CAPTURE_INVALID") from error
+    await _log_export(db, user, "pdf")
     return Response(
         content=body,
         media_type="application/pdf",
@@ -127,6 +133,7 @@ async def export_png(
 
     scene = await asyncio.to_thread(_safe_export_scene, request)
     body = await asyncio.to_thread(build_png, scene, None, request.response)
+    await _log_export(db, user, "png")
     return Response(
         content=body,
         media_type="image/png",
@@ -147,6 +154,7 @@ async def export_jpg(
 
     scene = await asyncio.to_thread(_safe_export_scene, request)
     body = await asyncio.to_thread(build_jpg, scene, None, request.response)
+    await _log_export(db, user, "jpg")
     return Response(
         content=body,
         media_type="image/jpeg",
@@ -167,6 +175,7 @@ async def export_svg(
 
     scene = _safe_export_scene(request)
     body = build_svg(scene, response=request.response)
+    await _log_export(db, user, "svg")
     return Response(
         content=body,
         media_type="image/svg+xml; charset=utf-8",
@@ -187,6 +196,7 @@ async def export_katex_html(
 
     scene = _safe_export_scene(request)
     body = build_katex_html(scene, request.response)
+    await _log_export(db, user, "katex-html")
     return Response(
         content=body,
         media_type="text/html; charset=utf-8",

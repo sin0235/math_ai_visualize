@@ -319,6 +319,11 @@ async def verify_email(
     set_session_cookie(response, session_token, settings)
     await audit(db, user.id, "auth.email_verified", "user", user.id, raw_request)
     await audit(db, user.id, "auth.login_success", "user", user.id, raw_request, {"source": "email_verification"})
+    from app.repositories.activity import try_log_user_activity
+    from app.services.analytics_taxonomy import AUTH_LOGIN, AUTH_VERIFY
+
+    await try_log_user_activity(db, user.id, AUTH_VERIFY, target_type="user", target_id=user.id)
+    await try_log_user_activity(db, user.id, AUTH_LOGIN, target_type="user", target_id=user.id, metadata={"source": "email_verification"})
     return AuthResponse(user=user_response(user))
 
 

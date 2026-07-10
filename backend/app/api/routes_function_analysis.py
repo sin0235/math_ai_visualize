@@ -65,15 +65,37 @@ async def analyze_function_endpoint(
         await enforce_rate_limit(db, http_request, None, "analyze_tool_ip", 90, 60)
         if user is not None:
             await enforce_rate_limit(db, http_request, user, "analyze_tool_user", 120, 60)
-    data = await _run_cached_analyzer_job(
-        request.expression,
-        request.parameters,
-        interval=request.interval,
-        line=request.line,
-        parameter_conditions=request.parameter_conditions,
-        transform=request.transform,
-    )
+    try:
+        data = await _run_cached_analyzer_job(
+            request.expression,
+            request.parameters,
+            interval=request.interval,
+            line=request.line,
+            parameter_conditions=request.parameter_conditions,
+            transform=request.transform,
+        )
+    except Exception as error:
+        if user is not None:
+            from app.repositories.activity import try_log_user_activity
 
+            await try_log_user_activity(
+                db,
+                user.id,
+                "analyze.failed",
+                target_type="analyzer",
+                metadata={"error": str(error)[:200]},
+            )
+        raise
+    if user is not None:
+        from app.repositories.activity import try_log_user_activity
+
+        await try_log_user_activity(
+            db,
+            user.id,
+            "analyze.completed",
+            target_type="analyzer",
+            metadata={"has_interval": bool(request.interval), "has_transform": bool(request.transform)},
+        )
     return _analysis_response(request.expression, data)
 
 
@@ -95,8 +117,11 @@ async def analyze_from_ocr(
     except UserAiSettingsError as error:
         raise api_error(400, f"Cấu hình BYOK không hợp lệ: {error}", "ANALYZE_OCR_FAILED") from error
     registry = await load_model_registry(db, settings)
-    ocr_profile = resolve_task_profile(registry, "ocr")
-    apply_ocr_profile = ocr_profile is not None and not (
+    try:
+        ocr_profile = resolve_task_profile(registry, "ocr")
+    except ValueError as error:
+        raise api_error(400, f"Cấu hình OCR chưa hợp lệ: {error}", "ANALYZE_OCR_FAILED") from error
+    apply_ocr_profile = not (
         (ocr_profile.provider_id == "openrouter" and ocr_profile.model_id == settings.openrouter_vision_model)
         or (ocr_profile.provider_id == "router9" and ocr_profile.model_id in {settings.router9_ocr_model, settings.router9_text_model})
     )
@@ -113,8 +138,8 @@ async def analyze_from_ocr(
             ocr_result = await extract_text_from_image(
                 image_data_url,
                 settings,
-                ocr_profile.provider_id if apply_ocr_profile and ocr_profile else None,
-                ocr_profile.model_id if apply_ocr_profile and ocr_profile else None,
+                ocr_profile.provider_id if apply_ocr_profile else None,
+                ocr_profile.model_id if apply_ocr_profile else None,
             )
         expression = await _extract_function_from_text(ocr_result.text, settings)
         if expression == "NONE":
@@ -126,10 +151,28 @@ async def analyze_from_ocr(
     except HTTPException:
         raise
     except Exception as e:
+        from app.repositories.activity import try_log_user_activity
+
+        await try_log_user_activity(
+            db,
+            user.id,
+            "analyze.failed",
+            target_type="analyzer",
+            metadata={"source": "ocr", "error": str(e)[:200]},
+        )
         raise api_error(400, f"Lỗi khi phân tích ảnh: {e}", "ANALYZE_OCR_FAILED") from e
 
     if not byok_used:
         await AdminRepository(db).record_user_usage_event(user.id, "ocr", {"source": "analyze_ocr"})
+    from app.repositories.activity import try_log_user_activity
+
+    await try_log_user_activity(
+        db,
+        user.id,
+        "analyze.completed",
+        target_type="analyzer",
+        metadata={"source": "ocr", "provider": ocr_result.provider, "model": ocr_result.model},
+    )
     return _analysis_response(expression, data)
 
 

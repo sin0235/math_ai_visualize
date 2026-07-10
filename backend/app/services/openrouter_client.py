@@ -70,13 +70,13 @@ class OpenRouterClient:
         log_provider_request("openrouter", "scene", url, payload["model"], problem_chars=len(problem_text), input_chars=chat_message_input_chars(payload.get("messages")), reasoning="reasoning" in payload)
         client = get_client(base_url, TIMEOUT_SCENE)
         try:
-            content, response_chars = await collect_openai_chat_stream(client, url, headers=headers, payload=payload, timeout=TIMEOUT_SCENE)
+            content, response_chars, usage = await collect_openai_chat_stream(client, url, headers=headers, payload=payload, timeout=TIMEOUT_SCENE)
         except httpx.HTTPStatusError as error:
             elapsed_ms = int((time.perf_counter() - started_at) * 1000)
             log_provider_response("openrouter", "scene", error.response.status_code, elapsed_ms, len(error.response.text), payload["model"])
             raise RuntimeError(_format_openrouter_error(error.response)) from error
         elapsed_ms = int((time.perf_counter() - started_at) * 1000)
-        log_provider_response("openrouter", "scene", 200, elapsed_ms, response_chars, payload["model"])
+        log_provider_response("openrouter", "scene", 200, elapsed_ms, response_chars, payload["model"], usage=usage)
         if not content.strip():
             raise RuntimeError("OpenRouter không trả về nội dung JSON trong choices[0].message.content.")
         try:
@@ -170,7 +170,22 @@ class OpenRouterClient:
                 client = get_client(base_url, TIMEOUT_OCR)
                 response = await client.post(url, headers=_build_headers(self.settings), json=payload, timeout=TIMEOUT_OCR)
                 elapsed_ms = int((time.perf_counter() - started_at) * 1000)
-                log_provider_response("openrouter", "ocr", response.status_code, elapsed_ms, len(response.text))
+                usage = None
+                try:
+                    from app.services.provider_logging import extract_token_usage
+
+                    usage = extract_token_usage(response.json())
+                except Exception:
+                    usage = None
+                log_provider_response(
+                    "openrouter",
+                    "ocr",
+                    response.status_code,
+                    elapsed_ms,
+                    len(response.text),
+                    payload.get("model"),
+                    usage=usage,
+                )
                 if response.status_code >= 400:
                     raise RuntimeError(_format_openrouter_error(response))
 

@@ -179,7 +179,7 @@ class Router9Client:
             client = get_client(base_url, timeout or TIMEOUT_SCENE)
             if kind == "scene":
                 try:
-                    content, response_chars = await collect_openai_chat_stream(client, url, headers=headers, payload=payload, timeout=timeout or TIMEOUT_SCENE)
+                    content, response_chars, usage = await collect_openai_chat_stream(client, url, headers=headers, payload=payload, timeout=timeout or TIMEOUT_SCENE)
                 except RuntimeError as error:
                     response = await client.post(url, headers=headers, json=payload, timeout=timeout or TIMEOUT_SCENE)
                     elapsed_ms = int((time.perf_counter() - started_at) * 1000)
@@ -202,7 +202,7 @@ class Router9Client:
                     log_provider_http_error("9router", kind, error.response, payload.get("model"))
                     raise RuntimeError(_format_router9_error(error.response)) from error
                 elapsed_ms = int((time.perf_counter() - started_at) * 1000)
-                log_provider_response("9router", kind, 200, elapsed_ms, response_chars, payload.get("model"))
+                log_provider_response("9router", kind, 200, elapsed_ms, response_chars, payload.get("model"), usage=usage)
                 return _stream_response(content)
             response = await client.post(url, headers=headers, json=payload, timeout=timeout or TIMEOUT_SCENE)
             elapsed_ms = int((time.perf_counter() - started_at) * 1000)
