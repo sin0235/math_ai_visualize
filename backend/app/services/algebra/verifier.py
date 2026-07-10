@@ -34,12 +34,16 @@ def verify_finite_solutions(problem: ParsedAlgebraProblem, solutions: list[sp.Ex
                 latex=f"{sp.latex(variable)} = {sp.latex(solution)}",
             ))
     if not solutions:
-        checks.append(AlgebraVerificationCheck(
-            name="empty_solution_set",
-            status="warn",
-            detail="Solver trả tập rỗng; chưa chứng minh độc lập vô nghiệm (solver_returned_empty).",
-        ))
-        return AlgebraVerificationReport(status="partially_verified", checks=checks, method=["domain", "substitution"])
+        empty_checks = _empty_set_independent_checks(problem)
+        checks.extend(empty_checks)
+        if any(check.status == "fail" for check in checks):
+            status = "failed"
+        elif empty_checks and all(check.status == "pass" for check in empty_checks if check.name.startswith("empty_")):
+            # Sample corroboration only — not a full algebraic proof of unsatisfiability.
+            status = "partially_verified"
+        else:
+            status = "partially_verified"
+        return AlgebraVerificationReport(status=status, checks=checks, method=["domain", "substitution", "empty_set_samples"])
     if any(check.status == "fail" for check in checks):
         status = "failed"
     elif any(check.status == "warn" for check in checks):
@@ -65,13 +69,13 @@ def verify_solution_set(problem: ParsedAlgebraProblem, solution_set: sp.Set) -> 
         ))
         return AlgebraVerificationReport(status="partially_verified", checks=checks, method=["solveset"])
     if solution_set is sp.EmptySet:
-        checks.append(AlgebraVerificationCheck(
-            name="empty_solution_set",
-            status="warn",
-            detail="Tập nghiệm rỗng theo solver; chưa chứng minh độc lập vô nghiệm.",
-            latex=sp.latex(solution_set),
-        ))
-        return AlgebraVerificationReport(status="partially_verified", checks=checks, method=["solveset"])
+        empty_checks = _empty_set_independent_checks(problem)
+        checks.extend(empty_checks)
+        if any(check.status == "fail" for check in checks):
+            status = "failed"
+        else:
+            status = "partially_verified"
+        return AlgebraVerificationReport(status=status, checks=checks, method=["solveset", "empty_set_samples"])
     if _is_unevaluated_set(solution_set):
         checks.append(AlgebraVerificationCheck(
             name="unevaluated_solution_set",
@@ -180,6 +184,112 @@ def _check_all_relations(relations: list[sp.Relational], variable: sp.Symbol, va
 def _is_unevaluated_set(solution_set: sp.Set) -> bool:
     # Reserved for future unevaluated-set detection beyond ConditionSet.
     return False
+
+
+def _empty_set_independent_checks(problem: ParsedAlgebraProblem) -> list[AlgebraVerificationCheck]:
+    """Corroborate EmptySet by sampling; never claim full algebraic unsat proof."""
+    checks: list[AlgebraVerificationCheck] = [
+        AlgebraVerificationCheck(
+            name="empty_solution_set",
+            status="pass",
+            detail="Solver trả tập rỗng (vô nghiệm theo pipeline); kiểm chứng độc lập bằng mẫu.",
+            latex=r"\emptyset",
+        )
+    ]
+    relations = _problem_relations(problem)
+    if not relations:
+        checks.append(AlgebraVerificationCheck(
+            name="empty_set_sample_corroboration",
+            status="warn",
+            detail="Không có quan hệ gốc để lấy mẫu kiểm chứng vô nghiệm.",
+        ))
+        return checks
+
+    samples = _empty_set_probe_samples(problem)
+    checked = 0
+    for sample in samples:
+        outcome = _check_all_relations(relations, problem.variable, sample)
+        if outcome is None:
+            continue
+        checked += 1
+        if outcome:
+            checks.append(AlgebraVerificationCheck(
+                name="empty_set_counterexample",
+                status="fail",
+                detail=(
+                    f"Phát hiện điểm {problem.variable}={sp.sstr(sample)} thỏa đề gốc "
+                    "nhưng solver báo vô nghiệm — kết quả không tin cậy."
+                ),
+                latex=rf"{sp.latex(problem.variable)}={sp.latex(sample)}",
+            ))
+            return checks
+
+    if checked >= 3:
+        checks.append(AlgebraVerificationCheck(
+            name="empty_set_sample_corroboration",
+            status="pass",
+            detail=(
+                f"Đã thử {checked} điểm mẫu; không điểm nào thỏa đề gốc. "
+                "Đây là củng cố mẫu, chưa phải chứng minh đại số đầy đủ."
+            ),
+        ))
+        checks.append(AlgebraVerificationCheck(
+            name="empty_set_not_full_proof",
+            status="warn",
+            detail="Vô nghiệm được củng cố bằng mẫu; status kiểm chứng chỉ đạt partially_verified.",
+        ))
+    else:
+        checks[0] = AlgebraVerificationCheck(
+            name="empty_solution_set",
+            status="warn",
+            detail="Solver trả tập rỗng; chưa lấy được đủ mẫu độc lập để củng cố vô nghiệm.",
+            latex=r"\emptyset",
+        )
+        checks.append(AlgebraVerificationCheck(
+            name="empty_set_sample_corroboration",
+            status="warn",
+            detail="Mẫu kiểm chứng vô nghiệm chưa đủ (cần ≥3 điểm xác định được).",
+        ))
+    return checks
+
+
+def _empty_set_probe_samples(problem: ParsedAlgebraProblem) -> list[sp.Expr]:
+    """Deterministic probe points for empty-set corroboration."""
+    base = [
+        sp.Integer(0),
+        sp.Integer(1),
+        sp.Integer(-1),
+        sp.Integer(2),
+        sp.Integer(-2),
+        sp.Rational(1, 2),
+        sp.Rational(-1, 2),
+        sp.Integer(3),
+        sp.Integer(5),
+        sp.Integer(10),
+    ]
+    if problem.solve_interval is not None:
+        interval = problem.solve_interval
+        try:
+            if isinstance(interval, sp.Interval):
+                if interval.start.is_finite and interval.end.is_finite:
+                    mid = sp.simplify((interval.start + interval.end) / 2)
+                    base = [interval.start, mid, interval.end, *base]
+                elif interval.start.is_finite:
+                    base = [interval.start, interval.start + 1, interval.start + 2, *base]
+                elif interval.end.is_finite:
+                    base = [interval.end, interval.end - 1, interval.end - 2, *base]
+        except Exception:
+            pass
+    # Deduplicate while preserving order
+    seen: set[str] = set()
+    out: list[sp.Expr] = []
+    for sample in base:
+        key = sp.sstr(sample)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(sample)
+    return out[:12]
 
 
 def _domain_checks(problem: ParsedAlgebraProblem, solutions: list[sp.Expr]) -> list[AlgebraVerificationCheck]:

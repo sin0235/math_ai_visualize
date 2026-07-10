@@ -113,6 +113,8 @@ class Settings(BaseSettings):
     local_ocr_model_name: str = "paddleocr+pix2tex"
     algebra_solve_timeout_seconds: float = 15.0
     algebra_max_concurrent: int = 8
+    # Spawn a child process for deterministic solve so timeout can hard-kill SymPy.
+    algebra_process_isolation: bool = True
     dev_bypass_auth: bool = False
     user_secret_encryption_key: str | None = None
 

@@ -100,6 +100,8 @@ const MATH_SNIPPET_GROUPS = [
 
 type MathSnippetAction = (typeof MATH_SNIPPET_GROUPS)[number]['items'][number]['action'];
 
+export type IntervalPreset = '' | 'unit_circle' | 'custom';
+
 export function AlgebraInput({
   input,
   inputFormat,
@@ -109,6 +111,10 @@ export function AlgebraInput({
   variables,
   useAiExtraction,
   intervalPreset,
+  intervalStart,
+  intervalEnd,
+  intervalClosedStart,
+  intervalClosedEnd,
   loading,
   onInputChange,
   onInputFormatChange,
@@ -118,6 +124,10 @@ export function AlgebraInput({
   onVariablesChange,
   onUseAiExtractionChange,
   onIntervalPresetChange,
+  onIntervalStartChange,
+  onIntervalEndChange,
+  onIntervalClosedStartChange,
+  onIntervalClosedEndChange,
   sequenceDraft,
   onSequenceDraftChange,
   onSubmit,
@@ -129,7 +139,11 @@ export function AlgebraInput({
   domain: AlgebraDomain;
   variables: string;
   useAiExtraction: boolean;
-  intervalPreset: '' | 'unit_circle';
+  intervalPreset: IntervalPreset;
+  intervalStart: string;
+  intervalEnd: string;
+  intervalClosedStart: boolean;
+  intervalClosedEnd: boolean;
   loading: boolean;
   onInputChange: (value: string) => void;
   onInputFormatChange: (value: AlgebraInputFormat) => void;
@@ -138,7 +152,11 @@ export function AlgebraInput({
   onDomainChange: (value: AlgebraDomain) => void;
   onVariablesChange: (value: string) => void;
   onUseAiExtractionChange: (value: boolean) => void;
-  onIntervalPresetChange: (value: '' | 'unit_circle') => void;
+  onIntervalPresetChange: (value: IntervalPreset) => void;
+  onIntervalStartChange: (value: string) => void;
+  onIntervalEndChange: (value: string) => void;
+  onIntervalClosedStartChange: (value: boolean) => void;
+  onIntervalClosedEndChange: (value: boolean) => void;
   sequenceDraft: SequenceDraft;
   onSequenceDraftChange: (value: SequenceDraft) => void;
   onSubmit: () => void;
@@ -336,17 +354,66 @@ export function AlgebraInput({
           </select>
         </label>
         <label className="field-label">
-          Khoảng (lượng giác)
+          Khoảng nghiệm
           <select
             value={intervalPreset}
-            onChange={(event) => onIntervalPresetChange(event.target.value as '' | 'unit_circle')}
+            onChange={(event) => onIntervalPresetChange(event.target.value as IntervalPreset)}
             disabled={loading}
           >
-            <option value="">Không giới hạn (nghiệm tổng quát)</option>
+            <option value="">Không giới hạn (miền đầy đủ)</option>
             <option value="unit_circle">[0, 2π)</option>
+            <option value="custom">Tùy chỉnh…</option>
           </select>
         </label>
       </div>
+
+      {intervalPreset === 'custom' && (
+        <div className="algebra-interval-custom">
+          <label className="field-label">
+            Cận trái
+            <input
+              value={intervalStart}
+              onChange={(event) => onIntervalStartChange(event.target.value)}
+              placeholder="vd 0, -pi, -oo"
+              disabled={loading}
+            />
+          </label>
+          <label className="field-label">
+            Cận phải
+            <input
+              value={intervalEnd}
+              onChange={(event) => onIntervalEndChange(event.target.value)}
+              placeholder="vd 2*pi, pi/2, oo"
+              disabled={loading}
+            />
+          </label>
+          <label className="field-label algebra-ai-option">
+            <span className="algebra-ai-option-row">
+              <input
+                type="checkbox"
+                checked={intervalClosedStart}
+                onChange={(event) => onIntervalClosedStartChange(event.target.checked)}
+                disabled={loading}
+              />
+              Đóng cận trái [
+            </span>
+          </label>
+          <label className="field-label algebra-ai-option">
+            <span className="algebra-ai-option-row">
+              <input
+                type="checkbox"
+                checked={intervalClosedEnd}
+                onChange={(event) => onIntervalClosedEndChange(event.target.checked)}
+                disabled={loading}
+              />
+              Đóng cận phải ]
+            </span>
+          </label>
+          <p className="algebra-ai-option-hint">
+            Chỉ số, pi, e, oo (vd -pi, pi/2, 2*pi). Áp dụng cho phương trình/bất phương trình/lượng giác.
+          </p>
+        </div>
+      )}
 
       <label className="field-label">
         Biến cần giải
@@ -371,12 +438,13 @@ export function AlgebraInput({
           </span>
           <span className="algebra-ai-option-hint">
             Mặc định dùng interpreter tiếng Việt (không cần đăng nhập). Bật AI khi đề mơ hồ — cần đăng nhập.
+            Với chế độ tiếng Việt, bạn sẽ xác nhận topic/miền/biến trước khi giải.
           </span>
         </label>
       )}
 
       <button type="button" className="auth-primary-button algebra-submit" onClick={onSubmit} disabled={loading || (!input.trim() && topic !== 'sequence')}>
-        {loading ? 'Đang giải...' : 'Giải bài'}
+        {loading ? 'Đang giải...' : (inputMode === 'natural' || useAiExtraction ? 'Tiếp theo: xác nhận' : 'Giải bài')}
       </button>
     </section>
   );

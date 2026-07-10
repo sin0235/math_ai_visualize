@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import io
 import re
+import tokenize
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -16,6 +18,18 @@ _MAX_PARSE_CHARS = 2000
 _MAX_INT_DIGITS = 20
 _MAX_PARENS = 40
 _MAX_POWER_OPS = 8
+_MAX_TOKENS = 220
+
+# Names allowed in algebra expressions (functions + constants + common symbols).
+# Dynamic variable symbols from local_dict are also accepted at tokenize time.
+_ALLOWED_FUNCTION_NAMES = {
+    "sqrt", "root", "sin", "cos", "tan", "cot", "sec", "csc",
+    "asin", "acos", "atan", "acot", "arcsin", "arccos", "arctan",
+    "log", "ln", "exp", "abs", "Abs", "re", "im", "arg", "conjugate",
+    "factorial", "binomial", "floor", "ceiling", "sign",
+    "I", "pi", "E", "oo", "zoo", "nan",
+}
+_ALLOWED_TOKEN_OPS = {"+", "-", "*", "/", "**", "(", ")", ",", "="}
 
 
 class AlgebraParseError(ValueError):
@@ -169,11 +183,58 @@ def _precheck_expr_text(text: str) -> None:
     for match in re.finditer(r"\d+", text):
         if len(match.group(0)) > _MAX_INT_DIGITS:
             raise AlgebraParseError("Số nguyên trong biểu thức quá lớn.")
+    if "__" in text or "import" in text.lower() or "exec" in text.lower() or "eval" in text.lower():
+        raise AlgebraParseError("Biểu thức chứa token không an toàn.")
+
+
+def _tokenize_allowlist_check(text: str, allowed_names: set[str]) -> None:
+    """Reject attribute access and unknown names before sympy parse_expr (safe_math-inspired)."""
+    try:
+        raw_tokens = list(tokenize.generate_tokens(io.StringIO(text).readline))
+    except tokenize.TokenError as error:
+        raise AlgebraParseError(f"Token biểu thức không hợp lệ: {error}.") from error
+    count = 0
+    for token in raw_tokens:
+        if token.type in {tokenize.ENCODING, tokenize.NL, tokenize.NEWLINE, tokenize.ENDMARKER, tokenize.INDENT, tokenize.DEDENT}:
+            continue
+        if token.type == tokenize.STRING:
+            raise AlgebraParseError("Không cho phép string literal trong biểu thức.")
+        if token.type == tokenize.NAME:
+            name = token.string
+            if name.startswith("__") or name not in allowed_names:
+                raise AlgebraParseError(f"Ký hiệu hoặc hàm không được hỗ trợ: {name}.")
+            count += 1
+            continue
+        if token.type == tokenize.NUMBER:
+            count += 1
+            continue
+        if token.type == tokenize.OP:
+            if token.string == ".":
+                raise AlgebraParseError("Không cho phép attribute access trong biểu thức.")
+            if token.string not in _ALLOWED_TOKEN_OPS:
+                # Relational ops appear only at problem level, not inside single expr.
+                raise AlgebraParseError(f"Toán tử không được hỗ trợ trong biểu thức: {token.string}.")
+            count += 1
+            continue
+        if token.type == tokenize.ERRORTOKEN:
+            raise AlgebraParseError("Token biểu thức không hợp lệ.")
+        # Ignore whitespace-like leftovers
+        if token.string.strip() == "":
+            continue
+        raise AlgebraParseError(f"Token không được hỗ trợ: {token.string!r}.")
+    if count > _MAX_TOKENS:
+        raise AlgebraParseError(f"Biểu thức vượt quá {_MAX_TOKENS} token.")
 
 
 def _parse_expr(text: str, local_dict: dict[str, object]) -> sp.Expr:
     cleaned = text.strip()
     _precheck_expr_text(cleaned)
+    allowed_names = set(_ALLOWED_FUNCTION_NAMES) | {
+        name for name, value in local_dict.items() if isinstance(value, sp.Symbol)
+    }
+    # Also allow any symbol-like keys in local_dict (functions registered there).
+    allowed_names |= {name for name in local_dict if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name)}
+    _tokenize_allowlist_check(cleaned, allowed_names)
     global_dict = {name: getattr(sp, name) for name in ("Integer", "Float", "Rational", "Symbol")}
     global_dict["__builtins__"] = {}
     return parse_expr(

@@ -9,6 +9,12 @@ from app.schemas.algebra import AlgebraSolutionSet, AlgebraSolveResponse, Algebr
 from app.services.algebra.parser import ParsedAlgebraProblem
 from app.services.algebra.steps import conclusion_step, normalize_step
 
+# Hard caps to avoid CPU/memory blowups from huge factorials / combinatorics.
+MAX_FACTORIAL_N = 20
+MAX_COMBINATORICS_N = 30
+MAX_COEFFICIENT_DEGREE = 12
+MAX_COEFFICIENT_EXPR_CHARS = 200
+
 
 def solve_combinatorics_probability(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
     normalized = problem.normalized_input.strip()
@@ -75,13 +81,19 @@ def _evaluate(text: str) -> tuple[sp.Expr, str, str]:
         n = int(factorial.group(1) or factorial.group(2))
         if n < 0:
             raise ValueError("Giai thừa chỉ hỗ trợ số nguyên không âm.")
+        if n > MAX_FACTORIAL_N:
+            raise ValueError(f"Giai thừa chỉ hỗ trợ n ≤ {MAX_FACTORIAL_N} (nhận được n={n}).")
         return sp.Integer(math.factorial(n)), f"Tính giai thừa {n}!.", f"{n}!"
     coefficient = re.fullmatch(r"coefficient\((.+),\s*([A-Za-z])\s*,\s*(-?\d+)\)", text)
     if coefficient:
         expr_text, variable_name, power_text = coefficient.groups()
+        if len(expr_text) > MAX_COEFFICIENT_EXPR_CHARS:
+            raise ValueError(f"Biểu thức hệ số vượt quá {MAX_COEFFICIENT_EXPR_CHARS} ký tự.")
         variable = sp.Symbol(variable_name, real=True)
         expression = sp.sympify(expr_text, locals={variable_name: variable})
         power = int(power_text)
+        if abs(power) > MAX_COEFFICIENT_DEGREE:
+            raise ValueError(f"Bậc hệ số chỉ hỗ trợ |k| ≤ {MAX_COEFFICIENT_DEGREE}.")
         result = sp.expand(expression).coeff(variable, power)
         return result, f"Khai triển biểu thức và lấy hệ số của {variable_name}^{power}.", sp.latex(expression)
     raise ValueError("Dạng tổ hợp-xác suất này chưa được hỗ trợ. Hãy dùng C(n,k), A(n,k), n! hoặc coefficient(expr,x,k).")
@@ -96,6 +108,8 @@ def _validate_n_k(n: int, k: int) -> None:
         raise ValueError("n và k phải là số nguyên không âm.")
     if k > n:
         raise ValueError("Cần có k <= n trong tổ hợp/chỉnh hợp.")
+    if n > MAX_COMBINATORICS_N:
+        raise ValueError(f"Tổ hợp/chỉnh hợp chỉ hỗ trợ n ≤ {MAX_COMBINATORICS_N} (nhận được n={n}).")
 
 
 def _unsupported(problem: ParsedAlgebraProblem, message: str) -> AlgebraSolveResponse:

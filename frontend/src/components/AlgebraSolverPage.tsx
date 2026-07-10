@@ -1,9 +1,10 @@
 import { useMemo, useRef, useState } from 'react';
-import { ApiError, solveAlgebra, type AlgebraInputFormat, type AlgebraSolveResponse, type AlgebraTopic } from '../api/client';
+import { ApiError, solveAlgebra, type AlgebraInputFormat, type AlgebraInterval, type AlgebraSolveResponse, type AlgebraTopic } from '../api/client';
 import { AlgebraInput, suggestTopic, type AlgebraInputMode, type SequenceDraft } from './algebra-solver/AlgebraInput';
 import { AlgebraLoadingResult, AlgebraResult, EmptyAlgebraResult } from './algebra-solver/AlgebraResult';
 
 type AlgebraDomain = 'R' | 'C' | 'N' | 'Z';
+export type IntervalPreset = '' | 'unit_circle' | 'custom';
 
 export function AlgebraSolverPage() {
   const [input, setInput] = useState('');
@@ -13,12 +14,18 @@ export function AlgebraSolverPage() {
   const [domain, setDomain] = useState<AlgebraDomain>('R');
   const [variables, setVariables] = useState('');
   const [useAiExtraction, setUseAiExtraction] = useState(false);
-  /** empty = full R; unit_circle = [0, 2π) */
-  const [intervalPreset, setIntervalPreset] = useState<'' | 'unit_circle'>('');
+  /** empty = full R; unit_circle = [0, 2π); custom = user bounds */
+  const [intervalPreset, setIntervalPreset] = useState<IntervalPreset>('');
+  const [intervalStart, setIntervalStart] = useState('0');
+  const [intervalEnd, setIntervalEnd] = useState('2*pi');
+  const [intervalClosedStart, setIntervalClosedStart] = useState(true);
+  const [intervalClosedEnd, setIntervalClosedEnd] = useState(false);
   const [result, setResult] = useState<AlgebraSolveResponse | null>(null);
   const [solvedFingerprint, setSolvedFingerprint] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  /** Pre-solve confirmation for natural / AI paths (trust boundary). */
+  const [pendingConfirm, setPendingConfirm] = useState(false);
   const submitLockRef = useRef(false);
   const [sequenceDraft, setSequenceDraft] = useState<SequenceDraft>({
     kind: 'arithmetic',
@@ -30,19 +37,43 @@ export function AlgebraSolverPage() {
   });
 
   const currentFingerprint = useMemo(
-    () => fingerprintRequest({ input, inputMode, inputFormat, topic, domain, variables, useAiExtraction, intervalPreset, sequenceDraft }),
-    [input, inputMode, inputFormat, topic, domain, variables, useAiExtraction, intervalPreset, sequenceDraft],
+    () => fingerprintRequest({
+      input, inputMode, inputFormat, topic, domain, variables, useAiExtraction,
+      intervalPreset, intervalStart, intervalEnd, intervalClosedStart, intervalClosedEnd, sequenceDraft,
+    }),
+    [input, inputMode, inputFormat, topic, domain, variables, useAiExtraction, intervalPreset, intervalStart, intervalEnd, intervalClosedStart, intervalClosedEnd, sequenceDraft],
   );
   const resultStale = Boolean(result && solvedFingerprint && currentFingerprint !== solvedFingerprint);
 
-  async function handleSubmit() {
-    const cleanInput = input.trim();
-    const sequenceInput = topic === 'sequence' ? sequenceInputFromDraft(sequenceDraft) : '';
-    const payloadInput = sequenceInput || cleanInput;
+  const sequenceInput = topic === 'sequence' ? sequenceInputFromDraft(sequenceDraft) : '';
+  const cleanInput = input.trim();
+  const payloadInput = sequenceInput || cleanInput;
+  const inferredTopic = sequenceInput ? 'sequence' as const : suggestTopic(cleanInput);
+  const payloadTopic = (inferredTopic && inferredTopic !== topic ? inferredTopic : topic) as AlgebraTopic;
+  const variableList = variables.split(',').map((item) => item.trim()).filter(Boolean);
+  const intervalPayload = buildIntervalPayload({
+    intervalPreset,
+    intervalStart,
+    intervalEnd,
+    intervalClosedStart,
+    intervalClosedEnd,
+  });
+
+  function requestConfirmIfNeeded() {
+    if (!payloadInput || loading || submitLockRef.current) return;
+    // Math mode + no AI: direct solve. Natural or AI: confirm interpretation intent first.
+    if (inputMode === 'math' && !useAiExtraction && !sequenceInput) {
+      void runSolve();
+      return;
+    }
+    setPendingConfirm(true);
+    setError('');
+  }
+
+  async function runSolve() {
     if (!payloadInput || loading || submitLockRef.current) return;
     submitLockRef.current = true;
-    const inferredTopic = sequenceInput ? 'sequence' : suggestTopic(cleanInput);
-    const payloadTopic = inferredTopic && inferredTopic !== topic ? inferredTopic : topic;
+    setPendingConfirm(false);
     setLoading(true);
     setError('');
     try {
@@ -51,10 +82,8 @@ export function AlgebraSolverPage() {
         input_format: sequenceInput ? 'structured' : inputFormat,
         topic: payloadTopic,
         domain,
-        variables: variables.split(',').map((item) => item.trim()).filter(Boolean),
-        interval: intervalPreset === 'unit_circle'
-          ? { variable: 'x', start: '0', end: '2*pi', closed_start: true, closed_end: false }
-          : null,
+        variables: variableList,
+        interval: intervalPayload,
         options: {
           // Natural mode defaults to rule-based; AI only when user opts in.
           use_ai_extraction: inputMode === 'natural' && useAiExtraction && !sequenceInput,
@@ -79,6 +108,7 @@ export function AlgebraSolverPage() {
     setInputMode('math');
     setInputFormat('plain');
     setUseAiExtraction(false);
+    setPendingConfirm(false);
   }
 
   return (
@@ -93,32 +123,85 @@ export function AlgebraSolverPage() {
           variables={variables}
           useAiExtraction={useAiExtraction}
           intervalPreset={intervalPreset}
+          intervalStart={intervalStart}
+          intervalEnd={intervalEnd}
+          intervalClosedStart={intervalClosedStart}
+          intervalClosedEnd={intervalClosedEnd}
           loading={loading}
-          onInputChange={setInput}
+          onInputChange={(value) => { setInput(value); setPendingConfirm(false); }}
           onInputFormatChange={setInputFormat}
-          onInputModeChange={setInputMode}
-          onTopicChange={setTopic}
-          onDomainChange={setDomain}
-          onVariablesChange={setVariables}
-          onUseAiExtractionChange={setUseAiExtraction}
-          onIntervalPresetChange={setIntervalPreset}
+          onInputModeChange={(value) => { setInputMode(value); setPendingConfirm(false); }}
+          onTopicChange={(value) => { setTopic(value); setPendingConfirm(false); }}
+          onDomainChange={(value) => { setDomain(value); setPendingConfirm(false); }}
+          onVariablesChange={(value) => { setVariables(value); setPendingConfirm(false); }}
+          onUseAiExtractionChange={(value) => { setUseAiExtraction(value); setPendingConfirm(false); }}
+          onIntervalPresetChange={(value) => { setIntervalPreset(value); setPendingConfirm(false); }}
+          onIntervalStartChange={(value) => { setIntervalStart(value); setPendingConfirm(false); }}
+          onIntervalEndChange={(value) => { setIntervalEnd(value); setPendingConfirm(false); }}
+          onIntervalClosedStartChange={(value) => { setIntervalClosedStart(value); setPendingConfirm(false); }}
+          onIntervalClosedEndChange={(value) => { setIntervalClosedEnd(value); setPendingConfirm(false); }}
           sequenceDraft={sequenceDraft}
-          onSequenceDraftChange={setSequenceDraft}
-          onSubmit={handleSubmit}
+          onSequenceDraftChange={(value) => { setSequenceDraft(value); setPendingConfirm(false); }}
+          onSubmit={requestConfirmIfNeeded}
         />
         <div className="algebra-result-wrap">
           {error && <div className="sp-error"><strong>Solver lỗi</strong><span>{error}</span></div>}
+          {pendingConfirm && !loading && (
+            <section className="algebra-confirm-panel" role="dialog" aria-labelledby="algebra-confirm-title">
+              <div className="algebra-panel-heading">
+                <span>Xác nhận trước khi giải</span>
+                <h2 id="algebra-confirm-title">Cách hệ thống sẽ hiểu đề</h2>
+              </div>
+              <p className="algebra-confirm-lead">
+                Kiểm tra topic, miền, biến và khoảng. AI (nếu bật) chỉ diễn giải ngôn ngữ — không được đè lựa chọn explicit của bạn.
+              </p>
+              <dl className="algebra-interpretation-grid">
+                <div>
+                  <dt>Đề gửi</dt>
+                  <dd><code>{payloadInput}</code></dd>
+                </div>
+                <div>
+                  <dt>Dạng bài</dt>
+                  <dd>{payloadTopic}{inferredTopic && inferredTopic !== topic ? ' (đã gợi ý từ đề)' : ''}</dd>
+                </div>
+                <div>
+                  <dt>Miền</dt>
+                  <dd>{domain}</dd>
+                </div>
+                <div>
+                  <dt>Biến</dt>
+                  <dd>{variableList.length ? variableList.join(', ') : 'tự nhận diện'}</dd>
+                </div>
+                <div>
+                  <dt>Khoảng</dt>
+                  <dd>{intervalSummary(intervalPayload)}</dd>
+                </div>
+                <div>
+                  <dt>AI extraction</dt>
+                  <dd>{inputMode === 'natural' && useAiExtraction && !sequenceInput ? 'bật (cần đăng nhập)' : 'tắt — rule-based'}</dd>
+                </div>
+              </dl>
+              <div className="algebra-confirm-actions">
+                <button type="button" className="algebra-action-btn" onClick={() => setPendingConfirm(false)}>
+                  Sửa lại
+                </button>
+                <button type="button" className="auth-primary-button" onClick={() => void runSolve()}>
+                  Xác nhận &amp; giải
+                </button>
+              </div>
+            </section>
+          )}
           {loading ? (
             <AlgebraLoadingResult />
-          ) : result ? (
+          ) : result && !pendingConfirm ? (
             <AlgebraResult
               result={result}
               stale={resultStale}
               onApplyCanonical={handleApplyCanonical}
             />
-          ) : (
+          ) : !pendingConfirm ? (
             <EmptyAlgebraResult />
-          )}
+          ) : null}
         </div>
       </div>
     </section>
@@ -135,6 +218,36 @@ function sequenceInputFromDraft(draft: SequenceDraft) {
   return `${draft.target === 'sum' ? 'geometric_sum' : 'geometric'}(u1=${draft.u1.trim()},q=${draft.q.trim()},n=${draft.n.trim()})`;
 }
 
+function buildIntervalPayload(state: {
+  intervalPreset: IntervalPreset;
+  intervalStart: string;
+  intervalEnd: string;
+  intervalClosedStart: boolean;
+  intervalClosedEnd: boolean;
+}): AlgebraInterval | null {
+  if (state.intervalPreset === '') return null;
+  if (state.intervalPreset === 'unit_circle') {
+    return { variable: 'x', start: '0', end: '2*pi', closed_start: true, closed_end: false };
+  }
+  const start = state.intervalStart.trim();
+  const end = state.intervalEnd.trim();
+  if (!start && !end) return null;
+  return {
+    variable: 'x',
+    start: start || null,
+    end: end || null,
+    closed_start: state.intervalClosedStart,
+    closed_end: state.intervalClosedEnd,
+  };
+}
+
+function intervalSummary(interval: AlgebraInterval | null): string {
+  if (!interval) return 'không giới hạn (miền đầy đủ)';
+  const left = interval.closed_start === false ? '(' : '[';
+  const right = interval.closed_end === false ? ')' : ']';
+  return `${left}${interval.start ?? '-∞'}, ${interval.end ?? '+∞'}${right}`;
+}
+
 function fingerprintRequest(state: {
   input: string;
   inputMode: AlgebraInputMode;
@@ -143,7 +256,11 @@ function fingerprintRequest(state: {
   domain: AlgebraDomain;
   variables: string;
   useAiExtraction: boolean;
-  intervalPreset: '' | 'unit_circle';
+  intervalPreset: IntervalPreset;
+  intervalStart: string;
+  intervalEnd: string;
+  intervalClosedStart: boolean;
+  intervalClosedEnd: boolean;
   sequenceDraft: SequenceDraft;
 }) {
   return JSON.stringify({
@@ -155,6 +272,10 @@ function fingerprintRequest(state: {
     variables: state.variables,
     useAiExtraction: state.useAiExtraction,
     intervalPreset: state.intervalPreset,
+    intervalStart: state.intervalStart,
+    intervalEnd: state.intervalEnd,
+    intervalClosedStart: state.intervalClosedStart,
+    intervalClosedEnd: state.intervalClosedEnd,
     sequenceDraft: state.sequenceDraft,
   });
 }

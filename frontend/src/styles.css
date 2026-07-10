@@ -13669,6 +13669,44 @@ button.analyzer-guide-label:hover {
   gap: 12px;
 }
 
+.algebra-interval-custom {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  background: var(--surface);
+}
+
+.algebra-interval-custom .algebra-ai-option-hint {
+  grid-column: 1 / -1;
+}
+
+.algebra-confirm-panel {
+  margin: 16px;
+  padding: 18px 20px;
+  border: 1px solid color-mix(in srgb, var(--accent, #3b82f6) 35%, var(--line));
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--paper) 92%, var(--accent, #3b82f6) 8%);
+  display: grid;
+  gap: 14px;
+}
+
+.algebra-confirm-lead {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.algebra-confirm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
 .algebra-sequence-builder {
   display: grid;
   gap: 10px;

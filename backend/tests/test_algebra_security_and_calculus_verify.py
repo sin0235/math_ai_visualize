@@ -144,3 +144,47 @@ def test_load_gate_holds_slot_across_sequential_workers_until_http_release():
         slot2.release_http()
 
     asyncio.run(run())
+
+
+def test_process_isolation_solves_simple_equation():
+    from app.schemas.algebra import AlgebraSolveRequest
+    from app.services.algebra.process_worker import solve_algebra_in_process
+
+    result = solve_algebra_in_process(AlgebraSolveRequest(input="x**2-5*x+6=0"), timeout=15)
+    assert result.status == "solved"
+    assert {value.text for value in result.solution_set.values} == {"2", "3"}
+    assert "interpret_ms" in result.timings_ms
+    assert "parse_ms" in result.timings_ms
+    assert "solve_ms" in result.timings_ms
+
+
+def test_stage_timings_present_on_inprocess_solve():
+    from app.schemas.algebra import AlgebraSolveRequest
+    from app.services.algebra import solve_algebra
+
+    result = solve_algebra(AlgebraSolveRequest(input="x-1=0"))
+    assert result.timings_ms.get("total_ms", 0) >= 0
+    assert "interpret_ms" in result.timings_ms
+    assert "parse_ms" in result.timings_ms
+    assert "solve_ms" in result.timings_ms
+
+
+def test_empty_set_sample_corroboration_checks():
+    from app.schemas.algebra import AlgebraSolveRequest
+    from app.services.algebra import solve_algebra
+
+    result = solve_algebra(AlgebraSolveRequest(input="1/(x-1)=0"))
+    assert result.solution_set.kind == "empty"
+    assert result.verification.status == "partially_verified"
+    names = {check.name for check in result.verification.checks}
+    assert "empty_solution_set" in names
+    assert "empty_set_sample_corroboration" in names
+    assert any("mẫu" in w.lower() or "vo nghiệm" in w.lower() or "vô nghiệm" in w.lower() for w in result.warnings)
+
+
+def test_tokenizer_rejects_attribute_access_in_expr():
+    from app.services.algebra.parser import AlgebraParseError, parse_algebra_problem
+    import pytest
+
+    with pytest.raises(AlgebraParseError):
+        parse_algebra_problem("x.__class__")
