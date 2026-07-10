@@ -16,7 +16,7 @@ import {
 } from '../math/derivativeAnalysis';
 import { RichGraph2D } from '../renderers/RichGraph2D';
 
-type Props = { step: number; progress: number };
+type Props = { step: number; progress: number; freeMode?: boolean };
 
 type State = {
   f: string;
@@ -38,7 +38,7 @@ const PRESETS: Array<{ label: string; patch: Partial<State> }> = [
   { label: 'e^x', patch: { f: 'exp(x)', a: -2, b: 2, x0: 0.4, h: 0.8 } },
 ];
 
-export function DerivativeSurveySimulation({ step, progress }: Props) {
+export function DerivativeSurveySimulation({ step, progress, freeMode = false }: Props) {
   const [state, setState] = useState<State>({
     f: 'x^3 - 3*x',
     a: -3,
@@ -50,6 +50,10 @@ export function DerivativeSurveySimulation({ step, progress }: Props) {
   });
 
   const model = useMemo(() => analyze(state, step, progress), [state, step, progress]);
+  const canEditF = freeMode || step >= 1;
+  const canEditH = freeMode || step <= 3;
+  const canShowPrime = freeMode || step >= 4;
+  const canBounds = freeMode || step >= 5;
 
   return (
     <div className="csim-module-grid csim-module-grid-wide sim-deep-grid">
@@ -59,16 +63,18 @@ export function DerivativeSurveySimulation({ step, progress }: Props) {
             <strong>Khảo sát hàm & đạo hàm</strong>
             <span>Cát tuyến → tiếp tuyến → BBT</span>
           </div>
-          <FormulaInput label="f(x)" value={state.f} onChange={(f) => setState({ ...state, f })} />
-          <PresetButtons presets={PRESETS} onApply={(p) => setState((s) => ({ ...s, ...p.patch }))} />
-          <div className="csim-two-cols">
+          <FormulaInput label="f(x)" value={state.f} onChange={(f) => setState({ ...state, f })} disabled={!canEditF} />
+          <div className={!canEditF ? 'is-step-locked' : undefined}>
+            <PresetButtons presets={PRESETS} onApply={(p) => canEditF && setState((s) => ({ ...s, ...p.patch }))} />
+          </div>
+          <div className={`csim-two-cols${!canBounds ? ' is-step-locked' : ''}`}>
             <label className="csim-field">
               <span>a</span>
-              <input type="number" value={state.a} onChange={(e) => setState({ ...state, a: Number(e.target.value) })} />
+              <input type="number" disabled={!canBounds} value={state.a} onChange={(e) => setState({ ...state, a: Number(e.target.value) })} />
             </label>
             <label className="csim-field">
               <span>b</span>
-              <input type="number" value={state.b} onChange={(e) => setState({ ...state, b: Number(e.target.value) })} />
+              <input type="number" disabled={!canBounds} value={state.b} onChange={(e) => setState({ ...state, b: Number(e.target.value) })} />
             </label>
           </div>
           <SliderInput
@@ -79,7 +85,7 @@ export function DerivativeSurveySimulation({ step, progress }: Props) {
             step={(state.b - state.a) / 300 || 0.01}
             onChange={(x0) => setState({ ...state, x0 })}
           />
-          {(step <= 2) && (
+          {(freeMode || step <= 3) && (
             <SliderInput
               label={<>Bước cát tuyến <KatexSpan tex="h" /></>}
               value={model.effectiveH}
@@ -87,14 +93,15 @@ export function DerivativeSurveySimulation({ step, progress }: Props) {
               max={2.5}
               step={0.01}
               onChange={(h) => setState({ ...state, h })}
+              disabled={!canEditH && step > 2}
             />
           )}
-          <label className="csim-check">
-            <input type="checkbox" checked={state.showFPrime} onChange={(e) => setState({ ...state, showFPrime: e.target.checked })} />
-            Hiện đồ thị <KatexSpan tex="f'(x)" />
+          <label className={`csim-check${!canShowPrime ? ' is-step-locked' : ''}`}>
+            <input type="checkbox" disabled={!canShowPrime} checked={state.showFPrime} onChange={(e) => setState({ ...state, showFPrime: e.target.checked })} />
+            Hiện đồ thị <KatexSpan tex="f'(x)" /> {!canShowPrime && '(bước 4+)'}
           </label>
-          <label className="csim-check">
-            <input type="checkbox" checked={state.showAsymptotes} onChange={(e) => setState({ ...state, showAsymptotes: e.target.checked })} />
+          <label className={`csim-check${!canShowPrime ? ' is-step-locked' : ''}`}>
+            <input type="checkbox" disabled={!canShowPrime} checked={state.showAsymptotes} onChange={(e) => setState({ ...state, showAsymptotes: e.target.checked })} />
             Dò tiệm cận (số)
           </label>
         </div>

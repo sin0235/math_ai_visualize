@@ -6,7 +6,7 @@ import { KatexSpan } from '../../components/KatexSpan';
 import { SliderInput } from '../../components/calculus/AreaBetweenCurvesSimulation';
 import { formatNumber } from '../../utils/calculusNumerics';
 
-type Props = { step: number; progress: number };
+type Props = { step: number; progress: number; freeMode?: boolean };
 
 type State = {
   // point A
@@ -28,7 +28,7 @@ type State = {
 /**
  * Lab Oxyz dày: điểm, vectơ, đường thẳng, mặt phẳng, mặt cầu, khoảng cách, giao.
  */
-export function SpaceCoordsSimulation({ step, progress }: Props) {
+export function SpaceCoordsSimulation({ step, progress, freeMode = false }: Props) {
   const [state, setState] = useState<State>({
     ax: 1, ay: 2, az: 1,
     ux: 1, uy: 0.5, uz: -0.3,
@@ -45,6 +45,10 @@ export function SpaceCoordsSimulation({ step, progress }: Props) {
   const geo = useMemo(() => analyzeSpace(state), [state]);
   // animate sphere radius slightly on step 4
   const radiusDraw = step === 4 ? state.radius * (0.4 + 0.6 * progress) : state.radius;
+  const canA = freeMode || step >= 1;
+  const canU = freeMode || step >= 2;
+  const canPlane = freeMode || step >= 3;
+  const canSphere = freeMode || step >= 4;
 
   return (
     <div className="csim-module-grid csim-module-grid-wide sim-deep-grid">
@@ -52,42 +56,50 @@ export function SpaceCoordsSimulation({ step, progress }: Props) {
         <div className="csim-card">
           <div className="csim-card-head"><strong>Oxyz · đường · mặt · cầu</strong><span>Kéo xoay khung 3D</span></div>
 
-          <fieldset className="sim-fieldset">
-            <legend>Điểm A và vectơ chỉ phương <KatexSpan tex="\vec u" /></legend>
+          <fieldset className={`sim-fieldset${!canA ? ' is-step-locked' : ''}`}>
+            <legend>Điểm A {canA ? '' : '(bước 1)'}</legend>
             <Vec3Inputs
               labels={['Aₓ', 'Aᵧ', 'A_z']}
               values={[state.ax, state.ay, state.az]}
+              disabled={!canA}
               onChange={([ax, ay, az]) => setState({ ...state, ax, ay, az })}
             />
+          </fieldset>
+          <fieldset className={`sim-fieldset${!canU ? ' is-step-locked' : ''}`}>
+            <legend>Vectơ chỉ phương <KatexSpan tex="\vec u" /> {canU ? '' : '(bước 2)'}</legend>
             <Vec3Inputs
               labels={['uₓ', 'uᵧ', 'u_z']}
               values={[state.ux, state.uy, state.uz]}
+              disabled={!canU}
               onChange={([ux, uy, uz]) => setState({ ...state, ux, uy, uz })}
             />
           </fieldset>
 
-          <fieldset className="sim-fieldset">
-            <legend>Mặt phẳng qua P, pháp tuyến <KatexSpan tex="\vec n" /></legend>
+          <fieldset className={`sim-fieldset${!canPlane ? ' is-step-locked' : ''}`}>
+            <legend>Mặt phẳng qua P, pháp tuyến <KatexSpan tex="\vec n" /> {canPlane ? '' : '(bước 3)'}</legend>
             <Vec3Inputs
               labels={['Pₓ', 'Pᵧ', 'P_z']}
               values={[state.px, state.py, state.pz]}
+              disabled={!canPlane}
               onChange={([px, py, pz]) => setState({ ...state, px, py, pz })}
             />
             <Vec3Inputs
               labels={['nₓ', 'nᵧ', 'n_z']}
               values={[state.nx, state.ny, state.nz]}
+              disabled={!canPlane}
               onChange={([nx, ny, nz]) => setState({ ...state, nx, ny, nz })}
             />
           </fieldset>
 
-          <fieldset className="sim-fieldset">
-            <legend>Mặt cầu tâm I, bán kính R</legend>
+          <fieldset className={`sim-fieldset${!canSphere ? ' is-step-locked' : ''}`}>
+            <legend>Mặt cầu tâm I, bán kính R {canSphere ? '' : '(bước 4)'}</legend>
             <Vec3Inputs
               labels={['Iₓ', 'Iᵧ', 'I_z']}
               values={[state.cx, state.cy, state.cz]}
+              disabled={!canSphere}
               onChange={([cx, cy, cz]) => setState({ ...state, cx, cy, cz })}
             />
-            <SliderInput label="R" value={state.radius} min={0.4} max={4.5} step={0.1} onChange={(radius) => setState({ ...state, radius })} />
+            <SliderInput label="R" value={state.radius} min={0.4} max={4.5} step={0.1} onChange={(radius) => setState({ ...state, radius })} disabled={!canSphere} />
           </fieldset>
 
           <div className="sim-toggle-grid">
@@ -270,19 +282,22 @@ function Vec3Inputs({
   labels,
   values,
   onChange,
+  disabled = false,
 }: {
   labels: [string, string, string];
   values: [number, number, number];
   onChange: (v: [number, number, number]) => void;
+  disabled?: boolean;
 }) {
   return (
-    <div className="sim-vec3">
+    <div className={`sim-vec3${disabled ? ' is-step-locked' : ''}`}>
       {labels.map((label, i) => (
         <label key={label} className="csim-field">
           <span>{label}</span>
           <input
             type="number"
             step={0.1}
+            disabled={disabled}
             value={values[i]}
             onChange={(e) => {
               const next = [...values] as [number, number, number];

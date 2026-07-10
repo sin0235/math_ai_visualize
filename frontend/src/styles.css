@@ -15883,3 +15883,95 @@ button.analyzer-guide-label:hover {
     grid-template-columns: 1fr;
   }
 }
+
+/* ===== Tool-trip runtime ===== */
+.sim-step-mission {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: linear-gradient(180deg, #eff6ff, #f8fafc);
+}
+
+.sim-step-mission.is-free {
+  background: linear-gradient(180deg, #ecfdf5, #f8fafc);
+}
+
+.sim-step-mission-main {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.sim-step-mission-kicker {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #1d4ed8;
+}
+
+.sim-step-mission.is-free .sim-step-mission-kicker {
+  color: #047857;
+}
+
+.sim-step-mission strong {
+  font-size: 0.98rem;
+}
+
+.sim-step-mission p {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.sim-free-mode-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  font-size: 0.82rem;
+  font-weight: 650;
+  color: var(--ink-2);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.sim-chip-trip {
+  background: #eff6ff !important;
+  border-color: #93c5fd !important;
+  color: #1d4ed8 !important;
+}
+
+.is-step-locked {
+  opacity: 0.48;
+  pointer-events: none;
+}
+
+.is-step-locked input,
+.is-step-locked select,
+.is-step-locked textarea,
+.is-step-locked button {
+  cursor: not-allowed;
+}
+
+.sim-checkpoint-unlock {
+  font-style: normal;
+  color: var(--ink-4);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.sim-checkpoint-hint {
+  margin-top: 8px;
+}
+
+@media (max-width: 700px) {
+  .sim-step-mission {
+    flex-direction: column;
+  }
+}

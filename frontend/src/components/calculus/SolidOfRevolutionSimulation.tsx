@@ -9,6 +9,7 @@ import { BoundsInput, FormulaInput, PresetButtons, ResultCard, SliderInput } fro
 interface Props {
   step: number;
   progress: number;
+  freeMode?: boolean;
 }
 
 type Axis = 'Ox' | 'Oy';
@@ -33,7 +34,7 @@ const SOLID_PRESETS: Array<{ label: string; patch: Partial<State> }> = [
   { label: 'Shell miền kẹp', patch: { f: '2-x', g: 'x', useWasher: true, a: 0, b: 1, sliceX: 0.5, axis: 'Oy', n: 40 } },
 ];
 
-export function SolidOfRevolutionSimulation({ step, progress }: Props) {
+export function SolidOfRevolutionSimulation({ step, progress, freeMode = false }: Props) {
   const [state, setState] = useState<State>({
     f: 'sqrt(x)',
     g: 'x/2',
@@ -46,12 +47,23 @@ export function SolidOfRevolutionSimulation({ step, progress }: Props) {
   });
   const method: Method = state.axis === 'Oy' ? 'shell' : state.useWasher ? 'washer' : 'disk';
   const computed = useMemo(() => computeSolid(state, method), [state, method]);
+  // So sánh song song disk Ox vs shell Oy cùng f,g,a,b (bước 5)
+  const altAxis: Axis = state.axis === 'Ox' ? 'Oy' : 'Ox';
+  const altMethod: Method = altAxis === 'Oy' ? 'shell' : state.useWasher ? 'washer' : 'disk';
+  const altComputed = useMemo(
+    () => computeSolid({ ...state, axis: altAxis, a: Math.max(0, state.a) }, altMethod),
+    [state, altAxis, altMethod],
+  );
   const sweep = (step === 2 ? progress : step > 2 ? 1 : 0) * Math.PI * 2;
   const sweepRatio = clamp(sweep / (Math.PI * 2), 0, 1);
   const sweptVolume = computed.volume * sweepRatio;
   const visibleDisks = step >= 4 ? Math.ceil(state.n * Math.min(1, step === 4 ? progress : 1)) : 0;
   const diskSum = computed.partialSumAt?.(visibleDisks) ?? NaN;
   const safeSliceX = clamp(state.sliceX, state.a, state.b);
+  const canEditSetup = freeMode || step >= 1;
+  const canSlice = freeMode || step >= 3;
+  const canN = freeMode || step >= 4;
+  const showCompare = freeMode || step >= 5;
 
   return (
     <div className="csim-module-grid csim-module-grid-wide">
@@ -61,10 +73,11 @@ export function SolidOfRevolutionSimulation({ step, progress }: Props) {
             <strong>Khối tròn xoay</strong>
             <span>{methodLabel(method)}</span>
           </div>
-          <FormulaInput label="f(x)" value={state.f} onChange={(f) => setState({ ...state, f })} />
-          <label className="csim-check">
+          <FormulaInput label="f(x)" value={state.f} onChange={(f) => setState({ ...state, f })} disabled={!canEditSetup} />
+          <label className={`csim-check${!canEditSetup ? ' is-step-locked' : ''}`}>
             <input
               type="checkbox"
+              disabled={!canEditSetup}
               checked={state.useWasher}
               onChange={(e) => setState({ ...state, useWasher: e.target.checked })}
             />
@@ -72,27 +85,30 @@ export function SolidOfRevolutionSimulation({ step, progress }: Props) {
               ? <>Miền giữa <KatexSpan tex="f" /> và <KatexSpan tex="g" /> (shell)</>
               : <>Washer với <KatexSpan tex="g(x)" /></>}
           </label>
-          {state.useWasher && <FormulaInput label="g(x)" value={state.g} onChange={(g) => setState({ ...state, g })} />}
-          <PresetButtons presets={SOLID_PRESETS} onApply={(preset) => setState((current) => ({ ...current, ...preset.patch }))} />
+          {state.useWasher && <FormulaInput label="g(x)" value={state.g} onChange={(g) => setState({ ...state, g })} disabled={!canEditSetup} />}
+          <div className={!canEditSetup ? 'is-step-locked' : undefined}>
+            <PresetButtons presets={SOLID_PRESETS} onApply={(preset) => canEditSetup && setState((current) => ({ ...current, ...preset.patch }))} />
+          </div>
           <BoundsInput
             a={state.a}
             b={state.b}
+            disabled={!canEditSetup}
             onChange={(patch) => setState((current) => ({
               ...current,
               ...patch,
               sliceX: clamp(current.sliceX, patch.a ?? current.a, patch.b ?? current.b),
             }))}
           />
-          <label className="csim-field">
+          <label className={`csim-field${!canEditSetup ? ' is-step-locked' : ''}`}>
             <span>Trục quay</span>
             <select
               value={state.axis}
+              disabled={!canEditSetup}
               onChange={(e) => {
                 const axis = e.target.value as Axis;
                 setState({
                   ...state,
                   axis,
-                  // Oy shell cần a ≥ 0 thường dùng
                   a: axis === 'Oy' ? Math.max(0, state.a) : state.a,
                 });
               }}
@@ -111,6 +127,7 @@ export function SolidOfRevolutionSimulation({ step, progress }: Props) {
             max={state.b}
             step={(state.b - state.a) / 200 || 0.01}
             onChange={(sliceX) => setState({ ...state, sliceX })}
+            disabled={!canSlice}
           />
           <SliderInput
             label={<>Số lát <KatexSpan tex="n" /></>}
@@ -119,6 +136,7 @@ export function SolidOfRevolutionSimulation({ step, progress }: Props) {
             max={120}
             step={1}
             onChange={(n) => setState({ ...state, n })}
+            disabled={!canN}
           />
         </div>
 
@@ -157,6 +175,17 @@ export function SolidOfRevolutionSimulation({ step, progress }: Props) {
             )}
           </ul>
         </div>
+        {showCompare && !computed.error && !altComputed.error && (
+          <div className="csim-card">
+            <div className="csim-card-head"><strong>So sánh Ox vs Oy</strong><span>cùng miền f (ước lượng)</span></div>
+            <div className="sim-kv-list">
+              <div className="sim-kv-row highlight"><span>V hiện tại ({methodLabel(method)})</span><strong>{formatNumber(computed.volume)}</strong></div>
+              <div className="sim-kv-row"><span>V nếu {methodLabel(altMethod)}</span><strong>{formatNumber(altComputed.volume)}</strong></div>
+              <div className="sim-kv-row"><span>|V_Ox − V_Oy|</span><strong>{formatNumber(Math.abs(computed.volume - altComputed.volume))}</strong></div>
+            </div>
+            <p className="sim-muted">Hai phương pháp quay khác trục → khối khác nhau. Đổi trục ở bước 1 để kiểm chứng.</p>
+          </div>
+        )}
       </aside>
 
       <section className="csim-visual-stack">

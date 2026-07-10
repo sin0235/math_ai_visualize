@@ -1,8 +1,10 @@
 import type { SimulationSpec } from '../types';
+import { applyG12ToolTrip } from './g12ToolTrip';
 
 /**
  * Catalog — lớp 12 + lớp 11 dày (published).
  * Không multi-user / chia sẻ. GeoGebra Lab tách riêng.
+ * Meta tool-trip G12: applyG12ToolTrip (stepMissions + unlockAtStep).
  */
 export const SIMULATIONS: SimulationSpec[] = [
   // ─── Lớp 12: Giải tích ───────────────────────────────────────────
@@ -788,7 +790,8 @@ export const SIMULATIONS: SimulationSpec[] = [
 ];
 
 export function getSimulation(id: string): SimulationSpec | undefined {
-  return SIMULATIONS.find((item) => item.id === id);
+  const raw = SIMULATIONS.find((item) => item.id === id);
+  return raw ? applyG12ToolTrip(raw) : undefined;
 }
 
 export function listSimulations(filter?: {
@@ -809,5 +812,7 @@ export function listSimulations(filter?: {
     if (!query) return true;
     const hay = [item.title, item.subtitle, item.topicCode, ...item.tags, ...item.learningOutcomes].join(' ').toLowerCase();
     return hay.includes(query);
-  }).sort((a, b) => b.grade - a.grade || a.title.localeCompare(b.title, 'vi'));
+  })
+    .map(applyG12ToolTrip)
+    .sort((a, b) => b.grade - a.grade || a.title.localeCompare(b.title, 'vi'));
 }

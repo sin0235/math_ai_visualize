@@ -8,7 +8,7 @@ import {
   removeOutliers,
 } from '../math/descriptiveStats';
 
-type Props = { step: number; progress: number };
+type Props = { step: number; progress: number; freeMode?: boolean };
 
 const PRESETS: Array<{ label: string; data: string; bin: number }> = [
   { label: 'Điểm kiểm tra', data: '5 6 6 7 7 7 8 8 8 8 9 9 10 4 3 7 8 6 9 8', bin: 1 },
@@ -17,11 +17,15 @@ const PRESETS: Array<{ label: string; data: string; bin: number }> = [
   { label: 'Cân nặng', data: '48 50 51 52 53 53 54 55 55 56 57 58 60 62 65 70', bin: 3 },
 ];
 
-export function StatisticsLabSimulation({ step, progress }: Props) {
+export function StatisticsLabSimulation({ step, progress, freeMode = false }: Props) {
   const [raw, setRaw] = useState(PRESETS[0].data);
   const [binWidth, setBinWidth] = useState(1);
   const [dropOutliers, setDropOutliers] = useState(false);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const canRaw = freeMode || step >= 1;
+  const canDrag = freeMode || step >= 2;
+  const canBin = freeMode || step >= 3;
+  const canOutlier = freeMode || step >= 5;
 
   const values = useMemo(() => {
     const list = parseDataList(raw);
@@ -46,22 +50,24 @@ export function StatisticsLabSimulation({ step, progress }: Props) {
       <aside className="csim-control-stack">
         <div className="csim-card">
           <div className="csim-card-head"><strong>Thống kê mô tả</strong><span>Mẫu & ghép nhóm</span></div>
-          <label className="csim-field">
+          <label className={`csim-field${!canRaw ? ' is-step-locked' : ''}`}>
             <span>Dữ liệu (cách nhau bởi dấu cách / phẩy)</span>
             <textarea
               className="sim-data-input"
               rows={4}
               value={raw}
+              disabled={!canRaw}
               onChange={(e) => setRaw(e.target.value)}
               spellCheck={false}
             />
           </label>
-          <div className="sim-preset-row">
+          <div className={`sim-preset-row${!canRaw ? ' is-step-locked' : ''}`}>
             {PRESETS.map((p) => (
               <button
                 key={p.label}
                 type="button"
                 className="csim-chip"
+                disabled={!canRaw}
                 onClick={() => {
                   setRaw(p.data);
                   setBinWidth(p.bin);
@@ -71,10 +77,10 @@ export function StatisticsLabSimulation({ step, progress }: Props) {
               </button>
             ))}
           </div>
-          <SliderInput label="Độ rộng nhóm" value={binWidth} min={0.5} max={10} step={0.5} onChange={setBinWidth} />
-          <label className="csim-check">
-            <input type="checkbox" checked={dropOutliers} onChange={(e) => setDropOutliers(e.target.checked)} />
-            Loại ngoại lệ (hàng rào 1.5×IQR) rồi tính lại
+          <SliderInput label="Độ rộng nhóm" value={binWidth} min={0.5} max={10} step={0.5} onChange={setBinWidth} disabled={!canBin} />
+          <label className={`csim-check${!canOutlier ? ' is-step-locked' : ''}`}>
+            <input type="checkbox" disabled={!canOutlier} checked={dropOutliers} onChange={(e) => setDropOutliers(e.target.checked)} />
+            Loại ngoại lệ (hàng rào 1.5×IQR) rồi tính lại {!canOutlier && '(bước 5)'}
           </label>
           <p className="sim-muted">n = {stats.n}. Kéo điểm trên trục (bước 2+) để xem mean/median/σ đổi realtime.</p>
         </div>
@@ -139,10 +145,10 @@ export function StatisticsLabSimulation({ step, progress }: Props) {
             q1={stats.q1}
             q3={stats.q3}
             outliers={stats.outliers}
-            showGuides={step >= 2}
+            showGuides={step >= 2 || freeMode}
             activeIndex={dragIndex}
-            onActive={setDragIndex}
-            onChange={updateValueAt}
+            onActive={canDrag ? setDragIndex : () => undefined}
+            onChange={canDrag ? updateValueAt : () => undefined}
           />
         </div>
 

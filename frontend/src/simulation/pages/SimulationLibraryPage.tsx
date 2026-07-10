@@ -92,6 +92,7 @@ export function SimulationLibraryPage({ onOpen }: Props) {
                 <span className="sim-chip">{STRAND_LABELS[item.strand]}</span>
                 <span className="sim-chip">{item.dims.toUpperCase()}</span>
                 <span className={`sim-chip sim-chip-status ${item.status}`}>{STATUS_LABELS[item.status]}</span>
+                {item.toolTripReady && <span className="sim-chip sim-chip-trip">Tool-trip</span>}
               </div>
               <h2>{item.title}</h2>
               <p>{item.subtitle}</p>

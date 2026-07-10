@@ -83,7 +83,39 @@ export function runSimulationBaselineTests() {
   }
   assert(getSimulation('missing') === undefined, 'missing id');
 
-  return { passed: true, count: all.length };
+  // G12 tool-trip meta
+  const g12 = listSimulations({ grade: 12 });
+  assert(g12.length >= 9, `expected >=9 g12 labs, got ${g12.length}`);
+  for (const item of g12) {
+    assert(Boolean(item.stepMissions && item.stepMissions.length === item.steps), `missions ${item.id}`);
+    assert(item.toolTripReady === true, `toolTripReady ${item.id}`);
+    assert(item.checkpoints.every((c) => (c.unlockAtStep ?? 1) >= 1), `unlock ${item.id}`);
+  }
+
+  // Golden: shell volume style 2π∫x f for f=1 on [0,1] → π
+  const shellF = compileExpression('1');
+  const shellVol = integrate((x) => 2 * Math.PI * Math.abs(x) * Math.abs(shellF.evaluate(x)), 0, 1);
+  assert(approxEqual(shellVol, Math.PI, 1e-3), `shell unit ${shellVol}`);
+
+  // Golden: disk π∫f² for f=1 on [0,1] → π
+  const diskVol = integrate((x) => Math.PI * shellF.evaluate(x) ** 2, 0, 1);
+  assert(approxEqual(diskVol, Math.PI, 1e-3), `disk unit ${diskVol}`);
+
+  // Golden: Bayes PPV classic prior 0.01, sens 0.99, spec 0.95
+  const prior = 0.01;
+  const sens = 0.99;
+  const spec = 0.95;
+  const pPos = sens * prior + (1 - spec) * (1 - prior);
+  const ppv = (sens * prior) / pPos;
+  assert(approxEqual(ppv, 0.1667, 5e-3), `bayes ppv ${ppv}`);
+
+  // Golden: derivative of x^2 at 1 ≈ 2
+  const quad = compileExpression('x^2');
+  const h = 1e-4;
+  const dApprox = (quad.evaluate(1 + h) - quad.evaluate(1 - h)) / (2 * h);
+  assert(approxEqual(dApprox, 2, 1e-3), `deriv x^2 ${dApprox}`);
+
+  return { passed: true, count: all.length, g12: g12.length };
 }
 
 // Direct execution via `tsx` / `vite-node` (npm run test:simulation)

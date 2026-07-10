@@ -6,7 +6,7 @@ import { numericalDerivative, parseUserFunction } from '../math/derivativeAnalys
 import { RichGraph2D } from '../renderers/RichGraph2D';
 import type { SamplePoint } from '../../utils/calculusNumerics';
 
-type Props = { step: number; progress: number };
+type Props = { step: number; progress: number; freeMode?: boolean };
 
 type State = {
   f: string;
@@ -26,7 +26,7 @@ const PRESETS = [
   { label: '1/x (x>0)', patch: { f: '1/x', a: 0.3, b: 4, xAnchor: 1, c: 0 } },
 ];
 
-export function AntiderivativeFamilySimulation({ step, progress }: Props) {
+export function AntiderivativeFamilySimulation({ step, progress, freeMode = false }: Props) {
   const [state, setState] = useState<State>({
     f: '2*x',
     a: -2,
@@ -38,6 +38,10 @@ export function AntiderivativeFamilySimulation({ step, progress }: Props) {
   });
 
   const model = useMemo(() => build(state, step, progress), [state, step, progress]);
+  const canF = freeMode || step >= 1;
+  const canAnchor = freeMode || step >= 2;
+  const canC = freeMode || step >= 3;
+  const canFamily = freeMode || step >= 4;
 
   return (
     <div className="csim-module-grid csim-module-grid-wide sim-deep-grid">
@@ -47,18 +51,20 @@ export function AntiderivativeFamilySimulation({ step, progress }: Props) {
             <strong>Họ nguyên hàm</strong>
             <span><KatexSpan tex={String.raw`F(x)+C`} /></span>
           </div>
-          <FormulaInput label="f(x) = F'(x)" value={state.f} onChange={(f) => setState({ ...state, f })} />
-          <PresetButtons presets={PRESETS} onApply={(p) => setState((s) => ({ ...s, ...p.patch }))} />
-          <div className="csim-two-cols">
-            <label className="csim-field"><span>a</span><input type="number" value={state.a} onChange={(e) => setState({ ...state, a: Number(e.target.value) })} /></label>
-            <label className="csim-field"><span>b</span><input type="number" value={state.b} onChange={(e) => setState({ ...state, b: Number(e.target.value) })} /></label>
+          <FormulaInput label="f(x) = F'(x)" value={state.f} onChange={(f) => setState({ ...state, f })} disabled={!canF} />
+          <div className={!canF ? 'is-step-locked' : undefined}>
+            <PresetButtons presets={PRESETS} onApply={(p) => canF && setState((s) => ({ ...s, ...p.patch }))} />
           </div>
-          <SliderInput label={<>Mốc tích phân <KatexSpan tex="x_*" /></>} value={state.xAnchor} min={state.a} max={state.b} step={(state.b - state.a) / 200 || 0.01} onChange={(xAnchor) => setState({ ...state, xAnchor })} />
-          <SliderInput label={<>Hằng số <KatexSpan tex="C" /></>} value={state.c} min={-5} max={5} step={0.1} onChange={(c) => setState({ ...state, c })} />
-          <SliderInput label="Số đường trong họ" value={state.nCompare} min={1} max={9} step={1} onChange={(nCompare) => setState({ ...state, nCompare })} />
-          <label className="csim-check">
-            <input type="checkbox" checked={state.showFamily} onChange={(e) => setState({ ...state, showFamily: e.target.checked })} />
-            Hiện nhiều đường <KatexSpan tex="F+C_i" />
+          <div className={`csim-two-cols${!canF ? ' is-step-locked' : ''}`}>
+            <label className="csim-field"><span>a</span><input type="number" disabled={!canF} value={state.a} onChange={(e) => setState({ ...state, a: Number(e.target.value) })} /></label>
+            <label className="csim-field"><span>b</span><input type="number" disabled={!canF} value={state.b} onChange={(e) => setState({ ...state, b: Number(e.target.value) })} /></label>
+          </div>
+          <SliderInput label={<>Mốc tích phân <KatexSpan tex="x_*" /></>} value={state.xAnchor} min={state.a} max={state.b} step={(state.b - state.a) / 200 || 0.01} onChange={(xAnchor) => setState({ ...state, xAnchor })} disabled={!canAnchor} />
+          <SliderInput label={<>Hằng số <KatexSpan tex="C" /></>} value={state.c} min={-5} max={5} step={0.1} onChange={(c) => setState({ ...state, c })} disabled={!canC} />
+          <SliderInput label="Số đường trong họ" value={state.nCompare} min={1} max={9} step={1} onChange={(nCompare) => setState({ ...state, nCompare })} disabled={!canFamily} />
+          <label className={`csim-check${!canFamily ? ' is-step-locked' : ''}`}>
+            <input type="checkbox" disabled={!canFamily} checked={state.showFamily} onChange={(e) => setState({ ...state, showFamily: e.target.checked })} />
+            Hiện nhiều đường <KatexSpan tex="F+C_i" /> {!canFamily && '(bước 4)'}
           </label>
         </div>
 

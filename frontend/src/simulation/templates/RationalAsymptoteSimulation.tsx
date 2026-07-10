@@ -10,7 +10,7 @@ import {
 import { analyzeRational, sampleRational } from '../math/rationalAsymptotes';
 import { RichGraph2D } from '../renderers/RichGraph2D';
 
-type Props = { step: number; progress: number };
+type Props = { step: number; progress: number; freeMode?: boolean };
 
 type State = {
   num: string;
@@ -31,7 +31,7 @@ const PRESETS: Array<{ label: string; patch: Partial<State> }> = [
   { label: '1/x', patch: { num: '1', den: 'x', a: -5, b: 5, x0: 1.5 } },
 ];
 
-export function RationalAsymptoteSimulation({ step, progress }: Props) {
+export function RationalAsymptoteSimulation({ step, progress, freeMode = false }: Props) {
   const [state, setState] = useState<State>({
     num: 'x^2+1',
     den: 'x-1',
@@ -43,6 +43,10 @@ export function RationalAsymptoteSimulation({ step, progress }: Props) {
   });
 
   const model = useMemo(() => build(state, step, progress), [state, step, progress]);
+  const canPQ = freeMode || step >= 1;
+  const canX0 = freeMode || step >= 4;
+  const canOblique = freeMode || step >= 3;
+  const canPrime = freeMode || step >= 5;
 
   return (
     <div className="csim-module-grid csim-module-grid-wide sim-deep-grid">
@@ -52,12 +56,14 @@ export function RationalAsymptoteSimulation({ step, progress }: Props) {
             <strong>Hàm hữu tỉ & tiệm cận</strong>
             <span><KatexSpan tex={String.raw`f=\frac{P}{Q}`} /></span>
           </div>
-          <FormulaInput label="P(x) tử" value={state.num} onChange={(num) => setState({ ...state, num })} />
-          <FormulaInput label="Q(x) mẫu" value={state.den} onChange={(den) => setState({ ...state, den })} />
-          <PresetButtons presets={PRESETS} onApply={(p) => setState((s) => ({ ...s, ...p.patch }))} />
-          <div className="csim-two-cols">
-            <label className="csim-field"><span>a</span><input type="number" value={state.a} onChange={(e) => setState({ ...state, a: Number(e.target.value) })} /></label>
-            <label className="csim-field"><span>b</span><input type="number" value={state.b} onChange={(e) => setState({ ...state, b: Number(e.target.value) })} /></label>
+          <FormulaInput label="P(x) tử" value={state.num} onChange={(num) => setState({ ...state, num })} disabled={!canPQ} />
+          <FormulaInput label="Q(x) mẫu" value={state.den} onChange={(den) => setState({ ...state, den })} disabled={!canPQ} />
+          <div className={!canPQ ? 'is-step-locked' : undefined}>
+            <PresetButtons presets={PRESETS} onApply={(p) => canPQ && setState((s) => ({ ...s, ...p.patch }))} />
+          </div>
+          <div className={`csim-two-cols${!canPQ ? ' is-step-locked' : ''}`}>
+            <label className="csim-field"><span>a</span><input type="number" disabled={!canPQ} value={state.a} onChange={(e) => setState({ ...state, a: Number(e.target.value) })} /></label>
+            <label className="csim-field"><span>b</span><input type="number" disabled={!canPQ} value={state.b} onChange={(e) => setState({ ...state, b: Number(e.target.value) })} /></label>
           </div>
           <SliderInput
             label={<>Điểm khảo sát <KatexSpan tex="x_0" /></>}
@@ -66,14 +72,15 @@ export function RationalAsymptoteSimulation({ step, progress }: Props) {
             max={state.b}
             step={(state.b - state.a) / 300 || 0.01}
             onChange={(x0) => setState({ ...state, x0 })}
+            disabled={!canX0}
           />
-          <label className="csim-check">
-            <input type="checkbox" checked={state.showOblique} onChange={(e) => setState({ ...state, showOblique: e.target.checked })} />
+          <label className={`csim-check${!canOblique ? ' is-step-locked' : ''}`}>
+            <input type="checkbox" disabled={!canOblique} checked={state.showOblique} onChange={(e) => setState({ ...state, showOblique: e.target.checked })} />
             Hiện tiệm cận xiên (nếu có)
           </label>
-          <label className="csim-check">
-            <input type="checkbox" checked={state.showFPrimeSign} onChange={(e) => setState({ ...state, showFPrimeSign: e.target.checked })} />
-            Tô khoảng đồng/nghịch biến
+          <label className={`csim-check${!canPrime ? ' is-step-locked' : ''}`}>
+            <input type="checkbox" disabled={!canPrime} checked={state.showFPrimeSign} onChange={(e) => setState({ ...state, showFPrimeSign: e.target.checked })} />
+            Tô khoảng đồng/nghịch biến {!canPrime && '(bước 5)'}
           </label>
         </div>
 

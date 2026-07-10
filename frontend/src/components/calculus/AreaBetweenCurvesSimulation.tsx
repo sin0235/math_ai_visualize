@@ -8,6 +8,7 @@ import { CalculusGraph2D } from './CalculusGraph2D';
 interface Props {
   step: number;
   progress: number;
+  freeMode?: boolean;
 }
 
 const RULE_LABELS: Record<RiemannRule, string> = {
@@ -16,7 +17,7 @@ const RULE_LABELS: Record<RiemannRule, string> = {
   right: 'Phải (right)',
 };
 
-export function AreaBetweenCurvesSimulation({ step, progress }: Props) {
+export function AreaBetweenCurvesSimulation({ step, progress, freeMode = false }: Props) {
   const [state, setState] = useAreaState();
   const computed = useMemo(() => computeArea(state), [state]);
   const verify = useMemo(
@@ -29,25 +30,31 @@ export function AreaBetweenCurvesSimulation({ step, progress }: Props) {
   const absError = Number.isFinite(computed.approx) && Number.isFinite(computed.exact)
     ? Math.abs(computed.approx - computed.exact)
     : NaN;
+  const canEditF = freeMode || step >= 1;
+  const canEditN = freeMode || step >= 2;
+  const canEditRule = freeMode || step >= 4;
+  const showCompare = freeMode || step >= 4;
 
   return (
     <div className="csim-module-grid">
       <aside className="csim-control-stack">
         <div className="csim-card">
           <div className="csim-card-head"><strong>Nhập dữ liệu</strong><span>Miền giữa hai đường</span></div>
-          <FormulaInput label="f(x)" value={state.f} onChange={(f) => setState({ ...state, f })} />
-          <FormulaInput label="g(x)" value={state.g} onChange={(g) => setState({ ...state, g })} />
-          <PresetButtons presets={AREA_PRESETS} onApply={(preset) => setState({ ...state, ...preset.patch })} />
-          <BoundsInput a={state.a} b={state.b} onChange={(patch) => setState({ ...state, ...patch })} />
-          <label className="csim-field">
-            <span>Quy tắc Riemann</span>
-            <select value={state.rule} onChange={(e) => setState({ ...state, rule: e.target.value as RiemannRule })}>
+          <FormulaInput label="f(x)" value={state.f} onChange={(f) => setState({ ...state, f })} disabled={!canEditF} />
+          <FormulaInput label="g(x)" value={state.g} onChange={(g) => setState({ ...state, g })} disabled={!canEditF} />
+          <div className={!canEditF ? 'is-step-locked' : undefined}>
+            <PresetButtons presets={AREA_PRESETS} onApply={(preset) => canEditF && setState({ ...state, ...preset.patch })} />
+          </div>
+          <BoundsInput a={state.a} b={state.b} onChange={(patch) => setState({ ...state, ...patch })} disabled={!canEditF} />
+          <label className={`csim-field${!canEditRule ? ' is-step-locked' : ''}`}>
+            <span>Quy tắc Riemann {canEditRule ? '' : '(mở bước 4)'}</span>
+            <select value={state.rule} disabled={!canEditRule} onChange={(e) => setState({ ...state, rule: e.target.value as RiemannRule })}>
               {(Object.keys(RULE_LABELS) as RiemannRule[]).map((rule) => (
                 <option key={rule} value={rule}>{RULE_LABELS[rule]}</option>
               ))}
             </select>
           </label>
-          <SliderInput label={<>Số hình chữ nhật <KatexSpan tex="n" /></>} value={state.n} min={4} max={200} step={1} onChange={(n) => setState({ ...state, n })} />
+          <SliderInput label={<>Số hình chữ nhật <KatexSpan tex="n" /></>} value={state.n} min={4} max={200} step={1} onChange={(n) => setState({ ...state, n })} disabled={!canEditN} />
         </div>
         <ResultCard title="Diện tích" error={computed.error} rows={[
           ['Cộng dồn hiện tại', formatNumber(accumulatedArea)],
@@ -62,7 +69,7 @@ export function AreaBetweenCurvesSimulation({ step, progress }: Props) {
             <span>{verify.message}</span>
           </div>
         )}
-        {!computed.error && (
+        {showCompare && !computed.error && (
           <div className="csim-card">
             <div className="csim-card-head"><strong>So sánh 3 quy tắc</strong><span>Cùng n = {state.n}</span></div>
             <div className="sim-kv-list">
@@ -161,13 +168,13 @@ function StepExplanation({ step, rule }: { step: number; rule: RiemannRule }) {
   return <div className="csim-card csim-step-copy"><strong>{copy[0]}</strong><p>{copy[1]}</p></div>;
 }
 
-export function FormulaInput({ label, value, onChange, placeholder = 'vd: sin(x), x^2, sqrt(x), 5' }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string }) {
+export function FormulaInput({ label, value, onChange, placeholder = 'vd: sin(x), x^2, sqrt(x), 5', disabled = false }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string; disabled?: boolean }) {
   const [touched, setTouched] = useState(false);
-  const error = touched ? formulaError(value) : null;
-  return <label className={`csim-field ${error ? 'has-error' : ''}`}><span><KatexSpan tex={label} /></span><input value={value} onChange={(e) => onChange(e.target.value)} onBlur={() => setTouched(true)} placeholder={placeholder} spellCheck={false} />{error ? <small className="csim-field-error">{error}</small> : <small className="csim-field-hint">Dùng biến <KatexSpan tex="x" />. Ví dụ: <KatexSpan tex="x^2" />, <KatexSpan tex={String.raw`\sin(x)`} />, <KatexSpan tex={String.raw`\sqrt{x}`} />, <KatexSpan tex="5" />.</small>}</label>;
+  const error = touched && !disabled ? formulaError(value) : null;
+  return <label className={`csim-field ${error ? 'has-error' : ''}${disabled ? ' is-step-locked' : ''}`}><span><KatexSpan tex={label} /></span><input value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} onBlur={() => setTouched(true)} placeholder={placeholder} spellCheck={false} />{error ? <small className="csim-field-error">{error}</small> : <small className="csim-field-hint">Dùng biến <KatexSpan tex="x" />. Ví dụ: <KatexSpan tex="x^2" />, <KatexSpan tex={String.raw`\sin(x)`} />, <KatexSpan tex={String.raw`\sqrt{x}`} />, <KatexSpan tex="5" />.</small>}</label>;
 }
 
-export function BoundsInput({ a, b, onChange }: { a: number; b: number; onChange: (patch: { a?: number; b?: number }) => void }) {
+export function BoundsInput({ a, b, onChange, disabled = false }: { a: number; b: number; onChange: (patch: { a?: number; b?: number }) => void; disabled?: boolean }) {
   const [rawA, setRawA] = useState(String(a));
   const [rawB, setRawB] = useState(String(b));
   const [touched, setTouched] = useState({ a: false, b: false });
@@ -184,7 +191,7 @@ export function BoundsInput({ a, b, onChange }: { a: number; b: number; onChange
     const parsed = parseBound(raw);
     if (parsed.value !== null) onChange({ [key]: parsed.value });
   };
-  return <div className="csim-two-cols"><label className={`csim-field ${errorA ? 'has-error' : ''}`}><span>a</span><input type="number" value={rawA} onBlur={() => setTouched((current) => ({ ...current, a: true }))} onChange={(e) => update('a', e.target.value)} />{errorA && <small className="csim-field-error">{errorA}</small>}</label><label className={`csim-field ${errorB ? 'has-error' : ''}`}><span>b</span><input type="number" value={rawB} onBlur={() => setTouched((current) => ({ ...current, b: true }))} onChange={(e) => update('b', e.target.value)} />{errorB && <small className="csim-field-error">{errorB}</small>}</label></div>;
+  return <div className={`csim-two-cols${disabled ? ' is-step-locked' : ''}`}><label className={`csim-field ${errorA ? 'has-error' : ''}`}><span>a</span><input type="number" disabled={disabled} value={rawA} onBlur={() => setTouched((current) => ({ ...current, a: true }))} onChange={(e) => update('a', e.target.value)} />{errorA && <small className="csim-field-error">{errorA}</small>}</label><label className={`csim-field ${errorB ? 'has-error' : ''}`}><span>b</span><input type="number" disabled={disabled} value={rawB} onBlur={() => setTouched((current) => ({ ...current, b: true }))} onChange={(e) => update('b', e.target.value)} />{errorB && <small className="csim-field-error">{errorB}</small>}</label></div>;
 }
 
 export function PresetButtons<T extends object>({ presets, onApply }: { presets: Array<{ label: string; patch: Partial<T> }>; onApply: (preset: { label: string; patch: Partial<T> }) => void }) {
@@ -208,8 +215,8 @@ function parseBound(raw: string) {
   return { value, error: null };
 }
 
-export function SliderInput({ label, value, min, max, step, onChange }: { label: ReactNode; value: number; min: number; max: number; step: number; onChange: (value: number) => void }) {
-  return <label className="csim-slider"><span>{label}: <strong>{formatNumber(value, 2)}</strong></span><input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(Number(e.target.value))} /></label>;
+export function SliderInput({ label, value, min, max, step, onChange, disabled = false }: { label: ReactNode; value: number; min: number; max: number; step: number; onChange: (value: number) => void; disabled?: boolean }) {
+  return <label className={`csim-slider${disabled ? ' is-step-locked' : ''}`}><span>{label}: <strong>{formatNumber(value, 2)}</strong></span><input type="range" min={min} max={max} step={step} value={value} disabled={disabled} onChange={(e) => onChange(Number(e.target.value))} /></label>;
 }
 
 export function ResultCard({ title, error, rows, formula, highlight }: { title: string; error: string | null; rows: Array<[ReactNode, string]>; formula: string; highlight?: boolean }) {

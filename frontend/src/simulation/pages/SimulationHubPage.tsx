@@ -86,28 +86,28 @@ export function SimulationHubPage() {
 
   return (
     <SimulationShell spec={spec} onBack={backToLibrary}>
-      {({ step, progress, playing }) => {
+      {({ step, progress, playing, freeMode }) => {
         switch (spec.template) {
           case 'riemann-area':
-            return <AreaBetweenCurvesSimulation step={step} progress={progress} />;
+            return <AreaBetweenCurvesSimulation step={step} progress={progress} freeMode={freeMode} />;
           case 'solid-revolution':
-            return <SolidOfRevolutionSimulation step={step} progress={progress} />;
+            return <SolidOfRevolutionSimulation step={step} progress={progress} freeMode={freeMode} />;
           case 'cross-section':
-            return <CrossSectionVolumeSimulation step={step} progress={progress} />;
+            return <CrossSectionVolumeSimulation step={step} progress={progress} freeMode={freeMode} />;
           case 'unit-circle-trig':
             return <TrigonometrySimulation playing={playing} />;
           case 'derivative-survey':
-            return <DerivativeSurveySimulation step={step} progress={progress} />;
+            return <DerivativeSurveySimulation step={step} progress={progress} freeMode={freeMode} />;
           case 'antiderivative-family':
-            return <AntiderivativeFamilySimulation step={step} progress={progress} />;
+            return <AntiderivativeFamilySimulation step={step} progress={progress} freeMode={freeMode} />;
           case 'space-coords':
-            return <SpaceCoordsSimulation step={step} progress={progress} />;
+            return <SpaceCoordsSimulation step={step} progress={progress} freeMode={freeMode} />;
           case 'bayes-lab':
-            return <BayesLabSimulation step={step} progress={progress} />;
+            return <BayesLabSimulation step={step} progress={progress} freeMode={freeMode} />;
           case 'statistics-lab':
-            return <StatisticsLabSimulation step={step} progress={progress} />;
+            return <StatisticsLabSimulation step={step} progress={progress} freeMode={freeMode} />;
           case 'rational-asymptote':
-            return <RationalAsymptoteSimulation step={step} progress={progress} />;
+            return <RationalAsymptoteSimulation step={step} progress={progress} freeMode={freeMode} />;
           case 'limits-continuity':
             return <LimitsContinuitySimulation step={step} progress={progress} />;
           case 'sequences-lab':

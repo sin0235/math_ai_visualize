@@ -1,19 +1,40 @@
-import type { ReactNode } from 'react';
-import type { SimulationSpec } from '../types';
+import { useMemo, useState, type ReactNode } from 'react';
+import type { SimulationSpec, StepMissionDef } from '../types';
 import { KIND_LABELS, STRAND_LABELS } from '../types';
 import { topicTitle } from '../catalog';
 import { PedagogyPanel } from './PedagogyPanel';
+import { StepMission } from './StepMission';
 import { useSimulationPlayer } from './useSimulationPlayer';
+
+export type SimulationShellContext = {
+  step: number;
+  progress: number;
+  playing: boolean;
+  freeMode: boolean;
+};
 
 type Props = {
   spec: SimulationSpec;
   onBack: () => void;
-  children: (ctx: { step: number; progress: number; playing: boolean }) => ReactNode;
+  children: (ctx: SimulationShellContext) => ReactNode;
 };
 
 export function SimulationShell({ spec, onBack, children }: Props) {
   const player = useSimulationPlayer(spec.steps);
+  const [freeMode, setFreeMode] = useState(false);
   const showProcessBar = spec.kind === 'process-simulation' || spec.steps > 1;
+
+  const mission = useMemo(
+    () => resolveMission(spec.stepMissions, player.step, player.totalSteps),
+    [spec.stepMissions, player.step, player.totalSteps],
+  );
+
+  const ctx: SimulationShellContext = {
+    step: player.step,
+    progress: player.progress,
+    playing: player.playing,
+    freeMode,
+  };
 
   return (
     <section className="csim-page sim-workspace-page">
@@ -38,6 +59,7 @@ export function SimulationShell({ spec, onBack, children }: Props) {
             <span className="sim-chip">{KIND_LABELS[spec.kind]}</span>
             <span className="sim-chip">{spec.dims.toUpperCase()}</span>
             <span className="sim-chip sim-chip-status">{spec.status === 'published' ? 'Đã xuất bản' : 'Nháp'}</span>
+            {spec.toolTripReady && <span className="sim-chip sim-chip-trip">Tool-trip</span>}
           </div>
         </div>
       </header>
@@ -107,13 +129,40 @@ export function SimulationShell({ spec, onBack, children }: Props) {
             </div>
           )}
 
+          {showProcessBar && (
+            <StepMission
+              step={player.step}
+              totalSteps={player.totalSteps}
+              mission={mission}
+              freeMode={freeMode}
+              onToggleFreeMode={() => setFreeMode((v) => !v)}
+            />
+          )}
+
           <div className="sim-template-host">
-            {children({ step: player.step, progress: player.progress, playing: player.playing })}
+            {children(ctx)}
           </div>
         </div>
 
-        <PedagogyPanel spec={spec} />
+        <PedagogyPanel spec={spec} step={player.step} freeMode={freeMode} />
       </div>
     </section>
   );
+}
+
+function resolveMission(
+  missions: StepMissionDef[] | undefined,
+  step: number,
+  totalSteps: number,
+): StepMissionDef | null {
+  if (missions && missions.length > 0) {
+    return missions.find((m) => m.step === step)
+      ?? missions[Math.min(missions.length, step) - 1]
+      ?? null;
+  }
+  return {
+    step,
+    title: `Bước ${step} / ${totalSteps}`,
+    instruction: 'Thao tác các điều khiển được mở và quan sát kết quả đổi theo thời gian thực.',
+  };
 }

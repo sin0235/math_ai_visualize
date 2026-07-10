@@ -3,7 +3,7 @@ import { KatexSpan } from '../../components/KatexSpan';
 import { SliderInput } from '../../components/calculus/AreaBetweenCurvesSimulation';
 import { formatNumber } from '../../utils/calculusNumerics';
 
-type Props = { step: number; progress: number };
+type Props = { step: number; progress: number; freeMode?: boolean };
 
 type State = {
   /** P(Bệnh) */
@@ -20,7 +20,7 @@ type State = {
  * Lab Bayes dày: cây xác suất + bảng 1000 người + công thức + dự đoán.
  * Kịch bản xét nghiệm y khoa cổ điển — lớp 12.
  */
-export function BayesLabSimulation({ step, progress }: Props) {
+export function BayesLabSimulation({ step, progress, freeMode = false }: Props) {
   const [state, setState] = useState<State>({
     prior: 0.01,
     sensitivity: 0.99,
@@ -30,12 +30,17 @@ export function BayesLabSimulation({ step, progress }: Props) {
   });
   const [prediction, setPrediction] = useState('');
   const [showAnswer, setShowAnswer] = useState(false);
+  /** Soft-lock params after first compare until freeMode or step>=3 */
+  const [paramsLocked, setParamsLocked] = useState(false);
 
   const m = useMemo(() => compute(state), [state]);
 
   // Animate population fill on step 3
   const shownPop = step === 3 ? Math.round(state.population * Math.min(1, progress + 0.05)) : state.population;
   const scale = shownPop / state.population;
+  const canEditParams = freeMode || !paramsLocked || step >= 3;
+  const canEditN = freeMode || step >= 3;
+  const canFormula = freeMode || step >= 4 || state.revealFormula;
 
   return (
     <div className="csim-module-grid csim-module-grid-wide sim-deep-grid">
@@ -48,6 +53,9 @@ export function BayesLabSimulation({ step, progress }: Props) {
           <p className="sim-muted">
             Bệnh hiếm, xét nghiệm rất “tốt” — trực giác thường thổi phồng xác suất mắc bệnh khi dương tính.
           </p>
+          {!canEditParams && (
+            <p className="sim-muted">Tham số tạm khóa sau khi so dự đoán — sang bước 3+ hoặc bật chế độ tự do để chỉnh lại.</p>
+          )}
           <SliderInput
             label={<>Tỉ lệ mắc bệnh <KatexSpan tex={String.raw`P(B)`} /></>}
             value={state.prior}
@@ -55,6 +63,7 @@ export function BayesLabSimulation({ step, progress }: Props) {
             max={0.3}
             step={0.001}
             onChange={(prior) => setState({ ...state, prior })}
+            disabled={!canEditParams}
           />
           <SliderInput
             label={<>Độ nhạy <KatexSpan tex={String.raw`P(+|B)`} /></>}
@@ -63,6 +72,7 @@ export function BayesLabSimulation({ step, progress }: Props) {
             max={1}
             step={0.01}
             onChange={(sensitivity) => setState({ ...state, sensitivity })}
+            disabled={!canEditParams}
           />
           <SliderInput
             label={<>Độ đặc hiệu <KatexSpan tex={String.raw`P(-|\bar B)`} /></>}
@@ -71,6 +81,7 @@ export function BayesLabSimulation({ step, progress }: Props) {
             max={1}
             step={0.01}
             onChange={(specificity) => setState({ ...state, specificity })}
+            disabled={!canEditParams}
           />
           <SliderInput
             label="Quy mô minh họa (người)"
@@ -79,8 +90,9 @@ export function BayesLabSimulation({ step, progress }: Props) {
             max={10000}
             step={100}
             onChange={(population) => setState({ ...state, population })}
+            disabled={!canEditN}
           />
-          <div className="sim-preset-row">
+          <div className={`sim-preset-row${!canEditParams ? ' is-step-locked' : ''}`}>
             {[
               { label: 'Bệnh hiếm 1%', prior: 0.01, sensitivity: 0.99, specificity: 0.95 },
               { label: 'Bệnh 10%', prior: 0.1, sensitivity: 0.95, specificity: 0.9 },
@@ -90,6 +102,7 @@ export function BayesLabSimulation({ step, progress }: Props) {
                 key={p.label}
                 type="button"
                 className="csim-chip"
+                disabled={!canEditParams}
                 onClick={() => setState((s) => ({ ...s, prior: p.prior, sensitivity: p.sensitivity, specificity: p.specificity }))}
               >
                 {p.label}
@@ -127,7 +140,7 @@ export function BayesLabSimulation({ step, progress }: Props) {
               <span>Dự đoán của bạn (%)</span>
               <input value={prediction} onChange={(e) => setPrediction(e.target.value)} inputMode="decimal" placeholder="vd: 90" />
             </label>
-            <button type="button" className="csim-btn csim-btn-filled" onClick={() => setShowAnswer(true)}>So với kết quả Bayes</button>
+            <button type="button" className="csim-btn csim-btn-filled" onClick={() => { setShowAnswer(true); if (step <= 2) setParamsLocked(true); }}>So với kết quả Bayes</button>
             {showAnswer && (
               <p className="sim-checkpoint-explain">
                 Kết quả đúng theo Bayes: <strong>{formatNumber(m.ppv * 100, 2)}%</strong>
@@ -205,7 +218,7 @@ export function BayesLabSimulation({ step, progress }: Props) {
               {state.revealFormula || step >= 4 ? 'Đang hiện' : 'Hiện công thức'}
             </button>
           </div>
-          {(state.revealFormula || step >= 4) && (
+          {canFormula && (
             <div className="sim-formula-block">
               <KatexSpan tex={String.raw`P(+)=P(+|B)P(B)+P(+|\bar B)P(\bar B)`} />
               <p>= {formatNumber(m.pPos, 6)}</p>
@@ -218,8 +231,8 @@ export function BayesLabSimulation({ step, progress }: Props) {
               <p>So sánh với trực giác: dương tính ≠ “chắc chắn bệnh”, đặc biệt khi P(B) nhỏ.</p>
             </div>
           )}
-          {step < 4 && !state.revealFormula && (
-            <p className="sim-muted">Sang bước 4 hoặc bật “Hiện công thức” sau khi đã quan sát bảng/cây.</p>
+          {!canFormula && (
+            <p className="sim-muted">Sang bước 4, bật “Hiện công thức”, hoặc chế độ tự do sau khi đã quan sát bảng/cây.</p>
           )}
         </div>
 

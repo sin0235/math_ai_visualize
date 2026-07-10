@@ -9,6 +9,7 @@ import { BoundsInput, FormulaInput, PresetButtons, ResultCard, SliderInput } fro
 interface Props {
   step: number;
   progress: number;
+  freeMode?: boolean;
 }
 
 type Shape = 'square' | 'rectangle' | 'triangle' | 'circle';
@@ -19,26 +20,31 @@ const CROSS_PRESETS: Array<{ label: string; patch: Partial<State> }> = [
   { label: 'x(1-x)', patch: { base: 'x*(1-x)', a: 0, b: 1, sliceX: 0.5, shape: 'square', n: 32 } },
 ];
 
-export function CrossSectionVolumeSimulation({ step, progress }: Props) {
+export function CrossSectionVolumeSimulation({ step, progress, freeMode = false }: Props) {
   const [state, setState] = useState<State>({ base: 'sqrt(x)', a: 0, b: 4, shape: 'square', ratio: 1.5, n: 28, sliceX: 2 });
   const computed = useMemo(() => computeCrossSection(state), [state]);
   const visibleSlices = step === 3 ? Math.ceil(state.n * progress) : step >= 4 ? state.n : 0;
   const safeSliceX = clamp(state.sliceX, state.a, state.b);
   const zeroPoints = useMemo(() => computed.areaPoints.map((point) => ({ x: point.x, y: 0, valid: point.valid })), [computed.areaPoints]);
   const accumulatedVolume = computed.partialSumAt?.(visibleSlices) ?? NaN;
+  const canSetup = freeMode || step >= 1;
+  const canSlice = freeMode || step >= 2;
+  const canN = freeMode || step >= 3;
 
   return (
     <div className="csim-module-grid csim-module-grid-wide">
       <aside className="csim-control-stack">
         <div className="csim-card">
           <div className="csim-card-head"><strong>Thiết diện song song</strong><span><KatexSpan tex={String.raw`V=\int_a^b S(x)\,dx`} /></span></div>
-          <FormulaInput label="s(x)" value={state.base} onChange={(base) => setState({ ...state, base })} />
-          <PresetButtons presets={CROSS_PRESETS} onApply={(preset) => setState((current) => ({ ...current, ...preset.patch }))} />
-          <BoundsInput a={state.a} b={state.b} onChange={(patch) => setState((current) => ({ ...current, ...patch, sliceX: clamp(current.sliceX, patch.a ?? current.a, patch.b ?? current.b) }))} />
-          <label className="csim-field"><span>Dạng thiết diện</span><select value={state.shape} onChange={(e) => setState({ ...state, shape: e.target.value as Shape })}><option value="square">Hình vuông</option><option value="rectangle">Hình chữ nhật</option><option value="triangle">Tam giác đều</option><option value="circle">Hình tròn</option></select></label>
-          {state.shape === 'rectangle' && <SliderInput label={<>Tỉ lệ <KatexSpan tex={String.raw`\frac{h}{s}`} /></>} value={state.ratio} min={0.3} max={3} step={0.1} onChange={(ratio) => setState({ ...state, ratio })} />}
-          <SliderInput label="Số lát cắt" value={state.n} min={4} max={120} step={1} onChange={(n) => setState({ ...state, n })} />
-          <SliderInput label={<>Vị trí <KatexSpan tex="x" /></>} value={safeSliceX} min={state.a} max={state.b} step={(state.b - state.a) / 200 || 0.01} onChange={(sliceX) => setState({ ...state, sliceX })} />
+          <FormulaInput label="s(x)" value={state.base} onChange={(base) => setState({ ...state, base })} disabled={!canSetup} />
+          <div className={!canSetup ? 'is-step-locked' : undefined}>
+            <PresetButtons presets={CROSS_PRESETS} onApply={(preset) => canSetup && setState((current) => ({ ...current, ...preset.patch }))} />
+          </div>
+          <BoundsInput a={state.a} b={state.b} disabled={!canSetup} onChange={(patch) => setState((current) => ({ ...current, ...patch, sliceX: clamp(current.sliceX, patch.a ?? current.a, patch.b ?? current.b) }))} />
+          <label className={`csim-field${!canSetup ? ' is-step-locked' : ''}`}><span>Dạng thiết diện</span><select disabled={!canSetup} value={state.shape} onChange={(e) => setState({ ...state, shape: e.target.value as Shape })}><option value="square">Hình vuông</option><option value="rectangle">Hình chữ nhật</option><option value="triangle">Tam giác đều</option><option value="circle">Hình tròn</option></select></label>
+          {state.shape === 'rectangle' && <SliderInput label={<>Tỉ lệ <KatexSpan tex={String.raw`\frac{h}{s}`} /></>} value={state.ratio} min={0.3} max={3} step={0.1} onChange={(ratio) => setState({ ...state, ratio })} disabled={!canSetup} />}
+          <SliderInput label="Số lát cắt" value={state.n} min={4} max={120} step={1} onChange={(n) => setState({ ...state, n })} disabled={!canN} />
+          <SliderInput label={<>Vị trí <KatexSpan tex="x" /></>} value={safeSliceX} min={state.a} max={state.b} step={(state.b - state.a) / 200 || 0.01} onChange={(sliceX) => setState({ ...state, sliceX })} disabled={!canSlice} />
         </div>
         <ResultCard title="Thể tích thiết diện" error={computed.error} formula={shapeFormula(state.shape, state.ratio)} highlight={step >= 4} rows={[
           ['Cộng dồn hiện tại', formatNumber(accumulatedVolume)],

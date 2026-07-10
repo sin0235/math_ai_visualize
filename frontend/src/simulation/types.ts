@@ -46,6 +46,16 @@ export type CheckpointDef = {
   tolerance?: number;
   choices?: string[];
   explanation: string;
+  /** Chỉ hiện khi step >= unlockAtStep (mặc định 1). */
+  unlockAtStep?: number;
+};
+
+/** Nhiệm vụ thao tác của một bước trong tool-trip. */
+export type StepMissionDef = {
+  step: number;
+  title: string;
+  instruction: string;
+  focusControls?: string[];
 };
 
 export type SimulationSpec = {
@@ -67,6 +77,10 @@ export type SimulationSpec = {
   predictPrompt: string;
   checkpoints: CheckpointDef[];
   tags: string[];
+  /** Hành trình tool-trip; thiếu thì shell dùng text generic. */
+  stepMissions?: StepMissionDef[];
+  /** Đã đạt DoD tool-trip (badge thư viện). */
+  toolTripReady?: boolean;
 };
 
 export type CurriculumNode = {
