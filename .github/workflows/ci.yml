@@ -1,0 +1,114 @@
+name: CI
+
+on:
+  push:
+    branches: [product, deploy/product-oauth-clean]
+  pull_request:
+    branches: [product]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/pyproject.toml
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install "pytest>=8.3.0"
+
+      - name: Validate migrations exist
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          root = Path("..")
+          sqlite = sorted((root / "migrations").glob("*.sql"))
+          postgres = sorted((root / "migrations_postgres").glob("*.sql"))
+          assert sqlite, "missing sqlite migrations"
+          assert postgres, "missing postgres migrations"
+          print(f"sqlite migrations: {len(sqlite)}")
+          print(f"postgres migrations: {len(postgres)}")
+          for path in postgres:
+              text = path.read_text(encoding="utf-8")
+              # Guard against TIMESTAMPTZ + CURRENT_TIMESTAMP cast path used by PostgresClient.
+              if "TIMESTAMPTZ" in text.upper() and "CURRENT_TIMESTAMP" in text.upper():
+                  raise SystemExit(f"Avoid TIMESTAMPTZ + CURRENT_TIMESTAMP in {path.name}")
+          print("migration checks ok")
+          PY
+
+      - name: Run pytest
+        env:
+          ENVIRONMENT: test
+          DATABASE_BACKEND: sqlite
+          AUTH_EMAIL_DEV_MODE: "true"
+        run: |
+          python -m pytest -q --tb=line \
+            --ignore=tests/test_geometry_scenes_large_scale.py \
+            --ignore=tests/test_math_core_large_scale.py
+
+  frontend:
+    name: Frontend build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck + build
+        run: npm run build
+
+  docker:
+    name: Docker build (smoke)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    # Only on PR to product or push to product — expensive job.
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/product'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          tags: math-ai-visualize:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

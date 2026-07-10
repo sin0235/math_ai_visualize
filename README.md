@@ -404,6 +404,12 @@ migrations_dir = "migrations"
 
 Hãy áp dụng migration D1 theo quy trình Cloudflare của môi trường deploy đang dùng.
 
+## CI/CD
+
+- **CI:** GitHub Actions — `.github/workflows/ci.yml` (pytest + frontend build + Docker smoke).
+- **CD:** DigitalOcean App Platform deploy khi push branch `product`.
+- Chi tiết vận hành, rollback, backup, branch protection: [`deploy/ci-cd.md`](deploy/ci-cd.md).
+
 ## Lệnh kiểm tra
 
 Frontend:
