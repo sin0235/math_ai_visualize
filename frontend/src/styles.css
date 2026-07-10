@@ -15798,3 +15798,88 @@ button.analyzer-guide-label:hover {
   stroke: #d97706;
   stroke-width: 2;
 }
+
+/* ===== Grade 11 labs ===== */
+.sim-row-active {
+  background: #eff6ff;
+  font-weight: 650;
+}
+
+.sim-trig-eq-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.85fr) minmax(0, 1.2fr);
+  gap: 12px;
+}
+
+.sim-unit-eq-svg {
+  width: 100%;
+  max-width: 280px;
+  margin: 0 auto;
+  display: block;
+}
+
+.sim-unit-circle {
+  fill: #f8fafc;
+  stroke: #334155;
+  stroke-width: 2;
+}
+
+.sim-unit-axis {
+  stroke: #94a3b8;
+  stroke-width: 1;
+}
+
+.sim-unit-ref {
+  stroke: #dc2626;
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+}
+
+.sim-unit-ray {
+  stroke: #2563eb;
+  stroke-width: 1.8;
+}
+
+.sim-unit-point {
+  fill: #1d4ed8;
+  stroke: #fff;
+  stroke-width: 1.5;
+}
+
+.sim-unit-lbl {
+  font-size: 11px;
+  font-weight: 700;
+  fill: #0f172a;
+}
+
+.sim-venn {
+  width: 100%;
+  height: auto;
+}
+
+.sim-venn-omega {
+  fill: #f8fafc;
+  stroke: #cbd5e1;
+}
+
+.sim-venn-a {
+  fill: #3b82f6;
+  stroke: #1d4ed8;
+}
+
+.sim-venn-b {
+  fill: #f97316;
+  stroke: #c2410c;
+}
+
+.sim-venn-lbl {
+  font-size: 14px;
+  font-weight: 700;
+  fill: #0f172a;
+}
+
+@media (max-width: 900px) {
+  .sim-trig-eq-layout {
+    grid-template-columns: 1fr;
+  }
+}

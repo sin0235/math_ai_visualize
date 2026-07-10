@@ -30,7 +30,12 @@ export type TemplateKey =
   | 'space-coords'
   | 'bayes-lab'
   | 'statistics-lab'
-  | 'rational-asymptote';
+  | 'rational-asymptote'
+  | 'limits-continuity'
+  | 'sequences-lab'
+  | 'trig-equations'
+  | 'space-relations'
+  | 'probability-tree-g11';
 
 export type CheckpointDef = {
   id: string;

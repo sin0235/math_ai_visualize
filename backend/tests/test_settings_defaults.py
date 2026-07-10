@@ -138,7 +138,6 @@ def test_settings_defaults_route_hides_api_keys(monkeypatch):
     assert payload["nvidia"]["api_key_configured"] is True
     assert payload["ollama"]["api_key_configured"] is True
     assert payload["router9"]["api_key_configured"] is True
-    assert payload["router9"]["model"] == "router/model"
     assert payload["router9"]["allowed_model_ids"] == ["router/model"]
 
 
@@ -165,9 +164,13 @@ def test_settings_defaults_exposes_public_feature_flags(settings_defaults_client
 
 
 def test_settings_defaults_loads_ollama_base_url_from_database(settings_defaults_client):
-    asyncio.run(settings_defaults_client.db.execute(
-        "INSERT INTO system_settings (key, value_json) VALUES (?, ?)",
-        ["ai_settings", json.dumps({"version": 1, "ollama": {"base_url": "http://db-ollama.local", "model": "db-ollama"}})],
+    from app.services.model_registry import save_provider_config
+
+    asyncio.run(save_provider_config(
+        settings_defaults_client.db,
+        "ollama",
+        "http://db-ollama.local",
+        api_key_configured=False,
     ))
 
     response = settings_defaults_client.get("/api/settings/defaults")
@@ -175,7 +178,6 @@ def test_settings_defaults_loads_ollama_base_url_from_database(settings_defaults
     assert response.status_code == 200
     payload = response.json()
     assert payload["ollama"]["base_url"] == "http://db-ollama.local"
-    assert payload["ollama"]["model"] == "db-ollama"
 
 
 
@@ -185,7 +187,6 @@ def test_settings_defaults_falls_back_to_env_when_database_lacks_ollama(settings
     assert response.status_code == 200
     payload = response.json()
     assert payload["ollama"]["base_url"] == "http://env-ollama.local"
-    assert payload["ollama"]["model"] == "env-ollama"
 
 
 

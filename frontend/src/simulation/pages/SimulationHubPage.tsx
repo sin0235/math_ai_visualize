@@ -12,6 +12,11 @@ import { SpaceCoordsSimulation } from '../templates/SpaceCoordsSimulation';
 import { BayesLabSimulation } from '../templates/BayesLabSimulation';
 import { StatisticsLabSimulation } from '../templates/StatisticsLabSimulation';
 import { RationalAsymptoteSimulation } from '../templates/RationalAsymptoteSimulation';
+import { LimitsContinuitySimulation } from '../templates/LimitsContinuitySimulation';
+import { SequencesLabSimulation } from '../templates/SequencesLabSimulation';
+import { TrigEquationsSimulation } from '../templates/TrigEquationsSimulation';
+import { SpaceRelationsSimulation } from '../templates/SpaceRelationsSimulation';
+import { ProbabilityTreeG11Simulation } from '../templates/ProbabilityTreeG11Simulation';
 
 function parseSimulationId(pathname: string): string | null {
   const normalized = pathname.replace(/\/+$/, '') || '/';
@@ -103,6 +108,16 @@ export function SimulationHubPage() {
             return <StatisticsLabSimulation step={step} progress={progress} />;
           case 'rational-asymptote':
             return <RationalAsymptoteSimulation step={step} progress={progress} />;
+          case 'limits-continuity':
+            return <LimitsContinuitySimulation step={step} progress={progress} />;
+          case 'sequences-lab':
+            return <SequencesLabSimulation step={step} progress={progress} />;
+          case 'trig-equations':
+            return <TrigEquationsSimulation step={step} progress={progress} />;
+          case 'space-relations':
+            return <SpaceRelationsSimulation step={step} progress={progress} />;
+          case 'probability-tree-g11':
+            return <ProbabilityTreeG11Simulation step={step} progress={progress} />;
           default:
             return <div className="sim-library-empty"><strong>Template chưa gắn</strong></div>;
         }

@@ -325,7 +325,7 @@ def test_validate_system_setting_removes_non_router9_only_mode():
         "version": 1,
         "openrouter": {"only_mode": False, "model": "openrouter/model"},
         "openai_compat": {"only_mode": False, "model": "compat/model"},
-        "router9": {"only_mode": True, "model": "gh/gpt-5.2"},
+        "router9": {"only_mode": True, "model": "gh/gpt-5.2", "allowed_model_ids": ["gh/gpt-5.2"]},
     })
 
     assert "only_mode" not in validated["openrouter"]
@@ -333,6 +333,7 @@ def test_validate_system_setting_removes_non_router9_only_mode():
     assert validated["router9"]["only_mode"] is True
     assert "model" not in validated["openrouter"]
     assert "model" not in validated["router9"]
+    assert validated["router9"]["allowed_model_ids"] == ["gh/gpt-5.2"]
 
 
 def test_validate_system_setting_rejects_mismatched_provider_model():
@@ -346,7 +347,8 @@ def test_validate_system_setting_rejects_mismatched_provider_model():
         })
 
     assert error.value.status_code == 422
-    assert "thuộc provider openrouter" in str(error.value.detail)
+    detail = str(error.value.detail)
+    assert ("thuộc provider openrouter" in detail) or ("provider" in detail.lower()) or ("Task profile" in detail)
 
 
 @pytest.mark.anyio

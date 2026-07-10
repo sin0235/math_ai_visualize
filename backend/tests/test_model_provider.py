@@ -43,7 +43,7 @@ def test_normalize_provider_defaults_keeps_openrouter_vendor_namespaces():
         }
     })
 
-    assert value["openrouter"]["model"] == "nvidia/nemotron-3-super-120b-a12b:free"
+    assert "model" not in value["openrouter"]
     assert value["openrouter"]["allowed_model_ids"] == ["nvidia/nemotron-3-super-120b-a12b:free", "openai/gpt-oss-120b:free"]
     assert [model["id"] for model in value["openrouter"]["scanned_models"]] == ["nvidia/nemotron-3-super-120b-a12b:free", "openai/gpt-oss-120b:free"]
 

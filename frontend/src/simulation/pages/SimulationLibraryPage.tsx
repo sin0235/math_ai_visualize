@@ -9,7 +9,7 @@ type Props = {
 const GRADES: Array<Grade | 'all'> = ['all', 10, 11, 12];
 
 export function SimulationLibraryPage({ onOpen }: Props) {
-  const [grade, setGrade] = useState<Grade | 'all'>(12);
+  const [grade, setGrade] = useState<Grade | 'all'>('all');
   const [strand, setStrand] = useState<Strand | 'all'>('all');
   const [query, setQuery] = useState('');
 
