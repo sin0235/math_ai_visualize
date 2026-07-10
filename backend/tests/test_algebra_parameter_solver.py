@@ -42,3 +42,33 @@ def test_parameter_solver_auto_detects_structured_template():
     assert result.topic == "parameter"
     assert result.input_interpretation is not None
     assert result.input_interpretation.topic_hint == "parameter"
+
+
+def test_parameter_solver_case_splits_when_leading_coefficient_depends_on_m():
+    # a = m: when m=0 equation becomes linear x+1=0 — not "two distinct quadratic roots".
+    import sympy as sp
+    from app.services.algebra.solvers.parameter_solver import QuadraticTemplate, _actual_property, _solve_quadratic_template
+
+    template = QuadraticTemplate(
+        kind="quadratic_has_two_roots",
+        a=sp.Symbol("m", real=True),
+        b=sp.Integer(1),
+        c=sp.Integer(1),
+        variable=sp.Symbol("x", real=True),
+        parameter=sp.Symbol("m", real=True),
+    )
+    condition, explanation, _ = _solve_quadratic_template(template)
+    assert "suy biến" in explanation or "a=0" in explanation
+    assert _actual_property(template, 0) is False
+    # Condition set/relational must not accept m=0
+    if isinstance(condition, sp.Set):
+        assert bool(condition.contains(0)) is False
+    else:
+        assert bool(condition.subs(template.parameter, 0)) is False
+
+    result = solve_algebra(AlgebraSolveRequest(
+        input="quadratic_has_two_roots(a=m,b=1,c=1,var=x,param=m)",
+        topic="parameter",
+    ))
+    assert result.status in {"solved", "partial"}
+    assert "suy biến" in " ".join(step.explanation for step in result.steps).lower()

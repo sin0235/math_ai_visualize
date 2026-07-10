@@ -150,11 +150,11 @@ def _split_args(text: str) -> list[str]:
     return parts
 
 
-def _solve_quadratic_template(template: QuadraticTemplate) -> tuple[sp.Expr, str, str]:
+def _solve_quadratic_template(template: QuadraticTemplate) -> tuple[sp.Expr | sp.Set, str, str]:
     delta = sp.factor(template.b ** 2 - 4 * template.a * template.c)
     parameter = template.parameter
     if template.kind == "quadratic_double_root":
-        condition = sp.solveset(delta, parameter, domain=sp.S.Reals)
+        condition: sp.Expr | sp.Set = sp.solveset(delta, parameter, domain=sp.S.Reals)
         explanation = "Phương trình bậc hai có nghiệm kép khi discriminant bằng 0."
     elif template.kind == "quadratic_has_two_roots":
         condition = sp.solve_univariate_inequality(delta > 0, parameter, relational=False)
@@ -172,8 +172,101 @@ def _solve_quadratic_template(template: QuadraticTemplate) -> tuple[sp.Expr, str
         explanation = "Tam thức bậc hai dương với mọi x khi a dương và discriminant âm."
     else:
         raise ValueError("Template tham số chưa được hỗ trợ.")
-    latex = f"\Delta = {sp.latex(delta)}"
+    latex = rf"\Delta = {sp.latex(delta)}"
+    condition, case_note = _apply_leading_coefficient_case_split(template, condition)
+    if case_note:
+        explanation = f"{explanation} {case_note}"
     return condition, explanation, latex
+
+
+def _apply_leading_coefficient_case_split(
+    template: QuadraticTemplate,
+    condition: sp.Expr | sp.Set,
+) -> tuple[sp.Expr | sp.Set, str]:
+    """When a depends on the parameter, split a=0 (degenerate) vs a≠0 (quadratic)."""
+    parameter = template.parameter
+    if parameter not in sp.sympify(template.a).free_symbols:
+        return condition, ""
+    try:
+        a_zero = sp.solveset(sp.Eq(template.a, 0), parameter, domain=sp.S.Reals)
+    except Exception:
+        return condition, ""
+    if a_zero is sp.EmptySet:
+        return condition, ""
+
+    degenerate = _degenerate_parameter_set(template, a_zero)
+    a_nonzero_reals = sp.Complement(sp.S.Reals, a_zero)
+
+    if isinstance(condition, sp.Set):
+        try:
+            quadratic_part = condition.intersect(a_nonzero_reals)
+            final = quadratic_part.union(degenerate) if degenerate is not sp.EmptySet else quadratic_part
+            return final, "Đã tách trường hợp hệ số a=0 (phương trình suy biến)."
+        except Exception:
+            pass
+
+    # Relational / boolean conditions: And(a≠0, condition) ∨ (a=0 ∧ degenerate_flag)
+    try:
+        if degenerate is sp.EmptySet:
+            combined = sp.And(sp.Ne(template.a, 0), condition)
+        elif degenerate == sp.S.Reals:
+            combined = sp.Or(sp.And(sp.Ne(template.a, 0), condition), sp.Eq(template.a, 0))
+        else:
+            # Represent degenerate points via Or of equalities when finite
+            if isinstance(degenerate, sp.FiniteSet):
+                deg_rel = sp.Or(*[sp.Eq(parameter, value) for value in degenerate])
+                combined = sp.Or(sp.And(sp.Ne(template.a, 0), condition), deg_rel)
+            else:
+                combined = sp.And(sp.Ne(template.a, 0), condition)
+        return sp.simplify(combined), "Đã tách trường hợp hệ số a=0 (phương trình suy biến)."
+    except Exception:
+        return condition, ""
+
+
+def _degenerate_parameter_set(template: QuadraticTemplate, a_zero: sp.Set) -> sp.Set:
+    """Which parameter values with a=0 still satisfy the template property."""
+    if a_zero is sp.EmptySet:
+        return sp.EmptySet
+    kind = template.kind
+    # Two distinct roots / double root never hold for a true quadratic when a=0.
+    if kind in {"quadratic_double_root", "quadratic_has_two_roots"}:
+        return sp.EmptySet
+
+    accepted: list[sp.Expr] = []
+    candidates: list[sp.Expr]
+    if isinstance(a_zero, sp.FiniteSet):
+        candidates = list(a_zero)
+    else:
+        # Sample a few integers in a_zero if possible; otherwise no degenerate acceptance.
+        candidates = []
+        for value in range(-5, 6):
+            try:
+                if bool(a_zero.contains(value)):
+                    candidates.append(sp.Integer(value))
+            except Exception:
+                continue
+    for value in candidates:
+        try:
+            a = sp.simplify(template.a.subs(template.parameter, value))
+            b = sp.simplify(template.b.subs(template.parameter, value))
+            c = sp.simplify(template.c.subs(template.parameter, value))
+            if a != 0:
+                continue
+            if kind == "quadratic_has_real_root":
+                # Linear bx+c=0 has a real root if b≠0; constant c=0 is identically true (infinitely many).
+                if b != 0 or c == 0:
+                    accepted.append(value)
+            elif kind == "quadratic_no_real_root":
+                # No real solution only if constant nonzero (0*x + c = 0 with c≠0) impossible; wait 0=c means no sol if c≠0
+                if b == 0 and c != 0:
+                    accepted.append(value)
+            elif kind == "quadratic_positive_all":
+                # 0*x^2 + b x + c > 0 for all x only if b=0 and c>0
+                if b == 0 and bool(c > 0):
+                    accepted.append(value)
+        except Exception:
+            continue
+    return sp.FiniteSet(*accepted) if accepted else sp.EmptySet
 
 
 def _verify_quadratic_template(template: QuadraticTemplate, condition: sp.Expr) -> AlgebraVerificationReport:
@@ -206,6 +299,16 @@ def _actual_property(template: QuadraticTemplate, parameter_value: int) -> bool:
     b = sp.simplify(template.b.subs(template.parameter, parameter_value))
     c = sp.simplify(template.c.subs(template.parameter, parameter_value))
     delta = sp.simplify(b ** 2 - 4 * a * c)
+    if a == 0:
+        if template.kind in {"quadratic_double_root", "quadratic_has_two_roots"}:
+            return False
+        if template.kind == "quadratic_has_real_root":
+            return bool(b != 0 or c == 0)
+        if template.kind == "quadratic_no_real_root":
+            return bool(b == 0 and c != 0)
+        if template.kind == "quadratic_positive_all":
+            return bool(b == 0 and c > 0)
+        return False
     if template.kind == "quadratic_double_root":
         return delta == 0
     if template.kind == "quadratic_has_two_roots":

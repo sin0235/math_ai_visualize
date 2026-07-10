@@ -20,3 +20,12 @@ def test_system_solver_detects_system_with_auto_topic():
     assert result.status == "solved"
     assert result.topic == "system"
     assert "x = 2" in result.answer
+
+
+def test_system_solver_auto_variables_when_empty():
+    result = solve_algebra(AlgebraSolveRequest(input="x+y=3; x-y=1", topic="system"))
+
+    assert result.status == "solved"
+    assert result.topic == "system"
+    assert "x = 2" in result.answer
+    assert "y = 1" in result.answer

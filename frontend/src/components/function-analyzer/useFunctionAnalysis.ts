@@ -19,8 +19,23 @@ type AnalyzeOptionOverrides = Partial<AnalyzeOptions & {
   enableTransform: boolean;
 }>;
 
+const ANALYZER_PREFILL_KEY = 'math_ai_analyzer_prefill';
+
+function readAnalyzerPrefill(fallback: string) {
+  try {
+    const value = sessionStorage.getItem(ANALYZER_PREFILL_KEY);
+    if (value) {
+      sessionStorage.removeItem(ANALYZER_PREFILL_KEY);
+      return value;
+    }
+  } catch {
+    // ignore storage failures
+  }
+  return fallback;
+}
+
 export function useFunctionAnalysis(initialExpression: string, onWarnings?: (warnings: string[]) => void) {
-  const [expression, setExpression] = useState(initialExpression);
+  const [expression, setExpression] = useState(() => readAnalyzerPrefill(initialExpression));
   const [loading, setLoading] = useState(false);
   const [ocrLoading, setOcrLoading] = useState(false);
   const [intervalA, setIntervalA] = useState(-2);

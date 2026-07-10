@@ -15,18 +15,19 @@ from app.services.openrouter_client import _build_chat_payload as _build_openrou
 from app.services.router9_client import Router9Client, _extract_message_content as _extract_router9_message_content
 
 ALGEBRA_EXPLAINER_SYSTEM_PROMPT = """
-Bạn là giáo viên Toán học (Đại số, Giải tích) xuất sắc. Hệ thống máy tính (SymPy) đã giải xong bài toán và cung cấp các Cột mốc Toán học (Milestones) chắc chắn đúng.
-Nhiệm vụ của bạn là SỬ DỤNG CÁC MILESTONES NÀY để VIẾT LẠI HOÀN TOÀN danh sách các bước giải (steps) sao cho thật CHI TIẾT, DỄ HIỂU, CHUẨN SƯ PHẠM.
+Bạn là giáo viên Toán học (Đại số, Giải tích) xuất sắc. Hệ thống đã có danh sách bước deterministic (index cố định) và milestones chắc chắn đúng.
+Nhiệm vụ: CHỈ viết lại phần ngôn ngữ sư phạm cho ĐÚNG các bước đã có (theo index), không đổi cấu trúc toán học.
 
 Quy tắc bắt buộc:
-1. Bạn KHÔNG BỊ GIỚI HẠN số lượng bước giải. Để giao diện gọn gàng, bạn nên dùng mảng `sub_steps` bên trong mỗi step chính. Step chính đóng vai trò là một Milestone lớn, còn `sub_steps` chứa các biến đổi nhỏ lẻ (khai triển, chuyển vế, quy đồng) để đạt được Milestone đó.
-2. Tự do cung cấp công thức toán học vào `before_latex` và `after_latex` cho mỗi bước và bước con (sub-step).
-3. KHÔNG ĐƯỢC làm sai lệch tập nghiệm cuối cùng. Đích đến cuối cùng phải khớp hoàn toàn với các Milestones do hệ thống cung cấp.
-4. `explanation`, `rule` phải viết bằng văn bản thuần Việt Nam.
-5. Chỉ trả về JSON hợp lệ theo schema yêu cầu. Không markdown.
+1. Giữ NGUYÊN số bước và index như input. Không thêm/xóa/đảo step.
+2. Chỉ được viết lại: title, explanation, goal, why, rule, operation, pitfall, check (và tương tự trong sub_steps nếu có).
+3. KHÔNG đổi before_latex, after_latex, expression*, result*, kind, method, confidence, thứ tự bước.
+4. KHÔNG tạo step toán học mới. sub_steps chỉ được bổ sung text cho sub_steps đã có cùng index; không bắt buộc tạo sub_steps mới.
+5. KHÔNG làm sai lệch đáp án/milestones.
+6. explanation/rule bằng tiếng Việt. Chỉ trả JSON hợp lệ, không markdown.
 
-Schema trả về:
-{"steps":[{"index":1,"title":"...","explanation":"...","before_latex":"...","after_latex":"...","sub_steps":[{"index":1,"title":"...","explanation":"...","before_latex":"...","after_latex":"..."}]}]}
+Schema trả về (cùng index với input):
+{"steps":[{"index":1,"title":"...","explanation":"...","goal":"...","why":"...","rule":"...","operation":"...","pitfall":"...","check":"...","sub_steps":[]}]}
 """.strip()
 
 
@@ -48,31 +49,53 @@ class AlgebraExplanationStep(BaseModel):
 class AlgebraExplanationPayload(BaseModel):
     steps: list[AlgebraExplanationStep] = Field(default_factory=list)
 
-def _map_ai_step(step: AlgebraExplanationStep, original: AlgebraSolveStep | None = None) -> AlgebraSolveStep:
-    original_sub_steps = {sub.index: sub for sub in original.sub_steps} if original else {}
+def _map_ai_step(step: AlgebraExplanationStep, original: AlgebraSolveStep) -> AlgebraSolveStep:
+    """Rewrite only pedagogical text fields; math structure stays on the original step."""
+    ai_sub_by_index = {sub.index: sub for sub in step.sub_steps}
+    rewritten_subs: list[AlgebraSolveStep] = []
+    for original_sub in original.sub_steps:
+        ai_sub = ai_sub_by_index.get(original_sub.index)
+        if ai_sub is None:
+            rewritten_subs.append(original_sub)
+        else:
+            rewritten_subs.append(_map_ai_step(ai_sub, original_sub))
     return AlgebraSolveStep(
-        index=original.index if original else step.index,
-        title=_safe_rewrite(step.title, original.title if original else None) or step.title,
-        explanation=_safe_rewrite(step.explanation, original.explanation if original else None) or step.explanation,
-        short_explanation=original.short_explanation if original else None,
-        detail_level=original.detail_level if original else "standard",
-        method=original.method if original else None,
-        goal=_safe_rewrite(step.goal, original.goal if original else None),
-        why=_safe_rewrite(step.why, original.why if original else None),
-        rule=_safe_rewrite(step.rule, original.rule if original else None),
-        operation=_safe_rewrite(step.operation, original.operation if original else None),
-        before_latex=original.before_latex if original else None,
-        after_latex=original.after_latex if original else None,
-        pitfall=_safe_rewrite(step.pitfall, original.pitfall if original else None),
-        check=_safe_rewrite(step.check, original.check if original else None),
-        expression=original.expression if original else None,
-        expression_latex=original.expression_latex if original else None,
-        result=original.result if original else None,
-        result_latex=original.result_latex if original else None,
-        kind=original.kind if original else "solve",
-        confidence=original.confidence if original else "unverified",
-        sub_steps=[_map_ai_step(sub, original_sub_steps.get(sub.index)) for sub in step.sub_steps] if step.sub_steps else (original.sub_steps if original else []),
+        index=original.index,
+        title=_safe_rewrite(step.title, original.title) or original.title,
+        explanation=_safe_rewrite(step.explanation, original.explanation) or original.explanation,
+        short_explanation=original.short_explanation,
+        detail_level=original.detail_level,
+        method=original.method,
+        goal=_safe_rewrite(step.goal, original.goal) or original.goal,
+        why=_safe_rewrite(step.why, original.why) or original.why,
+        rule=_safe_rewrite(step.rule, original.rule) or original.rule,
+        operation=_safe_rewrite(step.operation, original.operation) or original.operation,
+        before_latex=original.before_latex,
+        after_latex=original.after_latex,
+        pitfall=_safe_rewrite(step.pitfall, original.pitfall) or original.pitfall,
+        check=_safe_rewrite(step.check, original.check) or original.check,
+        expression=original.expression,
+        expression_latex=original.expression_latex,
+        result=original.result,
+        result_latex=original.result_latex,
+        kind=original.kind,
+        confidence=original.confidence,
+        sub_steps=rewritten_subs,
     )
+
+
+def merge_ai_explanation_steps(original_steps: list[AlgebraSolveStep], ai_steps: list[AlgebraExplanationStep]) -> list[AlgebraSolveStep]:
+    """Lock step order/count to deterministic steps; AI may only rewrite matched indices."""
+    ai_by_index = {step.index: step for step in ai_steps}
+    merged: list[AlgebraSolveStep] = []
+    for original in original_steps:
+        ai_step = ai_by_index.get(original.index)
+        if ai_step is None:
+            merged.append(original)
+        else:
+            merged.append(_map_ai_step(ai_step, original))
+    return merged
+
 
 async def explain_algebra_response_with_ai(response: AlgebraSolveResponse, settings: Settings) -> AlgebraSolveResponse:
     if not response.steps or response.status not in {"solved", "partial"}:
@@ -85,18 +108,12 @@ async def explain_algebra_response_with_ai(response: AlgebraSolveResponse, setti
         payload = AlgebraExplanationPayload.model_validate(data)
         if not payload.steps:
             return response
-            
-        # Add the conclusion step from the original response back if it exists to preserve final verification text
-        original_conclusion = next((s for s in response.steps if s.kind == "conclusion"), None)
-        
-        original_steps = {step.index: step for step in response.steps}
-        response.steps = [_map_ai_step(step, original_steps.get(step.index)) for step in payload.steps]
-        
-        if original_conclusion:
-            original_conclusion.index = len(response.steps) + 1
-            response.steps.append(original_conclusion)
-            
-        response.warnings.append("Đã dùng AI để sinh các bước giải chi tiết; đáp án và kiểm chứng vẫn được bảo đảm bởi hệ thống.")
+
+        original_steps = list(response.steps)
+        response.steps = merge_ai_explanation_steps(original_steps, payload.steps)
+        response.warnings.append(
+            "Đã dùng AI để diễn giải ngôn ngữ các bước deterministic; công thức/thứ tự bước và đáp án không đổi."
+        )
     except Exception as error:
         response.warnings.append(f"Không gọi được AI diễn giải, đang dùng lời giải deterministic: {_short_error(str(error))}")
     return response

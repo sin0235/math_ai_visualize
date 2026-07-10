@@ -15,15 +15,20 @@ export function AlgebraStepList({ steps, isSubStep = false }: { steps: AlgebraSo
 
 function AlgebraStepCard({ step, isSubStep }: { step: AlgebraSolveStep, isSubStep: boolean }) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const hasSubSteps = step.sub_steps && step.sub_steps.length > 0;
+  const hasSubSteps = Boolean(step.sub_steps && step.sub_steps.length > 0);
+  const hasPedagogy = Boolean(
+    hasText(step.goal)
+    || hasText(step.why)
+    || hasText(step.operation)
+    || hasText(step.pitfall)
+    || hasText(step.check)
+    || (hasText(step.explanation) && hasText(step.short_explanation) && step.explanation !== step.short_explanation)
+  );
+  const canExpand = hasSubSteps || hasPedagogy;
 
   return (
     <article className={`algebra-step-card ${isSubStep ? 'sub-step' : ''}`}>
-      <div 
-        className="algebra-step-head" 
-        onClick={() => hasSubSteps && setIsExpanded(!isExpanded)} 
-        style={{ cursor: hasSubSteps ? 'pointer' : 'default' }}
-      >
+      <div className="algebra-step-head">
         <span className="algebra-step-index">{step.index}</span>
         <div style={{ flex: 1 }}>
           <strong>{step.title}</strong>
@@ -32,9 +37,17 @@ function AlgebraStepCard({ step, isSubStep }: { step: AlgebraSolveStep, isSubSte
               <MixedTextRenderer text={step.rule || step.method || ''} />
             </span>
           )}
+          {step.confidence && (
+            <span className={`algebra-step-confidence conf-${step.confidence}`}>{step.confidence}</span>
+          )}
         </div>
-        {hasSubSteps && (
-          <button className="algebra-accordion-toggle" aria-expanded={isExpanded}>
+        {canExpand && (
+          <button
+            type="button"
+            className="algebra-accordion-toggle"
+            aria-expanded={isExpanded}
+            onClick={() => setIsExpanded((value) => !value)}
+          >
             {isExpanded ? '▲ Thu gọn' : '▼ Chi tiết'}
           </button>
         )}
@@ -72,9 +85,22 @@ function AlgebraStepCard({ step, isSubStep }: { step: AlgebraSolveStep, isSubSte
           <p><MixedTextRenderer text={step.short_explanation || step.explanation} /></p>
         )}
 
+        {isExpanded && hasPedagogy && (
+          <dl className="algebra-step-pedagogy">
+            {hasText(step.goal) && <div><dt>Mục tiêu</dt><dd><MixedTextRenderer text={step.goal!} /></dd></div>}
+            {hasText(step.why) && <div><dt>Vì sao</dt><dd><MixedTextRenderer text={step.why!} /></dd></div>}
+            {hasText(step.operation) && <div><dt>Thao tác</dt><dd><MixedTextRenderer text={step.operation!} /></dd></div>}
+            {hasText(step.pitfall) && <div><dt>Sai lầm thường gặp</dt><dd><MixedTextRenderer text={step.pitfall!} /></dd></div>}
+            {hasText(step.check) && <div><dt>Cách kiểm tra</dt><dd><MixedTextRenderer text={step.check!} /></dd></div>}
+            {hasText(step.explanation) && hasText(step.short_explanation) && step.explanation !== step.short_explanation && (
+              <div><dt>Giải thích đầy đủ</dt><dd><MixedTextRenderer text={step.explanation} /></dd></div>
+            )}
+          </dl>
+        )}
+
         {hasSubSteps && isExpanded && (
-          <div className="algebra-nested-steps" style={{ marginTop: '1rem', paddingLeft: '1rem', borderLeft: '2px dashed var(--surface-1)' }}>
-             <AlgebraStepList steps={step.sub_steps!} isSubStep={true} />
+          <div className="algebra-nested-steps">
+            <AlgebraStepList steps={step.sub_steps!} isSubStep={true} />
           </div>
         )}
       </div>
@@ -101,4 +127,8 @@ function splitFormulaLines(tex: string) {
     .replace(/\\end\{aligned\}$/, '')
     .replace(/\\\\/g, '\n');
   return normalized.split('\n').map((line) => line.trim()).filter(Boolean);
+}
+
+function hasText(value: string | null | undefined) {
+  return typeof value === 'string' && value.trim().length > 0;
 }

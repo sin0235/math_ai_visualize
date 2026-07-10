@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { addStyles, EditableMathField } from 'react-mathquill';
 import type { AlgebraInputFormat, AlgebraTopic } from '../../api/client';
 import { KatexSpan } from '../KatexSpan';
+import { isToolbarActionSupported } from './toolbarCapability';
 
 addStyles();
 
@@ -58,7 +59,7 @@ const MATH_SNIPPET_GROUPS = [
       { tex: '\\cos^{-1}', title: 'Arccos', action: 'acos' },
       { tex: '\\tan^{-1}', title: 'Arctan', action: 'atan' },
       { tex: '\\cot^{-1}', title: 'Arccot', action: 'acot' },
-      { tex: '^\\circ', title: 'Độ', action: 'degree' },
+      // Degree unit hidden until backend supports angle_unit=degree
       { tex: '\\vec{v}', title: 'Vector', action: 'vector' },
     ],
   },
@@ -106,6 +107,8 @@ export function AlgebraInput({
   topic,
   domain,
   variables,
+  useAiExtraction,
+  intervalPreset,
   loading,
   onInputChange,
   onInputFormatChange,
@@ -113,6 +116,8 @@ export function AlgebraInput({
   onTopicChange,
   onDomainChange,
   onVariablesChange,
+  onUseAiExtractionChange,
+  onIntervalPresetChange,
   sequenceDraft,
   onSequenceDraftChange,
   onSubmit,
@@ -123,6 +128,8 @@ export function AlgebraInput({
   topic: AlgebraTopic;
   domain: AlgebraDomain;
   variables: string;
+  useAiExtraction: boolean;
+  intervalPreset: '' | 'unit_circle';
   loading: boolean;
   onInputChange: (value: string) => void;
   onInputFormatChange: (value: AlgebraInputFormat) => void;
@@ -130,6 +137,8 @@ export function AlgebraInput({
   onTopicChange: (value: AlgebraTopic) => void;
   onDomainChange: (value: AlgebraDomain) => void;
   onVariablesChange: (value: string) => void;
+  onUseAiExtractionChange: (value: boolean) => void;
+  onIntervalPresetChange: (value: '' | 'unit_circle') => void;
   sequenceDraft: SequenceDraft;
   onSequenceDraftChange: (value: SequenceDraft) => void;
   onSubmit: () => void;
@@ -191,7 +200,6 @@ export function AlgebraInput({
     else if (action === 'acos') mathField.write('\\cos^{-1}\\left(\\right)');
     else if (action === 'atan') mathField.write('\\tan^{-1}\\left(\\right)');
     else if (action === 'acot') mathField.write('\\cot^{-1}\\left(\\right)');
-    else if (action === 'degree') mathField.write('^{\\circ}');
     else if (action === 'gt') mathField.write('>');
     else if (action === 'lt') mathField.write('<');
     else if (action === 'ge') mathField.write('\\ge ');
@@ -289,7 +297,9 @@ export function AlgebraInput({
           ))}
         </div>
         <div className="algebra-snippet-grid" role="tabpanel">
-          {MATH_SNIPPET_GROUPS[activeSnippetGroup].items.map((snippet) => (
+          {MATH_SNIPPET_GROUPS[activeSnippetGroup].items
+            .filter((snippet) => isToolbarActionSupported(snippet.action))
+            .map((snippet) => (
             <button type="button" key={snippet.title} title={snippet.title} aria-label={snippet.title} onClick={() => insertMathSnippet(snippet.action)} disabled={loading}>
               <KatexSpan tex={snippet.tex} className="algebra-snippet-katex" />
             </button>
@@ -309,7 +319,7 @@ export function AlgebraInput({
             <option value="complex">Số phức</option>
             <option value="system">Hệ phương trình</option>
             <option value="sequence">Cấp số</option>
-            <option value="combinatorics_probability">Tổ hợp-xác suất</option>
+            <option value="combinatorics_probability">Tổ hợp</option>
             <option value="parameter">Tham số</option>
             <option value="calculus_derivative">Đạo hàm</option>
             <option value="calculus_limit">Giới hạn</option>
@@ -325,6 +335,17 @@ export function AlgebraInput({
             <option value="Z">Z</option>
           </select>
         </label>
+        <label className="field-label">
+          Khoảng (lượng giác)
+          <select
+            value={intervalPreset}
+            onChange={(event) => onIntervalPresetChange(event.target.value as '' | 'unit_circle')}
+            disabled={loading}
+          >
+            <option value="">Không giới hạn (nghiệm tổng quát)</option>
+            <option value="unit_circle">[0, 2π)</option>
+          </select>
+        </label>
       </div>
 
       <label className="field-label">
@@ -332,10 +353,27 @@ export function AlgebraInput({
         <input
           value={variables}
           onChange={(event) => onVariablesChange(event.target.value)}
-          placeholder="x hoặc x,y hoặc z"
+          placeholder="x hoặc x,y hoặc z (để trống để tự nhận diện)"
           disabled={loading}
         />
       </label>
+
+      {inputMode === 'natural' && (
+        <label className="field-label algebra-ai-option">
+          <span className="algebra-ai-option-row">
+            <input
+              type="checkbox"
+              checked={useAiExtraction}
+              onChange={(event) => onUseAiExtractionChange(event.target.checked)}
+              disabled={loading}
+            />
+            Dùng AI diễn giải đề
+          </span>
+          <span className="algebra-ai-option-hint">
+            Mặc định dùng interpreter tiếng Việt (không cần đăng nhập). Bật AI khi đề mơ hồ — cần đăng nhập.
+          </span>
+        </label>
+      )}
 
       <button type="button" className="auth-primary-button algebra-submit" onClick={onSubmit} disabled={loading || (!input.trim() && topic !== 'sequence')}>
         {loading ? 'Đang giải...' : 'Giải bài'}

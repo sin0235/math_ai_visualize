@@ -13504,6 +13504,31 @@ button.analyzer-guide-label:hover {
   text-align: left;
 }
 
+.algebra-ai-option {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.25rem;
+}
+
+.algebra-ai-option-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+}
+
+.algebra-ai-option-row input[type='checkbox'] {
+  width: auto;
+  margin: 0;
+}
+
+.algebra-ai-option-hint {
+  font-size: 0.85rem;
+  opacity: 0.8;
+  line-height: 1.35;
+}
+
 .algebra-math-field-wrap {
   gap: 8px;
 }
@@ -13772,6 +13797,200 @@ button.analyzer-guide-label:hover {
   gap: 16px;
   align-items: flex-start;
   padding: 4px 4px 0;
+}
+
+.algebra-result-panel.is-stale {
+  opacity: 0.92;
+}
+
+.algebra-stale-badge {
+  display: inline-block;
+  margin-top: 0.4rem;
+  padding: 0.25rem 0.55rem;
+  border-radius: 999px;
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+  color: #9a3412;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.algebra-result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  justify-content: flex-end;
+  max-width: min(100%, 22rem);
+}
+
+.algebra-action-btn {
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
+  border-radius: var(--radius-md);
+  padding: 0.35rem 0.6rem;
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.algebra-action-btn:hover {
+  border-color: var(--ink);
+}
+
+.algebra-action-primary {
+  background: color-mix(in srgb, var(--accent, #2563eb) 12%, var(--paper));
+  border-color: color-mix(in srgb, var(--accent, #2563eb) 40%, var(--line));
+}
+
+.algebra-copy-feedback {
+  margin: 0.25rem 0 0;
+  font-size: 0.85rem;
+  color: var(--ink-2);
+}
+
+.algebra-verify-pill {
+  display: inline-flex;
+  width: fit-content;
+  margin-top: 0.35rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.algebra-verify-pill.status-verified {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.algebra-verify-pill.status-partially_verified {
+  background: #fffbeb;
+  color: #b45309;
+}
+
+.algebra-verify-pill.status-failed {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.algebra-verify-pill.status-skipped {
+  background: var(--surface);
+  color: var(--ink-3);
+}
+
+.algebra-interpretation-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem 1rem;
+  margin: 0;
+}
+
+.algebra-interpretation-grid dt {
+  font-size: 0.75rem;
+  color: var(--ink-3);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.algebra-interpretation-grid dd {
+  margin: 0.15rem 0 0;
+  overflow-wrap: anywhere;
+}
+
+.algebra-interpretation-grid code {
+  font-size: 0.86rem;
+}
+
+.algebra-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+}
+
+.algebra-chip {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.15rem 0.55rem;
+  font-size: 0.78rem;
+  background: var(--surface);
+}
+
+.algebra-section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.algebra-verify-summary {
+  font-size: 0.82rem;
+  color: var(--ink-2);
+}
+
+.algebra-verify-method {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--ink-3);
+}
+
+.algebra-check-status {
+  display: inline-block;
+  margin-left: 0.4rem;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
+
+.algebra-step-confidence {
+  display: inline-block;
+  margin-left: 0.4rem;
+  font-size: 0.72rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink-3);
+}
+
+.algebra-step-pedagogy {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0.75rem 0 0;
+  padding: 0.65rem 0.75rem;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  border: 1px dashed var(--line);
+}
+
+.algebra-step-pedagogy dt {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.algebra-step-pedagogy dd {
+  margin: 0.1rem 0 0;
+  color: var(--ink-2);
+  line-height: 1.45;
+}
+
+.algebra-nested-steps {
+  margin-top: 1rem;
+  padding-left: 1rem;
+  border-left: 2px dashed var(--line);
+}
+
+@media (max-width: 720px) {
+  .algebra-interpretation-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .algebra-result-actions {
+    max-width: 100%;
+    justify-content: flex-start;
+  }
 }
 
 .algebra-result-card {

@@ -15,57 +15,75 @@ from app.services.algebra.verifier import verify_inequality_solution_set
 
 
 def solve_inequality(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
-    if problem.relation is None or isinstance(problem.relation, sp.Equality):
+    relations = [rel for rel in (problem.relations or ([problem.relation] if problem.relation is not None else [])) if rel is not None]
+    if not relations or any(isinstance(rel, sp.Equality) for rel in relations):
         return _unsupported(problem, "Đầu vào không phải bất phương trình.")
+    primary = relations[0]
     variable = problem.variable
-    raw_expression = problem.relation.lhs - problem.relation.rhs
+    raw_expression = primary.lhs - primary.rhs
     expression = sp.simplify(raw_expression)
     assumptions = domain_assumptions_from_expression(raw_expression, variable)
-    
+    for rel in relations[1:]:
+        assumptions = _unique(assumptions + domain_assumptions_from_expression(rel.lhs - rel.rhs, variable))
+
     milestones: list[str] = []
-    if problem.relation is not None:
-        milestones.append(f"Bất phương trình gốc: {sp.latex(problem.relation)}")
+    if len(relations) == 1:
+        milestones.append(f"Bất phương trình gốc: {sp.latex(primary)}")
+    else:
+        milestones.append("Hệ/bất phương trình kép: " + "; ".join(sp.latex(rel) for rel in relations))
     try:
         factored_expr = sp.factor(expression)
         if factored_expr != expression and not isinstance(factored_expr, sp.Add):
-            rel_zero = _relation_from_expression(factored_expr, problem.relation.rel_op)
+            rel_zero = _relation_from_expression(factored_expr, primary.rel_op)
             milestones.append(f"Dạng phân tích nhân tử: {sp.latex(rel_zero)}")
     except Exception:
         pass
-        
+
     steps: list[AlgebraSolveStep] = []
     if assumptions:
         steps.append(domain_step(len(steps) + 1, assumptions))
-    steps.append(method_step(len(steps) + 1, detect_primary_technique("inequality", expression, variable, problem.relation.rel_op)))
+    steps.append(method_step(len(steps) + 1, detect_primary_technique("inequality", expression, variable, primary.rel_op)))
     try:
-        result_set = solve_univariate_inequality(problem.relation, variable, relational=False)
+        result_set = _solve_relation_set(primary, variable)
+        for rel in relations[1:]:
+            next_set = _solve_relation_set(rel, variable)
+            result_set = result_set.intersect(next_set)
     except Exception as exc:
         return _unsupported(problem, f"SymPy chưa giải được bất phương trình này: {exc}")
     result_set = _apply_problem_domain(result_set, problem.sympy_domain)
-    relation_zero_latex = sp.latex(_relation_from_expression(expression, problem.relation.rel_op))
+    interval_warning: str | None = None
+    if problem.solve_interval is not None:
+        try:
+            result_set = result_set.intersect(problem.solve_interval)
+            interval_warning = f"Nghiệm đã được lọc theo khoảng người dùng chọn: {sp.latex(problem.solve_interval)}."
+            assumptions = _unique(assumptions + [f"Khoảng nghiệm: {sp.latex(problem.solve_interval)}"])
+        except Exception:
+            interval_warning = "Không áp dụng được khoảng nghiệm đã chọn; giữ tập nghiệm trên miền gốc."
+    relation_zero_latex = sp.latex(_relation_from_expression(expression, primary.rel_op))
+    before_latex = sp.latex(primary) if len(relations) == 1 else "; ".join(sp.latex(rel) for rel in relations)
     steps.append(AlgebraSolveStep(
         index=len(steps) + 1,
-        title="Đưa bất phương trình về một vế",
-        explanation="Chuyển hết về một vế để xét dấu một biểu thức so với 0.",
-        short_explanation="Chuyển hết về một vế để xét dấu.",
+        title="Đưa bất phương trình về một vế" if len(relations) == 1 else "Xử lý hệ/bất phương trình kép",
+        explanation="Chuyển hết về một vế để xét dấu một biểu thức so với 0." if len(relations) == 1 else "Tách thành các bất phương trình thành phần rồi lấy giao tập nghiệm.",
+        short_explanation="Chuyển hết về một vế để xét dấu." if len(relations) == 1 else "Giao các điều kiện bất phương trình.",
         detail_level="standard",
-        method="sign_chart",
+        method="sign_chart" if len(relations) == 1 else "chained_inequality",
         goal="Tìm tập các giá trị làm bất phương trình đúng.",
-        why="Khi một vế là 0, việc giải bất phương trình trở thành bài toán xét dấu.",
-        rule="Chuyển vế",
-        operation="Lấy vế trái trừ vế phải và giữ nguyên chiều bất phương trình.",
-        before_latex=sp.latex(problem.relation),
-        after_latex=relation_zero_latex,
+        why="Khi một vế là 0, việc giải bất phương trình trở thành bài toán xét dấu." if len(relations) == 1 else "Bất phương trình kép tương đương giao hai điều kiện.",
+        rule="Chuyển vế" if len(relations) == 1 else "Giao điều kiện",
+        operation="Lấy vế trái trừ vế phải và giữ nguyên chiều bất phương trình." if len(relations) == 1 else "Giải từng quan hệ rồi giao tập nghiệm.",
+        before_latex=before_latex,
+        after_latex=relation_zero_latex if len(relations) == 1 else before_latex,
         pitfall="Không được xử lý bất phương trình như phương trình; khi nhân chia với biểu thức có thể đổi dấu thì phải xét dấu.",
         check="Biểu thức một vế phải tương đương với bất phương trình ban đầu.",
-        expression=sp.sstr(problem.relation),
-        expression_latex=sp.latex(problem.relation),
+        expression=sp.sstr(primary),
+        expression_latex=sp.latex(primary),
         result=sp.sstr(expression),
         result_latex=relation_zero_latex,
         kind="transform",
         confidence="symbolic",
     ))
-    sign_steps = _sign_chart_steps(expression, variable, problem.relation.rel_op, result_set, len(steps) + 1)
+    sign_steps = _sign_chart_steps(expression, variable, primary.rel_op, result_set, len(steps) + 1) if len(relations) == 1 and primary.rel_op != "!=" else []
     steps.extend(sign_steps)
     result_set_for_verification = result_set if isinstance(result_set, sp.Set) else sp.S.UniversalSet
     verification = verify_inequality_solution_set(problem, result_set_for_verification, _verification_samples(expression, variable, result_set_for_verification))
@@ -87,7 +105,10 @@ def solve_inequality(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
         milestones=milestones,
         verification=verification,
         assumptions=assumptions,
-        warnings=[] if sign_steps else ["Bất phương trình được kiểm chứng ở mức tập nghiệm symbolic; chưa tạo được bảng xét dấu chi tiết cho dạng này."],
+        warnings=[
+            *([] if sign_steps else ["Bất phương trình được kiểm chứng ở mức tập nghiệm symbolic; chưa tạo được bảng xét dấu chi tiết cho dạng này."]),
+            *([interval_warning] if interval_warning else []),
+        ],
         errors=[],
     )
 
@@ -99,6 +120,30 @@ def _apply_problem_domain(result_set: sp.Set, domain: sp.Set) -> sp.Set:
         return result_set.intersect(domain)
     except Exception:
         return result_set
+
+
+def _solve_relation_set(relation: sp.Relational, variable: sp.Symbol) -> sp.Set:
+    if isinstance(relation, sp.Ne):
+        # x != a  ⇒  R \ {roots of lhs-rhs = 0} (or complement of equality set)
+        try:
+            zeros = sp.solveset(sp.Eq(relation.lhs, relation.rhs), variable, domain=sp.S.Reals)
+            return sp.Complement(sp.S.Reals, zeros)
+        except Exception:
+            expr = sp.simplify(relation.lhs - relation.rhs)
+            zeros = sp.solveset(expr, variable, domain=sp.S.Reals)
+            return sp.Complement(sp.S.Reals, zeros)
+    return solve_univariate_inequality(relation, variable, relational=False)
+
+
+def _unique(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        result.append(value)
+    return result
 
 
 def _unsupported(problem: ParsedAlgebraProblem, message: str) -> AlgebraSolveResponse:
@@ -121,6 +166,8 @@ def _relation_from_expression(expression: sp.Expr, rel_op: str) -> sp.Relational
         return sp.Ge(expression, 0, evaluate=False)
     if rel_op == "<":
         return sp.Lt(expression, 0, evaluate=False)
+    if rel_op == "!=":
+        return sp.Ne(expression, 0, evaluate=False)
     return sp.Le(expression, 0, evaluate=False)
 
 

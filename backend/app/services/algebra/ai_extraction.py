@@ -44,7 +44,9 @@ Quy tắc:
 6. Nếu đề hỏi "vô nghiệm thực", dùng quadratic_no_real_root.
 7. Nếu đề hỏi "tam thức/phương trình dương với mọi x", dùng quadratic_positive_all.
 8. Dùng * cho phép nhân, ^ cho lũy thừa, không dùng LaTeX trong input.
-9. Nếu không chắc, vẫn trả JSON gần nhất và thêm cảnh báo trong warnings.
+9. Nếu không chắc topic/variables/domain: ghi rõ trong warnings.
+   Không bịa field để ghi đè lựa chọn người dùng; server sẽ merge và giữ field user đã chọn.
+   Chỉ điền các field còn auto/thiếu. Ưu tiên cảnh báo hơn đoán mò.
 """.strip()
 
 
@@ -60,27 +62,58 @@ class AlgebraExtractionPayload(BaseModel):
     model_config = {"extra": "forbid"}
 
 
+def merge_extraction_request(
+    base_request: AlgebraSolveRequest,
+    payload: AlgebraExtractionPayload,
+) -> tuple[AlgebraSolveRequest, list[str]]:
+    """Merge AI extraction with explicit user fields. User explicit values win."""
+    if payload.input_format not in {"plain", "structured"}:
+        raise ValueError("AI extraction chỉ được trả input_format plain hoặc structured.")
+    if payload.domain not in {"R", "C", "N", "Z"}:
+        raise ValueError("AI extraction trả domain không hợp lệ.")
+
+    warnings: list[str] = []
+    topic = base_request.topic if base_request.topic != "auto" else payload.topic
+    variables = list(base_request.variables) if base_request.variables else list(payload.variables)
+    parameters = list(base_request.parameters) if base_request.parameters else list(payload.parameters)
+    # Sticky domain: client always sends a domain (default R). Prefer user domain over AI override.
+    domain = base_request.domain
+    if payload.domain != base_request.domain:
+        warnings.append(
+            f"Giữ miền người dùng chọn ({base_request.domain}); AI đề xuất {payload.domain}."
+        )
+
+    if base_request.topic != "auto" and payload.topic != base_request.topic:
+        warnings.append(f"Giữ topic người dùng chọn ({base_request.topic}); AI đề xuất {payload.topic}.")
+    if base_request.variables and payload.variables and list(payload.variables) != list(base_request.variables):
+        warnings.append("Giữ danh sách biến người dùng nhập; không dùng biến do AI đề xuất.")
+    if base_request.parameters and payload.parameters and list(payload.parameters) != list(base_request.parameters):
+        warnings.append("Giữ tham số người dùng nhập; không dùng tham số do AI đề xuất.")
+
+    request = AlgebraSolveRequest(
+        input=payload.input,
+        input_format=payload.input_format,  # type: ignore[arg-type]
+        topic=topic,
+        variables=variables,
+        parameters=parameters,
+        domain=domain,  # type: ignore[arg-type]
+        interval=base_request.interval,
+        options=base_request.options,
+    )
+    return request, warnings
+
+
 async def extract_algebra_request_with_ai(problem_text: str, base_request: AlgebraSolveRequest, settings: Settings) -> tuple[AlgebraSolveRequest, list[str]]:
     data = await _call_extractor(problem_text, settings)
     payload = AlgebraExtractionPayload.model_validate(data)
     if payload.topic == "auto":
         raise ValueError("AI extraction phải trả về topic cụ thể, không dùng auto.")
-    if payload.input_format not in {"plain", "structured"}:
-        raise ValueError("AI extraction chỉ được trả input_format plain hoặc structured.")
-    if payload.domain not in {"R", "C", "N", "Z"}:
-        raise ValueError("AI extraction trả domain không hợp lệ.")
-    request = AlgebraSolveRequest(
-        input=payload.input,
-        input_format=payload.input_format,  # type: ignore[arg-type]
-        topic=payload.topic,
-        variables=payload.variables,
-        parameters=payload.parameters,
-        domain=payload.domain,  # type: ignore[arg-type]
-        interval=base_request.interval,
-        options=base_request.options,
-    )
-    warnings = ["Đã dùng AI để diễn giải đề sang input chuẩn; đáp án vẫn do solver deterministic và verifier tạo."]
-    warnings.extend(payload.warnings)
+    request, merge_warnings = merge_extraction_request(base_request, payload)
+    warnings = [
+        "Đã dùng AI để diễn giải đề sang input chuẩn; đáp án vẫn do solver deterministic và verifier tạo.",
+        *merge_warnings,
+        *payload.warnings,
+    ]
     return request, warnings
 
 

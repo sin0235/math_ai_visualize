@@ -15,6 +15,14 @@ export interface AlgebraSolveOptions {
   ai_explanation?: boolean;
 }
 
+export interface AlgebraInterval {
+  variable?: string;
+  start?: string | null;
+  end?: string | null;
+  closed_start?: boolean;
+  closed_end?: boolean;
+}
+
 export interface AlgebraSolveRequest {
   input: string;
   input_format?: AlgebraInputFormat;
@@ -22,6 +30,7 @@ export interface AlgebraSolveRequest {
   variables?: string[];
   parameters?: string[];
   domain?: 'R' | 'C' | 'N' | 'Z';
+  interval?: AlgebraInterval | null;
   options?: AlgebraSolveOptions;
 }
 
@@ -107,6 +116,8 @@ export interface AlgebraSolveResponse {
   assumptions: string[];
   warnings: string[];
   errors: string[];
+  request_id?: string | null;
+  timings_ms?: Record<string, number>;
 }
 
 export async function solveAlgebra(payload: AlgebraSolveRequest): Promise<AlgebraSolveResponse> {

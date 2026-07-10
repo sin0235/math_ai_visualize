@@ -141,3 +141,5 @@ class AlgebraSolveResponse(BaseModel):
     assumptions: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
+    request_id: str | None = None
+    timings_ms: dict[str, int] = Field(default_factory=dict)

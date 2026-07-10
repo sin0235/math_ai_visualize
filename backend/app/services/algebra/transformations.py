@@ -140,4 +140,6 @@ def _relation_from_expression(expression: sp.Expr, rel_op: str) -> sp.Relational
         return sp.Ge(expression, 0, evaluate=False)
     if rel_op == "<":
         return sp.Lt(expression, 0, evaluate=False)
+    if rel_op == "!=":
+        return sp.Ne(expression, 0, evaluate=False)
     return sp.Le(expression, 0, evaluate=False)

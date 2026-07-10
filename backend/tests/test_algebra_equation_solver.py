@@ -84,7 +84,7 @@ def test_equation_solver_reports_empty_solution_set():
     assert rational_step.rule == "Khử mẫu phân thức"
     assert rational_step.check and "khác 0" in rational_step.check
     empty_check = next(check for check in result.verification.checks if check.name == "empty_solution_set")
-    assert "không có nghiệm để thử lại" in empty_check.detail.lower()
+    assert "rỗng" in empty_check.detail.lower() or "vô nghiệm" in empty_check.detail.lower()
     assert "solver symbolic" not in empty_check.detail
 
 

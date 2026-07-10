@@ -275,12 +275,12 @@ def _double_angle_steps(problem: ParsedAlgebraProblem, expression: sp.Expr, solu
 
 def _basic_trig_steps(problem: ParsedAlgebraProblem, expression: sp.Expr, solution_set: sp.Set, values: list[sp.Expr] | None, start_index: int) -> list[AlgebraSolveStep]:
     parsed = _basic_trig_relation(problem)
-    if parsed is None or values is None:
+    if parsed is None:
         return []
     func, argument, target = parsed
     function_name = func.__name__
     general_latex = _basic_trig_general_latex(func, argument, target)
-    return [
+    steps = [
         AlgebraSolveStep(
             index=start_index,
             title="Đưa về phương trình lượng giác cơ bản",
@@ -305,14 +305,14 @@ def _basic_trig_steps(problem: ParsedAlgebraProblem, expression: sp.Expr, soluti
         AlgebraSolveStep(
             index=start_index + 1,
             title="Viết nghiệm theo chu kỳ",
-            explanation="Dùng nghiệm cơ bản của hàm lượng giác và chu kỳ để mô tả các nghiệm có thể có.",
+            explanation="Dùng nghiệm cơ bản của hàm lượng giác và chu kỳ để mô tả các nghiệm trên R.",
             short_explanation="Viết nghiệm tổng quát theo chu kỳ.",
             detail_level="standard",
             method="trig_periodic_solution",
             goal="Không bỏ sót nghiệm do tính tuần hoàn.",
             why="Sin, cos, tan lặp lại giá trị theo chu kỳ nên thường có nhiều nghiệm.",
             rule="Chu kỳ lượng giác",
-            operation="Viết nghiệm tổng quát rồi lọc theo khoảng chuẩn.",
+            operation="Viết nghiệm tổng quát với tham số k ∈ Z.",
             before_latex=sp.latex(sp.Eq(func(argument), target, evaluate=False)),
             after_latex=general_latex,
             pitfall="Không chỉ lấy một góc đặc biệt khi còn nghiệm đối xứng hoặc nghiệm theo chu kỳ.",
@@ -323,6 +323,7 @@ def _basic_trig_steps(problem: ParsedAlgebraProblem, expression: sp.Expr, soluti
         ),
         _filter_interval_step(start_index + 2, solution_set, values),
     ]
+    return steps
 
 
 def _basic_trig_relation(problem: ParsedAlgebraProblem) -> tuple[object, sp.Expr, sp.Expr] | None:
@@ -358,24 +359,45 @@ def _basic_trig_general_latex(func, argument: sp.Expr, target: sp.Expr) -> str:
 
 
 def _filter_interval_step(index: int, solution_set: sp.Set, values: list[sp.Expr] | None) -> AlgebraSolveStep:
+    # Default product path: general solution on R (no silent [0, 2π) truncation).
+    if values is None:
+        return AlgebraSolveStep(
+            index=index,
+            title="Nghiệm tổng quát trên R",
+            explanation="Trên miền số thực, nghiệm lượng giác được giữ dạng tổng quát theo chu kỳ (k ∈ Z), không cắt còn một chu kỳ [0, 2π).",
+            short_explanation="Giữ nghiệm tổng quát trên R.",
+            detail_level="standard",
+            method="trig_general_solution",
+            goal="Trình bày đầy đủ tập nghiệm trên R.",
+            why="Nghiệm lượng giác thường vô hạn; cắt khoảng chỉ hợp lệ khi người dùng chỉ định khoảng.",
+            rule="Nghiệm tổng quát",
+            operation="Biểu diễn tập nghiệm symbolic / ImageSet theo tham số nguyên.",
+            after_latex=sp.latex(solution_set),
+            pitfall="Không nhầm nghiệm trong một chu kỳ với nghiệm trên toàn R.",
+            check="Các đại diện trong họ nghiệm phải thỏa phương trình gốc.",
+            result=sp.sstr(solution_set),
+            result_latex=sp.latex(solution_set),
+            kind="solve",
+            confidence="symbolic",
+        )
     return AlgebraSolveStep(
         index=index,
-        title="Lọc nghiệm trên khoảng chuẩn",
-        explanation="Giữ các nghiệm thuộc khoảng [0, 2π) để có tập nghiệm hữu hạn dễ kiểm tra.",
-        short_explanation="Lọc nghiệm trong khoảng [0, 2π).",
+        title="Tập nghiệm hữu hạn",
+        explanation="Tập nghiệm trên miền đang xét là hữu hạn; liệt kê các giá trị cụ thể.",
+        short_explanation="Liệt kê nghiệm hữu hạn.",
         detail_level="standard",
-        method="filter_trig_interval",
-        goal="Viết nghiệm cụ thể trên khoảng đang xét.",
-        why="Nếu không giới hạn khoảng, nghiệm lượng giác thường là vô hạn theo chu kỳ.",
-        rule="Lọc nghiệm theo khoảng",
-        operation="Chọn các nghiệm x thỏa 0 <= x < 2π.",
+        method="trig_finite_solutions",
+        goal="Viết nghiệm cụ thể.",
+        why="Một số phương trình lượng giác chỉ có hữu hạn nghiệm trên miền đã chọn.",
+        rule="Liệt kê nghiệm",
+        operation="Ghi các nghiệm đã tìm được.",
         after_latex=sp.latex(solution_set),
-        pitfall="Điểm 2π không thuộc khoảng [0, 2π).",
-        check="Từng nghiệm giữ lại phải nằm trong khoảng và thỏa phương trình gốc.",
-        result="; ".join(sp.sstr(value) for value in values or []) if values is not None else sp.sstr(solution_set),
+        pitfall="Kiểm tra điều kiện xác định (tan, cot, ...).",
+        check="Từng nghiệm phải thỏa phương trình gốc.",
+        result="; ".join(sp.sstr(value) for value in values),
         result_latex=sp.latex(solution_set),
         kind="verify",
-        confidence="verified" if values is not None else "symbolic",
+        confidence="verified",
     )
 
 

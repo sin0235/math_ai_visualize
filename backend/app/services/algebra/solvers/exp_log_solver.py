@@ -64,6 +64,15 @@ def solve_exp_log(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
                 kind="solve",
                 confidence="symbolic",
             ))
+    interval_note = None
+    if problem.solve_interval is not None:
+        try:
+            solution_set = solution_set.intersect(problem.solve_interval)
+            values = solution_values(solution_set)
+            interval_note = f"Nghiệm đã được lọc theo khoảng người dùng chọn: {sp.latex(problem.solve_interval)}."
+            assumptions = assumptions + [f"Khoảng nghiệm: {sp.latex(problem.solve_interval)}"]
+        except Exception:
+            interval_note = "Không áp dụng được khoảng nghiệm đã chọn; giữ tập nghiệm trên miền gốc."
     answer = format_solution_set(solution_set)
     solution = AlgebraSolutionSet(
         kind="empty" if solution_set is sp.EmptySet else "finite" if values is not None else "set",
@@ -93,7 +102,10 @@ def solve_exp_log(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
         milestones=milestones,
         verification=verification,
         assumptions=assumptions,
-        warnings=[] if values is not None else ["Tập nghiệm mũ-log symbolic không hữu hạn nên chỉ kiểm chứng ở mức biểu diễn tập nghiệm."],
+        warnings=[
+            *([] if values is not None else ["Tập nghiệm mũ-log symbolic không hữu hạn nên chỉ kiểm chứng ở mức biểu diễn tập nghiệm."]),
+            *([interval_note] if interval_note else []),
+        ],
         errors=[] if status == "solved" else ["Kiểm chứng nghiệm mũ-log thất bại."],
     )
 

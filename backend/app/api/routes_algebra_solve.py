@@ -12,6 +12,7 @@ from app.repositories.auth import SESSION_COOKIE_NAME, SessionRepository, UserRe
 from app.schemas.algebra import AlgebraSolveRequest, AlgebraSolveResponse
 from app.services.ai_resolution import resolve_byok_ai_config, settings_with_byok_connection
 from app.services.algebra import solve_algebra_with_optional_ai
+from app.services.algebra.load_gate import algebra_load_gate
 from app.services.api_errors import api_error
 from app.services.user_ai_settings import UserAiSettingsError
 
@@ -43,20 +44,40 @@ async def solve_algebra_endpoint(
         if byok is not None:
             settings = settings_with_byok_connection(settings, byok)
             byok_used = True
-    try:
-        response = await solve_algebra_with_optional_ai(request, settings)
-    except Exception as error:
-        raise api_error(400, f"Lỗi khi giải bài đại số: {error}", "ALGEBRA_SOLVE_FAILED") from error
-    if uses_ai and user is not None and not byok_used:
-        await AdminRepository(db).record_user_usage_event(
-            user.id,
-            "algebra_ai",
-            {
-                "use_ai_extraction": request.options.use_ai_extraction,
-                "ai_explanation": request.options.ai_explanation,
-            },
+
+    limit = max(1, int(settings.algebra_max_concurrent or 8))
+    slot = await algebra_load_gate.try_acquire(limit)
+    if slot is None:
+        raise api_error(
+            429,
+            "Hệ thống đang xử lý quá nhiều bài đại số. Vui lòng thử lại sau.",
+            "ALGEBRA_CONCURRENT_LIMIT",
         )
-    return response
+
+    try:
+        try:
+            response = await solve_algebra_with_optional_ai(request, settings, load_slot=slot)
+        except Exception as error:
+            message = str(error)
+            if "timeout" in message.lower() or "ALGEBRA_TIMEOUT" in message:
+                raise api_error(504, "Phép giải đại số vượt quá thời gian cho phép.", "ALGEBRA_TIMEOUT") from error
+            raise api_error(500, "Lỗi nội bộ khi giải bài đại số.", "ALGEBRA_INTERNAL_ERROR") from error
+        if response.problem_type == "timeout" or any("ALGEBRA_TIMEOUT" in item for item in response.errors):
+            raise api_error(504, response.answer or "Phép giải đại số vượt quá thời gian cho phép.", "ALGEBRA_TIMEOUT")
+        if uses_ai and user is not None and not byok_used:
+            await AdminRepository(db).record_user_usage_event(
+                user.id,
+                "algebra_ai",
+                {
+                    "use_ai_extraction": request.options.use_ai_extraction,
+                    "ai_explanation": request.options.ai_explanation,
+                },
+            )
+        return response
+    finally:
+        # If worker never started (or already finished), this frees the slot.
+        # If an orphan worker is still running, leave_worker will free it later.
+        slot.release_http()
 
 
 async def _active_user_from_request(request: Request, db: DatabaseClient) -> UserRecord | None:

@@ -40,3 +40,17 @@ def test_sequence_solver_solves_natural_language_geometric_sum():
     assert result.status == "solved"
     assert result.solution_set.text == "93"
     assert result.steps[0].after_latex == r"S_{5}=\frac{3\left((2)^5-1\right)}{2-1}"
+
+
+def test_sequence_solver_rejects_fractional_n():
+    result = solve_algebra(AlgebraSolveRequest(input="arithmetic(u1=2,d=3,n=3/2)", topic="sequence"))
+
+    assert result.status == "unsupported"
+    assert "SEQUENCE_N_NOT_INTEGER" in result.answer or "nguyên" in result.answer.lower()
+
+
+def test_sequence_solver_rejects_zero_n():
+    result = solve_algebra(AlgebraSolveRequest(input="arithmetic(u1=2,d=3,n=0)", topic="sequence"))
+
+    assert result.status == "unsupported"
+    assert "nguyên dương" in result.answer.lower() or "dương" in result.answer.lower()

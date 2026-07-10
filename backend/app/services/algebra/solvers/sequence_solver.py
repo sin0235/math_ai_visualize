@@ -96,9 +96,7 @@ def _evaluate(text: str) -> SequenceCalculation:
         raise ValueError("Dạng cấp số này chưa được hỗ trợ. Hãy dùng arithmetic(...), arithmetic_sum(...), geometric(...) hoặc geometric_sum(...).")
     kind, args_text = match.groups()
     args = _parse_args(args_text)
-    n = int(args.get("n", 0))
-    if n <= 0:
-        raise ValueError("Tham số n phải là số nguyên dương.")
+    n = _parse_positive_integer_index(args.get("n"), field_name="n")
     u1 = args.get("u1")
     if u1 is None:
         raise ValueError("Cần nhập u1 cho cấp số.")
@@ -172,6 +170,19 @@ def _parse_args(text: str) -> dict[str, Fraction]:
         key, value = part.split("=", 1)
         result[key.strip()] = Fraction(value.strip())
     return result
+
+
+def _parse_positive_integer_index(value: Fraction | None, *, field_name: str) -> int:
+    if value is None:
+        raise ValueError(f"Cần nhập {field_name} cho cấp số.")
+    if value.denominator != 1:
+        raise ValueError(f"SEQUENCE_N_NOT_INTEGER: tham số {field_name} phải là số nguyên dương, không được là phân số/thập phân.")
+    n = value.numerator
+    if n <= 0:
+        raise ValueError(f"Tham số {field_name} phải là số nguyên dương.")
+    if n > 1_000_000:
+        raise ValueError(f"Tham số {field_name} quá lớn để tính an toàn.")
+    return n
 
 
 def _to_sympy(value: Fraction) -> sp.Expr:

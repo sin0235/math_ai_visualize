@@ -1,6 +1,9 @@
-import type { AlgebraSolveResponse } from '../../api/client';
+import { useState } from 'react';
+import type { AlgebraSolveResponse, AlgebraVerificationCheck } from '../../api/client';
 import { KatexSpan, MixedTextRenderer } from '../KatexSpan';
 import { AlgebraStepList } from './AlgebraStepList';
+
+const ANALYZER_PREFILL_KEY = 'math_ai_analyzer_prefill';
 
 export function EmptyAlgebraResult() {
   return (
@@ -22,13 +25,23 @@ export function AlgebraLoadingResult() {
   );
 }
 
-export function AlgebraResult({ result }: { result: AlgebraSolveResponse }) {
+export function AlgebraResult({
+  result,
+  stale = false,
+  onApplyCanonical,
+}: {
+  result: AlgebraSolveResponse;
+  stale?: boolean;
+  onApplyCanonical?: (canonical: string) => void;
+}) {
+  const [copyFeedback, setCopyFeedback] = useState('');
+  const [showAllChecks, setShowAllChecks] = useState(false);
   const assumptions = result.assumptions.filter(hasText);
   const notices = [...result.warnings, ...result.errors].filter((item) => hasText(item) && !isRoutineInterpretationNotice(item));
-  const checks = result.verification.checks.filter((check) => (
-    check.status !== 'pass'
-    && (hasText(check.name) || hasText(check.detail) || hasText(check.latex))
-  ));
+  const allChecks = result.verification.checks.filter((check) => hasText(check.name) || hasText(check.detail) || hasText(check.latex));
+  const failWarnChecks = allChecks.filter((check) => check.status !== 'pass');
+  const visibleChecks = showAllChecks ? allChecks : failWarnChecks;
+  const passCount = allChecks.filter((check) => check.status === 'pass').length;
   const steps = result.steps.filter((step) => (
     step.kind !== 'conclusion'
     && (
@@ -46,15 +59,70 @@ export function AlgebraResult({ result }: { result: AlgebraSolveResponse }) {
       || hasText(step.check)
     )
   ));
+  const interpretation = result.input_interpretation;
+  const analyzerExpression = expressionForAnalyzer(result);
+
+  async function copyText(label: string, text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyFeedback(`Đã copy ${label}`);
+      window.setTimeout(() => setCopyFeedback(''), 2000);
+    } catch {
+      setCopyFeedback('Không copy được (trình duyệt chặn clipboard)');
+      window.setTimeout(() => setCopyFeedback(''), 2500);
+    }
+  }
+
+  function openAnalyzer() {
+    if (!analyzerExpression) return;
+    try {
+      sessionStorage.setItem(ANALYZER_PREFILL_KEY, analyzerExpression);
+    } catch {
+      // ignore storage failures
+    }
+    window.history.pushState({}, document.title, '/analyzer');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  }
 
   return (
-    <section className="algebra-result-panel">
+    <section className={`algebra-result-panel ${stale ? 'is-stale' : ''}`}>
       <div className="algebra-result-header">
         <div>
           <span className="algebra-eyebrow">{compactMeta(result.topic, result.problem_type)}</span>
           <h2>{statusTitle(result.status)}</h2>
+          {stale && (
+            <span className="algebra-stale-badge" role="status">
+              Kết quả của đề trước — nhấn Giải bài để cập nhật
+            </span>
+          )}
+        </div>
+        <div className="algebra-result-actions">
+          {(hasText(result.answer_latex) || hasText(result.answer)) && (
+            <>
+              <button type="button" className="algebra-action-btn" onClick={() => copyText('đáp án', result.answer)}>
+                Copy đáp án
+              </button>
+              {hasText(result.answer_latex) && (
+                <button type="button" className="algebra-action-btn" onClick={() => copyText('LaTeX', result.answer_latex || '')}>
+                  Copy LaTeX
+                </button>
+              )}
+              <button type="button" className="algebra-action-btn" onClick={() => copyText('Markdown', buildMarkdown(result))}>
+                Copy Markdown
+              </button>
+              <button type="button" className="algebra-action-btn" onClick={() => downloadMarkdown(result)}>
+                Tải .md
+              </button>
+            </>
+          )}
+          {analyzerExpression && (
+            <button type="button" className="algebra-action-btn algebra-action-primary" onClick={openAnalyzer}>
+              Mở Function Analyzer
+            </button>
+          )}
         </div>
       </div>
+      {copyFeedback && <p className="algebra-copy-feedback" aria-live="polite">{copyFeedback}</p>}
 
       {(hasText(result.answer_latex) || hasText(result.answer)) && (
         <section className="algebra-result-card algebra-answer-card">
@@ -63,6 +131,68 @@ export function AlgebraResult({ result }: { result: AlgebraSolveResponse }) {
             <KatexSpan tex={result.answer_latex} display className="algebra-answer-katex" />
           ) : (
             <strong className="algebra-answer-text">{result.answer}</strong>
+          )}
+          {result.verification.status !== 'skipped' && (
+            <span className={`algebra-verify-pill status-${result.verification.status}`}>
+              {verificationStatusLabel(result.verification.status)}
+            </span>
+          )}
+        </section>
+      )}
+
+      {interpretation && (
+        <section className="algebra-result-card">
+          <SectionTitle title="Hệ thống hiểu đề" />
+          <dl className="algebra-interpretation-grid">
+            <div>
+              <dt>Đề gốc</dt>
+              <dd><code>{result.input}</code></dd>
+            </div>
+            <div>
+              <dt>Canonical</dt>
+              <dd><code>{interpretation.canonical_input}</code></dd>
+            </div>
+            <div>
+              <dt>Nguồn</dt>
+              <dd>{sourceLabel(interpretation.source)}</dd>
+            </div>
+            <div>
+              <dt>Định dạng</dt>
+              <dd>{interpretation.detected_format}</dd>
+            </div>
+            <div>
+              <dt>Topic gợi ý</dt>
+              <dd>{interpretation.topic_hint}</dd>
+            </div>
+            <div>
+              <dt>Miền</dt>
+              <dd>{interpretation.domain}</dd>
+            </div>
+            {interpretation.variables.length > 0 && (
+              <div>
+                <dt>Biến</dt>
+                <dd>{interpretation.variables.join(', ')}</dd>
+              </div>
+            )}
+          </dl>
+          {interpretation.chips.length > 0 && (
+            <div className="algebra-chip-row">
+              {interpretation.chips.map((chip) => (
+                <span className="algebra-chip" key={`${chip.kind}-${chip.value}`}>{chip.label}: {chip.value}</span>
+              ))}
+            </div>
+          )}
+          {interpretation.warnings.length > 0 && (
+            <InfoList items={interpretation.warnings} />
+          )}
+          {onApplyCanonical && interpretation.canonical_input && interpretation.canonical_input !== result.input && (
+            <button
+              type="button"
+              className="algebra-action-btn"
+              onClick={() => onApplyCanonical(interpretation.canonical_input)}
+            >
+              Đưa canonical vào ô nhập để sửa &amp; giải lại
+            </button>
           )}
         </section>
       )}
@@ -84,18 +214,35 @@ export function AlgebraResult({ result }: { result: AlgebraSolveResponse }) {
         </div>
       )}
 
-      {checks.length > 0 && (
+      {(allChecks.length > 0 || result.verification.status !== 'skipped') && (
         <section className="algebra-result-card">
-          <SectionTitle title="Kiểm tra lại" />
-          <div className="algebra-check-list">
-            {checks.map((check, index) => (
-              <article className={`algebra-check ${check.status}`} key={`${check.name}-${index}`}>
-                {hasText(check.name) && <strong>{verificationCheckLabel(check.name)}</strong>}
-                {hasText(check.detail) && <span>{check.detail}</span>}
-                {check.latex && <KatexSpan tex={check.latex} className="algebra-katex" />}
-              </article>
-            ))}
+          <div className="algebra-section-head">
+            <SectionTitle title="Kiểm chứng" />
+            {allChecks.length > 0 && (
+              <span className="algebra-verify-summary">
+                {passCount}/{allChecks.length} checks pass · {verificationStatusLabel(result.verification.status)}
+              </span>
+            )}
           </div>
+          {result.verification.method.length > 0 && (
+            <p className="algebra-verify-method">Method: {result.verification.method.join(', ')}</p>
+          )}
+          {visibleChecks.length > 0 && (
+            <div className="algebra-check-list">
+              {visibleChecks.map((check, index) => (
+                <CheckCard check={check} key={`${check.name}-${index}`} />
+              ))}
+            </div>
+          )}
+          {allChecks.some((check) => check.status === 'pass') && (
+            <button
+              type="button"
+              className="algebra-action-btn"
+              onClick={() => setShowAllChecks((value) => !value)}
+            >
+              {showAllChecks ? 'Ẩn checks đã pass' : 'Hiện tất cả checks (kể cả pass)'}
+            </button>
+          )}
         </section>
       )}
 
@@ -106,6 +253,17 @@ export function AlgebraResult({ result }: { result: AlgebraSolveResponse }) {
         </section>
       )}
     </section>
+  );
+}
+
+function CheckCard({ check }: { check: AlgebraVerificationCheck }) {
+  return (
+    <article className={`algebra-check ${check.status}`}>
+      {hasText(check.name) && <strong>{verificationCheckLabel(check.name)}</strong>}
+      <span className="algebra-check-status">{check.status}</span>
+      {hasText(check.detail) && <span>{check.detail}</span>}
+      {check.latex && <KatexSpan tex={check.latex} className="algebra-katex" />}
+    </article>
   );
 }
 
@@ -133,6 +291,81 @@ function EmptyResultIllustration() {
   );
 }
 
+function downloadMarkdown(result: AlgebraSolveResponse) {
+  const text = buildMarkdown(result);
+  const blob = new Blob([text], { type: 'text/markdown;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = `algebra-solution-${(result.request_id || 'export').slice(0, 16)}.md`;
+  anchor.click();
+  // Defer revoke so browsers that start download asynchronously still have a live URL.
+  window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+function buildMarkdown(result: AlgebraSolveResponse): string {
+  const lines = [
+    `# Kết quả đại số`,
+    '',
+    `**Trạng thái:** ${result.status}`,
+    `**Topic:** ${result.topic}`,
+    '',
+    `## Đề`,
+    '```',
+    result.input,
+    '```',
+    '',
+    `## Canonical`,
+    '```',
+    result.normalized_input,
+    '```',
+    '',
+    `## Đáp án`,
+    result.answer,
+  ];
+  if (result.answer_latex) {
+    lines.push('', '```latex', result.answer_latex, '```');
+  }
+  if (result.assumptions.length) {
+    lines.push('', '## Giả thiết', ...result.assumptions.map((item) => `- ${item}`));
+  }
+  if (result.warnings.length) {
+    lines.push('', '## Cảnh báo', ...result.warnings.map((item) => `- ${item}`));
+  }
+  if (result.steps.length) {
+    lines.push('', '## Các bước');
+    for (const step of result.steps) {
+      if (step.kind === 'conclusion') continue;
+      lines.push(`### ${step.index}. ${step.title}`);
+      if (step.explanation) lines.push(step.explanation);
+      if (step.after_latex) lines.push(`$$${step.after_latex}$$`);
+      lines.push('');
+    }
+  }
+  lines.push('', `## Kiểm chứng: ${result.verification.status}`);
+  return lines.join('\n');
+}
+
+export function expressionForAnalyzer(result: AlgebraSolveResponse): string | null {
+  const raw = (result.normalized_input || result.input || '').trim();
+  if (!raw) return null;
+  const derivative = raw.match(/^derivative\(expr=([^,)]+)/i);
+  if (derivative) return cleanAnalyzerExpr(derivative[1]);
+  const limit = raw.match(/^limit\(expr=([^,)]+)/i);
+  if (limit) return cleanAnalyzerExpr(limit[1]);
+  const integral = raw.match(/^integral\(expr=([^,)]+)/i);
+  if (integral) return cleanAnalyzerExpr(integral[1]);
+  if (/^(arithmetic|geometric|C\(|A\(|factorial|coefficient|quadratic_)/i.test(raw)) return null;
+  if (raw.includes(';')) return null;
+  const split = raw.match(/^(.+?)(?:<=|>=|!=|=|<|>)/);
+  if (split) return cleanAnalyzerExpr(split[1]);
+  return cleanAnalyzerExpr(raw);
+}
+
+function cleanAnalyzerExpr(value: string) {
+  return value.trim().replace(/\*\*/g, '^').replace(/\s+/g, '');
+}
+
 function compactMeta(topic: string, problemType: string) {
   return [topic, problemType].filter(hasText).join(' · ');
 }
@@ -146,15 +379,33 @@ function isRoutineInterpretationNotice(value: string) {
     || value.includes('Đầu vào gồm cả mô tả tự nhiên và ký hiệu toán; hệ thống ưu tiên phần biểu thức được trích xuất.');
 }
 
+function sourceLabel(source: string) {
+  if (source === 'rule_based_vi') return 'Rule-based tiếng Việt';
+  if (source === 'latex_normalizer') return 'LaTeX normalizer';
+  if (source === 'structured_ui') return 'Structured UI';
+  return source;
+}
+
 function verificationCheckLabel(name: string) {
   const labels: Record<string, string> = {
-    empty_solution_set: 'Không có nghiệm để thử lại',
-    symbolic_solution_set: 'Kiểm tra tập nghiệm',
+    empty_solution_set: 'Tập nghiệm rỗng',
+    symbolic_solution_set: 'Tập nghiệm symbolic',
     candidate_substitution: 'Thay nghiệm vào đề gốc',
-    domain_constraints_valid: 'Kiểm tra điều kiện xác định',
-    inequality_sample: 'Thử điểm trong khoảng nghiệm',
+    domain_constraints_valid: 'Điều kiện xác định',
+    inequality_sample: 'Thử điểm khoảng nghiệm',
+    condition_set_detected: 'ConditionSet',
+    sample_only_scope: 'Phạm vi sample-only',
+    unevaluated_solution_set: 'Tập chưa evaluate',
   };
   return labels[name] || name.replace(/_/g, ' ');
+}
+
+function verificationStatusLabel(status: string) {
+  if (status === 'verified') return 'Đã kiểm chứng';
+  if (status === 'partially_verified') return 'Kiểm chứng một phần';
+  if (status === 'failed') return 'Kiểm chứng thất bại';
+  if (status === 'skipped') return 'Bỏ qua kiểm chứng';
+  return status;
 }
 
 function statusTitle(status: AlgebraSolveResponse['status']) {

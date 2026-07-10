@@ -1,15 +1,21 @@
 from __future__ import annotations
 
+import asyncio
+import time
+import uuid
+from dataclasses import replace
+
 import sympy as sp
 
 from app.core.config import Settings, get_settings
-from app.schemas.algebra import AlgebraSolveRequest, AlgebraSolveResponse
+from app.schemas.algebra import AlgebraInterval, AlgebraSolveOptions, AlgebraSolveRequest, AlgebraSolveResponse, AlgebraVerificationReport
 from app.services.algebra.ai_explainer import explain_algebra_response_with_ai
 from app.services.algebra.ai_extraction import extract_algebra_request_with_ai
 from app.services.algebra.classifier import classify_algebra_problem
 from app.services.algebra.interpreter import interpret_algebra_input
 from app.services.algebra.normalizer import normalize_algebra_input
-from app.services.algebra.parser import AlgebraParseError, ParsedAlgebraProblem, parse_algebra_problem
+from app.services.algebra.load_gate import AlgebraSlot, algebra_load_gate
+from app.services.algebra.parser import AlgebraParseError, ParsedAlgebraProblem, parse_algebra_problem, parse_interval_bound
 from app.services.algebra.solvers.calculus_solver import solve_calculus
 from app.services.algebra.solvers.combinatorics_probability_solver import solve_combinatorics_probability
 from app.services.algebra.solvers.complex_solver import solve_complex
@@ -27,16 +33,86 @@ def solve_algebra(request: AlgebraSolveRequest) -> AlgebraSolveResponse:
     return solve_algebra_deterministic(request)
 
 
-async def solve_algebra_with_optional_ai(request: AlgebraSolveRequest, settings: Settings | None = None) -> AlgebraSolveResponse:
+def _run_deterministic_tracked(request: AlgebraSolveRequest, slot: AlgebraSlot | None) -> AlgebraSolveResponse:
+    """Run deterministic solve; capacity stays reserved until leave_worker (even after HTTP timeout)."""
+    algebra_load_gate.enter_worker(slot)
+    try:
+        return solve_algebra_deterministic(request)
+    finally:
+        algebra_load_gate.leave_worker(slot)
+
+
+async def _run_deterministic_with_timeout(
+    request: AlgebraSolveRequest,
+    timeout: float,
+    slot: AlgebraSlot | None,
+) -> AlgebraSolveResponse:
+    # wait_for does not kill the thread; the load slot remains reserved until the thread finishes.
+    return await asyncio.wait_for(
+        asyncio.to_thread(_run_deterministic_tracked, request, slot),
+        timeout=timeout,
+    )
+
+
+async def solve_algebra_with_optional_ai(
+    request: AlgebraSolveRequest,
+    settings: Settings | None = None,
+    load_slot: AlgebraSlot | None = None,
+) -> AlgebraSolveResponse:
     settings = settings or get_settings()
     extraction_warnings: list[str] = []
     deterministic_request = request
+    # Note: asyncio.wait_for does not kill the worker thread running SymPy; it only bounds
+    # response latency. The AlgebraSlot stays reserved until leave_worker so capacity is not
+    # reused while orphan threads still run. Never stack a second solve after timeout.
+
     if request.options.use_ai_extraction:
+        # Rule-based first: only call AI when deterministic path fails or is unsupported.
+        try:
+            rule_based = await _run_deterministic_with_timeout(
+                request, settings.algebra_solve_timeout_seconds, load_slot
+            )
+        except asyncio.TimeoutError:
+            return _timeout_response(
+                request,
+                request.input,
+                str(request.topic),
+                extra_warnings=[
+                    "Timeout trên lần giải rule-based; không gọi AI và không chạy lại solve "
+                    "(worker SymPy vẫn chiếm slot cho đến khi thread kết thúc)."
+                ],
+            )
+        if rule_based.status in {"solved", "partial"}:
+            rule_based.warnings = [
+                "Đã dùng interpreter rule-based; không cần AI diễn giải cho đề này.",
+                *rule_based.warnings,
+            ]
+            if request.options.ai_explanation:
+                rule_based = await explain_algebra_response_with_ai(rule_based, settings)
+            return rule_based
         try:
             deterministic_request, extraction_warnings = await extract_algebra_request_with_ai(request.input, request, settings)
-        except Exception as error:
-            extraction_warnings = [f"Không gọi được AI extraction, đang dùng rule-based interpreter: {error}"]
-    response = solve_algebra_deterministic(deterministic_request)
+        except Exception:
+            extraction_warnings = ["Không gọi được AI extraction, đang dùng rule-based interpreter."]
+            rule_based.warnings = [*extraction_warnings, *rule_based.warnings]
+            return rule_based
+
+    try:
+        response = await _run_deterministic_with_timeout(
+            deterministic_request,
+            settings.algebra_solve_timeout_seconds,
+            load_slot,
+        )
+    except asyncio.TimeoutError:
+        return _timeout_response(
+            request,
+            deterministic_request.input,
+            str(deterministic_request.topic),
+            extra_warnings=[
+                *extraction_warnings,
+                "Timeout deterministic solve; worker SymPy vẫn chiếm slot cho đến khi thread kết thúc.",
+            ],
+        )
     if deterministic_request.input != request.input:
         response.input = request.input
         response.normalized_input = deterministic_request.input
@@ -47,27 +123,71 @@ async def solve_algebra_with_optional_ai(request: AlgebraSolveRequest, settings:
     return response
 
 
+def _timeout_response(
+    request: AlgebraSolveRequest,
+    normalized_input: str,
+    topic: str,
+    *,
+    extra_warnings: list[str] | None = None,
+) -> AlgebraSolveResponse:
+    return AlgebraSolveResponse(
+        input=request.input,
+        normalized_input=normalized_input,
+        topic=topic,
+        problem_type="timeout",
+        status="error",
+        answer="Phép giải vượt quá thời gian cho phép. Hãy rút gọn biểu thức hoặc chia nhỏ bài.",
+        errors=["ALGEBRA_TIMEOUT: deterministic solve exceeded time limit"],
+        warnings=list(extra_warnings or []),
+    )
+
+
 def solve_algebra_deterministic(request: AlgebraSolveRequest) -> AlgebraSolveResponse:
+    started = time.perf_counter()
+    response, interval_warning = _solve_algebra_core(request)
+    response = _apply_response_options(response, request.options)
+    if interval_warning:
+        response.warnings = [interval_warning, *response.warnings]
+    elapsed_ms = int((time.perf_counter() - started) * 1000)
+    if not response.request_id:
+        response.request_id = f"alg_{uuid.uuid4().hex[:12]}"
+    response.timings_ms = {**response.timings_ms, "total_ms": elapsed_ms, "solve_ms": elapsed_ms}
+    return response
+
+
+def _solve_algebra_core(request: AlgebraSolveRequest) -> tuple[AlgebraSolveResponse, str | None]:
     interpretation = interpret_algebra_input(request)
     requested_topic = _resolve_requested_topic(request.topic, interpretation.topic_hint, interpretation.canonical_input)
-    variables = request.variables or interpretation.variables or ["x"]
+    if request.variables:
+        variables: list[str] | None = list(request.variables)
+    elif interpretation.variables:
+        variables = list(interpretation.variables)
+    else:
+        variables = None
     domain = interpretation.domain if request.domain == "R" and interpretation.domain != "R" else request.domain
+    solve_interval, interval_warning = _algebra_interval_to_set(request.interval)
+
+    def _done(response: AlgebraSolveResponse) -> tuple[AlgebraSolveResponse, str | None]:
+        return response, interval_warning
+
     if requested_topic == "combinatorics_probability":
-        problem = _raw_problem(request, interpretation.canonical_input, variables, domain, requested_topic)
-        return _with_interpretation(solve_combinatorics_probability(problem), request.input, interpretation)
+        problem = _raw_problem(request, interpretation.canonical_input, variables, domain, requested_topic, solve_interval)
+        return _done(_with_interpretation(solve_combinatorics_probability(problem), request.input, interpretation))
     if requested_topic == "sequence":
-        problem = _raw_problem(request, interpretation.canonical_input, variables, domain, requested_topic)
-        return _with_interpretation(solve_sequence(problem), request.input, interpretation)
+        problem = _raw_problem(request, interpretation.canonical_input, variables, domain, requested_topic, solve_interval)
+        return _done(_with_interpretation(solve_sequence(problem), request.input, interpretation))
     if requested_topic == "parameter":
-        problem = _raw_problem(request, interpretation.canonical_input, variables, domain, requested_topic)
-        return _with_interpretation(solve_parameter(problem), request.input, interpretation)
+        problem = _raw_problem(request, interpretation.canonical_input, variables, domain, requested_topic, solve_interval)
+        return _done(_with_interpretation(solve_parameter(problem), request.input, interpretation))
     if requested_topic in {"calculus_derivative", "calculus_limit", "calculus_integral"}:
-        problem = _raw_problem(request, interpretation.canonical_input, variables, domain, requested_topic)
-        return _with_interpretation(solve_calculus(problem), request.input, interpretation)
+        problem = _raw_problem(request, interpretation.canonical_input, variables, domain, requested_topic, solve_interval)
+        return _done(_with_interpretation(solve_calculus(problem), request.input, interpretation))
     try:
         problem = parse_algebra_problem(interpretation.canonical_input, topic=requested_topic, variables=variables, domain=domain)
+        if solve_interval is not None:
+            problem = replace(problem, solve_interval=solve_interval)
     except AlgebraParseError as exc:
-        return AlgebraSolveResponse(
+        return _done(AlgebraSolveResponse(
             input=request.input,
             normalized_input=interpretation.canonical_input,
             input_interpretation=interpretation,
@@ -77,31 +197,31 @@ def solve_algebra_deterministic(request: AlgebraSolveRequest) -> AlgebraSolveRes
             answer="Không thể đọc đề bài đại số này.",
             warnings=interpretation.warnings,
             errors=[str(exc)],
-        )
+        ))
     topic = classify_algebra_problem(problem)
     if topic == "equation":
-        return _with_interpretation(solve_equation(problem), request.input, interpretation)
+        return _done(_with_interpretation(solve_equation(problem), request.input, interpretation))
     if topic == "inequality":
-        return _with_interpretation(solve_inequality(problem), request.input, interpretation)
+        return _done(_with_interpretation(solve_inequality(problem), request.input, interpretation))
     if topic == "exponential_log":
-        return _with_interpretation(solve_exp_log(problem), request.input, interpretation)
+        return _done(_with_interpretation(solve_exp_log(problem), request.input, interpretation))
     if topic == "trigonometry":
-        return _with_interpretation(solve_trigonometry(problem), request.input, interpretation)
+        return _done(_with_interpretation(solve_trigonometry(problem), request.input, interpretation))
     if topic == "expression":
-        return _with_interpretation(solve_expression(problem), request.input, interpretation)
+        return _done(_with_interpretation(solve_expression(problem), request.input, interpretation))
     if topic == "complex":
-        return _with_interpretation(solve_complex(problem), request.input, interpretation)
+        return _done(_with_interpretation(solve_complex(problem), request.input, interpretation))
     if topic == "system":
-        return _with_interpretation(solve_system(problem), request.input, interpretation)
+        return _done(_with_interpretation(solve_system(problem), request.input, interpretation))
     if topic == "combinatorics_probability":
-        return _with_interpretation(solve_combinatorics_probability(problem), request.input, interpretation)
+        return _done(_with_interpretation(solve_combinatorics_probability(problem), request.input, interpretation))
     if topic == "sequence":
-        return _with_interpretation(solve_sequence(problem), request.input, interpretation)
+        return _done(_with_interpretation(solve_sequence(problem), request.input, interpretation))
     if topic == "parameter":
-        return _with_interpretation(solve_parameter(problem), request.input, interpretation)
+        return _done(_with_interpretation(solve_parameter(problem), request.input, interpretation))
     if topic in {"calculus_derivative", "calculus_limit", "calculus_integral"}:
-        return _with_interpretation(solve_calculus(problem), request.input, interpretation)
-    return _with_interpretation(AlgebraSolveResponse(
+        return _done(_with_interpretation(solve_calculus(problem), request.input, interpretation))
+    return _done(_with_interpretation(AlgebraSolveResponse(
         input=request.input,
         normalized_input=problem.normalized_input,
         topic=topic,
@@ -109,7 +229,47 @@ def solve_algebra_deterministic(request: AlgebraSolveRequest) -> AlgebraSolveRes
         status="unsupported",
         answer="Dạng bài này chưa được hỗ trợ trong phase đầu. Hiện hệ thống ưu tiên phương trình và bất phương trình một biến.",
         warnings=["Các nhóm tham số và các dạng đề tự nhiên dài sẽ được bổ sung ở các phase sau."],
-    ), request.input, interpretation)
+    ), request.input, interpretation))
+
+
+def _apply_response_options(response: AlgebraSolveResponse, options: AlgebraSolveOptions) -> AlgebraSolveResponse:
+    if not options.verify:
+        response.verification = AlgebraVerificationReport(
+            status="skipped",
+            checks=[],
+            method=["skipped_by_option"],
+        )
+        response.warnings = [*response.warnings, "Đã bỏ qua kiểm chứng (options.verify=false)."]
+    if not options.return_steps:
+        response.steps = []
+        response.milestones = []
+    if options.max_solutions > 0 and response.solution_set.values:
+        total = len(response.solution_set.values)
+        if total > options.max_solutions:
+            kept = response.solution_set.values[: options.max_solutions]
+            response.solution_set.values = kept
+            kept_text = "; ".join(item.text for item in kept)
+            kept_latex_parts = [item.latex if item.latex else item.text for item in kept]
+            kept_latex = ", ".join(kept_latex_parts)
+            response.solution_set.kind = "finite"
+            response.solution_set.text = f"Tập nghiệm (cắt {options.max_solutions}/{total}): {{{kept_text}}}"
+            response.solution_set.latex = rf"\left\{{{kept_latex}\right\}} (cắt {options.max_solutions}/{total})"
+            response.answer = response.solution_set.text
+            response.answer_latex = response.solution_set.latex
+            response.warnings = [
+                *response.warnings,
+                f"Đã cắt danh sách nghiệm còn {options.max_solutions}/{total} (options.max_solutions); answer/latex/values đã đồng bộ.",
+            ]
+    if not options.prefer_exact and response.solution_set.values:
+        for value in response.solution_set.values:
+            if not value.approximate:
+                try:
+                    # Prefer latex/text via N without unrestricted user-string eval when possible.
+                    raw = value.latex or value.text
+                    value.approximate = str(sp.N(sp.sympify(raw, evaluate=True), 8))
+                except Exception:
+                    pass
+    return response
 
 
 _CALCULUS_PREFIX_BY_TOPIC = {
@@ -141,8 +301,16 @@ def _resolve_requested_topic(requested_topic: str, detected_topic: str, canonica
     return requested_topic
 
 
-def _raw_problem(request: AlgebraSolveRequest, canonical_input: str, variables: list[str], domain: str, topic: str) -> ParsedAlgebraProblem:
-    symbols = [sp.Symbol(name, real=(domain != "C")) for name in variables]
+def _raw_problem(
+    request: AlgebraSolveRequest,
+    canonical_input: str,
+    variables: list[str] | None,
+    domain: str,
+    topic: str,
+    solve_interval: sp.Set | None = None,
+) -> ParsedAlgebraProblem:
+    raw_vars = list(variables) if variables else ["x"]
+    symbols = [sp.Symbol(name, real=(domain != "C")) for name in raw_vars]
     return ParsedAlgebraProblem(
         raw_input=canonical_input,
         normalized_input=canonical_input.strip().replace("^", "**"),
@@ -150,7 +318,19 @@ def _raw_problem(request: AlgebraSolveRequest, canonical_input: str, variables: 
         variable=symbols[0],
         variables=symbols,
         domain=domain,
+        solve_interval=solve_interval,
     )
+
+
+def _algebra_interval_to_set(interval: AlgebraInterval | None) -> tuple[sp.Set | None, str | None]:
+    if interval is None:
+        return None, None
+    try:
+        start = parse_interval_bound(interval.start) if interval.start not in (None, "") else -sp.oo
+        end = parse_interval_bound(interval.end) if interval.end not in (None, "") else sp.oo
+        return sp.Interval(start, end, left_open=not interval.closed_start, right_open=not interval.closed_end), None
+    except Exception:
+        return None, "Khoảng nghiệm không hợp lệ nên đã bỏ qua; giải trên miền đầy đủ."
 
 
 def _with_interpretation(response: AlgebraSolveResponse, raw_input: str, interpretation) -> AlgebraSolveResponse:

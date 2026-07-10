@@ -48,14 +48,15 @@ def solve_calculus(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
 
 
 def _solve_derivative(problem: ParsedAlgebraProblem, template: CalculusTemplate) -> AlgebraSolveResponse:
+    if template.order < 1 or template.order > 5:
+        return _unsupported(problem, "calculus_derivative", "Bậc đạo hàm order cần nằm trong 1..5.")
     derivative = sp.simplify(sp.diff(template.expression, template.variable, template.order))
+    if isinstance(derivative, sp.Derivative) or derivative.has(sp.Derivative):
+        return _unsupported(problem, "calculus_derivative", "SymPy chưa rút gọn được đạo hàm (Derivative unevaluated).")
     steps = derivative_steps(template.expression, template.variable, derivative, template.order)
     answer = f"Đạo hàm: {sp.sstr(derivative)}"
-    verification = AlgebraVerificationReport(
-        status="verified",
-        checks=[AlgebraVerificationCheck(name="derivative_symbolic", status="pass", detail="Đạo hàm được tính bằng quy tắc vi phân symbolic.", latex=sp.latex(derivative))],
-        method=["sympy.diff"],
-    )
+    verification = _verify_derivative(template.expression, template.variable, derivative, template.order)
+    status = "solved" if verification.status in {"verified", "partially_verified"} else "partial"
     steps.append(_calculus_conclusion_step(len(steps) + 1, "Kết luận đạo hàm", answer, sp.latex(derivative)))
     milestones = [
         f"Biểu thức gốc: f({sp.latex(template.variable)}) = {sp.latex(template.expression)}",
@@ -66,27 +67,46 @@ def _solve_derivative(problem: ParsedAlgebraProblem, template: CalculusTemplate)
         normalized_input=problem.normalized_input,
         topic="calculus_derivative",
         problem_type="differentiate_expression",
-        status="solved",
+        status=status,
         answer=answer,
         answer_latex=sp.latex(derivative),
         solution_set=AlgebraSolutionSet(kind="expression", text=sp.sstr(derivative), latex=sp.latex(derivative)),
         steps=steps,
         milestones=milestones,
         verification=verification,
+        warnings=[] if verification.status == "verified" else ["Đạo hàm chỉ được kiểm chứng một phần (symbolic/numeric)."],
     )
 
 
 def _solve_limit(problem: ParsedAlgebraProblem, template: CalculusTemplate) -> AlgebraSolveResponse:
     if template.point is None:
         return _unsupported(problem, "calculus_limit", "Giới hạn cần có điểm tiến tới, ví dụ limit(expr=(x^2-1)/(x-1),var=x,to=1).")
+    if template.direction not in {"+", "-", "+-"}:
+        return _unsupported(problem, "calculus_limit", "dir chỉ hỗ trợ +, - hoặc +-.")
     result = sp.simplify(sp.limit(template.expression, template.variable, template.point, dir=template.direction))
+    if isinstance(result, sp.Limit) or result.has(sp.Limit):
+        return _unsupported(problem, "calculus_limit", "SymPy chưa đánh giá được giới hạn (Limit unevaluated).")
+    if result is sp.zoo:
+        return AlgebraSolveResponse(
+            input=problem.raw_input,
+            normalized_input=problem.normalized_input,
+            topic="calculus_limit",
+            problem_type="calculate_limit",
+            status="partial",
+            answer="Giới hạn không xác định (complex infinity / zoo).",
+            answer_latex=sp.latex(result),
+            solution_set=AlgebraSolutionSet(kind="expression", text="zoo", latex=sp.latex(result)),
+            verification=AlgebraVerificationReport(
+                status="partially_verified",
+                checks=[AlgebraVerificationCheck(name="limit_zoo", status="warn", detail="Kết quả zoo không được coi là giới hạn hữu hạn đã kiểm chứng.")],
+                method=["sympy.limit"],
+            ),
+            warnings=["Kết quả zoo (complex infinity) chỉ báo một phần."],
+        )
     steps = limit_steps(template.expression, template.variable, template.point, template.direction, result)
     answer = f"Giới hạn: {sp.sstr(result)}"
-    verification = AlgebraVerificationReport(
-        status="verified",
-        checks=[AlgebraVerificationCheck(name="limit_symbolic", status="pass", detail="Giới hạn được kiểm tra bằng phép tính symbolic.", latex=sp.latex(result))],
-        method=["sympy.limit"],
-    )
+    verification = _verify_limit(template.expression, template.variable, template.point, template.direction, result)
+    status = "solved" if verification.status in {"verified", "partially_verified"} else "partial"
     steps.append(_calculus_conclusion_step(len(steps) + 1, "Kết luận giới hạn", answer, sp.latex(result)))
     dir_str = "^+" if template.direction == "+" else "^-" if template.direction == "-" else ""
     milestones = [
@@ -98,21 +118,26 @@ def _solve_limit(problem: ParsedAlgebraProblem, template: CalculusTemplate) -> A
         normalized_input=problem.normalized_input,
         topic="calculus_limit",
         problem_type="calculate_limit",
-        status="solved",
+        status=status,
         answer=answer,
         answer_latex=sp.latex(result),
         solution_set=AlgebraSolutionSet(kind="expression", text=sp.sstr(result), latex=sp.latex(result)),
         steps=steps,
         milestones=milestones,
         verification=verification,
+        warnings=[] if verification.status == "verified" else ["Giới hạn chỉ được kiểm chứng một phần."],
     )
 
 
 def _solve_integral(problem: ParsedAlgebraProblem, template: CalculusTemplate) -> AlgebraSolveResponse:
     antiderivative = sp.simplify(sp.integrate(template.expression, template.variable))
+    if isinstance(antiderivative, sp.Integral) or antiderivative.has(sp.Integral):
+        return _unsupported(problem, "calculus_integral", "SymPy chưa tìm được nguyên hàm (Integral unevaluated).")
     is_definite = template.lower is not None and template.upper is not None
     if is_definite:
         result = sp.simplify(sp.integrate(template.expression, (template.variable, template.lower, template.upper)))
+        if isinstance(result, sp.Integral) or result.has(sp.Integral):
+            return _unsupported(problem, "calculus_integral", "SymPy chưa tính được tích phân xác định (Integral unevaluated).")
         if template.target is not None:
             equation = sp.Eq(result, template.target, evaluate=False)
             solutions = sp.solve(equation, template.upper)
@@ -123,19 +148,22 @@ def _solve_integral(problem: ParsedAlgebraProblem, template: CalculusTemplate) -
                 result = sp.FiniteSet(*solutions)
             else:
                 answer = "Không tìm được nghiệm symbolic cho phương trình tích phân."
+            verification = AlgebraVerificationReport(
+                status="partially_verified",
+                checks=[AlgebraVerificationCheck(name="integral_equation", status="warn", detail="Phương trình tích phân được giải symbolic; kiểm chứng độc lập hạn chế.")],
+                method=["sympy.integrate", "sympy.solve"],
+            )
         else:
             answer = f"Giá trị tích phân: {sp.sstr(result)}"
             latex = sp.latex(result)
+            verification = _verify_definite_integral(template.expression, template.variable, template.lower, template.upper, result, antiderivative)
     else:
         result = antiderivative
         answer = f"Nguyên hàm: {sp.sstr(result)} + C"
         latex = sp.latex(result) + "+C"
+        verification = _verify_antiderivative(template.expression, template.variable, antiderivative)
     steps = integral_steps(template.expression, template.variable, antiderivative, result, template.lower, template.upper)
-    verification = AlgebraVerificationReport(
-        status="verified",
-        checks=[AlgebraVerificationCheck(name="integral_symbolic", status="pass", detail="Kết quả tích phân được tính symbolic.", latex=latex)],
-        method=["sympy.integrate"],
-    )
+    status = "solved" if verification.status in {"verified", "partially_verified"} else "partial"
     steps.append(_calculus_conclusion_step(len(steps) + 1, "Kết luận tích phân", answer, latex))
     milestones = []
     if is_definite:
@@ -145,20 +173,207 @@ def _solve_integral(problem: ParsedAlgebraProblem, template: CalculusTemplate) -
     else:
         milestones.append(f"Nguyên hàm cần tìm: \\int {sp.latex(template.expression)} d{sp.latex(template.variable)}")
         milestones.append(f"Kết quả: {sp.latex(antiderivative)} + C")
-        
+
     return AlgebraSolveResponse(
         input=problem.raw_input,
         normalized_input=problem.normalized_input,
         topic="calculus_integral",
         problem_type="calculate_integral",
-        status="solved",
+        status=status,
         answer=answer,
         answer_latex=latex,
         solution_set=AlgebraSolutionSet(kind="expression", text=sp.sstr(result), latex=latex),
         steps=steps,
         milestones=milestones,
         verification=verification,
+        warnings=[] if verification.status == "verified" else ["Tích phân chỉ được kiểm chứng một phần (diff-back/sample)."],
     )
+
+
+def _verify_derivative(expression: sp.Expr, variable: sp.Symbol, derivative: sp.Expr, order: int) -> AlgebraVerificationReport:
+    checks: list[AlgebraVerificationCheck] = []
+    recomputed = sp.simplify(sp.diff(expression, variable, order))
+    symbolic_ok = sp.simplify(recomputed - derivative) == 0
+    checks.append(AlgebraVerificationCheck(
+        name="derivative_recompute",
+        status="pass" if symbolic_ok else "fail",
+        detail="So khớp đạo hàm bằng cách tính lại sympy.diff và simplify(diff - result).",
+        latex=sp.latex(derivative),
+    ))
+    numeric_ok = _numeric_derivative_check(expression, variable, derivative, order)
+    checks.append(AlgebraVerificationCheck(
+        name="derivative_numeric_sample",
+        status="pass" if numeric_ok is True else "warn" if numeric_ok is None else "fail",
+        detail=(
+            "Finite-difference cross-check tại vài điểm hợp lệ."
+            if numeric_ok is not None
+            else "Không lấy được mẫu numeric ổn định (điểm kỳ dị / không hữu hạn)."
+        ),
+    ))
+    if any(check.status == "fail" for check in checks):
+        status = "failed"
+    elif all(check.status == "pass" for check in checks):
+        status = "verified"
+    else:
+        status = "partially_verified"
+    return AlgebraVerificationReport(status=status, checks=checks, method=["sympy.diff", "finite_difference"])
+
+
+def _verify_antiderivative(expression: sp.Expr, variable: sp.Symbol, antiderivative: sp.Expr) -> AlgebraVerificationReport:
+    checks: list[AlgebraVerificationCheck] = []
+    back = sp.simplify(sp.diff(antiderivative, variable) - expression)
+    symbolic_ok = back == 0
+    checks.append(AlgebraVerificationCheck(
+        name="integral_diff_back",
+        status="pass" if symbolic_ok else "fail",
+        detail="Kiểm chứng nguyên hàm bằng d/dx(F) - f → 0.",
+        latex=sp.latex(back),
+    ))
+    if symbolic_ok:
+        status = "verified"
+    else:
+        # Sometimes simplify fails but numeric samples match
+        numeric_ok = _numeric_function_match(sp.diff(antiderivative, variable), expression, variable)
+        checks.append(AlgebraVerificationCheck(
+            name="integral_diff_back_numeric",
+            status="pass" if numeric_ok is True else "warn" if numeric_ok is None else "fail",
+            detail="So khớp numeric dF/dx với f tại vài điểm.",
+        ))
+        status = "partially_verified" if numeric_ok is not False and not any(c.status == "fail" for c in checks) else "failed" if any(c.status == "fail" for c in checks) else "partially_verified"
+    return AlgebraVerificationReport(status=status, checks=checks, method=["differentiate_back"])
+
+
+def _verify_definite_integral(
+    expression: sp.Expr,
+    variable: sp.Symbol,
+    lower: sp.Expr,
+    upper: sp.Expr,
+    result: sp.Expr,
+    antiderivative: sp.Expr,
+) -> AlgebraVerificationReport:
+    checks: list[AlgebraVerificationCheck] = []
+    base = _verify_antiderivative(expression, variable, antiderivative)
+    checks.extend(base.checks)
+    try:
+        newton = sp.simplify(antiderivative.subs(variable, upper) - antiderivative.subs(variable, lower))
+        ok = sp.simplify(newton - result) == 0
+        checks.append(AlgebraVerificationCheck(
+            name="integral_newton_leibniz",
+            status="pass" if ok else "warn",
+            detail="Đối chiếu F(b)-F(a) với kết quả integrate xác định (giả định không kỳ dị trong khoảng).",
+            latex=sp.latex(newton),
+        ))
+    except Exception:
+        checks.append(AlgebraVerificationCheck(
+            name="integral_newton_leibniz",
+            status="warn",
+            detail="Không đánh giá được F(b)-F(a).",
+        ))
+    if any(check.status == "fail" for check in checks):
+        status = "failed"
+    elif all(check.status == "pass" for check in checks):
+        status = "verified"
+    else:
+        status = "partially_verified"
+    return AlgebraVerificationReport(status=status, checks=checks, method=["differentiate_back", "newton_leibniz"])
+
+
+def _verify_limit(expression: sp.Expr, variable: sp.Symbol, point: sp.Expr, direction: str, result: sp.Expr) -> AlgebraVerificationReport:
+    checks: list[AlgebraVerificationCheck] = []
+    recomputed = sp.simplify(sp.limit(expression, variable, point, dir=direction))
+    symbolic_ok = sp.simplify(recomputed - result) == 0 if recomputed.is_number and result.is_number else recomputed == result or sp.simplify(recomputed - result) == 0
+    checks.append(AlgebraVerificationCheck(
+        name="limit_recompute",
+        status="pass" if symbolic_ok else "fail",
+        detail="Tính lại giới hạn và so khớp kết quả.",
+        latex=sp.latex(result),
+    ))
+    numeric_ok = _numeric_limit_sample(expression, variable, point, direction, result)
+    checks.append(AlgebraVerificationCheck(
+        name="limit_numeric_approach",
+        status="pass" if numeric_ok is True else "warn" if numeric_ok is None else "fail",
+        detail="Lấy mẫu hàm khi tiến gần điểm giới hạn.",
+    ))
+    if any(check.status == "fail" for check in checks):
+        status = "failed"
+    elif all(check.status == "pass" for check in checks):
+        status = "verified"
+    else:
+        status = "partially_verified"
+    return AlgebraVerificationReport(status=status, checks=checks, method=["sympy.limit", "numeric_approach"])
+
+
+def _numeric_derivative_check(expression: sp.Expr, variable: sp.Symbol, derivative: sp.Expr, order: int) -> bool | None:
+    if order != 1:
+        return None
+    samples = [sp.Rational(1, 2), sp.Integer(1), sp.Integer(2), sp.Rational(-1, 2), sp.Integer(-1)]
+    h = sp.Rational(1, 1000)
+    checked = 0
+    for x0 in samples:
+        try:
+            f_plus = expression.subs(variable, x0 + h)
+            f_minus = expression.subs(variable, x0 - h)
+            approx = sp.simplify((f_plus - f_minus) / (2 * h))
+            exact = derivative.subs(variable, x0)
+            if not (approx.is_real is not False and exact.is_real is not False):
+                continue
+            err = abs(complex(sp.N(approx - exact)))
+            if err > 1e-3:
+                return False
+            checked += 1
+        except Exception:
+            continue
+    if checked == 0:
+        return None
+    return True
+
+
+def _numeric_function_match(left: sp.Expr, right: sp.Expr, variable: sp.Symbol) -> bool | None:
+    samples = [sp.Rational(1, 2), sp.Integer(1), sp.Integer(2), sp.Rational(-1, 2)]
+    checked = 0
+    for x0 in samples:
+        try:
+            lv = left.subs(variable, x0)
+            rv = right.subs(variable, x0)
+            err = abs(complex(sp.N(lv - rv)))
+            if err > 1e-4:
+                return False
+            checked += 1
+        except Exception:
+            continue
+    if checked == 0:
+        return None
+    return True
+
+
+def _numeric_limit_sample(expression: sp.Expr, variable: sp.Symbol, point: sp.Expr, direction: str, result: sp.Expr) -> bool | None:
+    if not (result.is_number or result in {sp.oo, -sp.oo}):
+        return None
+    offsets = [sp.Rational(1, 10), sp.Rational(1, 100), sp.Rational(1, 1000)]
+    checked = 0
+    for offset in offsets:
+        try:
+            if direction == "-":
+                x0 = point - offset
+            elif direction == "+":
+                x0 = point + offset
+            else:
+                x0 = point + offset
+            value = expression.subs(variable, x0)
+            if result in {sp.oo, -sp.oo}:
+                magnitude = abs(complex(sp.N(value)))
+                if magnitude < 10:
+                    return False
+            else:
+                err = abs(complex(sp.N(value - result)))
+                if err > 0.2:
+                    return False
+            checked += 1
+        except Exception:
+            continue
+    if checked == 0:
+        return None
+    return True
 
 
 def _derivative_steps(template: CalculusTemplate, derivative: sp.Expr) -> list[AlgebraSolveStep]:
@@ -431,7 +646,13 @@ def _parse_template(text: str, topic: str, default_variable: sp.Symbol) -> Calcu
     except Exception as exc:
         raise ValueError(f"Không đọc được biểu thức giải tích: {exc}") from exc
     if name == "derivative":
-        return CalculusTemplate(kind="calculus_derivative", expression=expression, variable=variable, order=int(args.get("order", "1")))
+        try:
+            order = int(args.get("order", "1"))
+        except Exception as exc:
+            raise ValueError("order đạo hàm phải là số nguyên.") from exc
+        if order < 1 or order > 5:
+            raise ValueError("order đạo hàm cần nằm trong 1..5.")
+        return CalculusTemplate(kind="calculus_derivative", expression=expression, variable=variable, order=order)
     if name == "derivative_by_definition":
         point = sp.sympify(args["at"], locals=local_dict) if "at" in args else None
         return CalculusTemplate(kind="calculus_derivative_by_definition", expression=expression, variable=variable, point=point)

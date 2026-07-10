@@ -7,7 +7,14 @@ from app.services.algebra.parser import ParsedAlgebraProblem
 
 def classify_algebra_problem(problem: ParsedAlgebraProblem) -> str:
     if len(problem.relations) > 1:
-        return "system"
+        equalities = [isinstance(rel, sp.Equality) for rel in problem.relations]
+        if all(equalities):
+            return "system"
+        if not any(equalities):
+            # Multi-inequality / chained inequality → inequality solver intersection path
+            return "inequality"
+        # Mixed equality + inequality is not handled by system or inequality solvers.
+        return "unsupported"
     if problem.relation is None:
         if problem.topic != "auto":
             return problem.topic
@@ -28,12 +35,21 @@ def classify_algebra_problem(problem: ParsedAlgebraProblem) -> str:
             return "complex"
         return "expression"
     expression = problem.relation.lhs - problem.relation.rhs
+    is_equality = isinstance(problem.relation, sp.Equality)
     if expression.has(sp.I) or problem.domain == "C":
         return "complex"
-    if expression.has(sp.log) or expression.has(sp.exp) or any(isinstance(power, sp.Pow) and power.exp.has(*expression.free_symbols) for power in expression.atoms(sp.Pow)):
-        return "exponential_log"
-    if any(expression.has(func) for func in (sp.sin, sp.cos, sp.tan, sp.cot)):
-        return "trigonometry"
-    if problem.topic != "auto":
+    has_exp_log = (
+        expression.has(sp.log)
+        or expression.has(sp.exp)
+        or any(isinstance(power, sp.Pow) and power.exp.has(*expression.free_symbols) for power in expression.atoms(sp.Pow))
+    )
+    has_trig = any(expression.has(func) for func in (sp.sin, sp.cos, sp.tan, sp.cot))
+    # Inequality with exp/log/trig → inequality solver (exp_log/trig solvers are equality-only).
+    if has_exp_log:
+        return "exponential_log" if is_equality else "inequality"
+    if has_trig:
+        return "trigonometry" if is_equality else "inequality"
+    # Relation type wins over a coarse topic=equation/inequality hint (e.g. "!=" must not enter equation solver).
+    if problem.topic not in {"auto", "equation", "inequality"}:
         return problem.topic
-    return "equation" if isinstance(problem.relation, sp.Equality) else "inequality"
+    return "equation" if is_equality else "inequality"

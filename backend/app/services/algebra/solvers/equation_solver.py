@@ -39,9 +39,16 @@ def solve_equation(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
     steps.append(method_step(len(steps) + 1, detect_primary_technique("equation", raw_expression, variable)))
     try:
         solution_set = sp.solveset(raw_expression, variable, domain=problem.sympy_domain)
+        if problem.solve_interval is not None:
+            solution_set = solution_set.intersect(problem.solve_interval)
     except Exception as exc:
         return _unsupported(problem, f"SymPy chưa giải được phương trình này: {exc}")
     values = solution_values(solution_set)
+    interval_note = (
+        f"Nghiệm đã được lọc theo khoảng người dùng chọn: {sp.latex(problem.solve_interval)}."
+        if problem.solve_interval is not None
+        else None
+    )
     
     if values is not None and len(values) > 0:
         roots_latex = ", ".join(sp.latex(sp.Eq(variable, val, evaluate=False)) for val in values)
@@ -105,7 +112,10 @@ def solve_equation(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
         milestones=milestones,
         verification=verification,
         assumptions=assumptions,
-        warnings=[] if values is not None else ["Tập nghiệm symbolic không hữu hạn nên chỉ kiểm chứng ở mức biểu diễn tập nghiệm."],
+        warnings=[
+            *([] if values is not None else ["Tập nghiệm symbolic không hữu hạn nên chỉ kiểm chứng ở mức biểu diễn tập nghiệm."]),
+            *([interval_note] if interval_note else []),
+        ],
         errors=[] if status == "solved" else ["Kiểm chứng nghiệm thất bại."],
     )
 

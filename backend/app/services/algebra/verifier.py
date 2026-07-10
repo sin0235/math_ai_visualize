@@ -7,53 +7,130 @@ from app.services.algebra.parser import ParsedAlgebraProblem
 
 
 def verify_finite_solutions(problem: ParsedAlgebraProblem, solutions: list[sp.Expr]) -> AlgebraVerificationReport:
-    domain_checks = _domain_checks(problem, solutions)
     checks: list[AlgebraVerificationCheck] = []
     if problem.relation is None:
-        return AlgebraVerificationReport(status="skipped", checks=[AlgebraVerificationCheck(name="relation_present", status="skip", detail="Không có phương trình/bất phương trình để kiểm chứng.")], method=[])
-    checks.extend(domain_checks)
+        return AlgebraVerificationReport(
+            status="skipped",
+            checks=[AlgebraVerificationCheck(name="relation_present", status="skip", detail="Không có phương trình/bất phương trình để kiểm chứng.")],
+            method=[],
+        )
+    checks.extend(_domain_checks(problem, solutions))
     relation = problem.relation
     variable = problem.variable
     for solution in solutions:
-        ok = _check_relation(relation, variable, solution)
-        checks.append(AlgebraVerificationCheck(
-            name="candidate_substitution",
-            status="pass" if ok else "fail",
-            detail=f"Thay {variable} = {sp.sstr(solution)} vào biểu thức gốc {'đúng' if ok else 'không đúng'}.",
-            latex=f"{sp.latex(variable)} = {sp.latex(solution)}",
-        ))
+        outcome = _check_relation(relation, variable, solution)
+        if outcome is None:
+            checks.append(AlgebraVerificationCheck(
+                name="candidate_substitution",
+                status="warn",
+                detail=f"Không kiểm chứng được {variable} = {sp.sstr(solution)} (lỗi engine/biểu thức chưa xác định).",
+                latex=f"{sp.latex(variable)} = {sp.latex(solution)}",
+            ))
+        else:
+            checks.append(AlgebraVerificationCheck(
+                name="candidate_substitution",
+                status="pass" if outcome else "fail",
+                detail=f"Thay {variable} = {sp.sstr(solution)} vào biểu thức gốc {'đúng' if outcome else 'không đúng'}.",
+                latex=f"{sp.latex(variable)} = {sp.latex(solution)}",
+            ))
     if not solutions:
         checks.append(AlgebraVerificationCheck(
             name="empty_solution_set",
             status="warn",
-            detail="Phương trình không có nghiệm để thử lại bằng cách thay số. Kết luận vô nghiệm được kiểm tra từ các phép biến đổi đại số.",
+            detail="Solver trả tập rỗng; chưa chứng minh độc lập vô nghiệm (solver_returned_empty).",
         ))
+        return AlgebraVerificationReport(status="partially_verified", checks=checks, method=["domain", "substitution"])
+    if any(check.status == "fail" for check in checks):
+        status = "failed"
+    elif any(check.status == "warn" for check in checks):
         status = "partially_verified"
+    elif checks and all(check.status == "pass" for check in checks):
+        status = "verified"
     else:
-        status = "verified" if checks and all(check.status == "pass" for check in checks) else "failed"
+        status = "partially_verified"
     return AlgebraVerificationReport(status=status, checks=checks, method=["domain", "substitution"])
 
 
 def verify_solution_set(problem: ParsedAlgebraProblem, solution_set: sp.Set) -> AlgebraVerificationReport:
+    """Symbolic set check — never claim fully verified solely because the set is non-empty."""
     if problem.relation is None:
         return AlgebraVerificationReport(status="skipped", checks=[], method=[])
-    checks = [AlgebraVerificationCheck(
+    checks: list[AlgebraVerificationCheck] = []
+    if isinstance(solution_set, sp.ConditionSet):
+        checks.append(AlgebraVerificationCheck(
+            name="condition_set_detected",
+            status="warn",
+            detail="Kết quả còn dạng ConditionSet (chưa rút gọn tường minh); không coi là đã kiểm chứng đầy đủ.",
+            latex=sp.latex(solution_set),
+        ))
+        return AlgebraVerificationReport(status="partially_verified", checks=checks, method=["solveset"])
+    if solution_set is sp.EmptySet:
+        checks.append(AlgebraVerificationCheck(
+            name="empty_solution_set",
+            status="warn",
+            detail="Tập nghiệm rỗng theo solver; chưa chứng minh độc lập vô nghiệm.",
+            latex=sp.latex(solution_set),
+        ))
+        return AlgebraVerificationReport(status="partially_verified", checks=checks, method=["solveset"])
+    if _is_unevaluated_set(solution_set):
+        checks.append(AlgebraVerificationCheck(
+            name="unevaluated_solution_set",
+            status="warn",
+            detail="Tập nghiệm symbolic chưa evaluate đầy đủ; chỉ kiểm chứng một phần.",
+            latex=sp.latex(solution_set),
+        ))
+        return AlgebraVerificationReport(status="partially_verified", checks=checks, method=["solveset"])
+    checks.append(AlgebraVerificationCheck(
         name="symbolic_solution_set",
-        status="pass" if solution_set is not sp.EmptySet else "warn",
-        detail="SymPy đã trả về tập nghiệm symbolic; kiểm chứng bằng biểu diễn tập nghiệm.",
+        status="warn",
+        detail="SymPy trả tập nghiệm symbolic; chưa thay số/chứng minh độc lập — đánh dấu partially_verified.",
         latex=sp.latex(solution_set),
-    )]
-    return AlgebraVerificationReport(status="verified" if solution_set is not sp.EmptySet else "partially_verified", checks=checks, method=["solveset"])
+    ))
+    return AlgebraVerificationReport(status="partially_verified", checks=checks, method=["solveset"])
 
 
 def verify_inequality_solution_set(problem: ParsedAlgebraProblem, solution_set: sp.Set, samples: list[sp.Expr]) -> AlgebraVerificationReport:
-    base = verify_solution_set(problem, solution_set)
     if problem.relation is None:
-        return base
-    checks = list(base.checks)
+        return AlgebraVerificationReport(status="skipped", checks=[], method=[])
+    checks: list[AlgebraVerificationCheck] = []
+    if isinstance(solution_set, sp.ConditionSet):
+        checks.append(AlgebraVerificationCheck(
+            name="condition_set_detected",
+            status="warn",
+            detail="Bất phương trình còn ConditionSet; chưa kiểm chứng độc lập.",
+            latex=sp.latex(solution_set),
+        ))
+        return AlgebraVerificationReport(status="partially_verified", checks=checks, method=["solveset"])
+
+    checks.append(AlgebraVerificationCheck(
+        name="symbolic_solution_set",
+        status="pass" if solution_set is not None else "warn",
+        detail="Đã có tập nghiệm symbolic từ solver bất phương trình.",
+        latex=sp.latex(solution_set),
+    ))
+    relations = _problem_relations(problem)
+    sample_checked = 0
     for sample in samples[:8]:
-        in_set = _point_in_solution_set(solution_set, sample)
-        relation_ok = _check_relation(problem.relation, problem.variable, sample)
+        try:
+            in_set = _point_in_solution_set(solution_set, sample)
+            relation_ok = _check_all_relations(relations, problem.variable, sample)
+        except Exception:
+            checks.append(AlgebraVerificationCheck(
+                name="inequality_sample",
+                status="warn",
+                detail=f"Không kiểm chứng được điểm {problem.variable} = {sp.sstr(sample)}.",
+                latex=rf"{sp.latex(problem.variable)}={sp.latex(sample)}",
+            ))
+            continue
+        if relation_ok is None:
+            checks.append(AlgebraVerificationCheck(
+                name="inequality_sample",
+                status="warn",
+                detail=f"Không xác định quan hệ tại {problem.variable} = {sp.sstr(sample)}.",
+                latex=rf"{sp.latex(problem.variable)}={sp.latex(sample)}",
+            ))
+            continue
+        sample_checked += 1
         checks.append(AlgebraVerificationCheck(
             name="inequality_sample",
             status="pass" if in_set == relation_ok else "fail",
@@ -64,8 +141,45 @@ def verify_inequality_solution_set(problem: ParsedAlgebraProblem, solution_set: 
             ),
             latex=rf"{sp.latex(problem.variable)}={sp.latex(sample)}",
         ))
-    status = "verified" if checks and all(check.status != "fail" for check in checks) else "failed"
+    if any(check.status == "fail" for check in checks):
+        status = "failed"
+    elif sample_checked >= 2 and all(check.status != "fail" for check in checks) and not any(check.status == "warn" and check.name == "inequality_sample" for check in checks):
+        # Sample cross-check only — not independent proof; never claim full verified.
+        status = "partially_verified"
+        checks.append(AlgebraVerificationCheck(
+            name="sample_only_scope",
+            status="warn",
+            detail="Kiểm chứng bằng điểm mẫu; không thay thế bảng xét dấu/chứng minh đầy đủ.",
+        ))
+    else:
+        status = "partially_verified"
     return AlgebraVerificationReport(status=status, checks=checks, method=["solveset", "sample_substitution"])
+
+
+def _problem_relations(problem: ParsedAlgebraProblem) -> list[sp.Relational]:
+    if problem.relations:
+        return [rel for rel in problem.relations if rel is not None]
+    if problem.relation is not None:
+        return [problem.relation]
+    return []
+
+
+def _check_all_relations(relations: list[sp.Relational], variable: sp.Symbol, value: sp.Expr) -> bool | None:
+    """All relations must hold (And) for multi/chained inequalities."""
+    if not relations:
+        return None
+    outcomes: list[bool] = []
+    for relation in relations:
+        outcome = _check_relation(relation, variable, value)
+        if outcome is None:
+            return None
+        outcomes.append(outcome)
+    return all(outcomes)
+
+
+def _is_unevaluated_set(solution_set: sp.Set) -> bool:
+    # Reserved for future unevaluated-set detection beyond ConditionSet.
+    return False
 
 
 def _domain_checks(problem: ParsedAlgebraProblem, solutions: list[sp.Expr]) -> list[AlgebraVerificationCheck]:
@@ -76,8 +190,18 @@ def _domain_checks(problem: ParsedAlgebraProblem, solutions: list[sp.Expr]) -> l
     checks: list[AlgebraVerificationCheck] = []
     domain_expressions = _domain_expressions(expression, variable)
     for solution in solutions:
-        ok = all(_check_domain_expression(item, variable, solution) for item in domain_expressions)
-        if domain_expressions:
+        outcomes = [_check_domain_expression(item, variable, solution) for item in domain_expressions]
+        if not domain_expressions:
+            continue
+        if any(outcome is None for outcome in outcomes):
+            checks.append(AlgebraVerificationCheck(
+                name="domain_constraints_valid",
+                status="warn",
+                detail=f"Không kiểm tra đủ điều kiện xác định cho nghiệm {sp.sstr(solution)}.",
+                latex=f"{sp.latex(variable)} = {sp.latex(solution)}",
+            ))
+        else:
+            ok = all(outcomes)
             checks.append(AlgebraVerificationCheck(
                 name="domain_constraints_valid",
                 status="pass" if ok else "fail",
@@ -107,7 +231,7 @@ def _domain_expressions(expression: sp.Expr, variable: sp.Symbol) -> list[tuple[
     return expressions
 
 
-def _check_domain_expression(constraint: tuple[sp.Expr, str], variable: sp.Symbol, value: sp.Expr) -> bool:
+def _check_domain_expression(constraint: tuple[sp.Expr, str], variable: sp.Symbol, value: sp.Expr) -> bool | None:
     expression, kind = constraint
     try:
         checked = sp.simplify(expression.subs(variable, value))
@@ -117,10 +241,10 @@ def _check_domain_expression(constraint: tuple[sp.Expr, str], variable: sp.Symbo
             return bool(checked >= 0)
         return checked != 0
     except Exception:
-        return False
+        return None
 
 
-def _check_relation(relation: sp.Relational, variable: sp.Symbol, value: sp.Expr) -> bool:
+def _check_relation(relation: sp.Relational, variable: sp.Symbol, value: sp.Expr) -> bool | None:
     try:
         substituted = relation.subs(variable, value)
         simplified = sp.simplify(substituted)
@@ -130,7 +254,7 @@ def _check_relation(relation: sp.Relational, variable: sp.Symbol, value: sp.Expr
             return False
         return bool(simplified)
     except Exception:
-        return False
+        return None
 
 
 def _point_in_solution_set(solution_set: sp.Set, point: sp.Expr) -> bool:

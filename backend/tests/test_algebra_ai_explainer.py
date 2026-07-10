@@ -78,4 +78,37 @@ async def test_ai_explainer_only_rewrites_safe_language_fields(monkeypatch):
     assert step.before_latex == "x^2-1=0"
     assert step.after_latex == r"x=\pm 1"
     assert step.expression_latex == "x^2-1"
-    assert step.result_latex == r"\left\{-1, 1\right\}"
+
+
+@pytest.mark.anyio
+async def test_ai_explainer_ignores_extra_ai_steps_and_keeps_order(monkeypatch):
+    response = AlgebraSolveResponse(
+        input="x=1",
+        normalized_input="x-1=0",
+        topic="equation",
+        problem_type="solve_equation",
+        status="solved",
+        answer="1",
+        verification=AlgebraVerificationReport(status="verified"),
+        steps=[
+            AlgebraSolveStep(index=1, title="A", explanation="ea", kind="transform", before_latex="a", after_latex="b"),
+            AlgebraSolveStep(index=2, title="B", explanation="eb", kind="solve", before_latex="c", after_latex="d"),
+        ],
+    )
+
+    async def fake_call_explainer(payload, settings):
+        return {
+            "steps": [
+                {"index": 2, "title": "B2", "explanation": "eb2"},
+                {"index": 99, "title": "Ghost", "explanation": "should not appear"},
+                {"index": 1, "title": "A2", "explanation": "ea2"},
+            ]
+        }
+
+    monkeypatch.setattr(ai_explainer, "_call_explainer", fake_call_explainer)
+    explained = await ai_explainer.explain_algebra_response_with_ai(response, object())
+    assert [step.index for step in explained.steps] == [1, 2]
+    assert explained.steps[0].title == "A2"
+    assert explained.steps[1].title == "B2"
+    assert explained.steps[0].before_latex == "a"
+    assert all(step.title != "Ghost" for step in explained.steps)

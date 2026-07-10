@@ -2,7 +2,9 @@ import sympy as sp
 
 from app.services.algebra.normalizer import normalize_algebra_input
 from app.services.algebra.interpreter import interpret_algebra_input
-from app.services.algebra.parser import parse_algebra_problem
+import pytest
+
+from app.services.algebra.parser import AlgebraParseError, parse_algebra_problem
 from app.schemas.algebra import AlgebraSolveRequest
 
 
@@ -137,6 +139,17 @@ def test_parser_parses_equation():
     problem = parse_algebra_problem("x^2 - 5*x + 6 = 0")
     assert problem.topic == "equation"
     assert isinstance(problem.relation, sp.Equality)
+
+
+def test_parser_rejects_huge_integer():
+    with pytest.raises(AlgebraParseError, match="Số nguyên"):
+        parse_algebra_problem("1" * 21 + "+x")
+
+
+def test_parser_system_defaults_to_xy_when_variables_empty():
+    problem = parse_algebra_problem("x+y=3; x-y=1", topic="system", variables=None)
+    assert [str(symbol) for symbol in problem.variables] == ["x", "y"]
+    assert problem.topic == "system"
 
 
 def test_parser_parses_inequality():
