@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import sympy as sp
 
 from app.schemas.algebra import AlgebraSolutionSet, AlgebraSolutionValue, AlgebraSolveResponse, AlgebraSolveStep, AlgebraVerificationCheck, AlgebraVerificationReport
@@ -21,10 +23,17 @@ def solve_trigonometry(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
         return _unsupported(problem, "Đầu vào không phải phương trình lượng giác.")
     variable = problem.variable
     expression = problem.relation.lhs - problem.relation.rhs
-    simplified_expression = sp.simplify(expression)
     if not any(expression.has(func) for func in TRIG_FUNCTIONS):
         return _unsupported(problem, "Phương trình không chứa hàm lượng giác được hỗ trợ.")
+    angle_unit = getattr(problem, "angle_unit", "radian") or "radian"
+    work_expression = expression
+    if angle_unit == "degree":
+        # Interpret variable as degrees: solve f(x·π/180)=0 so solutions are in degrees.
+        work_expression = expression.subs(variable, variable * sp.pi / 180)
+    simplified_expression = sp.simplify(work_expression)
     assumptions = _unique(domain_assumptions_from_expression(expression, variable) + trig_domain_assumptions(expression, variable))
+    if angle_unit == "degree":
+        assumptions = [*assumptions, "Góc tính theo độ (°); biến được quy đổi x·π/180 khi giải."]
 
     milestones: list[str] = []
     if problem.relation is not None:
@@ -35,6 +44,7 @@ def solve_trigonometry(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
         steps.append(domain_step(len(steps) + 1, assumptions))
 
     # Default: general solution on R. When solve_interval is set, solve/filter on that interval.
+    # Interval bounds are interpreted in the same unit as angle_unit (degrees if degree mode).
     try:
         if problem.solve_interval is not None and isinstance(problem.solve_interval, sp.Interval):
             solution_set = sp.solveset(simplified_expression, variable, domain=problem.solve_interval)
@@ -80,7 +90,12 @@ def solve_trigonometry(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
         latex=sp.latex(solution_set),
         values=[AlgebraSolutionValue(text=sp.sstr(value), latex=sp.latex(value), approximate=str(sp.N(value, 8))) for value in values or []],
     )
-    verification = verify_finite_solutions(problem, values) if values is not None else verify_solution_set(problem, solution_set)
+    verify_problem = _degree_aware_verify_problem(problem, variable, angle_unit)
+    verification = (
+        verify_finite_solutions(verify_problem, values)
+        if values is not None
+        else verify_solution_set(verify_problem, solution_set)
+    )
     status = "solved" if verification.status in {"verified", "partially_verified"} else "error"
     steps.append(conclusion_step(len(steps) + 1, answer, sp.latex(solution_set)))
     if values is not None and len(values) > 0:
@@ -90,6 +105,8 @@ def solve_trigonometry(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
         milestones.append(f"Tập nghiệm: {sp.latex(solution_set)}")
 
     warnings: list[str] = []
+    if angle_unit == "degree":
+        warnings.append("Đang giải theo đơn vị độ (°); nghiệm x là số đo góc theo độ.")
     if values is None and problem.solve_interval is None:
         warnings.append("Nghiệm lượng giác trên R được biểu diễn dạng tổng quát/symbolic; kiểm chứng ở mức tập nghiệm.")
     if problem.solve_interval is not None and values is not None:
@@ -112,6 +129,30 @@ def solve_trigonometry(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
         assumptions=assumptions,
         warnings=warnings,
         errors=[] if status == "solved" else ["Kiểm chứng nghiệm lượng giác thất bại."],
+    )
+
+
+def _degree_aware_verify_problem(
+    problem: ParsedAlgebraProblem,
+    variable: sp.Symbol,
+    angle_unit: str,
+) -> ParsedAlgebraProblem:
+    """Rewrite relations so degree-valued roots substitute as radians into trig functions."""
+    if angle_unit != "degree":
+        return problem
+    scale = variable * sp.pi / 180
+
+    def _scale_rel(rel: sp.Relational | None) -> sp.Relational | None:
+        if rel is None:
+            return None
+        return rel.subs(variable, scale)
+
+    relations = [_scale_rel(rel) for rel in problem.relations]
+    relations = [rel for rel in relations if rel is not None]
+    return replace(
+        problem,
+        relation=_scale_rel(problem.relation),
+        relations=relations or problem.relations,
     )
 
 

@@ -103,6 +103,16 @@ def _structured_from_natural_language(raw: str) -> str | None:
         match = re.search(r"\b(\d+)\b", plain)
         if match:
             return f"{match.group(1)}!"
+    # Classical probability: "xac suat 3/10", "xac suat bang 2 tren 5"
+    probability = re.search(
+        r"xac suat(?:\s+(?:bang|la|cua))?\s*(\d+)\s*(?:/|tren)\s*(\d+)",
+        plain,
+    )
+    if probability:
+        return f"P({probability.group(1)}/{probability.group(2)})"
+    probability_frac = re.search(r"\bP\s*\(\s*(\d+)\s*/\s*(\d+)\s*\)", text, re.IGNORECASE)
+    if probability_frac:
+        return f"P({probability_frac.group(1)}/{probability_frac.group(2)})"
     coefficient = re.search(r"he so cua\s+([a-zA-Z])\^?(\d+)\s+trong\s+(.+)$", plain)
     if coefficient:
         variable, power, expression = coefficient.groups()
@@ -385,7 +395,12 @@ def _detect_topic(raw: str, normalized: str) -> str:
     plain = _strip_accents(raw.lower())
     if normalized.startswith(("arithmetic(", "arithmetic_sum(", "geometric(", "geometric_sum(")):
         return "sequence"
-    if normalized.startswith(("C(", "A(", "binomial(", "factorial(", "coefficient(")) or normalized.endswith("!"):
+    if normalized.startswith((
+        "C(", "A(", "binomial(", "factorial(", "coefficient(",
+        "P(", "P_not(", "P_and(", "Pcomb(", "probability(", "probability_not(", "probability_and(", "probability_comb(",
+    )) or normalized.endswith("!"):
+        return "combinatorics_probability"
+    if any(key in plain for key in ("xac suat", "xác suất", "probability")):
         return "combinatorics_probability"
     if normalized.startswith(("quadratic_double_root(", "quadratic_has_two_roots(", "quadratic_has_real_root(", "quadratic_no_real_root(", "quadratic_positive_all(")):
         return "parameter"

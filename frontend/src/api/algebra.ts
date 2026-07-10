@@ -1,4 +1,4 @@
-import { requestJson } from './core';
+import { ApiError, apiUrl, fetchWithRetry, networkApiError, parseApiError } from './core';
 
 export type AlgebraTopic = 'auto' | 'equation' | 'inequality' | 'exponential_log' | 'trigonometry' | 'complex' | 'sequence' | 'combinatorics_probability' | 'system' | 'parameter' | 'calculus_derivative' | 'calculus_limit' | 'calculus_integral';
 export type AlgebraStatus = 'solved' | 'partial' | 'unsupported' | 'error';
@@ -23,6 +23,8 @@ export interface AlgebraInterval {
   closed_end?: boolean;
 }
 
+export type AlgebraAngleUnit = 'radian' | 'degree';
+
 export interface AlgebraSolveRequest {
   input: string;
   input_format?: AlgebraInputFormat;
@@ -30,6 +32,7 @@ export interface AlgebraSolveRequest {
   variables?: string[];
   parameters?: string[];
   domain?: 'R' | 'C' | 'N' | 'Z';
+  angle_unit?: AlgebraAngleUnit;
   interval?: AlgebraInterval | null;
   options?: AlgebraSolveOptions;
 }
@@ -121,10 +124,40 @@ export interface AlgebraSolveResponse {
 }
 
 export async function solveAlgebra(payload: AlgebraSolveRequest): Promise<AlgebraSolveResponse> {
-  return requestJson('/api/algebra/solve', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'include',
-    body: JSON.stringify(payload),
-  }, 'Không thể giải bài đại số.');
+  try {
+    const response = await fetchWithRetry(apiUrl('/api/algebra/solve'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(payload),
+    });
+    const body = await response.text();
+    if (!body.trim()) throw new ApiError('Không thể giải bài đại số.');
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(body);
+    } catch {
+      throw new ApiError('Không thể giải bài đại số.');
+    }
+    // 504 may still carry a structured AlgebraSolveResponse (request_id, warnings, timings).
+    if (
+      response.status === 504
+      && parsed
+      && typeof parsed === 'object'
+      && 'status' in (parsed as object)
+      && 'answer' in (parsed as object)
+    ) {
+      return parsed as AlgebraSolveResponse;
+    }
+    if (!response.ok) {
+      throw await parseApiError(
+        new Response(body, { status: response.status, headers: response.headers }),
+        `Không thể giải bài đại số. HTTP ${response.status}`,
+      );
+    }
+    return parsed as AlgebraSolveResponse;
+  } catch (caught) {
+    if (caught instanceof ApiError) throw caught;
+    throw networkApiError(caught, 'Không thể giải bài đại số.');
+  }
 }

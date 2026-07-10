@@ -115,6 +115,9 @@ class Settings(BaseSettings):
     algebra_max_concurrent: int = 8
     # Spawn a child process for deterministic solve so timeout can hard-kill SymPy.
     algebra_process_isolation: bool = True
+    # Rolling 24h quotas (RateLimitRepository window); guests counted by IP.
+    algebra_daily_limit: int = 200
+    algebra_ai_daily_limit: int = 50
     dev_bypass_auth: bool = False
     user_secret_encryption_key: str | None = None
 

@@ -50,6 +50,8 @@ class ParsedAlgebraProblem:
     domain: str = "R"
     # Optional solve interval (e.g. [0, 2π)); None means full problem domain.
     solve_interval: sp.Set | None = None
+    # Angle measure for trig solvers: "radian" (default) or "degree".
+    angle_unit: Literal["radian", "degree"] = "radian"
 
     @property
     def sympy_domain(self) -> sp.Set:

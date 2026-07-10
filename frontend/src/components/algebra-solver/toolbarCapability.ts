@@ -49,6 +49,9 @@ export const ALGEBRA_TOOLBAR_SUPPORT: Record<string, ToolbarSupport> = {
   infty: 'supported',
   posInfty: 'supported',
   negInfty: 'supported',
+  // Degree is supported via angle_unit=degree (toolbar insert ° still hidden;
+  // unit is chosen in the angle-unit select to avoid ambiguous mixes).
+  degree: 'hidden',
   // Hidden until backend supports them well
   sum: 'hidden',
   product: 'hidden',
@@ -64,7 +67,6 @@ export const ALGEBRA_TOOLBAR_SUPPORT: Record<string, ToolbarSupport> = {
   exists: 'hidden',
   Rightarrow: 'hidden',
   Leftrightarrow: 'hidden',
-  degree: 'hidden',
 };
 
 export function isToolbarActionSupported(action: string): boolean {

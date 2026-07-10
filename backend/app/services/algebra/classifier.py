@@ -21,7 +21,14 @@ def classify_algebra_problem(problem: ParsedAlgebraProblem) -> str:
         normalized = problem.normalized_input.strip()
         if normalized.startswith(("arithmetic(", "arithmetic_sum(", "geometric(", "geometric_sum(")):
             return "sequence"
-        if normalized.startswith(("C(", "A(", "binomial(", "factorial(", "coefficient(")) or normalized.endswith("!"):
+        if (
+            normalized.startswith((
+                "C(", "A(", "binomial(", "factorial(", "coefficient(",
+                "P(", "P_not(", "P_and(", "Pcomb(",
+                "probability(", "probability_not(", "probability_and(", "probability_comb(",
+            ))
+            or normalized.endswith("!")
+        ):
             return "combinatorics_probability"
         if normalized.startswith(("quadratic_double_root(", "quadratic_has_two_roots(", "quadratic_has_real_root(", "quadratic_no_real_root(", "quadratic_positive_all(")):
             return "parameter"

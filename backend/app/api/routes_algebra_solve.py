@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import JSONResponse
 
 from app.api.deps import enforce_rate_limit, require_trusted_origin
 from app.api.routes_render import enforce_render_access
@@ -17,6 +18,7 @@ from app.services.api_errors import api_error
 from app.services.user_ai_settings import UserAiSettingsError
 
 router = APIRouter(prefix="/api/algebra", tags=["algebra"])
+_DAY = 86_400
 
 
 @router.post("/solve", response_model=AlgebraSolveResponse, dependencies=[Depends(require_trusted_origin)])
@@ -25,10 +27,12 @@ async def solve_algebra_endpoint(
     http_request: Request,
     db: DatabaseClient = Depends(get_database),
     settings: Settings = Depends(get_settings),
-) -> AlgebraSolveResponse:
+) -> AlgebraSolveResponse | JSONResponse:
     uses_ai = request.options.use_ai_extraction or request.options.ai_explanation
     user = await _active_user_from_request(http_request, db)
     await enforce_rate_limit(db, http_request, user, "algebra_solve", 60 if user else 20, 60, settings)
+    daily = max(1, int(settings.algebra_daily_limit or 200))
+    await enforce_rate_limit(db, http_request, user, "algebra_solve_daily", daily, _DAY, settings)
     byok_used = False
     if uses_ai:
         if user is None:
@@ -36,6 +40,8 @@ async def solve_algebra_endpoint(
         if settings.require_email_verification and user.email_verified_at is None:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Bạn cần xác minh email trước khi dùng AI nhận dạng đề đại số.")
         await enforce_rate_limit(db, http_request, user, "algebra_ai", 20, 60)
+        ai_daily = max(1, int(settings.algebra_ai_daily_limit or 50))
+        await enforce_rate_limit(db, http_request, user, "algebra_ai_daily", ai_daily, _DAY, settings)
         await enforce_render_access(db, user)
         try:
             byok = await resolve_byok_ai_config(db, user, "solver", settings)
@@ -60,10 +66,18 @@ async def solve_algebra_endpoint(
         except Exception as error:
             message = str(error)
             if "timeout" in message.lower() or "ALGEBRA_TIMEOUT" in message:
-                raise api_error(504, "Phép giải đại số vượt quá thời gian cho phép.", "ALGEBRA_TIMEOUT") from error
+                timeout_body = _timeout_payload(request, message)
+                return JSONResponse(status_code=504, content=timeout_body)
             raise api_error(500, "Lỗi nội bộ khi giải bài đại số.", "ALGEBRA_INTERNAL_ERROR") from error
         if response.problem_type == "timeout" or any("ALGEBRA_TIMEOUT" in item for item in response.errors):
-            raise api_error(504, response.answer or "Phép giải đại số vượt quá thời gian cho phép.", "ALGEBRA_TIMEOUT")
+            # Preserve structured body (request_id, warnings, timings) for the client.
+            return JSONResponse(status_code=504, content=response.model_dump(mode="json"))
+        if user is not None:
+            await AdminRepository(db).record_user_usage_event(
+                user.id,
+                "algebra_solve",
+                {"topic": response.topic, "status": response.status, "request_id": response.request_id},
+            )
         if uses_ai and user is not None and not byok_used:
             await AdminRepository(db).record_user_usage_event(
                 user.id,
@@ -71,6 +85,7 @@ async def solve_algebra_endpoint(
                 {
                     "use_ai_extraction": request.options.use_ai_extraction,
                     "ai_explanation": request.options.ai_explanation,
+                    "request_id": response.request_id,
                 },
             )
         return response
@@ -78,6 +93,19 @@ async def solve_algebra_endpoint(
         # If worker never started (or already finished), this frees the slot.
         # If an orphan worker is still running, leave_worker will free it later.
         slot.release_http()
+
+
+def _timeout_payload(request: AlgebraSolveRequest, message: str) -> dict:
+    return AlgebraSolveResponse(
+        input=request.input,
+        normalized_input=request.input,
+        topic=str(request.topic),
+        problem_type="timeout",
+        status="error",
+        answer="Phép giải đại số vượt quá thời gian cho phép.",
+        errors=[f"ALGEBRA_TIMEOUT: {message}"],
+        warnings=["Timeout; worker process có thể đã bị terminate khi isolation bật."],
+    ).model_dump(mode="json")
 
 
 async def _active_user_from_request(request: Request, db: DatabaseClient) -> UserRecord | None:

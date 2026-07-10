@@ -101,6 +101,7 @@ const MATH_SNIPPET_GROUPS = [
 type MathSnippetAction = (typeof MATH_SNIPPET_GROUPS)[number]['items'][number]['action'];
 
 export type IntervalPreset = '' | 'unit_circle' | 'custom';
+export type AlgebraAngleUnit = 'radian' | 'degree';
 
 export function AlgebraInput({
   input,
@@ -110,6 +111,7 @@ export function AlgebraInput({
   domain,
   variables,
   useAiExtraction,
+  angleUnit,
   intervalPreset,
   intervalStart,
   intervalEnd,
@@ -123,6 +125,7 @@ export function AlgebraInput({
   onDomainChange,
   onVariablesChange,
   onUseAiExtractionChange,
+  onAngleUnitChange,
   onIntervalPresetChange,
   onIntervalStartChange,
   onIntervalEndChange,
@@ -139,6 +142,7 @@ export function AlgebraInput({
   domain: AlgebraDomain;
   variables: string;
   useAiExtraction: boolean;
+  angleUnit: AlgebraAngleUnit;
   intervalPreset: IntervalPreset;
   intervalStart: string;
   intervalEnd: string;
@@ -152,6 +156,7 @@ export function AlgebraInput({
   onDomainChange: (value: AlgebraDomain) => void;
   onVariablesChange: (value: string) => void;
   onUseAiExtractionChange: (value: boolean) => void;
+  onAngleUnitChange: (value: AlgebraAngleUnit) => void;
   onIntervalPresetChange: (value: IntervalPreset) => void;
   onIntervalStartChange: (value: string) => void;
   onIntervalEndChange: (value: string) => void;
@@ -363,6 +368,17 @@ export function AlgebraInput({
             <option value="">Không giới hạn (miền đầy đủ)</option>
             <option value="unit_circle">[0, 2π)</option>
             <option value="custom">Tùy chỉnh…</option>
+          </select>
+        </label>
+        <label className="field-label">
+          Đơn vị góc
+          <select
+            value={angleUnit}
+            onChange={(event) => onAngleUnitChange(event.target.value as AlgebraAngleUnit)}
+            disabled={loading}
+          >
+            <option value="radian">Radian</option>
+            <option value="degree">Độ (°)</option>
           </select>
         </label>
       </div>

@@ -113,6 +113,9 @@ export function AlgebraResult({
               <button type="button" className="algebra-action-btn" onClick={() => downloadMarkdown(result)}>
                 Tải .md
               </button>
+              <button type="button" className="algebra-action-btn" onClick={() => downloadPrintableHtml(result)}>
+                Tải HTML/PDF
+              </button>
             </>
           )}
           {analyzerExpression && (
@@ -301,6 +304,72 @@ function downloadMarkdown(result: AlgebraSolveResponse) {
   anchor.click();
   // Defer revoke so browsers that start download asynchronously still have a live URL.
   window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+/** Printable HTML — open print dialog so user can Save as PDF without extra deps. */
+function downloadPrintableHtml(result: AlgebraSolveResponse) {
+  const html = buildPrintableHtml(result);
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, '_blank', 'noopener,noreferrer');
+  if (win) {
+    win.addEventListener('load', () => {
+      try {
+        win.focus();
+        win.print();
+      } catch {
+        // user can still print manually
+      }
+    });
+  } else {
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `algebra-solution-${(result.request_id || 'export').slice(0, 16)}.html`;
+    anchor.click();
+  }
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+function buildPrintableHtml(result: AlgebraSolveResponse): string {
+  const escape = (value: string) =>
+    value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  const steps = result.steps
+    .filter((step) => step.kind !== 'conclusion')
+    .map((step) => {
+      const body = [
+        step.explanation ? `<p>${escape(step.explanation)}</p>` : '',
+        step.after_latex ? `<p><code>${escape(step.after_latex)}</code></p>` : '',
+      ].join('');
+      return `<section><h3>${step.index}. ${escape(step.title || '')}</h3>${body}</section>`;
+    })
+    .join('\n');
+  return `<!DOCTYPE html>
+<html lang="vi"><head><meta charset="utf-8"/>
+<title>Lời giải đại số</title>
+<style>
+  body{font-family:system-ui,sans-serif;max-width:720px;margin:24px auto;padding:0 16px;color:#111;line-height:1.5}
+  h1{font-size:1.4rem} h2{font-size:1.1rem;margin-top:1.4rem}
+  code,pre{background:#f4f4f5;padding:2px 6px;border-radius:4px}
+  pre{padding:10px;overflow:auto;white-space:pre-wrap}
+  .meta{color:#555;font-size:0.9rem}
+  @media print{body{margin:0}}
+</style></head><body>
+<h1>Kết quả đại số</h1>
+<p class="meta">Trạng thái: ${escape(result.status)} · Topic: ${escape(result.topic)}
+${result.request_id ? ` · ID: ${escape(result.request_id)}` : ''}</p>
+<h2>Đề</h2><pre>${escape(result.input)}</pre>
+<h2>Canonical</h2><pre>${escape(result.normalized_input)}</pre>
+<h2>Đáp án</h2><p>${escape(result.answer)}</p>
+${result.answer_latex ? `<pre>${escape(result.answer_latex)}</pre>` : ''}
+<h2>Các bước</h2>
+${steps || '<p>(không có bước)</p>'}
+<h2>Kiểm chứng</h2><p>${escape(result.verification.status)}</p>
+<script>window.addEventListener('load',function(){/* ready for print */});</script>
+</body></html>`;
 }
 
 function buildMarkdown(result: AlgebraSolveResponse): string {

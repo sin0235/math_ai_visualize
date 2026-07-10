@@ -71,6 +71,8 @@ class AlgebraSolveRequest(BaseModel):
     variables: list[str] = Field(default_factory=list, max_length=8)
     parameters: list[str] = Field(default_factory=list, max_length=8)
     domain: Literal["R", "C", "N", "Z"] = "R"
+    # Radian is the only internal unit; degree rewrites trig args as x*pi/180.
+    angle_unit: Literal["radian", "degree"] = "radian"
     interval: AlgebraInterval | None = None
     options: AlgebraSolveOptions = Field(default_factory=AlgebraSolveOptions)
 

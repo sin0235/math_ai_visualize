@@ -241,3 +241,21 @@ def test_structured_coefficient_rejects_unsafe_expr():
         topic="combinatorics_probability",
     ))
     assert result.status == "unsupported"
+
+
+def test_trig_angle_unit_degree_solves_sin():
+    from app.schemas.algebra import AlgebraInterval, AlgebraSolveRequest
+    from app.services.algebra import solve_algebra
+
+    result = solve_algebra(AlgebraSolveRequest(
+        input="sin(x)=1/2",
+        topic="trigonometry",
+        angle_unit="degree",
+        interval=AlgebraInterval(start="0", end="360", closed_start=True, closed_end=False),
+    ))
+    assert result.status in {"solved", "partial"}
+    assert any("độ" in w.lower() or "degree" in w.lower() for w in result.warnings + result.assumptions)
+    texts = {value.text for value in result.solution_set.values}
+    # Expect 30° and 150° among solutions in [0, 360)
+    assert any("30" in t for t in texts) or "30" in result.answer
+    assert any("150" in t for t in texts) or "150" in result.answer

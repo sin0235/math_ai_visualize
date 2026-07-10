@@ -20,12 +20,13 @@ def solve_combinatorics_probability(problem: ParsedAlgebraProblem) -> AlgebraSol
     normalized = problem.normalized_input.strip()
     steps = [normalize_step(problem)]
     try:
-        result, explanation, latex = _evaluate(normalized)
+        result, explanation, latex, kind = _evaluate(normalized)
     except ValueError as exc:
         return _unsupported(problem, str(exc))
+    title = "Tính xác suất" if kind == "probability" else "Tính toán tổ hợp"
     steps.append(AlgebraSolveStep(
         index=2,
-        title="Tính toán tổ hợp",
+        title=title,
         explanation=explanation,
         expression=normalized,
         expression_latex=latex,
@@ -43,15 +44,25 @@ def solve_combinatorics_probability(problem: ParsedAlgebraProblem) -> AlgebraSol
     ]
     
     verification = AlgebraVerificationReport(
-        status="verified",
-        checks=[AlgebraVerificationCheck(name="combinatorics_constraints_valid", status="pass", detail="Các tham số tổ hợp thỏa điều kiện nguyên không âm trong phạm vi hỗ trợ.")],
+        status="verified" if kind != "probability" else "partially_verified",
+        checks=[
+            AlgebraVerificationCheck(
+                name="combinatorics_constraints_valid" if kind != "probability" else "probability_bounds_valid",
+                status="pass",
+                detail=(
+                    "Các tham số tổ hợp thỏa điều kiện nguyên không âm trong phạm vi hỗ trợ."
+                    if kind != "probability"
+                    else "Xác suất cổ điển 0 ≤ k/n ≤ 1 với n > 0 (rule-based)."
+                ),
+            )
+        ],
         method=["rule_based"],
     )
     return AlgebraSolveResponse(
         input=problem.raw_input,
         normalized_input=problem.normalized_input,
         topic="combinatorics_probability",
-        problem_type="calculate_combinatorics",
+        problem_type="calculate_probability" if kind == "probability" else "calculate_combinatorics",
         status="solved",
         answer=answer,
         answer_latex=sp.latex(result),
@@ -65,17 +76,97 @@ def solve_combinatorics_probability(problem: ParsedAlgebraProblem) -> AlgebraSol
     )
 
 
-def _evaluate(text: str) -> tuple[sp.Expr, str, str]:
+def _evaluate(text: str) -> tuple[sp.Expr, str, str, str]:
+    """Return (result, explanation, latex, kind) where kind is combinatorics|probability."""
+    # Classical probability: P(k/n), P(favorable=k,total=n), probability(k,n)
+    probability = re.fullmatch(
+        r"(?:P|probability)\(\s*(?:favorable\s*=\s*)?(\d+)\s*(?:/|,|\s+total\s*=\s*)\s*(\d+)\s*\)",
+        text,
+        re.IGNORECASE,
+    )
+    if probability:
+        k, n = int(probability.group(1)), int(probability.group(2))
+        if n <= 0:
+            raise ValueError("Mẫu số (tổng số kết quả) phải là số nguyên dương.")
+        if k < 0 or k > n:
+            raise ValueError("Số kết quả thuận lợi k phải thỏa 0 ≤ k ≤ n.")
+        value = sp.Rational(k, n)
+        return (
+            value,
+            f"Xác suất cổ điển P = k/n = {k}/{n}.",
+            rf"P=\frac{{{k}}}{{{n}}}",
+            "probability",
+        )
+    # Complement: P_not(k/n) = 1 - k/n
+    complement = re.fullmatch(
+        r"(?:P_not|Pcomplement|probability_not)\(\s*(\d+)\s*/\s*(\d+)\s*\)",
+        text,
+        re.IGNORECASE,
+    )
+    if complement:
+        k, n = int(complement.group(1)), int(complement.group(2))
+        if n <= 0:
+            raise ValueError("Mẫu số (tổng số kết quả) phải là số nguyên dương.")
+        if k < 0 or k > n:
+            raise ValueError("Số kết quả thuận lợi k phải thỏa 0 ≤ k ≤ n.")
+        value = sp.Rational(n - k, n)
+        return (
+            value,
+            f"Xác suất phần bù P(Ā) = 1 − P(A) = 1 − {k}/{n} = {n - k}/{n}.",
+            rf"P(\bar{{A}})=1-\frac{{{k}}}{{{n}}}=\frac{{{n - k}}}{{{n}}}",
+            "probability",
+        )
+    # Independent product: P_and(p,q) with p,q as fractions a/b,c/d or decimals limited
+    independent = re.fullmatch(
+        r"(?:P_and|probability_and)\(\s*(\d+)\s*/\s*(\d+)\s*,\s*(\d+)\s*/\s*(\d+)\s*\)",
+        text,
+        re.IGNORECASE,
+    )
+    if independent:
+        a, b, c, d = (int(independent.group(i)) for i in range(1, 5))
+        if b <= 0 or d <= 0:
+            raise ValueError("Mẫu số xác suất phải là số nguyên dương.")
+        if a < 0 or a > b or c < 0 or c > d:
+            raise ValueError("Mỗi xác suất thành phần phải nằm trong [0, 1].")
+        value = sp.Rational(a, b) * sp.Rational(c, d)
+        return (
+            value,
+            f"Hai biến cố độc lập: P(A∩B) = P(A)·P(B) = ({a}/{b})·({c}/{d}).",
+            rf"P(A\cap B)=\frac{{{a}}}{{{b}}}\cdot\frac{{{c}}}{{{d}}}",
+            "probability",
+        )
+    # Combination probability: P(C(n,k)/C(n,m)) style — Pcomb(n,k,total_choose)
+    pcomb = re.fullmatch(r"(?:Pcomb|probability_comb)\((\d+)\s*,\s*(\d+)\s*,\s*(\d+)\)", text)
+    if pcomb:
+        n, k, r = int(pcomb.group(1)), int(pcomb.group(2)), int(pcomb.group(3))
+        _validate_n_k(n, k)
+        if r < 0 or r > n:
+            raise ValueError("Số phần tử được chọn r phải thỏa 0 ≤ r ≤ n.")
+        if k > r:
+            raise ValueError("Không thể có k thuận lợi lớn hơn r phần tử được chọn.")
+        total = math.comb(n, r)
+        fav = math.comb(k, r) if r <= k else 0
+        # Actually typical: choose r from n, favorable if all from k marked — C(k,r)/C(n,r) when r<=k
+        fav = math.comb(k, r) if r <= k else 0
+        if total == 0:
+            raise ValueError("Không xác định được mẫu số tổ hợp.")
+        value = sp.Rational(fav, total)
+        return (
+            value,
+            f"Xác suất chọn {r} phần tử từ n={n} với {k} phần tử đánh dấu: C({k},{r})/C({n},{r}).",
+            rf"P=\frac{{C_{{{k}}}^{{{r}}}}}{{C_{{{n}}}^{{{r}}}}}",
+            "probability",
+        )
     permutation = re.fullmatch(r"A\((\d+)\s*,\s*(\d+)\)", text)
     if permutation:
         n, k = _parse_pair(permutation)
         _validate_n_k(n, k)
-        return sp.Integer(math.perm(n, k)), f"Tính chỉnh hợp A({n}, {k}) = n!/(n-k)!.", f"A_{{{n}}}^{{{k}}}"
+        return sp.Integer(math.perm(n, k)), f"Tính chỉnh hợp A({n}, {k}) = n!/(n-k)!.", f"A_{{{n}}}^{{{k}}}", "combinatorics"
     combination = re.fullmatch(r"(?:C|binomial)\((\d+)\s*,\s*(\d+)\)", text)
     if combination:
         n, k = _parse_pair(combination)
         _validate_n_k(n, k)
-        return sp.Integer(math.comb(n, k)), f"Tính tổ hợp C({n}, {k}) = n!/(k!(n-k)!).", f"C_{{{n}}}^{{{k}}}"
+        return sp.Integer(math.comb(n, k)), f"Tính tổ hợp C({n}, {k}) = n!/(k!(n-k)!).", f"C_{{{n}}}^{{{k}}}", "combinatorics"
     factorial = re.fullmatch(r"(?:factorial\((\d+)\)|(\d+)!)", text)
     if factorial:
         n = int(factorial.group(1) or factorial.group(2))
@@ -83,13 +174,12 @@ def _evaluate(text: str) -> tuple[sp.Expr, str, str]:
             raise ValueError("Giai thừa chỉ hỗ trợ số nguyên không âm.")
         if n > MAX_FACTORIAL_N:
             raise ValueError(f"Giai thừa chỉ hỗ trợ n ≤ {MAX_FACTORIAL_N} (nhận được n={n}).")
-        return sp.Integer(math.factorial(n)), f"Tính giai thừa {n}!.", f"{n}!"
+        return sp.Integer(math.factorial(n)), f"Tính giai thừa {n}!.", f"{n}!", "combinatorics"
     coefficient = re.fullmatch(r"coefficient\((.+),\s*([A-Za-z])\s*,\s*(-?\d+)\)", text)
     if coefficient:
         expr_text, variable_name, power_text = coefficient.groups()
         if len(expr_text) > MAX_COEFFICIENT_EXPR_CHARS:
             raise ValueError(f"Biểu thức hệ số vượt quá {MAX_COEFFICIENT_EXPR_CHARS} ký tự.")
-        variable = sp.Symbol(variable_name, real=True)
         try:
             expression = parse_algebra_expr(expr_text, variable_names=[variable_name], real=True)
         except AlgebraParseError as exc:
@@ -97,9 +187,13 @@ def _evaluate(text: str) -> tuple[sp.Expr, str, str]:
         power = int(power_text)
         if abs(power) > MAX_COEFFICIENT_DEGREE:
             raise ValueError(f"Bậc hệ số chỉ hỗ trợ |k| ≤ {MAX_COEFFICIENT_DEGREE}.")
+        variable = sp.Symbol(variable_name, real=True)
         result = sp.expand(expression).coeff(variable, power)
-        return result, f"Khai triển biểu thức và lấy hệ số của {variable_name}^{power}.", sp.latex(expression)
-    raise ValueError("Dạng tổ hợp-xác suất này chưa được hỗ trợ. Hãy dùng C(n,k), A(n,k), n! hoặc coefficient(expr,x,k).")
+        return result, f"Khai triển biểu thức và lấy hệ số của {variable_name}^{power}.", sp.latex(expression), "combinatorics"
+    raise ValueError(
+        "Dạng tổ hợp-xác suất chưa hỗ trợ. Dùng C(n,k), A(n,k), n!, coefficient(...), "
+        "P(k/n), P_not(k/n), P_and(a/b,c/d), Pcomb(n,k,r)."
+    )
 
 
 def _parse_pair(match: re.Match[str]) -> tuple[int, int]:

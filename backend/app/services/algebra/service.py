@@ -261,8 +261,11 @@ def _solve_algebra_core(request: AlgebraSolveRequest) -> tuple[AlgebraSolveRespo
     parse_started = time.perf_counter()
     try:
         problem = parse_algebra_problem(interpretation.canonical_input, topic=requested_topic, variables=variables, domain=domain)
-        if solve_interval is not None:
-            problem = replace(problem, solve_interval=solve_interval)
+        problem = replace(
+            problem,
+            solve_interval=solve_interval if solve_interval is not None else problem.solve_interval,
+            angle_unit=request.angle_unit or "radian",
+        )
     except AlgebraParseError as exc:
         parse_ms = int((time.perf_counter() - parse_started) * 1000)
         return _done(AlgebraSolveResponse(
@@ -437,6 +440,7 @@ def _raw_problem(
         variables=symbols,
         domain=domain,
         solve_interval=solve_interval,
+        angle_unit=request.angle_unit or "radian",
     )
 
 
