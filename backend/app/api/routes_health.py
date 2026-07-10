@@ -127,7 +127,6 @@ async def _provider_status(db: DatabaseClient) -> list[dict[str, Any]]:
             "enabled": provider.enabled,
             "base_url_configured": bool(provider.base_url),
             "api_key_configured": provider.api_key_configured,
-            "default_model_id": provider.default_model_id,
             "allowed_model_count": len(registry.allowed_model_ids(provider.id)),
             "model_count": len(registry.models.get(provider.id, [])),
             "last_check_status": provider.last_check_status,

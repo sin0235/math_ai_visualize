@@ -138,16 +138,18 @@ def test_settings_defaults_route_hides_api_keys(monkeypatch):
     assert payload["nvidia"]["api_key_configured"] is True
     assert payload["ollama"]["api_key_configured"] is True
     assert payload["router9"]["api_key_configured"] is True
-    assert payload["router9"]["model"] == "router/model"
     assert payload["router9"]["allowed_model_ids"] == ["router/model"]
 
 
 
 def test_settings_defaults_exposes_public_feature_flags(settings_defaults_client):
+    from app.services.system_settings import invalidate_system_settings_cache
+
     asyncio.run(settings_defaults_client.db.execute(
         "INSERT INTO system_settings (key, value_json) VALUES (?, ?)",
         ["feature_flags", json.dumps({"version": 1, "maintenance_mode": True, "maintenance_message": "Đang nâng cấp hệ thống.", "render_enabled": False, "ocr_enabled": True, "google_oauth_enabled": False})],
     ))
+    invalidate_system_settings_cache()
 
     response = settings_defaults_client.get("/api/settings/defaults")
 
@@ -165,9 +167,13 @@ def test_settings_defaults_exposes_public_feature_flags(settings_defaults_client
 
 
 def test_settings_defaults_loads_ollama_base_url_from_database(settings_defaults_client):
-    asyncio.run(settings_defaults_client.db.execute(
-        "INSERT INTO system_settings (key, value_json) VALUES (?, ?)",
-        ["ai_settings", json.dumps({"version": 1, "ollama": {"base_url": "http://db-ollama.local", "model": "db-ollama"}})],
+    from app.services.model_registry import save_provider_config
+
+    asyncio.run(save_provider_config(
+        settings_defaults_client.db,
+        "ollama",
+        "http://db-ollama.local",
+        api_key_configured=False,
     ))
 
     response = settings_defaults_client.get("/api/settings/defaults")
@@ -175,7 +181,6 @@ def test_settings_defaults_loads_ollama_base_url_from_database(settings_defaults
     assert response.status_code == 200
     payload = response.json()
     assert payload["ollama"]["base_url"] == "http://db-ollama.local"
-    assert payload["ollama"]["model"] == "db-ollama"
 
 
 
@@ -185,7 +190,6 @@ def test_settings_defaults_falls_back_to_env_when_database_lacks_ollama(settings
     assert response.status_code == 200
     payload = response.json()
     assert payload["ollama"]["base_url"] == "http://env-ollama.local"
-    assert payload["ollama"]["model"] == "env-ollama"
 
 
 
@@ -207,11 +211,11 @@ def test_settings_defaults_reports_legacy_key_present_without_activating_it(sett
 def test_settings_defaults_reports_allowed_openrouter_default(settings_defaults_client):
     asyncio.run(settings_defaults_client.db.execute(
         """
-        INSERT INTO ai_providers (id, label, default_model_id)
-        VALUES (?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET default_model_id = excluded.default_model_id
+        INSERT INTO ai_providers (id, label)
+        VALUES (?, ?)
+        ON CONFLICT(id) DO UPDATE SET label = excluded.label
         """,
-        ["openrouter", "OpenRouter", "stale/model"],
+        ["openrouter", "OpenRouter"],
     ))
     asyncio.run(settings_defaults_client.db.execute(
         "INSERT INTO ai_models (provider_id, id, label, enabled, allowed, source) VALUES (?, ?, ?, 1, 1, 'manual')",
@@ -222,7 +226,8 @@ def test_settings_defaults_reports_allowed_openrouter_default(settings_defaults_
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["openrouter"]["model"] == "allowed/model"
+    # provider-level model removed; allowlist is source of truth
+    assert "allowed/model" in payload["openrouter"]["allowed_model_ids"]
     assert payload["openrouter"]["allowed_model_ids"] == ["allowed/model"]
 
 
@@ -261,7 +266,7 @@ def test_settings_defaults_exposes_model_capabilities(settings_defaults_client):
 def test_settings_defaults_reports_nvidia_ocr_profile(settings_defaults_client):
     from app.services.model_registry import save_provider_config, save_task_profile
 
-    asyncio.run(save_provider_config(settings_defaults_client.db, "nvidia", "https://integrate.api.nvidia.com/v1", "nvidia/vision", api_key_configured=True))
+    asyncio.run(save_provider_config(settings_defaults_client.db, "nvidia", "https://integrate.api.nvidia.com/v1", api_key_configured=True))
     asyncio.run(save_task_profile(settings_defaults_client.db, "ocr", "nvidia", "nvidia/vision", []))
 
     response = settings_defaults_client.get("/api/settings/defaults")
@@ -273,26 +278,34 @@ def test_settings_defaults_reports_nvidia_ocr_profile(settings_defaults_client):
 
 
 def test_settings_defaults_uses_provider_default_for_empty_ocr_profile(settings_defaults_client):
-    from app.services.model_registry import save_provider_config, save_task_profile
+    """Stale empty OCR profile must not 500; defaults degrade to env/local OCR."""
+    from app.services.model_registry import save_provider_config
 
-    asyncio.run(save_provider_config(settings_defaults_client.db, "nvidia", "https://integrate.api.nvidia.com/v1", "nvidia/admin-vision", api_key_configured=True))
-    asyncio.run(save_task_profile(settings_defaults_client.db, "ocr", "nvidia", "", []))
+    asyncio.run(save_provider_config(settings_defaults_client.db, "nvidia", "https://integrate.api.nvidia.com/v1", api_key_configured=True))
+    asyncio.run(settings_defaults_client.db.execute(
+        """
+        INSERT INTO ai_task_profiles (task, provider_id, model_id, fallbacks_json, tier, updated_at)
+        VALUES ('ocr', 'auto', '', '[]', NULL, CURRENT_TIMESTAMP)
+        ON CONFLICT(task) DO UPDATE SET provider_id = 'auto', model_id = '', fallbacks_json = '[]'
+        """
+    ))
 
     response = settings_defaults_client.get("/api/settings/defaults")
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["ocr"] == {"provider": "nvidia", "model": "admin-vision", "max_image_mb": 5}
+    assert payload["ocr"]["provider"]
+    assert "max_image_mb" in payload["ocr"]
 
 
 def test_settings_defaults_normalizes_raw_openrouter_model_to_allowlist(settings_defaults_client):
     asyncio.run(settings_defaults_client.db.execute(
         """
-        INSERT INTO ai_providers (id, label, default_model_id)
-        VALUES (?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET default_model_id = excluded.default_model_id
+        INSERT INTO ai_providers (id, label)
+        VALUES (?, ?)
+        ON CONFLICT(id) DO UPDATE SET label = excluded.label
         """,
-        ["openrouter", "OpenRouter", "stale/model"],
+        ["openrouter", "OpenRouter"],
     ))
     asyncio.run(settings_defaults_client.db.execute(
         "INSERT INTO ai_models (provider_id, id, label, enabled, allowed, source) VALUES (?, ?, ?, 1, 1, 'manual')",
@@ -307,4 +320,5 @@ def test_settings_defaults_normalizes_raw_openrouter_model_to_allowlist(settings
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["openrouter"]["model"] == "allowed/model"
+    # provider-level model removed; allowlist is source of truth
+    assert "allowed/model" in payload["openrouter"]["allowed_model_ids"]

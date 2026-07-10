@@ -42,31 +42,18 @@ const EXPLICIT_RENDER_MODEL_LIMIT_PER_PROVIDER = 8;
 
 export function buildRenderModelOptions(defaults: SettingsDefaults | null, tier = 'tier1'): RenderModelOption[] {
   const providerOrder = orderRenderProviders(defaults?.default_provider);
-  const providerDefaults = providerOrder.flatMap((provider) => {
-    if (!isRenderProviderUsable(defaults, provider)) return [];
-    return [{
-      key: `default:${provider}`,
-      provider,
-      label: `${renderProviderLabel(provider)} mặc định`,
-      description: `Dùng provider ${renderProviderLabel(provider)} với model mặc định hoặc task profile do admin cấu hình.`,
-      group: 'Mặc định provider',
-    }];
-  });
   const explicitModels = buildExplicitRenderModelOptions(defaults, providerOrder, tier);
 
   if (defaults?.router9.only_mode) {
-    const router9Defaults = providerDefaults.filter((option) => option.provider === 'router9');
-    const router9Models = explicitModels.filter((option) => option.provider === 'router9');
     return [
       {
         key: 'default:auto',
         provider: 'auto',
         label: 'Mặc định hệ thống (9router)',
-        description: '9router-only đang bật; backend dùng task profile hoặc model 9router được phép.',
+        description: '9router-only đang bật; backend dùng model trong tier profile.',
         group: 'Chiến lược',
       },
-      ...router9Defaults,
-      ...router9Models,
+      ...explicitModels.filter((option) => option.provider === 'router9'),
     ];
   }
 
@@ -75,10 +62,9 @@ export function buildRenderModelOptions(defaults: SettingsDefaults | null, tier 
       key: 'default:auto',
       provider: 'auto',
       label: 'Mặc định hệ thống',
-      description: 'Backend dùng task profile, provider mặc định và fallback do admin cấu hình.',
+      description: 'Backend dùng model và fallback trong tier profile.',
       group: 'Chiến lược',
     },
-    ...providerDefaults,
     ...explicitModels,
   ];
 }
@@ -175,16 +161,6 @@ function normalizeRenderProvider(provider: string | null | undefined): RenderPro
   return RENDER_PROVIDER_ORDER.includes(provider as RenderProviderKey) ? provider as RenderProviderKey : null;
 }
 
-function isRenderProviderUsable(defaults: SettingsDefaults | null, provider: RenderProviderKey) {
-  if (!defaults) return false;
-  const registryProvider = defaults.registry_providers?.find((item) => item.id === provider);
-  if (registryProvider) {
-    return registryProvider.enabled && (registryProvider.api_key_configured || Boolean(registryProvider.default_model_id) || provider === 'ollama');
-  }
-  const item = defaults[provider];
-  return Boolean(item.api_key_configured || item.model || item.allowed_model_ids.length || item.scanned_models.length || provider === 'ollama');
-}
-
 function modelKey(provider: RenderProviderKey, modelId: string) {
   return `${provider}:${normalizeModelForProvider(provider, modelId)}`;
 }
@@ -198,12 +174,12 @@ export function buildProviderOptions(defaults: SettingsDefaults | null, includeM
   if (!defaults) return includeMock ? [...options, { id: 'mock', label: providerLabels.mock }] : options;
   if (defaults.registry_providers?.length) {
     defaults.registry_providers
-      .filter((provider) => provider.enabled && (provider.api_key_configured || provider.default_model_id || provider.id === 'ollama'))
+      .filter((provider) => provider.enabled && (provider.api_key_configured || (defaults.registry_models?.some((model) => model.provider_id === provider.id && model.enabled) ?? false) || provider.id === 'ollama'))
       .forEach((provider) => options.push({ id: provider.id, label: provider.label || providerLabels[provider.id] || provider.id }));
   } else {
     (['openrouter', 'nvidia', 'ollama', 'openai_compat', 'router9'] as const).forEach((provider) => {
       const item = defaults[provider];
-      if (item.api_key_configured || item.model || item.scanned_models.length > 0 || item.allowed_model_ids.length > 0) {
+      if (item.api_key_configured || item.scanned_models.length > 0 || item.allowed_model_ids.length > 0) {
         options.push({ id: provider, label: providerLabels[provider] });
       }
     });
@@ -225,7 +201,7 @@ export function buildOcrProviderOptions(defaults: SettingsDefaults | null): Opti
       return;
     }
     const item = defaults[provider];
-    if (item.api_key_configured || item.model || item.scanned_models.length > 0 || item.allowed_model_ids.length > 0) {
+    if (item.api_key_configured || item.scanned_models.length > 0 || item.allowed_model_ids.length > 0) {
       options.push({ id: provider, label: providerLabels[provider] || provider });
     }
   });
@@ -246,7 +222,6 @@ export function buildModelOptionsFromDefaults(providerDefaults: ProviderSettings
     const registryOptions = buildRegistryModelOptions(defaults, providerId, currentModel, extraModelIds);
     if (registryOptions.length > 0) {
       return mergeOptions(registryOptions, [
-        providerDefaults?.model,
         ...(providerDefaults?.allowed_model_ids ?? []),
         currentModel,
         ...extraModelIds,
@@ -258,7 +233,7 @@ export function buildModelOptionsFromDefaults(providerDefaults: ProviderSettings
     ? providerDefaults.allowed_model_ids
     : providerDefaults.scanned_models.length > 0
       ? providerDefaults.scanned_models.map((model) => model.id)
-      : [providerDefaults.model ?? ''].filter(Boolean);
+      : [];
   const options = ids.map((id) => {
     const scanned = providerDefaults.scanned_models.find((model) => model.id === id);
     return { id, label: scanned?.label ?? id };

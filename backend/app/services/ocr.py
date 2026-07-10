@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from app.core.config import Settings
 from app.schemas.scene import OcrMode, OcrProvider
 from app.services.ai_fallback import openrouter_vision_candidates, provider_configured, router9_ocr_candidates
-from app.services.model_provider import canonicalize_model_ref, explicit_provider_from_model, normalize_model_for_provider, resolve_ocr_provider
+from app.services.model_provider import canonicalize_model_ref, normalize_model_for_provider, parse_provider_model_ref, resolve_ocr_provider
 from app.services.nvidia_client import NvidiaClient
 from app.services.ollama_client import OllamaClient
 from app.services.openai_compat_client import OpenAICompatClient
@@ -330,14 +330,11 @@ def _has_cross_provider_fallbacks(fallback_models: list[str] | None, selected_pr
 
 
 def _ocr_fallback_provider_from_model(model: str | None) -> str | None:
-    if not model:
+    try:
+        ref = parse_provider_model_ref(model, allow_legacy_slash=False)
+    except ValueError:
         return None
-    for provider_id in ("local", "openrouter", "router9", "nvidia", "ollama", "openai_compat"):
-        if model.startswith(f"{provider_id}/"):
-            return provider_id
-    if model.startswith("openai-compat/"):
-        return "openai_compat"
-    return explicit_provider_from_model(model)
+    return ref.provider_id if ref is not None else None
 
 
 def _ocr_models_for_provider(selected_provider: str, selected_model: str | None, fallback_models: list[str] | None) -> list[str]:
@@ -345,10 +342,16 @@ def _ocr_models_for_provider(selected_provider: str, selected_model: str | None,
     if selected_model:
         models.append(selected_model)
     for fallback in fallback_models or []:
-        fallback_provider = _ocr_fallback_provider_from_model(fallback)
-        if fallback_provider and fallback_provider != selected_provider:
+        try:
+            ref = parse_provider_model_ref(fallback, allow_legacy_slash=False)
+        except ValueError:
             continue
-        normalized = normalize_model_for_provider(selected_provider, fallback)
+        if ref is not None:
+            if ref.provider_id != selected_provider:
+                continue
+            normalized = ref.model_id
+        else:
+            normalized = normalize_model_for_provider(selected_provider, fallback)
         if normalized:
             models.append(normalized)
     return _dedupe(models)

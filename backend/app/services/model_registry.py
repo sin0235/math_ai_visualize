@@ -25,7 +25,7 @@ from app.services.model_provider import (
     parse_provider_model_ref,
 )
 
-_REGISTRY_CACHE: tuple[float, int, ModelRegistry] | None = None
+_REGISTRY_CACHE: tuple[float, str, Settings, ModelRegistry] | None = None
 _REGISTRY_CACHE_TTL_SECONDS = 45.0
 
 PROVIDER_LABELS = {
@@ -45,7 +45,6 @@ class ProviderRegistryItem:
     id: str
     label: str
     base_url: str
-    default_model_id: str
     api_key_configured: bool
     enabled: bool = True
     last_checked_at: str | None = None
@@ -128,19 +127,25 @@ async def load_model_registry(db: DatabaseClient, settings: Settings | None = No
     global _REGISTRY_CACHE
     settings = settings or get_settings()
     now = time.monotonic()
-    settings_token = id(settings)
+    db_token = _database_cache_token(db)
     if _REGISTRY_CACHE is not None:
-        cached_at, cached_token, cached_registry = _REGISTRY_CACHE
-        if now - cached_at < _REGISTRY_CACHE_TTL_SECONDS and cached_token == settings_token:
+        cached_at, cached_db_token, cached_settings, cached_registry = _REGISTRY_CACHE
+        if now - cached_at < _REGISTRY_CACHE_TTL_SECONDS and cached_db_token == db_token and cached_settings is settings:
             return cached_registry
     registry = await _load_model_registry_uncached(db, settings)
-    _REGISTRY_CACHE = (now, settings_token, registry)
+    _REGISTRY_CACHE = (now, db_token, settings, registry)
     return registry
 
 
 def invalidate_model_registry_cache() -> None:
     global _REGISTRY_CACHE
     _REGISTRY_CACHE = None
+
+
+def _database_cache_token(db: DatabaseClient) -> str:
+    backend = str(getattr(db, "backend", db.__class__.__name__))
+    path = getattr(db, "path", None)
+    return f"{backend}:{path}" if path else f"{backend}:{id(db)}"
 
 
 async def _load_model_registry_uncached(db: DatabaseClient, settings: Settings) -> ModelRegistry:
@@ -162,7 +167,6 @@ async def _load_model_registry_uncached(db: DatabaseClient, settings: Settings) 
             id=str(row["id"]),
             label=str(row["label"]),
             base_url=str(row["base_url"] or ""),
-            default_model_id=str(row["default_model_id"] or ""),
             api_key_configured=bool(row["api_key_configured"]),
             enabled=bool(row["enabled"]),
             last_checked_at=row.get("last_checked_at"),
@@ -216,34 +220,102 @@ def default_ocr_profile(settings: Settings, legacy: SystemAiSettings | None = No
     return "openrouter", settings.openrouter_vision_model
 
 
+def _router9_default_model(settings: Settings) -> str:
+    if settings.router9_text_model:
+        return settings.router9_text_model
+    if settings.router9_allowed_models:
+        from app.services.router9_bootstrap import select_router9_render_model_ids_from_ids
+
+        selected = select_router9_render_model_ids_from_ids(list(settings.router9_allowed_models))
+        return selected[0] if selected else settings.router9_allowed_models[0]
+    return ""
+
+
+def _provider_has_credentials(settings: Settings, provider_id: str) -> bool:
+    if provider_id == "ollama":
+        return True
+    if provider_id == "router9":
+        return provider_configured(settings.router9_api_key)
+    if provider_id == "nvidia":
+        return provider_configured(settings.nvidia_api_key)
+    if provider_id == "openrouter":
+        return provider_configured(settings.openrouter_api_key)
+    if provider_id == "openai_compat":
+        return provider_configured(settings.openai_compat_api_key)
+    return False
+
+
+def default_text_profile(settings: Settings, preferred_provider: str | None = None) -> tuple[str, str]:
+    provider_id = normalize_registry_provider_id(preferred_provider) or "auto"
+    models = {
+        "router9": _router9_default_model(settings),
+        "nvidia": settings.nvidia_text_model,
+        "openrouter": settings.openrouter_text_model,
+        "openai_compat": settings.openai_compat_text_model,
+        "ollama": settings.ollama_text_model,
+    }
+    if settings.router9_only:
+        provider_id = "router9"
+    if provider_id in models and models[provider_id] and _provider_has_credentials(settings, provider_id):
+        return provider_id, models[provider_id]
+    candidates = [
+        ("router9", provider_configured(settings.router9_api_key)),
+        ("nvidia", provider_configured(settings.nvidia_api_key)),
+        ("openrouter", provider_configured(settings.openrouter_api_key)),
+        ("openai_compat", provider_configured(settings.openai_compat_api_key)),
+        ("ollama", True),
+    ]
+    for candidate, configured in candidates:
+        if configured and models[candidate]:
+            return candidate, models[candidate]
+    # Soft seed for bare installs (no env models / keys): skip hard crash; ensure_task_profiles
+    # will only insert profiles when a usable pair exists, and admin can complete setup later.
+    for candidate in ("openrouter", "router9", "nvidia", "openai_compat", "ollama"):
+        if models.get(candidate):
+            return candidate, models[candidate]
+    raise ValueError("Không có model nào để khởi tạo task profile.")
+
+
 async def seed_model_registry(db: DatabaseClient, settings: Settings) -> None:
     repo = ModelRegistryRepository(db)
     if await repo.has_any_provider():
-        await ensure_task_profiles(db, settings)
         return
     legacy = await load_legacy_ai_settings(db)
-    provider_data = _provider_seed_data(settings, legacy)
+    if legacy is not None:
+        settings = settings_from_admin_ai_settings(settings, legacy, registry_from_settings(settings))
+    provider_data = _provider_seed_data(settings, None)
     for provider_id, data in provider_data.items():
-        await repo.insert_seed_provider(provider_id, PROVIDER_LABELS[provider_id], data["base_url"], data["model"], bool(data["api_key_configured"]))
+        await repo.insert_seed_provider(provider_id, PROVIDER_LABELS[provider_id], data["base_url"], bool(data["api_key_configured"]))
         for model in data["models"]:
             allowed = provider_id == "local" or model.id in data["allowed_model_ids"]
-            await upsert_model(db, provider_id, model, allowed=allowed, source="legacy" if legacy else "env")
-    router9_only = legacy.router9.only_mode if legacy else settings.router9_only
-    openrouter_reasoning = legacy.openrouter_reasoning_enabled if legacy else settings.openrouter_reasoning_enabled
-    ocr_max = legacy.ocr.max_image_mb if legacy else 5
-    default_provider = legacy.default_provider if legacy else settings.ai_provider
-    await set_model_setting(db, "router9_only", router9_only)
-    await set_model_setting(db, "openrouter_reasoning_enabled", openrouter_reasoning)
-    await set_model_setting(db, "ocr_max_image_mb", ocr_max)
-    await set_model_setting(db, "default_provider", default_provider)
+            await upsert_model(db, provider_id, model, allowed=allowed, source="env")
+        if provider_id == "router9" and settings.router9_allowed_models:
+            for model_id in settings.router9_allowed_models:
+                await upsert_model(
+                    db,
+                    provider_id,
+                    AiModelInfo(id=model_id, label=model_id, provider=provider_id),
+                    allowed=True,
+                    source="env",
+                )
+    await set_model_setting(db, "router9_only", settings.router9_only)
+    await set_model_setting(db, "openrouter_reasoning_enabled", settings.openrouter_reasoning_enabled)
+    await set_model_setting(db, "ocr_max_image_mb", 5)
+    await set_model_setting(db, "default_provider", settings.ai_provider)
     ocr_provider, ocr_model = default_ocr_profile(settings, legacy)
+    text_provider, text_model = default_text_profile(settings, settings.ai_provider)
     for task in TIERED_TASKS:
         for tier in TIER_KEYS:
-            await save_task_profile(db, f"{task}_{tier}", default_provider, "", [])
+            await save_task_profile(db, f"{task}_{tier}", text_provider, text_model, [])
+    await save_task_profile(db, "reasoning", text_provider, text_model, [])
+    await save_task_profile(db, "solver_explanation", text_provider, text_model, [])
     await save_task_profile(db, "ocr", ocr_provider, ocr_model or "", [])
 
 
+
 async def load_legacy_ai_settings(db: DatabaseClient) -> SystemAiSettings | None:
+    from app.services.model_provider import normalize_provider_defaults
+
     value_json = await ModelRegistryRepository(db).load_legacy_ai_settings_json()
     if value_json is None:
         return None
@@ -251,6 +323,7 @@ async def load_legacy_ai_settings(db: DatabaseClient) -> SystemAiSettings | None
         value = json.loads(value_json)
         if not isinstance(value, dict):
             return None
+        value = normalize_provider_defaults(value) or {}
         return SystemAiSettings.model_validate(value)
     except (json.JSONDecodeError, ValidationError):
         return None
@@ -274,15 +347,14 @@ def settings_from_admin_ai_settings(settings: Settings, admin_settings: SystemAi
         provider_settings = getattr(admin_settings, provider_id)
         registry_provider = registry.providers.get(provider_id)
         db_base_url = (provider_settings.base_url or "").strip()
-        db_model = (provider_settings.model or "").strip()
         db_api_key = (getattr(provider_settings, "api_key", "") or "").strip()
         if db_base_url and not (registry_provider and registry_provider.base_url):
             data[f"{provider_id}_base_url"] = db_base_url
-        if db_model and not (registry_provider and registry_provider.default_model_id):
-            key = "router9_text_model" if provider_id == "router9" else f"{provider_id}_text_model"
-            data[key] = db_model
-        if db_api_key and (db_base_url or db_model or getattr(provider_settings, "allowed_model_ids", []) or getattr(provider_settings, "scanned_models", [])):
+        if db_api_key and (db_base_url or getattr(provider_settings, "allowed_model_ids", []) or getattr(provider_settings, "scanned_models", [])):
             data[f"{provider_id}_api_key"] = db_api_key
+        allowed = list(getattr(provider_settings, "allowed_model_ids", None) or [])
+        if provider_id == "router9" and allowed:
+            data["router9_allowed_models"] = allowed
     return Settings.model_validate(data)
 
 
@@ -299,10 +371,6 @@ def settings_from_registry(settings: Settings, registry: ModelRegistry) -> Setti
         keep_env_connection = provider_id == "openai_compat" and env_api_key and not provider.api_key_configured
         if provider.base_url and not keep_env_connection:
             data[f"{provider_id}_base_url"] = provider.base_url
-        default_model_id = effective_provider_default_model(registry, provider_id, provider.default_model_id)
-        if default_model_id and not keep_env_connection and provider_id != "local":
-            key = "router9_text_model" if provider_id == "router9" else f"{provider_id}_text_model"
-            data[key] = default_model_id
     data["router9_only"] = bool(registry.settings.get("router9_only", settings.router9_only))
     data["openrouter_reasoning_enabled"] = bool(registry.settings.get("openrouter_reasoning_enabled", settings.openrouter_reasoning_enabled))
     router9_allowed = registry.allowed_model_ids("router9")
@@ -331,9 +399,9 @@ async def upsert_scanned_models(db: DatabaseClient, provider_id: str, models: li
     scanned_ids = {model.id for model in canonical_models if model.id}
     for stale_id in existing_scanned - scanned_ids:
         await repo.disable_scanned_model(provider_id, stale_id)
-        await repo.clear_provider_default_model(provider_id, stale_id)
     for model in canonical_models:
         await upsert_model(db, provider_id, model, allowed=model.id in existing_allowed, source="scan")
+    invalidate_model_registry_cache()
 
 
 async def upsert_model(db: DatabaseClient, provider_id: str, model: AiModelInfo, allowed: bool, source: str) -> None:
@@ -354,76 +422,45 @@ async def set_allowed_models(db: DatabaseClient, provider_id: str, model_ids: li
             canonical_ids.append(ref.model_id)
     for model_id in canonical_ids:
         await repo.allow_model(provider_id, model_id)
+    invalidate_model_registry_cache()
 
 
-async def save_provider_config(db: DatabaseClient, provider_id: str, base_url: str, default_model_id: str, enabled: bool = True, api_key_configured: bool | None = None) -> None:
+async def save_provider_config(db: DatabaseClient, provider_id: str, base_url: str, enabled: bool = True, api_key_configured: bool | None = None) -> None:
     provider_id = canonical_provider_id(provider_id) or provider_id
-    default_model_id = canonicalize_explicit_provider_model(provider_id, default_model_id).model_id if default_model_id else ""
-    await ModelRegistryRepository(db).upsert_provider(provider_id, PROVIDER_LABELS.get(provider_id, provider_id), base_url, default_model_id, enabled, api_key_configured)
+    await ModelRegistryRepository(db).upsert_provider(provider_id, PROVIDER_LABELS.get(provider_id, provider_id), base_url, enabled, api_key_configured)
+    invalidate_model_registry_cache()
 
 
 async def save_provider_check(db: DatabaseClient, provider_id: str, status: str, message: str) -> None:
     await ensure_provider(db, provider_id)
     await ModelRegistryRepository(db).update_provider_check(provider_id, status, message)
+    invalidate_model_registry_cache()
 
 
 async def save_task_profile(db: DatabaseClient, task: str, provider_id: str, model_id: str, fallbacks: list[str]) -> None:
-    if provider_id == "auto" and not model_id:
+    if provider_id == "auto":
+        raise ValueError("Task profile phải lưu provider_id rõ ràng, không dùng auto.")
+    provider_id = canonical_provider_id(provider_id) or provider_id
+    if model_id:
+        ref = canonicalize_explicit_provider_model(provider_id, model_id)
+        provider_id = ref.provider_id
+        model_id = ref.model_id
         fallbacks, _ = canonicalize_fallback_models(provider_id, fallbacks, strict=True)
-        await ModelRegistryRepository(db).upsert_task_profile(task, provider_id, "", fallbacks)
-        return
-    if provider_id == "auto" and model_id:
-        raise ValueError("Task profile có model cụ thể phải lưu provider_id rõ ràng, không dùng auto.")
-    ref = canonicalize_explicit_provider_model(provider_id, model_id)
-    provider_id = ref.provider_id
-    model_id = ref.model_id
-    fallbacks, _ = canonicalize_fallback_models(provider_id, fallbacks, strict=True)
+    else:
+        # Empty model means "use provider default" at resolve/extract time (legacy admin/OCR flows).
+        fallbacks, _ = canonicalize_fallback_models(provider_id, fallbacks, strict=True)
     await ModelRegistryRepository(db).upsert_task_profile(task, provider_id, model_id, fallbacks)
+    invalidate_model_registry_cache()
 
 
 async def set_model_setting(db: DatabaseClient, key: str, value: Any) -> None:
     await ModelRegistryRepository(db).set_model_setting(key, value)
-
-
-async def ensure_task_profiles(db: DatabaseClient, settings: Settings) -> None:
-    await ensure_local_ocr_provider(db, settings)
-    ocr_provider, ocr_model = default_ocr_profile(settings)
-    defaults = {
-        "reasoning": (settings.ai_provider, "", []),
-        "solver_explanation": (settings.ai_provider, "", []),
-        "ocr": (ocr_provider, ocr_model, []),
-    }
-    for task in TIERED_TASKS:
-        for tier in TIER_KEYS:
-            defaults[f"{task}_{tier}"] = (settings.ai_provider, "", [])
-    repo = ModelRegistryRepository(db)
-    await repo.delete_unsupported_tier_profiles()
-    for task, (provider_id, model_id, fallbacks) in defaults.items():
-        if not await repo.task_profile_exists(task):
-            await save_task_profile(db, task, provider_id, model_id, fallbacks)
+    invalidate_model_registry_cache()
 
 
 async def ensure_provider(db: DatabaseClient, provider_id: str) -> None:
     provider_id = canonical_provider_id(provider_id) or provider_id
     await ModelRegistryRepository(db).ensure_provider(provider_id, PROVIDER_LABELS.get(provider_id, provider_id))
-
-
-async def ensure_local_ocr_provider(db: DatabaseClient, settings: Settings) -> None:
-    await save_provider_config(
-        db,
-        "local",
-        "",
-        settings.local_ocr_model_name,
-        enabled=bool(settings.local_ocr_enabled),
-        api_key_configured=True,
-    )
-    await upsert_model(
-        db,
-        "local",
-        AiModelInfo(id=settings.local_ocr_model_name, label=settings.local_ocr_model_name, provider="local"),
-        allowed=True,
-        source="env",
-    )
 
 
 def _canonical_model_info(provider_id: str, model: AiModelInfo) -> AiModelInfo:
@@ -448,9 +485,6 @@ def _canonicalize_legacy_tier_model_ref(provider_id: str, model_id: str) -> Cano
     if provider_id != "auto":
         normalized = normalize_model_for_provider(provider_id, model_id) or ""
         return CanonicalModelRef(provider_id=provider_id, model_id=normalized, changed=normalized != model_id)
-    legacy_ref = parse_provider_model_ref(model_id, allow_legacy_slash=True)
-    if legacy_ref is not None:
-        return legacy_ref
     return CanonicalModelRef(provider_id="auto", model_id=model_id)
 
 
@@ -512,12 +546,12 @@ def _provider_seed_data(settings: Settings, legacy: SystemAiSettings | None) -> 
         "router9": legacy.router9 if legacy else None,
     }
     base = {
-        "local": {"base_url": "", "model": settings.local_ocr_model_name, "api_key_configured": True},
-        "openrouter": {"base_url": settings.openrouter_base_url, "model": settings.openrouter_text_model, "api_key_configured": provider_configured(settings.openrouter_api_key)},
-        "nvidia": {"base_url": settings.nvidia_base_url, "model": settings.nvidia_text_model, "api_key_configured": provider_configured(settings.nvidia_api_key)},
-        "ollama": {"base_url": settings.ollama_base_url, "model": settings.ollama_text_model, "api_key_configured": bool(settings.ollama_api_key)},
-        "openai_compat": {"base_url": settings.openai_compat_base_url, "model": settings.openai_compat_text_model, "api_key_configured": provider_configured(settings.openai_compat_api_key)},
-        "router9": {"base_url": settings.router9_base_url, "model": settings.router9_text_model or "", "api_key_configured": provider_configured(settings.router9_api_key)},
+        "local": {"base_url": "", "seed_model_id": settings.local_ocr_model_name, "api_key_configured": True},
+        "openrouter": {"base_url": settings.openrouter_base_url, "seed_model_id": settings.openrouter_text_model, "api_key_configured": provider_configured(settings.openrouter_api_key)},
+        "nvidia": {"base_url": settings.nvidia_base_url, "seed_model_id": settings.nvidia_text_model, "api_key_configured": provider_configured(settings.nvidia_api_key)},
+        "ollama": {"base_url": settings.ollama_base_url, "seed_model_id": settings.ollama_text_model, "api_key_configured": bool(settings.ollama_api_key)},
+        "openai_compat": {"base_url": settings.openai_compat_base_url, "seed_model_id": settings.openai_compat_text_model, "api_key_configured": provider_configured(settings.openai_compat_api_key)},
+        "router9": {"base_url": settings.router9_base_url, "seed_model_id": settings.router9_text_model or "", "api_key_configured": provider_configured(settings.router9_api_key)},
     }
     for provider_id, item in base.items():
         configured = provider_settings[provider_id]
@@ -525,12 +559,12 @@ def _provider_seed_data(settings: Settings, legacy: SystemAiSettings | None) -> 
         allowed = []
         if configured is not None:
             item["base_url"] = configured.base_url or item["base_url"]
-            item["model"] = configured.model or item["model"]
             scanned = configured.scanned_models
             allowed = configured.allowed_model_ids
         elif provider_id == "router9":
             allowed = settings.router9_allowed_models
-        models = [AiModelInfo(id=item["model"], label=item["model"], provider=provider_id)] if item["model"] else []
+        seed_model_id = item["seed_model_id"]
+        models = [AiModelInfo(id=seed_model_id, label=seed_model_id, provider=provider_id)] if seed_model_id else []
         models.extend(AiModelInfo.model_validate(model.model_dump() | {"provider": provider_id}) for model in scanned)
         item["models"] = _dedupe_models(models)
         item["allowed_model_ids"] = allowed
@@ -544,7 +578,6 @@ def registry_from_settings(settings: Settings) -> ModelRegistry:
             id=provider_id,
             label=PROVIDER_LABELS[provider_id],
             base_url=data["base_url"],
-            default_model_id=data["model"],
             api_key_configured=bool(data["api_key_configured"]),
         )
         for provider_id, data in seed.items()
@@ -571,15 +604,16 @@ def registry_from_settings(settings: Settings) -> ModelRegistry:
         ]
         for provider_id, data in seed.items()
     }
+    text_provider, text_model = default_text_profile(settings, settings.ai_provider)
     task_profiles = {
-        "reasoning": TaskProfile("reasoning", settings.ai_provider, "", []),
-        "solver_explanation": TaskProfile("solver_explanation", settings.ai_provider, "", []),
+        "reasoning": TaskProfile("reasoning", text_provider, text_model, []),
+        "solver_explanation": TaskProfile("solver_explanation", text_provider, text_model, []),
         "ocr": TaskProfile("ocr", *default_ocr_profile(settings), []),
     }
     for task in TIERED_TASKS:
         for tier in TIER_KEYS:
             task_key = f"{task}_{tier}"
-            task_profiles[task_key] = TaskProfile(task_key, settings.ai_provider, "", [])
+            task_profiles[task_key] = TaskProfile(task_key, text_provider, text_model, [])
     return ModelRegistry(
         providers=providers,
         models=models,
@@ -630,57 +664,48 @@ def model_is_allowed(registry: ModelRegistry, provider_id: str, model_id: str) -
     return not allowed_model_ids or model_id in allowed_model_ids
 
 
-def effective_provider_default_model(registry: ModelRegistry, provider_id: str, default_model_id: str) -> str:
+def health_check_model(registry: ModelRegistry, provider_id: str) -> str:
     if not provider_is_enabled(registry, provider_id):
         return ""
     allowed_model_ids = registry.allowed_model_ids(provider_id)
     if allowed_model_ids:
-        if default_model_id in allowed_model_ids:
-            return default_model_id
         return allowed_model_ids[0]
-    if model_is_enabled(registry, provider_id, default_model_id):
-        return default_model_id
     enabled_model_ids = registry.enabled_model_ids(provider_id)
-    if enabled_model_ids:
-        return enabled_model_ids[0]
-    # Admin-entered provider defaults are stored on ai_providers before a model scan
-    # creates ai_models rows. Treat that database default as usable so OCR and
-    # profile resolution do not silently fall back to env OpenRouter vision values.
-    return default_model_id or ""
+    return enabled_model_ids[0] if enabled_model_ids else ""
 
 
-def resolve_task_profile(registry: ModelRegistry, task: str, preferred_provider: str | None = None, preferred_model: str | None = None) -> TaskProfile | None:
+def resolve_task_profile(registry: ModelRegistry, task: str, preferred_provider: str | None = None, preferred_model: str | None = None) -> TaskProfile:
     profile = registry.task_profiles.get(task)
     preferred_provider_id = normalize_registry_provider_id(preferred_provider)
-    profile_provider = normalize_registry_provider_id(profile.provider_id) if profile else "auto"
-    if preferred_provider_id:
-        provider_id = preferred_provider_id
-    else:
-        provider_id = profile_provider or "auto"
-    if provider_id == "auto":
-        default_provider = registry.settings.get("default_provider")
-        provider_id = default_provider if isinstance(default_provider, str) and provider_is_enabled(registry, default_provider) else "auto"
-    if provider_id == "auto" or (provider_id != "local" and not provider_is_enabled(registry, provider_id)):
-        return None
+    profile_provider = normalize_registry_provider_id(profile.provider_id) if profile else None
+    provider_id = preferred_provider_id or profile_provider
+    if not provider_id or provider_id == "auto":
+        raise ValueError(f"Task profile {task} phải chọn provider rõ ràng.")
+    if provider_id != "local" and not provider_is_enabled(registry, provider_id):
+        raise ValueError(f"Provider {provider_id} của task profile {task} đang bị tắt.")
 
-    raw_model_id = ""
     if preferred_model:
         raw_model_id = canonicalize_model_ref(provider_id, preferred_model, strict=True, allow_auto=False).model_id
-    elif profile and not preferred_provider_id:
-        raw_model_id = profile.model_id
     elif profile and profile_provider == provider_id:
         raw_model_id = profile.model_id
-
+    else:
+        raw_model_id = ""
     model_id = normalize_model_for_provider(provider_id, raw_model_id) or ""
     if not model_id:
-        provider = registry.providers.get(provider_id)
-        model_id = effective_provider_default_model(registry, provider_id, provider.default_model_id if provider else "")
+        # Provider-only profile: allow empty model so callers can fall back to settings defaults.
+        if preferred_model:
+            raise ValueError(f"Task profile {task} phải chọn model.")
+        allowed = registry.allowed_model_ids(provider_id)
+        enabled = registry.enabled_model_ids(provider_id)
+        model_id = (allowed[0] if allowed else enabled[0] if enabled else "") or ""
+        if not model_id:
+            fallbacks = _resolve_profile_fallbacks(registry, profile.fallbacks, provider_id) if profile else []
+            return TaskProfile(task, provider_id, "", fallbacks)
     if model_id and not model_is_allowed(registry, provider_id, model_id):
-        model_id = effective_provider_default_model(registry, provider_id, "")
-    fallbacks = []
-    if profile:
-        fallbacks = _resolve_profile_fallbacks(registry, profile.fallbacks, provider_id)
-    if task == "reasoning":
+        raise ValueError(f"Model {model_id} của task profile {task} không khả dụng trong provider {provider_id}.")
+
+    fallbacks = _resolve_profile_fallbacks(registry, profile.fallbacks, provider_id) if profile else []
+    if task == "reasoning" and model_id:
         provider_id, model_id, fallbacks = _prefer_thinking_model(registry, provider_id, model_id, fallbacks)
     return TaskProfile(task, provider_id, model_id, fallbacks)
 
@@ -724,7 +749,7 @@ def _resolve_profile_fallbacks(registry: ModelRegistry, fallbacks: list[str], pr
         if same_provider_only and provider_id != primary_provider_id:
             continue
         if model_id and model_is_allowed(registry, provider_id, model_id):
-            value = model_id if provider_id == primary_provider_id else f"{provider_id}/{model_id}"
+            value = model_id if provider_id == primary_provider_id else format_provider_model_ref(provider_id, model_id)
             if value not in resolved:
                 resolved.append(value)
     return resolved
@@ -737,15 +762,7 @@ def _fallback_provider_model(fallback: str, primary_provider_id: str) -> tuple[s
         explicit_ref = None
     if explicit_ref is not None:
         return explicit_ref.provider_id, explicit_ref.model_id
-    provider_id = primary_provider_id
-    model_id = fallback
-    for candidate in ("openrouter", "nvidia", "ollama", "openai_compat", "router9"):
-        prefix = f"{candidate}/"
-        if fallback.startswith(prefix):
-            provider_id = candidate
-            model_id = fallback.removeprefix(prefix)
-            break
-    return provider_id, normalize_model_for_provider(provider_id, model_id) or ""
+    return primary_provider_id, normalize_model_for_provider(primary_provider_id, fallback) or ""
 
 
 def _tier_fallback_provider_model(fallback: str) -> tuple[str, str]:
@@ -797,11 +814,7 @@ def _prefer_thinking_model(registry: ModelRegistry, provider_id: str, model_id: 
 def _format_fallback_model(provider_id: str, model_id: str, primary_provider_id: str) -> str:
     if not model_id:
         return ""
-    return model_id if provider_id == primary_provider_id else f"{provider_id}/{model_id}"
-
-
-# Backwards-compatible private alias for older imports/tests.
-_effective_provider_default_model = effective_provider_default_model
+    return model_id if provider_id == primary_provider_id else format_provider_model_ref(provider_id, model_id)
 
 
 def _json_value(value: Any) -> Any:

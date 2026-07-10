@@ -39,26 +39,45 @@ class ProviderPingResult:
         return asdict(self)
 
 
-async def ping_provider(provider: str, settings: Settings) -> ProviderPingResult:
+async def ping_provider(provider: str, settings: Settings, model: str | None = None) -> ProviderPingResult:
     normalized = normalize_ping_provider(provider)
     started_at = time.perf_counter()
     try:
-        model = await check_provider_connection(normalized, settings)
+        checked_model = await check_provider_connection(normalized, settings, model)
         elapsed_ms = int((time.perf_counter() - started_at) * 1000)
         message = f"Kết nối tới {_PROVIDER_LABELS[normalized]} thành công."
-        if model:
-            message = f"{message} Model: {model}."
-        return ProviderPingResult(normalized, "ok", message, model=model, latency_ms=elapsed_ms)
+        if checked_model:
+            message = f"{message} Model: {checked_model}."
+        return ProviderPingResult(normalized, "ok", message, model=checked_model, latency_ms=elapsed_ms)
     except Exception as error:
         elapsed_ms = int((time.perf_counter() - started_at) * 1000)
         message = redact_sensitive(str(error) or error.__class__.__name__)
         return ProviderPingResult(normalized, "error", message, latency_ms=elapsed_ms)
 
 
-async def check_provider_connection(provider: str, settings: Settings) -> str:
+def _settings_ping_model(settings: Settings, provider: str) -> str:
+    if provider == "openrouter":
+        return (settings.openrouter_text_model or "").strip()
+    if provider == "nvidia":
+        return (settings.nvidia_text_model or "").strip()
+    if provider == "openai_compat":
+        return (settings.openai_compat_text_model or "").strip()
+    if provider == "router9":
+        if (settings.router9_text_model or "").strip():
+            return settings.router9_text_model.strip()
+        if settings.router9_allowed_models:
+            return settings.router9_allowed_models[0]
+        return ""
+    if provider == "ollama":
+        return (settings.ollama_text_model or "").strip()
+    return ""
+
+
+async def check_provider_connection(provider: str, settings: Settings, model: str | None = None) -> str:
     normalized = normalize_ping_provider(provider)
+    model = (model or "").strip() or _settings_ping_model(settings, normalized)
     if normalized == "openrouter":
-        model = _require_text(settings.openrouter_text_model, "Chưa chọn model OpenRouter.")
+        model = _require_text(model, "Provider OpenRouter chưa có model trong inventory/allowlist.")
         api_key = _require_text(settings.openrouter_api_key, "OPENROUTER_API_KEY chưa được cấu hình.")
         await _ping_openai_compatible_chat(
             provider="openrouter",
@@ -75,7 +94,7 @@ async def check_provider_connection(provider: str, settings: Settings) -> str:
         return model
 
     if normalized == "nvidia":
-        model = _require_text(settings.nvidia_text_model, "Chưa chọn model NVIDIA.")
+        model = _require_text(model, "Provider NVIDIA chưa có model trong inventory/allowlist.")
         api_key = _require_text(settings.nvidia_api_key, "NVIDIA_API_KEY chưa được cấu hình.")
         base_url = settings.nvidia_base_url.rstrip("/")
         await _ping_openai_compatible_chat(
@@ -88,7 +107,7 @@ async def check_provider_connection(provider: str, settings: Settings) -> str:
         return model
 
     if normalized == "openai_compat":
-        model = _require_text(settings.openai_compat_text_model, "Chưa chọn model OpenAI-compatible.")
+        model = _require_text(model, "Provider OpenAI-compatible chưa có model trong inventory/allowlist.")
         base_url = settings.openai_compat_base_url.rstrip("/")
         headers = {"Content-Type": "application/json"}
         api_key = (settings.openai_compat_api_key or "").strip()
@@ -108,7 +127,7 @@ async def check_provider_connection(provider: str, settings: Settings) -> str:
         return model
 
     if normalized == "router9":
-        model = _require_text(settings.router9_text_model, "Chưa chọn model 9router.")
+        model = _require_text(model, "Provider 9router chưa có model trong inventory/allowlist.")
         api_key = _require_text(settings.router9_api_key, "ROUTER9_API_KEY chưa được cấu hình.")
         base_url = settings.router9_base_url.rstrip("/")
         await _ping_openai_compatible_chat(
@@ -121,7 +140,7 @@ async def check_provider_connection(provider: str, settings: Settings) -> str:
         return model
 
     if normalized == "ollama":
-        model = _require_text(settings.ollama_text_model, "Chưa chọn model Ollama.")
+        model = _require_text(model, "Provider Ollama chưa có model trong inventory/allowlist.")
         await _ping_ollama(settings, model)
         return model
 

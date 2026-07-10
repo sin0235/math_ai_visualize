@@ -562,7 +562,6 @@ class ProblemVariantsResponse(BaseModel):
 class ProviderSettingsDefaults(BaseModel):
     api_key_configured: bool
     base_url: str
-    model: str | None = None
     scanned_models: list[AiModelInfo] = Field(default_factory=list)
     allowed_model_ids: list[str] = Field(default_factory=list)
 
@@ -589,7 +588,6 @@ class RegistryProviderDefaults(BaseModel):
     id: str
     label: str
     base_url: str
-    default_model_id: str
     api_key_configured: bool
     enabled: bool
     last_checked_at: str | None = None

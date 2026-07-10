@@ -190,7 +190,7 @@ async def test_reset_dev_data_dry_run_counts_user_data(db):
 async def test_reset_dev_data_execute_keeps_admin_and_config(db):
     admin, user = await seed_admin_and_user_data(db)
     await db.execute("INSERT INTO system_settings (key, value_json, updated_by) VALUES (?, ?, ?)", ["ai_settings", "{}", admin.id])
-    await db.execute("INSERT INTO ai_providers (id, label, base_url, default_model_id) VALUES (?, ?, ?, ?)", ["test_provider", "Test", "https://example.test", "model"])
+    await db.execute("INSERT INTO ai_providers (id, label, base_url) VALUES (?, ?, ?)", ["test_provider", "Test", "https://example.test"])
 
     result = await reset_dev_data(db, dry_run=False, confirm=RESET_DEV_DATA_CONFIRM)
     admin_row = await db.fetch_one("SELECT * FROM users WHERE id = ?", [admin.id])

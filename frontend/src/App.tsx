@@ -487,7 +487,7 @@ export default function App() {
       return;
     }
     if (settingsDefaults?.router9.only_mode && settingsDefaults.router9.allowed_model_ids.length === 0) {
-      const message = '9router-only đang bật nhưng admin chưa cấu hình model OCR khả dụng.';
+      const message = '9router-only đang bật nhưng admin chưa cấu hình allowlist model 9router.';
       showNotification('OCR thất bại', message);
       return;
     }

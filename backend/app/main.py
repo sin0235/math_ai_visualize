@@ -90,13 +90,16 @@ async def request_id_middleware(request: Request, call_next):
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
-    if exc.status_code >= 500 or (isinstance(exc.detail, dict) and exc.detail.get("code")):
+    # Only persist true server failures — coded 4xx from api_error would flood analytics.
+    if exc.status_code >= 500:
         try:
             from app.db.session import get_shared_database
             from app.repositories.errors import try_record_error_event
+            from app.services.provider_logging import redact_sensitive
 
             detail = exc.detail if isinstance(exc.detail, dict) else {"message": str(exc.detail)}
-            message = str(detail.get("message") or detail.get("debug_message") or exc.detail)
+            raw = str(detail.get("message") or detail.get("debug_message") or exc.detail)
+            message = redact_sensitive(raw)[:1000]
             await try_record_error_event(
                 get_shared_database(),
                 message=message,
@@ -110,7 +113,9 @@ async def http_exception_handler(request: Request, exc: HTTPException):
             )
         except Exception:
             pass
-    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail}, headers={"X-Request-Id": get_request_id() or ""})
+    headers = {str(k): str(v) for k, v in (exc.headers or {}).items()}
+    headers["X-Request-Id"] = get_request_id() or headers.get("X-Request-Id") or ""
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail}, headers=headers)
 
 
 @app.exception_handler(Exception)
@@ -121,17 +126,20 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     try:
         from app.db.session import get_shared_database
         from app.repositories.errors import try_record_error_event
+        from app.services.provider_logging import redact_sensitive
 
+        safe_message = redact_sensitive(f"{exc.__class__.__name__}: {exc}")[:1000]
+        safe_stack = redact_sensitive(repr(exc))[:2000]
         await try_record_error_event(
             get_shared_database(),
-            message=str(exc) or exc.__class__.__name__,
+            message=safe_message or exc.__class__.__name__,
             source="server",
             request_id=get_request_id(),
             route=str(request.url.path),
             method=request.method,
             status_code=500,
             error_code="INTERNAL_ERROR",
-            stack=repr(exc),
+            stack=safe_stack,
         )
     except Exception:
         pass

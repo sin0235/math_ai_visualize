@@ -83,8 +83,8 @@ function isTransientNetworkError(caught: unknown) {
 }
 
 export function networkApiError(caught: unknown, fallbackMessage: string) {
-  if (caught instanceof DOMException && caught.name === 'AbortError') return new ApiError('Hệ thống đang quá tải do lượng người dùng tăng cao. Vui lòng thử lại sau ít phút.');
-  if (caught instanceof TypeError) return new ApiError('Hệ thống đang quá tải do lượng người dùng tăng cao. Vui lòng thử lại sau ít phút.');
+  if (caught instanceof DOMException && caught.name === 'AbortError') return new ApiError(`${fallbackMessage} Yêu cầu quá thời gian chờ.`);
+  if (caught instanceof TypeError) return new ApiError(`${fallbackMessage} Không thể kết nối tới backend.`);
   if (caught instanceof Error) return new ApiError(caught.message || fallbackMessage);
   return new ApiError(fallbackMessage);
 }

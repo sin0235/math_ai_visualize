@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { KatexSpan } from '../KatexSpan';
 import { degToRad, formatAngleLabel, formatTrigNumber, normalizeAngleRad, radToDeg, safeCot, safeTan, sampleTrigWave, SPECIAL_ANGLES, type WavePoint } from '../../utils/trigonometryNumerics';
+import { formatVerifyTone, verifyTanCotRelation, verifyUnitCircleIdentity } from '../../simulation/math/verify';
 
 interface Props {
   playing: boolean;
@@ -24,6 +25,8 @@ export function TrigonometrySimulation({ playing }: Props) {
   const [animatedAngle, setAnimatedAngle] = useState(Math.PI / 6);
   const [angularSpeed, setAngularSpeed] = useState(0.7);
   const [phaseDeg, setPhaseDeg] = useState(0);
+  const [amplitude, setAmplitude] = useState(1);
+  const [frequency, setFrequency] = useState(1);
   const [visible, setVisible] = useState<Record<VisibleKey, boolean>>({ sin: true, cos: true, tan: false, cot: false });
   const rafRef = useRef<number | null>(null);
   const lastTimeRef = useRef<number | null>(null);
@@ -36,12 +39,14 @@ export function TrigonometrySimulation({ playing }: Props) {
   const cos = Math.cos(phaseAngleRad);
   const tan = safeTan(phaseAngleRad);
   const cot = safeCot(phaseAngleRad);
+  const identityCheck = useMemo(() => verifyUnitCircleIdentity(phaseAngleRad), [phaseAngleRad]);
+  const tanCotCheck = useMemo(() => verifyTanCotRelation(phaseAngleRad), [phaseAngleRad]);
   const waves = useMemo(() => ({
-    sin: sampleShiftedTrigWave('sin', phaseRad),
-    cos: sampleShiftedTrigWave('cos', phaseRad),
-    tan: sampleShiftedTrigWave('tan', phaseRad),
-    cot: sampleShiftedTrigWave('cot', phaseRad),
-  }), [phaseRad]);
+    sin: sampleShiftedTrigWave('sin', phaseRad, amplitude, frequency),
+    cos: sampleShiftedTrigWave('cos', phaseRad, amplitude, frequency),
+    tan: sampleShiftedTrigWave('tan', phaseRad, amplitude, frequency),
+    cot: sampleShiftedTrigWave('cot', phaseRad, amplitude, frequency),
+  }), [phaseRad, amplitude, frequency]);
 
   useEffect(() => {
     if (!playing) {
@@ -100,6 +105,18 @@ export function TrigonometrySimulation({ playing }: Props) {
           <input type="range" min="-180" max="180" step="5" value={phaseDeg} onChange={(event) => setPhaseDeg(Number(event.target.value))} />
         </label>
 
+        <label className="trig-angle-control trig-param-control">
+          <span>Biên độ sóng <KatexSpan tex="A" /></span>
+          <strong>{amplitude.toFixed(2)} · đồ thị <KatexSpan tex={String.raw`A\sin(B\theta+\varphi)`} /></strong>
+          <input type="range" min="0.25" max="2.5" step="0.05" value={amplitude} onChange={(event) => setAmplitude(Number(event.target.value))} />
+        </label>
+
+        <label className="trig-angle-control trig-param-control">
+          <span>Tần số góc <KatexSpan tex="B" /></span>
+          <strong>{frequency.toFixed(2)} · chu kỳ đồ thị ~ <KatexSpan tex={String.raw`2\pi/|B|`} /></strong>
+          <input type="range" min="0.5" max="3" step="0.1" value={frequency} onChange={(event) => setFrequency(Number(event.target.value))} />
+        </label>
+
         <div className="trig-phase-presets" aria-label="Mẫu pha">
           {[-90, -45, 0, 45, 90].map((degree) => <button key={degree} type="button" className={phaseDeg === degree ? 'active' : ''} onClick={() => setPhaseDeg(degree)}>{degree > 0 ? `+${degree}°` : `${degree}°`}</button>)}
         </div>
@@ -115,6 +132,18 @@ export function TrigonometrySimulation({ playing }: Props) {
           <ValueTile label={<KatexSpan tex={String.raw`\tan(\theta+\varphi)`} className="trig-value-tile-katex" />} value={tan.undefined ? 'Không xác định' : formatTrigNumber(tan.value)} tone="tan" />
           <ValueTile label={<KatexSpan tex={String.raw`\cot(\theta+\varphi)`} className="trig-value-tile-katex" />} value={cot.undefined ? 'Không xác định' : formatTrigNumber(cot.value)} tone="cot" />
         </div>
+
+        <div className={`sim-verify-banner sim-verify-${identityCheck.severity}`} role="status">
+          <strong>{formatVerifyTone(identityCheck.severity)}</strong>
+          <span>{identityCheck.message}</span>
+        </div>
+        <div className={`sim-verify-banner sim-verify-${tanCotCheck.severity}`} role="status">
+          <strong>{formatVerifyTone(tanCotCheck.severity)}</strong>
+          <span>{tanCotCheck.message}</span>
+        </div>
+        {(visible.tan || visible.cot) && (
+          <p className="trig-asymptote-hint">Đường đứt nét trên đồ thị đánh dấu vùng gần tiệm cận của tan/cot (giá trị không xác định).</p>
+        )}
 
         <div className="trig-toggle-list">
           {(['sin', 'cos', 'tan', 'cot'] as VisibleKey[]).map((key) => (
@@ -139,12 +168,17 @@ export function TrigonometrySimulation({ playing }: Props) {
   );
 }
 
-function sampleShiftedTrigWave(kind: VisibleKey, phaseRad: number) {
-  return sampleTrigWave(kind, GRAPH_MIN, GRAPH_MAX, 420).map((point) => ({
-    ...point,
-    y: shiftedTrigValue(kind, point.x + phaseRad),
-    valid: Number.isFinite(shiftedTrigValue(kind, point.x + phaseRad)),
-  }));
+function sampleShiftedTrigWave(kind: VisibleKey, phaseRad: number, amplitude = 1, frequency = 1) {
+  return sampleTrigWave(kind, GRAPH_MIN, GRAPH_MAX, 420).map((point) => {
+    const arg = frequency * point.x + phaseRad;
+    const raw = shiftedTrigValue(kind, arg);
+    const y = Number.isFinite(raw) ? amplitude * raw : NaN;
+    return {
+      ...point,
+      y,
+      valid: Number.isFinite(y) && Math.abs(y) <= 6,
+    };
+  });
 }
 
 function shiftedTrigValue(kind: VisibleKey, value: number) {

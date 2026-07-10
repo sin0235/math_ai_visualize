@@ -2,6 +2,8 @@ import type { CompiledExpression } from './calculusExpression';
 
 export type SamplePoint = { x: number; y: number; valid: boolean };
 export type RectSample = { x: number; midX: number; top: number; bottom: number; height: number; width: number; area: number };
+/** Quy tắc chọn điểm mẫu trên mỗi khoảng Riemann. */
+export type RiemannRule = 'left' | 'right' | 'mid';
 
 export function sampleFunction(fn: CompiledExpression, a: number, b: number, count = 240): SamplePoint[] {
   const safeCount = Math.max(2, Math.floor(count));
@@ -27,19 +29,32 @@ export function integrate(fn: (x: number) => number, a: number, b: number, inter
   return (sum * h) / 3;
 }
 
-export function riemannBetween(f: CompiledExpression, g: CompiledExpression, a: number, b: number, n: number): RectSample[] {
+export function riemannSampleX(left: number, width: number, rule: RiemannRule): number {
+  if (rule === 'left') return left;
+  if (rule === 'right') return left + width;
+  return left + width / 2;
+}
+
+export function riemannBetween(
+  f: CompiledExpression,
+  g: CompiledExpression,
+  a: number,
+  b: number,
+  n: number,
+  rule: RiemannRule = 'mid',
+): RectSample[] {
   const count = Math.max(1, Math.floor(n));
   const width = (b - a) / count;
   return Array.from({ length: count }, (_, index) => {
     const x = a + index * width;
-    const midX = x + width / 2;
-    const fy = safeEval(f, midX);
-    const gy = safeEval(g, midX);
-    if (!Number.isFinite(fy) || !Number.isFinite(gy)) return { x, midX, top: NaN, bottom: NaN, height: NaN, width, area: NaN };
+    const sampleX = riemannSampleX(x, width, rule);
+    const fy = safeEval(f, sampleX);
+    const gy = safeEval(g, sampleX);
+    if (!Number.isFinite(fy) || !Number.isFinite(gy)) return { x, midX: sampleX, top: NaN, bottom: NaN, height: NaN, width, area: NaN };
     const top = Math.max(fy, gy);
     const bottom = Math.min(fy, gy);
     const height = top - bottom;
-    return { x, midX, top, bottom, height, width, area: height * width };
+    return { x, midX: sampleX, top, bottom, height, width, area: height * width };
   });
 }
 

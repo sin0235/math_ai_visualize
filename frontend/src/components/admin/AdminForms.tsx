@@ -51,7 +51,7 @@ const defaultRuntimeSettings: RuntimeSettings = {
 };
 
 function defaultAdminProviderSettings() {
-  return { base_url: '', model: '', scanned_models: [] as any[], allowed_model_ids: [] as string[], last_scanned_at: '', only_mode: false };
+  return { base_url: '', scanned_models: [] as any[], allowed_model_ids: [] as string[], last_scanned_at: '', only_mode: false };
 }
 
 function getAdminProviderSettings(value: Record<string, unknown>, provider: string, defaults?: SettingsDefaults | null) {
@@ -62,7 +62,6 @@ function getAdminProviderSettings(value: Record<string, unknown>, provider: stri
     ...defaultAdminProviderSettings(),
     ...data,
     base_url: typeof data.base_url === 'string' && data.base_url ? data.base_url : providerDefaults?.base_url ?? '',
-    model: typeof data.model === 'string' && data.model ? data.model : providerDefaults?.model ?? '',
     scanned_models: Array.isArray(data.scanned_models) && data.scanned_models.length > 0 ? data.scanned_models : providerDefaults?.scanned_models ?? [],
     allowed_model_ids: Array.isArray(data.allowed_model_ids) ? data.allowed_model_ids.map(String) : providerDefaults?.allowed_model_ids ?? [],
     last_scanned_at: typeof data.last_scanned_at === 'string' ? data.last_scanned_at : '',
@@ -134,7 +133,6 @@ function adminProviderToDefaults(value: Record<string, unknown>, provider: strin
   return {
     api_key_configured: true,
     base_url: settings.base_url,
-    model: settings.model,
     scanned_models: normalizeScannedModels(settings.scanned_models),
     allowed_model_ids: settings.allowed_model_ids,
   };
@@ -146,7 +144,6 @@ function adminModelOptions(providerValue: ReturnType<typeof defaultAdminProvider
     if (id && !byId.has(id)) byId.set(id, { id, name, model });
   }
   preferredIds.forEach((id) => add(id));
-  add(providerValue.model);
   providerValue.allowed_model_ids.forEach((id) => add(id));
   providerValue.scanned_models.forEach((modelItem: any) => {
     const id = typeof modelItem === 'string' ? modelItem : modelItem?.id;
@@ -154,13 +151,6 @@ function adminModelOptions(providerValue: ReturnType<typeof defaultAdminProvider
     add(id, name, typeof modelItem === 'object' ? modelItem : undefined);
   });
   return [...byId.values()];
-}
-
-function normalizeDefaultModel(providerValue: ReturnType<typeof defaultAdminProviderSettings>) {
-  if (providerValue.allowed_model_ids.length > 0 && !providerValue.allowed_model_ids.includes(providerValue.model)) {
-    return { ...providerValue, model: providerValue.allowed_model_ids[0] ?? '' };
-  }
-  return providerValue;
 }
 
 function sameJson(left: unknown, right: unknown) {
@@ -228,7 +218,6 @@ function mergeProviderDefaults<T extends ProviderSettingsDefaults>(defaults: T, 
     ...defaults,
     api_key_configured: defaults.api_key_configured || aiSettingsDefaults.api_key_configured,
     base_url: defaults.base_url || aiSettingsDefaults.base_url,
-    model: defaults.model || aiSettingsDefaults.model,
     scanned_models: defaults.scanned_models.length > 0 ? defaults.scanned_models : aiSettingsDefaults.scanned_models,
     allowed_model_ids: mergeModelIds(defaults.allowed_model_ids, aiSettingsDefaults.allowed_model_ids),
   };
@@ -263,14 +252,24 @@ function getAiTaskProfile(value: unknown) {
 
 function formatProfileModelId(provider: string, model: string) {
   if (!model) return '';
-  if (provider === 'openrouter' || provider === 'nvidia' || provider === 'ollama' || provider === 'openai_compat' || provider === 'router9') {
-    return model.startsWith(`${provider}/`) ? model : `${provider}/${model}`;
+  if (model.includes('::')) return model;
+  // Reuse tier helper: strip legacy provider/ prefixes before adding provider::
+  const legacyProvider = adminProviderFromPrefixedModel(model);
+  const bare = legacyProvider ? model.slice(legacyProvider.length + 1) : model;
+  const resolvedProvider = legacyProvider || provider;
+  if (resolvedProvider === 'openrouter' || resolvedProvider === 'nvidia' || resolvedProvider === 'ollama' || resolvedProvider === 'openai_compat' || resolvedProvider === 'router9') {
+    return `${resolvedProvider}::${bare}`;
   }
-  return model;
+  return bare;
 }
 
 function parseProfileModelId(value: string) {
   const modelId = value.trim();
+  const splitAt = modelId.indexOf('::');
+  if (splitAt > 0) {
+    const provider = modelId.slice(0, splitAt) === 'openai-compat' ? 'openai_compat' : modelId.slice(0, splitAt);
+    return { provider, model: modelId.slice(splitAt + 2) };
+  }
   for (const provider of ['openrouter', 'nvidia', 'ollama', 'openai_compat', 'router9'] as const) {
     const prefix = `${provider}/`;
     if (modelId.startsWith(prefix)) return { provider, model: modelId.slice(prefix.length) };
@@ -364,18 +363,17 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave, onToast }
   }, [value]);
 
   function updateProvider(provider: (typeof providers)[number], patch: Partial<ReturnType<typeof getAdminProviderSettings>>) {
-    setDraft((current) => ({ ...current, [provider]: normalizeDefaultModel({ ...current[provider], ...patch }) }));
+    setDraft((current) => ({ ...current, [provider]: { ...current[provider], ...patch } }));
   }
 
   async function saveProvider(provider: (typeof providers)[number]) {
     const current = getAdminProviderSettings(value, provider, defaults);
     const providerDraft = draft[provider] as ReturnType<typeof getAdminProviderSettings> & { api_key?: string };
-    const nextProvider = normalizeDefaultModel({
+    const nextProvider = {
       ...current,
       ...providerDraft,
       base_url: providerDraft.base_url.trim(),
-      model: providerDraft.model.trim(),
-    });
+    };
     if (!providerDraft.api_key?.trim()) {
       delete (nextProvider as { api_key?: string }).api_key;
     }
@@ -384,7 +382,6 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave, onToast }
     }
     const providerPatch: Record<string, unknown> = {
       base_url: nextProvider.base_url,
-      model: nextProvider.model,
       allowed_model_ids: nextProvider.allowed_model_ids,
     };
     if (provider === 'router9') providerPatch.only_mode = nextProvider.only_mode;
@@ -430,14 +427,12 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave, onToast }
       const scannedIds = models.map((model) => model.id);
       const scannedIdSet = new Set(scannedIds);
       const allowed_model_ids = draft[provider].allowed_model_ids.filter((id) => scannedIdSet.has(id));
-      const model = scannedIdSet.has(draft[provider].model) ? draft[provider].model : '';
-      const next = normalizeDefaultModel({
+      const next = {
         ...draft[provider],
         scanned_models: models,
         allowed_model_ids,
-        model,
         last_scanned_at: new Date().toISOString(),
-      });
+      };
       updateProvider(provider, next);
       onToast?.('Quét model', `Đã quét ${models.length} model duy nhất từ ${providerLabels[provider]}. Chọn model cần dùng rồi bấm Lưu provider.`, 'info');
     } catch (error) {
@@ -445,10 +440,6 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave, onToast }
     } finally {
       setScanning(null);
     }
-  }
-
-  function manualModelOptions(provider: (typeof providers)[number]) {
-    return adminModelOptions(draft[provider], [draft[provider].model]);
   }
 
   async function checkProvider(provider: (typeof providers)[number]) {
@@ -543,12 +534,11 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave, onToast }
         : [...providerValue.allowed_model_ids, modelId];
       return {
         ...current,
-        [provider]: normalizeDefaultModel({
+        [provider]: {
           ...providerValue,
           scanned_models,
           allowed_model_ids,
-          model: providerValue.model || modelId,
-        }),
+        },
       };
     });
     setManualModelInputs((current) => ({ ...current, [provider]: '' }));
@@ -558,7 +548,6 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave, onToast }
     updateProvider(provider, {
       scanned_models: draft[provider].scanned_models.filter((modelItem: any) => modelItem.id !== modelId),
       allowed_model_ids: draft[provider].allowed_model_ids.filter((id) => id !== modelId),
-      model: draft[provider].model === modelId ? '' : draft[provider].model,
     });
   }
 
@@ -567,8 +556,9 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave, onToast }
     const firstScannedModel = nextSettings.scanned_models
       .map((modelItem: any) => typeof modelItem === 'string' ? modelItem : modelItem.id)
       .find(Boolean);
+    const firstAllowedModel = nextSettings.allowed_model_ids.find(Boolean);
     setOcrProvider(nextProvider);
-    setOcrModel(defaults?.ocr.provider === nextProvider ? defaults.ocr.model : nextSettings.model || firstScannedModel || '');
+    setOcrModel(defaults?.ocr.provider === nextProvider ? defaults.ocr.model : firstAllowedModel || firstScannedModel || '');
   }
 
   const normalizedModelFilter = modelFilter.trim().toLowerCase();
@@ -591,7 +581,6 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave, onToast }
         <div className="admin-provider-grid">
           {providers.map((provider) => {
             const providerValue = draft[provider];
-            const modelOptions = manualModelOptions(provider);
             const allowlistOptions = orderedAllowlistModelOptions(providerValue, providerValue.allowed_model_ids);
             const filteredAllowlistOptions = normalizedModelFilter
               ? allowlistOptions.filter((modelItem) => modelItem.id.toLowerCase().includes(normalizedModelFilter) || modelItem.name.toLowerCase().includes(normalizedModelFilter))
@@ -616,7 +605,6 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave, onToast }
                 <div className={`admin-field-grid ${provider === 'router9' ? 'admin-field-grid-router9' : ''}`}>
                   <label className="field-label">Base URL<input type="url" value={providerValue.base_url} onChange={(event) => updateProvider(provider, { base_url: event.target.value })} placeholder="https://..." /></label>
                   <label className="field-label">API key<input type="password" value={(providerValue as any).api_key ?? ''} onChange={(event) => updateProvider(provider, { ...( { api_key: event.target.value } as any) })} placeholder={defaults?.[provider]?.api_key_configured ? 'Đã cấu hình, nhập để thay' : 'Nhập API key'} /></label>
-                  <label className="field-label">Model fallback của provider<select value={providerValue.model} onChange={(event) => updateProvider(provider, { model: event.target.value })}><option value="">Chọn model fallback</option>{modelOptions.map((modelItem) => <option key={modelItem.id} value={modelItem.id}>{modelItem.name}</option>)}</select><span className="field-hint">Render chính dùng Hồ sơ AI theo tier; mục này chỉ dùng khi provider cần model dự phòng.</span></label>
                 </div>
                 {result && <div className={`admin-status-box ${result.status}`}><strong>{result.status === 'ok' ? 'Thành công' : 'Lỗi'}</strong><p>{result.message}</p></div>}
                 {provider === 'router9' && (

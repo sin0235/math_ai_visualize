@@ -12,7 +12,7 @@ from app.db.models import UserRecord
 from app.db.session import SQLiteClient, get_database
 from app.repositories.auth import SESSION_COOKIE_NAME, SessionRepository, UserRepository
 from app.main import app
-from app.services.ocr import OcrResult
+from app.services.ocr import OcrResult, _ocr_models_for_provider
 from app.services.model_provider import resolve_ocr_provider
 from app.services.ocr import extract_text_from_image, validate_image_data_url
 from app.services.openrouter_client import OpenRouterClient
@@ -75,6 +75,19 @@ def test_resolve_ocr_provider_does_not_infer_from_vendor_namespaces():
     ]:
         assert resolve_ocr_provider(None, model) == "openrouter"
     assert resolve_ocr_provider("router9", "gh/gpt-5.2") == "router9"
+
+
+def test_router9_ocr_fallbacks_keep_slash_models_and_ignore_explicit_other_provider():
+    assert _ocr_models_for_provider("router9", None, [
+        "nvidia/deepseek-ai/deepseek-v4-flash",
+        "ollama/qwen3",
+        "openrouter/google/gemma",
+        "ollama::qwen3",
+    ]) == [
+        "nvidia/deepseek-ai/deepseek-v4-flash",
+        "ollama/qwen3",
+        "openrouter/google/gemma",
+    ]
 
 
 def test_resolve_ocr_provider_supports_all_admin_providers():
@@ -713,7 +726,7 @@ def test_ocr_route_uses_provider_default_for_empty_registry_ocr_profile(monkeypa
     monkeypatch.setattr("app.api.routes_ocr.get_settings", lambda: settings)
     monkeypatch.setattr("app.services.model_registry.get_settings", lambda: settings)
     asyncio.run(load_model_registry(isolated_database, settings))
-    asyncio.run(save_provider_config(isolated_database, "openrouter", "https://openrouter.ai/api/v1", "admin/text"))
+    asyncio.run(save_provider_config(isolated_database, "openrouter", "https://openrouter.ai/api/v1"))
     asyncio.run(save_task_profile(isolated_database, "ocr", "openrouter", "", []))
     payloads = []
 
@@ -865,9 +878,9 @@ def test_ocr_profile_filters_cross_provider_fallback_models(monkeypatch):
             provider="openai_compat",
             model="compat/primary",
             fallback_models=[
-                "openrouter/google/gemma-4-31b-it:free",
-                "router9/codex-5.5-image",
-                "openai_compat/compat/fallback",
+                "openrouter::google/gemma-4-31b-it:free",
+                "router9::codex-5.5-image",
+                "openai_compat::compat/fallback",
             ],
         )
     )

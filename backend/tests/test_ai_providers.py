@@ -47,6 +47,25 @@ def test_nvidia_detects_preview_nim_type_as_free_endpoint():
     assert detected.is_free_endpoint is True
 
 
+@pytest.mark.anyio
+async def test_openrouter_adapter_lists_only_models_with_free_tag(monkeypatch):
+    async def fake_get_openai_models(provider, headers, normalized_base, params=None, url=None):
+        assert provider == "openrouter"
+        return httpx.Response(200, json={"data": [
+            {"id": "cohere/north-mini-code:free", "pricing": {"prompt": "0", "completion": "0"}},
+            {"id": "google/paid-model", "pricing": {"prompt": "1", "completion": "2"}},
+            {"id": "vendor/free-without-tag", "pricing": {"prompt": "0", "completion": "0"}},
+        ]})
+
+    monkeypatch.setattr("app.services.ai_providers._get_openai_models", fake_get_openai_models)
+
+    result = await get_provider_adapter("openrouter").list_models(Settings(_env_file=None, openrouter_api_key="secret"))
+
+    assert [model.id for model in result.models] == ["cohere/north-mini-code:free"]
+    assert result.models[0].is_free_endpoint is True
+    assert result.warnings == ["Đã bỏ 2 OpenRouter model không có tag :free."]
+
+
 def test_openrouter_chat_payload_gates_reasoning_by_capability():
     adapter = OpenRouterAdapter()
     messages = [{"role": "user", "content": "x"}]
@@ -92,7 +111,7 @@ async def test_openrouter_client_explicit_thinking_requires_known_capability(mon
 
     async def fake_collect(client, url, headers, payload, timeout):
         payloads.append(payload)
-        return '{}', 2
+        return '{}', 2, None
 
     monkeypatch.setattr("app.services.http_pool.get_client", lambda *args, **kwargs: object())
     monkeypatch.setattr("app.services.openrouter_client.collect_openai_chat_stream", fake_collect)

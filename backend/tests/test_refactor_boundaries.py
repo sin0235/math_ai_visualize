@@ -2,8 +2,24 @@ from app.main import app
 from app.schemas.analysis import AnalyzeResponse, CriticalPoint, VariationRow
 
 
+def _iter_api_routes(routes):
+    """Walk FastAPI routes including 0.139+ `_IncludedRouter` wrappers."""
+    for route in routes:
+        path = getattr(route, "path", None)
+        if path is not None:
+            yield route
+            continue
+        original = getattr(route, "original_router", None)
+        if original is not None:
+            yield from _iter_api_routes(original.routes)
+            continue
+        nested = getattr(route, "routes", None)
+        if nested is not None:
+            yield from _iter_api_routes(nested)
+
+
 def test_split_solve_and_analysis_routes_stay_registered():
-    paths = {route.path for route in app.routes}
+    paths = {route.path for route in _iter_api_routes(app.routes)}
 
     assert "/api/solve" in paths
     assert "/api/analyze" in paths
@@ -11,7 +27,11 @@ def test_split_solve_and_analysis_routes_stay_registered():
 
 
 def test_solve_and_analysis_routes_have_separate_tags():
-    route_tags = {route.path: getattr(route, "tags", []) for route in app.routes if route.path in {"/api/solve", "/api/analyze", "/api/analyze/ocr"}}
+    route_tags = {
+        route.path: getattr(route, "tags", [])
+        for route in _iter_api_routes(app.routes)
+        if getattr(route, "path", None) in {"/api/solve", "/api/analyze", "/api/analyze/ocr"}
+    }
 
     assert route_tags["/api/solve"] == ["solver"]
     assert route_tags["/api/analyze"] == ["function-analysis"]

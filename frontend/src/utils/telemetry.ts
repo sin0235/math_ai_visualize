@@ -48,7 +48,7 @@ export function reportClientError(input: {
   if (isIgnorableClientError(message)) return;
   if (!shouldReport(message, input.component)) return;
 
-  let pathname = window.location.pathname;
+  let pathname = '/';
   try {
     pathname = window.location.pathname;
   } catch {

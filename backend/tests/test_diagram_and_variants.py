@@ -36,7 +36,7 @@ _SCENE_JSON = {
 
 
 @pytest.fixture(autouse=True)
-def isolated_database(tmp_path):
+def isolated_database(tmp_path, monkeypatch):
     db = SQLiteClient(str(tmp_path / "diagram.db"))
     asyncio.run(apply_sqlite_migrations(db))
     settings = Settings(
@@ -55,6 +55,8 @@ def isolated_database(tmp_path):
     app.dependency_overrides[get_database] = override_db
     app.dependency_overrides[get_settings] = lambda: settings
     app.dependency_overrides[require_active_user] = override_user
+    monkeypatch.setattr("app.core.config.get_settings", lambda: settings)
+    monkeypatch.setattr("app.services.model_registry.get_settings", lambda: settings)
     try:
         yield db
     finally:

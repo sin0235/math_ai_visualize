@@ -18,6 +18,8 @@ type SurfaceProps = {
   showDiskStack?: boolean;
   showSelectedSlice?: boolean;
   showSurface?: boolean;
+  /** Ox: disk/washer quanh Ox. Oy: vỏ trụ (shell) quanh Oy — geometry map trục. */
+  axis?: 'Ox' | 'Oy';
 };
 
 type CrossSectionProps = {
@@ -62,15 +64,30 @@ export function CrossSectionThreeView(props: CrossSectionProps) {
   );
 }
 
-function RevolutionScene({ f, g, a, b, sweep, sliceX, visibleDisks = 0, totalDisks = 36, showDiskStack = false, showSelectedSlice = true, showSurface = true }: SurfaceProps) {
+function RevolutionScene({ f, g, a, b, sweep, sliceX, visibleDisks = 0, totalDisks = 36, showDiskStack = false, showSelectedSlice = true, showSurface = true, axis = 'Ox' }: SurfaceProps) {
   const frame = useMemo(() => buildRevolutionFrame(f, g, a, b), [f, g, a, b]);
-  const outerGeometry = useMemo(() => buildSurfaceGeometry(f, a, b, Math.max(0.02, sweep), frame.scale, frame.radiusScale), [f, a, b, sweep, frame]);
-  const innerGeometry = useMemo(() => g ? buildSurfaceGeometry(g, a, b, Math.max(0.02, sweep), frame.scale, frame.radiusScale) : null, [g, a, b, sweep, frame]);
+  const outerGeometry = useMemo(
+    () => buildSurfaceGeometry(f, a, b, Math.max(0.02, sweep), frame.scale, frame.radiusScale, axis),
+    [f, a, b, sweep, frame, axis],
+  );
+  const innerGeometry = useMemo(
+    () => (g ? buildSurfaceGeometry(g, a, b, Math.max(0.02, sweep), frame.scale, frame.radiusScale, axis) : null),
+    [g, a, b, sweep, frame, axis],
+  );
   const caps = useMemo(() => [buildWasherSlice(f, g, a, frame.scale, frame.radiusScale), buildWasherSlice(f, g, b, frame.scale, frame.radiusScale)], [f, g, a, b, frame]);
   const disks = useMemo(() => buildRevolutionDisks(f, g, a, b, totalDisks, visibleDisks, frame.scale, frame.radiusScale), [f, g, a, b, totalDisks, visibleDisks, frame]);
   const slice = useMemo(() => buildWasherSlice(f, g, sliceX, frame.scale, frame.radiusScale), [f, g, sliceX, frame]);
+  const offset = axis === 'Oy'
+    ? ([0, -frame.centerX * frame.scale, 0] as const)
+    : ([-frame.centerX * frame.scale, 0, 0] as const);
+  const slicePos = (xScaled: number): [number, number, number] => (axis === 'Oy' ? [0, xScaled, 0] : [xScaled, 0, 0]);
+  const sliceRot: [number, number, number] = axis === 'Oy' ? [Math.PI / 2, 0, 0] : [0, Math.PI / 2, 0];
+  const labelPos: [number, number, number] = axis === 'Oy'
+    ? [(slice?.outer ?? 1) + 0.35, slice?.x ?? 0, 0]
+    : [slice?.x ?? 0, (slice?.outer ?? 1) + 0.35, 0];
+
   return (
-    <group position={[-frame.centerX * frame.scale, 0, 0]}>
+    <group position={[...offset]}>
       <Axes3D />
       {showSurface && (
         <>
@@ -82,25 +99,25 @@ function RevolutionScene({ f, g, a, b, sweep, sliceX, visibleDisks = 0, totalDis
               <meshStandardMaterial color="#f97316" opacity={0.22} transparent side={THREE.DoubleSide} roughness={0.5} />
             </mesh>
           )}
-          {caps.map((cap, index) => cap && (
-            <mesh key={`cap-${index}`} geometry={cap.geometry} position={[cap.x, 0, 0]} rotation={[0, Math.PI / 2, 0]}>
+          {axis === 'Ox' && caps.map((cap, index) => cap && (
+            <mesh key={`cap-${index}`} geometry={cap.geometry} position={slicePos(cap.x)} rotation={sliceRot}>
               <meshStandardMaterial color="#64748b" opacity={0.24} transparent side={THREE.DoubleSide} roughness={0.55} />
             </mesh>
           ))}
         </>
       )}
       {showDiskStack && disks.map((disk, index) => (
-        <mesh key={`disk-${index}`} geometry={disk.geometry} position={[disk.x, 0, 0]} rotation={[0, Math.PI / 2, 0]}>
-          <meshStandardMaterial color="#64748b" opacity={0.28} transparent side={THREE.DoubleSide} roughness={0.55} />
+        <mesh key={`disk-${index}`} geometry={disk.geometry} position={slicePos(disk.x)} rotation={sliceRot}>
+          <meshStandardMaterial color={axis === 'Oy' ? '#0d9488' : '#64748b'} opacity={0.28} transparent side={THREE.DoubleSide} roughness={0.55} />
         </mesh>
       ))}
       {showSelectedSlice && slice && (
-        <mesh geometry={slice.geometry} position={[slice.x, 0, 0]} rotation={[0, Math.PI / 2, 0]}>
+        <mesh geometry={slice.geometry} position={slicePos(slice.x)} rotation={sliceRot}>
           <meshStandardMaterial color="#0f172a" opacity={0.54} transparent side={THREE.DoubleSide} roughness={0.45} />
         </mesh>
       )}
       {showSelectedSlice && (
-        <Text position={[slice?.x ?? 0, (slice?.outer ?? 1) + 0.35, 0]} fontSize={0.22} color="#166534" anchorX="center">
+        <Text position={labelPos} fontSize={0.22} color="#166534" anchorX="center">
           x = {sliceX.toFixed(2)}
         </Text>
       )}
@@ -229,7 +246,15 @@ function buildRevolutionFrame(f: CompiledExpression, g: CompiledExpression | nul
   return { centerX: (a + b) / 2, scale: 4.8 / Math.max(b - a, 1e-6), radiusScale: 2.2 / maxRadius };
 }
 
-function buildSurfaceGeometry(fn: CompiledExpression, a: number, b: number, sweep: number, xScale: number, radiusScale: number) {
+function buildSurfaceGeometry(
+  fn: CompiledExpression,
+  a: number,
+  b: number,
+  sweep: number,
+  xScale: number,
+  radiusScale: number,
+  axis: 'Ox' | 'Oy' = 'Ox',
+) {
   const xSegments = 96;
   const thetaSegments = Math.max(3, Math.floor(56 * (sweep / (Math.PI * 2))));
   const positions: number[] = [];
@@ -239,7 +264,10 @@ function buildSurfaceGeometry(fn: CompiledExpression, a: number, b: number, swee
     const radius = Math.max(0, safeEval(fn, x)) * radiusScale;
     for (let j = 0; j <= thetaSegments; j += 1) {
       const theta = (sweep * j) / thetaSegments;
-      positions.push(x * xScale, Math.cos(theta) * radius, Math.sin(theta) * radius);
+      // Ox: quay quanh trục x → (x, r cos, r sin)
+      // Oy: quay quanh trục y → (r cos, x, r sin) — vỏ trụ / solid quanh Oy
+      if (axis === 'Oy') positions.push(Math.cos(theta) * radius, x * xScale, Math.sin(theta) * radius);
+      else positions.push(x * xScale, Math.cos(theta) * radius, Math.sin(theta) * radius);
     }
   }
   const row = thetaSegments + 1;

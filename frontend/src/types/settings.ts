@@ -54,7 +54,6 @@ export interface RuntimeSettings {
 export interface ProviderSettingsDefaults {
   api_key_configured: boolean;
   base_url: string;
-  model?: string | null;
   scanned_models: ScannedModelInfo[];
   allowed_model_ids: string[];
 }
@@ -73,7 +72,6 @@ export interface Router9SettingsDefaults extends ProviderSettingsDefaults {
 
 export interface AdminProviderModelSettings {
   base_url: string;
-  model: string;
   scanned_models: ScannedModelInfo[];
   allowed_model_ids: string[];
   last_scanned_at: string;
@@ -95,7 +93,6 @@ export interface RegistryProviderDefaults {
   id: string;
   label: string;
   base_url: string;
-  default_model_id: string;
   api_key_configured: boolean;
   enabled: boolean;
   last_checked_at?: string | null;

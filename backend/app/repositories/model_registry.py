@@ -55,49 +55,46 @@ class ModelRegistryRepository:
     async def has_legacy_ai_settings(self) -> bool:
         return await self.db.fetch_one("SELECT 1 FROM system_settings WHERE key = ?", ["ai_settings"]) is not None
 
-    async def upsert_provider(self, provider_id: str, label: str, base_url: str, default_model_id: str, enabled: bool, api_key_configured: bool | None = None) -> None:
+    async def upsert_provider(self, provider_id: str, label: str, base_url: str, enabled: bool, api_key_configured: bool | None = None) -> None:
         if api_key_configured is None:
             await self.db.execute(
                 """
-                INSERT INTO ai_providers (id, label, base_url, default_model_id, enabled, updated_at)
-                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                INSERT INTO ai_providers (id, label, base_url, enabled, updated_at)
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
                 ON CONFLICT(id) DO UPDATE SET
                   base_url = excluded.base_url,
-                  default_model_id = excluded.default_model_id,
                   enabled = excluded.enabled,
                   updated_at = CURRENT_TIMESTAMP
                 """,
-                [provider_id, label, base_url, default_model_id, int(enabled)],
+                [provider_id, label, base_url, int(enabled)],
             )
             return
         await self.db.execute(
             """
-            INSERT INTO ai_providers (id, label, base_url, default_model_id, api_key_configured, enabled, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            INSERT INTO ai_providers (id, label, base_url, api_key_configured, enabled, updated_at)
+            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(id) DO UPDATE SET
               base_url = excluded.base_url,
-              default_model_id = excluded.default_model_id,
               api_key_configured = excluded.api_key_configured,
               enabled = excluded.enabled,
               updated_at = CURRENT_TIMESTAMP
             """,
-            [provider_id, label, base_url, default_model_id, int(api_key_configured), int(enabled)],
+            [provider_id, label, base_url, int(api_key_configured), int(enabled)],
         )
 
-    async def insert_seed_provider(self, provider_id: str, label: str, base_url: str, default_model_id: str, api_key_configured: bool) -> None:
+    async def insert_seed_provider(self, provider_id: str, label: str, base_url: str, api_key_configured: bool) -> None:
         await self.db.execute(
             """
-            INSERT INTO ai_providers (id, label, base_url, default_model_id, api_key_configured, enabled)
-            VALUES (?, ?, ?, ?, ?, 1)
+            INSERT INTO ai_providers (id, label, base_url, api_key_configured, enabled)
+            VALUES (?, ?, ?, ?, 1)
             ON CONFLICT(id) DO UPDATE SET
               label = excluded.label,
               base_url = excluded.base_url,
-              default_model_id = excluded.default_model_id,
               api_key_configured = excluded.api_key_configured,
               enabled = 1,
               updated_at = CURRENT_TIMESTAMP
             """,
-            [provider_id, label, base_url, default_model_id, int(api_key_configured)],
+            [provider_id, label, base_url, int(api_key_configured)],
         )
 
     async def enabled_allowed_model_ids(self, provider_id: str) -> set[str]:
@@ -114,16 +111,6 @@ class ModelRegistryRepository:
             UPDATE ai_models
             SET enabled = 0, allowed = 0, updated_at = CURRENT_TIMESTAMP
             WHERE provider_id = ? AND source = 'scan' AND id = ?
-            """,
-            [provider_id, model_id],
-        )
-
-    async def clear_provider_default_model(self, provider_id: str, model_id: str) -> None:
-        await self.db.execute(
-            """
-            UPDATE ai_providers
-            SET default_model_id = '', updated_at = CURRENT_TIMESTAMP
-            WHERE id = ? AND default_model_id = ?
             """,
             [provider_id, model_id],
         )
