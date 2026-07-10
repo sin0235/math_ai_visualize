@@ -1001,20 +1001,20 @@ export default function App() {
                   navigateTo('algebra-solver');
                 }}>
                   <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 7h16"></path><path d="M4 12h10"></path><path d="M4 17h16"></path><path d="M17 10l3 3-3 3"></path></svg>
-                  <span>
-                    <strong>
-                      Solver đại số
-                      <em className="tools-beta-badge" title="Đang trong quá trình phát triển, có thể chưa đầy đủ chức năng hoặc phát sinh lỗi." aria-label="Beta: đang trong quá trình phát triển, có thể chưa đầy đủ chức năng hoặc phát sinh lỗi.">Beta</em>
-                    </strong>
-                    <small>Phương trình, bất phương trình có kiểm chứng</small>
-                  </span>
+                  <span><strong>Solver đại số</strong><small>Phương trình, bất phương trình có kiểm chứng</small></span>
                 </button>
                 <button type="button" role="menuitem" className={activeView === 'simulation' ? 'active' : ''} onClick={() => {
                   setToolsMenuOpen(false);
                   navigateTo('simulation');
                 }}>
                   <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><polygon points="10 8 16 12 10 16 10 8"></polygon></svg>
-                  <span><strong>Mô phỏng</strong><small>Thư viện THPT · tích phân · lượng giác</small></span>
+                  <span>
+                    <strong>
+                      Mô phỏng
+                      <em className="tools-beta-badge" title="Đang trong quá trình phát triển, có thể chưa đầy đủ chức năng hoặc phát sinh lỗi." aria-label="Beta: đang trong quá trình phát triển, có thể chưa đầy đủ chức năng hoặc phát sinh lỗi.">Beta</em>
+                    </strong>
+                    <small>Thư viện THPT · tích phân · lượng giác</small>
+                  </span>
                 </button>
                 <button type="button" role="menuitem" className={activeView === 'geogebra-lab' ? 'active' : ''} onClick={() => {
                   setToolsMenuOpen(false);

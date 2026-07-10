@@ -62,21 +62,22 @@ export function AdminAnalyticsSection({
   return (
     <>
       <header className="admin-page-header admin-analytics-header">
-        <div>
-          <h2>Phân tích hành vi sản phẩm</h2>
-          <p>Độ phủ tính năng, độ tin cậy luồng và hiệu suất AI trong {days} ngày gần nhất.</p>
+        <div className="admin-analytics-heading">
+          <span className="home-eyebrow">Product analytics</span>
+          <h2>Phân tích sản phẩm</h2>
+          <p>Theo dõi mức sử dụng, độ tin cậy luồng và hiệu suất AI trong {days} ngày gần nhất.</p>
         </div>
-        <div className="admin-analytics-actions">
-          <label>
-            <span className="sr-only">Khoảng thời gian phân tích</span>
+        <div className="admin-analytics-actions" aria-label="Điều khiển báo cáo">
+          <label className="admin-analytics-period">
+            <span>Khoảng thời gian</span>
             <select value={days} onChange={(event) => onDaysChange(Number(event.target.value))} disabled={loading}>
               <option value={7}>7 ngày</option>
               <option value={14}>14 ngày</option>
               <option value={30}>30 ngày</option>
             </select>
           </label>
-          <a className="secondary-button" href={apiUrl(adminAnalyticsExportUrl('errors', days))} target="_blank" rel="noreferrer">Errors CSV</a>
-          <a className="secondary-button" href={apiUrl(adminAnalyticsExportUrl('activity', days))} target="_blank" rel="noreferrer">Activity CSV</a>
+          <a className="secondary-button" href={apiUrl(adminAnalyticsExportUrl('errors', days))} target="_blank" rel="noreferrer">Xuất lỗi CSV</a>
+          <a className="secondary-button" href={apiUrl(adminAnalyticsExportUrl('activity', days))} target="_blank" rel="noreferrer">Xuất hoạt động CSV</a>
           <button type="button" className="secondary-button" onClick={onRefresh} disabled={loading} aria-busy={loading}>
             {loading ? 'Đang tải…' : 'Làm mới'}
           </button>
@@ -85,57 +86,66 @@ export function AdminAnalyticsSection({
 
       <div className="admin-section-stack admin-analytics-dashboard">
         <div className="admin-analytics-scope" role="note">
-          <strong>Phạm vi mẫu:</strong> feature/page analytics chỉ gồm người dùng đã đăng nhập. Lỗi có thể gồm khách. Token phản ánh mức tiêu thụ, không phải chi phí tiền.
-          <span>{refreshedAt ? `Cập nhật ${formatHistoryDate(refreshedAt.toISOString())}` : 'Chưa tải dữ liệu'}{failedSources ? ` · ${failedSources} nguồn lỗi` : ''}</span>
+          <div>
+            <strong>Phạm vi dữ liệu</strong>
+            <span>Tính năng và trang chỉ ghi nhận người dùng đăng nhập; lỗi có thể gồm khách. Token thể hiện mức sử dụng, chưa phải chi phí.</span>
+          </div>
+          <small>{refreshedAt ? `Cập nhật ${formatHistoryDate(refreshedAt.toISOString())}` : 'Chưa tải dữ liệu'}{failedSources ? ` · ${failedSources} nguồn lỗi` : ''}</small>
         </div>
 
         <PanelState error={sourceErrors.product} loading={loading && !productUsage}>
-          <section className="admin-analytics-insights" aria-label="Insight ưu tiên">
-            <InsightCard label="Độ phủ cao nhất" value={topFeature?.feature ?? 'Chưa có dữ liệu'} detail={topFeature ? `${topFeature.unique_users} người dùng · ${topFeature.opens} lượt mở` : 'Cần traffic từ user đăng nhập'} tone="accent" />
-            <InsightCard label="Luồng cần chú ý" value={weakestOutcome?.feature ?? 'Chưa có dữ liệu'} detail={weakestOutcome ? `${formatPercent(weakestOutcome.success_rate)} thành công · ${weakestOutcome.failed} lỗi` : 'Chưa có outcome kết thúc'} tone={weakestOutcome && (weakestOutcome.success_rate ?? 100) < 90 ? 'danger' : 'neutral'} />
-            <InsightCard label="Lỗi nổi bật" value={topError?.error_code ?? 'Không ghi nhận'} detail={topError ? `${topError.count} lần trong kỳ` : 'Không có error event'} tone={topError ? 'danger' : 'neutral'} />
-            <InsightCard label="Provider cần chú ý" value={unstableProvider?.key ?? slowProvider?.key ?? 'Chưa có dữ liệu'} detail={unstableProvider ? `${formatPercent(unstableProvider.fail_rate)} lỗi · ${unstableProvider.avg_ms ?? '—'}ms trung bình` : slowProvider ? `${slowProvider.avg_ms}ms trung bình` : 'Chưa đủ mẫu render'} tone={unstableProvider && (unstableProvider.fail_rate ?? 0) > 5 ? 'warning' : 'neutral'} />
+          <section className="admin-panel admin-panel-full admin-analytics-summary">
+            <PanelHeading title="Tín hiệu cần chú ý" description="Bốn chỉ số ưu tiên để quyết định kiểm tra tiếp theo." />
+            <div className="admin-analytics-insights" aria-label="Tín hiệu ưu tiên">
+              <InsightCard label="Độ phủ cao nhất" value={topFeature?.feature ?? 'Chưa có dữ liệu'} detail={topFeature ? `${topFeature.unique_users} người dùng · ${topFeature.opens} lượt mở` : 'Cần traffic từ người dùng đăng nhập'} tone="accent" />
+              <InsightCard label="Luồng cần chú ý" value={weakestOutcome?.feature ?? 'Chưa có dữ liệu'} detail={weakestOutcome ? `${formatPercent(weakestOutcome.success_rate)} thành công · ${weakestOutcome.failed} lỗi` : 'Chưa có outcome kết thúc'} tone={weakestOutcome && (weakestOutcome.success_rate ?? 100) < 90 ? 'danger' : 'neutral'} />
+              <InsightCard label="Lỗi nổi bật" value={topError?.error_code ?? 'Không ghi nhận'} detail={topError ? `${topError.count} lần trong kỳ` : 'Không có error event'} tone={topError ? 'danger' : 'neutral'} />
+              <InsightCard label="Provider cần chú ý" value={unstableProvider?.key ?? slowProvider?.key ?? 'Chưa có dữ liệu'} detail={unstableProvider ? `${formatPercent(unstableProvider.fail_rate)} lỗi · ${unstableProvider.avg_ms ?? '—'}ms trung bình` : slowProvider ? `${slowProvider.avg_ms}ms trung bình` : 'Chưa đủ mẫu render'} tone={unstableProvider && (unstableProvider.fail_rate ?? 0) > 5 ? 'warning' : 'neutral'} />
+            </div>
           </section>
         </PanelState>
 
         <PanelState error={sourceErrors.product} loading={loading && !productUsage}>
           <section className="admin-panel admin-panel-full">
-            <PanelHeading title="Xu hướng hoạt động" description="DAU, outcome hoàn tất và lỗi theo ngày." />
+            <PanelHeading title="Xu hướng hoạt động" description="Người dùng hoạt động, kết quả hoàn tất và lỗi theo ngày." />
             <TrendChart productUsage={productUsage} diagnostics={diagnostics} />
           </section>
         </PanelState>
 
-        <section className="admin-analytics-comparison" aria-label="So sánh với kỳ trước">
-          {(['active_users', 'feature_opens', 'completed_outcomes', 'errors'] as const).map((key) => {
-            const metric = productUsage?.period_comparison[key];
-            return (
-              <article key={key}>
-                <span>{comparisonLabel(key)}</span>
-                <strong>{metric?.current ?? 0}</strong>
-                <small className={changeTone(key, metric?.change_pct)}>{changeLabel(metric?.change_pct)} so với kỳ trước ({metric?.previous ?? 0})</small>
-              </article>
-            );
-          })}
+        <section className="admin-panel admin-panel-full admin-analytics-comparison-panel">
+          <PanelHeading title="So sánh với kỳ trước" description={`Đối chiếu ${days} ngày hiện tại với ${days} ngày liền trước.`} />
+          <div className="admin-analytics-comparison" aria-label="So sánh với kỳ trước">
+            {(['active_users', 'feature_opens', 'completed_outcomes', 'errors'] as const).map((key) => {
+              const metric = productUsage?.period_comparison[key];
+              return (
+                <article key={key}>
+                  <span>{comparisonLabel(key)}</span>
+                  <strong>{metric?.current ?? 0}</strong>
+                  <small className={changeTone(key, metric?.change_pct)}>{changeLabel(metric?.change_pct)} so với kỳ trước ({metric?.previous ?? 0})</small>
+                </article>
+              );
+            })}
+          </div>
         </section>
 
         <div className="admin-analytics-grid">
           <PanelState error={sourceErrors.product} loading={loading && !productUsage}>
             <section className="admin-panel">
-              <PanelHeading title="Độ phủ tính năng" description="Xếp theo unique users; opens chỉ thể hiện tần suất quay lại." />
+              <PanelHeading title="Độ phủ tính năng" description="Xếp theo số người dùng; lượt mở chỉ thể hiện tần suất quay lại." />
               <FeatureBars items={productUsage?.feature_usage ?? []} />
             </section>
           </PanelState>
 
           <PanelState error={sourceErrors.product} loading={loading && !productUsage}>
             <section className="admin-panel">
-              <PanelHeading title="Độ tin cậy luồng" description="Outcome hoàn tất và thất bại theo chức năng." />
+              <PanelHeading title="Độ tin cậy luồng" description="Kết quả hoàn tất và thất bại theo chức năng." />
               <OutcomeBars items={productUsage?.outcomes ?? []} />
             </section>
           </PanelState>
 
           <PanelState error={sourceErrors.renders} loading={loading && !renders}>
             <section className="admin-panel">
-              <PanelHeading title="Chất lượng render" description="Volume, fail rate và latency theo provider." />
+              <PanelHeading title="Chất lượng render" description="Số lượng, tỉ lệ lỗi và độ trễ theo provider." />
               <QualityTable items={renders?.by_provider ?? []} empty="Chưa có render theo provider." />
               <h4 className="admin-analytics-subtitle">Theo renderer</h4>
               <QualityTable items={renders?.by_renderer ?? []} empty="Chưa có dữ liệu renderer." />
@@ -146,10 +156,10 @@ export function AdminAnalyticsSection({
             <section className="admin-panel">
               <PanelHeading title="Hiệu suất AI" description="Token là mức sử dụng; chưa quy đổi thành chi phí." />
               <div className="admin-metric-grid admin-metric-grid-4 admin-analytics-mini-metrics">
-                <MetricCard label="Calls" value={aiUsage?.calls ?? 0} variant="primary" icon="models" />
-                <MetricCard label="Success" value={aiUsage?.success_rate ?? 0} suffix="%" variant="success" icon="active" />
-                <MetricCard label="Tokens" value={aiUsage?.tokens ?? 0} variant="info" icon="chart" />
-                <MetricCard label="Latency" value={aiUsage?.avg_ms ?? 0} suffix="ms" variant="info" icon="chart" />
+                <MetricCard label="Lượt gọi" value={aiUsage?.calls ?? 0} variant="primary" icon="models" />
+                <MetricCard label="Thành công" value={aiUsage?.success_rate ?? 0} suffix="%" variant="success" icon="active" />
+                <MetricCard label="Token" value={aiUsage?.tokens ?? 0} variant="info" icon="chart" />
+                <MetricCard label="Độ trễ" value={aiUsage?.avg_ms ?? 0} suffix="ms" variant="info" icon="chart" />
               </div>
               <AiTable title="Theo provider" items={(aiUsage?.by_provider ?? []).map((item) => ({ ...item, key: item.provider }))} />
               <AiTable title="Theo tác vụ" items={(aiUsage?.by_task ?? []).map((item) => ({ ...item, key: item.task }))} />
@@ -187,7 +197,7 @@ export function AdminAnalyticsSection({
 
           <PanelState error={sourceErrors.funnel} loading={loading && !funnel}>
             <section className="admin-panel">
-              <PanelHeading title="Kích hoạt người dùng" description={`Funnel tài khoản trong ${days} ngày.`} />
+              <PanelHeading title="Kích hoạt người dùng" description={`Phễu tài khoản trong ${days} ngày.`} />
               <div className="admin-metric-grid admin-metric-grid-4 admin-analytics-mini-metrics">
                 <MetricCard label="Đăng ký" value={funnel?.registered ?? 0} variant="primary" icon="users" />
                 <MetricCard label="Xác minh" value={funnel?.verified ?? 0} variant="success" icon="active" />
@@ -199,7 +209,7 @@ export function AdminAnalyticsSection({
 
           <PanelState error={sourceErrors.activity} loading={loading && !activity}>
             <section className="admin-panel">
-              <PanelHeading title="Hoạt động gần đây" description="Dữ liệu từ user đã đăng nhập." />
+              <PanelHeading title="Hoạt động gần đây" description="Dữ liệu từ người dùng đã đăng nhập." />
               <div className="admin-table">
                 {(activity?.recent ?? []).slice(0, 12).map((item) => (
                   <article className="admin-row" key={item.id}>
@@ -246,6 +256,24 @@ function TrendChart({ productUsage, diagnostics }: { productUsage: AdminAnalytic
     completed: activityByDay.get(day)?.completed ?? 0,
     errors: errorsByDay.get(day) ?? 0,
   }));
+
+  if (rows.length === 1) {
+    const row = rows[0];
+    return (
+      <div className="admin-analytics-single-day" role="group" aria-label={`Dữ liệu ngày ${row.day}`}>
+        <div>
+          <strong>{row.day}</strong>
+          <span>Chưa đủ hai ngày để vẽ xu hướng</span>
+        </div>
+        <dl>
+          <div><dt>Người dùng hoạt động</dt><dd>{row.users}</dd></div>
+          <div><dt>Kết quả hoàn tất</dt><dd>{row.completed}</dd></div>
+          <div><dt>Lỗi ghi nhận</dt><dd>{row.errors}</dd></div>
+        </dl>
+      </div>
+    );
+  }
+
   const width = 720;
   const height = 220;
   const padding = 28;
@@ -258,17 +286,24 @@ function TrendChart({ productUsage, diagnostics }: { productUsage: AdminAnalytic
 
   return (
     <div className="admin-analytics-trend">
-      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Biểu đồ DAU, outcome hoàn tất và lỗi theo ngày">
+      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Biểu đồ người dùng hoạt động, kết quả hoàn tất và lỗi theo ngày">
         {[0, 0.5, 1].map((ratio) => <line key={ratio} x1={padding} x2={width - padding} y1={padding + ratio * (height - padding * 2)} y2={padding + ratio * (height - padding * 2)} className="grid-line" />)}
         <polyline points={points('users')} className="trend-users" />
         <polyline points={points('completed')} className="trend-completed" />
         <polyline points={points('errors')} className="trend-errors" />
         {rows.map((item, index) => {
           const x = padding + (index * (width - padding * 2)) / Math.max(1, rows.length - 1);
-          return <g key={item.day}><title>{item.day}: {item.users} DAU, {item.completed} hoàn tất, {item.errors} lỗi</title><circle cx={x} cy={height - padding - (item.users / max) * (height - padding * 2)} r="3" className="trend-users-dot" /></g>;
+          return (
+            <g key={item.day}>
+              <title>{item.day}: {item.users} người dùng, {item.completed} hoàn tất, {item.errors} lỗi</title>
+              <circle cx={x} cy={height - padding - (item.users / max) * (height - padding * 2)} r="3" className="trend-users-dot" />
+              <circle cx={x} cy={height - padding - (item.completed / max) * (height - padding * 2)} r="3" className="trend-completed-dot" />
+              <circle cx={x} cy={height - padding - (item.errors / max) * (height - padding * 2)} r="3" className="trend-errors-dot" />
+            </g>
+          );
         })}
       </svg>
-      <div className="admin-analytics-legend"><span className="is-users">DAU</span><span className="is-completed">Hoàn tất</span><span className="is-errors">Lỗi</span><small>{rows[0].day} – {rows[rows.length - 1].day}</small></div>
+      <div className="admin-analytics-legend"><span className="is-users">Người dùng hoạt động</span><span className="is-completed">Hoàn tất</span><span className="is-errors">Lỗi</span><small>{rows[0].day} – {rows[rows.length - 1].day}</small></div>
     </div>
   );
 }
@@ -276,21 +311,21 @@ function TrendChart({ productUsage, diagnostics }: { productUsage: AdminAnalytic
 function FeatureBars({ items }: { items: AdminAnalyticsProductUsage['feature_usage'] }) {
   const max = Math.max(1, ...items.map((item) => item.unique_users));
   if (items.length === 0) return <EmptyState text="Chưa có feature.open từ user đăng nhập." />;
-  return <div className="admin-horizontal-bars" role="img" aria-label="Độ phủ tính năng theo unique users">{items.slice(0, 10).map((item) => <div key={item.feature} className="admin-horizontal-bar"><div><strong>{item.feature}</strong><span>{item.unique_users} users · {item.sessions} sessions · {item.opens} opens</span></div><i><b style={{ width: `${(item.unique_users / max) * 100}%` }} /></i><small>{item.share_pct}% opens</small></div>)}</div>;
+  return <div className="admin-horizontal-bars" role="img" aria-label="Độ phủ tính năng theo số người dùng"><span className="sr-only">Danh sách xếp theo số người dùng duy nhất.</span>{items.slice(0, 10).map((item) => <div key={item.feature} className="admin-horizontal-bar"><div><strong>{item.feature}</strong><span>{item.unique_users} người dùng · {item.sessions} phiên · {item.opens} lượt mở</span></div><i><b style={{ width: `${(item.unique_users / max) * 100}%` }} /></i><small>{item.share_pct}% lượt mở</small></div>)}</div>;
 }
 
 function OutcomeBars({ items }: { items: AdminAnalyticsProductUsage['outcomes'] }) {
   if (!items.some((item) => item.completed + item.failed > 0)) return <EmptyState text="Chưa có outcome kết thúc." />;
-  return <div className="admin-outcome-list">{items.map((item) => { const total = item.completed + item.failed; return <article key={item.feature}><div><strong>{item.feature}</strong><span>{formatPercent(item.success_rate)}</span></div><div className="admin-outcome-bar" aria-label={`${item.feature}: ${item.completed} hoàn tất, ${item.failed} lỗi`}><i className="is-success" style={{ width: `${total ? (item.completed / total) * 100 : 0}%` }} /><i className="is-failed" style={{ width: `${total ? (item.failed / total) * 100 : 0}%` }} /></div><small>{item.completed} hoàn tất · {item.failed} lỗi · {item.unique_users} users</small></article>; })}</div>;
+  return <div className="admin-outcome-list">{items.map((item) => { const total = item.completed + item.failed; return <article key={item.feature}><div><strong>{item.feature}</strong><span>{formatPercent(item.success_rate)}</span></div><div className="admin-outcome-bar" aria-label={`${item.feature}: ${item.completed} hoàn tất, ${item.failed} lỗi`}><i className="is-success" style={{ width: `${total ? (item.completed / total) * 100 : 0}%` }} /><i className="is-failed" style={{ width: `${total ? (item.failed / total) * 100 : 0}%` }} /></div><small>{item.completed} hoàn tất · {item.failed} lỗi · {item.unique_users} người dùng</small></article>; })}</div>;
 }
 
 function QualityTable({ items, empty }: { items: AdminAnalyticsRenders['by_provider']; empty: string }) {
   if (items.length === 0) return <EmptyState text={empty} />;
-  return <div className="admin-analytics-table"><div className="is-header"><span>Nhóm</span><span>Jobs</span><span>Fail</span><span>Latency</span></div>{items.slice(0, 8).map((item) => <div key={item.key}><strong>{item.key}</strong><span>{item.count}</span><span className={(item.fail_rate ?? 0) > 5 ? 'is-danger' : ''}>{formatPercent(item.fail_rate)}</span><span>{item.avg_ms ?? '—'}ms</span></div>)}</div>;
+  return <div className="admin-analytics-table"><div className="is-header"><span>Nhóm</span><span>Job</span><span>Tỉ lệ lỗi</span><span>Độ trễ</span></div>{items.slice(0, 8).map((item) => <div key={item.key}><strong>{item.key}</strong><span>{item.count}</span><span className={(item.fail_rate ?? 0) > 5 ? 'is-danger' : ''}>{formatPercent(item.fail_rate)}</span><span>{item.avg_ms ?? '—'}ms</span></div>)}</div>;
 }
 
 function AiTable({ title, items }: { title: string; items: Array<{ key: string; calls: number; success_rate?: number | null; tokens: number; avg_ms?: number | null }> }) {
-  return <div className="admin-ai-breakdown"><h4>{title}</h4>{items.length ? <div className="admin-analytics-table"><div className="is-header"><span>Nhóm</span><span>Calls</span><span>Success</span><span>Tokens / latency</span></div>{items.slice(0, 8).map((item) => <div key={item.key}><strong>{item.key}</strong><span>{item.calls}</span><span className={(item.success_rate ?? 100) < 95 ? 'is-danger' : ''}>{formatPercent(item.success_rate)}</span><span>{item.tokens} / {item.avg_ms ?? '—'}ms</span></div>)}</div> : <EmptyState text="Chưa có AI metrics." />}</div>;
+  return <div className="admin-ai-breakdown"><h4>{title}</h4>{items.length ? <div className="admin-analytics-table"><div className="is-header"><span>Nhóm</span><span>Lượt gọi</span><span>Thành công</span><span>Token / độ trễ</span></div>{items.slice(0, 8).map((item) => <div key={item.key}><strong>{item.key}</strong><span>{item.calls}</span><span className={(item.success_rate ?? 100) < 95 ? 'is-danger' : ''}>{formatPercent(item.success_rate)}</span><span>{item.tokens} / {item.avg_ms ?? '—'}ms</span></div>)}</div> : <EmptyState text="Chưa có chỉ số AI." />}</div>;
 }
 
 function CountList({ title, items }: { title: string; items: Array<{ key: string; count: number }> }) {
@@ -306,7 +341,7 @@ function formatPercent(value?: number | null) {
 }
 
 function comparisonLabel(key: keyof AdminAnalyticsProductUsage['period_comparison']) {
-  return { active_users: 'Active users', feature_opens: 'Feature opens', completed_outcomes: 'Outcome hoàn tất', errors: 'Errors' }[key];
+  return { active_users: 'Người dùng hoạt động', feature_opens: 'Lượt mở tính năng', completed_outcomes: 'Kết quả hoàn tất', errors: 'Lỗi' }[key];
 }
 
 function changeLabel(value?: number | null) {
