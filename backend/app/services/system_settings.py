@@ -9,8 +9,9 @@ from app.schemas.auth import SystemFeatureFlags, SystemPlanSettings
 
 T = TypeVar("T", bound=BaseModel)
 
-_FEATURE_FLAGS_CACHE: tuple[float, SystemFeatureFlags] | None = None
-_PLAN_SETTINGS_CACHE: tuple[float, SystemPlanSettings] | None = None
+# (monotonic_ts, db_token, value) — keyed by db so isolated tests don't share stale flags.
+_FEATURE_FLAGS_CACHE: tuple[float, str, SystemFeatureFlags] | None = None
+_PLAN_SETTINGS_CACHE: tuple[float, str, SystemPlanSettings] | None = None
 _SETTINGS_CACHE_TTL_SECONDS = 45.0
 
 
@@ -25,23 +26,39 @@ async def load_system_setting(db: DatabaseClient, key: str, schema: type[T]) -> 
     return schema.model_validate(value if isinstance(value, dict) else {})
 
 
+def _database_cache_token(db: DatabaseClient) -> str:
+    backend = str(getattr(db, "backend", db.__class__.__name__))
+    path = getattr(db, "path", None)
+    return f"{backend}:{path}" if path else f"{backend}:{id(db)}"
+
+
 async def load_feature_flags(db: DatabaseClient) -> SystemFeatureFlags:
     global _FEATURE_FLAGS_CACHE
     now = time.monotonic()
-    if _FEATURE_FLAGS_CACHE is not None and now - _FEATURE_FLAGS_CACHE[0] < _SETTINGS_CACHE_TTL_SECONDS:
-        return _FEATURE_FLAGS_CACHE[1]
+    token = _database_cache_token(db)
+    if (
+        _FEATURE_FLAGS_CACHE is not None
+        and now - _FEATURE_FLAGS_CACHE[0] < _SETTINGS_CACHE_TTL_SECONDS
+        and _FEATURE_FLAGS_CACHE[1] == token
+    ):
+        return _FEATURE_FLAGS_CACHE[2]
     flags = await load_system_setting(db, "feature_flags", SystemFeatureFlags)
-    _FEATURE_FLAGS_CACHE = (now, flags)
+    _FEATURE_FLAGS_CACHE = (now, token, flags)
     return flags
 
 
 async def load_plan_settings(db: DatabaseClient) -> SystemPlanSettings:
     global _PLAN_SETTINGS_CACHE
     now = time.monotonic()
-    if _PLAN_SETTINGS_CACHE is not None and now - _PLAN_SETTINGS_CACHE[0] < _SETTINGS_CACHE_TTL_SECONDS:
-        return _PLAN_SETTINGS_CACHE[1]
+    token = _database_cache_token(db)
+    if (
+        _PLAN_SETTINGS_CACHE is not None
+        and now - _PLAN_SETTINGS_CACHE[0] < _SETTINGS_CACHE_TTL_SECONDS
+        and _PLAN_SETTINGS_CACHE[1] == token
+    ):
+        return _PLAN_SETTINGS_CACHE[2]
     plans = await load_system_setting(db, "plan_settings", SystemPlanSettings)
-    _PLAN_SETTINGS_CACHE = (now, plans)
+    _PLAN_SETTINGS_CACHE = (now, token, plans)
     return plans
 
 

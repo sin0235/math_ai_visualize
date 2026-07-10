@@ -157,11 +157,12 @@ async def extract_scene(
                 raise RuntimeError(_format_tier_render_failure(f"Tier {tier} đã gần hết thời gian.", attempts))
 
             attempt_timeout = min(remaining, _RENDER_MAX_ATTEMPT_SECONDS)
+            provider_id = _normalize_provider_alias(candidate.provider_id) or candidate.provider_id
             try:
                 try:
                     scene_json = await asyncio.wait_for(
                         _extract_with_provider(
-                            candidate.provider_id, settings, problem_text, grade,
+                            provider_id, settings, problem_text, grade,
                             render_settings.reasoning_layer,
                             preferred_ai_model=candidate.model_id,
                             reasoning_plan=reasoning_plan,
@@ -176,7 +177,7 @@ async def extract_scene(
                         raise
                     scene_json = await asyncio.wait_for(
                         _extract_with_provider(
-                            candidate.provider_id, settings, problem_text, grade,
+                            provider_id, settings, problem_text, grade,
                             render_settings.reasoning_layer,
                             preferred_ai_model=candidate.model_id,
                         ),
@@ -186,7 +187,7 @@ async def extract_scene(
                 try:
                     scene, cas_warnings = build_scene_with_cas_fix(scene_json, verify=render_settings.verify_scene)
                 except (ValidationError, ValueError, KeyError) as error:
-                    attempt = RenderAttempt(candidate.provider_id, candidate.model_id, str(error))
+                    attempt = RenderAttempt(provider_id, candidate.model_id, str(error))
                     attempts.append(attempt)
                     _log_render_attempt_failure(attempt, stage="validation")
                     warnings.extend(_render_attempt_warnings([attempt]))
@@ -195,18 +196,55 @@ async def extract_scene(
                 warnings.extend(cas_warnings)
                 return scene, warnings
             except TimeoutError:
-                attempt = RenderAttempt(candidate.provider_id, candidate.model_id, f"timeout after {attempt_timeout:.0f}s")
+                attempt = RenderAttempt(provider_id, candidate.model_id, f"timeout after {attempt_timeout:.0f}s")
                 attempts.append(attempt)
                 _log_render_attempt_failure(attempt, stage="timeout")
             except (RuntimeError, ValidationError, ValueError, KeyError) as error:
-                attempt = RenderAttempt(candidate.provider_id, candidate.model_id, str(error))
+                attempt = RenderAttempt(provider_id, candidate.model_id, str(error))
                 attempts.append(attempt)
                 _log_render_attempt_failure(attempt, stage="extract")
             except Exception as error:
                 message = str(error) or error.__class__.__name__
-                attempt = RenderAttempt(candidate.provider_id, candidate.model_id, message)
+                attempt = RenderAttempt(provider_id, candidate.model_id, message)
                 attempts.append(attempt)
                 _log_render_attempt_failure(attempt, stage="extract")
+
+        # Tier exhausted: try remaining configured providers before mock (legacy resilience).
+        tried = {attempt.provider for attempt in attempts}
+        for provider in _render_provider_order(settings, None, False):
+            if provider in tried:
+                continue
+            for model in _provider_model_candidates(provider, settings, None):
+                remaining = _render_budget_remaining(started_at)
+                if remaining < _RENDER_MIN_ATTEMPT_SECONDS:
+                    break
+                attempt_timeout = min(remaining, _RENDER_MAX_ATTEMPT_SECONDS)
+                selected_model = model or _provider_model(provider, settings)
+                try:
+                    scene_json = await asyncio.wait_for(
+                        _extract_with_provider(
+                            provider, settings, problem_text, grade,
+                            render_settings.reasoning_layer,
+                            preferred_ai_model=model,
+                            reasoning_plan=reasoning_plan,
+                            system_prompt=scene_sys_prompt,
+                            thinking_enabled=render_settings.thinking_enabled,
+                        ),
+                        timeout=attempt_timeout,
+                    )
+                    warnings.extend(_render_attempt_warnings(attempts))
+                    try:
+                        scene, cas_warnings = build_scene_with_cas_fix(scene_json, verify=render_settings.verify_scene)
+                    except (ValidationError, ValueError, KeyError) as error:
+                        attempt = RenderAttempt(provider, selected_model, str(error))
+                        attempts.append(attempt)
+                        continue
+                    warnings.extend(cas_warnings)
+                    return scene, warnings
+                except Exception as error:
+                    attempt = RenderAttempt(provider, selected_model, str(error) or error.__class__.__name__)
+                    attempts.append(attempt)
+                    tried.add(provider)
 
         warnings.extend(_render_attempt_warnings(attempts))
         if attempts:
@@ -226,16 +264,24 @@ async def extract_scene(
             # Legacy path still uses task="render"; prefer tiered profiles when present.
             render_profile = resolve_task_profile(registry, "render", preferred_ai_provider, preferred_ai_model)
         except ValueError:
-            for tier_key in ("tier1", "tier2", "tier3"):
-                candidates = resolve_render_tier_candidates(registry, tier_key)
-                if candidates:
-                    render_profile = TaskProfile(
-                        task="render",
-                        provider_id=candidates[0].provider_id,
-                        model_id=candidates[0].model_id,
-                        fallbacks=[],
-                    )
-                    break
+            # Prefer explicit request/settings model over soft-seeded tier defaults.
+            fallback_model = request_model or (
+                _provider_model(preferred_provider, settings) if preferred_provider else None
+            )
+            if preferred_provider and fallback_model and fallback_model not in {"", "<none>", "<unknown>"}:
+                render_profile = TaskProfile("render", preferred_provider, fallback_model, [])
+            else:
+                for tier_key in ("tier1", "tier2", "tier3"):
+                    candidates = resolve_render_tier_candidates(registry, tier_key)
+                    if candidates:
+                        first = candidates[0]
+                        render_profile = TaskProfile(
+                            task="render",
+                            provider_id=_normalize_provider_alias(first.provider_id) or first.provider_id,
+                            model_id=first.model_id,
+                            fallbacks=[],
+                        )
+                        break
             if render_profile is None:
                 warnings.append("Không resolve được task profile render; dùng provider/model từ request/settings.")
     reasoning_profile = None

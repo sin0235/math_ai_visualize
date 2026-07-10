@@ -220,10 +220,35 @@ def default_ocr_profile(settings: Settings, legacy: SystemAiSettings | None = No
     return "openrouter", settings.openrouter_vision_model
 
 
+def _router9_default_model(settings: Settings) -> str:
+    if settings.router9_text_model:
+        return settings.router9_text_model
+    if settings.router9_allowed_models:
+        from app.services.router9_bootstrap import select_router9_render_model_ids_from_ids
+
+        selected = select_router9_render_model_ids_from_ids(list(settings.router9_allowed_models))
+        return selected[0] if selected else settings.router9_allowed_models[0]
+    return ""
+
+
+def _provider_has_credentials(settings: Settings, provider_id: str) -> bool:
+    if provider_id == "ollama":
+        return True
+    if provider_id == "router9":
+        return provider_configured(settings.router9_api_key)
+    if provider_id == "nvidia":
+        return provider_configured(settings.nvidia_api_key)
+    if provider_id == "openrouter":
+        return provider_configured(settings.openrouter_api_key)
+    if provider_id == "openai_compat":
+        return provider_configured(settings.openai_compat_api_key)
+    return False
+
+
 def default_text_profile(settings: Settings, preferred_provider: str | None = None) -> tuple[str, str]:
     provider_id = normalize_registry_provider_id(preferred_provider) or "auto"
     models = {
-        "router9": settings.router9_text_model or "",
+        "router9": _router9_default_model(settings),
         "nvidia": settings.nvidia_text_model,
         "openrouter": settings.openrouter_text_model,
         "openai_compat": settings.openai_compat_text_model,
@@ -231,7 +256,7 @@ def default_text_profile(settings: Settings, preferred_provider: str | None = No
     }
     if settings.router9_only:
         provider_id = "router9"
-    if provider_id in models and models[provider_id]:
+    if provider_id in models and models[provider_id] and _provider_has_credentials(settings, provider_id):
         return provider_id, models[provider_id]
     candidates = [
         ("router9", provider_configured(settings.router9_api_key)),
@@ -255,17 +280,29 @@ async def seed_model_registry(db: DatabaseClient, settings: Settings) -> None:
     repo = ModelRegistryRepository(db)
     if await repo.has_any_provider():
         return
+    legacy = await load_legacy_ai_settings(db)
+    if legacy is not None:
+        settings = settings_from_admin_ai_settings(settings, legacy, registry_from_settings(settings))
     provider_data = _provider_seed_data(settings, None)
     for provider_id, data in provider_data.items():
         await repo.insert_seed_provider(provider_id, PROVIDER_LABELS[provider_id], data["base_url"], bool(data["api_key_configured"]))
         for model in data["models"]:
             allowed = provider_id == "local" or model.id in data["allowed_model_ids"]
             await upsert_model(db, provider_id, model, allowed=allowed, source="env")
+        if provider_id == "router9" and settings.router9_allowed_models:
+            for model_id in settings.router9_allowed_models:
+                await upsert_model(
+                    db,
+                    provider_id,
+                    AiModelInfo(id=model_id, label=model_id, provider=provider_id),
+                    allowed=True,
+                    source="env",
+                )
     await set_model_setting(db, "router9_only", settings.router9_only)
     await set_model_setting(db, "openrouter_reasoning_enabled", settings.openrouter_reasoning_enabled)
     await set_model_setting(db, "ocr_max_image_mb", 5)
     await set_model_setting(db, "default_provider", settings.ai_provider)
-    ocr_provider, ocr_model = default_ocr_profile(settings)
+    ocr_provider, ocr_model = default_ocr_profile(settings, legacy)
     text_provider, text_model = default_text_profile(settings, settings.ai_provider)
     for task in TIERED_TASKS:
         for tier in TIER_KEYS:
@@ -273,6 +310,7 @@ async def seed_model_registry(db: DatabaseClient, settings: Settings) -> None:
     await save_task_profile(db, "reasoning", text_provider, text_model, [])
     await save_task_profile(db, "solver_explanation", text_provider, text_model, [])
     await save_task_profile(db, "ocr", ocr_provider, ocr_model or "", [])
+
 
 
 async def load_legacy_ai_settings(db: DatabaseClient) -> SystemAiSettings | None:
@@ -314,6 +352,9 @@ def settings_from_admin_ai_settings(settings: Settings, admin_settings: SystemAi
             data[f"{provider_id}_base_url"] = db_base_url
         if db_api_key and (db_base_url or getattr(provider_settings, "allowed_model_ids", []) or getattr(provider_settings, "scanned_models", [])):
             data[f"{provider_id}_api_key"] = db_api_key
+        allowed = list(getattr(provider_settings, "allowed_model_ids", None) or [])
+        if provider_id == "router9" and allowed:
+            data["router9_allowed_models"] = allowed
     return Settings.model_validate(data)
 
 
@@ -399,12 +440,15 @@ async def save_provider_check(db: DatabaseClient, provider_id: str, status: str,
 async def save_task_profile(db: DatabaseClient, task: str, provider_id: str, model_id: str, fallbacks: list[str]) -> None:
     if provider_id == "auto":
         raise ValueError("Task profile phải lưu provider_id rõ ràng, không dùng auto.")
-    if not model_id:
-        raise ValueError(f"Task profile {task} phải chọn model.")
-    ref = canonicalize_explicit_provider_model(provider_id, model_id)
-    provider_id = ref.provider_id
-    model_id = ref.model_id
-    fallbacks, _ = canonicalize_fallback_models(provider_id, fallbacks, strict=True)
+    provider_id = canonical_provider_id(provider_id) or provider_id
+    if model_id:
+        ref = canonicalize_explicit_provider_model(provider_id, model_id)
+        provider_id = ref.provider_id
+        model_id = ref.model_id
+        fallbacks, _ = canonicalize_fallback_models(provider_id, fallbacks, strict=True)
+    else:
+        # Empty model means "use provider default" at resolve/extract time (legacy admin/OCR flows).
+        fallbacks, _ = canonicalize_fallback_models(provider_id, fallbacks, strict=True)
     await ModelRegistryRepository(db).upsert_task_profile(task, provider_id, model_id, fallbacks)
     invalidate_model_registry_cache()
 
@@ -648,12 +692,20 @@ def resolve_task_profile(registry: ModelRegistry, task: str, preferred_provider:
         raw_model_id = ""
     model_id = normalize_model_for_provider(provider_id, raw_model_id) or ""
     if not model_id:
-        raise ValueError(f"Task profile {task} phải chọn model.")
-    if not model_is_allowed(registry, provider_id, model_id):
+        # Provider-only profile: allow empty model so callers can fall back to settings defaults.
+        if preferred_model:
+            raise ValueError(f"Task profile {task} phải chọn model.")
+        allowed = registry.allowed_model_ids(provider_id)
+        enabled = registry.enabled_model_ids(provider_id)
+        model_id = (allowed[0] if allowed else enabled[0] if enabled else "") or ""
+        if not model_id:
+            fallbacks = _resolve_profile_fallbacks(registry, profile.fallbacks, provider_id) if profile else []
+            return TaskProfile(task, provider_id, "", fallbacks)
+    if model_id and not model_is_allowed(registry, provider_id, model_id):
         raise ValueError(f"Model {model_id} của task profile {task} không khả dụng trong provider {provider_id}.")
 
     fallbacks = _resolve_profile_fallbacks(registry, profile.fallbacks, provider_id) if profile else []
-    if task == "reasoning":
+    if task == "reasoning" and model_id:
         provider_id, model_id, fallbacks = _prefer_thinking_model(registry, provider_id, model_id, fallbacks)
     return TaskProfile(task, provider_id, model_id, fallbacks)
 

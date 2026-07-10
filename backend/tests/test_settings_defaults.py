@@ -143,10 +143,13 @@ def test_settings_defaults_route_hides_api_keys(monkeypatch):
 
 
 def test_settings_defaults_exposes_public_feature_flags(settings_defaults_client):
+    from app.services.system_settings import invalidate_system_settings_cache
+
     asyncio.run(settings_defaults_client.db.execute(
         "INSERT INTO system_settings (key, value_json) VALUES (?, ?)",
         ["feature_flags", json.dumps({"version": 1, "maintenance_mode": True, "maintenance_message": "Đang nâng cấp hệ thống.", "render_enabled": False, "ocr_enabled": True, "google_oauth_enabled": False})],
     ))
+    invalidate_system_settings_cache()
 
     response = settings_defaults_client.get("/api/settings/defaults")
 

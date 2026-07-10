@@ -5,8 +5,23 @@ from app.api.routes_algebra_solve import router
 from app.main import app
 
 
+def _iter_api_routes(routes):
+    for route in routes:
+        path = getattr(route, "path", None)
+        if path is not None:
+            yield route
+            continue
+        original = getattr(route, "original_router", None)
+        if original is not None:
+            yield from _iter_api_routes(original.routes)
+            continue
+        nested = getattr(route, "routes", None)
+        if nested is not None:
+            yield from _iter_api_routes(nested)
+
+
 def test_algebra_solve_route_registered():
-    paths = {route.path for route in app.routes}
+    paths = {route.path for route in _iter_api_routes(app.routes)}
     assert "/api/algebra/solve" in paths
 
 

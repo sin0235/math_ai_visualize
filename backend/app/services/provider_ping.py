@@ -55,8 +55,27 @@ async def ping_provider(provider: str, settings: Settings, model: str | None = N
         return ProviderPingResult(normalized, "error", message, latency_ms=elapsed_ms)
 
 
+def _settings_ping_model(settings: Settings, provider: str) -> str:
+    if provider == "openrouter":
+        return (settings.openrouter_text_model or "").strip()
+    if provider == "nvidia":
+        return (settings.nvidia_text_model or "").strip()
+    if provider == "openai_compat":
+        return (settings.openai_compat_text_model or "").strip()
+    if provider == "router9":
+        if (settings.router9_text_model or "").strip():
+            return settings.router9_text_model.strip()
+        if settings.router9_allowed_models:
+            return settings.router9_allowed_models[0]
+        return ""
+    if provider == "ollama":
+        return (settings.ollama_text_model or "").strip()
+    return ""
+
+
 async def check_provider_connection(provider: str, settings: Settings, model: str | None = None) -> str:
     normalized = normalize_ping_provider(provider)
+    model = (model or "").strip() or _settings_ping_model(settings, normalized)
     if normalized == "openrouter":
         model = _require_text(model, "Provider OpenRouter chưa có model trong inventory/allowlist.")
         api_key = _require_text(settings.openrouter_api_key, "OPENROUTER_API_KEY chưa được cấu hình.")

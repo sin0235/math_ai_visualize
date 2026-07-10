@@ -111,7 +111,7 @@ async def test_openrouter_client_explicit_thinking_requires_known_capability(mon
 
     async def fake_collect(client, url, headers, payload, timeout):
         payloads.append(payload)
-        return '{}', 2
+        return '{}', 2, None
 
     monkeypatch.setattr("app.services.http_pool.get_client", lambda *args, **kwargs: object())
     monkeypatch.setattr("app.services.openrouter_client.collect_openai_chat_stream", fake_collect)

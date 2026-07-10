@@ -124,8 +124,8 @@ def test_legacy_plan_settings_is_rejected(client):
 def test_admin_check_all_providers_uses_ping_module(client, monkeypatch):
     admin_client = make_admin(client, "admin@example.com")
 
-    async def fake_ping_provider(provider, settings):
-        return ProviderPingResult(provider=provider, status="ok", message=f"{provider} ok", model=f"{provider}-model", latency_ms=3)
+    async def fake_ping_provider(provider, settings, model=None):
+        return ProviderPingResult(provider=provider, status="ok", message=f"{provider} ok", model=model or f"{provider}-model", latency_ms=3)
 
     monkeypatch.setattr("app.api.routes_admin.ping_provider", fake_ping_provider)
 

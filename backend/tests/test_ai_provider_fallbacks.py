@@ -1127,6 +1127,15 @@ def test_render_tries_full_provider_order_before_mock(monkeypatch):
         raise RuntimeError(f"{provider} unavailable")
 
     monkeypatch.setattr("app.services.extractor._extract_with_provider", fail_extract)
+    monkeypatch.setattr(
+        "app.services.model_registry.get_settings",
+        lambda: Settings(
+            _env_file=None,
+            ai_provider="openrouter",
+            openrouter_api_key="router",
+            nvidia_api_key="nvidia",
+        ),
+    )
 
     runtime_settings = RuntimeSettings.model_validate({
         "default_provider": "openrouter",
