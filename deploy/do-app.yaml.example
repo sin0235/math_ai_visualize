@@ -22,6 +22,20 @@ services:
         scope: RUN_TIME
         value: ${db.DATABASE_URL}
         type: SECRET
+      - key: DATABASE_POOL_MIN
+        value: "1"
+      - key: DATABASE_POOL_MAX
+        value: "10"
+      - key: RENDER_MAX_CONCURRENT
+        value: "4"
+      - key: OCR_MAX_CONCURRENT
+        value: "4"
+      - key: RENDER_ASYNC_ENABLED
+        value: "true"
+      - key: REDIS_URL
+        scope: RUN_TIME
+        value: ${redis.DATABASE_URL}
+        type: SECRET
       - key: PUBLIC_APP_URL
         value: https://<your-domain>
       - key: CORS_ORIGINS
@@ -43,3 +57,8 @@ databases:
     engine: PG
     version: "16"
     production: true
+  # Optional: attach managed Redis/Valkey and map REDIS_URL above for multi-instance gates/WS.
+  # - name: redis
+  #   engine: REDIS
+  #   version: "7"
+  #   production: true

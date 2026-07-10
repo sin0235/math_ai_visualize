@@ -109,6 +109,34 @@ class RenderHistoryRepository:
     async def mark_running(self, job_id: str) -> None:
         await self.db.execute("UPDATE render_jobs SET status = 'running', started_at = CURRENT_TIMESTAMP WHERE id = ?", [job_id])
 
+    async def claim_next_queued(self) -> RenderJobRecord | None:
+        """Atomically claim the oldest queued render job (best-effort across backends)."""
+        row = await self.db.fetch_one(
+            """
+            SELECT id FROM render_jobs
+            WHERE status = 'queued'
+            ORDER BY created_at ASC
+            LIMIT 1
+            """
+        )
+        if row is None:
+            return None
+        job_id = str(row["id"])
+        claimed = await self.db.fetch_one(
+            """
+            UPDATE render_jobs
+            SET status = 'running', started_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND status = 'queued'
+            RETURNING *
+            """,
+            [job_id],
+        )
+        return render_job_from_row(claimed) if claimed else None
+
+    async def find_by_id(self, job_id: str) -> RenderJobRecord | None:
+        row = await self.db.fetch_one("SELECT * FROM render_jobs WHERE id = ?", [job_id])
+        return render_job_from_row(row) if row else None
+
     async def mark_completed(self, job_id: str, response: RenderResponse, renderer: str | None) -> None:
         await self.db.execute(
             """
@@ -174,7 +202,7 @@ class RenderHistoryRepository:
         rows = await self.db.fetch_all(
             f"""
             SELECT r.id, r.user_id, r.problem_text, r.provider, r.model, r.warnings_json, r.created_at, r.source_type, r.renderer,
-                   r.status, r.error_json, r.started_at, r.finished_at, r.degraded, r.fallback_source, r.ai_source, r.response_json, r.schema_version,
+                   r.status, r.error_json, r.started_at, r.finished_at, r.degraded, r.fallback_source, r.ai_source, r.schema_version,
                    h.id AS history_item_id, h.title, h.problem_preview, h.topic, h.grade, h.tier, h.is_favorite, h.archived_at,
                    h.last_opened_at, h.updated_at AS history_updated_at
             FROM render_jobs r

@@ -25,6 +25,7 @@ class RecordingRateLimitDb:
         self.executed_sql = sql
 
     async def fetch_one(self, sql, params=None):
+        self.executed_sql = sql
         return {"count": 1, "expires_at": "2099-01-01T00:00:00+00:00"}
 
 
@@ -34,6 +35,7 @@ def test_rate_limit_upsert_qualifies_count_for_postgres():
     asyncio.run(RateLimitRepository(db).hit("auth:google:start:ip:test", 20, 900))
 
     assert "count = rate_limit_events.count + 1" in db.executed_sql
+    assert "RETURNING count" in db.executed_sql
 
 
 def test_bcrypt_hashing_does_not_emit_backend_version_traceback(capsys):

@@ -100,7 +100,7 @@ async def mark_chat_read(
 
 @router.post("/api/chat/ws-ticket", response_model=ChatWsTicketResponse, dependencies=[Depends(require_trusted_origin)])
 async def create_chat_ws_ticket(user: UserRecord = Depends(require_active_user)) -> ChatWsTicketResponse:
-    ticket = chat_ws_tickets.create(user.id)
+    ticket = await chat_ws_tickets.create_async(user.id)
     return ChatWsTicketResponse(ticket=ticket.value, expires_at=ticket.expires_at.isoformat())
 
 
@@ -227,7 +227,7 @@ async def chat_websocket(websocket: WebSocket, db: DatabaseClient = Depends(get_
     if not ticket_value:
         await websocket.close(code=1008)
         return
-    ticket = chat_ws_tickets.consume(ticket_value)
+    ticket = await chat_ws_tickets.consume_async(ticket_value)
     if ticket is None:
         await websocket.close(code=1008)
         return

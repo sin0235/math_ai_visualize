@@ -77,44 +77,56 @@ async def ocr_image(
     user: UserRecord = Depends(require_active_user),
     db: DatabaseClient = Depends(get_database),
 ) -> OcrResponse:
+    from app.services.load_gates import ocr_load_gate
+
     await enforce_rate_limit(db, http_request, user, "ocr", 12 if user else 4, 60)
     await enforce_ocr_access(db, user)
     settings = await resolve_effective_settings(db, None)
-    image_data_url = await resolve_ocr_image_data_url(request, db, settings, user)
-    try:
-        byok = await resolve_byok_ai_config(db, user, "ocr", settings)
-    except UserAiSettingsError as error:
-        raise bad_request_from_error(error, "ocr_failed") from error
-    if byok is not None and byok.client is not None:
-        try:
-            text = await byok.client.ocr_image(image_data_url, byok.model_id)
-        except RuntimeError as error:
-            raise bad_request_from_error(error, "ocr_failed") from error
-        return OcrResponse(text=text, provider="openai_compat", model=byok.model_id, warnings=["OCR sử dụng BYOK OpenAI-compatible."])
-    registry = await load_model_registry(db, settings)
-    raw_ocr_profile = registry.task_profiles.get("ocr")
-    try:
-        ocr_profile = resolve_task_profile(registry, "ocr")
-    except ValueError as error:
-        raise bad_request_from_error(error, "ocr_failed") from error
-    apply_profile = should_apply_ocr_profile(settings, raw_ocr_profile, ocr_profile, None, None)
-    profile_provider = ocr_profile.provider_id if apply_profile else None
-    profile_model = ocr_profile.model_id if apply_profile else None
-    profile_fallbacks = ocr_profile.fallbacks if apply_profile else []
-    try:
-        result = await extract_text_from_image(
-            image_data_url,
-            settings,
-            profile_provider,
-            profile_model,
-            "problem",
-            profile_fallbacks,
+    slot = await ocr_load_gate.try_acquire(get_settings().ocr_max_concurrent)
+    if slot is None:
+        raise api_error(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "Hệ thống đang xử lý quá nhiều yêu cầu OCR. Vui lòng thử lại sau.",
+            "OCR_CONCURRENT_LIMIT",
         )
-    except (RuntimeError, ValueError) as error:
-        raise bad_request_from_error(error, "ocr_failed") from error
-    if user is not None:
-        await AdminRepository(db).record_user_usage_event(user.id, "ocr", {"provider": result.provider, "model": result.model})
-    return OcrResponse(text=result.text, provider=result.provider, model=result.model, warnings=result.warnings)
+    try:
+        image_data_url = await resolve_ocr_image_data_url(request, db, settings, user)
+        try:
+            byok = await resolve_byok_ai_config(db, user, "ocr", settings)
+        except UserAiSettingsError as error:
+            raise bad_request_from_error(error, "ocr_failed") from error
+        if byok is not None and byok.client is not None:
+            try:
+                text = await byok.client.ocr_image(image_data_url, byok.model_id)
+            except RuntimeError as error:
+                raise bad_request_from_error(error, "ocr_failed") from error
+            return OcrResponse(text=text, provider="openai_compat", model=byok.model_id, warnings=["OCR sử dụng BYOK OpenAI-compatible."])
+        registry = await load_model_registry(db, settings)
+        raw_ocr_profile = registry.task_profiles.get("ocr")
+        try:
+            ocr_profile = resolve_task_profile(registry, "ocr")
+        except ValueError as error:
+            raise bad_request_from_error(error, "ocr_failed") from error
+        apply_profile = should_apply_ocr_profile(settings, raw_ocr_profile, ocr_profile, None, None)
+        profile_provider = ocr_profile.provider_id if apply_profile else None
+        profile_model = ocr_profile.model_id if apply_profile else None
+        profile_fallbacks = ocr_profile.fallbacks if apply_profile else []
+        try:
+            result = await extract_text_from_image(
+                image_data_url,
+                settings,
+                profile_provider,
+                profile_model,
+                "problem",
+                profile_fallbacks,
+            )
+        except (RuntimeError, ValueError) as error:
+            raise bad_request_from_error(error, "ocr_failed") from error
+        if user is not None:
+            await AdminRepository(db).record_user_usage_event(user.id, "ocr", {"provider": result.provider, "model": result.model})
+        return OcrResponse(text=result.text, provider=result.provider, model=result.model, warnings=result.warnings)
+    finally:
+        slot.release()
 
 
 async def resolve_ocr_image_data_url(request: OcrRequest, db: DatabaseClient, settings: Settings, user: UserRecord) -> str:

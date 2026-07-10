@@ -25,11 +25,25 @@ async def detailed_health(_: UserRecord = Depends(require_admin_user), db: Datab
     database = await _database_status(db)
     providers = await _provider_status(db)
     status = "ok" if database["ok"] else "degraded"
+    from app.services.load_gates import all_gate_stats
+
+    from app.services.redis_client import redis_ping
+
+    load = {
+        "gates": all_gate_stats(),
+        "render_max_concurrent": settings.render_max_concurrent,
+        "ocr_max_concurrent": settings.ocr_max_concurrent,
+        "algebra_max_concurrent": settings.algebra_max_concurrent,
+        "render_async_enabled": settings.render_async_enabled,
+    }
+    redis = await redis_ping()
     return {
         "status": status,
         "app": settings.app_name,
         "database": database,
         "providers": providers,
+        "load": load,
+        "redis": redis,
     }
 
 
@@ -59,12 +73,14 @@ async def _database_status(db: DatabaseClient) -> dict[str, Any]:
         migrations = await db.fetch_all("SELECT filename, applied_at FROM schema_migrations ORDER BY filename")
         migration_drift = await build_migration_drift(db)
         database_ok = bool(probe and probe.get("ok") == 1)
+        pool = db.pool_stats() if hasattr(db, "pool_stats") else {"backend": getattr(db, "backend", "unknown")}
         return {
             "ok": database_ok and bool(migration_drift["ok"]),
             "backend": getattr(db, "backend", "unknown"),
             "migration_count": len(migrations),
             "latest_migration": migrations[-1]["filename"] if migrations else None,
             "migration_drift": migration_drift,
+            "pool": pool,
         }
     except Exception as error:
         return {

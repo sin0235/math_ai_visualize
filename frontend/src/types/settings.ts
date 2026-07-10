@@ -153,6 +153,8 @@ export interface SettingsDefaults {
   registry_task_profiles?: RegistryTaskProfileDefaults[];
   registry_legacy_ai_settings_present?: boolean;
   feature_flags?: FeatureFlagsDefaults;
+  /** When true, client uses /api/render/jobs + poll instead of long-held POST /api/render. */
+  render_async_enabled?: boolean;
 }
 
 export const defaultRuntimeSettings: RuntimeSettings = {

@@ -524,7 +524,9 @@ export default function App() {
     setEditTool('move');
     setLastAdvancedSettings(advancedSettings ?? defaultAdvancedSettings);
     try {
-      const response = await renderProblem(problemText, tier, advancedSettings, preferredRenderer, runtimeSettings);
+      const response = await renderProblem(problemText, tier, advancedSettings, preferredRenderer, runtimeSettings, undefined, {
+        async: Boolean(settingsDefaults?.render_async_enabled),
+      });
       applyRenderResponse(response);
       if (user) void refreshHistory();
       scrollToResultOnMobile();

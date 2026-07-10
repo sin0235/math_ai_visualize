@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import smtplib
 from email.message import EmailMessage
@@ -65,6 +66,10 @@ async def send_password_reset_email(user: UserRecord, token: str, settings: Sett
 
 
 async def send_email(to_email: str, subject: str, text: str, html: str, settings: Settings) -> None:
+    await asyncio.to_thread(_send_email_sync, to_email, subject, text, html, settings)
+
+
+def _send_email_sync(to_email: str, subject: str, text: str, html: str, settings: Settings) -> None:
     from_email = settings.resend_from_email or settings.smtp_from_email
     if settings.resend_api_key:
         resend.api_key = settings.resend_api_key

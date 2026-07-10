@@ -6,6 +6,8 @@ tương ứng. Frontend sẽ tải về cho user.
 
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import APIRouter, Depends, Request, Response
 
 from app.api.deps import enforce_rate_limit, require_active_user, require_trusted_origin
@@ -51,8 +53,8 @@ async def export_tikz(
     await enforce_render_access(db, user)
     from app.renderers.tikz_export import build_tikz_document
 
-    scene = _safe_export_scene(request)
-    body = build_tikz_document(scene, response=request.response)
+    scene = await asyncio.to_thread(_safe_export_scene, request)
+    body = await asyncio.to_thread(build_tikz_document, scene, None, request.response)
     return Response(
         content=body,
         media_type="application/x-tex",
@@ -71,8 +73,8 @@ async def export_ggb(
     await enforce_render_access(db, user)
     from app.renderers.ggb_export import build_ggb
 
-    scene = _safe_export_scene(request)
-    body = build_ggb(scene, request.advanced_settings, request.response)
+    scene = await asyncio.to_thread(_safe_export_scene, request)
+    body = await asyncio.to_thread(build_ggb, scene, request.advanced_settings, request.response)
     return Response(
         content=body,
         media_type="application/vnd.geogebra.file",
@@ -91,9 +93,12 @@ async def export_pdf(
     await enforce_render_access(db, user)
     from app.renderers.pdf_export import build_pdf, build_pdf_from_capture
 
-    scene = _safe_export_scene(request)
+    scene = await asyncio.to_thread(_safe_export_scene, request)
     try:
-        body = build_pdf_from_capture(scene, request.view_capture, request.response) if request.view_capture else build_pdf(scene, response=request.response)
+        if request.view_capture:
+            body = await asyncio.to_thread(build_pdf_from_capture, scene, request.view_capture, request.response)
+        else:
+            body = await asyncio.to_thread(build_pdf, scene, None, request.response)
     except ValueError as error:
         from fastapi import status
 
@@ -118,8 +123,8 @@ async def export_png(
     await enforce_render_access(db, user)
     from app.renderers.pdf_export import build_png
 
-    scene = _safe_export_scene(request)
-    body = build_png(scene, response=request.response)
+    scene = await asyncio.to_thread(_safe_export_scene, request)
+    body = await asyncio.to_thread(build_png, scene, None, request.response)
     return Response(
         content=body,
         media_type="image/png",
@@ -138,8 +143,8 @@ async def export_jpg(
     await enforce_render_access(db, user)
     from app.renderers.pdf_export import build_jpg
 
-    scene = _safe_export_scene(request)
-    body = build_jpg(scene, response=request.response)
+    scene = await asyncio.to_thread(_safe_export_scene, request)
+    body = await asyncio.to_thread(build_jpg, scene, None, request.response)
     return Response(
         content=body,
         media_type="image/jpeg",

@@ -307,6 +307,29 @@ CLOUDINARY_CHAT_FOLDER=hinh/chat
 CHAT_IMAGE_MAX_MB=5
 ```
 
+### Hiệu năng & mở rộng
+
+```bash
+# Postgres connection pool (per process)
+DATABASE_POOL_MIN=1
+DATABASE_POOL_MAX=10
+
+# Concurrent admission (system capacity, besides per-user rate limits)
+RENDER_MAX_CONCURRENT=4
+OCR_MAX_CONCURRENT=4
+ALGEBRA_MAX_CONCURRENT=8
+
+# Async render: POST /api/render/jobs + poll; worker: python -m app.worker
+RENDER_ASYNC_ENABLED=false
+
+# Optional Redis for multi-instance gates, job notify, chat WS pub/sub
+REDIS_URL=redis://localhost:6379/0
+```
+
+Công thức pool Postgres: `instance_count × DATABASE_POOL_MAX < max_connections` của DB.
+
+Container Docker chạy thêm `render-worker` qua supervisord. Bật `RENDER_ASYNC_ENABLED=true` để frontend poll job thay vì giữ HTTP 5 phút.
+
 ### OCR local
 
 ```bash

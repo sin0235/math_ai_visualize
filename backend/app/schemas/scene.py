@@ -647,6 +647,7 @@ class SettingsDefaultsResponse(BaseModel):
     registry_task_profiles: list[RegistryTaskProfileDefaults] = Field(default_factory=list)
     registry_legacy_ai_settings_present: bool = False
     feature_flags: FeatureFlagsDefaults = Field(default_factory=FeatureFlagsDefaults)
+    render_async_enabled: bool = False
 
 
 class RenderRequest(BaseModel):

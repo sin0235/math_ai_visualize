@@ -1,3 +1,4 @@
+import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
@@ -35,7 +36,7 @@ class UserRepository:
 
     async def create(self, email: str, password: str) -> UserRecord:
         user_id = str(uuid4())
-        password_hash = pwd_context.hash(password)
+        password_hash = await asyncio.to_thread(pwd_context.hash, password)
         await self.db.execute(
             "INSERT INTO users (id, email, password_hash, password_changed_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
             [user_id, normalize_email(email), password_hash],
@@ -90,9 +91,10 @@ class UserRepository:
         )
 
     async def update_password(self, user_id: str, password: str) -> UserRecord:
+        password_hash = await asyncio.to_thread(pwd_context.hash, password)
         await self.db.execute(
             "UPDATE users SET password_hash = ?, password_changed_at = CURRENT_TIMESTAMP, failed_login_count = 0, locked_until = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-            [pwd_context.hash(password), user_id],
+            [password_hash, user_id],
         )
         user = await self.find_by_id(user_id)
         if user is None:
@@ -123,6 +125,11 @@ class UserRepository:
         if not password_hash.startswith("$2"):
             return False
         return pwd_context.verify(password, password_hash)
+
+    async def verify_password_async(self, password: str, password_hash: str) -> bool:
+        if not password_hash.startswith("$2"):
+            return False
+        return await asyncio.to_thread(pwd_context.verify, password, password_hash)
 
 
 class SessionRepository:
@@ -357,17 +364,20 @@ class RateLimitRepository:
         now = datetime.now(UTC)
         bucket = str(int(now.timestamp()) // window_seconds)
         expires_at = (now + timedelta(seconds=window_seconds)).isoformat()
-        await self.db.execute(
+        # Single round-trip when backend supports INSERT…RETURNING (Postgres/SQLite/D1).
+        row = await self.db.fetch_one(
             """
             INSERT INTO rate_limit_events (key, bucket, count, expires_at)
             VALUES (?, ?, 1, ?)
             ON CONFLICT(key, bucket) DO UPDATE SET
               count = rate_limit_events.count + 1,
               updated_at = CURRENT_TIMESTAMP
+            RETURNING count, expires_at
             """,
             [key, bucket, expires_at],
         )
-        row = await self.db.fetch_one("SELECT * FROM rate_limit_events WHERE key = ? AND bucket = ?", [key, bucket])
+        if row is None:
+            row = await self.db.fetch_one("SELECT count, expires_at FROM rate_limit_events WHERE key = ? AND bucket = ?", [key, bucket])
         count = int((row or {}).get("count") or 0)
         stored_expires_at = str((row or {}).get("expires_at") or expires_at)
         retry_after = max(int((parse_datetime(stored_expires_at) - now).total_seconds()), 1)

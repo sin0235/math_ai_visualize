@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -23,6 +24,9 @@ from app.services.model_provider import (
     normalize_model_for_provider,
     parse_provider_model_ref,
 )
+
+_REGISTRY_CACHE: tuple[float, int, ModelRegistry] | None = None
+_REGISTRY_CACHE_TTL_SECONDS = 45.0
 
 PROVIDER_LABELS = {
     "local": "Local OCR",
@@ -121,7 +125,25 @@ class ModelRegistry:
 
 
 async def load_model_registry(db: DatabaseClient, settings: Settings | None = None) -> ModelRegistry:
+    global _REGISTRY_CACHE
     settings = settings or get_settings()
+    now = time.monotonic()
+    settings_token = id(settings)
+    if _REGISTRY_CACHE is not None:
+        cached_at, cached_token, cached_registry = _REGISTRY_CACHE
+        if now - cached_at < _REGISTRY_CACHE_TTL_SECONDS and cached_token == settings_token:
+            return cached_registry
+    registry = await _load_model_registry_uncached(db, settings)
+    _REGISTRY_CACHE = (now, settings_token, registry)
+    return registry
+
+
+def invalidate_model_registry_cache() -> None:
+    global _REGISTRY_CACHE
+    _REGISTRY_CACHE = None
+
+
+async def _load_model_registry_uncached(db: DatabaseClient, settings: Settings) -> ModelRegistry:
     try:
         repo = ModelRegistryRepository(db)
         await seed_model_registry(db, settings)

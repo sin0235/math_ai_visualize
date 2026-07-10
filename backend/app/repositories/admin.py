@@ -164,6 +164,49 @@ class AdminRepository:
         )
         return int((row or {}).get("count") or 0)
 
+    async def count_user_render_quota_since(self, user_id: str, since_iso: str, usage_event_types: list[str]) -> int:
+        """Single-query daily render quota: admin jobs + problem jobs + usage events."""
+        event_types = usage_event_types or []
+        if event_types:
+            placeholders = ", ".join("?" for _ in event_types)
+            row = await self.db.fetch_one(
+                f"""
+                SELECT
+                  (
+                    SELECT COUNT(*) FROM render_jobs
+                    WHERE user_id = ? AND created_at >= ? AND ai_source = 'admin'
+                  )
+                  +
+                  (
+                    SELECT COUNT(*) FROM render_jobs
+                    WHERE user_id = ? AND created_at >= ? AND source_type = 'problem' AND ai_source = 'none'
+                  )
+                  +
+                  (
+                    SELECT COUNT(*) FROM usage_events
+                    WHERE user_id = ? AND created_at >= ? AND event_type IN ({placeholders})
+                  ) AS count
+                """,
+                [user_id, since_iso, user_id, since_iso, user_id, since_iso, *event_types],
+            )
+        else:
+            row = await self.db.fetch_one(
+                """
+                SELECT
+                  (
+                    SELECT COUNT(*) FROM render_jobs
+                    WHERE user_id = ? AND created_at >= ? AND ai_source = 'admin'
+                  )
+                  +
+                  (
+                    SELECT COUNT(*) FROM render_jobs
+                    WHERE user_id = ? AND created_at >= ? AND source_type = 'problem' AND ai_source = 'none'
+                  ) AS count
+                """,
+                [user_id, since_iso, user_id, since_iso],
+            )
+        return int((row or {}).get("count") or 0)
+
     async def record_user_usage_event(self, user_id: str, event_type: str, metadata: dict | None = None) -> None:
         await self.db.execute(
             "INSERT INTO usage_events (id, user_id, event_type, metadata_json) VALUES (?, ?, ?, ?)",

@@ -23,7 +23,7 @@ from app.api.routes_user_settings import router as user_settings_router
 from app.core.config import get_settings
 from app.core.logging import configure_logging
 from app.db.migrations import apply_migrations
-from app.db.session import create_database_client
+from app.db.session import create_database_client  # re-export for tests
 from app.services.router9_bootstrap import bootstrap_router9_models
 
 configure_logging()
@@ -33,11 +33,18 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     current_settings = get_settings()
-    await apply_migrations(create_database_client(current_settings), current_settings)
+    from app.db.session import close_shared_database, init_shared_database
+
+    db = await init_shared_database(current_settings)
+    await apply_migrations(db, current_settings)
     await bootstrap_router9_models(current_settings)
     yield
     from app.services.http_pool import close_all
+    from app.services.redis_client import close_redis
+
     await close_all()
+    await close_redis()
+    await close_shared_database()
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)

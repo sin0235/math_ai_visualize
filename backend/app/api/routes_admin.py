@@ -462,6 +462,11 @@ async def admin_save_system_setting(
         await sync_ai_profiles_to_registry(db, value, request.value)
     if request.key == "ai_tier_profiles":
         await sync_ai_tier_profiles_to_registry(db, value, request.value)
+    from app.services.model_registry import invalidate_model_registry_cache
+    from app.services.system_settings import invalidate_system_settings_cache
+
+    invalidate_system_settings_cache(request.key)
+    invalidate_model_registry_cache()
     await repo.audit(admin.id, "admin.system_settings.update", "system_setting", request.key, {"key": request.key})
     return SystemSettingResponse(key=setting.key, value=parse_setting_value(setting.value_json), updated_by=setting.updated_by, updated_at=setting.updated_at)
 

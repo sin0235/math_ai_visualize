@@ -169,6 +169,18 @@ export async function deleteRenderHistory(id: string): Promise<void> {
   await requestVoid(`/api/history/${encodeURIComponent(id)}`, { method: 'DELETE', credentials: 'include' }, 'Không thể xoá lịch sử.');
 }
 
+export type RenderJobCreateResponse = {
+  job_id: string;
+  status: 'queued' | 'running' | 'completed' | 'failed';
+};
+
+export type RenderJobStatusResponse = {
+  job_id: string;
+  status: 'queued' | 'running' | 'completed' | 'failed';
+  response?: RenderResponse | null;
+  error?: { code?: string; message?: string; debug_message?: string } | null;
+};
+
 export async function renderProblem(
   problemText: string,
   tier: 'tier1' | 'tier2' | 'tier3' = 'tier1',
@@ -176,20 +188,53 @@ export async function renderProblem(
   preferredRenderer?: Renderer,
   runtimeSettings?: RuntimeSettings,
   preferredAiModel?: string,
+  options?: { async?: boolean },
 ): Promise<RenderResponse> {
+  const body = {
+    problem_text: problemText,
+    tier,
+    preferred_renderer: preferredRenderer,
+    advanced_settings: advancedSettings,
+    ...preferredAiModelPayload(preferredAiModel),
+    runtime_settings: compactRuntimeSettings(runtimeSettings),
+  };
+  if (options?.async) {
+    const created = await requestJson<RenderJobCreateResponse>('/api/render/jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(body),
+    }, 'Không thể xếp hàng dựng hình.');
+    return pollRenderJob(created.job_id);
+  }
   return requestJson('/api/render', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({
-      problem_text: problemText,
-      tier,
-      preferred_renderer: preferredRenderer,
-      advanced_settings: advancedSettings,
-      ...preferredAiModelPayload(preferredAiModel),
-      runtime_settings: compactRuntimeSettings(runtimeSettings),
-    }),
+    body: JSON.stringify(body),
   }, 'Không thể dựng hình.');
+}
+
+async function pollRenderJob(jobId: string, maxMs = 320_000): Promise<RenderResponse> {
+  const started = Date.now();
+  let delay = 600;
+  while (Date.now() - started < maxMs) {
+    const status = await requestJson<RenderJobStatusResponse>(
+      `/api/render/jobs/${encodeURIComponent(jobId)}`,
+      { credentials: 'include' },
+      'Không thể kiểm tra tiến độ dựng hình.',
+    );
+    if (status.status === 'completed' && status.response) {
+      return status.response;
+    }
+    if (status.status === 'failed') {
+      const message = status.error?.debug_message || status.error?.message || 'Dựng hình thất bại.';
+      throw new ApiError(message, [status.error?.code || 'RENDER_FAILED'].filter(Boolean) as string[]);
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, delay));
+    delay = Math.min(delay + 400, 2500);
+  }
+  throw new ApiError('Dựng hình quá thời gian chờ. Vui lòng thử lại.');
 }
 
 function preferredAiModelPayload(selection?: string) {

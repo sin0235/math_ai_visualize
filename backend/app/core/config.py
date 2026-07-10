@@ -48,7 +48,14 @@ class Settings(BaseSettings):
     ai_provider: str = "auto"
     database_backend: Literal["sqlite", "d1", "postgres"] = "d1"
     database_url: str | None = None
+    database_pool_min: int = 1
+    database_pool_max: int = 10
     sqlite_path: str = "backend/.data/hinh.db"
+    redis_url: str | None = None
+    render_max_concurrent: int = 4
+    ocr_max_concurrent: int = 4
+    render_async_enabled: bool = False
+    render_job_poll_seconds: float = 0.75
     d1_account_id: str | None = None
     d1_database_id: str | None = None
     d1_api_token: str | None = None

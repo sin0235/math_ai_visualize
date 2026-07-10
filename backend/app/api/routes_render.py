@@ -13,7 +13,14 @@ from app.repositories.admin import AdminRepository
 from app.repositories.history import RenderHistoryRepository
 from app.core.config import get_settings
 from app.schemas.auth import SystemFeatureFlags
-from app.schemas.scene import RenderRequest, RenderResponse, RenderSourceResponse, SceneRenderRequest
+from app.schemas.scene import (
+    RenderJobCreateResponse,
+    RenderJobStatusResponse,
+    RenderRequest,
+    RenderResponse,
+    RenderSourceResponse,
+    SceneRenderRequest,
+)
 from app.services.api_errors import api_error
 from app.services.ai_resolution import resolve_byok_ai_config
 from app.services.user_ai_settings import UserAiSettingsError
@@ -26,13 +33,16 @@ RENDER_TIMEOUT_SECONDS = 310
 RENDER_AI_USAGE_EVENT_TYPES = ["algebra_ai", "problem_variants", "solver_ai"]
 
 
-@router.post("/render", response_model=RenderResponse, dependencies=[Depends(require_trusted_origin)])
-async def render_problem(
+@router.post("/render/jobs", response_model=RenderJobCreateResponse, dependencies=[Depends(require_trusted_origin)])
+async def create_render_job(
     request: RenderRequest,
     http_request: Request,
     user: UserRecord = Depends(require_active_user),
     db: DatabaseClient = Depends(get_database),
-) -> RenderResponse:
+) -> RenderJobCreateResponse:
+    """Enqueue an async render job and return immediately."""
+    from app.services.render_jobs import enqueue_render_job, spawn_inline_job
+
     await enforce_rate_limit(db, http_request, user, "render", 20 if user else 8, 60)
     settings = get_settings()
     try:
@@ -41,62 +51,136 @@ async def render_problem(
         raise api_error(status.HTTP_400_BAD_REQUEST, f"Cấu hình BYOK không hợp lệ: {error}", "RENDER_FAILED") from error
     if byok is None:
         await enforce_render_access(db, user)
+
+    job_id = await enqueue_render_job(db, user.id, request)
+    # Inline processing keeps single-container deploys working without a separate worker.
+    spawn_inline_job(db, job_id)
+    await try_log_user_activity(
+        db,
+        user.id,
+        "render.queued",
+        target_type="render_job",
+        target_id=job_id,
+        metadata={"tier": request.tier, "renderer": request.preferred_renderer, "byok": byok is not None},
+    )
+    return RenderJobCreateResponse(job_id=job_id, status="queued")
+
+
+@router.get("/render/jobs/{job_id}", response_model=RenderJobStatusResponse)
+async def get_render_job(
+    job_id: str,
+    user: UserRecord = Depends(require_active_user),
+    db: DatabaseClient = Depends(get_database),
+) -> RenderJobStatusResponse:
+    job = await RenderHistoryRepository(db).find_for_user(user.id, job_id)
+    if job is None:
+        # Pending jobs may not have history_items yet; fall back to raw job ownership.
+        job = await RenderHistoryRepository(db).find_by_id(job_id)
+        if job is None or job.user_id != user.id:
+            raise api_error(status.HTTP_404_NOT_FOUND, "Không tìm thấy render job.", "RENDER_JOB_NOT_FOUND")
+    status_value = job.status if job.status in {"queued", "running", "completed", "failed"} else "failed"
+    response = None
+    error = None
+    if status_value == "completed" and job.response_json:
+        try:
+            response = RenderResponse.model_validate_json(job.response_json)
+        except Exception:
+            error = {"code": "RENDER_FAILED", "message": "Không đọc được kết quả render."}
+            status_value = "failed"
+    if status_value == "failed" and job.error_json:
+        try:
+            error = json.loads(job.error_json)
+        except json.JSONDecodeError:
+            error = {"code": "RENDER_FAILED", "message": job.error_json}
+    return RenderJobStatusResponse(job_id=job.id, status=status_value, response=response, error=error)
+
+
+@router.post("/render", response_model=RenderResponse, dependencies=[Depends(require_trusted_origin)])
+async def render_problem(
+    request: RenderRequest,
+    http_request: Request,
+    user: UserRecord = Depends(require_active_user),
+    db: DatabaseClient = Depends(get_database),
+) -> RenderResponse:
+    from app.services.load_gates import render_load_gate
+
+    await enforce_rate_limit(db, http_request, user, "render", 20 if user else 8, 60)
+    settings = get_settings()
     try:
-        response = await asyncio.wait_for(build_problem_render_response(request, db, user, byok=byok), timeout=RENDER_TIMEOUT_SECONDS)
-    except TimeoutError as error:
-        await try_log_user_activity(
-            db,
-            user.id,
-            "render.failed",
-            target_type="render_job",
-            metadata={"code": "TIMEOUT", "tier": request.tier, "renderer": request.preferred_renderer, "byok": byok is not None},
-        )
+        byok = await resolve_byok_ai_config(db, user, "render", settings)
+    except UserAiSettingsError as error:
+        raise api_error(status.HTTP_400_BAD_REQUEST, f"Cấu hình BYOK không hợp lệ: {error}", "RENDER_FAILED") from error
+    if byok is None:
+        await enforce_render_access(db, user)
+
+    slot = await render_load_gate.try_acquire(settings.render_max_concurrent)
+    if slot is None:
         raise api_error(
-            status.HTTP_504_GATEWAY_TIMEOUT,
-            f"Render vượt quá {RENDER_TIMEOUT_SECONDS}s.",
-            "TIMEOUT",
-            ["Thử lại sau hoặc chọn tier thấp hơn (tier1 nhanh hơn tier3)."],
-        ) from error
-    except (RuntimeError, ValueError, KeyError) as error:
-        payload = render_error_payload(error)
-        await try_log_user_activity(
-            db,
-            user.id,
-            "render.failed",
-            target_type="render_job",
-            metadata={"code": payload["code"], "tier": request.tier, "renderer": request.preferred_renderer, "byok": byok is not None},
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "Hệ thống đang xử lý quá nhiều yêu cầu dựng hình. Vui lòng thử lại sau.",
+            "RENDER_CONCURRENT_LIMIT",
+            ["Chờ vài giây rồi thử lại.", "Giảm số tab/render song song."],
         )
-        raise api_error(status.HTTP_400_BAD_REQUEST, payload["debug_message"], payload["code"], payload["suggestions"]) from error
-    if user is not None:
-        job = await RenderHistoryRepository(db).create(
-            user.id,
-            request.problem_text,
-            response.source.provider,
-            response.source.model,
-            response,
-            render_request_json=json.dumps(sanitize_request_dump(request), ensure_ascii=False),
-            advanced_settings_json=request.advanced_settings.model_dump_json(),
-            runtime_settings_json=request.runtime_settings.model_dump_json(exclude_none=True) if request.runtime_settings is not None else None,
-            source_type="problem",
-            renderer=response.scene.renderer,
-        )
-        await try_log_user_activity(
-            db,
-            user.id,
-            "render.completed",
-            target_type="render_job",
-            target_id=job.id,
-            metadata={
-                "tier": request.tier,
-                "renderer": response.scene.renderer,
-                "provider": response.source.provider,
-                "model": response.source.model,
-                "source_kind": response.source.kind,
-                "degraded": response.degraded,
-                "fallback_source": response.fallback_source,
-            },
-        )
-    return response
+
+    try:
+        try:
+            response = await asyncio.wait_for(build_problem_render_response(request, db, user, byok=byok), timeout=RENDER_TIMEOUT_SECONDS)
+        except TimeoutError as error:
+            await try_log_user_activity(
+                db,
+                user.id,
+                "render.failed",
+                target_type="render_job",
+                metadata={"code": "TIMEOUT", "tier": request.tier, "renderer": request.preferred_renderer, "byok": byok is not None},
+            )
+            raise api_error(
+                status.HTTP_504_GATEWAY_TIMEOUT,
+                f"Render vượt quá {RENDER_TIMEOUT_SECONDS}s.",
+                "TIMEOUT",
+                ["Thử lại sau hoặc chọn tier thấp hơn (tier1 nhanh hơn tier3)."],
+            ) from error
+        except (RuntimeError, ValueError, KeyError) as error:
+            payload = render_error_payload(error)
+            await try_log_user_activity(
+                db,
+                user.id,
+                "render.failed",
+                target_type="render_job",
+                metadata={"code": payload["code"], "tier": request.tier, "renderer": request.preferred_renderer, "byok": byok is not None},
+            )
+            raise api_error(status.HTTP_400_BAD_REQUEST, payload["debug_message"], payload["code"], payload["suggestions"]) from error
+        if user is not None:
+            job = await RenderHistoryRepository(db).create(
+                user.id,
+                request.problem_text,
+                response.source.provider,
+                response.source.model,
+                response,
+                render_request_json=json.dumps(sanitize_request_dump(request), ensure_ascii=False),
+                advanced_settings_json=request.advanced_settings.model_dump_json(),
+                runtime_settings_json=request.runtime_settings.model_dump_json(exclude_none=True) if request.runtime_settings is not None else None,
+                source_type="problem",
+                renderer=response.scene.renderer,
+            )
+            await try_log_user_activity(
+                db,
+                user.id,
+                "render.completed",
+                target_type="render_job",
+                target_id=job.id,
+                metadata={
+                    "tier": request.tier,
+                    "renderer": response.scene.renderer,
+                    "provider": response.source.provider,
+                    "model": response.source.model,
+                    "source_kind": response.source.kind,
+                    "degraded": response.degraded,
+                    "fallback_source": response.fallback_source,
+                },
+            )
+        return response
+    finally:
+        slot.release()
 
 
 async def build_problem_render_response(request: RenderRequest, db: DatabaseClient, user: UserRecord | None = None, byok=None) -> RenderResponse:
@@ -230,9 +314,7 @@ async def enforce_render_access(db: DatabaseClient, user: UserRecord | None) -> 
     if plan is None or plan.daily_render_limit is None:
         return
     since = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
-    used = await repo.count_user_render_jobs_since(user.id, since, ai_source="admin")
-    used += await repo.count_user_render_jobs_since(user.id, since, source_type="problem", ai_source="none")
-    used += await repo.count_user_usage_events_since_any(user.id, RENDER_AI_USAGE_EVENT_TYPES, since)
+    used = await repo.count_user_render_quota_since(user.id, since, RENDER_AI_USAGE_EVENT_TYPES)
     if used >= plan.daily_render_limit:
         raise api_error(
             status.HTTP_429_TOO_MANY_REQUESTS,

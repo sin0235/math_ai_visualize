@@ -203,7 +203,7 @@ async def login(
     if is_locked(user):
         await audit(db, user.id, "auth.login_blocked", "user", user.id, raw_request)
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Quá nhiều lần đăng nhập lỗi. Hãy thử lại sau.")
-    if not users.verify_password(request.password, user.password_hash):
+    if not await users.verify_password_async(request.password, user.password_hash):
         user = await users.record_failed_login(user.id)
         if user.failed_login_count >= MAX_FAILED_LOGINS:
             await users.lock_until(user.id, datetime.now(UTC) + timedelta(minutes=LOCK_MINUTES))
@@ -348,7 +348,7 @@ async def change_password(
 ) -> MessageResponse:
     users = UserRepository(db)
     await enforce_rate_limit(db, f"auth:change-password:user:{user.id}", 5, 3600)
-    if not users.verify_password(request.current_password, user.password_hash):
+    if not await users.verify_password_async(request.current_password, user.password_hash):
         await audit(db, user.id, "auth.password_change_failed", "user", user.id, raw_request)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Mật khẩu hiện tại không đúng.")
     await users.update_password(user.id, request.new_password)

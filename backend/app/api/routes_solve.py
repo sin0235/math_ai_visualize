@@ -2,6 +2,7 @@
 API routes for:
   POST /api/solve            — Step-by-step geometry solver (Lựa chọn 2)
 """
+import asyncio
 from typing import Any
 
 from fastapi import APIRouter, Depends, Request
@@ -78,12 +79,12 @@ async def solve_problem(
     try:
         geometry_method = request.geometry_method if request.geometry_method in {"oxyz", "classical"} else "oxyz"
         _assert_solve_quality_gate(request)
-        result = solve(request.scene, request.question, geometry_method=geometry_method)
+        result = await asyncio.to_thread(solve, request.scene, request.question, geometry_method)
         advisory = None
         if get_settings().advisory_enabled:
             from app.services.quality_advisory import build_solve_advisory
 
-            advisory = build_solve_advisory(request.question, request.scene, result)
+            advisory = await asyncio.to_thread(build_solve_advisory, request.question, request.scene, result)
         settings = await resolve_effective_settings(db, request.runtime_settings)
         byok_used = False
         byok = None

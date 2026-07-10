@@ -36,6 +36,7 @@ async def test_history_list_does_not_select_heavy_scene_payload_columns():
     selected_columns = db.sql.lower().split("from render_jobs", 1)[0]
     assert "scene_json" not in selected_columns
     assert "payload_json" not in selected_columns
+    assert "response_json" not in selected_columns
     assert rows[0].id == "job-1"
 
 
