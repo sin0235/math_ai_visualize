@@ -27,7 +27,7 @@ export function SimulationLibraryPage({ onOpen }: Props) {
     <section className="csim-page sim-library-page">
       <header className="sim-library-hero">
         <div>
-          <p className="sim-kicker">Thư viện mô phỏng Toán THPT</p>
+          <p className="sim-kicker">Thư viện mô phỏng Toán THPT <span className="sim-beta-badge">Beta</span></p>
           <h1>Mô phỏng tương tác</h1>
           <p className="sim-library-lead">
             Khám phá kiến thức bằng đồ thị, animation và câu hỏi kiểm tra nhanh.
