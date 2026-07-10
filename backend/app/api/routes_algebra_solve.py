@@ -99,6 +99,16 @@ async def solve_algebra_endpoint(
             response = await solve_algebra_with_optional_ai(request, settings, load_slot=slot)
         except Exception as error:
             message = str(error)
+            if user is not None:
+                from app.repositories.activity import try_log_user_activity
+
+                await try_log_user_activity(
+                    db,
+                    user.id,
+                    "algebra.failed",
+                    target_type="algebra",
+                    metadata={"error": message[:200], "cost": cost},
+                )
             if "timeout" in message.lower() or "ALGEBRA_TIMEOUT" in message:
                 algebra_circuit_breaker.record_timeout()
                 timeout_body = _timeout_payload(request, message, cost)
@@ -108,6 +118,16 @@ async def solve_algebra_endpoint(
         response.cost_score = cost
         if response.problem_type == "timeout" or any("ALGEBRA_TIMEOUT" in item for item in response.errors):
             algebra_circuit_breaker.record_timeout()
+            if user is not None:
+                from app.repositories.activity import try_log_user_activity
+
+                await try_log_user_activity(
+                    db,
+                    user.id,
+                    "algebra.failed",
+                    target_type="algebra",
+                    metadata={"code": "TIMEOUT", "request_id": response.request_id, "cost": cost},
+                )
             return JSONResponse(status_code=504, content=response.model_dump(mode="json"))
 
         algebra_circuit_breaker.record_success()
@@ -118,6 +138,21 @@ async def solve_algebra_endpoint(
             ]
 
         if user is not None:
+            from app.repositories.activity import try_log_user_activity
+
+            await try_log_user_activity(
+                db,
+                user.id,
+                "algebra.completed",
+                target_type="algebra",
+                metadata={
+                    "topic": response.topic,
+                    "status": response.status,
+                    "request_id": response.request_id,
+                    "cost": cost,
+                    "timings_ms": getattr(response, "timings_ms", None),
+                },
+            )
             await AdminRepository(db).record_user_usage_event(
                 user.id,
                 "algebra_solve",

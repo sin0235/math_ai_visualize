@@ -75,6 +75,65 @@ async def admin_summary(_: UserRecord = Depends(require_admin_user), db: Databas
     return AdminSummaryResponse(**await AdminRepository(db).summary())
 
 
+@router.get("/analytics/overview")
+async def admin_analytics_overview(
+    days: int = Query(default=14, ge=1, le=90),
+    _: UserRecord = Depends(require_admin_user),
+    db: DatabaseClient = Depends(get_database),
+) -> dict:
+    from app.repositories.analytics import AnalyticsRepository
+
+    return await AnalyticsRepository(db).overview(days)
+
+
+@router.get("/analytics/renders")
+async def admin_analytics_renders(
+    days: int = Query(default=14, ge=1, le=90),
+    _: UserRecord = Depends(require_admin_user),
+    db: DatabaseClient = Depends(get_database),
+) -> dict:
+    from app.repositories.analytics import AnalyticsRepository
+
+    return await AnalyticsRepository(db).renders(days)
+
+
+@router.get("/analytics/errors")
+async def admin_analytics_errors(
+    days: int = Query(default=14, ge=1, le=90),
+    limit: int = Query(default=50, ge=1, le=200),
+    _: UserRecord = Depends(require_admin_user),
+    db: DatabaseClient = Depends(get_database),
+) -> dict:
+    from app.repositories.analytics import AnalyticsRepository
+
+    return await AnalyticsRepository(db).errors(days, limit)
+
+
+@router.get("/analytics/activity")
+async def admin_analytics_activity(
+    days: int = Query(default=7, ge=1, le=90),
+    limit: int = Query(default=50, ge=1, le=200),
+    event_type: str | None = Query(default=None, max_length=128),
+    user_id: str | None = Query(default=None, max_length=128),
+    _: UserRecord = Depends(require_admin_user),
+    db: DatabaseClient = Depends(get_database),
+) -> dict:
+    from app.repositories.analytics import AnalyticsRepository
+
+    return await AnalyticsRepository(db).activity(days, limit, event_type, user_id)
+
+
+@router.get("/analytics/funnel")
+async def admin_analytics_funnel(
+    days: int = Query(default=30, ge=1, le=180),
+    _: UserRecord = Depends(require_admin_user),
+    db: DatabaseClient = Depends(get_database),
+) -> dict:
+    from app.repositories.analytics import AnalyticsRepository
+
+    return await AnalyticsRepository(db).funnel(days)
+
+
 @router.get("/plans", response_model=list[AdminPlanResponse])
 async def admin_plans(_: UserRecord = Depends(require_admin_user), db: DatabaseClient = Depends(get_database)) -> list[AdminPlanResponse]:
     return [plan_response(plan) for plan in await AdminRepository(db).list_plans()]

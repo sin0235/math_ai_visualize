@@ -125,6 +125,7 @@ class RenderJobRecord:
     archived_at: str | None = None
     last_opened_at: str | None = None
     history_updated_at: str | None = None
+    duration_ms: int | None = None
 
 
 @dataclass(frozen=True)

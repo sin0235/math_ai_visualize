@@ -137,12 +137,20 @@ class RenderHistoryRepository:
         row = await self.db.fetch_one("SELECT * FROM render_jobs WHERE id = ?", [job_id])
         return render_job_from_row(row) if row else None
 
-    async def mark_completed(self, job_id: str, response: RenderResponse, renderer: str | None) -> None:
+    async def mark_completed(
+        self,
+        job_id: str,
+        response: RenderResponse,
+        renderer: str | None,
+        *,
+        duration_ms: int | None = None,
+    ) -> None:
         await self.db.execute(
             """
             UPDATE render_jobs
             SET status = 'completed', scene_json = ?, payload_json = ?, warnings_json = ?, renderer = ?,
-                degraded = ?, fallback_source = ?, ai_source = ?, response_json = ?, schema_version = ?, finished_at = CURRENT_TIMESTAMP
+                degraded = ?, fallback_source = ?, ai_source = ?, response_json = ?, schema_version = ?,
+                duration_ms = ?, finished_at = CURRENT_TIMESTAMP
             WHERE id = ?
             """,
             [
@@ -155,18 +163,19 @@ class RenderHistoryRepository:
                 response.ai_source,
                 response.model_dump_json(),
                 response.scene.schema_version,
+                duration_ms,
                 job_id,
             ],
         )
 
-    async def mark_failed(self, job_id: str, error: dict) -> None:
+    async def mark_failed(self, job_id: str, error: dict, *, duration_ms: int | None = None) -> None:
         await self.db.execute(
             """
             UPDATE render_jobs
-            SET status = 'failed', error_json = ?, finished_at = CURRENT_TIMESTAMP
+            SET status = 'failed', error_json = ?, duration_ms = ?, finished_at = CURRENT_TIMESTAMP
             WHERE id = ?
             """,
-            [json.dumps(error, ensure_ascii=False), job_id],
+            [json.dumps(error, ensure_ascii=False), duration_ms, job_id],
         )
 
     async def list_for_user(
@@ -419,4 +428,5 @@ def render_job_from_row(row: DbRow) -> RenderJobRecord:
         archived_at=str(row["archived_at"]) if row.get("archived_at") is not None else None,
         last_opened_at=str(row["last_opened_at"]) if row.get("last_opened_at") is not None else None,
         history_updated_at=str(row["history_updated_at"]) if row.get("history_updated_at") is not None else None,
+        duration_ms=int(row["duration_ms"]) if row.get("duration_ms") is not None else None,
     )

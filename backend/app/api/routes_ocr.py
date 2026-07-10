@@ -121,9 +121,27 @@ async def ocr_image(
                 profile_fallbacks,
             )
         except (RuntimeError, ValueError) as error:
+            from app.repositories.activity import try_log_user_activity
+
+            await try_log_user_activity(
+                db,
+                user.id,
+                "ocr.failed",
+                target_type="ocr",
+                metadata={"error": str(error)[:200]},
+            )
             raise bad_request_from_error(error, "ocr_failed") from error
         if user is not None:
             await AdminRepository(db).record_user_usage_event(user.id, "ocr", {"provider": result.provider, "model": result.model})
+            from app.repositories.activity import try_log_user_activity
+
+            await try_log_user_activity(
+                db,
+                user.id,
+                "ocr.completed",
+                target_type="ocr",
+                metadata={"provider": result.provider, "model": result.model},
+            )
         return OcrResponse(text=result.text, provider=result.provider, model=result.model, warnings=result.warnings)
     finally:
         slot.release()

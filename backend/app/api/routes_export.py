@@ -52,9 +52,11 @@ async def export_tikz(
     await enforce_rate_limit(db, http_request, user, "export_tikz", 30 if user else 8, 60)
     await enforce_render_access(db, user)
     from app.renderers.tikz_export import build_tikz_document
+    from app.repositories.activity import try_log_user_activity
 
     scene = await asyncio.to_thread(_safe_export_scene, request)
     body = await asyncio.to_thread(build_tikz_document, scene, None, request.response)
+    await try_log_user_activity(db, user.id, "export.completed", target_type="export", metadata={"format": "tikz"})
     return Response(
         content=body,
         media_type="application/x-tex",

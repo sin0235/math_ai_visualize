@@ -17,6 +17,11 @@ import type {
   AdminFeedbackResponse,
   AdminPlanResponse,
   AdminStorageCheckResponse,
+  AdminAnalyticsOverview,
+  AdminAnalyticsRenders,
+  AdminAnalyticsErrors,
+  AdminAnalyticsActivity,
+  AdminAnalyticsFunnel,
   FeedbackStatus,
   ChatConversationResponse,
   ChatMessageResponse,
@@ -50,7 +55,12 @@ import {
   sendAdminChatImage,
   markAdminChatRead,
   closeAdminChatConversation,
-  createChatWebSocket
+  createChatWebSocket,
+  getAdminAnalyticsOverview,
+  getAdminAnalyticsRenders,
+  getAdminAnalyticsErrors,
+  getAdminAnalyticsActivity,
+  getAdminAnalyticsFunnel,
 } from '../../api/client';
 import { 
   formatHistoryDate, 
@@ -75,7 +85,7 @@ import adminLogoUrl from '../../../logo.svg';
 type AdminToastKind = 'error' | 'warning' | 'info';
 
 type AdminToast = (title: string, message: string, kind?: AdminToastKind) => void;
-type AdminSection = 'overview' | 'users' | 'renders' | 'models' | 'plans' | 'settings' | 'feedback' | 'chat' | 'audit';
+type AdminSection = 'overview' | 'analytics' | 'users' | 'renders' | 'models' | 'plans' | 'settings' | 'feedback' | 'chat' | 'audit';
 
 interface AdminConsoleProps {
   user: UserResponse;
@@ -128,6 +138,7 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
   const [loading, setLoading] = useState(false);
   const [loadedSections, setLoadedSections] = useState<Record<AdminSection, boolean>>({
     overview: false,
+    analytics: false,
     users: false,
     renders: false,
     models: false,
@@ -137,6 +148,11 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
     chat: false,
     audit: false,
   });
+  const [analyticsOverview, setAnalyticsOverview] = useState<AdminAnalyticsOverview | null>(null);
+  const [analyticsRenders, setAnalyticsRenders] = useState<AdminAnalyticsRenders | null>(null);
+  const [analyticsErrors, setAnalyticsErrors] = useState<AdminAnalyticsErrors | null>(null);
+  const [analyticsActivity, setAnalyticsActivity] = useState<AdminAnalyticsActivity | null>(null);
+  const [analyticsFunnel, setAnalyticsFunnel] = useState<AdminAnalyticsFunnel | null>(null);
 
   // User list state
   const [userQuery, setUserQuery] = useState('');
@@ -353,9 +369,25 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
     setUsers(u);
   }, showSuccess);
 
+  const loadAnalytics = (showSuccess = false) => withLoading('analytics', 'Phân tích', async () => {
+    const [overview, renders, errors, activity, funnel] = await Promise.all([
+      getAdminAnalyticsOverview(14),
+      getAdminAnalyticsRenders(14),
+      getAdminAnalyticsErrors(14),
+      getAdminAnalyticsActivity(7),
+      getAdminAnalyticsFunnel(30),
+    ]);
+    setAnalyticsOverview(overview);
+    setAnalyticsRenders(renders);
+    setAnalyticsErrors(errors);
+    setAnalyticsActivity(activity);
+    setAnalyticsFunnel(funnel);
+  }, showSuccess);
+
   const refreshActiveSection = (showSuccess = false) => {
     const loaders: Record<AdminSection, (showSuccess?: boolean) => Promise<void>> = {
       overview: loadOverview,
+      analytics: loadAnalytics,
       users: loadUsers,
       renders: loadRenders,
       models: loadModels,
@@ -745,6 +777,7 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
         <div className="admin-brand"><span><img src={adminLogoUrl} alt="" className="admin-brand-logo" width={32} height={32} decoding="async" /></span><div><strong>Admin Dashboard</strong><small>Operations Center</small></div></div>
         <nav className="admin-sidebar-nav">
           <AdminNavButton active={activeSection === 'overview'} onClick={() => setActiveSection('overview')} icon="overview" label="Tổng quan" />
+          <AdminNavButton active={activeSection === 'analytics'} onClick={() => setActiveSection('analytics')} icon="chart" label="Phân tích" />
           <AdminNavButton active={activeSection === 'users'} onClick={() => setActiveSection('users')} icon="users" label="Người dùng" />
           <AdminNavButton active={activeSection === 'renders'} onClick={() => setActiveSection('renders')} icon="renders" label="Lượt dựng hình" />
           <AdminNavButton active={activeSection === 'models'} onClick={() => setActiveSection('models')} icon="models" label="Model & AI" />
@@ -1069,6 +1102,94 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
                 </div>
               </div>
             </section>
+          </>
+        )}
+
+        {activeSection === 'analytics' && (
+          <>
+            <header className="admin-page-header">
+              <h2>Phân tích &amp; Theo dõi</h2>
+              <AdminToolbarRefreshButton loading={loading} onClick={() => void refreshActiveSection(true)} />
+            </header>
+            <div className="admin-section-stack">
+              <section className="admin-metric-group">
+                <div className="admin-metric-group-header"><span>Hiệu năng 14 ngày</span><small>Render, lỗi, DAU</small></div>
+                <div className="admin-metric-grid admin-metric-grid-4">
+                  <MetricCard label="Render (14d)" value={analyticsOverview?.renders ?? 0} variant="primary" icon="renders" />
+                  <MetricCard label="Fail rate" value={analyticsOverview?.render_fail_rate ?? 0} suffix="%" variant="warning" icon="warning" />
+                  <MetricCard label="Errors 24h" value={analyticsOverview?.errors_24h ?? 0} variant="warning" icon="warning" />
+                  <MetricCard label="DAU (activity)" value={analyticsOverview?.dau ?? 0} variant="success" icon="users" />
+                </div>
+                <div className="admin-metric-grid admin-metric-grid-4" style={{ marginTop: '0.75rem' }}>
+                  <MetricCard label="p50 duration" value={analyticsOverview?.duration_p50_ms ?? 0} suffix="ms" variant="info" icon="chart" />
+                  <MetricCard label="p95 duration" value={analyticsOverview?.duration_p95_ms ?? 0} suffix="ms" variant="info" icon="chart" />
+                  <MetricCard label="Activity events" value={analyticsOverview?.activity_events ?? 0} variant="info" icon="audit" />
+                  <MetricCard label="Errors (14d)" value={analyticsOverview?.errors_period ?? 0} variant="warning" icon="warning" />
+                </div>
+              </section>
+
+              <section className="admin-panel">
+                <h3>Funnel 30 ngày</h3>
+                <div className="admin-metric-grid admin-metric-grid-4">
+                  <MetricCard label="Đăng ký" value={analyticsFunnel?.registered ?? 0} variant="primary" icon="users" />
+                  <MetricCard label="Đã verify email" value={analyticsFunnel?.verified ?? 0} variant="success" icon="active" />
+                  <MetricCard label="Có render OK" value={analyticsFunnel?.users_with_completed_render ?? 0} variant="info" icon="renders" />
+                  <MetricCard label="Có OCR" value={analyticsFunnel?.users_with_ocr ?? 0} variant="info" icon="chart" />
+                </div>
+              </section>
+
+              <section className="admin-panel">
+                <h3>Render theo provider</h3>
+                <div className="admin-table">
+                  {(analyticsRenders?.by_provider || []).map((item) => (
+                    <article className="admin-row" key={item.key}><div><strong>{item.key}</strong><span>{item.count} jobs</span></div></article>
+                  ))}
+                  {(analyticsRenders?.by_provider || []).length === 0 && <p className="field-hint">Chưa có dữ liệu provider.</p>}
+                </div>
+              </section>
+
+              <section className="admin-panel">
+                <h3>Top error codes</h3>
+                <div className="admin-table">
+                  {(analyticsErrors?.top_codes || []).map((item) => (
+                    <article className="admin-row" key={item.error_code}><div><strong>{item.error_code}</strong><span>{item.count}</span></div></article>
+                  ))}
+                  {(analyticsErrors?.top_codes || []).length === 0 && <p className="field-hint">Chưa ghi nhận lỗi.</p>}
+                </div>
+              </section>
+
+              <section className="admin-panel admin-panel-full">
+                <h3>Lỗi gần đây</h3>
+                <div className="admin-table">
+                  {(analyticsErrors?.recent || []).slice(0, 30).map((item) => (
+                    <article className="admin-row" key={item.id}>
+                      <div>
+                        <strong>{item.error_code || 'UNKNOWN'}</strong>
+                        <span>{item.message}</span>
+                        <small>{item.source} · {item.route || '—'} · {formatHistoryDate(item.created_at)}</small>
+                      </div>
+                    </article>
+                  ))}
+                  {(analyticsErrors?.recent || []).length === 0 && <p className="field-hint">Chưa có error events.</p>}
+                </div>
+              </section>
+
+              <section className="admin-panel admin-panel-full">
+                <h3>Activity feed (7 ngày)</h3>
+                <div className="admin-table">
+                  {(analyticsActivity?.recent || []).slice(0, 40).map((item) => (
+                    <article className="admin-row" key={item.id}>
+                      <div>
+                        <strong>{item.event_type}</strong>
+                        <span>user {item.user_id.slice(0, 8)}…</span>
+                        <small>{item.target_type || '—'} · {formatHistoryDate(item.created_at)}</small>
+                      </div>
+                    </article>
+                  ))}
+                  {(analyticsActivity?.recent || []).length === 0 && <p className="field-hint">Chưa có activity events.</p>}
+                </div>
+              </section>
+            </div>
           </>
         )}
 

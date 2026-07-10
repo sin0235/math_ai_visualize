@@ -56,6 +56,9 @@ class Settings(BaseSettings):
     ocr_max_concurrent: int = 4
     render_async_enabled: bool = False
     render_job_poll_seconds: float = 0.75
+    log_format: Literal["standard", "json"] = "standard"
+    sentry_dsn: str | None = None
+    telemetry_client_enabled: bool = True
     d1_account_id: str | None = None
     d1_database_id: str | None = None
     d1_api_token: str | None = None

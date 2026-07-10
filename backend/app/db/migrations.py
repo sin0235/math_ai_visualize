@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 LEGACY_DUPLICATE_MIGRATION_PREFIXES = {
     "0008": {"0008_firebase_auth.sql", "0008_model_management.sql"},
     "0009": {"0009_ai_tier_profiles.sql", "0009_feedback.sql"},
+    "0028": {"0028_algebra_history.sql", "0028_analytics_monitoring.sql"},
 }
 
 

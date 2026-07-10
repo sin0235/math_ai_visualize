@@ -48,8 +48,18 @@ async def log_user_activity(
     target_type: str | None = None,
     target_id: str | None = None,
     metadata: dict | None = None,
+    session_id: str | None = None,
+    source: str = "server",
 ) -> None:
-    await UserActivityRepository(db).create(user_id, event_type, target_type=target_type, target_id=target_id, metadata=metadata)
+    await UserActivityRepository(db).create(
+        user_id,
+        event_type,
+        target_type=target_type,
+        target_id=target_id,
+        metadata=metadata,
+        session_id=session_id,
+        source=source,
+    )
 
 
 async def try_log_user_activity(
@@ -60,9 +70,20 @@ async def try_log_user_activity(
     target_type: str | None = None,
     target_id: str | None = None,
     metadata: dict | None = None,
+    session_id: str | None = None,
+    source: str = "server",
 ) -> None:
     try:
-        await log_user_activity(db, user_id, event_type, target_type=target_type, target_id=target_id, metadata=metadata)
+        await log_user_activity(
+            db,
+            user_id,
+            event_type,
+            target_type=target_type,
+            target_id=target_id,
+            metadata=metadata,
+            session_id=session_id,
+            source=source,
+        )
     except Exception as error:
         logger.warning("Không thể lưu log hoạt động %s cho user %s: %s", event_type, user_id, error)
 

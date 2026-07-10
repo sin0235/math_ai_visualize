@@ -67,6 +67,21 @@ def log_provider_request(provider: str, kind: str, url: str, model: Any, **metad
     )
 
 
+def extract_token_usage(payload: Any) -> dict[str, int] | None:
+    """Best-effort token usage from OpenAI-compatible provider payloads."""
+    if not isinstance(payload, dict):
+        return None
+    usage = payload.get("usage")
+    if not isinstance(usage, dict):
+        return None
+    result: dict[str, int] = {}
+    for key in ("prompt_tokens", "completion_tokens", "total_tokens", "input_tokens", "output_tokens"):
+        value = usage.get(key)
+        if isinstance(value, (int, float)):
+            result[key] = int(value)
+    return result or None
+
+
 def log_provider_response(provider: str, kind: str, status_code: int, elapsed_ms: int, response_chars: int, model: Any = None) -> None:
     logger.info(
         "AI provider response provider=%s kind=%s model=%s status=%s elapsed_ms=%s response_chars=%s",

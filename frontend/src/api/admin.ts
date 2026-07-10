@@ -245,8 +245,101 @@ export interface AdminProviderCheckResponse {
   latency_ms?: number | null;
 }
 
+export interface AdminAnalyticsOverview {
+  days: number;
+  renders: number;
+  renders_today: number;
+  renders_completed: number;
+  renders_failed: number;
+  render_fail_rate: number;
+  errors_24h: number;
+  errors_period: number;
+  dau: number;
+  activity_events: number;
+  duration_p50_ms?: number | null;
+  duration_avg_ms?: number | null;
+  duration_p95_ms?: number | null;
+  daily_renders: Array<{ day: string; count: number }>;
+  daily_errors: Array<{ day: string; count: number }>;
+}
+
+export interface AdminAnalyticsRenders {
+  days: number;
+  by_status: Array<{ key: string; count: number }>;
+  by_provider: Array<{ key: string; count: number }>;
+  by_model: Array<{ key: string; count: number }>;
+  duration_p50_ms?: number | null;
+  duration_p95_ms?: number | null;
+  duration_avg_ms?: number | null;
+  fail_rate: number;
+  daily: Array<{ day: string; count: number }>;
+}
+
+export interface AdminAnalyticsErrors {
+  days: number;
+  top_codes: Array<{ error_code: string; count: number }>;
+  recent: Array<{
+    id: string;
+    request_id?: string | null;
+    user_id?: string | null;
+    source: string;
+    route?: string | null;
+    method?: string | null;
+    status_code?: number | null;
+    error_code?: string | null;
+    message: string;
+    stack_fingerprint?: string | null;
+    created_at: string;
+  }>;
+  daily: Array<{ day: string; count: number }>;
+}
+
+export interface AdminAnalyticsActivity {
+  days: number;
+  by_type: Array<{ event_type: string; count: number }>;
+  recent: Array<{
+    id: string;
+    user_id: string;
+    session_id?: string | null;
+    event_type: string;
+    target_type?: string | null;
+    target_id?: string | null;
+    source: string;
+    metadata_json: string;
+    created_at: string;
+  }>;
+}
+
+export interface AdminAnalyticsFunnel {
+  days: number;
+  registered: number;
+  verified: number;
+  users_with_completed_render: number;
+  users_with_ocr: number;
+}
+
 export async function getAdminSummary(): Promise<AdminSummaryResponse> {
   return requestJson('/api/admin/summary', { credentials: 'include' }, 'Không thể tải dashboard quản trị.');
+}
+
+export async function getAdminAnalyticsOverview(days = 14): Promise<AdminAnalyticsOverview> {
+  return requestJson(`/api/admin/analytics/overview?days=${days}`, { credentials: 'include' }, 'Không thể tải analytics overview.');
+}
+
+export async function getAdminAnalyticsRenders(days = 14): Promise<AdminAnalyticsRenders> {
+  return requestJson(`/api/admin/analytics/renders?days=${days}`, { credentials: 'include' }, 'Không thể tải analytics renders.');
+}
+
+export async function getAdminAnalyticsErrors(days = 14): Promise<AdminAnalyticsErrors> {
+  return requestJson(`/api/admin/analytics/errors?days=${days}`, { credentials: 'include' }, 'Không thể tải analytics errors.');
+}
+
+export async function getAdminAnalyticsActivity(days = 7): Promise<AdminAnalyticsActivity> {
+  return requestJson(`/api/admin/analytics/activity?days=${days}`, { credentials: 'include' }, 'Không thể tải activity feed.');
+}
+
+export async function getAdminAnalyticsFunnel(days = 30): Promise<AdminAnalyticsFunnel> {
+  return requestJson(`/api/admin/analytics/funnel?days=${days}`, { credentials: 'include' }, 'Không thể tải funnel analytics.');
 }
 
 export async function getAdminUsers(filters: AdminUserFilters | string = {}): Promise<UserResponse[]> {

@@ -83,8 +83,12 @@ async def process_render_job(db: DatabaseClient, job_id: str, settings: Settings
 
 
 async def _execute_claimed_job(db: DatabaseClient, job: RenderJobRecord, settings: Settings) -> None:
+    import time
+
     from app.api.routes_render import build_problem_render_response, render_error_payload
+    from app.repositories.activity import try_log_user_activity
     from app.repositories.auth import UserRepository
+    from app.repositories.errors import try_record_error_event
 
     job_id = job.id
     repo = RenderHistoryRepository(db)
@@ -97,14 +101,46 @@ async def _execute_claimed_job(db: DatabaseClient, job: RenderJobRecord, setting
         await notify_render_job(job_id)
         return
 
+    started = time.perf_counter()
     try:
         if not job.render_request_json:
-            await repo.mark_failed(job_id, {"code": "RENDER_FAILED", "message": "Thiếu payload render."})
+            error = {"code": "RENDER_FAILED", "message": "Thiếu payload render."}
+            duration_ms = int((time.perf_counter() - started) * 1000)
+            await repo.mark_failed(job_id, error, duration_ms=duration_ms)
+            if job.user_id:
+                await try_log_user_activity(
+                    db,
+                    job.user_id,
+                    "render.failed",
+                    target_type="render_job",
+                    target_id=job_id,
+                    metadata={"code": error["code"], "duration_ms": duration_ms, "async": True},
+                )
+            await try_record_error_event(
+                db,
+                message=error["message"],
+                source="worker",
+                user_id=job.user_id,
+                route="/worker/render",
+                error_code=error["code"],
+                metadata={"job_id": job_id, "duration_ms": duration_ms},
+            )
             return
         request = RenderRequest.model_validate_json(job.render_request_json)
         user = await UserRepository(db).find_by_id(job.user_id) if job.user_id else None
         if user is None:
-            await repo.mark_failed(job_id, {"code": "RENDER_FAILED", "message": "User không tồn tại."})
+            error = {"code": "RENDER_FAILED", "message": "User không tồn tại."}
+            duration_ms = int((time.perf_counter() - started) * 1000)
+            await repo.mark_failed(job_id, error, duration_ms=duration_ms)
+            await try_record_error_event(
+                db,
+                message=error["message"],
+                source="worker",
+                user_id=job.user_id,
+                route="/worker/render",
+                error_code=error["code"],
+                metadata={"job_id": job_id},
+            )
             return
         try:
             response = await asyncio.wait_for(
@@ -112,15 +148,70 @@ async def _execute_claimed_job(db: DatabaseClient, job: RenderJobRecord, setting
                 timeout=RENDER_TIMEOUT_SECONDS,
             )
         except TimeoutError:
-            await repo.mark_failed(job_id, {"code": "TIMEOUT", "message": f"Render vượt quá {RENDER_TIMEOUT_SECONDS}s."})
+            duration_ms = int((time.perf_counter() - started) * 1000)
+            error = {"code": "TIMEOUT", "message": f"Render vượt quá {RENDER_TIMEOUT_SECONDS}s."}
+            await repo.mark_failed(job_id, error, duration_ms=duration_ms)
+            await try_log_user_activity(
+                db,
+                user.id,
+                "render.failed",
+                target_type="render_job",
+                target_id=job_id,
+                metadata={"code": "TIMEOUT", "duration_ms": duration_ms, "async": True, "tier": request.tier},
+            )
+            await try_record_error_event(
+                db,
+                message=error["message"],
+                source="worker",
+                user_id=user.id,
+                route="/worker/render",
+                error_code="TIMEOUT",
+                metadata={"job_id": job_id, "duration_ms": duration_ms},
+            )
             return
         except (RuntimeError, ValueError, KeyError) as error:
-            await repo.mark_failed(job_id, render_error_payload(error))
+            duration_ms = int((time.perf_counter() - started) * 1000)
+            payload = render_error_payload(error)
+            await repo.mark_failed(job_id, payload, duration_ms=duration_ms)
+            await try_log_user_activity(
+                db,
+                user.id,
+                "render.failed",
+                target_type="render_job",
+                target_id=job_id,
+                metadata={"code": payload.get("code"), "duration_ms": duration_ms, "async": True, "tier": request.tier},
+            )
+            await try_record_error_event(
+                db,
+                message=str(payload.get("debug_message") or payload.get("message") or error),
+                source="worker",
+                user_id=user.id,
+                route="/worker/render",
+                error_code=str(payload.get("code") or "RENDER_FAILED"),
+                metadata={"job_id": job_id, "duration_ms": duration_ms},
+            )
             return
-        await repo.mark_completed(job_id, response, response.scene.renderer)
+        duration_ms = int((time.perf_counter() - started) * 1000)
+        await repo.mark_completed(job_id, response, response.scene.renderer, duration_ms=duration_ms)
         completed = await repo.find_by_id(job_id)
         if completed is not None:
             await repo.ensure_history_item(completed, response=response, tier=request.tier)
+        await try_log_user_activity(
+            db,
+            user.id,
+            "render.completed",
+            target_type="render_job",
+            target_id=job_id,
+            metadata={
+                "tier": request.tier,
+                "renderer": response.scene.renderer,
+                "provider": response.source.provider,
+                "model": response.source.model,
+                "duration_ms": duration_ms,
+                "async": True,
+                "degraded": response.degraded,
+            },
+        )
     finally:
         slot.release()
 

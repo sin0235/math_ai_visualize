@@ -1,7 +1,9 @@
 from contextlib import asynccontextmanager
+from uuid import uuid4
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.api.routes_admin import router as admin_router
 from app.api.routes_ai_models import router as ai_models_router
@@ -11,23 +13,39 @@ from app.api.routes_chat import router as chat_router
 from app.api.routes_diagram import router as diagram_router
 from app.api.routes_export import router as export_router
 from app.api.routes_feedback import router as feedback_router
-from app.api.routes_health import router as health_router
 from app.api.routes_function_analysis import router as function_analysis_router
+from app.api.routes_health import router as health_router
 from app.api.routes_history import router as history_router
 from app.api.routes_ocr import router as ocr_router
 from app.api.routes_render import router as render_router
 from app.api.routes_settings import router as settings_router
 from app.api.routes_solve import router as solve_router
+from app.api.routes_telemetry import router as telemetry_router
 from app.api.routes_user_profile import router as user_profile_router
 from app.api.routes_user_settings import router as user_settings_router
 from app.core.config import get_settings
-from app.core.logging import configure_logging
+from app.core.logging import configure_logging, get_request_id, set_request_id
 from app.db.migrations import apply_migrations
 from app.db.session import create_database_client  # re-export for tests
 from app.services.router9_bootstrap import bootstrap_router9_models
 
 configure_logging()
 settings = get_settings()
+
+
+def _init_sentry() -> None:
+    dsn = (settings.sentry_dsn or "").strip()
+    if not dsn:
+        return
+    try:
+        import sentry_sdk
+
+        sentry_sdk.init(dsn=dsn, traces_sample_rate=0.05, environment=settings.environment)
+    except Exception:
+        pass
+
+
+_init_sentry()
 
 
 @asynccontextmanager
@@ -57,6 +75,73 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def request_id_middleware(request: Request, call_next):
+    request_id = request.headers.get("x-request-id") or uuid4().hex
+    set_request_id(request_id)
+    try:
+        response = await call_next(request)
+    finally:
+        set_request_id(None)
+    response.headers["X-Request-Id"] = request_id
+    return response
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    if exc.status_code >= 500 or (isinstance(exc.detail, dict) and exc.detail.get("code")):
+        try:
+            from app.db.session import get_shared_database
+            from app.repositories.errors import try_record_error_event
+
+            detail = exc.detail if isinstance(exc.detail, dict) else {"message": str(exc.detail)}
+            message = str(detail.get("message") or detail.get("debug_message") or exc.detail)
+            await try_record_error_event(
+                get_shared_database(),
+                message=message,
+                source="server",
+                request_id=get_request_id(),
+                route=str(request.url.path),
+                method=request.method,
+                status_code=exc.status_code,
+                error_code=str(detail.get("code") or f"HTTP_{exc.status_code}"),
+                metadata={"detail_type": type(exc.detail).__name__},
+            )
+        except Exception:
+            pass
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail}, headers={"X-Request-Id": get_request_id() or ""})
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    import logging
+
+    logging.getLogger("app").exception("Unhandled error path=%s", request.url.path)
+    try:
+        from app.db.session import get_shared_database
+        from app.repositories.errors import try_record_error_event
+
+        await try_record_error_event(
+            get_shared_database(),
+            message=str(exc) or exc.__class__.__name__,
+            source="server",
+            request_id=get_request_id(),
+            route=str(request.url.path),
+            method=request.method,
+            status_code=500,
+            error_code="INTERNAL_ERROR",
+            stack=repr(exc),
+        )
+    except Exception:
+        pass
+    return JSONResponse(
+        status_code=500,
+        content={"detail": {"code": "INTERNAL_ERROR", "message": "Lỗi nội bộ máy chủ."}},
+        headers={"X-Request-Id": get_request_id() or ""},
+    )
+
+
 app.include_router(admin_router)
 app.include_router(ai_models_router)
 app.include_router(algebra_solve_router)
@@ -74,3 +159,4 @@ app.include_router(user_profile_router)
 app.include_router(user_settings_router)
 app.include_router(solve_router)
 app.include_router(function_analysis_router)
+app.include_router(telemetry_router)

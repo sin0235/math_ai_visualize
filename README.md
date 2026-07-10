@@ -307,6 +307,18 @@ CLOUDINARY_CHAT_FOLDER=hinh/chat
 CHAT_IMAGE_MAX_MB=5
 ```
 
+### Phân tích & theo dõi
+
+```bash
+LOG_FORMAT=json                 # standard | json
+SENTRY_DSN=                     # optional
+TELEMETRY_CLIENT_ENABLED=true   # FE client-error reports
+```
+
+- `POST /api/telemetry/client-error` — client error (rate limited)
+- `GET /api/health/ready` — readiness (DB)
+- Admin: `/api/admin/analytics/*` + tab **Phân tích**
+
 ### Hiệu năng & mở rộng
 
 ```bash

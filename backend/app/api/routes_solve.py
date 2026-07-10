@@ -106,10 +106,28 @@ async def solve_problem(
             result = await explain_solver_result(result, request.scene, settings, solver_profile, method=geometry_method)
             used_ai = True
     except Exception as e:
+        from app.repositories.activity import try_log_user_activity
+
+        await try_log_user_activity(
+            db,
+            user.id,
+            "solve.failed",
+            target_type="solve",
+            metadata={"error": str(e)[:200]},
+        )
         raise bad_request_from_error(e, "solve_failed") from e
 
     if used_ai and not byok_used:
         await AdminRepository(db).record_user_usage_event(user.id, "solver_ai", {"source": "geometry_solve"})
+    from app.repositories.activity import try_log_user_activity
+
+    await try_log_user_activity(
+        db,
+        user.id,
+        "solve.completed",
+        target_type="solve",
+        metadata={"used_ai": used_ai, "geometry_method": geometry_method},
+    )
     def _map_step(s) -> SolveStepResponse:
         return SolveStepResponse(
             index=s.index,
