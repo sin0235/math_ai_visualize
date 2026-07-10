@@ -887,7 +887,6 @@ def test_render_explicit_model_bypasses_registry_task_profile(monkeypatch):
                 id="router9",
                 label="9router",
                 base_url="https://api-9router.sin-studio.tech/v1",
-                default_model_id="cx/gpt-5.5",
                 api_key_configured=True,
             )
         },
@@ -1037,14 +1036,12 @@ def test_render_explicit_model_ignores_configured_profile_fallbacks(monkeypatch)
                 id="openai_compat",
                 label="OpenAI-compatible",
                 base_url="https://deepseek.example/v1",
-                default_model_id="deepseek-v4-flash",
                 api_key_configured=True,
             ),
             "router9": ProviderRegistryItem(
                 id="router9",
                 label="9router",
                 base_url="https://api-9router.sin-studio.tech/v1",
-                default_model_id="cx/gpt-5.5",
                 api_key_configured=True,
             ),
         },

@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { ApiError } from '../api/client';
-import { reportClientError } from '../utils/telemetry';
 
 export type Notification = {
   id: number;
@@ -36,12 +35,8 @@ export function useNotifications() {
   function showApiError(title: string, error: ApiError, fallbackSuggestion: string) {
     const details = error.details.length > 0 ? error.details : [fallbackSuggestion];
     showNotification(errorTitle(title, error.message), error.message, details, 'error');
-    reportClientError({
-      message: error.message,
-      error_code: 'API_ERROR',
-      component: 'useNotifications.showApiError',
-      metadata: { title, details: details.slice(0, 5) },
-    });
+    // Do not report normal API failures to client telemetry — server already records 5xx
+    // and double-counting coded 4xx would flood analytics.
   }
 
   function showWarnings(warnings: string[]) {

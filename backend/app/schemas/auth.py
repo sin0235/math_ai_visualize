@@ -199,15 +199,9 @@ class AdminProviderModelSettings(BaseModel):
 
     api_key: str = Field(default="", max_length=4096)
     base_url: str = Field(default="", max_length=MAX_BASE_URL_CHARS)
-    model: str = Field(default="", max_length=MAX_MODEL_ID_CHARS)
     scanned_models: list[StoredModelInfo] = Field(default_factory=list, max_length=MAX_STORED_MODELS)
     allowed_model_ids: list[str] = Field(default_factory=list, max_length=MAX_STORED_MODELS)
     last_scanned_at: str = Field(default="", max_length=64)
-
-    @field_validator("model")
-    @classmethod
-    def clean_model(cls, value: str) -> str:
-        return value.strip()
 
     @field_validator("allowed_model_ids")
     @classmethod
@@ -216,12 +210,6 @@ class AdminProviderModelSettings(BaseModel):
         if any(not value for value in cleaned):
             raise ValueError("Danh sách model cho phép không được chứa giá trị trống.")
         return cleaned
-
-    @model_validator(mode="after")
-    def validate_allowed_default_model(self) -> "AdminProviderModelSettings":
-        if self.model and self.allowed_model_ids and self.model not in self.allowed_model_ids:
-            raise ValueError("Model mặc định phải nằm trong danh sách model cho phép.")
-        return self
 
 
 class AdminRouter9ModelSettings(AdminProviderModelSettings):
@@ -269,8 +257,8 @@ class SystemAiSettings(BaseModel):
 
     @model_validator(mode="after")
     def validate_router9_only_mode(self) -> "SystemAiSettings":
-        if self.router9.only_mode and not self.router9.model and not self.router9.allowed_model_ids:
-            raise ValueError("Router9 only mode cần ít nhất một model Router9.")
+        if self.router9.only_mode and not self.router9.allowed_model_ids:
+            raise ValueError("Router9 only mode cần ít nhất một model Router9 trong allowlist.")
         return self
 
 

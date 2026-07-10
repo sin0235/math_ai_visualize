@@ -11,6 +11,7 @@ from app.schemas.auth import SystemAiProfiles, SystemAiSettings
 from app.schemas.scene import AiModelInfo
 from app.services.model_provider import normalize_provider_defaults, parse_provider_model_ref
 from app.services.model_registry import (
+    invalidate_model_registry_cache,
     load_model_registry,
     save_provider_config,
     save_task_profile,
@@ -88,7 +89,6 @@ async def build_database_diagnostics(db: DatabaseClient) -> dict[str, Any]:
         "ai_settings": {
             "exists": ai_settings_row is not None,
             "default_provider": ai_settings.get("default_provider"),
-            "router9_model": router9.get("model"),
             "router9_only_mode": router9.get("only_mode"),
             "router9_allowed_model_count": len(router9.get("allowed_model_ids") or []),
             "router9_scanned_model_count": len(router9.get("scanned_models") or []),
@@ -168,13 +168,15 @@ async def sync_ai_tier_profiles_to_registry(db: DatabaseClient, value: dict, pat
     from app.repositories.model_registry import ModelRegistryRepository
 
     await ModelRegistryRepository(db).delete_unsupported_tier_profiles()
+    patch_keys = set(patch or value)
 
     for tier_name in ["tier1", "tier2", "tier3"]:
+        if tier_name not in patch_keys:
+            continue
         tier_profile = getattr(profiles, tier_name)
         primary = tier_profile.default_model or (tier_profile.models[0] if tier_profile.models else "")
         if not primary:
-            await save_task_profile(db, f"render_{tier_name}", "auto", "", [])
-            continue
+            raise ValueError(f"Tier {tier_name} phải chọn ít nhất một model.")
         primary_ref = parse_provider_model_ref(primary, allow_legacy_slash=False)
         if primary_ref is None:
             raise ValueError("Tier profile phải dùng model ref provider::model.")
@@ -205,12 +207,9 @@ async def sync_ai_settings_to_registry(db: DatabaseClient, value: dict, patch: d
     for provider_id, provider in providers.items():
         if provider_id not in patch_keys:
             continue
-        default_model_id = provider.model
-        if provider.allowed_model_ids and default_model_id not in provider.allowed_model_ids:
-            default_model_id = provider.allowed_model_ids[0]
         provider_patch = patch_data.get(provider_id) if isinstance(patch_data.get(provider_id), dict) else {}
         env_key = (getattr(current_settings, f"{provider_id}_api_key", None) or "").strip()
-        await save_provider_config(db, provider_id, provider.base_url, default_model_id, api_key_configured=bool(provider.api_key or env_key))
+        await save_provider_config(db, provider_id, provider.base_url, api_key_configured=bool(provider.api_key or env_key))
         if "scanned_models" in provider_patch:
             await upsert_scanned_models(db, provider_id, [AiModelInfo.model_validate(model.model_dump() | {"provider": provider_id}) for model in provider.scanned_models])
         if "allowed_model_ids" in provider_patch:
@@ -237,6 +236,7 @@ async def sync_ai_settings_to_registry(db: DatabaseClient, value: dict, patch: d
             """,
             ["ocr", ai_settings.ocr.provider, ai_settings.ocr.model, json.dumps(fallbacks)],
         )
+        invalidate_model_registry_cache()
 
 
 def build_ai_settings_drift(ai_settings: dict, registry: Any) -> dict[str, Any]:
@@ -263,9 +263,6 @@ def build_ai_settings_drift(ai_settings: dict, registry: Any) -> dict[str, Any]:
         legacy_base_url = provider_settings.get("base_url")
         if isinstance(legacy_base_url, str) and legacy_base_url and legacy_base_url != provider.base_url:
             differences.append({"field": f"{provider_id}.base_url", "legacy": legacy_base_url, "canonical": provider.base_url})
-        legacy_model = provider_settings.get("model")
-        if isinstance(legacy_model, str) and legacy_model and legacy_model != provider.default_model_id:
-            differences.append({"field": f"{provider_id}.model", "legacy": legacy_model, "canonical": provider.default_model_id})
 
     ocr = ai_settings.get("ocr") if isinstance(ai_settings.get("ocr"), dict) else {}
     ocr_profile = registry.task_profiles.get("ocr")

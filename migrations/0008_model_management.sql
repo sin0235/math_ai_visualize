@@ -2,7 +2,6 @@ CREATE TABLE IF NOT EXISTS ai_providers (
   id TEXT PRIMARY KEY,
   label TEXT NOT NULL,
   base_url TEXT NOT NULL DEFAULT '',
-  default_model_id TEXT NOT NULL DEFAULT '',
   api_key_configured INTEGER NOT NULL DEFAULT 0,
   enabled INTEGER NOT NULL DEFAULT 1,
   last_checked_at TEXT,

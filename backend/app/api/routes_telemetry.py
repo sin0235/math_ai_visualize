@@ -69,9 +69,24 @@ async def report_client_error(
 ) -> dict[str, str]:
     if not settings.telemetry_client_enabled:
         return {"status": "disabled"}
-    # require_trusted_origin only enforces when a session cookie is present; also gate guests by Origin.
+    # require_trusted_origin only enforces when a session cookie is present; also gate guests by Origin/Referer.
     origin = request.headers.get("origin")
-    if origin and not origin_allowed(origin, settings.cors_origins):
+    referer = request.headers.get("referer")
+    if user is None:
+        # Unauthenticated clients must present a browser Origin (or Referer host) on the allowlist.
+        guest_origin = origin
+        if not guest_origin and referer:
+            try:
+                from urllib.parse import urlparse
+
+                parsed = urlparse(referer)
+                if parsed.scheme and parsed.netloc:
+                    guest_origin = f"{parsed.scheme}://{parsed.netloc}"
+            except Exception:
+                guest_origin = None
+        if not guest_origin or not origin_allowed(guest_origin, settings.cors_origins):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Nguồn yêu cầu không được phép.")
+    elif origin and not origin_allowed(origin, settings.cors_origins):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Nguồn yêu cầu không được phép.")
     await enforce_rate_limit(db, request, user, "telemetry_client_error", 30 if user else 15, 60, settings)
 

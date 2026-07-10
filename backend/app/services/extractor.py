@@ -20,7 +20,15 @@ from app.services.openrouter_client import OpenRouterClient
 from app.services.router9_bootstrap import select_router9_render_model_ids_from_ids
 from app.services.router9_client import Router9Client
 from app.services.provider_logging import redact_sensitive
-from app.services.model_registry import TierModelCandidate, load_model_registry, model_supports_thinking, registry_from_settings, resolve_effective_settings, resolve_render_tier_candidates, resolve_task_profile
+from app.services.model_registry import (
+    TaskProfile,
+    load_model_registry,
+    model_supports_thinking,
+    registry_from_settings,
+    resolve_effective_settings,
+    resolve_render_tier_candidates,
+    resolve_task_profile,
+)
 from app.services.solid_presets import equilateral_triangle, rectangular_box, square_pyramid, triangular_prism, triangular_pyramid
 
 _HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
@@ -116,11 +124,20 @@ async def extract_scene(
     legacy_override = preferred_ai_provider is not None or preferred_ai_model is not None
     if not legacy_override:
         render_candidates = resolve_render_tier_candidates(registry, tier)
-        reasoning_profile = resolve_task_profile(registry, "reasoning")
-        reasoning_provider = _normalize_provider_alias(reasoning_profile.provider_id) if reasoning_profile else None
-        reasoning_model = reasoning_profile.model_id if reasoning_profile else None
+        reasoning_provider = None
+        reasoning_model = None
         reasoning_plan: dict | None = None
+        # Only resolve reasoning profile when two-stage is actually used — a broken
+        # reasoning profile must not abort tier render candidates.
         if use_two_stage:
+            try:
+                reasoning_profile = resolve_task_profile(registry, "reasoning")
+                reasoning_provider = _normalize_provider_alias(reasoning_profile.provider_id)
+                reasoning_model = reasoning_profile.model_id
+            except ValueError as error:
+                warnings.append(f"Bỏ qua reasoning layer (profile không hợp lệ): {error}")
+                use_two_stage = False
+        if use_two_stage and reasoning_provider and reasoning_model:
             reasoning_plan = await _run_reasoning_stage(
                 settings, problem_text, grade,
                 reasoning_provider, reasoning_model,
@@ -132,10 +149,7 @@ async def extract_scene(
                 warnings.append("Đã hoàn thành tầng suy luận (reasoning layer).")
 
         if not render_candidates:
-            render_candidates = _settings_render_candidates(settings)
-        if not render_candidates:
-            warnings.append(f"Tier {tier} chưa có model khả dụng; đang dùng mock extractor.")
-            return _extract_result(extract_scene_mock(problem_text, grade), warnings, fallback_source="mock")
+            raise RuntimeError(f"Tier {tier} chưa cấu hình model khả dụng trong ai_task_profiles.")
 
         for candidate in render_candidates:
             remaining = _render_budget_remaining(started_at)
@@ -206,15 +220,38 @@ async def extract_scene(
         preferred_provider = "router9"
     request_model = preferred_ai_model
     has_explicit_model_choice = bool(preferred_provider and request_model)
-    render_profile = resolve_task_profile(registry, "render", preferred_ai_provider, preferred_ai_model)
-    reasoning_profile = None if has_explicit_model_choice else resolve_task_profile(registry, "reasoning", preferred_ai_provider, preferred_ai_model)
+    render_profile = None
+    if not has_explicit_model_choice:
+        try:
+            # Legacy path still uses task="render"; prefer tiered profiles when present.
+            render_profile = resolve_task_profile(registry, "render", preferred_ai_provider, preferred_ai_model)
+        except ValueError:
+            for tier_key in ("tier1", "tier2", "tier3"):
+                candidates = resolve_render_tier_candidates(registry, tier_key)
+                if candidates:
+                    render_profile = TaskProfile(
+                        task="render",
+                        provider_id=candidates[0].provider_id,
+                        model_id=candidates[0].model_id,
+                        fallbacks=[],
+                    )
+                    break
+            if render_profile is None:
+                warnings.append("Không resolve được task profile render; dùng provider/model từ request/settings.")
+    reasoning_profile = None
+    if not has_explicit_model_choice and use_two_stage:
+        try:
+            reasoning_profile = resolve_task_profile(registry, "reasoning", preferred_ai_provider, preferred_ai_model)
+        except ValueError as error:
+            warnings.append(f"Bỏ qua reasoning layer (profile không hợp lệ): {error}")
+            use_two_stage = False
     render_provider = preferred_provider if has_explicit_model_choice else _normalize_provider_alias(render_profile.provider_id) if render_profile else preferred_provider
     render_model = request_model if has_explicit_model_choice else render_profile.model_id if render_profile else preferred_ai_model
     reasoning_provider = preferred_provider if has_explicit_model_choice else _normalize_provider_alias(reasoning_profile.provider_id) if reasoning_profile else preferred_provider
     reasoning_model = request_model if has_explicit_model_choice else reasoning_profile.model_id if reasoning_profile else preferred_ai_model
 
     reasoning_plan: dict | None = None
-    if use_two_stage:
+    if use_two_stage and reasoning_provider and reasoning_model:
         reasoning_plan = await _run_reasoning_stage(
             settings, problem_text, grade,
             reasoning_provider, reasoning_model,
@@ -979,15 +1016,6 @@ def _provider_model_candidates(provider: str, settings: Settings, preferred_ai_m
         return text_model_candidates(provider, settings, preferred_ai_model)
     return [None]
 
-
-def _settings_render_candidates(settings: Settings) -> list[TierModelCandidate]:
-    candidates: list[TierModelCandidate] = []
-    for provider in _render_provider_order(settings, None, False):
-        for model in _provider_model_candidates(provider, settings):
-            candidate = TierModelCandidate(provider, model or _provider_model(provider, settings))
-            if candidate not in candidates:
-                candidates.append(candidate)
-    return candidates
 
 
 def _normalize_provider_alias(provider: str | None) -> str | None:

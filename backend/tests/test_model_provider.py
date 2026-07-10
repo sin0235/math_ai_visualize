@@ -1,6 +1,10 @@
 import pytest
+from fastapi import HTTPException
 
+from app.api import routes_ai_models
+from app.schemas.scene import AiModelInfo
 from app.services.ai_fallback import explicit_model_for_provider
+from app.services.ai_providers import ModelListResult
 from app.services.model_provider import canonicalize_fallback_models, canonicalize_legacy_model_ref, canonicalize_model_ref, normalize_provider_defaults, resolve_ocr_provider
 
 
@@ -83,10 +87,22 @@ def test_canonicalize_fallback_models_keeps_vendor_namespace_for_primary_provide
     assert warnings == []
 
 
-def test_canonicalize_fallback_models_keeps_cross_provider_fallbacks():
-    models, warnings = canonicalize_fallback_models("router9", ["router9/cc/codex-5.5-image", "openrouter/google/gemma"])
+@pytest.mark.parametrize("model_id", [
+    "nvidia/deepseek-ai/deepseek-v4-flash",
+    "ollama/qwen3",
+    "openrouter/google/gemma",
+])
+def test_canonicalize_fallback_models_keeps_slash_model_under_primary_provider(model_id):
+    models, warnings = canonicalize_fallback_models("router9", [model_id])
 
-    assert models == ["cc/codex-5.5-image", "openrouter/google/gemma"]
+    assert models == [model_id]
+    assert warnings == []
+
+
+def test_canonicalize_fallback_models_routes_only_explicit_cross_provider_ref():
+    models, warnings = canonicalize_fallback_models("router9", ["ollama::qwen3"])
+
+    assert models == ["ollama::qwen3"]
     assert warnings == []
 
 
@@ -109,3 +125,82 @@ def test_resolve_ocr_provider_only_infers_app_qualified_prefixes():
     assert resolve_ocr_provider(None, "openrouter/google/gemini-flash") == "openrouter"
     assert resolve_ocr_provider(None, "gh/gpt-5.2") == "openrouter"
     assert resolve_ocr_provider("router9", "gh/gpt-5.2") == "router9"
+
+
+@pytest.mark.anyio
+async def test_scan_models_keeps_router9_namespaces(monkeypatch):
+    async def resolve_settings(db, runtime_settings):
+        return object()
+
+    async def list_models(settings, provider):
+        return ModelListResult(models=[
+            AiModelInfo(id="nvidia/deepseek-ai/deepseek-v4-flash", label="DeepSeek", provider="nvidia"),
+            AiModelInfo(id="ollama/qwen3", label="Qwen", provider="ollama"),
+            AiModelInfo(id="openrouter/google/gemma", label="Gemma", provider="openrouter"),
+        ])
+
+    monkeypatch.setattr(routes_ai_models, "resolve_effective_settings", resolve_settings)
+    monkeypatch.setattr(routes_ai_models, "list_provider_models_with_warnings", list_models)
+
+    response = await routes_ai_models._scan_models(object(), None, "router9")
+
+    assert [model.id for model in response.models] == [
+        "nvidia/deepseek-ai/deepseek-v4-flash",
+        "ollama/qwen3",
+        "openrouter/google/gemma",
+    ]
+    assert {model.provider for model in response.models} == {"router9"}
+
+
+@pytest.mark.anyio
+async def test_scan_models_returns_provider_error_without_secret(monkeypatch):
+    async def resolve_settings(db, runtime_settings):
+        return object()
+
+    async def fail_scan(settings, provider):
+        raise RuntimeError("provider quota exhausted api_key=secret-value")
+
+    monkeypatch.setattr(routes_ai_models, "resolve_effective_settings", resolve_settings)
+    monkeypatch.setattr(routes_ai_models, "list_provider_models_with_warnings", fail_scan)
+
+    with pytest.raises(HTTPException) as error:
+        await routes_ai_models._scan_models(object(), None, "router9")
+
+    assert error.value.status_code == 502
+    assert error.value.detail["code"] == "model_scan_failed"
+    assert "provider quota exhausted" in error.value.detail["message"]
+    assert "secret-value" not in error.value.detail["message"]
+
+
+@pytest.mark.anyio
+async def test_scan_models_returns_explicit_timeout_error(monkeypatch):
+    async def resolve_settings(db, runtime_settings):
+        return object()
+
+    async def timeout_scan(settings, provider):
+        raise TimeoutError
+
+    monkeypatch.setattr(routes_ai_models, "resolve_effective_settings", resolve_settings)
+    monkeypatch.setattr(routes_ai_models, "list_provider_models_with_warnings", timeout_scan)
+
+    with pytest.raises(HTTPException) as error:
+        await routes_ai_models._scan_models(object(), None, "router9")
+
+    assert error.value.status_code == 504
+    assert error.value.detail["code"] == "model_scan_timeout"
+    assert "110 giây" in error.value.detail["message"]
+
+
+@pytest.mark.anyio
+async def test_scan_models_preserves_existing_http_error(monkeypatch):
+    expected = HTTPException(status_code=429, detail={"code": "provider_rate_limited", "message": "Provider giới hạn yêu cầu."})
+
+    async def fail_settings(db, runtime_settings):
+        raise expected
+
+    monkeypatch.setattr(routes_ai_models, "resolve_effective_settings", fail_settings)
+
+    with pytest.raises(HTTPException) as error:
+        await routes_ai_models._scan_models(object(), None, "router9")
+
+    assert error.value is expected

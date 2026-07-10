@@ -9,7 +9,7 @@ from app.schemas.scene import AiModelInfo, RuntimeSettings
 from app.services.admin_settings import build_ai_settings_drift, sync_ai_profiles_to_registry, sync_ai_settings_to_registry, sync_ai_tier_profiles_to_registry
 from app.services.model_provider import explicit_provider_from_model
 from app.services.model_registry import (
-    effective_provider_default_model,
+    invalidate_model_registry_cache,
     load_model_registry,
     resolve_effective_settings,
     resolve_render_tier_candidates,
@@ -34,7 +34,6 @@ async def test_registry_seeds_from_env(db):
 
     registry = await load_model_registry(db, settings)
 
-    assert registry.providers["router9"].default_model_id == "router/model"
     assert registry.allowed_model_ids("router9") == ["router/model"]
 
 
@@ -45,7 +44,6 @@ async def test_registry_seeds_local_ocr_profile_by_default(db):
     registry = await load_model_registry(db, settings)
 
     assert registry.providers["local"].label == "Local OCR"
-    assert registry.providers["local"].default_model_id == "paddleocr+pix2tex"
     assert registry.allowed_model_ids("local") == ["paddleocr+pix2tex"]
     assert registry.task_profiles["ocr"].provider_id == "local"
     assert registry.task_profiles["ocr"].model_id == "paddleocr+pix2tex"
@@ -69,50 +67,49 @@ async def test_existing_registry_backfills_local_provider_without_overwriting_oc
 
     registry = await load_model_registry(db, settings)
 
-    assert registry.providers["local"].default_model_id == "paddleocr+pix2tex"
     assert registry.allowed_model_ids("local") == ["paddleocr+pix2tex"]
     assert registry.task_profiles["ocr"].provider_id == "openrouter"
     assert registry.task_profiles["ocr"].model_id == "vision"
 
 
 @pytest.mark.anyio
-async def test_registry_db_overrides_env(db, monkeypatch):
+async def test_registry_connection_overrides_env_without_changing_router9_model(db, monkeypatch):
     settings = Settings(_env_file=None, router9_text_model="env/model")
     monkeypatch.setattr("app.services.model_registry.get_settings", lambda: settings)
     await load_model_registry(db, settings)
-    await save_provider_config(db, "router9", "http://registry.local/v1", "db/model")
+    await save_provider_config(db, "router9", "http://registry.local/v1")
 
     effective = await resolve_effective_settings(db, None)
 
     assert effective.router9_base_url == "http://registry.local/v1"
-    assert effective.router9_text_model == "db/model"
+    assert effective.router9_text_model == "env/model"
 
 
 @pytest.mark.anyio
-async def test_ollama_registry_db_overrides_env(db, monkeypatch):
+async def test_ollama_registry_connection_overrides_env_without_changing_model(db, monkeypatch):
     settings = Settings(_env_file=None, ollama_base_url="http://env-ollama.local", ollama_text_model="env-ollama")
     monkeypatch.setattr("app.services.model_registry.get_settings", lambda: settings)
     await load_model_registry(db, settings)
-    await save_provider_config(db, "ollama", "http://db-ollama.local", "db-ollama")
+    await save_provider_config(db, "ollama", "http://db-ollama.local")
 
     effective = await resolve_effective_settings(db, None)
 
     assert effective.ollama_base_url == "http://db-ollama.local"
-    assert effective.ollama_text_model == "db-ollama"
+    assert effective.ollama_text_model == "env-ollama"
 
 
 @pytest.mark.anyio
-async def test_registry_model_overrides_env_without_dropping_env_api_key(db, monkeypatch):
+async def test_registry_connection_preserves_env_model_and_api_key(db, monkeypatch):
     settings = Settings(_env_file=None, openrouter_api_key="env-secret", openrouter_base_url="https://env-openrouter.example/v1", openrouter_text_model="env/model")
     monkeypatch.setattr("app.services.model_registry.get_settings", lambda: settings)
     await load_model_registry(db, settings)
-    await save_provider_config(db, "openrouter", "https://registry-openrouter.example/v1", "registry/model", api_key_configured=True)
+    await save_provider_config(db, "openrouter", "https://registry-openrouter.example/v1", api_key_configured=True)
 
     effective = await resolve_effective_settings(db, None)
 
     assert effective.openrouter_api_key == "env-secret"
     assert effective.openrouter_base_url == "https://registry-openrouter.example/v1"
-    assert effective.openrouter_text_model == "registry/model"
+    assert effective.openrouter_text_model == "env/model"
 
 
 @pytest.mark.anyio
@@ -205,7 +202,7 @@ async def test_registry_disables_stale_scanned_models_after_rescan(db):
 
 
 @pytest.mark.anyio
-async def test_rescan_clears_stale_openai_compat_default(db):
+async def test_rescan_disables_stale_openai_compat_model(db):
     settings = Settings(_env_file=None)
     await load_model_registry(db, settings)
     await upsert_scanned_models(db, "openai_compat", [
@@ -213,7 +210,7 @@ async def test_rescan_clears_stale_openai_compat_default(db):
         AiModelInfo(id="fresh-model", label="Fresh", provider="openai_compat"),
     ])
     await set_allowed_models(db, "openai_compat", ["stale-model", "fresh-model"])
-    await save_provider_config(db, "openai_compat", "https://compat.example/v1", "stale-model")
+    await save_provider_config(db, "openai_compat", "https://compat.example/v1")
 
     await upsert_scanned_models(db, "openai_compat", [
         AiModelInfo(id="fresh-model", label="Fresh", provider="openai_compat"),
@@ -225,8 +222,6 @@ async def test_rescan_clears_stale_openai_compat_default(db):
     assert stale.enabled is False
     assert stale.allowed is False
     assert registry.allowed_model_ids("openai_compat") == ["fresh-model"]
-    assert registry.providers["openai_compat"].default_model_id == ""
-    assert effective_provider_default_model(registry, "openai_compat", "") == "fresh-model"
 
 
 @pytest.mark.anyio
@@ -245,32 +240,30 @@ async def test_registry_reenables_scanned_model_when_it_reappears(db):
 
 
 @pytest.mark.anyio
-async def test_registry_uses_allowed_default_for_openrouter_when_saved_default_is_disallowed(db, monkeypatch):
+async def test_provider_allowlist_does_not_override_env_model(db, monkeypatch):
     settings = Settings(_env_file=None, openrouter_text_model="env/openrouter")
     monkeypatch.setattr("app.services.model_registry.get_settings", lambda: settings)
     await load_model_registry(db, settings)
-    await save_provider_config(db, "openrouter", "https://openrouter.example/v1", "stale/model")
+    await save_provider_config(db, "openrouter", "https://openrouter.example/v1")
     await set_allowed_models(db, "openrouter", ["allowed/model"])
 
     effective = await resolve_effective_settings(db, None)
 
-    assert effective.openrouter_text_model == "allowed/model"
+    assert effective.openrouter_text_model == "env/openrouter"
 
 
 @pytest.mark.anyio
-async def test_explicit_provider_without_model_uses_that_provider_default(db):
+async def test_explicit_provider_without_model_fails_configuration(db):
     settings = Settings(_env_file=None)
     await load_model_registry(db, settings)
-    await save_provider_config(db, "openrouter", "https://openrouter.example/v1", "openrouter/model")
-    await save_provider_config(db, "openai_compat", "https://compat.example/v1", "compat/default")
+    await save_provider_config(db, "openrouter", "https://openrouter.example/v1")
+    await save_provider_config(db, "openai_compat", "https://compat.example/v1")
     await save_task_profile(db, "render", "openrouter", "openrouter/model", [])
 
     registry = await load_model_registry(db, settings)
-    profile = resolve_task_profile(registry, "render", preferred_provider="openai_compat")
 
-    assert profile is not None
-    assert profile.provider_id == "openai_compat"
-    assert profile.model_id == "compat/default"
+    with pytest.raises(ValueError, match="Task profile render phải chọn model"):
+        resolve_task_profile(registry, "render", preferred_provider="openai_compat")
 
 
 @pytest.mark.anyio
@@ -286,8 +279,8 @@ async def test_save_task_profile_rejects_provider_model_mismatch(db):
 async def test_load_model_registry_keeps_namespaced_router9_profile(db):
     settings = Settings(_env_file=None)
     await load_model_registry(db, settings)
-    await save_provider_config(db, "router9", "https://router9.example/v1", "gh/gpt-5.2")
-    await save_provider_config(db, "openrouter", "https://openrouter.example/v1", "openrouter/google/gemma-4-26b-a4b-it:free")
+    await save_provider_config(db, "router9", "https://router9.example/v1")
+    await save_provider_config(db, "openrouter", "https://openrouter.example/v1")
     await db.execute(
         """
         INSERT INTO ai_task_profiles (task, provider_id, model_id, fallbacks_json)
@@ -309,7 +302,7 @@ async def test_load_model_registry_keeps_namespaced_router9_profile(db):
     assert json.loads(row["fallbacks_json"]) == ["openrouter/google/gemma-4-31b-it:free", "cc/codex-5.5-image"]
 
 
-def test_validate_system_setting_normalizes_default_to_allowlist():
+def test_validate_system_setting_removes_provider_model():
     from app.api.routes_admin import validate_system_setting
 
     validated = validate_system_setting("ai_settings", {
@@ -321,7 +314,8 @@ def test_validate_system_setting_normalizes_default_to_allowlist():
         },
     })
 
-    assert validated["openai_compat"]["model"] == "deepseek-v4-flash"
+    assert "model" not in validated["openai_compat"]
+    assert validated["openai_compat"]["allowed_model_ids"] == ["deepseek-v4-flash"]
 
 
 def test_validate_system_setting_removes_non_router9_only_mode():
@@ -337,6 +331,8 @@ def test_validate_system_setting_removes_non_router9_only_mode():
     assert "only_mode" not in validated["openrouter"]
     assert "only_mode" not in validated["openai_compat"]
     assert validated["router9"]["only_mode"] is True
+    assert "model" not in validated["openrouter"]
+    assert "model" not in validated["router9"]
 
 
 def test_validate_system_setting_rejects_mismatched_provider_model():
@@ -361,7 +357,6 @@ async def test_sync_ai_settings_accepts_scanned_model_capabilities(db):
         "version": 1,
         "openrouter": {
             "base_url": "https://openrouter.ai/api/v1",
-            "model": "vision/model",
             "scanned_models": [{
                 "id": "vision/model",
                 "label": "Vision model",
@@ -379,7 +374,7 @@ async def test_sync_ai_settings_accepts_scanned_model_capabilities(db):
 
 
 @pytest.mark.anyio
-async def test_sync_ai_settings_normalizes_nvidia_default_to_allowlist(db):
+async def test_sync_ai_settings_keeps_provider_inventory_separate_from_routing(db):
     await load_model_registry(db, Settings(_env_file=None))
 
     await sync_ai_settings_to_registry(db, {
@@ -387,7 +382,6 @@ async def test_sync_ai_settings_normalizes_nvidia_default_to_allowlist(db):
         "default_provider": "nvidia",
         "nvidia": {
             "base_url": "https://integrate.api.nvidia.com/v1",
-            "model": "stale-nvidia-model",
             "scanned_models": [{"id": "allowed-nvidia-model", "label": "Allowed NVIDIA", "provider": "nvidia"}],
             "allowed_model_ids": ["allowed-nvidia-model"],
         },
@@ -396,42 +390,40 @@ async def test_sync_ai_settings_normalizes_nvidia_default_to_allowlist(db):
     effective = await resolve_effective_settings(db, None)
     registry = await load_model_registry(db, Settings(_env_file=None))
 
-    assert registry.providers["nvidia"].default_model_id == "allowed-nvidia-model"
-    assert effective.nvidia_text_model == "allowed-nvidia-model"
+    assert registry.allowed_model_ids("nvidia") == ["allowed-nvidia-model"]
+    assert effective.nvidia_text_model == Settings(_env_file=None).nvidia_text_model
 
 
 @pytest.mark.anyio
 async def test_sync_ai_settings_patch_only_updates_touched_provider(db):
     await load_model_registry(db, Settings(_env_file=None))
-    await save_provider_config(db, "openrouter", "https://old-openrouter.example/v1", "old/openrouter")
-    await save_provider_config(db, "nvidia", "https://old-nvidia.example/v1", "old-nvidia")
+    await save_provider_config(db, "openrouter", "https://old-openrouter.example/v1")
+    await save_provider_config(db, "nvidia", "https://old-nvidia.example/v1")
 
     await sync_ai_settings_to_registry(db, {
         "version": 1,
         "openrouter": {
             "base_url": "https://new-openrouter.example/v1",
-            "model": "new/openrouter",
             "scanned_models": [{"id": "new/openrouter", "label": "New OpenRouter", "provider": "openrouter"}],
             "allowed_model_ids": ["new/openrouter"],
         },
         "nvidia": {
             "base_url": "https://new-nvidia.example/v1",
-            "model": "new-nvidia",
             "scanned_models": [{"id": "new-nvidia", "label": "New NVIDIA", "provider": "nvidia"}],
             "allowed_model_ids": ["new-nvidia"],
         },
-    }, {"openrouter": {"model": "new/openrouter"}})
+    }, {"openrouter": {"base_url": "https://new-openrouter.example/v1"}})
 
     registry = await load_model_registry(db, Settings(_env_file=None))
 
-    assert registry.providers["openrouter"].default_model_id == "new/openrouter"
-    assert registry.providers["nvidia"].default_model_id == "old-nvidia"
+    assert registry.providers["openrouter"].base_url == "https://new-openrouter.example/v1"
+    assert registry.providers["nvidia"].base_url == "https://old-nvidia.example/v1"
 
 
 @pytest.mark.anyio
 async def test_ai_settings_drift_reports_legacy_canonical_difference_without_secrets(db):
     await load_model_registry(db, Settings(_env_file=None))
-    await save_provider_config(db, "openrouter", "https://canonical.example/v1", "canonical/model")
+    await save_provider_config(db, "openrouter", "https://canonical.example/v1")
     registry = await load_model_registry(db, Settings(_env_file=None))
 
     drift = build_ai_settings_drift({
@@ -446,7 +438,7 @@ async def test_ai_settings_drift_reports_legacy_canonical_difference_without_sec
 
     assert drift["ok"] is False
     assert any(item["field"] == "openrouter.base_url" for item in drift["differences"])
-    assert any(item["field"] == "openrouter.model" for item in drift["differences"])
+    assert all(item["field"] != "openrouter.model" for item in drift["differences"])
     assert "legacy-secret" not in json.dumps(drift)
 
 
@@ -480,6 +472,40 @@ async def test_router9_scan_accepts_namespaced_models(db):
     registry = await load_model_registry(db, Settings(_env_file=None))
 
     assert model_ids <= {model.id for model in registry.models["router9"]}
+
+
+@pytest.mark.anyio
+async def test_router9_profile_fallbacks_keep_slash_models_and_route_explicit_ref(db):
+    await load_model_registry(db, Settings(_env_file=None))
+    router9_models = [
+        "primary-model",
+        "nvidia/deepseek-ai/deepseek-v4-flash",
+        "ollama/qwen3",
+        "openrouter/google/gemma",
+    ]
+    await upsert_scanned_models(db, "router9", [
+        AiModelInfo(id=model_id, label=model_id, provider="router9")
+        for model_id in router9_models
+    ])
+    await set_allowed_models(db, "router9", router9_models)
+    await upsert_scanned_models(db, "ollama", [
+        AiModelInfo(id="qwen3", label="qwen3", provider="ollama"),
+    ])
+    await set_allowed_models(db, "ollama", ["qwen3"])
+    await save_task_profile(
+        db,
+        "solver_explanation",
+        "router9",
+        "primary-model",
+        [*router9_models[1:], "ollama::qwen3"],
+    )
+
+    invalidate_model_registry_cache()
+    profile = resolve_task_profile(await load_model_registry(db, Settings(_env_file=None)), "solver_explanation")
+
+    assert profile is not None
+    assert profile.provider_id == "router9"
+    assert profile.fallbacks == [*router9_models[1:], "ollama::qwen3"]
 
 
 @pytest.mark.anyio
@@ -525,7 +551,7 @@ def test_validate_tier_profiles_rejects_model_only_refs():
 
 
 @pytest.mark.anyio
-async def test_legacy_auto_tier_profile_is_backfilled_once_before_runtime(db):
+async def test_auto_tier_profile_is_not_backfilled_from_slash_model(db):
     await load_model_registry(db, Settings(_env_file=None))
     await upsert_scanned_models(db, "nvidia", [AiModelInfo(id="llama", label="NVIDIA", provider="nvidia")])
     await db.execute(
@@ -541,9 +567,9 @@ async def test_legacy_auto_tier_profile_is_backfilled_once_before_runtime(db):
     row = await db.fetch_one("SELECT provider_id, model_id FROM ai_task_profiles WHERE task = ?", ["render_tier1"])
     candidates = resolve_render_tier_candidates(registry, "tier1")
 
-    assert row["provider_id"] == "nvidia"
-    assert row["model_id"] == "llama"
-    assert [(candidate.provider_id, candidate.model_id) for candidate in candidates] == [("nvidia", "llama")]
+    assert row["provider_id"] == "auto"
+    assert row["model_id"] == "nvidia/llama"
+    assert candidates == []
 
 
 @pytest.mark.anyio
@@ -589,17 +615,14 @@ async def test_registry_ocr_profile_updates_openrouter_vision_model(db):
 
 
 @pytest.mark.anyio
-async def test_empty_ocr_profile_keeps_vision_defaults(db, monkeypatch):
+async def test_save_task_profile_rejects_empty_model(db, monkeypatch):
     settings = Settings(_env_file=None, openrouter_text_model="admin/text", openrouter_vision_model="env/vision")
     monkeypatch.setattr("app.services.model_registry.get_settings", lambda: settings)
     await load_model_registry(db, settings)
-    await save_provider_config(db, "openrouter", "https://openrouter.example/v1", "admin/text")
-    await save_task_profile(db, "ocr", "openrouter", "", [])
+    await save_provider_config(db, "openrouter", "https://openrouter.example/v1")
 
-    effective = await resolve_effective_settings(db, None)
-
-    assert effective.openrouter_text_model == "admin/text"
-    assert effective.openrouter_vision_model == "env/vision"
+    with pytest.raises(ValueError, match="Task profile ocr phải chọn model"):
+        await save_task_profile(db, "ocr", "openrouter", "", [])
 
 
 @pytest.mark.anyio
@@ -651,7 +674,7 @@ async def test_env_secret_keeps_env_openai_compat_connection_when_registry_has_s
     )
     monkeypatch.setattr("app.services.model_registry.get_settings", lambda: settings)
     await load_model_registry(db, settings)
-    await save_provider_config(db, "openai_compat", "http://localhost:8080/v1", "", api_key_configured=False)
+    await save_provider_config(db, "openai_compat", "http://localhost:8080/v1", api_key_configured=False)
 
     effective = await resolve_effective_settings(db, None)
 
@@ -696,7 +719,6 @@ async def test_sync_ai_settings_persists_openai_compat_provider_config(db, monke
         "default_provider": "openai_compat",
         "openai_compat": {
             "base_url": "https://deepseek-reverse-api.sin-studio.tech/v1",
-            "model": "deepseek-chat",
             "scanned_models": [{"id": "deepseek-chat", "label": "deepseek-chat", "provider": "openai_compat"}],
             "allowed_model_ids": ["deepseek-chat"],
             "last_scanned_at": "2026-05-08T00:00:00.000Z",
@@ -708,7 +730,7 @@ async def test_sync_ai_settings_persists_openai_compat_provider_config(db, monke
 
     assert effective.ai_provider == "openai_compat"
     assert effective.openai_compat_base_url == "https://deepseek-reverse-api.sin-studio.tech/v1"
-    assert effective.openai_compat_text_model == "deepseek-chat"
+    assert effective.openai_compat_text_model == ""
     assert registry.allowed_model_ids("openai_compat") == ["deepseek-chat"]
     assert registry.scanned_model_infos("openai_compat")[0].id == "deepseek-chat"
 
@@ -763,20 +785,16 @@ async def test_sync_ai_settings_default_provider_preserves_task_profiles(db):
 
 
 @pytest.mark.anyio
-async def test_ai_profiles_auto_provider_accepts_cross_provider_fallbacks(db):
+async def test_ai_profiles_reject_auto_provider_and_empty_model(db):
     await load_model_registry(db, Settings(_env_file=None))
 
-    await sync_ai_profiles_to_registry(db, {
-        "version": 1,
-        "geometry_reasoning": {"provider": "auto", "model": "", "fallbacks": ["openai/gpt-oss-120b:free"]},
-    }, {
-        "geometry_reasoning": {"provider": "auto", "model": "", "fallbacks": ["openai/gpt-oss-120b:free"]},
-    })
-
-    registry = await load_model_registry(db, Settings(_env_file=None))
-
-    assert registry.task_profiles["render"].provider_id == "auto"
-    assert registry.task_profiles["render"].fallbacks == ["openai/gpt-oss-120b:free"]
+    with pytest.raises(ValueError, match="provider_id rõ ràng"):
+        await sync_ai_profiles_to_registry(db, {
+            "version": 1,
+            "geometry_reasoning": {"provider": "auto", "model": "", "fallbacks": ["openai/gpt-oss-120b:free"]},
+        }, {
+            "geometry_reasoning": {"provider": "auto", "model": "", "fallbacks": ["openai/gpt-oss-120b:free"]},
+        })
 
 
 @pytest.mark.anyio
@@ -785,21 +803,21 @@ async def test_ai_profiles_sync_to_registry_task_profiles(db):
 
     await sync_ai_profiles_to_registry(db, {
         "version": 1,
-        "geometry_reasoning": {"provider": "openrouter", "model": "openrouter/geometry", "fallbacks": ["openrouter/fallback", "router9/fallback"]},
-        "solver_explanation": {"provider": "router9", "model": "router9/solver", "fallbacks": ["router9/fallback", "openrouter/fallback"]},
+        "geometry_reasoning": {"provider": "openrouter", "model": "openrouter/geometry", "fallbacks": ["openrouter/fallback", "router9::fallback"]},
+        "solver_explanation": {"provider": "router9", "model": "router9/solver", "fallbacks": ["router9/fallback", "openrouter::fallback"]},
     }, {
-        "geometry_reasoning": {"provider": "openrouter", "model": "openrouter/geometry", "fallbacks": ["openrouter/fallback", "router9/fallback"]},
-        "solver_explanation": {"provider": "router9", "model": "router9/solver", "fallbacks": ["router9/fallback", "openrouter/fallback"]},
+        "geometry_reasoning": {"provider": "openrouter", "model": "openrouter/geometry", "fallbacks": ["openrouter/fallback", "router9::fallback"]},
+        "solver_explanation": {"provider": "router9", "model": "router9/solver", "fallbacks": ["router9/fallback", "openrouter::fallback"]},
     })
 
     registry = await load_model_registry(db, Settings(_env_file=None))
 
     assert registry.task_profiles["render"].provider_id == "openrouter"
     assert registry.task_profiles["render"].model_id == "geometry"
-    assert registry.task_profiles["reasoning"].fallbacks == ["fallback", "router9/fallback"]
+    assert registry.task_profiles["reasoning"].fallbacks == ["fallback", "router9::fallback"]
     assert registry.task_profiles["solver_explanation"].provider_id == "router9"
     assert registry.task_profiles["solver_explanation"].model_id == "solver"
-    assert registry.task_profiles["solver_explanation"].fallbacks == ["fallback", "openrouter/fallback"]
+    assert registry.task_profiles["solver_explanation"].fallbacks == ["fallback", "openrouter::fallback"]
 
 
 def test_nvidia_prefixed_model_ref_allows_nested_model_id():
@@ -807,7 +825,7 @@ def test_nvidia_prefixed_model_ref_allows_nested_model_id():
 
 
 @pytest.mark.anyio
-async def test_registry_imports_legacy_ai_settings(db):
+async def test_registry_does_not_import_legacy_ai_settings(db):
     await db.execute(
         "INSERT INTO system_settings (key, value_json) VALUES (?, ?)",
         ["ai_settings", json.dumps({
@@ -824,7 +842,7 @@ async def test_registry_imports_legacy_ai_settings(db):
 
     registry = await load_model_registry(db, Settings(_env_file=None))
 
-    assert registry.providers["router9"].base_url == "http://legacy.local/v1"
-    assert registry.providers["router9"].default_model_id == "legacy/model"
-    assert registry.settings["router9_only"] is True
-    assert registry.allowed_model_ids("router9") == ["legacy/model"]
+    assert registry.providers["router9"].base_url == Settings(_env_file=None).router9_base_url
+    assert registry.settings["router9_only"] is False
+    assert registry.allowed_model_ids("router9") == []
+    assert registry.legacy_used is True

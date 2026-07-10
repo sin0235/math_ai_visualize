@@ -1,70 +1,56 @@
-from uuid import uuid4
+import asyncio
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api.deps import require_admin_user, require_trusted_origin
-from app.core.config import Settings, get_settings
-from app.db.models import UserRecord
 from app.db.session import DatabaseClient, get_database
-from app.repositories.model_registry import ModelRegistryRepository
-from app.schemas.scene import ModelScanRequest, ModelScanResponse, ProviderModelScanRequest
-from app.schemas.scene import AiModelInfo
-from app.services.ai_fallback import provider_configured
-from app.services.ai_providers import get_provider_adapter
-from app.services.model_registry import resolve_effective_settings, save_provider_config, upsert_scanned_models
+from app.schemas.scene import AiModelInfo, ModelScanRequest, ModelScanResponse, ProviderModelScanRequest, RuntimeSettings
+from app.services.model_registry import resolve_effective_settings
 from app.services.model_scan import list_provider_models_with_warnings
+from app.services.provider_logging import redact_sensitive, truncate_text
 
 router = APIRouter(prefix="/api/ai", tags=["ai-models"])
+MODEL_SCAN_TIMEOUT_SECONDS = 110
 
 
-@router.post("/models/scan", response_model=ModelScanResponse, dependencies=[Depends(require_trusted_origin)])
+@router.post("/models/scan", response_model=ModelScanResponse, dependencies=[Depends(require_trusted_origin), Depends(require_admin_user)])
 async def scan_provider_models(
     request: ProviderModelScanRequest,
-    admin: UserRecord = Depends(require_admin_user),
     db: DatabaseClient = Depends(get_database),
-    settings: Settings = Depends(get_settings),
 ) -> ModelScanResponse:
-    effective_settings = await resolve_effective_settings(db, request.runtime_settings)
-    result = await list_provider_models_with_warnings(effective_settings, request.provider)
-    models = _unique_models(result.models, request.provider)
-    await _persist_scan(db, admin.id, effective_settings, request.provider, models, result.warnings)
-    return ModelScanResponse(models=models, warnings=result.warnings)
+    return await _scan_models(db, request.runtime_settings, request.provider)
 
 
-@router.post("/router9/models/scan", response_model=ModelScanResponse, dependencies=[Depends(require_trusted_origin)])
+@router.post("/router9/models/scan", response_model=ModelScanResponse, dependencies=[Depends(require_trusted_origin), Depends(require_admin_user)])
 async def scan_router9_models(
     request: ModelScanRequest,
-    admin: UserRecord = Depends(require_admin_user),
     db: DatabaseClient = Depends(get_database),
-    settings: Settings = Depends(get_settings),
 ) -> ModelScanResponse:
-    effective_settings = await resolve_effective_settings(db, request.runtime_settings)
-    result = await get_provider_adapter("router9").list_models(effective_settings)
-    models = _unique_models(result.models, "router9")
-    await _persist_scan(db, admin.id, effective_settings, "router9", models, result.warnings)
-    return ModelScanResponse(models=models, warnings=result.warnings)
+    return await _scan_models(db, request.runtime_settings, "router9")
 
 
-async def _persist_scan(db: DatabaseClient, user_id: str, settings: Settings, provider: str, models: list[AiModelInfo], warnings: list[str]) -> None:
-    model_ids = [model.id for model in models]
-    default_model = _provider_default_model(settings, provider, model_ids)
-    await save_provider_config(
-        db,
-        provider,
-        _provider_base_url(settings, provider),
-        default_model,
-        api_key_configured=provider_configured(_provider_api_key(settings, provider)),
-    )
-    await upsert_scanned_models(db, provider, models)
-    await ModelRegistryRepository(db).record_model_scan_job(
-        str(uuid4()),
-        user_id,
-        provider,
-        _provider_base_url(settings, provider),
-        _safe_runtime_snapshot(settings, provider),
-        models,
-        warnings,
-    )
+async def _scan_models(db: DatabaseClient, runtime_settings: RuntimeSettings | None, provider: str) -> ModelScanResponse:
+    try:
+        async with asyncio.timeout(MODEL_SCAN_TIMEOUT_SECONDS):
+            effective_settings = await resolve_effective_settings(db, runtime_settings)
+            result = await list_provider_models_with_warnings(effective_settings, provider)
+    except TimeoutError as error:
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail={
+                "code": "model_scan_timeout",
+                "message": f"Quét model {provider} quá {MODEL_SCAN_TIMEOUT_SECONDS} giây. Provider hoặc gateway phản hồi quá chậm.",
+            },
+        ) from error
+    except HTTPException:
+        raise
+    except Exception as error:
+        message = truncate_text(redact_sensitive(str(error) or error.__class__.__name__), 500)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={"code": "model_scan_failed", "message": f"Không thể quét model {provider}: {message}"},
+        ) from error
+    return ModelScanResponse(models=_unique_models(result.models, provider), warnings=result.warnings)
 
 
 def _unique_models(models: list[AiModelInfo], provider: str) -> list[AiModelInfo]:
@@ -77,28 +63,3 @@ def _unique_models(models: list[AiModelInfo], provider: str) -> list[AiModelInfo
         seen.add(model_id)
         unique.append(model.model_copy(update={"id": model_id, "provider": provider}))
     return unique
-
-
-def _provider_base_url(settings: Settings, provider: str) -> str:
-    return str(getattr(settings, f"{provider}_base_url", "") or "")
-
-
-def _provider_api_key(settings: Settings, provider: str) -> str | None:
-    return getattr(settings, f"{provider}_api_key", None)
-
-
-def _provider_default_model(settings: Settings, provider: str, model_ids: list[str]) -> str:
-    field = "router9_text_model" if provider == "router9" else f"{provider}_text_model"
-    configured = str(getattr(settings, field, "") or "").strip()
-    if configured and (not model_ids or configured in model_ids):
-        return configured
-    return model_ids[0] if model_ids else configured
-
-
-def _safe_runtime_snapshot(settings: Settings, provider: str) -> dict[str, str]:
-    field = "router9_text_model" if provider == "router9" else f"{provider}_text_model"
-    return {
-        "provider": provider,
-        "base_url": _provider_base_url(settings, provider),
-        "model": str(getattr(settings, field, "") or ""),
-    }

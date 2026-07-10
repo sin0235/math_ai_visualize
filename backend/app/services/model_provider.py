@@ -78,6 +78,9 @@ def normalize_provider_defaults(value: dict | None) -> dict | None:
         if not isinstance(provider, dict):
             continue
         provider_normalized = dict(provider)
+        # Retired fields: provider-level default model is task-profile authority now.
+        provider_normalized.pop("model", None)
+        provider_normalized.pop("default_model_id", None)
         if provider_id != "router9":
             provider_normalized.pop("only_mode", None)
         scanned = provider_normalized.get("scanned_models")
@@ -86,13 +89,6 @@ def normalize_provider_defaults(value: dict | None) -> dict | None:
         allowed = provider_normalized.get("allowed_model_ids")
         if isinstance(allowed, list):
             provider_normalized["allowed_model_ids"] = [str(model_id) for model_id in allowed if _model_belongs_to_provider(provider_id, str(model_id))]
-        allowed = provider_normalized.get("allowed_model_ids")
-        model = provider_normalized.get("model")
-        if isinstance(model, str) and model and not _model_belongs_to_provider(provider_id, model):
-            provider_normalized["model"] = ""
-            model = ""
-        if isinstance(allowed, list) and allowed and isinstance(model, str) and model and model not in allowed:
-            provider_normalized["model"] = str(allowed[0])
         normalized[provider_id] = provider_normalized
     return normalized
 
@@ -205,20 +201,16 @@ def canonicalize_fallback_models(provider: str, fallbacks: list[str], *, strict:
                 canonical.append(model_id)
         return canonical, warnings
     for fallback in fallbacks:
-        if not fallback or not fallback.strip():
+        model_id = (fallback or "").strip()
+        if not model_id:
             continue
-        explicit_ref = parse_provider_model_ref(fallback, allow_legacy_slash=False)
+        explicit_ref = parse_provider_model_ref(model_id, allow_legacy_slash=False)
         if explicit_ref is not None:
             fallback_id = explicit_ref.model_id if explicit_ref.provider_id == provider_id else format_provider_model_ref(explicit_ref.provider_id, explicit_ref.model_id)
-            if fallback_id not in canonical:
-                canonical.append(fallback_id)
-            continue
-        ref = canonicalize_model_ref(provider_id, fallback, strict=False, allow_auto=False)
-        fallback_id = ref.model_id if ref.provider_id == provider_id else f"{ref.provider_id}/{ref.model_id}"
-        if fallback_id not in canonical:
+        else:
+            fallback_id = normalize_model_for_provider(provider_id, model_id) or ""
+        if fallback_id and fallback_id not in canonical:
             canonical.append(fallback_id)
-        if ref.warning and not fallback_id.startswith(f"{ref.provider_id}/"):
-            warnings.append(ref.warning)
     return canonical, warnings
 
 

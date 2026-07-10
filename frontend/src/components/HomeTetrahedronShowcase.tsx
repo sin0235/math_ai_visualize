@@ -1,7 +1,19 @@
-import { Edges, OrbitControls, Float, Grid, GizmoHelper, GizmoViewport, Sparkles } from '@react-three/drei';
+import { Edges, OrbitControls, Float, Grid, GizmoHelper, GizmoViewport } from '@react-three/drei';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Suspense, useMemo, useRef } from 'react';
 import * as THREE from 'three';
+
+/** Monochrome palette aligned with product black/white academic theme. */
+const MONO = {
+  ink: '#111111',
+  charcoal: '#2a2a2a',
+  slate: '#4a4a4a',
+  mid: '#6b6b6b',
+  silver: '#9a9a9a',
+  mist: '#c8c8c8',
+  paper: '#f2f2f2',
+  white: '#ffffff',
+} as const;
 
 function OrbitingElements() {
   const ringRef = useRef<THREE.Group>(null);
@@ -27,19 +39,19 @@ function OrbitingElements() {
       <group ref={ringRef}>
         <mesh>
           <torusGeometry args={[3.2, 0.015, 16, 100]} />
-          <meshBasicMaterial color="#38bdf8" transparent opacity={0.3} />
+          <meshBasicMaterial color={MONO.mid} transparent opacity={0.45} />
         </mesh>
         <mesh rotation={[Math.PI / 2.5, 0, 0]}>
           <torusGeometry args={[3.8, 0.01, 16, 100]} />
-          <meshBasicMaterial color="#f97316" transparent opacity={0.22} />
+          <meshBasicMaterial color={MONO.silver} transparent opacity={0.35} />
         </mesh>
       </group>
-      
+
       <mesh ref={satelliteRef}>
         <tetrahedronGeometry args={[0.25]} />
-        <meshStandardMaterial color="#fef08a" emissive="#facc15" emissiveIntensity={1.2} />
-        <pointLight intensity={8} color="#facc15" distance={3} />
-        <Edges color="#ffffff" threshold={10} />
+        <meshStandardMaterial color={MONO.paper} emissive={MONO.mist} emissiveIntensity={0.35} roughness={0.35} metalness={0.1} />
+        <pointLight intensity={4} color={MONO.white} distance={3} />
+        <Edges color={MONO.ink} threshold={10} />
       </mesh>
     </group>
   );
@@ -47,7 +59,8 @@ function OrbitingElements() {
 
 function PolyhedronFaces() {
   const groupRef = useRef<THREE.Group>(null);
-  const palette = ['#2563eb', '#06b6d4', '#22c55e', '#84cc16', '#f59e0b', '#f97316', '#ef4444', '#ec4899', '#8b5cf6', '#6366f1'];
+  // Alternating greys for face contrast on a monochrome solid.
+  const palette = [MONO.ink, MONO.charcoal, MONO.slate, MONO.mid, MONO.silver, MONO.mist, MONO.paper, MONO.white, MONO.slate, MONO.charcoal];
   const geometry = useMemo(() => {
     const shape = new THREE.IcosahedronGeometry(2.05, 0);
     shape.clearGroups();
@@ -68,20 +81,20 @@ function PolyhedronFaces() {
       <mesh geometry={geometry}>
         {palette.map((color, index) => (
           <meshPhysicalMaterial
-            key={color}
+            key={`${color}-${index}`}
             attach={`material-${index}`}
             color={color}
             transparent
-            opacity={0.56}
-            transmission={0.22}
-            roughness={0.42}
-            metalness={0.02}
+            opacity={0.78}
+            transmission={0.06}
+            roughness={0.48}
+            metalness={0.08}
             side={THREE.DoubleSide}
           />
         ))}
-        <Edges color="#ffffff" threshold={10} opacity={0.78} transparent />
+        <Edges color={MONO.ink} threshold={10} opacity={0.92} transparent />
       </mesh>
-      <pointLight intensity={12} color="#ffffff" distance={4} />
+      <pointLight intensity={8} color={MONO.white} distance={4} />
     </group>
   );
 }
@@ -89,7 +102,7 @@ function PolyhedronFaces() {
 function BackgroundParticles() {
   const count = 60;
   const meshRef = useRef<THREE.Group>(null);
-  
+
   const particles = useMemo(() => {
     const temp = [];
     for (let i = 0; i < count; i++) {
@@ -99,8 +112,17 @@ function BackgroundParticles() {
       const xFactor = -10 + Math.random() * 20;
       const yFactor = -10 + Math.random() * 20;
       const zFactor = -10 + Math.random() * 20;
-      const type = Math.floor(Math.random() * 3); // 0: octa, 1: sphere, 2: cube
-      temp.push({ t, factor, speed, xFactor, yFactor, zFactor, type, color: Math.random() > 0.5 ? '#38bdf8' : '#f472b6' });
+      const type = Math.floor(Math.random() * 3);
+      temp.push({
+        t,
+        factor,
+        speed,
+        xFactor,
+        yFactor,
+        zFactor,
+        type,
+        color: Math.random() > 0.5 ? MONO.mid : MONO.silver,
+      });
     }
     return temp;
   }, [count]);
@@ -114,7 +136,7 @@ function BackgroundParticles() {
         p.position.set(
           Math.cos(s * 0.15 + xFactor) * factor * 0.12,
           Math.sin(s * 0.15 + yFactor) * factor * 0.12,
-          Math.sin(s * 0.15 + zFactor) * factor * 0.12
+          Math.sin(s * 0.15 + zFactor) * factor * 0.12,
         );
         p.rotation.y += 0.01;
         p.rotation.z += 0.005;
@@ -126,10 +148,41 @@ function BackgroundParticles() {
     <group ref={meshRef}>
       {particles.map((p, i) => (
         <mesh key={i}>
-          {p.type === 0 ? <octahedronGeometry args={[0.07, 0]} /> : p.type === 1 ? <sphereGeometry args={[0.05, 8, 8]} /> : <boxGeometry args={[0.06, 0.06, 0.06]} />}
-          <meshBasicMaterial color={p.color} transparent opacity={0.2} />
+          {p.type === 0 ? (
+            <octahedronGeometry args={[0.07, 0]} />
+          ) : p.type === 1 ? (
+            <sphereGeometry args={[0.05, 8, 8]} />
+          ) : (
+            <boxGeometry args={[0.06, 0.06, 0.06]} />
+          )}
+          <meshBasicMaterial color={p.color} transparent opacity={0.28} />
         </mesh>
       ))}
+    </group>
+  );
+}
+
+function PlaneGrid() {
+  return (
+    <group position={[0, -2.5, 0]}>
+      {/* Infinite academic plane grid */}
+      <Grid
+        infiniteGrid
+        fadeDistance={28}
+        fadeStrength={4}
+        sectionSize={1}
+        sectionColor={MONO.ink}
+        sectionThickness={1.15}
+        cellSize={0.5}
+        cellColor={MONO.silver}
+        cellThickness={0.7}
+        position={[0, 0.01, 0]}
+      />
+      {/* Soft ground plane so the grid reads clearly against transparent page bg */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]} receiveShadow>
+        <planeGeometry args={[40, 40]} />
+        <meshBasicMaterial color={MONO.paper} transparent opacity={0.55} side={THREE.DoubleSide} />
+      </mesh>
     </group>
   );
 }
@@ -145,64 +198,48 @@ function Scene({ hideHelpers = false }: { hideHelpers?: boolean }) {
 
   return (
     <>
-      <ambientLight intensity={0.7} />
-      <spotLight ref={lightRef} position={[15, 15, 15]} angle={0.2} penumbra={1} intensity={10} color="#e0f2fe" />
-      <pointLight position={[-15, -15, -15]} intensity={5} color="#fce7f3" />
-      
-      <Sparkles count={80} scale={12} size={2} speed={0.5} opacity={0.42} color="#60a5fa" />
-      
+      <ambientLight intensity={0.85} color={MONO.white} />
+      <spotLight ref={lightRef} position={[15, 15, 15]} angle={0.25} penumbra={1} intensity={7} color={MONO.white} />
+      <pointLight position={[-12, 8, -10]} intensity={3.5} color={MONO.mist} />
+      <directionalLight position={[4, 10, 2]} intensity={1.2} color={MONO.white} />
+
       <BackgroundParticles />
       <OrbitingElements />
-      
+
       <Float speed={1.5} rotationIntensity={0.2} floatIntensity={0.4}>
         <PolyhedronFaces />
       </Float>
 
-      {/* Far Background Large Wireframes */}
+      {/* Far wireframe accents — monochrome */}
       <group>
         <mesh position={[-10, 8, -15]} rotation={[0.5, 0.5, 0.5]}>
           <boxGeometry args={[5, 5, 5]} />
-          <meshBasicMaterial color="#60a5fa" wireframe transparent opacity={0.08} />
+          <meshBasicMaterial color={MONO.mid} wireframe transparent opacity={0.12} />
         </mesh>
         <mesh position={[12, -5, -18]} rotation={[-0.2, 0.8, 0.3]}>
           <dodecahedronGeometry args={[4]} />
-          <meshBasicMaterial color="#c084fc" wireframe transparent opacity={0.08} />
+          <meshBasicMaterial color={MONO.slate} wireframe transparent opacity={0.1} />
         </mesh>
       </group>
 
-      {/* Coordinate Grid */}
-      {!hideHelpers && (
-        <Grid
-          infiniteGrid
-          fadeDistance={25}
-          fadeStrength={5}
-          sectionSize={1.5}
-          sectionColor="#38bdf8"
-          sectionThickness={2}
-          cellSize={0.75}
-          cellColor="#c4b5fd"
-          cellThickness={1}
-          position={[0, -2.5, 0]}
-        />
-      )}
+      {/* Always show plane grid (product monochrome math paper look) */}
+      <PlaneGrid />
 
-      {/* Axes Helper */}
-      {!hideHelpers && <primitive object={new THREE.AxesHelper(4)} position={[0, -2.5, 0]} />}
+      {!hideHelpers && <primitive object={new THREE.AxesHelper(3.5)} position={[0, -2.45, 0]} />}
 
-      <OrbitControls 
-        enableDamping 
-        dampingFactor={0.06} 
-        rotateSpeed={0.5} 
-        enableZoom={false} 
-        enablePan={false} 
-        minPolarAngle={0.5} 
-        maxPolarAngle={Math.PI - 0.5} 
+      <OrbitControls
+        enableDamping
+        dampingFactor={0.06}
+        rotateSpeed={0.5}
+        enableZoom={false}
+        enablePan={false}
+        minPolarAngle={0.5}
+        maxPolarAngle={Math.PI - 0.5}
       />
-      
-      {/* Visual Axis Indicator */}
+
       {!hideHelpers && (
         <GizmoHelper alignment="bottom-right" margin={[80, 80]}>
-          <GizmoViewport axisColors={['#ef4444', '#22c55e', '#3b82f6']} labelColor="white" />
+          <GizmoViewport axisColors={[MONO.ink, MONO.mid, MONO.silver]} labelColor={MONO.ink} />
         </GizmoHelper>
       )}
     </>
@@ -215,12 +252,12 @@ export function HomeTetrahedronShowcase({ hideHelpers = false }: { hideHelpers?:
       <Canvas
         className="home-tetrahedron-canvas"
         dpr={[1, 2]}
-        gl={{ 
-          antialias: true, 
-          alpha: true, 
-          stencil: false, 
-          depth: true, 
-          powerPreference: 'high-performance' 
+        gl={{
+          antialias: true,
+          alpha: true,
+          stencil: false,
+          depth: true,
+          powerPreference: 'high-performance',
         }}
         camera={{ position: [5, 3.5, 6], fov: 40 }}
         onCreated={({ scene, gl }) => {
@@ -235,4 +272,3 @@ export function HomeTetrahedronShowcase({ hideHelpers = false }: { hideHelpers?:
     </div>
   );
 }
-

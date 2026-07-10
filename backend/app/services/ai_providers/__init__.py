@@ -181,6 +181,15 @@ class OpenRouterAdapter(OpenAIStyleAdapter):
     label = "OpenRouter"
     api_key_required = True
 
+    async def _fetch_models(self, headers: dict[str, str], normalized_base: str) -> tuple[list[AiModelInfo], list[str]]:
+        response = await _get_openai_models(self.id, headers, normalized_base)
+        parsed, warnings = super()._parse_openai_style_models(response)
+        models = [model for model in parsed if model.id.endswith(":free")]
+        skipped = len(parsed) - len(models)
+        if skipped > 0:
+            warnings.append(f"Đã bỏ {skipped} OpenRouter model không có tag :free.")
+        return models, warnings
+
     def normalize_model_id(self, model_id: str) -> str:
         return model_id.strip().removeprefix("openrouter/")
 

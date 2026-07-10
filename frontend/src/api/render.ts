@@ -284,6 +284,8 @@ function ocrImageByPayload(payload: { image_data_url: string } | { upload_id: st
   }, 'Không thể OCR ảnh đề bài.');
 }
 
+const MODEL_SCAN_TIMEOUT_MS = 120_000;
+
 export async function scanProviderModels(
   provider: 'openrouter' | 'openai_compat' | 'nvidia' | 'ollama',
   runtimeSettings: RuntimeSettings,
@@ -292,7 +294,7 @@ export async function scanProviderModels(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    signal: timeoutSignal(30_000),
+    signal: timeoutSignal(MODEL_SCAN_TIMEOUT_MS),
     body: JSON.stringify({ provider, runtime_settings: compactRuntimeSettings(runtimeSettings) }),
   }, 'Không thể quét model provider.');
   return response.models;
@@ -303,7 +305,7 @@ export async function scanRouter9Models(runtimeSettings: RuntimeSettings): Promi
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    signal: timeoutSignal(30_000),
+    signal: timeoutSignal(MODEL_SCAN_TIMEOUT_MS),
     body: JSON.stringify({ runtime_settings: compactRuntimeSettings(runtimeSettings) }),
   }, 'Không thể quét model 9router.');
   return response.models;
