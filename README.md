@@ -312,12 +312,17 @@ CHAT_IMAGE_MAX_MB=5
 ```bash
 LOG_FORMAT=json                 # standard | json
 SENTRY_DSN=                     # optional
-TELEMETRY_CLIENT_ENABLED=true   # FE client-error reports
+TELEMETRY_CLIENT_ENABLED=true   # FE telemetry
+ALERT_WEBHOOK_URL=              # optional Slack/Discord
+ALERT_ERROR_SPIKE_THRESHOLD=30
+ALERT_RENDER_FAIL_RATE_PERCENT=25
 ```
 
 - `POST /api/telemetry/client-error` — client error (rate limited)
+- `POST /api/telemetry/events` — page.view / feature.open (user login)
 - `GET /api/health/ready` — readiness (DB)
-- Admin: `/api/admin/analytics/*` + tab **Phân tích**
+- Admin: `/api/admin/analytics/*` + tab **Phân tích** (errors, funnel, AI usage, CSV export)
+- Ops: [`deploy/analytics-ops.md`](deploy/analytics-ops.md)
 
 ### Hiệu năng & mở rộng
 

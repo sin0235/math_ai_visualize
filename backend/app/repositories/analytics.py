@@ -251,13 +251,104 @@ class AnalyticsRepository:
             """,
             [since],
         )
+        feature_opens = await self.db.fetch_all(
+            """
+            SELECT COALESCE(target_id, 'unknown') AS feature, COUNT(*) AS count
+            FROM user_activity_events
+            WHERE created_at >= ? AND event_type = 'feature.open'
+            GROUP BY COALESCE(target_id, 'unknown')
+            ORDER BY count DESC
+            LIMIT 20
+            """,
+            [since],
+        )
         return {
             "days": days,
             "registered": int((registered or {}).get("count") or 0),
             "verified": int((verified or {}).get("count") or 0),
             "users_with_completed_render": int((first_render or {}).get("count") or 0),
             "users_with_ocr": int((ocr_users or {}).get("count") or 0),
+            "feature_opens": [{"feature": str(r["feature"]), "count": int(r["count"] or 0)} for r in feature_opens],
         }
+
+    async def error_groups(self, days: int = 14, limit: int = 30) -> list[dict]:
+        since = self._since(days)
+        rows = await self.db.fetch_all(
+            """
+            SELECT COALESCE(stack_fingerprint, 'unknown') AS fingerprint,
+                   COALESCE(error_code, 'UNKNOWN') AS error_code,
+                   COUNT(*) AS count,
+                   MIN(created_at) AS first_seen,
+                   MAX(created_at) AS last_seen,
+                   MAX(message) AS sample_message
+            FROM error_events
+            WHERE created_at >= ?
+            GROUP BY COALESCE(stack_fingerprint, 'unknown'), COALESCE(error_code, 'UNKNOWN')
+            ORDER BY count DESC
+            LIMIT ?
+            """,
+            [since, min(max(limit, 1), 100)],
+        )
+        return [
+            {
+                "fingerprint": str(r["fingerprint"]),
+                "error_code": str(r["error_code"]),
+                "count": int(r["count"] or 0),
+                "first_seen": str(r.get("first_seen") or ""),
+                "last_seen": str(r.get("last_seen") or ""),
+                "sample_message": str(r.get("sample_message") or "")[:300],
+            }
+            for r in rows
+        ]
+
+    async def ai_usage(self, days: int = 14) -> dict:
+        from app.repositories.ai_metrics import AiCallMetricsRepository
+
+        since = self._since(days)
+        try:
+            summary = await AiCallMetricsRepository(self.db).summary(since)
+        except Exception:
+            summary = {"by_provider": [], "by_task": [], "calls": 0, "tokens": 0, "avg_ms": None}
+        summary["days"] = days
+        return summary
+
+    async def user_timeline(self, user_id: str, limit: int = 100) -> list[dict]:
+        limit = min(max(limit, 1), 200)
+        activity = await self.db.fetch_all(
+            """
+            SELECT id, event_type AS kind, created_at, metadata_json, target_type, target_id, 'activity' AS source
+            FROM user_activity_events
+            WHERE user_id = ?
+            ORDER BY created_at DESC
+            LIMIT ?
+            """,
+            [user_id, limit],
+        )
+        errors = await self.db.fetch_all(
+            """
+            SELECT id, COALESCE(error_code, 'ERROR') AS kind, created_at, message AS metadata_json,
+                   route AS target_type, request_id AS target_id, 'error' AS source
+            FROM error_events
+            WHERE user_id = ?
+            ORDER BY created_at DESC
+            LIMIT ?
+            """,
+            [user_id, limit],
+        )
+        merged = [
+            {
+                "id": str(r["id"]),
+                "source": str(r["source"]),
+                "kind": str(r["kind"]),
+                "created_at": str(r["created_at"]),
+                "target_type": r.get("target_type"),
+                "target_id": r.get("target_id"),
+                "detail": str(r.get("metadata_json") or "")[:500],
+            }
+            for r in [*activity, *errors]
+        ]
+        merged.sort(key=lambda item: item["created_at"], reverse=True)
+        return merged[:limit]
 
 
 def _percentile(values: list[int], q: float) -> int | None:

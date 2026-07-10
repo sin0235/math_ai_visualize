@@ -61,7 +61,11 @@ import {
   getAdminAnalyticsErrors,
   getAdminAnalyticsActivity,
   getAdminAnalyticsFunnel,
+  getAdminAnalyticsErrorGroups,
+  getAdminAnalyticsAiUsage,
+  adminAnalyticsExportUrl,
 } from '../../api/client';
+import { apiUrl } from '../../api/core';
 import { 
   formatHistoryDate, 
   MetricCard, 
@@ -153,6 +157,8 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
   const [analyticsErrors, setAnalyticsErrors] = useState<AdminAnalyticsErrors | null>(null);
   const [analyticsActivity, setAnalyticsActivity] = useState<AdminAnalyticsActivity | null>(null);
   const [analyticsFunnel, setAnalyticsFunnel] = useState<AdminAnalyticsFunnel | null>(null);
+  const [analyticsErrorGroups, setAnalyticsErrorGroups] = useState<Array<{ fingerprint: string; error_code: string; count: number; sample_message: string; last_seen: string }>>([]);
+  const [analyticsAiUsage, setAnalyticsAiUsage] = useState<{ calls: number; tokens: number; avg_ms?: number | null; by_provider: Array<{ provider: string; calls: number; tokens: number; avg_ms?: number | null }> } | null>(null);
 
   // User list state
   const [userQuery, setUserQuery] = useState('');
@@ -370,18 +376,22 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
   }, showSuccess);
 
   const loadAnalytics = (showSuccess = false) => withLoading('analytics', 'Phân tích', async () => {
-    const [overview, renders, errors, activity, funnel] = await Promise.all([
+    const [overview, renders, errors, activity, funnel, groups, aiUsage] = await Promise.all([
       getAdminAnalyticsOverview(14),
       getAdminAnalyticsRenders(14),
       getAdminAnalyticsErrors(14),
       getAdminAnalyticsActivity(7),
       getAdminAnalyticsFunnel(30),
+      getAdminAnalyticsErrorGroups(14),
+      getAdminAnalyticsAiUsage(14),
     ]);
     setAnalyticsOverview(overview);
     setAnalyticsRenders(renders);
     setAnalyticsErrors(errors);
     setAnalyticsActivity(activity);
     setAnalyticsFunnel(funnel);
+    setAnalyticsErrorGroups(groups.groups || []);
+    setAnalyticsAiUsage(aiUsage);
   }, showSuccess);
 
   const refreshActiveSection = (showSuccess = false) => {
@@ -1109,7 +1119,11 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
           <>
             <header className="admin-page-header">
               <h2>Phân tích &amp; Theo dõi</h2>
-              <AdminToolbarRefreshButton loading={loading} onClick={() => void refreshActiveSection(true)} />
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <a className="secondary-button" href={apiUrl(adminAnalyticsExportUrl('errors', 14))} target="_blank" rel="noreferrer">Export errors CSV</a>
+                <a className="secondary-button" href={apiUrl(adminAnalyticsExportUrl('activity', 14))} target="_blank" rel="noreferrer">Export activity CSV</a>
+                <AdminToolbarRefreshButton loading={loading} onClick={() => void refreshActiveSection(true)} />
+              </div>
             </header>
             <div className="admin-section-stack">
               <section className="admin-metric-group">
@@ -1155,6 +1169,49 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
                     <article className="admin-row" key={item.error_code}><div><strong>{item.error_code}</strong><span>{item.count}</span></div></article>
                   ))}
                   {(analyticsErrors?.top_codes || []).length === 0 && <p className="field-hint">Chưa ghi nhận lỗi.</p>}
+                </div>
+              </section>
+
+              <section className="admin-panel">
+                <h3>Error groups (fingerprint)</h3>
+                <div className="admin-table">
+                  {analyticsErrorGroups.slice(0, 15).map((item) => (
+                    <article className="admin-row" key={`${item.fingerprint}-${item.error_code}`}>
+                      <div>
+                        <strong>{item.error_code}</strong>
+                        <span>{item.count} · {item.fingerprint.slice(0, 10)}…</span>
+                        <small>{item.sample_message}</small>
+                      </div>
+                    </article>
+                  ))}
+                  {analyticsErrorGroups.length === 0 && <p className="field-hint">Chưa có nhóm lỗi.</p>}
+                </div>
+              </section>
+
+              <section className="admin-panel">
+                <h3>AI usage (14 ngày)</h3>
+                <div className="admin-metric-grid admin-metric-grid-4">
+                  <MetricCard label="AI calls" value={analyticsAiUsage?.calls ?? 0} variant="primary" icon="models" />
+                  <MetricCard label="Tokens" value={analyticsAiUsage?.tokens ?? 0} variant="info" icon="chart" />
+                  <MetricCard label="Avg latency" value={analyticsAiUsage?.avg_ms ?? 0} suffix="ms" variant="info" icon="chart" />
+                </div>
+                <div className="admin-table" style={{ marginTop: '0.75rem' }}>
+                  {(analyticsAiUsage?.by_provider || []).map((item) => (
+                    <article className="admin-row" key={item.provider}>
+                      <div><strong>{item.provider}</strong><span>{item.calls} calls · {item.tokens} tokens · {item.avg_ms ?? '—'}ms</span></div>
+                    </article>
+                  ))}
+                  {(analyticsAiUsage?.by_provider || []).length === 0 && <p className="field-hint">Chưa có ai_call_metrics (cần traffic AI sau migrate).</p>}
+                </div>
+              </section>
+
+              <section className="admin-panel">
+                <h3>Feature opens</h3>
+                <div className="admin-table">
+                  {(analyticsFunnel?.feature_opens || []).map((item) => (
+                    <article className="admin-row" key={item.feature}><div><strong>{item.feature}</strong><span>{item.count}</span></div></article>
+                  ))}
+                  {(analyticsFunnel?.feature_opens || []).length === 0 && <p className="field-hint">Chưa có feature.open (cần user đăng nhập duyệt app).</p>}
                 </div>
               </section>
 
@@ -1674,7 +1731,6 @@ function adminAiSettingsValue(value: Record<string, unknown>, defaults: Settings
     next[provider] = {
       ...current,
       base_url: providerDefaults.base_url,
-      model: providerDefaults.model ?? '',
       scanned_models: providerDefaults.scanned_models,
       allowed_model_ids: providerDefaults.allowed_model_ids,
       ...(provider === 'router9' ? { only_mode: defaults.router9.only_mode } : {}),

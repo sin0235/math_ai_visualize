@@ -95,6 +95,10 @@ async def register(
     await audit(db, user.id, "legal.terms_accepted", "user", user.id, raw_request)
     await audit(db, user.id, "auth.registered", "user", user.id, raw_request)
     await audit(db, user.id, "auth.email_verification_sent", "user", user.id, raw_request)
+    from app.repositories.activity import try_log_user_activity
+    from app.services.analytics_taxonomy import AUTH_REGISTER
+
+    await try_log_user_activity(db, user.id, AUTH_REGISTER, target_type="user", target_id=user.id)
     if not settings.require_email_verification:
         _, session_token = await SessionRepository(db).create(user.id, client_ip(raw_request), raw_request.headers.get("user-agent"))
         set_session_cookie(response, session_token, settings)
@@ -222,6 +226,10 @@ async def login(
     _, token = await SessionRepository(db).create(user.id, client_ip(raw_request), raw_request.headers.get("user-agent"))
     set_session_cookie(response, token, settings)
     await audit(db, user.id, "auth.login_success", "user", user.id, raw_request)
+    from app.repositories.activity import try_log_user_activity
+    from app.services.analytics_taxonomy import AUTH_LOGIN
+
+    await try_log_user_activity(db, user.id, AUTH_LOGIN, target_type="user", target_id=user.id)
     return AuthResponse(user=user_response(user))
 
 

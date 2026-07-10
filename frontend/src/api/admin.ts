@@ -316,6 +316,7 @@ export interface AdminAnalyticsFunnel {
   verified: number;
   users_with_completed_render: number;
   users_with_ocr: number;
+  feature_opens?: Array<{ feature: string; count: number }>;
 }
 
 export async function getAdminSummary(): Promise<AdminSummaryResponse> {
@@ -340,6 +341,18 @@ export async function getAdminAnalyticsActivity(days = 7): Promise<AdminAnalytic
 
 export async function getAdminAnalyticsFunnel(days = 30): Promise<AdminAnalyticsFunnel> {
   return requestJson(`/api/admin/analytics/funnel?days=${days}`, { credentials: 'include' }, 'Không thể tải funnel analytics.');
+}
+
+export async function getAdminAnalyticsErrorGroups(days = 14): Promise<{ days: number; groups: Array<{ fingerprint: string; error_code: string; count: number; first_seen: string; last_seen: string; sample_message: string }> }> {
+  return requestJson(`/api/admin/analytics/error-groups?days=${days}`, { credentials: 'include' }, 'Không thể tải error groups.');
+}
+
+export async function getAdminAnalyticsAiUsage(days = 14): Promise<{ days: number; calls: number; tokens: number; avg_ms?: number | null; by_provider: Array<{ provider: string; calls: number; ok: number; tokens: number; avg_ms?: number | null }>; by_task: Array<{ task: string; calls: number; tokens: number; avg_ms?: number | null }> }> {
+  return requestJson(`/api/admin/analytics/ai-usage?days=${days}`, { credentials: 'include' }, 'Không thể tải AI usage.');
+}
+
+export function adminAnalyticsExportUrl(type: 'errors' | 'activity' = 'errors', days = 14): string {
+  return `/api/admin/analytics/export?type=${type}&days=${days}`;
 }
 
 export async function getAdminUsers(filters: AdminUserFilters | string = {}): Promise<UserResponse[]> {

@@ -86,6 +86,8 @@ const viewPaths: Record<AppView, string> = {
 
 function pathToView(pathname: string): AppView {
   const normalized = pathname.replace(/\/+$/, '') || '/';
+  // Simulation hub owns sub-routes `/simulation/:id` without coupling other tools.
+  if (normalized === '/simulation' || normalized.startsWith('/simulation/')) return 'simulation';
   const match = Object.entries(viewPaths).find(([, path]) => path === normalized);
   return match ? match[0] as AppView : 'home';
 }
@@ -242,6 +244,14 @@ export default function App() {
     const method = replace ? 'replaceState' : 'pushState';
     window.history[method]({}, document.title, nextPath);
   }
+
+  useEffect(() => {
+    const path = viewPaths[activeView] || window.location.pathname;
+    void import('./utils/telemetry').then(({ trackPageView, trackFeatureOpen }) => {
+      trackPageView(path);
+      trackFeatureOpen(activeView);
+    });
+  }, [activeView]);
 
   useEffect(() => {
     function handlePopState() {
@@ -476,7 +486,7 @@ export default function App() {
       navigateTo('login');
       return;
     }
-    if (settingsDefaults?.router9.only_mode && settingsDefaults.router9.allowed_model_ids.length === 0 && !settingsDefaults.router9.model) {
+    if (settingsDefaults?.router9.only_mode && settingsDefaults.router9.allowed_model_ids.length === 0) {
       const message = '9router-only đang bật nhưng admin chưa cấu hình model OCR khả dụng.';
       showNotification('OCR thất bại', message);
       return;
@@ -1004,7 +1014,7 @@ export default function App() {
                   navigateTo('simulation');
                 }}>
                   <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><polygon points="10 8 16 12 10 16 10 8"></polygon></svg>
-                  <span><strong>Mô phỏng</strong><small>Tích phân, lượng giác, animation học toán</small></span>
+                  <span><strong>Mô phỏng</strong><small>Thư viện THPT · tích phân · lượng giác</small></span>
                 </button>
                 <button type="button" role="menuitem" className={activeView === 'geogebra-lab' ? 'active' : ''} onClick={() => {
                   setToolsMenuOpen(false);
@@ -1657,7 +1667,7 @@ function runtimeSettingsFromAdminDefaults(defaults: SettingsDefaults): RuntimeSe
 function providerSettingsFromAdminDefaults(defaults: SettingsDefaults['openrouter'] | SettingsDefaults['nvidia'] | SettingsDefaults['ollama'] | SettingsDefaults['openai_compat'] | SettingsDefaults['router9']) {
   return {
     ...defaultRuntimeSettings.openrouter,
-    model: defaults.model ?? '',
+    model: '',
     scanned_models: defaults.scanned_models,
     allowed_model_ids: defaults.allowed_model_ids,
     last_scanned_at: '',

@@ -231,9 +231,28 @@ async def run_worker_loop(poll_seconds: float = 1.0, stop_event: asyncio.Event |
     db = await init_shared_database(settings)
     stop = stop_event or asyncio.Event()
     logger.info("Render worker started (poll=%.2fs async=%s)", poll_seconds, settings.render_async_enabled)
+    last_alert_check = 0.0
+    last_retention = 0.0
     while not stop.is_set():
         try:
             worked = await process_one_queued_job(db, settings)
+            now = asyncio.get_running_loop().time()
+            # Hourly alert checks
+            if now - last_alert_check > 3600:
+                last_alert_check = now
+                try:
+                    from app.services.alerts import run_alert_checks
+
+                    await run_alert_checks(db, settings)
+                except Exception:
+                    logger.exception("Alert checks failed")
+            # Daily retention cleanup (dry_run=False, limited batch)
+            if now - last_retention > 86400:
+                last_retention = now
+                try:
+                    await _run_analytics_retention(db, settings)
+                except Exception:
+                    logger.exception("Analytics retention failed")
             if worked:
                 continue
             await _wait_for_job_or_timeout(poll_seconds)
@@ -241,6 +260,22 @@ async def run_worker_loop(poll_seconds: float = 1.0, stop_event: asyncio.Event |
             logger.exception("Render worker loop error")
             await asyncio.sleep(min(5.0, poll_seconds * 2))
     logger.info("Render worker stopped")
+
+
+async def _run_analytics_retention(db: DatabaseClient, settings: Settings) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    cuts = {
+        "error_events": (datetime.now(UTC) - timedelta(days=settings.analytics_retention_errors_days)).strftime("%Y-%m-%d %H:%M:%S"),
+        "user_activity_events": (datetime.now(UTC) - timedelta(days=settings.analytics_retention_activity_days)).strftime("%Y-%m-%d %H:%M:%S"),
+        "ai_call_metrics": (datetime.now(UTC) - timedelta(days=settings.analytics_retention_ai_metrics_days)).strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    for table, cutoff in cuts.items():
+        try:
+            await db.execute(f"DELETE FROM {table} WHERE created_at < ?", [cutoff])
+            logger.info("Retention deleted old rows table=%s before=%s", table, cutoff)
+        except Exception:
+            logger.warning("Retention skip table=%s", table, exc_info=True)
 
 
 async def _wait_for_job_or_timeout(poll_seconds: float) -> bool:

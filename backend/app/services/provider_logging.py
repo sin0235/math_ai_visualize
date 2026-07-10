@@ -82,15 +82,27 @@ def extract_token_usage(payload: Any) -> dict[str, int] | None:
     return result or None
 
 
-def log_provider_response(provider: str, kind: str, status_code: int, elapsed_ms: int, response_chars: int, model: Any = None) -> None:
+def log_provider_response(
+    provider: str,
+    kind: str,
+    status_code: int,
+    elapsed_ms: int,
+    response_chars: int,
+    model: Any = None,
+    *,
+    usage: dict[str, int] | None = None,
+    user_id: str | None = None,
+    persist_metrics: bool = True,
+) -> None:
     logger.info(
-        "AI provider response provider=%s kind=%s model=%s status=%s elapsed_ms=%s response_chars=%s",
+        "AI provider response provider=%s kind=%s model=%s status=%s elapsed_ms=%s response_chars=%s%s",
         provider,
         kind,
         model or "<unknown>",
         status_code,
         elapsed_ms,
         response_chars,
+        f" tokens={usage.get('total_tokens')}" if usage and usage.get("total_tokens") is not None else "",
         extra={
             "provider": provider,
             "kind": kind,
@@ -100,6 +112,62 @@ def log_provider_response(provider: str, kind: str, status_code: int, elapsed_ms
             "response_chars": response_chars,
         },
     )
+    if persist_metrics and status_code < 400:
+        schedule_ai_call_metric(
+            task=kind,
+            provider=provider,
+            model=str(model) if model is not None else None,
+            user_id=user_id,
+            success=True,
+            elapsed_ms=elapsed_ms,
+            usage=usage,
+        )
+
+
+def schedule_ai_call_metric(
+    *,
+    task: str,
+    provider: str | None,
+    model: str | None = None,
+    user_id: str | None = None,
+    success: bool = True,
+    error_code: str | None = None,
+    elapsed_ms: int | None = None,
+    usage: dict[str, int] | None = None,
+) -> None:
+    """Best-effort persist of AI call metrics without blocking the request path."""
+    import asyncio
+
+    async def _run() -> None:
+        try:
+            from app.db.session import get_shared_database
+            from app.repositories.ai_metrics import try_record_ai_call
+
+            usage_map = usage or {}
+            total = usage_map.get("total_tokens")
+            if total is None and ("prompt_tokens" in usage_map or "completion_tokens" in usage_map):
+                total = int(usage_map.get("prompt_tokens") or 0) + int(usage_map.get("completion_tokens") or 0)
+            await try_record_ai_call(
+                get_shared_database(),
+                task=task,
+                provider=provider,
+                model=model,
+                user_id=user_id,
+                success=success,
+                error_code=error_code,
+                elapsed_ms=elapsed_ms,
+                prompt_tokens=usage_map.get("prompt_tokens") or usage_map.get("input_tokens"),
+                completion_tokens=usage_map.get("completion_tokens") or usage_map.get("output_tokens"),
+                total_tokens=total,
+            )
+        except Exception:
+            logger.debug("ai_call_metrics schedule failed", exc_info=True)
+
+    try:
+        loop = asyncio.get_running_loop()
+        loop.create_task(_run())
+    except RuntimeError:
+        return
 
 
 def log_provider_http_error(provider: str, kind: str, response: httpx.Response, model: Any = None, limit: int = 1200) -> None:

@@ -59,6 +59,12 @@ class Settings(BaseSettings):
     log_format: Literal["standard", "json"] = "standard"
     sentry_dsn: str | None = None
     telemetry_client_enabled: bool = True
+    alert_webhook_url: str | None = None
+    alert_error_spike_threshold: int = 30
+    alert_render_fail_rate_percent: float = 25.0
+    analytics_retention_errors_days: int = 90
+    analytics_retention_activity_days: int = 180
+    analytics_retention_ai_metrics_days: int = 180
     d1_account_id: str | None = None
     d1_database_id: str | None = None
     d1_api_token: str | None = None

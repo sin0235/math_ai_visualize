@@ -13,6 +13,8 @@ class FakeDb:
         self.executed.append((sql, params))
 
     async def fetch_one(self, sql, params=None):
+        if "ai_call_metrics" in sql:
+            return {"calls": 2, "tokens": 100, "avg_ms": 50}
         if "COUNT(*)" in sql and "error_events" in sql:
             return {"count": 2}
         if "COUNT(*)" in sql and "render_jobs" in sql and "failed" in sql:
@@ -36,8 +38,25 @@ class FakeDb:
         return {"count": 0}
 
     async def fetch_all(self, sql, params=None):
-        if "duration_ms" in sql:
+        if "duration_ms" in sql and "ai_call_metrics" not in sql and "AVG" not in sql:
             return [{"duration_ms": 100}, {"duration_ms": 200}, {"duration_ms": 300}]
+        if "stack_fingerprint" in sql or "fingerprint" in sql.lower():
+            return [{
+                "fingerprint": "abc123",
+                "error_code": "TIMEOUT",
+                "count": 3,
+                "first_seen": "2026-07-01",
+                "last_seen": "2026-07-02",
+                "sample_message": "timeout",
+            }]
+        if "feature.open" in sql or "target_id" in sql and "feature" in sql:
+            return [{"feature": "render", "count": 4}]
+        if "ai_call_metrics" in sql:
+            if "GROUP BY" in sql and "provider" in sql:
+                return [{"provider": "openrouter", "calls": 2, "ok": 2, "tokens": 100, "avg_ms": 50}]
+            if "GROUP BY" in sql and "task" in sql:
+                return [{"task": "scene", "calls": 2, "tokens": 100, "avg_ms": 50}]
+            return []
         if "GROUP BY day" in sql or "substr(created_at" in sql:
             return [{"day": "2026-07-01", "count": 2}]
         if "error_code" in sql and "GROUP BY" in sql:
@@ -109,3 +128,21 @@ def test_analytics_funnel_shape():
     funnel = asyncio.run(AnalyticsRepository(db).funnel(30))
     assert funnel["registered"] == 5
     assert funnel["verified"] == 4
+
+
+def test_error_groups_shape():
+    db = FakeDb()
+
+    async def run():
+        return await AnalyticsRepository(db).error_groups(14)
+
+    # FakeDb returns empty for unknown group query — still must not crash
+    groups = asyncio.run(run())
+    assert isinstance(groups, list)
+
+
+def test_taxonomy_constants():
+    from app.services.analytics_taxonomy import ALLOWED_CLIENT_EVENT_TYPES, FEATURE_OPEN, PAGE_VIEW
+
+    assert FEATURE_OPEN in ALLOWED_CLIENT_EVENT_TYPES
+    assert PAGE_VIEW in ALLOWED_CLIENT_EVENT_TYPES

@@ -38,7 +38,7 @@ from app.schemas.scene import MathScene, ModelScanRequest, RenderPayload
 from app.services.admin_settings import build_database_diagnostics, normalize_provider_defaults, sync_ai_profiles_to_registry, sync_ai_settings_to_registry, sync_ai_tier_profiles_to_registry
 from app.services.database_cleanup import cleanup_database, reset_dev_data
 from app.services.model_provider import canonicalize_explicit_provider_model, canonicalize_fallback_models, parse_provider_model_ref
-from app.services.model_registry import resolve_effective_settings, save_provider_check
+from app.services.model_registry import health_check_model, load_model_registry, resolve_effective_settings, save_provider_check
 from app.services.provider_ping import ADMIN_PING_PROVIDERS, ping_provider
 from app.services.storage_diagnostics import check_upload_storage
 
@@ -132,6 +132,104 @@ async def admin_analytics_funnel(
     from app.repositories.analytics import AnalyticsRepository
 
     return await AnalyticsRepository(db).funnel(days)
+
+
+@router.get("/analytics/error-groups")
+async def admin_analytics_error_groups(
+    days: int = Query(default=14, ge=1, le=90),
+    limit: int = Query(default=30, ge=1, le=100),
+    _: UserRecord = Depends(require_admin_user),
+    db: DatabaseClient = Depends(get_database),
+) -> dict:
+    from app.repositories.analytics import AnalyticsRepository
+
+    return {"days": days, "groups": await AnalyticsRepository(db).error_groups(days, limit)}
+
+
+@router.get("/analytics/ai-usage")
+async def admin_analytics_ai_usage(
+    days: int = Query(default=14, ge=1, le=90),
+    _: UserRecord = Depends(require_admin_user),
+    db: DatabaseClient = Depends(get_database),
+) -> dict:
+    from app.repositories.analytics import AnalyticsRepository
+
+    return await AnalyticsRepository(db).ai_usage(days)
+
+
+@router.get("/analytics/users/{user_id}/timeline")
+async def admin_user_timeline(
+    user_id: str,
+    limit: int = Query(default=100, ge=1, le=200),
+    _: UserRecord = Depends(require_admin_user),
+    db: DatabaseClient = Depends(get_database),
+) -> dict:
+    from app.repositories.analytics import AnalyticsRepository
+
+    return {"user_id": user_id, "items": await AnalyticsRepository(db).user_timeline(user_id, limit)}
+
+
+@router.get("/analytics/export")
+async def admin_analytics_export(
+    type: Literal["errors", "activity"] = Query(default="errors"),
+    days: int = Query(default=14, ge=1, le=90),
+    _: UserRecord = Depends(require_admin_user),
+    db: DatabaseClient = Depends(get_database),
+):
+    import csv
+    import io
+    from datetime import UTC, datetime, timedelta
+
+    from fastapi.responses import StreamingResponse
+    from app.repositories.analytics import AnalyticsRepository
+    from app.repositories.errors import ErrorEventRepository
+
+    since = (datetime.now(UTC) - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    if type == "errors":
+        rows = await ErrorEventRepository(db).list_recent(limit=500, since=since)
+        writer.writerow(["id", "created_at", "source", "error_code", "route", "user_id", "message", "fingerprint"])
+        for row in rows:
+            writer.writerow(
+                [
+                    row.get("id"),
+                    row.get("created_at"),
+                    row.get("source"),
+                    row.get("error_code"),
+                    row.get("route"),
+                    row.get("user_id"),
+                    row.get("message"),
+                    row.get("stack_fingerprint"),
+                ]
+            )
+    else:
+        data = await AnalyticsRepository(db).activity(days=days, limit=500)
+        writer.writerow(["id", "created_at", "user_id", "event_type", "target_type", "target_id", "source"])
+        for row in data["recent"]:
+            writer.writerow(
+                [row["id"], row["created_at"], row["user_id"], row["event_type"], row.get("target_type"), row.get("target_id"), row.get("source")]
+            )
+    buffer.seek(0)
+    filename = f"analytics-{type}-{days}d.csv"
+    return StreamingResponse(
+        iter([buffer.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post("/analytics/run-alerts", dependencies=[Depends(require_trusted_origin)])
+async def admin_run_alerts(
+    http_request: Request,
+    admin: UserRecord = Depends(require_admin_user),
+    db: DatabaseClient = Depends(get_database),
+) -> dict:
+    await enforce_rate_limit(db, http_request, admin, "admin_run_alerts", 10, 60)
+    from app.services.alerts import run_alert_checks
+
+    alerts = await run_alert_checks(db)
+    return {"alerts": alerts, "count": len(alerts)}
 
 
 @router.get("/plans", response_model=list[AdminPlanResponse])
@@ -568,7 +666,8 @@ async def admin_check_provider(
     await enforce_rate_limit(db, http_request, admin, "admin_provider_check", 20, 60)
 
     settings = await resolve_effective_settings(db, request.runtime_settings)
-    result = await ping_provider(provider, settings)
+    registry = await load_model_registry(db, settings)
+    result = await ping_provider(provider, settings, health_check_model(registry, provider))
     await save_provider_check(db, result.provider, result.status, result.message)
     return result.as_dict()
 
@@ -583,7 +682,8 @@ async def admin_check_all_providers(
     await enforce_rate_limit(db, http_request, admin, "admin_provider_check_all", 5, 60)
 
     settings = await resolve_effective_settings(db, request.runtime_settings)
-    results = await asyncio.gather(*(ping_provider(provider, settings) for provider in ADMIN_PING_PROVIDERS))
+    registry = await load_model_registry(db, settings)
+    results = await asyncio.gather(*(ping_provider(provider, settings, health_check_model(registry, provider)) for provider in ADMIN_PING_PROVIDERS))
     for result in results:
         await save_provider_check(db, result.provider, result.status, result.message)
     return {"results": [result.as_dict() for result in results]}
@@ -659,20 +759,21 @@ def validate_ai_settings_rules(settings: SystemAiSettings) -> None:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Nhà cung cấp mặc định không hợp lệ.")
     for provider_id in ["openrouter", "nvidia", "ollama", "openai_compat", "router9"]:
         provider_settings = getattr(settings, provider_id)
-        validate_provider_model_pair(provider_id, provider_settings.model)
         for model_id in provider_settings.allowed_model_ids:
             validate_provider_model_pair(provider_id, model_id)
     if settings.ocr.provider not in ADMIN_OCR_PROVIDERS:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Nhà cung cấp OCR không hợp lệ.")
     validate_provider_model_pair(settings.ocr.provider, settings.ocr.model)
-    if settings.router9.only_mode and not settings.router9.model and not settings.router9.allowed_model_ids:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Router9 only mode cần ít nhất một model Router9.")
+    if settings.router9.only_mode and not settings.router9.allowed_model_ids:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Router9 only mode cần ít nhất một model Router9 trong allowlist.")
 
 
 def validate_ai_profiles_rules(profiles: SystemAiProfiles) -> None:
     for profile in [profiles.geometry_reasoning, profiles.solver_explanation, profiles.ocr]:
-        if profile.provider not in ADMIN_DEFAULT_PROVIDERS:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Nhà cung cấp AI không hợp lệ.")
+        if profile.provider not in ADMIN_DEFAULT_PROVIDERS or profile.provider == "auto":
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Task profile phải chọn provider rõ ràng.")
+        if not profile.model:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Task profile phải chọn model.")
         validate_provider_model_pair(profile.provider, profile.model)
         validate_profile_fallbacks(profile.provider, profile.fallbacks)
 
@@ -682,6 +783,8 @@ def validate_ai_tier_profiles_rules(profiles: SystemAiTierProfiles) -> None:
     seen: dict[str, str] = {}
     for tier_name in ["tier1", "tier2", "tier3"]:
         tier_profile = getattr(profiles, tier_name)
+        if not tier_profile.models:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Tier {tier_name} phải chọn ít nhất một model.")
         for model_ref in tier_profile.models:
             try:
                 ref = parse_provider_model_ref(model_ref, allow_legacy_slash=False)
