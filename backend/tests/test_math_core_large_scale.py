@@ -100,7 +100,7 @@ def test_algebra_parser_large_scale(raw_input, topic, domain, expected_sympy_dom
         ("ln(x) = 0", "R", "solved", "finite", {"1"}, set()),
         ("log(x-1, 2) + log(x+1, 2) = 3", "R", "solved", "finite", {"3"}, {"-3"}),
         # Trig Basic
-        ("sin(x) = 0", "R", "solved", "finite", {"0", "pi"}, set()),
+        ("sin(x) = 0", "R", "solved", "periodic", {"0", "pi"}, set()),
     ]
 )
 def test_equation_solver_large_scale(equation_str, domain, expected_status, expected_kind, expected_values_subset, expected_values_exclude):
@@ -115,6 +115,12 @@ def test_equation_solver_large_scale(equation_str, domain, expected_status, expe
             assert val not in actual_vals
     elif expected_kind == "empty":
         assert not result.solution_set.values
+    elif expected_kind == "periodic":
+        solution = sp.sympify(result.solution_set.text.removeprefix("Tập nghiệm: ").strip())
+        for val in expected_values_subset:
+            assert solution.contains(sp.sympify(val)) is sp.S.true
+        for val in expected_values_exclude:
+            assert solution.contains(sp.sympify(val)) is sp.S.false
 
 
 # ==============================================================================
@@ -391,6 +397,12 @@ def test_benchmark_from_csv():
                                         found = True
                                         break
                             assert found, f"[{problem_id}] Expected value '{ans}' not found in actual values {actual_vals} for input: {problem_input}"
+                        elif result.solution_set.kind == "periodic":
+                            solution = sp.sympify(text.removeprefix("Tập nghiệm: ").strip())
+                            assert solution.contains(sp.sympify(ans)) is sp.S.true, (
+                                f"[{problem_id}] Expected value '{ans}' not in periodic solution {solution} "
+                                f"for input: {problem_input}"
+                            )
                         else:
                             # Set or interval solution check
                             assert (
