@@ -188,3 +188,56 @@ def test_tokenizer_rejects_attribute_access_in_expr():
 
     with pytest.raises(AlgebraParseError):
         parse_algebra_problem("x.__class__")
+
+
+def test_empty_after_interval_does_not_false_fail_verification():
+    """Roots outside the user interval correctly yield empty without counterexample fail."""
+    from app.schemas.algebra import AlgebraInterval, AlgebraSolveRequest
+    from app.services.algebra import solve_algebra
+
+    result = solve_algebra(AlgebraSolveRequest(
+        input="x-1=0",
+        interval=AlgebraInterval(start="2", end="3", closed_start=True, closed_end=True),
+    ))
+    assert result.solution_set.kind == "empty"
+    assert result.verification.status != "failed"
+    assert not any(c.name == "empty_set_counterexample" for c in result.verification.checks)
+    assert result.status != "error"
+
+
+def test_verify_false_repairs_status_after_failed_verification():
+    from app.schemas.algebra import AlgebraSolveOptions, AlgebraSolveRequest
+    from app.services.algebra import solve_algebra
+
+    # Even if substitution verify would fail for a pathological case, verify=false
+    # must not leave verification-driven error status.
+    result = solve_algebra(AlgebraSolveRequest(
+        input="x-1=0",
+        options=AlgebraSolveOptions(verify=False),
+    ))
+    assert result.verification.status == "skipped"
+    assert result.status in {"solved", "partial"}
+    assert not any("kiểm chứng" in e.lower() for e in result.errors)
+
+
+def test_structured_calculus_rejects_unsafe_expr():
+    from app.schemas.algebra import AlgebraSolveRequest
+    from app.services.algebra import solve_algebra
+
+    result = solve_algebra(AlgebraSolveRequest(
+        input="derivative(expr=x.__class__,var=x)",
+        topic="calculus_derivative",
+    ))
+    assert result.status == "unsupported"
+    assert result.errors
+
+
+def test_structured_coefficient_rejects_unsafe_expr():
+    from app.schemas.algebra import AlgebraSolveRequest
+    from app.services.algebra import solve_algebra
+
+    result = solve_algebra(AlgebraSolveRequest(
+        input="coefficient((x).__class__,x,1)",
+        topic="combinatorics_probability",
+    ))
+    assert result.status == "unsupported"

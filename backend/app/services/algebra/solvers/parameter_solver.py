@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import sympy as sp
 
 from app.schemas.algebra import AlgebraSolutionSet, AlgebraSolveResponse, AlgebraSolveStep, AlgebraVerificationCheck, AlgebraVerificationReport
-from app.services.algebra.parser import ParsedAlgebraProblem
+from app.services.algebra.parser import AlgebraParseError, ParsedAlgebraProblem, parse_algebra_expr
 from app.services.algebra.steps import conclusion_step
 
 
@@ -109,11 +109,13 @@ def _parse_quadratic_template(text: str) -> QuadraticTemplate:
         "E": sp.E,
     }
     try:
-        a = sp.sympify(args.get("a", "1"), locals=local_dict)
-        b = sp.sympify(args["b"], locals=local_dict)
-        c = sp.sympify(args["c"], locals=local_dict)
+        a = parse_algebra_expr(args.get("a", "1"), local_dict=local_dict)
+        b = parse_algebra_expr(args["b"], local_dict=local_dict)
+        c = parse_algebra_expr(args["c"], local_dict=local_dict)
     except KeyError as exc:
         raise ValueError("Template bậc hai cần đủ a, b, c.") from exc
+    except AlgebraParseError as exc:
+        raise ValueError(f"Không đọc được hệ số bậc hai: {exc}") from exc
     except Exception as exc:
         raise ValueError(f"Không đọc được hệ số bậc hai: {exc}") from exc
     if sp.simplify(a) == 0:

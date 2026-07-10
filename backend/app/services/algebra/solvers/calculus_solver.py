@@ -13,7 +13,7 @@ from app.schemas.algebra import (
     AlgebraVerificationReport,
 )
 from app.services.algebra.calculus_transformations import derivative_steps, integral_steps, limit_steps
-from app.services.algebra.parser import ParsedAlgebraProblem
+from app.services.algebra.parser import AlgebraParseError, ParsedAlgebraProblem, parse_algebra_expr
 
 
 @dataclass(frozen=True)
@@ -639,12 +639,22 @@ def _parse_template(text: str, topic: str, default_variable: sp.Symbol) -> Calcu
         raise ValueError("var cần là tên biến một chữ cái.")
     variable = sp.Symbol(variable_name, real=True)
     local_dict = _local_dict(variable)
+
+    def _safe_expr(raw: str | None, *, required: bool = False, field: str = "expr") -> sp.Expr | None:
+        if raw is None or str(raw).strip() == "":
+            if required:
+                raise ValueError(f"Thiếu {field} trong bài giải tích.")
+            return None
+        try:
+            return parse_algebra_expr(str(raw), local_dict=local_dict)
+        except AlgebraParseError as exc:
+            raise ValueError(f"Không đọc được {field} giải tích: {exc}") from exc
+
     try:
-        expression = sp.sympify(args["expr"], locals=local_dict)
+        expression = _safe_expr(args.get("expr"), required=True, field="expr")
+        assert expression is not None
     except KeyError as exc:
         raise ValueError("Thiếu expr trong bài giải tích.") from exc
-    except Exception as exc:
-        raise ValueError(f"Không đọc được biểu thức giải tích: {exc}") from exc
     if name == "derivative":
         try:
             order = int(args.get("order", "1"))
@@ -654,18 +664,18 @@ def _parse_template(text: str, topic: str, default_variable: sp.Symbol) -> Calcu
             raise ValueError("order đạo hàm cần nằm trong 1..5.")
         return CalculusTemplate(kind="calculus_derivative", expression=expression, variable=variable, order=order)
     if name == "derivative_by_definition":
-        point = sp.sympify(args["at"], locals=local_dict) if "at" in args else None
+        point = _safe_expr(args.get("at"), field="at")
         return CalculusTemplate(kind="calculus_derivative_by_definition", expression=expression, variable=variable, point=point)
     if name == "continuous_at":
-        point_str = args.get("at") or args.get("point")
-        point = sp.sympify(point_str, locals=local_dict) if point_str else None
+        point = _safe_expr(args.get("at") or args.get("point"), field="at")
         return CalculusTemplate(kind="calculus_continuous_at", expression=expression, variable=variable, point=point)
     if name == "limit":
-        point = sp.sympify(args.get("to", "0"), locals=local_dict)
+        point = _safe_expr(args.get("to", "0"), required=True, field="to")
+        assert point is not None
         return CalculusTemplate(kind="calculus_limit", expression=expression, variable=variable, point=point, direction=args.get("dir", "+-"))
-    lower = sp.sympify(args["a"], locals=local_dict) if "a" in args else None
-    upper = sp.sympify(args["b"], locals=local_dict) if "b" in args else None
-    target = sp.sympify(args["target"], locals=local_dict) if "target" in args else None
+    lower = _safe_expr(args.get("a"), field="a")
+    upper = _safe_expr(args.get("b"), field="b")
+    target = _safe_expr(args.get("target"), field="target")
     return CalculusTemplate(kind="calculus_integral", expression=expression, variable=variable, lower=lower, upper=upper, target=target)
 
 
@@ -809,11 +819,8 @@ def _solve_derivative_by_definition(problem: ParsedAlgebraProblem, template: Cal
             f"Đạo hàm bằng định nghĩa: f'({sp.latex(x)}) = {sp.latex(result)}"
         ]
 
-    verification = AlgebraVerificationReport(
-        status="verified",
-        checks=[AlgebraVerificationCheck(name="derivative_definition_symbolic", status="pass", detail="Đạo hàm được kiểm tra bằng phép tính symbolic.", latex=sp.latex(result))],
-        method=["sympy.limit"],
-    )
+    # Independent check: definition result should match ordinary derivative.
+    verification = _verify_derivative(f_x, x, result, order=1)
     steps.append(_calculus_conclusion_step(len(steps) + 1, "Kết luận đạo hàm", answer, answer_latex))
     
     return AlgebraSolveResponse(
@@ -821,7 +828,7 @@ def _solve_derivative_by_definition(problem: ParsedAlgebraProblem, template: Cal
         normalized_input=problem.normalized_input,
         topic="calculus_derivative_by_definition",
         problem_type="differentiate_by_definition",
-        status="solved",
+        status="solved" if verification.status in {"verified", "partially_verified"} else "partial",
         answer=answer,
         answer_latex=answer_latex,
         solution_set=AlgebraSolutionSet(kind="expression", text=sp.sstr(result), latex=sp.latex(result)),
@@ -876,7 +883,18 @@ def _solve_continuous_at(problem: ParsedAlgebraProblem, template: CalculusTempla
         answer = "Không liên tục"
         answer_latex = r"\text{Gián đoạn}"
         steps.append(_calculus_conclusion_step(len(steps) + 1, "Kết luận tính liên tục", "Hàm số không xác định tại điểm xét nên không liên tục (bị gián đoạn).", answer_latex))
-        
+        verification = AlgebraVerificationReport(
+            status="partially_verified",
+            checks=[
+                AlgebraVerificationCheck(
+                    name="continuous_f_defined",
+                    status="pass",
+                    detail="f(x0) không xác định ⇒ không liên tục (định nghĩa).",
+                    latex=answer_latex,
+                )
+            ],
+            method=["definition"],
+        )
         return AlgebraSolveResponse(
             input=problem.raw_input,
             normalized_input=problem.normalized_input,
@@ -888,7 +906,7 @@ def _solve_continuous_at(problem: ParsedAlgebraProblem, template: CalculusTempla
             solution_set=AlgebraSolutionSet(kind="expression", text=answer, latex=answer_latex),
             steps=steps,
             milestones=[],
-            verification=AlgebraVerificationReport(status="verified", checks=[], method=["sympy.limit"]),
+            verification=verification,
         )
         
 
@@ -1003,9 +1021,30 @@ def _solve_continuous_at(problem: ParsedAlgebraProblem, template: CalculusTempla
     steps.append(_calculus_conclusion_step(len(steps) + 1, "Kết luận tính liên tục", explanation, answer_latex))
 
     verification = AlgebraVerificationReport(
-        status="verified",
-        checks=[AlgebraVerificationCheck(name="continuous_symbolic", status="pass", detail="Kiểm tra tính liên tục bằng phép tính symbolic.", latex=answer_latex)],
-        method=["sympy.limit"],
+        status="partially_verified",
+        checks=[
+            AlgebraVerificationCheck(
+                name="continuous_f_defined",
+                status="pass" if is_f_x0_defined else "fail",
+                detail="f(x0) xác định." if is_f_x0_defined else "f(x0) không xác định.",
+            ),
+            AlgebraVerificationCheck(
+                name="continuous_limit_exists",
+                status="pass" if has_limit else "fail",
+                detail="Giới hạn hữu hạn tồn tại." if has_limit else "Giới hạn không tồn tại / vô hạn.",
+            ),
+            AlgebraVerificationCheck(
+                name="continuous_limit_equals_value",
+                status="pass" if (has_limit and sp.simplify(lim_val - f_x0) == 0) else ("skip" if not has_limit else "fail"),
+                detail=(
+                    "lim = f(x0)."
+                    if has_limit and sp.simplify(lim_val - f_x0) == 0
+                    else "lim ≠ f(x0) hoặc không so sánh được."
+                ),
+                latex=answer_latex,
+            ),
+        ],
+        method=["definition", "sympy.limit"],
     )
     
     milestones = [

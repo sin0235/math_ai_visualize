@@ -27,7 +27,8 @@ _ALLOWED_FUNCTION_NAMES = {
     "asin", "acos", "atan", "acot", "arcsin", "arccos", "arctan",
     "log", "ln", "exp", "abs", "Abs", "re", "im", "arg", "conjugate",
     "factorial", "binomial", "floor", "ceiling", "sign",
-    "I", "pi", "E", "oo", "zoo", "nan",
+    "Piecewise", "C",
+    "I", "i", "pi", "E", "oo", "zoo", "nan",
 }
 _ALLOWED_TOKEN_OPS = {"+", "-", "*", "/", "**", "(", ")", ",", "="}
 
@@ -224,6 +225,24 @@ def _tokenize_allowlist_check(text: str, allowed_names: set[str]) -> None:
         raise AlgebraParseError(f"Token không được hỗ trợ: {token.string!r}.")
     if count > _MAX_TOKENS:
         raise AlgebraParseError(f"Biểu thức vượt quá {_MAX_TOKENS} token.")
+
+
+def parse_algebra_expr(
+    text: str,
+    variable_names: list[str] | None = None,
+    *,
+    real: bool = True,
+    local_dict: dict[str, object] | None = None,
+) -> sp.Expr:
+    """Allowlisted expression parse for structured solvers (calculus/combinatorics/parameter)."""
+    cleaned = str(text).strip().replace("^", "**")
+    dict_ = local_dict if local_dict is not None else _local_dict(variable_names or ["x"], real=real)
+    try:
+        return _parse_expr(cleaned, dict_)
+    except AlgebraParseError:
+        raise
+    except Exception as exc:
+        raise AlgebraParseError(f"Không parse được biểu thức: {exc}") from exc
 
 
 def _parse_expr(text: str, local_dict: dict[str, object]) -> sp.Expr:

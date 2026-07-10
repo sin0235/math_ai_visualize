@@ -78,14 +78,28 @@ async def solve_algebra_with_optional_ai(
     extraction_warnings: list[str] = []
     deterministic_request = request
     isolation = bool(settings.algebra_process_isolation)
+    # Single wall-clock budget shared across sequential deterministic attempts.
+    total_budget = max(0.5, float(settings.algebra_solve_timeout_seconds))
+    deadline = time.perf_counter() + total_budget
     # Never stack a second solve after timeout.
+
+    def _remaining_budget() -> float:
+        return max(0.0, deadline - time.perf_counter())
 
     if request.options.use_ai_extraction:
         # Rule-based first: only call AI when deterministic path fails or is unsupported.
+        first_timeout = _remaining_budget()
+        if first_timeout < 0.5:
+            return _timeout_response(
+                request,
+                request.input,
+                str(request.topic),
+                extra_warnings=["Hết ngân sách thời gian trước khi giải deterministic."],
+            )
         try:
             rule_based = await _run_deterministic_with_timeout(
                 request,
-                settings.algebra_solve_timeout_seconds,
+                first_timeout,
                 load_slot,
                 process_isolation=isolation,
             )
@@ -114,10 +128,21 @@ async def solve_algebra_with_optional_ai(
             rule_based.warnings = [*extraction_warnings, *rule_based.warnings]
             return rule_based
 
+    second_timeout = _remaining_budget() if request.options.use_ai_extraction else total_budget
+    if second_timeout < 0.5:
+        return _timeout_response(
+            request,
+            deterministic_request.input,
+            str(deterministic_request.topic),
+            extra_warnings=[
+                *extraction_warnings,
+                "Hết ngân sách thời gian deterministic sau lần giải rule-based / AI extraction; không chạy solve thứ hai.",
+            ],
+        )
     try:
         response = await _run_deterministic_with_timeout(
             deterministic_request,
-            settings.algebra_solve_timeout_seconds,
+            second_timeout,
             load_slot,
             process_isolation=isolation,
         )
@@ -308,6 +333,16 @@ def _annotate_empty_solution_semantics(response: AlgebraSolveResponse) -> Algebr
 
 def _apply_response_options(response: AlgebraSolveResponse, options: AlgebraSolveOptions) -> AlgebraSolveResponse:
     if not options.verify:
+        prior_verify_status = response.verification.status
+        # Solvers may have already set status=error from failed verification; restore
+        # a non-error outcome when the caller explicitly skipped verification.
+        if response.status == "error" and prior_verify_status == "failed":
+            if response.solution_set.kind != "unknown" or response.answer:
+                response.status = "partial" if response.solution_set.kind in {"conditions", "unknown"} else "solved"
+            response.errors = [
+                err for err in response.errors
+                if "kiểm chứng" not in err.lower() and "verification" not in err.lower() and "verify" not in err.lower()
+            ]
         response.verification = AlgebraVerificationReport(
             status="skipped",
             checks=[],
@@ -327,7 +362,11 @@ def _apply_response_options(response: AlgebraSolveResponse, options: AlgebraSolv
             kept_latex = ", ".join(kept_latex_parts)
             response.solution_set.kind = "finite"
             response.solution_set.text = f"Tập nghiệm (cắt {options.max_solutions}/{total}): {{{kept_text}}}"
-            response.solution_set.latex = rf"\left\{{{kept_latex}\right\}} (cắt {options.max_solutions}/{total})"
+            # Avoid f-string brace pitfalls: build \left\{ ... \right\} explicitly.
+            response.solution_set.latex = (
+                "\\left\\{" + kept_latex + "\\right\\}"
+                + f" (cắt {options.max_solutions}/{total})"
+            )
             response.answer = response.solution_set.text
             response.answer_latex = response.solution_set.latex
             response.warnings = [
@@ -338,11 +377,16 @@ def _apply_response_options(response: AlgebraSolveResponse, options: AlgebraSolv
         for value in response.solution_set.values:
             if not value.approximate:
                 try:
-                    # Prefer latex/text via N without unrestricted user-string eval when possible.
-                    raw = value.latex or value.text
-                    value.approximate = str(sp.N(sp.sympify(raw, evaluate=True), 8))
+                    # Prefer numeric from latex/text without unrestricted user-string eval.
+                    raw = (value.latex or value.text or "").replace("^", "**")
+                    if raw:
+                        from app.services.algebra.parser import parse_algebra_expr
+                        value.approximate = str(sp.N(parse_algebra_expr(raw, variable_names=[]), 8))
                 except Exception:
-                    pass
+                    try:
+                        value.approximate = str(sp.N(sp.sympify(value.text), 8)) if value.text else None
+                    except Exception:
+                        pass
     return response
 
 
@@ -399,10 +443,20 @@ def _raw_problem(
 def _algebra_interval_to_set(interval: AlgebraInterval | None) -> tuple[sp.Set | None, str | None]:
     if interval is None:
         return None, None
+    warning: str | None = None
+    if interval.variable and interval.variable not in {"x", ""}:
+        # Interval is applied to the primary solve variable; non-x names are advisory only.
+        warning = (
+            f"Khoảng được áp dụng cho biến giải chính (không lọc riêng '{interval.variable}'); "
+            "schema interval.variable hiện chỉ mang tính gợi ý."
+        )
     try:
         start = parse_interval_bound(interval.start) if interval.start not in (None, "") else -sp.oo
         end = parse_interval_bound(interval.end) if interval.end not in (None, "") else sp.oo
-        return sp.Interval(start, end, left_open=not interval.closed_start, right_open=not interval.closed_end), None
+        return (
+            sp.Interval(start, end, left_open=not interval.closed_start, right_open=not interval.closed_end),
+            warning,
+        )
     except Exception:
         return None, "Khoảng nghiệm không hợp lệ nên đã bỏ qua; giải trên miền đầy đủ."
 

@@ -208,6 +208,12 @@ def _empty_set_independent_checks(problem: ParsedAlgebraProblem) -> list[Algebra
     samples = _empty_set_probe_samples(problem)
     checked = 0
     for sample in samples:
+        # Interval-filtered EmptySet is only contradicted by points inside the interval.
+        in_interval = _sample_in_solve_interval(problem, sample)
+        if in_interval is False:
+            continue
+        if in_interval is None:
+            continue
         outcome = _check_all_relations(relations, problem.variable, sample)
         if outcome is None:
             continue
@@ -253,9 +259,23 @@ def _empty_set_independent_checks(problem: ParsedAlgebraProblem) -> list[Algebra
     return checks
 
 
+def _sample_in_solve_interval(problem: ParsedAlgebraProblem, sample: sp.Expr) -> bool | None:
+    """True if sample is admissible under solve_interval (or no interval is set)."""
+    if problem.solve_interval is None:
+        return True
+    try:
+        return bool(problem.solve_interval.contains(sample))
+    except Exception:
+        return None
+
+
 def _empty_set_probe_samples(problem: ParsedAlgebraProblem) -> list[sp.Expr]:
-    """Deterministic probe points for empty-set corroboration."""
-    base = [
+    """Deterministic probe points for empty-set corroboration.
+
+    When solve_interval is set, only probe inside that interval so roots outside
+    the interval cannot falsely contradict an interval-filtered empty answer.
+    """
+    global_base = [
         sp.Integer(0),
         sp.Integer(1),
         sp.Integer(-1),
@@ -267,19 +287,41 @@ def _empty_set_probe_samples(problem: ParsedAlgebraProblem) -> list[sp.Expr]:
         sp.Integer(5),
         sp.Integer(10),
     ]
+    base: list[sp.Expr]
     if problem.solve_interval is not None:
         interval = problem.solve_interval
+        base = []
         try:
             if isinstance(interval, sp.Interval):
-                if interval.start.is_finite and interval.end.is_finite:
-                    mid = sp.simplify((interval.start + interval.end) / 2)
-                    base = [interval.start, mid, interval.end, *base]
-                elif interval.start.is_finite:
-                    base = [interval.start, interval.start + 1, interval.start + 2, *base]
-                elif interval.end.is_finite:
-                    base = [interval.end, interval.end - 1, interval.end - 2, *base]
+                start, end = interval.start, interval.end
+                if start.is_finite and end.is_finite:
+                    mid = sp.simplify((start + end) / 2)
+                    # Interior probes; avoid endpoints if open.
+                    candidates = [mid, sp.simplify((start + mid) / 2), sp.simplify((mid + end) / 2)]
+                    if not interval.left_open and start.is_finite:
+                        candidates.insert(0, start)
+                    if not interval.right_open and end.is_finite:
+                        candidates.append(end)
+                    # Dense-ish grid for wider intervals
+                    try:
+                        width = sp.simplify(end - start)
+                        if width.is_number and width > 0:
+                            for k in range(1, 6):
+                                candidates.append(sp.simplify(start + width * sp.Rational(k, 6)))
+                    except Exception:
+                        pass
+                    base = candidates
+                elif start.is_finite:
+                    base = [start + i for i in (0, 1, 2, 3, 5, 10)]
+                elif end.is_finite:
+                    base = [end - i for i in (0, 1, 2, 3, 5, 10)]
         except Exception:
-            pass
+            base = []
+        if not base:
+            # Fallback: filter global probes to those inside the interval.
+            base = [s for s in global_base if _sample_in_solve_interval(problem, s) is True]
+    else:
+        base = list(global_base)
     # Deduplicate while preserving order
     seen: set[str] = set()
     out: list[sp.Expr] = []

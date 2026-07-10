@@ -6,7 +6,7 @@ import re
 import sympy as sp
 
 from app.schemas.algebra import AlgebraSolutionSet, AlgebraSolveResponse, AlgebraSolveStep, AlgebraVerificationCheck, AlgebraVerificationReport
-from app.services.algebra.parser import ParsedAlgebraProblem
+from app.services.algebra.parser import AlgebraParseError, ParsedAlgebraProblem, parse_algebra_expr
 from app.services.algebra.steps import conclusion_step, normalize_step
 
 # Hard caps to avoid CPU/memory blowups from huge factorials / combinatorics.
@@ -90,7 +90,10 @@ def _evaluate(text: str) -> tuple[sp.Expr, str, str]:
         if len(expr_text) > MAX_COEFFICIENT_EXPR_CHARS:
             raise ValueError(f"Biểu thức hệ số vượt quá {MAX_COEFFICIENT_EXPR_CHARS} ký tự.")
         variable = sp.Symbol(variable_name, real=True)
-        expression = sp.sympify(expr_text, locals={variable_name: variable})
+        try:
+            expression = parse_algebra_expr(expr_text, variable_names=[variable_name], real=True)
+        except AlgebraParseError as exc:
+            raise ValueError(f"Không đọc được biểu thức hệ số: {exc}") from exc
         power = int(power_text)
         if abs(power) > MAX_COEFFICIENT_DEGREE:
             raise ValueError(f"Bậc hệ số chỉ hỗ trợ |k| ≤ {MAX_COEFFICIENT_DEGREE}.")
