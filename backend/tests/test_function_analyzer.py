@@ -2,13 +2,16 @@ import asyncio
 import time
 
 import pytest
+import sympy as sp
 from fastapi import HTTPException
 
 from app.api import routes_function_analysis
 from app.api.routes_function_analysis import _apply_analyzer_output_limits, _run_analyzer_job, _run_analyzer_job_sync
-from app.services import function_analyzer
+from app.services import function_analyzer, function_roots
 from app.services.function_analyzer import analyze_function
+from app.services.function_domain import FunctionDomain
 from app.services.function_graph_builder import build_function_graph
+from app.services.function_roots import analyze_real_roots
 
 
 def test_analyzer_api_worker_returns_clean_payload():
@@ -368,3 +371,149 @@ def test_asymptote_v2_preserves_exact_values_and_two_oblique_directions():
     assert rational["asymptotes_v2"]["vertical"][0]["approx"] == "1.4142"
     directions = {item["direction"] for item in oblique["asymptotes_v2"]["oblique"]}
     assert directions == {"+∞", "-∞"}
+
+
+def test_x_intercepts_exclude_complex_roots_and_report_complete_empty_set():
+    result = analyze_function("x^2 + 1")
+
+    assert result["x_intercepts"] == []
+    assert result["x_intercepts_v2"]["status"] == "complete"
+    assert result["x_intercepts_v2"]["total_known"] == 0
+    assert result["x_intercepts_v2"]["families"] == []
+
+
+def test_x_intercepts_filter_domain_before_counting_roots():
+    result = analyze_function("(x^2 - 1)/(x - 1)")
+
+    assert result["x_intercepts"] == ["-1"]
+    assert result["x_intercepts_v2"]["total_known"] == 1
+    assert result["x_intercepts_v2"]["roots"][0]["residual"] == 0
+
+
+def test_x_intercepts_do_not_silently_truncate_after_six_roots():
+    variable = sp.Symbol("t", real=True)
+    expression = sp.prod(variable - root for root in range(-3, 4))
+    roots = analyze_real_roots(expression, variable, FunctionDomain.from_set(sp.S.Reals))
+    limited = analyze_real_roots(expression, variable, FunctionDomain.from_set(sp.S.Reals), max_points=3)
+
+    assert roots.status == "complete"
+    assert roots.total_known == 7
+    assert roots.truncated is False
+    assert len(roots.roots) == 7
+    assert limited.status == "partial"
+    assert limited.total_known == 7
+    assert limited.truncated is True
+    assert len(limited.roots) == 3
+
+
+def test_periodic_x_intercepts_use_exact_family():
+    result = analyze_function("sin(x)")
+
+    roots = result["x_intercepts_v2"]
+    assert roots["status"] == "complete"
+    assert roots["total_known"] is None
+    assert roots["roots"] == []
+    assert roots["families"]
+    assert roots["families"][0]["parameter_domain"] == "Z"
+
+
+def test_numeric_root_fallback_is_partial_and_residual_verified(monkeypatch):
+    variable = sp.Symbol("t", real=True)
+    original_solveset = function_roots.sp.solveset
+    target = sp.sin(variable) - variable / 2
+
+    def unresolved(expr, symbol, domain):
+        if expr == target:
+            return sp.ConditionSet(symbol, sp.Eq(expr, 0), domain)
+        return original_solveset(expr, symbol, domain=domain)
+
+    monkeypatch.setattr(function_roots.sp, "solveset", unresolved)
+    result = analyze_real_roots(target, variable, FunctionDomain.from_set(sp.S.Reals))
+
+    assert result.status == "partial"
+    assert result.method == "numeric_adaptive"
+    assert result.search_window == (-20.0, 20.0)
+    assert result.roots
+    assert all(root.residual <= 1e-8 for root in result.roots)
+    assert all(root.error_bound is not None for root in result.roots)
+
+
+def test_interval_constant_on_open_interval_attains_both_extrema():
+    interval = analyze_function("1", interval={"a": 0, "b": 1, "open_a": True, "open_b": True})["interval_analysis"]
+
+    assert interval["supremum"]["status"] == "maximum"
+    assert interval["infimum"]["status"] == "minimum"
+    assert interval["supremum"]["attainment_set_exact"] == "Interval.open(0, 1)"
+    assert interval["infimum"]["attainment_set_exact"] == "Interval.open(0, 1)"
+
+
+def test_interval_tie_uses_all_attainment_points():
+    interval = analyze_function("x^2*(1-x)^2", interval={"a": 0, "b": 1})["interval_analysis"]
+
+    assert interval["infimum"]["status"] == "minimum"
+    assert interval["infimum"]["attainment_set_exact"] == "{0, 1}"
+    assert {point["x_exact"] for point in interval["infimum"]["points"]} == {"0", "1"}
+
+
+def test_interval_splits_domain_and_reports_unbounded_sides():
+    interval = analyze_function("1/(x-1)", interval={"a": 0, "b": 2})["interval_analysis"]
+
+    assert len(interval["domain_components"]) == 2
+    assert interval["supremum"]["status"] == "unbounded_above"
+    assert interval["infimum"]["status"] == "unbounded_below"
+    singular_limits = [item for item in interval["boundary_evidence"] if item["x_exact"] == "1"]
+    assert {item["value"]["value_exact"] for item in singular_limits} == {"oo", "-oo"}
+
+
+def test_line_intersections_include_residual_and_complete_count():
+    line = analyze_function("x^4 - 2", line={"k": 0, "b": 0})["line_analysis"]
+
+    assert line["intersection_count"] == 2
+    assert line["intersection_count_status"] == "complete"
+    assert line["roots_v2"]["status"] == "complete"
+    assert all(point["residual"] == 0 for point in line["intersections"])
+    assert all(point["verification"] == "symbolic_exact" for point in line["intersections"])
+
+
+def test_area_is_split_between_consecutive_intersections():
+    area = analyze_function("x^3-x", line={"k": 0, "b": 0})["line_analysis"]["area_v2"]
+
+    assert area["status"] == "complete"
+    assert area["total_exact"] == "1/2"
+    assert [component["area_exact"] for component in area["components"]] == ["1/4", "1/4"]
+
+
+def test_area_rejects_component_crossing_singularity():
+    line = analyze_function("1/x", line={"k": 1, "b": 0})["line_analysis"]
+
+    assert line["intersection_count"] == 2
+    assert line["area_between_curves"] is None
+    assert line["area_v2"]["status"] == "partial"
+    assert line["area_v2"]["warnings"]
+
+
+def test_tangent_rejects_cusp_or_corner():
+    tangent = analyze_function("Abs(x)", line={"mode": "tangent_at", "x0": 0})["line_analysis"]
+
+    assert tangent["status"] == "nondifferentiable"
+    assert tangent["equation_exact"] is None
+    assert tangent["left_slope"]["value_exact"] == "-1"
+    assert tangent["right_slope"]["value_exact"] == "1"
+
+
+def test_tangent_supports_one_sided_vertical_domain_endpoint():
+    tangent = analyze_function("sqrt(x)", line={"mode": "tangent_at", "x0": 0})["line_analysis"]
+
+    assert tangent["status"] == "vertical_tangent"
+    assert tangent["equation_exact"] == "x = 0"
+    assert tangent["left_slope"]["status"] == "unavailable"
+    assert tangent["right_slope"]["value_exact"] == "oo"
+
+
+def test_regular_tangent_keeps_exact_slope_and_contact_verification():
+    tangent = analyze_function("x^2", line={"mode": "tangent_at", "x0": 1})["line_analysis"]
+
+    assert tangent["status"] == "regular_tangent"
+    assert tangent["k_exact"] == "2"
+    assert tangent["equation_exact"] == "y = 2*x - 1"
+    assert tangent["contact_limit"] == "0"

@@ -169,6 +169,8 @@ def canonicalize_model_ref(provider: str | None, model: str | None, *, strict: b
         raise ValueError(f"Provider không hỗ trợ: {raw_provider}")
 
     inferred_provider = explicit_provider_from_model(raw_model)
+    if raw_provider == "router9" or (raw_provider == "openrouter" and inferred_provider == "nvidia"):
+        inferred_provider = None
     provider_id = raw_provider
     warning = None
     if inferred_provider:

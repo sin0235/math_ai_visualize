@@ -77,7 +77,7 @@ def explicit_model_for_provider(provider: str, model: str | None) -> str | None:
     if not model:
         return normalize_model_for_provider(provider, model)
     explicit_provider = explicit_provider_from_model(model)
-    if explicit_provider and explicit_provider != provider:
+    if explicit_provider and explicit_provider != provider and not (provider == "router9" or (provider == "openrouter" and explicit_provider == "nvidia")):
         return None
     return normalize_model_for_provider(provider, model)
 

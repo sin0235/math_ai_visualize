@@ -338,6 +338,7 @@ def _analysis_response(expression: str, data: dict[str, Any]) -> AnalyzeResponse
         vertical_asymptotes=data.get("vertical_asymptotes", []),
         oblique_asymptote=data.get("oblique_asymptote"),
         x_intercepts=data.get("x_intercepts", []),
+        x_intercepts_v2=data.get("x_intercepts_v2"),
         y_intercept=data.get("y_intercept"),
         variation_table=[VariationRow(**row) for row in data.get("variation_table", [])],
         variation_table_v2=VariationTableV2(**data["variation_table_v2"]) if data.get("variation_table_v2") else None,

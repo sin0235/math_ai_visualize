@@ -95,6 +95,7 @@ class AnalyzeResponse(BaseModel):
     vertical_asymptotes: list[dict[str, str]] = Field(default_factory=list)
     oblique_asymptote: str | None = None
     x_intercepts: list[str] = Field(default_factory=list)
+    x_intercepts_v2: dict[str, Any] | None = None
     y_intercept: str | None = None
     variation_table: list[VariationRow] = Field(default_factory=list)
     variation_table_v2: VariationTableV2 | None = None

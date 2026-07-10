@@ -46,15 +46,27 @@ def test_normalize_provider_defaults_keeps_openrouter_vendor_namespaces():
 
 def test_canonicalize_model_ref_rejects_provider_model_mismatch():
     with pytest.raises(ValueError, match="thuộc provider openrouter"):
-        canonicalize_model_ref("router9", "openrouter/google/gemma-4-26b-it:free")
+        canonicalize_model_ref("nvidia", "openrouter/google/gemma-4-26b-it:free")
 
 
-def test_canonicalize_legacy_model_ref_repairs_provider_model_mismatch():
+@pytest.mark.parametrize("model_id", [
+    "nvidia/deepseek-ai/deepseek-v4-flash",
+    "ollama/qwen3",
+    "openrouter/google/gemma-4-26b-it:free",
+])
+def test_canonicalize_model_ref_keeps_namespaced_models_for_router9_proxy(model_id):
+    ref = canonicalize_model_ref("router9", model_id)
+
+    assert ref.provider_id == "router9"
+    assert ref.model_id == model_id
+
+
+def test_canonicalize_legacy_model_ref_keeps_namespaced_router9_model():
     ref = canonicalize_legacy_model_ref("router9", "openrouter/google/gemma-4-26b-it:free")
 
-    assert ref.provider_id == "openrouter"
-    assert ref.model_id == "google/gemma-4-26b-it:free"
-    assert ref.warning
+    assert ref.provider_id == "router9"
+    assert ref.model_id == "openrouter/google/gemma-4-26b-it:free"
+    assert ref.warning is None
 
 
 def test_canonicalize_fallback_models_allows_any_model_for_auto_provider():
@@ -82,6 +94,9 @@ def test_explicit_model_for_provider_keeps_vendor_namespaces_under_selected_prov
     assert explicit_model_for_provider("nvidia", "qwen/qwen3-coder-480b-a35b-instruct") == "qwen/qwen3-coder-480b-a35b-instruct"
     assert explicit_model_for_provider("openrouter", "nvidia/nemotron-3-super-120b-a12b:free") == "nvidia/nemotron-3-super-120b-a12b:free"
     assert explicit_model_for_provider("router9", "gh/claude-haiku-4.5") == "gh/claude-haiku-4.5"
+    assert explicit_model_for_provider("router9", "nvidia/deepseek-ai/deepseek-v4-flash") == "nvidia/deepseek-ai/deepseek-v4-flash"
+    assert explicit_model_for_provider("router9", "ollama/qwen3") == "ollama/qwen3"
+    assert explicit_model_for_provider("router9", "openrouter/google/gemma") == "openrouter/google/gemma"
 
 
 def test_explicit_model_for_provider_rejects_only_app_qualified_mismatch():

@@ -31,6 +31,7 @@ from sympy.calculus.util import continuous_domain, function_range
 from sympy.calculus.singularities import singularities
 
 from app.services.function_domain import DomainPartition, FunctionDomain, filter_domain_values, in_domain, intersect_domain, removable_holes
+from app.services.function_roots import RootAnalysis, analyze_real_roots
 from app.services.safe_math_parser import SafeMathComplexityError, SafeMathParseError, SafeMathParseResult, parse_safe_math_expression
 
 
@@ -570,6 +571,10 @@ def _critical_points_v2(points: list[dict[str, Any]], fprime_chart: dict[str, An
 
 
 def _asymptotes_v2(f_expr, domain_info: FunctionDomain | None, periodicity: dict[str, Any] | None) -> dict[str, Any]:
+    try:
+        analysis_expr = cancel(f_expr)
+    except Exception:
+        analysis_expr = f_expr
     vertical_points: list[Any] = []
     sources: dict[str, set[str]] = {}
 
@@ -613,11 +618,11 @@ def _asymptotes_v2(f_expr, domain_info: FunctionDomain | None, periodicity: dict
             continue
         seen.add(key)
         try:
-            left = limit(f_expr, x, point, dir="-")
+            left = limit(analysis_expr, x, point, dir="-")
         except Exception:
             left = None
         try:
-            right = limit(f_expr, x, point, dir="+")
+            right = limit(analysis_expr, x, point, dir="+")
         except Exception:
             right = None
         left_payload = _limit_payload_v2(left) if left is not None else {"value": None, "value_exact": None, "value_latex": None, "status": "unknown"}
@@ -640,7 +645,7 @@ def _asymptotes_v2(f_expr, domain_info: FunctionDomain | None, periodicity: dict
     horizontal = []
     for direction, target in (("+∞", oo), ("-∞", -oo)):
         try:
-            value = limit(f_expr, x, target)
+            value = limit(analysis_expr, x, target)
         except Exception:
             continue
         if not _is_limit_finite(value):
@@ -651,13 +656,13 @@ def _asymptotes_v2(f_expr, domain_info: FunctionDomain | None, periodicity: dict
     oblique = []
     for direction, target in (("+∞", oo), ("-∞", -oo)):
         try:
-            slope = simplify(limit(f_expr / x, x, target))
+            slope = simplify(limit(analysis_expr / x, x, target))
             if not _is_limit_finite(slope) or slope == 0:
                 continue
-            intercept = simplify(limit(f_expr - slope * x, x, target))
+            intercept = simplify(limit(analysis_expr - slope * x, x, target))
             if not _is_limit_finite(intercept):
                 continue
-            validation = limit(f_expr - (slope * x + intercept), x, target)
+            validation = limit(analysis_expr - (slope * x + intercept), x, target)
             if validation != 0:
                 continue
         except Exception:
@@ -1003,37 +1008,19 @@ def analyze_function(
     ]
     result["oblique_asymptote"] = result["asymptotes_v2"].get("oblique", [{}])[0].get("equation") if result["asymptotes_v2"].get("oblique") else None
 
-    x_intercepts: list[str] = []
-    seen_intercepts: set[str] = set()
-    seen_roots_float: list[float] = []
-    root_eps = 1e-5
     try:
         with analyzer_stage_timeout("root_solving"):
-            intercept_roots = filter_domain_values(solve(f, x)[:6], domain_info)
-        for z in intercept_roots:
-            try:
-                val = float(z.evalf())
-            except Exception:
-                item = _fmt_sym(z)
-                if item in seen_intercepts:
-                    continue
-                seen_intercepts.add(item)
-                x_intercepts.append(item)
-                continue
-            scale = max(1.0, abs(val))
-            if any(abs(val - prev) <= root_eps * scale for prev in seen_roots_float):
-                continue
-            seen_roots_float.append(val)
-            item = _fmt_num(val)
-            if item in seen_intercepts:
-                continue
-            seen_intercepts.add(item)
-            x_intercepts.append(item)
+            intercept_analysis = analyze_real_roots(f, x, domain_info)
+        result["x_intercepts_v2"] = intercept_analysis.payload()
+        result["x_intercepts"] = [_fmt_num(sp.N(root.value)) for root in intercept_analysis.roots]
+        warnings.extend(intercept_analysis.warnings)
     except AnalyzerStageTimeout as e:
         _record_stage_timeout(result, warnings, e)
-    except Exception:
-        pass
-    result["x_intercepts"] = x_intercepts
+        result["x_intercepts"] = []
+        result["x_intercepts_v2"] = _unknown_root_payload(str(e))
+    except Exception as e:
+        result["x_intercepts"] = []
+        result["x_intercepts_v2"] = _unknown_root_payload(f"Không giải được giao điểm Ox: {e}")
 
     y_intercept = None
     try:
@@ -1106,132 +1093,464 @@ def _analyze_interval(f_expr, fp_expr, interval: Mapping[str, Any], domain_info:
     if a >= b:
         raise ValueError("Đoạn khảo sát không hợp lệ: cần a < b.")
 
-    candidates = []
-    
-    if open_a:
-        limit_a = limit(f_expr, x, a, dir='+')
-        y_a = None if limit_a in [oo, -oo, zoo, nan] else float(limit_a)
-        candidates.append({"x": a, "x_exact": _fmt_num(a), "y": y_a, "kind": "limit", "label": f"lim(x->{_fmt_num(a)}+)"})
-    else:
-        candidates.append({"x": a, "x_exact": _fmt_num(a), "y": _eval_float(f_expr, a), "kind": "endpoint", "label": f"f({_fmt_num(a)})"})
+    exact_a = sp.Rational(str(a))
+    exact_b = sp.Rational(str(b))
+    requested = Interval(exact_a, exact_b, left_open=open_a, right_open=open_b)
+    domain_set = domain_info.set if domain_info is not None and domain_info.set is not None else S.Reals
+    active_set = requested.intersect(domain_set)
+    components = _iter_intervals(active_set)
+    if not components:
+        raise ValueError("Khoảng khảo sát không giao với tập xác định của hàm số.")
 
-    if open_b:
-        limit_b = limit(f_expr, x, b, dir='-')
-        y_b = None if limit_b in [oo, -oo, zoo, nan] else float(limit_b)
-        candidates.append({"x": b, "x_exact": _fmt_num(b), "y": y_b, "kind": "limit", "label": f"lim(x->{_fmt_num(b)}-)"})
-    else:
-        candidates.append({"x": b, "x_exact": _fmt_num(b), "y": _eval_float(f_expr, b), "kind": "endpoint", "label": f"f({_fmt_num(b)})"})
+    active_domain = FunctionDomain.from_set(active_set)
+    boundary_evidence = _interval_boundary_evidence(f_expr, components)
+    extrema_inside = _interval_critical_points(f_expr, fp_expr, active_domain, a, b)
+    value_range, range_warnings = _range_on_components(f_expr, components)
+    if value_range is None:
+        raise ValueError("Không chứng minh được tập giá trị trên phần miền đang khảo sát.")
 
-    candidates = [item for item in candidates if item["kind"] == "limit" or in_domain(domain_info, item["x"])]
-
-    extrema_inside = []
-    if fp_expr is not None:
-        for cp in _collect_stationary_candidates(f_expr, fp_expr, domain_info):
-            try:
-                cp_float = float(cp.evalf())
-            except Exception:
-                continue
-            if not a < cp_float < b:
-                continue
-            y_val = _eval_float(f_expr, cp_float)
-            point = {"x": _fmt_num(cp_float), "x_exact": _fmt_sym(cp), "y": _fmt_num(y_val), "kind": "critical", "label": "Cực trị trong khoảng"}
-            extrema_inside.append(point)
-            candidates.append({"x": cp_float, "x_exact": _fmt_sym(cp), "y": y_val, "kind": "critical", "label": "Cực trị"})
-
-    finite = [item for item in candidates if item["y"] is not None and isfinite(item["y"])]
-    if not finite:
-        raise ValueError(f"Không tính được giá trị hữu hạn trên {'khoảng' if open_a or open_b else 'đoạn'}.")
-    
-    max_item = max(finite, key=lambda item: item["y"])
-    min_item = min(finite, key=lambda item: item["y"])
-
-    conclusion = []
-    if max_item["kind"] == "limit":
-        conclusion.append(f"Hàm số không có GTLN, Supremum (cận trên đúng) = {_fmt_num(max_item['y'])} khi x tiến về {_fmt_num(max_item['x'])}")
-    else:
-        conclusion.append(f"GTLN = {_fmt_num(max_item['y'])} tại x = {_fmt_num(max_item['x'])}")
-
-    if min_item["kind"] == "limit":
-        conclusion.append(f"Hàm số không có GTNN, Infimum (cận dưới đúng) = {_fmt_num(min_item['y'])} khi x tiến về {_fmt_num(min_item['x'])}")
-    else:
-        conclusion.append(f"GTNN = {_fmt_num(min_item['y'])} tại x = {_fmt_num(min_item['x'])}")
+    supremum = _extreme_bound_payload(f_expr, active_set, value_range.sup, "supremum", boundary_evidence)
+    infimum = _extreme_bound_payload(f_expr, active_set, value_range.inf, "infimum", boundary_evidence)
+    status = "complete" if not range_warnings and supremum["status"] != "unknown" and infimum["status"] != "unknown" else "partial"
 
     return {
-        "a": _fmt_num(a), "b": _fmt_num(b), "open_a": open_a, "open_b": open_b,
-        "fa": _fmt_num(candidates[0]["y"]) if candidates[0]["y"] is not None else "oo",
-        "fb": _fmt_num(candidates[1]["y"]) if candidates[1]["y"] is not None else "oo",
+        "a": _fmt_num(a),
+        "b": _fmt_num(b),
+        "open_a": open_a,
+        "open_b": open_b,
+        "fa": _requested_boundary_value(f_expr, a, "+", open_a),
+        "fb": _requested_boundary_value(f_expr, b, "-", open_b),
+        "domain_intersection_exact": _fmt_sym(active_set),
+        "domain_components": [_interval_component_payload(component) for component in components],
+        "range_exact": _fmt_sym(value_range),
+        "range_latex": latex(value_range),
+        "status": status,
+        "method": "symbolic_range",
+        "warnings": range_warnings,
+        "boundary_evidence": boundary_evidence,
         "extrema_inside": extrema_inside,
-        "max_point": _point_result(max_item),
-        "min_point": _point_result(min_item),
-        "conclusion": "; ".join(conclusion) + ".",
+        "supremum": supremum,
+        "infimum": infimum,
+        "max_point": _legacy_extreme_point(supremum),
+        "min_point": _legacy_extreme_point(infimum),
+        "conclusion": "; ".join((_extreme_conclusion(supremum, True), _extreme_conclusion(infimum, False))) + ".",
     }
+
+
+def _interval_boundary_evidence(f_expr, components: list[Any]) -> list[dict[str, Any]]:
+    evidence: list[dict[str, Any]] = []
+    for index, component in enumerate(components):
+        for point, side, is_open in (
+            (component.start, "+", bool(component.left_open)),
+            (component.end, "-", bool(component.right_open)),
+        ):
+            if point in (-oo, oo):
+                value = limit(f_expr, x, point)
+                attained = False
+            elif is_open:
+                value = limit(f_expr, x, point, dir=side)
+                attained = False
+            else:
+                value = simplify(f_expr.subs(x, point))
+                attained = True
+            evidence.append({
+                "component": index,
+                "x": _fmt_boundary(point),
+                "x_exact": _fmt_sym(point),
+                "side": side,
+                "kind": "endpoint" if attained else "one_sided_limit",
+                "attained": attained,
+                "value": _value_payload(value),
+            })
+    return evidence
+
+
+def _interval_critical_points(f_expr, fp_expr, active_domain: FunctionDomain, a: float, b: float) -> list[dict[str, Any]]:
+    if fp_expr is None:
+        return []
+    points: list[dict[str, Any]] = []
+    for point in _collect_stationary_candidates(f_expr, fp_expr, active_domain):
+        try:
+            numeric = float(sp.N(point))
+            value = simplify(f_expr.subs(x, point))
+            if not a < numeric < b or not _is_finite_real(value):
+                continue
+        except (TypeError, ValueError, AttributeError):
+            continue
+        points.append({
+            "x": _fmt_num(numeric),
+            "x_exact": _fmt_sym(point),
+            "x_latex": latex(point),
+            "y": _fmt_num(value),
+            "y_exact": _fmt_sym(value),
+            "y_latex": latex(value),
+            "kind": "critical",
+            "label": "Điểm tới hạn trong miền khảo sát",
+            "attained": True,
+        })
+    return points
+
+
+def _range_on_components(f_expr, components: list[Any]) -> tuple[Any | None, list[str]]:
+    ranges: list[Any] = []
+    warnings: list[str] = []
+    for component in components:
+        try:
+            component_range = function_range(f_expr, x, component)
+        except Exception as error:
+            warnings.append(f"Không tính được tập giá trị trên {_fmt_sym(component)}: {error}")
+            continue
+        if component_range.has(sp.ConditionSet):
+            warnings.append(f"Tập giá trị trên {_fmt_sym(component)} chưa giải được hoàn toàn.")
+            continue
+        ranges.append(component_range)
+    if len(ranges) != len(components):
+        return None, warnings
+    return sp.Union(*ranges), warnings
+
+
+def _extreme_bound_payload(f_expr, active_set, value, kind: str, boundary_evidence: list[dict[str, Any]]) -> dict[str, Any]:
+    if value in (oo, -oo):
+        status = "unbounded_above" if kind == "supremum" else "unbounded_below"
+        return {
+            "status": status,
+            "value": "+∞" if value == oo else "-∞",
+            "value_exact": _fmt_sym(value),
+            "value_latex": latex(value),
+            "attained": False,
+            "attainment_set_exact": None,
+            "attainment_set_latex": None,
+            "points": [],
+            "evidence": _matching_boundary_evidence(boundary_evidence, value),
+        }
+
+    try:
+        attainment_set = solveset(simplify(f_expr - value), x, domain=active_set)
+    except Exception:
+        attainment_set = sp.ConditionSet(x, Eq(f_expr, value), active_set)
+    complete = not attainment_set.has(sp.ConditionSet)
+    attained = complete and attainment_set is not S.EmptySet
+    points = []
+    if isinstance(attainment_set, FiniteSet):
+        points = [_point_value_payload(f_expr, point) for point in sorted(attainment_set, key=default_sort_key)]
+    return {
+        "status": ("maximum" if kind == "supremum" else "minimum") if attained else kind if complete else "unknown",
+        "value": _expr_payload(value)["approx"] or _fmt_sym(value),
+        "value_exact": _fmt_sym(value),
+        "value_latex": latex(value),
+        "attained": attained,
+        "attainment_set_exact": _fmt_sym(attainment_set) if complete else None,
+        "attainment_set_latex": latex(attainment_set) if complete else None,
+        "points": points,
+        "evidence": _matching_boundary_evidence(boundary_evidence, value),
+    }
+
+
+def _matching_boundary_evidence(evidence: list[dict[str, Any]], value) -> list[dict[str, Any]]:
+    matches: list[dict[str, Any]] = []
+    for item in evidence:
+        raw = item["value"].get("value_exact")
+        try:
+            if sp.sympify(raw) == value or simplify(sp.sympify(raw) - value) == 0:
+                matches.append(item)
+        except (TypeError, ValueError, AttributeError, sp.SympifyError):
+            continue
+    return matches
+
+
+def _point_value_payload(f_expr, point) -> dict[str, Any]:
+    value = simplify(f_expr.subs(x, point))
+    return {
+        "x": _expr_payload(point)["approx"] or _fmt_sym(point),
+        "x_exact": _fmt_sym(point),
+        "x_latex": latex(point),
+        "y": _expr_payload(value)["approx"] or _fmt_sym(value),
+        "y_exact": _fmt_sym(value),
+        "y_latex": latex(value),
+    }
+
+
+def _interval_component_payload(component) -> dict[str, Any]:
+    return {
+        "start": _fmt_boundary(component.start),
+        "start_exact": _fmt_sym(component.start),
+        "end": _fmt_boundary(component.end),
+        "end_exact": _fmt_sym(component.end),
+        "left_open": bool(component.left_open),
+        "right_open": bool(component.right_open),
+    }
+
+
+def _value_payload(value) -> dict[str, Any]:
+    if value in (oo, -oo):
+        return {
+            "status": "infinite",
+            "value": "+∞" if value == oo else "-∞",
+            "value_exact": _fmt_sym(value),
+            "value_latex": latex(value),
+            "approx": None,
+        }
+    if not _is_finite_real(value):
+        return {"status": "unknown", "value": None, "value_exact": None, "value_latex": None, "approx": None}
+    data = _expr_payload(value)
+    return {
+        "status": "finite",
+        "value": data["approx"] or data["exact"],
+        "value_exact": data["exact"],
+        "value_latex": data["latex"],
+        "approx": data["approx"],
+    }
+
+
+def _is_finite_real(value) -> bool:
+    if value in (oo, -oo, zoo, nan, S.NaN) or getattr(value, "is_real", None) is False:
+        return False
+    try:
+        return isfinite(float(sp.N(value)))
+    except (TypeError, ValueError, AttributeError):
+        return False
+
+
+def _requested_boundary_value(f_expr, point: float, direction: str, is_open: bool) -> str:
+    try:
+        value = limit(f_expr, x, point, dir=direction) if is_open else simplify(f_expr.subs(x, point))
+    except Exception:
+        return "?"
+    payload = _value_payload(value)
+    return str(payload.get("value") or "?")
+
+
+def _legacy_extreme_point(extreme: dict[str, Any]) -> dict[str, str]:
+    if extreme["points"]:
+        point = extreme["points"][0]
+        return {"x": point["x"], "y": point["y"], "label": "Điểm đạt"}
+    return {
+        "x": extreme.get("attainment_set_exact") or (extreme["evidence"][0]["x"] if extreme["evidence"] else "?"),
+        "y": extreme["value"],
+        "label": "Tập điểm đạt" if extreme["attained"] else "Cận không đạt",
+    }
+
+
+def _extreme_conclusion(extreme: dict[str, Any], upper: bool) -> str:
+    if extreme["status"] == "unbounded_above":
+        return "Hàm số không bị chặn trên"
+    if extreme["status"] == "unbounded_below":
+        return "Hàm số không bị chặn dưới"
+    if extreme["status"] == "unknown":
+        return "Chưa xác định được cận trên" if upper else "Chưa xác định được cận dưới"
+    label = "GTLN" if upper else "GTNN"
+    if extreme["attained"]:
+        return f"{label} = {extreme['value']} trên tập {extreme['attainment_set_exact']}"
+    bound = "Supremum" if upper else "Infimum"
+    return f"Không có {label}; {bound} = {extreme['value']}"
+
+
+def _unknown_root_payload(warning: str) -> dict[str, Any]:
+    return RootAnalysis("unknown", "unknown", (), (), None, False, 100, None, (warning,)).payload()
 
 
 def _analyze_line_position(f_expr, line: Mapping[str, Any], domain_info: FunctionDomain | None = None, method_details: dict[str, str] | None = None) -> dict[str, Any]:
     mode = str(line.get("mode", "intersect"))
-    
+
     if mode == "tangent_at":
-        x0 = _finite_float(line.get("x0", 0), "x0")
-        if not in_domain(domain_info, x0):
-            raise ValueError(f"x0={_fmt_num(x0)} không thuộc tập xác định.")
-        y0 = _eval_float(f_expr, x0)
-        try:
-            fp_expr = diff(f_expr, x)
-            k = _eval_float(fp_expr, x0)
-            b_val = y0 - k * x0
-        except Exception as e:
-            raise ValueError(f"Không thể tính đạo hàm tại x0={x0}")
-        equation = f"y = {_fmt_num(k)}(x - {_fmt_num(x0)}) + {_fmt_num(y0)}" if x0 >= 0 else f"y = {_fmt_num(k)}(x + {_fmt_num(-x0)}) + {_fmt_num(y0)}"
-        return {
-            "mode": "tangent_at",
-            "x0": _fmt_num(x0), "y0": _fmt_num(y0),
-            "k": _fmt_num(k), "b": _fmt_num(b_val),
-            "equation": equation,
-            "conclusion": f"Tiếp tuyến tại điểm ({_fmt_num(x0)}, {_fmt_num(y0)}) là: {equation}"
-        }
+        return _analyze_tangent(f_expr, line, domain_info)
 
     k = _finite_float(line.get("k", 0), "k")
     b_val = _finite_float(line.get("b", 0), "b")
-    line_expr = k * x + b_val
-    diff_expr = simplify(f_expr - line_expr)
-    intersections: list[dict[str, str]] = []
-    
-    roots, exact_complete = _solve_domain_roots(diff_expr, domain_info)
-    if not roots and not exact_complete:
-        roots = filter_domain_values(_numeric_roots(diff_expr), domain_info)
-    for root in roots:
-        try:
-            root_f = float(root.evalf() if hasattr(root, "evalf") else root)
-            if not isfinite(root_f):
-                continue
-            y_val = k * root_f + b_val
-            intersections.append({"x": _fmt_num(root_f), "y": _fmt_num(y_val), "x_exact": _fmt_sym(root)})
-        except Exception:
-            continue
-    
-    split = sorted({float(item["x"]) for item in intersections if _is_numeric(item["x"])})
-    above, below = _sign_intervals(diff_expr, split, domain_info, method_details, "line_position")
-    
-    area_text = None
-    if len(split) >= 2:
-        try:
-            from sympy import Integral
-            a_root, b_root = split[0], split[-1]
-            area_val = abs(float(Integral(Abs(diff_expr), (x, a_root, b_root)).evalf()))
-            area_text = _fmt_num(area_val)
-        except Exception:
-            pass
+    line_expr = sp.Rational(str(k)) * x + sp.Rational(str(b_val))
+    difference = simplify(f_expr - line_expr)
+    root_analysis = analyze_real_roots(difference, x, domain_info)
+    intersections = [_intersection_payload(root, line_expr) for root in root_analysis.roots]
+    split_points = [root.value for root in root_analysis.roots]
+    above, below = _sign_intervals(difference, split_points, domain_info, method_details, "line_position")
+    area = _area_between_intersections(difference, root_analysis, domain_info)
+    count = root_analysis.total_known if root_analysis.status == "complete" and not root_analysis.families else None
 
     return {
         "mode": "intersect",
         "k": _fmt_num(k),
         "b": _fmt_num(b_val),
         "equation": f"y = {_fmt_num(k)}x + {_fmt_num(b_val)}",
-        "intersection_count": len(intersections),
+        "intersection_count": count,
+        "intersection_count_status": "complete" if count is not None else "unknown",
         "intersections": intersections,
+        "roots_v2": root_analysis.payload(),
         "relative_intervals": {"above": above, "below": below},
-        "area_between_curves": area_text,
+        "area_between_curves": area.get("total_approx") if area["status"] == "complete" else None,
+        "area_v2": area,
+        "warnings": list(root_analysis.warnings),
     }
+
+
+def _intersection_payload(root, line_expr) -> dict[str, Any]:
+    root_payload = root.payload()
+    y_value = simplify(line_expr.subs(x, root.value))
+    y_payload = _expr_payload(y_value)
+    return {
+        **root_payload,
+        "x": _fmt_num(sp.N(root.value)),
+        "y": y_payload["approx"] or y_payload["exact"],
+        "y_exact": y_payload["exact"],
+        "y_latex": y_payload["latex"],
+    }
+
+
+def _area_between_intersections(difference, roots: RootAnalysis, domain_info: FunctionDomain | None) -> dict[str, Any]:
+    if roots.status != "complete" or roots.truncated or roots.families or roots.total_known is None:
+        return {
+            "status": "unavailable",
+            "method": "exact_piecewise",
+            "components": [],
+            "total_exact": None,
+            "total_latex": None,
+            "total_approx": None,
+            "warnings": ["Chưa có tập giao điểm đầy đủ nên không tính diện tích."],
+        }
+    ordered = sorted((root.value for root in roots.roots), key=default_sort_key)
+    if len(ordered) < 2:
+        return {
+            "status": "unavailable",
+            "method": "exact_piecewise",
+            "components": [],
+            "total_exact": None,
+            "total_latex": None,
+            "total_approx": None,
+            "warnings": ["Cần ít nhất hai giao điểm để tạo miền kín."],
+        }
+
+    domain_set = domain_info.set if domain_info is not None and domain_info.set is not None else S.Reals
+    components: list[dict[str, Any]] = []
+    warnings: list[str] = []
+    total = S.Zero
+    for left, right in zip(ordered, ordered[1:]):
+        closed_interval = Interval(left, right)
+        try:
+            continuous = continuous_domain(difference, x, S.Reals)
+            if closed_interval.intersect(domain_set).intersect(continuous) != closed_interval:
+                warnings.append(f"Bỏ qua ({_fmt_sym(left)}, {_fmt_sym(right)}): hàm không liên tục trên miền kín.")
+                continue
+            probe = (left + right) / 2
+            sign = _safe_expr_sign(difference, probe)
+            if sign is None:
+                warnings.append(f"Bỏ qua ({_fmt_sym(left)}, {_fmt_sym(right)}): chưa xác định được dấu giữa hai giao điểm.")
+                continue
+            exact_area = simplify(sp.integrate(difference if sign > 0 else -difference, (x, left, right)))
+            if exact_area.has(sp.Integral) or not _is_finite_real(exact_area) or exact_area < 0:
+                warnings.append(f"Bỏ qua ({_fmt_sym(left)}, {_fmt_sym(right)}): tích phân không hội tụ hoặc chưa tính được.")
+                continue
+        except Exception as error:
+            warnings.append(f"Bỏ qua ({_fmt_sym(left)}, {_fmt_sym(right)}): {error}")
+            continue
+        total += exact_area
+        data = _expr_payload(exact_area)
+        components.append({
+            "left": _expr_payload(left)["approx"] or _fmt_sym(left),
+            "left_exact": _fmt_sym(left),
+            "left_latex": latex(left),
+            "right": _expr_payload(right)["approx"] or _fmt_sym(right),
+            "right_exact": _fmt_sym(right),
+            "right_latex": latex(right),
+            "area": data["approx"] or data["exact"],
+            "area_exact": data["exact"],
+            "area_latex": data["latex"],
+            "area_approx": data["approx"],
+            "verification": "continuous_between_consecutive_exact_intersections",
+        })
+
+    complete = len(components) == len(ordered) - 1 and not warnings
+    total_data = _expr_payload(simplify(total)) if complete else None
+    return {
+        "status": "complete" if complete else "partial",
+        "method": "exact_piecewise",
+        "components": components,
+        "total_exact": total_data["exact"] if total_data else None,
+        "total_latex": total_data["latex"] if total_data else None,
+        "total_approx": (total_data["approx"] or total_data["exact"]) if total_data else None,
+        "warnings": warnings,
+    }
+
+
+def _analyze_tangent(f_expr, line: Mapping[str, Any], domain_info: FunctionDomain | None) -> dict[str, Any]:
+    x0 = _finite_float(line.get("x0", 0), "x0")
+    point = sp.Rational(str(x0))
+    if not in_domain(domain_info, point):
+        raise ValueError(f"x0={_fmt_num(x0)} không thuộc tập xác định.")
+    y0 = simplify(f_expr.subs(x, point))
+    if not _is_finite_real(y0):
+        raise ValueError(f"f({_fmt_num(x0)}) không phải giá trị hữu hạn.")
+
+    quotient = simplify((f_expr - y0) / (x - point))
+    side_slopes: dict[str, Any] = {}
+    try:
+        if _domain_side_available(domain_info, point, "-"):
+            side_slopes["left"] = limit(quotient, x, point, dir="-")
+        if _domain_side_available(domain_info, point, "+"):
+            side_slopes["right"] = limit(quotient, x, point, dir="+")
+    except Exception as error:
+        raise ValueError(f"Không chứng minh được đạo hàm tại x0={_fmt_num(x0)}: {error}") from error
+    if not side_slopes:
+        raise ValueError(f"x0={_fmt_num(x0)} không có lân cận thuộc tập xác định.")
+
+    base = {
+        "mode": "tangent_at",
+        "x0": _fmt_num(x0),
+        "x0_exact": _fmt_sym(point),
+        "y0": _expr_payload(y0)["approx"] or _fmt_sym(y0),
+        "y0_exact": _fmt_sym(y0),
+        "left_slope": _value_payload(side_slopes["left"]) if "left" in side_slopes else {"status": "unavailable", "value": None, "value_exact": None, "value_latex": None, "approx": None},
+        "right_slope": _value_payload(side_slopes["right"]) if "right" in side_slopes else {"status": "unavailable", "value": None, "value_exact": None, "value_latex": None, "approx": None},
+    }
+    slopes = list(side_slopes.values())
+    if all(slope in (oo, -oo) for slope in slopes) and (len(slopes) == 1 or all(slope == slopes[0] for slope in slopes[1:])):
+        equation = f"x = {_fmt_num(x0)}"
+        verification = "one_sided_infinite_slope" if len(slopes) == 1 else "matching_infinite_one_sided_slopes"
+        return {**base, "status": "vertical_tangent", "kind": "vertical", "equation": equation, "equation_exact": equation, "verification": verification, "conclusion": f"Tiếp tuyến đứng tại điểm ({_fmt_num(x0)}, {_fmt_num(y0)}) là: {equation}"}
+    finite_slopes = all(_is_finite_real(slope) for slope in slopes)
+    matching_slopes = len(slopes) == 1 or all(simplify(slope - slopes[0]) == 0 for slope in slopes[1:])
+    if not finite_slopes or not matching_slopes:
+        kind = "cusp" if len(slopes) == 2 and all(slope in (oo, -oo) for slope in slopes) else "corner_or_nondifferentiable"
+        return {**base, "status": "nondifferentiable", "kind": kind, "equation": "Không tồn tại", "equation_exact": None, "verification": "one_sided_slopes_disagree", "conclusion": f"Không có tiếp tuyến đạo hàm thông thường tại x = {_fmt_num(x0)} vì đạo hàm hai phía không trùng nhau."}
+
+    slope = simplify(slopes[0])
+    intercept = simplify(y0 - slope * point)
+    equation_expr = simplify(slope * x + intercept)
+    contact_direction = "+" if set(side_slopes) == {"right"} else "-" if set(side_slopes) == {"left"} else "+-"
+    contact = limit((f_expr - equation_expr) / (x - point), x, point, dir=contact_direction)
+    equation = f"y = {_fmt_sym(equation_expr)}"
+    slope_data = _expr_payload(slope)
+    return {
+        **base,
+        "status": "regular_tangent",
+        "kind": "regular",
+        "k": slope_data["approx"] or slope_data["exact"],
+        "k_exact": slope_data["exact"],
+        "k_latex": slope_data["latex"],
+        "b": _expr_payload(intercept)["approx"] or _fmt_sym(intercept),
+        "b_exact": _fmt_sym(intercept),
+        "equation": equation,
+        "equation_exact": equation,
+        "equation_latex": f"y={latex(equation_expr)}",
+        "verification": "difference_quotient_one_sided" if len(slopes) == 1 else "difference_quotient_two_sided",
+        "contact_limit": _fmt_sym(contact),
+        "conclusion": f"Tiếp tuyến tại điểm ({_fmt_num(x0)}, {_fmt_num(y0)}) là: {equation}",
+    }
+
+
+def _domain_side_available(domain_info: FunctionDomain | None, point, side: str) -> bool:
+    domain_set = domain_info.set if domain_info is not None and domain_info.set is not None else S.Reals
+    for component in _iter_intervals(domain_set):
+        try:
+            if side == "-" and _truth(component.start < point) and _truth(point <= component.end):
+                return True
+            if side == "+" and _truth(component.start <= point) and _truth(point < component.end):
+                return True
+        except (TypeError, ValueError, AttributeError):
+            continue
+    return False
+
+
+def _truth(value) -> bool:
+    return value is sp.S.true or value is True or sp.simplify(value) is sp.S.true
 
 
 def _solve_parameter_conditions(parsed, options: Mapping[str, Any]) -> list[dict[str, Any]]:

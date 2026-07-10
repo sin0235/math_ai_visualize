@@ -81,6 +81,61 @@ export interface AnalyzeAsymptotesV2 {
   periodic_vertical_families: Array<Record<string, unknown>>;
 }
 
+export interface RootEvidenceV2 {
+  x: string;
+  x_exact: string | null;
+  x_latex: string | null;
+  x_approx: string;
+  verification: 'symbolic_exact' | 'numeric_verified' | string;
+  residual: number;
+  error_bound: number | null;
+}
+
+export interface RootAnalysisV2 {
+  status: 'complete' | 'partial' | 'unknown' | string;
+  method: string;
+  roots: RootEvidenceV2[];
+  families: Array<{ set_exact: string; set_latex: string; parameter_domain: string | null }>;
+  total_known: number | null;
+  truncated: boolean;
+  max_points: number;
+  search_window: [number, number] | null;
+  warnings: string[];
+}
+
+export interface ExtremeResultV2 {
+  status: string;
+  value: string;
+  value_exact: string;
+  value_latex: string;
+  attained: boolean;
+  attainment_set_exact: string | null;
+  attainment_set_latex: string | null;
+  points: Array<{ x: string; x_exact: string; x_latex: string; y: string; y_exact: string; y_latex: string }>;
+}
+
+export interface AreaAnalysisV2 {
+  status: 'complete' | 'partial' | 'unavailable' | string;
+  method: string;
+  components: Array<{
+    left: string;
+    left_exact: string;
+    left_latex: string;
+    right: string;
+    right_exact: string;
+    right_latex: string;
+    area: string;
+    area_exact: string;
+    area_latex: string;
+    area_approx: string | null;
+    verification: string;
+  }>;
+  total_exact: string | null;
+  total_latex: string | null;
+  total_approx: string | null;
+  warnings: string[];
+}
+
 export interface AnalyzeParameterRange {
   min: number;
   max: number;
@@ -122,6 +177,7 @@ export interface AnalyzeResponse {
   vertical_asymptotes: Array<{ x: string; lim_right: string; lim_left: string }>;
   oblique_asymptote: string | null;
   x_intercepts: string[];
+  x_intercepts_v2?: RootAnalysisV2 | null;
   y_intercept: string | null;
   variation_table: VariationRow[];
   variation_table_v2?: VariationTableV2 | null;
@@ -149,19 +205,45 @@ export interface AnalyzeResponse {
     open_b?: boolean;
     fa: string;
     fb: string;
+    status?: string;
+    method?: string;
+    warnings?: string[];
+    domain_intersection_exact?: string;
+    domain_components?: Array<{ start: string; start_exact: string; end: string; end_exact: string; left_open: boolean; right_open: boolean }>;
+    range_exact?: string;
+    range_latex?: string;
+    boundary_evidence?: Array<{
+      component: number;
+      x: string;
+      x_exact: string;
+      side: string;
+      kind: string;
+      attained: boolean;
+      value: { status: string; value: string | null; value_exact: string | null; value_latex: string | null; approx: string | null };
+    }>;
     extrema_inside: Array<{ x: string; x_exact: string; y: string; label: string }>;
+    supremum?: ExtremeResultV2;
+    infimum?: ExtremeResultV2;
     max_point: { x: string; y: string; label: string };
     min_point: { x: string; y: string; label: string };
     conclusion: string;
   } | null;
   line_analysis?: {
     mode?: string;
+    status?: string;
+    kind?: string;
     equation: string;
-    intersection_count: number;
-    intersections: Array<{ x: string; y: string; x_exact: string }>;
-    relative_intervals: { above: string[]; below: string[] };
+    equation_exact?: string | null;
+    equation_latex?: string | null;
+    intersection_count?: number | null;
+    intersection_count_status?: string;
+    intersections?: Array<{ x: string; y: string; x_exact: string; x_latex?: string | null; y_exact?: string; y_latex?: string; residual?: number; error_bound?: number | null; verification?: string }>;
+    roots_v2?: RootAnalysisV2;
+    relative_intervals?: { above: string[]; below: string[] };
     area_between_curves?: string | null;
+    area_v2?: AreaAnalysisV2;
     conclusion?: string;
+    warnings?: string[];
   } | null;
   parameter_conditions?: Array<{ label: string; condition_latex?: string; solution: string; solution_latex?: string; warnings?: string[] }>;
   transform_preview?: { type: string; value: string; label: string; expression: string; expression_latex: string; pedagogical_steps?: string[] } | null;

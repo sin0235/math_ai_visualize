@@ -283,7 +283,7 @@ async def test_save_task_profile_rejects_provider_model_mismatch(db):
 
 
 @pytest.mark.anyio
-async def test_load_model_registry_canonicalizes_legacy_profile_mismatch(db):
+async def test_load_model_registry_keeps_namespaced_router9_profile(db):
     settings = Settings(_env_file=None)
     await load_model_registry(db, settings)
     await save_provider_config(db, "router9", "https://router9.example/v1", "gh/gpt-5.2")
@@ -302,11 +302,11 @@ async def test_load_model_registry_canonicalizes_legacy_profile_mismatch(db):
     row = await db.fetch_one("SELECT provider_id, model_id, fallbacks_json FROM ai_task_profiles WHERE task = ?", ["ocr"])
 
     assert profile is not None
-    assert profile.provider_id == "openrouter"
-    assert profile.model_id == "google/gemma-4-26b-a4b-it:free"
-    assert row["provider_id"] == "openrouter"
-    assert row["model_id"] == "google/gemma-4-26b-a4b-it:free"
-    assert json.loads(row["fallbacks_json"]) == ["google/gemma-4-31b-it:free", "cc/codex-5.5-image"]
+    assert profile.provider_id == "router9"
+    assert profile.model_id == "openrouter/google/gemma-4-26b-a4b-it:free"
+    assert row["provider_id"] == "router9"
+    assert row["model_id"] == "openrouter/google/gemma-4-26b-a4b-it:free"
+    assert json.loads(row["fallbacks_json"]) == ["openrouter/google/gemma-4-31b-it:free", "cc/codex-5.5-image"]
 
 
 def test_validate_system_setting_normalizes_default_to_allowlist():
@@ -461,6 +461,25 @@ async def test_openrouter_scan_accepts_vendor_namespaced_models(db):
     registry = await load_model_registry(db, Settings(_env_file=None))
 
     assert any(model.id == "nvidia/llama-3.3-nemotron-super-49b-v1.5" for model in registry.models["openrouter"])
+
+
+@pytest.mark.anyio
+async def test_router9_scan_accepts_namespaced_models(db):
+    await load_model_registry(db, Settings(_env_file=None))
+    model_ids = {
+        "nvidia/deepseek-ai/deepseek-v4-flash",
+        "ollama/qwen3",
+        "openrouter/google/gemma-4-26b-it:free",
+    }
+
+    await upsert_scanned_models(db, "router9", [
+        AiModelInfo(id=model_id, label=model_id, provider="router9")
+        for model_id in model_ids
+    ])
+
+    registry = await load_model_registry(db, Settings(_env_file=None))
+
+    assert model_ids <= {model.id for model in registry.models["router9"]}
 
 
 @pytest.mark.anyio
