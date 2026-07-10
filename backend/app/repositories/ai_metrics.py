@@ -77,6 +77,7 @@ class AiCallMetricsRepository:
             """
             SELECT COALESCE(task, 'unknown') AS task,
                    COUNT(*) AS calls,
+                   SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) AS ok,
                    SUM(COALESCE(total_tokens, 0)) AS tokens,
                    AVG(elapsed_ms) AS avg_ms
             FROM ai_call_metrics
@@ -87,9 +88,26 @@ class AiCallMetricsRepository:
             """,
             [since],
         )
+        by_model = await self.db.fetch_all(
+            """
+            SELECT COALESCE(provider, 'unknown') AS provider,
+                   COALESCE(model, 'unknown') AS model,
+                   COUNT(*) AS calls,
+                   SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) AS ok,
+                   SUM(COALESCE(total_tokens, 0)) AS tokens,
+                   AVG(elapsed_ms) AS avg_ms
+            FROM ai_call_metrics
+            WHERE created_at >= ?
+            GROUP BY COALESCE(provider, 'unknown'), COALESCE(model, 'unknown')
+            ORDER BY calls DESC
+            LIMIT 30
+            """,
+            [since],
+        )
         totals = await self.db.fetch_one(
             """
             SELECT COUNT(*) AS calls,
+                   SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) AS ok,
                    SUM(COALESCE(total_tokens, 0)) AS tokens,
                    AVG(elapsed_ms) AS avg_ms
             FROM ai_call_metrics
@@ -97,30 +115,39 @@ class AiCallMetricsRepository:
             """,
             [since],
         )
+        total_calls = int((totals or {}).get("calls") or 0)
+        total_ok = int((totals or {}).get("ok") or 0)
         return {
-            "by_provider": [
+            "by_provider": [_metric_breakdown(r, "provider") for r in by_provider],
+            "by_task": [_metric_breakdown(r, "task") for r in by_task],
+            "by_model": [
                 {
+                    **_metric_breakdown(r, "model"),
                     "provider": str(r["provider"]),
-                    "calls": int(r["calls"] or 0),
-                    "ok": int(r["ok"] or 0),
-                    "tokens": int(r["tokens"] or 0),
-                    "avg_ms": int(r["avg_ms"] or 0) if r.get("avg_ms") is not None else None,
                 }
-                for r in by_provider
+                for r in by_model
             ],
-            "by_task": [
-                {
-                    "task": str(r["task"]),
-                    "calls": int(r["calls"] or 0),
-                    "tokens": int(r["tokens"] or 0),
-                    "avg_ms": int(r["avg_ms"] or 0) if r.get("avg_ms") is not None else None,
-                }
-                for r in by_task
-            ],
-            "calls": int((totals or {}).get("calls") or 0),
+            "calls": total_calls,
+            "ok": total_ok,
+            "failed": total_calls - total_ok,
+            "success_rate": round((total_ok / total_calls) * 100, 1) if total_calls else None,
             "tokens": int((totals or {}).get("tokens") or 0),
             "avg_ms": int((totals or {}).get("avg_ms") or 0) if (totals or {}).get("avg_ms") is not None else None,
         }
+
+
+def _metric_breakdown(row: dict, key: str) -> dict:
+    calls = int(row.get("calls") or 0)
+    ok = int(row.get("ok") or 0)
+    return {
+        key: str(row[key]),
+        "calls": calls,
+        "ok": ok,
+        "failed": calls - ok,
+        "success_rate": round((ok / calls) * 100, 1) if calls else None,
+        "tokens": int(row.get("tokens") or 0),
+        "avg_ms": int(row.get("avg_ms") or 0) if row.get("avg_ms") is not None else None,
+    }
 
 
 async def try_record_ai_call(db: DatabaseClient | None, **kwargs) -> None:

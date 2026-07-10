@@ -263,10 +263,21 @@ export interface AdminAnalyticsOverview {
   daily_errors: Array<{ day: string; count: number }>;
 }
 
+export interface AdminAnalyticsQualityBreakdown {
+  key: string;
+  count: number;
+  completed: number;
+  failed: number;
+  fail_rate?: number | null;
+  avg_ms?: number | null;
+}
+
 export interface AdminAnalyticsRenders {
   days: number;
   by_status: Array<{ key: string; count: number }>;
-  by_provider: Array<{ key: string; count: number }>;
+  by_provider: AdminAnalyticsQualityBreakdown[];
+  by_renderer: AdminAnalyticsQualityBreakdown[];
+  by_source: AdminAnalyticsQualityBreakdown[];
   by_model: Array<{ key: string; count: number }>;
   duration_p50_ms?: number | null;
   duration_p95_ms?: number | null;
@@ -275,9 +286,23 @@ export interface AdminAnalyticsRenders {
   daily: Array<{ day: string; count: number }>;
 }
 
+export interface AdminAnalyticsErrorGroup {
+  fingerprint: string;
+  error_code: string;
+  count: number;
+  first_seen: string;
+  last_seen: string;
+  sample_message: string;
+}
+
 export interface AdminAnalyticsErrors {
   days: number;
+  affected_users: number;
   top_codes: Array<{ error_code: string; count: number }>;
+  by_route: Array<{ key: string; count: number }>;
+  by_source: Array<{ key: string; count: number }>;
+  by_status: Array<{ key: string; count: number }>;
+  top_fingerprints: AdminAnalyticsErrorGroup[];
   recent: Array<{
     id: string;
     request_id?: string | null;
@@ -319,12 +344,62 @@ export interface AdminAnalyticsFunnel {
   feature_opens?: Array<{ feature: string; count: number }>;
 }
 
+export interface AdminAnalyticsProductUsage {
+  days: number;
+  sample_scope: 'authenticated_users';
+  feature_usage: Array<{
+    feature: string;
+    opens: number;
+    unique_users: number;
+    sessions: number;
+    share_pct: number;
+  }>;
+  outcomes: Array<{
+    feature: string;
+    completed: number;
+    failed: number;
+    unique_users: number;
+    success_rate?: number | null;
+  }>;
+  daily_active_users: Array<{
+    day: string;
+    unique_users: number;
+    events: number;
+    completed: number;
+  }>;
+  period_comparison: Record<'active_users' | 'feature_opens' | 'completed_outcomes' | 'errors', {
+    current: number;
+    previous: number;
+    change_pct?: number | null;
+  }>;
+}
+
+export interface AdminAnalyticsAiBreakdown {
+  calls: number;
+  ok: number;
+  failed: number;
+  success_rate?: number | null;
+  tokens: number;
+  avg_ms?: number | null;
+}
+
+export interface AdminAnalyticsAiUsage extends AdminAnalyticsAiBreakdown {
+  days: number;
+  by_provider: Array<AdminAnalyticsAiBreakdown & { provider: string }>;
+  by_task: Array<AdminAnalyticsAiBreakdown & { task: string }>;
+  by_model: Array<AdminAnalyticsAiBreakdown & { provider: string; model: string }>;
+}
+
 export async function getAdminSummary(): Promise<AdminSummaryResponse> {
   return requestJson('/api/admin/summary', { credentials: 'include' }, 'Không thể tải dashboard quản trị.');
 }
 
 export async function getAdminAnalyticsOverview(days = 14): Promise<AdminAnalyticsOverview> {
   return requestJson(`/api/admin/analytics/overview?days=${days}`, { credentials: 'include' }, 'Không thể tải analytics overview.');
+}
+
+export async function getAdminAnalyticsProductUsage(days = 14): Promise<AdminAnalyticsProductUsage> {
+  return requestJson(`/api/admin/analytics/product-usage?days=${days}`, { credentials: 'include' }, 'Không thể tải product usage.');
 }
 
 export async function getAdminAnalyticsRenders(days = 14): Promise<AdminAnalyticsRenders> {
@@ -343,11 +418,11 @@ export async function getAdminAnalyticsFunnel(days = 30): Promise<AdminAnalytics
   return requestJson(`/api/admin/analytics/funnel?days=${days}`, { credentials: 'include' }, 'Không thể tải funnel analytics.');
 }
 
-export async function getAdminAnalyticsErrorGroups(days = 14): Promise<{ days: number; groups: Array<{ fingerprint: string; error_code: string; count: number; first_seen: string; last_seen: string; sample_message: string }> }> {
+export async function getAdminAnalyticsErrorGroups(days = 14): Promise<{ days: number; groups: AdminAnalyticsErrorGroup[] }> {
   return requestJson(`/api/admin/analytics/error-groups?days=${days}`, { credentials: 'include' }, 'Không thể tải error groups.');
 }
 
-export async function getAdminAnalyticsAiUsage(days = 14): Promise<{ days: number; calls: number; tokens: number; avg_ms?: number | null; by_provider: Array<{ provider: string; calls: number; ok: number; tokens: number; avg_ms?: number | null }>; by_task: Array<{ task: string; calls: number; tokens: number; avg_ms?: number | null }> }> {
+export async function getAdminAnalyticsAiUsage(days = 14): Promise<AdminAnalyticsAiUsage> {
   return requestJson(`/api/admin/analytics/ai-usage?days=${days}`, { credentials: 'include' }, 'Không thể tải AI usage.');
 }
 

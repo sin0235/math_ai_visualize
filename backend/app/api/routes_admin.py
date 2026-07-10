@@ -86,6 +86,17 @@ async def admin_analytics_overview(
     return await AnalyticsRepository(db).overview(days)
 
 
+@router.get("/analytics/product-usage")
+async def admin_analytics_product_usage(
+    days: int = Query(default=14, ge=1, le=90),
+    _: UserRecord = Depends(require_admin_user),
+    db: DatabaseClient = Depends(get_database),
+) -> dict:
+    from app.repositories.analytics import AnalyticsRepository
+
+    return await AnalyticsRepository(db).product_usage(days)
+
+
 @router.get("/analytics/renders")
 async def admin_analytics_renders(
     days: int = Query(default=14, ge=1, le=90),

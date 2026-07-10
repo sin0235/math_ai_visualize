@@ -22,6 +22,8 @@ import type {
   AdminAnalyticsErrors,
   AdminAnalyticsActivity,
   AdminAnalyticsFunnel,
+  AdminAnalyticsProductUsage,
+  AdminAnalyticsAiUsage,
   FeedbackStatus,
   ChatConversationResponse,
   ChatMessageResponse,
@@ -61,11 +63,9 @@ import {
   getAdminAnalyticsErrors,
   getAdminAnalyticsActivity,
   getAdminAnalyticsFunnel,
-  getAdminAnalyticsErrorGroups,
+  getAdminAnalyticsProductUsage,
   getAdminAnalyticsAiUsage,
-  adminAnalyticsExportUrl,
 } from '../../api/client';
-import { apiUrl } from '../../api/core';
 import { 
   formatHistoryDate, 
   MetricCard, 
@@ -82,6 +82,8 @@ import {
   AdminAiTierProfilesForm,
   AdminAiPromptsForm,
 } from './AdminForms';
+import { AdminAnalyticsSection } from './AdminAnalyticsSection';
+import type { AnalyticsSource, AnalyticsSourceErrors } from './AdminAnalyticsSection';
 import { distinctOptions, planLabel, providerLabels, rendererOptions, renderSourceOptions } from '../../utils/settingsOptions';
 import type { SettingsDefaults } from '../../types/settings';
 import adminLogoUrl from '../../../logo.svg';
@@ -153,12 +155,16 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
     audit: false,
   });
   const [analyticsOverview, setAnalyticsOverview] = useState<AdminAnalyticsOverview | null>(null);
+  const [analyticsProductUsage, setAnalyticsProductUsage] = useState<AdminAnalyticsProductUsage | null>(null);
   const [analyticsRenders, setAnalyticsRenders] = useState<AdminAnalyticsRenders | null>(null);
   const [analyticsErrors, setAnalyticsErrors] = useState<AdminAnalyticsErrors | null>(null);
   const [analyticsActivity, setAnalyticsActivity] = useState<AdminAnalyticsActivity | null>(null);
   const [analyticsFunnel, setAnalyticsFunnel] = useState<AdminAnalyticsFunnel | null>(null);
-  const [analyticsErrorGroups, setAnalyticsErrorGroups] = useState<Array<{ fingerprint: string; error_code: string; count: number; sample_message: string; last_seen: string }>>([]);
-  const [analyticsAiUsage, setAnalyticsAiUsage] = useState<{ calls: number; tokens: number; avg_ms?: number | null; by_provider: Array<{ provider: string; calls: number; tokens: number; avg_ms?: number | null }> } | null>(null);
+  const [analyticsAiUsage, setAnalyticsAiUsage] = useState<AdminAnalyticsAiUsage | null>(null);
+  const [analyticsDays, setAnalyticsDays] = useState(14);
+  const [analyticsRefreshedAt, setAnalyticsRefreshedAt] = useState<Date | null>(null);
+  const [analyticsSourceErrors, setAnalyticsSourceErrors] = useState<AnalyticsSourceErrors>({});
+  const analyticsLoadIdRef = useRef(0);
 
   // User list state
   const [userQuery, setUserQuery] = useState('');
@@ -375,24 +381,48 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
     setUsers(u);
   }, showSuccess);
 
-  const loadAnalytics = (showSuccess = false) => withLoading('analytics', 'Phân tích', async () => {
-    const [overview, renders, errors, activity, funnel, groups, aiUsage] = await Promise.all([
-      getAdminAnalyticsOverview(14),
-      getAdminAnalyticsRenders(14),
-      getAdminAnalyticsErrors(14),
-      getAdminAnalyticsActivity(7),
-      getAdminAnalyticsFunnel(30),
-      getAdminAnalyticsErrorGroups(14),
-      getAdminAnalyticsAiUsage(14),
-    ]);
-    setAnalyticsOverview(overview);
-    setAnalyticsRenders(renders);
-    setAnalyticsErrors(errors);
-    setAnalyticsActivity(activity);
-    setAnalyticsFunnel(funnel);
-    setAnalyticsErrorGroups(groups.groups || []);
-    setAnalyticsAiUsage(aiUsage);
-  }, showSuccess);
+  const loadAnalytics = async (showSuccess = false, days = analyticsDays) => {
+    const requestId = ++analyticsLoadIdRef.current;
+    setLoading(true);
+    const requests: Array<{
+      source: AnalyticsSource;
+      load: () => Promise<unknown>;
+      apply: (value: unknown) => void;
+    }> = [
+      { source: 'overview', load: () => getAdminAnalyticsOverview(days), apply: (value) => setAnalyticsOverview(value as AdminAnalyticsOverview) },
+      { source: 'product', load: () => getAdminAnalyticsProductUsage(days), apply: (value) => setAnalyticsProductUsage(value as AdminAnalyticsProductUsage) },
+      { source: 'renders', load: () => getAdminAnalyticsRenders(days), apply: (value) => setAnalyticsRenders(value as AdminAnalyticsRenders) },
+      { source: 'errors', load: () => getAdminAnalyticsErrors(days), apply: (value) => setAnalyticsErrors(value as AdminAnalyticsErrors) },
+      { source: 'activity', load: () => getAdminAnalyticsActivity(days), apply: (value) => setAnalyticsActivity(value as AdminAnalyticsActivity) },
+      { source: 'funnel', load: () => getAdminAnalyticsFunnel(days), apply: (value) => setAnalyticsFunnel(value as AdminAnalyticsFunnel) },
+      { source: 'ai', load: () => getAdminAnalyticsAiUsage(days), apply: (value) => setAnalyticsAiUsage(value as AdminAnalyticsAiUsage) },
+    ];
+
+    try {
+      const results = await Promise.allSettled(requests.map((request) => request.load()));
+      if (requestId !== analyticsLoadIdRef.current) return;
+      const errors: AnalyticsSourceErrors = {};
+      results.forEach((result, index) => {
+        const request = requests[index];
+        if (result.status === 'fulfilled') request.apply(result.value);
+        else errors[request.source] = getErrorMessage(result.reason, 'Không thể tải nguồn dữ liệu.');
+      });
+      setAnalyticsSourceErrors(errors);
+      setAnalyticsRefreshedAt(new Date());
+      setLoadedSections((current) => ({ ...current, analytics: true }));
+      if (showSuccess) {
+        const failed = Object.keys(errors).length;
+        onToast('Phân tích', failed ? `Đã làm mới; ${failed} nguồn dữ liệu lỗi.` : 'Đã làm mới dữ liệu.', failed ? 'warning' : 'info');
+      }
+    } finally {
+      if (requestId === analyticsLoadIdRef.current) setLoading(false);
+    }
+  };
+
+  const changeAnalyticsDays = (days: number) => {
+    setAnalyticsDays(days);
+    void loadAnalytics(false, days);
+  };
 
   const refreshActiveSection = (showSuccess = false) => {
     const loaders: Record<AdminSection, (showSuccess?: boolean) => Promise<void>> = {
@@ -1116,138 +1146,21 @@ export function AdminConsole({ user, onBackToApp, onOpenRenderJobDetail, onToast
         )}
 
         {activeSection === 'analytics' && (
-          <>
-            <header className="admin-page-header">
-              <h2>Phân tích &amp; Theo dõi</h2>
-              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                <a className="secondary-button" href={apiUrl(adminAnalyticsExportUrl('errors', 14))} target="_blank" rel="noreferrer">Export errors CSV</a>
-                <a className="secondary-button" href={apiUrl(adminAnalyticsExportUrl('activity', 14))} target="_blank" rel="noreferrer">Export activity CSV</a>
-                <AdminToolbarRefreshButton loading={loading} onClick={() => void refreshActiveSection(true)} />
-              </div>
-            </header>
-            <div className="admin-section-stack">
-              <section className="admin-metric-group">
-                <div className="admin-metric-group-header"><span>Hiệu năng 14 ngày</span><small>Render, lỗi, DAU</small></div>
-                <div className="admin-metric-grid admin-metric-grid-4">
-                  <MetricCard label="Render (14d)" value={analyticsOverview?.renders ?? 0} variant="primary" icon="renders" />
-                  <MetricCard label="Fail rate" value={analyticsOverview?.render_fail_rate ?? 0} suffix="%" variant="warning" icon="warning" />
-                  <MetricCard label="Errors 24h" value={analyticsOverview?.errors_24h ?? 0} variant="warning" icon="warning" />
-                  <MetricCard label="DAU (activity)" value={analyticsOverview?.dau ?? 0} variant="success" icon="users" />
-                </div>
-                <div className="admin-metric-grid admin-metric-grid-4" style={{ marginTop: '0.75rem' }}>
-                  <MetricCard label="p50 duration" value={analyticsOverview?.duration_p50_ms ?? 0} suffix="ms" variant="info" icon="chart" />
-                  <MetricCard label="p95 duration" value={analyticsOverview?.duration_p95_ms ?? 0} suffix="ms" variant="info" icon="chart" />
-                  <MetricCard label="Activity events" value={analyticsOverview?.activity_events ?? 0} variant="info" icon="audit" />
-                  <MetricCard label="Errors (14d)" value={analyticsOverview?.errors_period ?? 0} variant="warning" icon="warning" />
-                </div>
-              </section>
-
-              <section className="admin-panel">
-                <h3>Funnel 30 ngày</h3>
-                <div className="admin-metric-grid admin-metric-grid-4">
-                  <MetricCard label="Đăng ký" value={analyticsFunnel?.registered ?? 0} variant="primary" icon="users" />
-                  <MetricCard label="Đã verify email" value={analyticsFunnel?.verified ?? 0} variant="success" icon="active" />
-                  <MetricCard label="Có render OK" value={analyticsFunnel?.users_with_completed_render ?? 0} variant="info" icon="renders" />
-                  <MetricCard label="Có OCR" value={analyticsFunnel?.users_with_ocr ?? 0} variant="info" icon="chart" />
-                </div>
-              </section>
-
-              <section className="admin-panel">
-                <h3>Render theo provider</h3>
-                <div className="admin-table">
-                  {(analyticsRenders?.by_provider || []).map((item) => (
-                    <article className="admin-row" key={item.key}><div><strong>{item.key}</strong><span>{item.count} jobs</span></div></article>
-                  ))}
-                  {(analyticsRenders?.by_provider || []).length === 0 && <p className="field-hint">Chưa có dữ liệu provider.</p>}
-                </div>
-              </section>
-
-              <section className="admin-panel">
-                <h3>Top error codes</h3>
-                <div className="admin-table">
-                  {(analyticsErrors?.top_codes || []).map((item) => (
-                    <article className="admin-row" key={item.error_code}><div><strong>{item.error_code}</strong><span>{item.count}</span></div></article>
-                  ))}
-                  {(analyticsErrors?.top_codes || []).length === 0 && <p className="field-hint">Chưa ghi nhận lỗi.</p>}
-                </div>
-              </section>
-
-              <section className="admin-panel">
-                <h3>Error groups (fingerprint)</h3>
-                <div className="admin-table">
-                  {analyticsErrorGroups.slice(0, 15).map((item) => (
-                    <article className="admin-row" key={`${item.fingerprint}-${item.error_code}`}>
-                      <div>
-                        <strong>{item.error_code}</strong>
-                        <span>{item.count} · {item.fingerprint.slice(0, 10)}…</span>
-                        <small>{item.sample_message}</small>
-                      </div>
-                    </article>
-                  ))}
-                  {analyticsErrorGroups.length === 0 && <p className="field-hint">Chưa có nhóm lỗi.</p>}
-                </div>
-              </section>
-
-              <section className="admin-panel">
-                <h3>AI usage (14 ngày)</h3>
-                <div className="admin-metric-grid admin-metric-grid-4">
-                  <MetricCard label="AI calls" value={analyticsAiUsage?.calls ?? 0} variant="primary" icon="models" />
-                  <MetricCard label="Tokens" value={analyticsAiUsage?.tokens ?? 0} variant="info" icon="chart" />
-                  <MetricCard label="Avg latency" value={analyticsAiUsage?.avg_ms ?? 0} suffix="ms" variant="info" icon="chart" />
-                </div>
-                <div className="admin-table" style={{ marginTop: '0.75rem' }}>
-                  {(analyticsAiUsage?.by_provider || []).map((item) => (
-                    <article className="admin-row" key={item.provider}>
-                      <div><strong>{item.provider}</strong><span>{item.calls} calls · {item.tokens} tokens · {item.avg_ms ?? '—'}ms</span></div>
-                    </article>
-                  ))}
-                  {(analyticsAiUsage?.by_provider || []).length === 0 && <p className="field-hint">Chưa có ai_call_metrics (cần traffic AI sau migrate).</p>}
-                </div>
-              </section>
-
-              <section className="admin-panel">
-                <h3>Feature opens</h3>
-                <div className="admin-table">
-                  {(analyticsFunnel?.feature_opens || []).map((item) => (
-                    <article className="admin-row" key={item.feature}><div><strong>{item.feature}</strong><span>{item.count}</span></div></article>
-                  ))}
-                  {(analyticsFunnel?.feature_opens || []).length === 0 && <p className="field-hint">Chưa có feature.open (cần user đăng nhập duyệt app).</p>}
-                </div>
-              </section>
-
-              <section className="admin-panel admin-panel-full">
-                <h3>Lỗi gần đây</h3>
-                <div className="admin-table">
-                  {(analyticsErrors?.recent || []).slice(0, 30).map((item) => (
-                    <article className="admin-row" key={item.id}>
-                      <div>
-                        <strong>{item.error_code || 'UNKNOWN'}</strong>
-                        <span>{item.message}</span>
-                        <small>{item.source} · {item.route || '—'} · {formatHistoryDate(item.created_at)}</small>
-                      </div>
-                    </article>
-                  ))}
-                  {(analyticsErrors?.recent || []).length === 0 && <p className="field-hint">Chưa có error events.</p>}
-                </div>
-              </section>
-
-              <section className="admin-panel admin-panel-full">
-                <h3>Activity feed (7 ngày)</h3>
-                <div className="admin-table">
-                  {(analyticsActivity?.recent || []).slice(0, 40).map((item) => (
-                    <article className="admin-row" key={item.id}>
-                      <div>
-                        <strong>{item.event_type}</strong>
-                        <span>user {item.user_id.slice(0, 8)}…</span>
-                        <small>{item.target_type || '—'} · {formatHistoryDate(item.created_at)}</small>
-                      </div>
-                    </article>
-                  ))}
-                  {(analyticsActivity?.recent || []).length === 0 && <p className="field-hint">Chưa có activity events.</p>}
-                </div>
-              </section>
-            </div>
-          </>
+          <AdminAnalyticsSection
+            days={analyticsDays}
+            loading={loading}
+            refreshedAt={analyticsRefreshedAt}
+            sourceErrors={analyticsSourceErrors}
+            overview={analyticsOverview}
+            productUsage={analyticsProductUsage}
+            renders={analyticsRenders}
+            diagnostics={analyticsErrors}
+            activity={analyticsActivity}
+            funnel={analyticsFunnel}
+            aiUsage={analyticsAiUsage}
+            onDaysChange={changeAnalyticsDays}
+            onRefresh={() => void loadAnalytics(true)}
+          />
         )}
 
         {activeSection === 'audit' && (

@@ -75,7 +75,7 @@ class FakeDb:
             }]
         if "event_type" in sql and "GROUP BY" in sql:
             return [{"event_type": "render.completed", "count": 5}]
-        if "status" in sql and "GROUP BY" in sql:
+        if "render_jobs" in sql and "status" in sql and "GROUP BY" in sql:
             return [{"status": "completed", "count": 9}]
         if "provider" in sql and "GROUP BY" in sql:
             return [{"provider": "router9", "count": 4}]
@@ -121,6 +121,176 @@ def test_analytics_overview_shape():
     assert overview["renders_failed"] == 1
     assert overview["duration_p50_ms"] == 200
     assert overview["dau"] == 3
+
+
+def test_analytics_errors_method_not_shadowed():
+    db = FakeDb()
+    repo = AnalyticsRepository(db)
+
+    assert callable(repo.errors)
+    result = asyncio.run(repo.errors(14))
+    assert result["top_codes"] == [{"error_code": "TIMEOUT", "count": 2}]
+    assert result["recent"][0]["id"] == "e1"
+
+
+def test_product_usage_aggregates_users_outcomes_and_comparison():
+    class ProductUsageDb:
+        def __init__(self):
+            self.activity_period = 0
+            self.error_period = 0
+
+        async def fetch_all(self, sql, params=None):
+            if "COALESCE(target_id, 'unknown') AS feature" in sql:
+                return [{"feature": "render", "opens": 6, "unique_users": 3, "sessions": 4}]
+            if "END AS feature" in sql:
+                return [{"feature": "render", "completed": 3, "failed": 1, "unique_users": 2}]
+            if "COUNT(DISTINCT user_id) AS unique_users" in sql:
+                return [{"day": "2026-07-01", "unique_users": 3, "events": 8, "completed": 3}]
+            return []
+
+        async def fetch_one(self, sql, params=None):
+            if "AS active_users" in sql:
+                self.activity_period += 1
+                return (
+                    {"active_users": 5, "feature_opens": 7, "completed_outcomes": 4}
+                    if self.activity_period == 1
+                    else {"active_users": 4, "feature_opens": 5, "completed_outcomes": 2}
+                )
+            if "error_events" in sql:
+                self.error_period += 1
+                return {"count": 3 if self.error_period == 1 else 1}
+            return None
+
+    result = asyncio.run(AnalyticsRepository(ProductUsageDb()).product_usage(14))
+    assert result["sample_scope"] == "authenticated_users"
+    assert result["feature_usage"][0] == {
+        "feature": "render",
+        "opens": 6,
+        "unique_users": 3,
+        "sessions": 4,
+        "share_pct": 100.0,
+    }
+    assert result["outcomes"][0]["success_rate"] == 75.0
+    assert result["outcomes"][-1]["success_rate"] is None
+    assert result["daily_active_users"][0]["unique_users"] == 3
+    assert result["period_comparison"]["active_users"]["change_pct"] == 25.0
+    assert result["period_comparison"]["errors"]["change_pct"] == 200.0
+
+
+def test_product_usage_sqlite_queries(tmp_path):
+    from app.db.session import SQLiteClient
+
+    async def run():
+        db = SQLiteClient(str(tmp_path / "analytics.db"))
+        await db.execute_many([
+            (
+                """
+                CREATE TABLE user_activity_events (
+                  id TEXT PRIMARY KEY, user_id TEXT NOT NULL, session_id TEXT, event_type TEXT NOT NULL,
+                  target_type TEXT, target_id TEXT, source TEXT NOT NULL DEFAULT 'server',
+                  metadata_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """,
+                None,
+            ),
+            (
+                """
+                CREATE TABLE error_events (
+                  id TEXT PRIMARY KEY, user_id TEXT, source TEXT, route TEXT, status_code INTEGER,
+                  error_code TEXT, message TEXT NOT NULL, stack_fingerprint TEXT,
+                  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """,
+                None,
+            ),
+            ("INSERT INTO user_activity_events (id, user_id, session_id, event_type, target_id) VALUES (?, ?, ?, ?, ?)", ["a1", "u1", "s1", "feature.open", "render"]),
+            ("INSERT INTO user_activity_events (id, user_id, session_id, event_type, target_id) VALUES (?, ?, ?, ?, ?)", ["a2", "u1", "s1", "feature.open", "render"]),
+            ("INSERT INTO user_activity_events (id, user_id, session_id, event_type, target_id) VALUES (?, ?, ?, ?, ?)", ["a3", "u2", None, "feature.open", "analyzer"]),
+            ("INSERT INTO user_activity_events (id, user_id, event_type) VALUES (?, ?, ?)", ["a4", "u1", "render.completed"]),
+            ("INSERT INTO user_activity_events (id, user_id, event_type) VALUES (?, ?, ?)", ["a5", "u2", "render.failed"]),
+            ("INSERT INTO error_events (id, user_id, source, route, status_code, error_code, message) VALUES (?, ?, ?, ?, ?, ?, ?)", ["e1", "u2", "server", "/api/render", 500, "RENDER_FAILED", "boom"]),
+        ])
+        try:
+            return await AnalyticsRepository(db).product_usage(7)
+        finally:
+            await db.close()
+
+    result = asyncio.run(run())
+    assert result["feature_usage"][0]["feature"] == "render"
+    assert result["feature_usage"][0]["unique_users"] == 1
+    assert result["feature_usage"][0]["sessions"] == 1
+    assert result["outcomes"][0]["success_rate"] == 50.0
+    assert result["period_comparison"]["errors"]["current"] == 1
+
+
+def test_product_usage_empty_shape():
+    class EmptyDb:
+        async def fetch_all(self, sql, params=None):
+            return []
+
+        async def fetch_one(self, sql, params=None):
+            return None
+
+    result = asyncio.run(AnalyticsRepository(EmptyDb()).product_usage(7))
+    assert result["feature_usage"] == []
+    assert result["daily_active_users"] == []
+    assert len(result["outcomes"]) == 6
+    assert all(item["success_rate"] is None for item in result["outcomes"])
+    assert result["period_comparison"]["errors"]["change_pct"] == 0.0
+
+
+def test_render_quality_breakdown():
+    class RenderDb:
+        async def fetch_all(self, sql, params=None):
+            if "COALESCE(provider, 'unknown') AS provider" in sql:
+                return [{"provider": "router9", "count": 5, "completed": 4, "failed": 1, "avg_ms": 1200}]
+            if "COALESCE(renderer, 'unknown') AS renderer" in sql:
+                return [{"renderer": "threejs", "count": 5, "completed": 4, "failed": 1, "avg_ms": 1200}]
+            if "COALESCE(source_type, 'unknown') AS source" in sql:
+                return [{"source": "problem", "count": 5, "completed": 4, "failed": 1}]
+            if "COALESCE(status, 'unknown')" in sql:
+                return [{"status": "completed", "count": 4}, {"status": "failed", "count": 1}]
+            if "COALESCE(model, 'unknown')" in sql:
+                return [{"model": "cx/gpt", "count": 5}]
+            if "duration_ms" in sql and "ORDER BY duration_ms" in sql:
+                return [{"duration_ms": 1200}]
+            return []
+
+        async def fetch_one(self, sql, params=None):
+            if "status = 'completed'" in sql:
+                return {"count": 4}
+            if "status = 'failed'" in sql:
+                return {"count": 1}
+            if "render_jobs" in sql:
+                return {"count": 5}
+            return {"count": 0}
+
+    result = asyncio.run(AnalyticsRepository(RenderDb()).renders(14))
+    assert result["by_provider"][0]["fail_rate"] == 20.0
+    assert result["by_renderer"][0]["avg_ms"] == 1200
+    assert result["by_source"][0]["completed"] == 4
+
+
+def test_ai_usage_includes_failure_and_model_breakdown():
+    class AiDb:
+        async def fetch_all(self, sql, params=None):
+            row = {"calls": 4, "ok": 3, "tokens": 800, "avg_ms": 900}
+            if "AS model" in sql:
+                return [{**row, "provider": "openrouter", "model": "cx/gpt"}]
+            if "AS task" in sql:
+                return [{**row, "task": "render"}]
+            if "AS provider" in sql:
+                return [{**row, "provider": "openrouter"}]
+            return []
+
+        async def fetch_one(self, sql, params=None):
+            return {"calls": 4, "ok": 3, "tokens": 800, "avg_ms": 900}
+
+    result = asyncio.run(AnalyticsRepository(AiDb()).ai_usage(14))
+    assert result["failed"] == 1
+    assert result["success_rate"] == 75.0
+    assert result["by_task"][0]["failed"] == 1
+    assert result["by_model"][0]["model"] == "cx/gpt"
 
 
 def test_analytics_funnel_shape():
