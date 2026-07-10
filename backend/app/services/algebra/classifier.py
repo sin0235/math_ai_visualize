@@ -34,7 +34,16 @@ def classify_algebra_problem(problem: ParsedAlgebraProblem) -> str:
             or normalized.endswith("!")
         ):
             return "combinatorics_probability"
-        if normalized.startswith(("quadratic_double_root(", "quadratic_has_two_roots(", "quadratic_has_real_root(", "quadratic_no_real_root(", "quadratic_positive_all(")):
+        if normalized.startswith((
+            "quadratic_double_root(",
+            "quadratic_has_two_roots(",
+            "quadratic_has_real_root(",
+            "quadratic_no_real_root(",
+            "quadratic_positive_all(",
+            "quadratic_opposite_roots(",
+            "quadratic_opposite_sign_roots(",
+            "quadratic_same_sign_roots(",
+        )):
             return "parameter"
         if normalized.startswith("derivative("):
             return "calculus_derivative"

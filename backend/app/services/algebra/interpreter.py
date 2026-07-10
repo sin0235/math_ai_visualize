@@ -196,6 +196,12 @@ def _parameter_template_from_text(text: str, plain: str) -> str | None:
         kind = "quadratic_no_real_root"
     elif "duong voi moi" in plain or "lon hon 0 voi moi" in plain:
         kind = "quadratic_positive_all"
+    elif "doi nhau" in plain or ("doi xung" in plain and "nghiem" in plain):
+        kind = "quadratic_opposite_roots"
+    elif "trai dau" in plain or "nguoc dau" in plain:
+        kind = "quadratic_opposite_sign_roots"
+    elif "cung dau" in plain:
+        kind = "quadratic_same_sign_roots"
     elif "co nghiem" in plain:
         kind = "quadratic_has_real_root"
     else:
@@ -430,7 +436,16 @@ def _detect_topic(raw: str, normalized: str) -> str:
         return "combinatorics_probability"
     if any(key in plain for key in ("xac suat", "xác suất", "probability")):
         return "combinatorics_probability"
-    if normalized.startswith(("quadratic_double_root(", "quadratic_has_two_roots(", "quadratic_has_real_root(", "quadratic_no_real_root(", "quadratic_positive_all(")):
+    if normalized.startswith((
+        "quadratic_double_root(",
+        "quadratic_has_two_roots(",
+        "quadratic_has_real_root(",
+        "quadratic_no_real_root(",
+        "quadratic_positive_all(",
+        "quadratic_opposite_roots(",
+        "quadratic_opposite_sign_roots(",
+        "quadratic_same_sign_roots(",
+    )):
         return "parameter"
     if normalized.startswith("derivative("):
         return "calculus_derivative"
@@ -469,7 +484,9 @@ def _detect_variables(raw: str, normalized: str, topic_hint: str) -> list[str]:
     if topic_hint in {"calculus_derivative", "calculus_limit", "calculus_integral"}:
         structured_var = re.search(r"\bvar\s*=\s*([a-zA-Z])\b", normalized)
         return [structured_var.group(1)] if structured_var else ["x"]
-    variables = sorted({match.group(1) for match in _VARIABLE_RE.finditer(normalized) if match.group(1) not in {"e", "i"}})
+    # e/E = Euler; i/I = imaginary unit — never treat as the unknown.
+    reserved = {"e", "E", "i", "I"}
+    variables = sorted({match.group(1) for match in _VARIABLE_RE.finditer(normalized) if match.group(1) not in reserved})
     if topic_hint == "system" and len(variables) >= 2:
         return variables[:4]
     if variables:

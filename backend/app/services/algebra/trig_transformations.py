@@ -26,6 +26,7 @@ def build_trig_steps(problem: ParsedAlgebraProblem, expression: sp.Expr, solutio
         _identity_steps(problem, expression, solution_set, start_index)
         or _quadratic_single_function_steps(problem, expression, solution_set, values, start_index)
         or _linear_sin_cos_steps(problem, expression, solution_set, values, start_index)
+        or _product_to_double_angle_steps(problem, expression, solution_set, values, start_index)
         or _sum_to_product_steps(problem, expression, solution_set, values, start_index)
         or _double_angle_steps(problem, expression, solution_set, values, start_index)
         or _product_steps(problem, expression, solution_set, values, start_index)
@@ -207,6 +208,95 @@ def _product_steps(problem: ParsedAlgebraProblem, expression: sp.Expr, solution_
             confidence="symbolic",
         ),
         _filter_interval_step(start_index + 2, solution_set, values),
+    ]
+
+
+def _product_to_double_angle_steps(problem: ParsedAlgebraProblem, expression: sp.Expr, solution_set: sp.Set, values: list[sp.Expr] | None, start_index: int) -> list[AlgebraSolveStep]:
+    """Pedagogy for sin·cos (→ sin 2x) and cos²−sin² (→ cos 2x)."""
+    variable = problem.variable
+    sin_x = sp.sin(variable)
+    cos_x = sp.cos(variable)
+    expanded = sp.expand(expression)
+
+    # Path A: k·sin(x)·cos(x) + constant → (k/2)·sin(2x) + constant = 0
+    product_coeff = sp.Integer(0)
+    other: list[sp.Expr] = []
+    found = False
+    for term in sp.Add.make_args(expanded):
+        ratio = sp.simplify(term / (sin_x * cos_x))
+        if ratio.free_symbols:
+            other.append(term)
+            continue
+        # ratio is constant ⇒ term is ratio·sin·cos
+        if sp.simplify(term - ratio * sin_x * cos_x) == 0 and ratio != 0:
+            product_coeff += ratio
+            found = True
+        else:
+            other.append(term)
+    remainder = sp.Add(*other) if other else sp.Integer(0)
+    if found and not remainder.has(*TRIG_FUNCTIONS):
+        transformed = sp.Eq(product_coeff * sp.sin(2 * variable) / 2 + remainder, 0, evaluate=False)
+        return [
+            AlgebraSolveStep(
+                index=start_index,
+                title="Đưa tích sin·cos về góc đôi",
+                explanation="Dùng công thức sin(2x) = 2 sin(x) cos(x) để viết tích thành một sin góc đôi.",
+                short_explanation="sin(x)cos(x) = (1/2)sin(2x).",
+                detail_level="brief",
+                method="product_to_double_angle",
+                goal="Đưa phương trình về dạng sin(2x) = c.",
+                why="Tích sin·cos cùng góc thường giải nhanh hơn sau khi đổi sang góc đôi.",
+                rule="sin(2x) = 2 sin x cos x",
+                operation="Thay sin(x)cos(x) bằng (1/2)sin(2x).",
+                before_latex=sp.latex(problem.relation),
+                after_latex=sp.latex(transformed),
+                pitfall="Hệ số của sin·cos phải được chia đúng cho 2 khi đổi sang sin(2x).",
+                check="Khai triển (1/2)sin(2x) phải ra lại sin(x)cos(x).",
+                result_latex=sp.latex(transformed),
+                kind="transform",
+                confidence="symbolic",
+            ),
+            _filter_interval_step(start_index + 1, solution_set, values),
+        ]
+
+    # Path B: a·(cos²x − sin²x) + c → a·cos(2x) + c via power-reduction identities.
+    u = sp.Symbol("_c2", real=True)
+    trial = expanded.xreplace({cos_x ** 2: (1 + u) / 2, sin_x ** 2: (1 - u) / 2})
+    try:
+        poly = sp.Poly(sp.expand(trial), u)
+    except sp.PolynomialError:
+        return []
+    if poly.degree() != 1 or trial.has(sin_x, cos_x) or trial.has(*TRIG_FUNCTIONS):
+        return []
+    coeff = poly.coeff_monomial(u)
+    constant = poly.coeff_monomial(1)
+    if coeff == 0:
+        return []
+    # Only fire when original actually has mixed sin²/cos² (not plain cos(2x) already handled elsewhere).
+    if not (expanded.has(sin_x ** 2) or expanded.has(cos_x ** 2)):
+        return []
+    transformed = sp.Eq(coeff * sp.cos(2 * variable) + constant, 0, evaluate=False)
+    return [
+        AlgebraSolveStep(
+            index=start_index,
+            title="Đưa cos²−sin² về góc đôi",
+            explanation="Dùng công thức cos(2x) = cos²(x) − sin²(x) (hoặc rút gọn qua nhân đôi góc).",
+            short_explanation="cos²x − sin²x = cos(2x).",
+            detail_level="brief",
+            method="product_to_double_angle",
+            goal="Đưa phương trình về cos(2x) = c.",
+            why="Hiệu bình phương sin/cos cùng góc chính là cos góc đôi.",
+            rule="cos(2x) = cos²x − sin²x",
+            operation="Thay cos²x − sin²x bằng cos(2x).",
+            before_latex=sp.latex(problem.relation),
+            after_latex=sp.latex(transformed),
+            pitfall="Phân biệt cos(2x) với cos²(x).",
+            check="Khai triển cos(2x) phải ra lại cos²x − sin²x.",
+            result_latex=sp.latex(transformed),
+            kind="transform",
+            confidence="symbolic",
+        ),
+        _filter_interval_step(start_index + 1, solution_set, values),
     ]
 
 

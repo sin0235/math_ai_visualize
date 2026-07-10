@@ -72,3 +72,41 @@ def test_parameter_solver_case_splits_when_leading_coefficient_depends_on_m():
     ))
     assert result.status in {"solved", "partial"}
     assert "suy biến" in " ".join(step.explanation for step in result.steps).lower()
+
+
+def test_parameter_solver_opposite_roots():
+    # x^2 + m x - 1 = 0 has opposite roots when m = 0 (sum=0) and Delta=4>0.
+    result = solve_algebra(AlgebraSolveRequest(
+        input="quadratic_opposite_roots(a=1,b=m,c=-1,var=x,param=m)",
+        topic="parameter",
+    ))
+
+    assert result.status == "solved"
+    assert result.solution_set.kind == "conditions"
+    assert "0" in result.solution_set.text
+    assert result.verification.status == "verified"
+
+
+def test_parameter_solver_opposite_sign_roots():
+    # x^2 + m x + (m-2) = 0 has opposite-sign roots when c/a = m-2 < 0 ⇒ m < 2.
+    result = solve_algebra(AlgebraSolveRequest(
+        input="quadratic_opposite_sign_roots(a=1,b=m,c=m-2,var=x,param=m)",
+        topic="parameter",
+    ))
+
+    assert result.status == "solved"
+    assert "2" in result.solution_set.text
+    assert result.verification.status == "verified"
+
+
+def test_parameter_solver_same_sign_roots():
+    # x^2 + m x + 1 = 0: product=1>0, real when |m|>=2.
+    result = solve_algebra(AlgebraSolveRequest(
+        input="quadratic_same_sign_roots(a=1,b=m,c=1,var=x,param=m)",
+        topic="parameter",
+    ))
+
+    assert result.status == "solved"
+    assert result.solution_set.kind == "conditions"
+    assert "2" in result.solution_set.text or "-2" in result.solution_set.text
+    assert result.verification.status == "verified"

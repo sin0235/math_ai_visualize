@@ -16,9 +16,17 @@ def solve_exp_log(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
         return _unsupported(problem, "Đầu vào không phải phương trình mũ-log.")
     variable = problem.variable
     raw_expression = problem.relation.lhs - problem.relation.rhs
-    expression = sp.simplify(raw_expression)
-    if not _is_exp_log_expression(expression):
+    # simplify() can rewrite exp(x)+exp(-x) → cosh(x) and hide the exp structure used by templates.
+    simplified = sp.simplify(raw_expression)
+    if not _is_exp_log_expression(raw_expression) and not _is_exp_log_expression(simplified):
         return _unsupported(problem, "Phương trình không chứa thành phần mũ hoặc log.")
+    # Prefer a form that still exposes exp/log/power atoms for pedagogy templates.
+    if _has_exp_log_atoms(raw_expression) and not _has_exp_log_atoms(simplified):
+        expression = raw_expression
+    elif _has_exp_log_atoms(simplified):
+        expression = simplified
+    else:
+        expression = raw_expression if _is_exp_log_expression(raw_expression) else simplified
     assumptions = domain_assumptions_from_expression(raw_expression, variable)
     
     milestones: list[str] = []
@@ -35,7 +43,18 @@ def solve_exp_log(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
         steps.extend(template_result.steps)
     else:
         try:
-            solution_set = sp.solveset(expression, variable, domain=sp.S.Reals if problem.domain == "R" else sp.S.Complexes)
+            domain = sp.S.Reals if problem.domain == "R" else sp.S.Complexes
+            solution_set = sp.solveset(expression, variable, domain=domain)
+            if isinstance(solution_set, sp.ConditionSet) and expression is not simplified:
+                # Retry with simplified form when raw keeps ConditionSet.
+                alt = sp.solveset(simplified, variable, domain=domain)
+                if not isinstance(alt, sp.ConditionSet):
+                    solution_set = alt
+            if isinstance(solution_set, sp.ConditionSet):
+                return _unsupported(
+                    problem,
+                    "Phương trình mũ-log này chưa được rút gọn thành tập nghiệm tường minh (ConditionSet).",
+                )
         except Exception as exc:
             return _unsupported(problem, f"SymPy chưa giải được phương trình mũ-log này: {exc}")
         values = solution_values(solution_set)
@@ -379,6 +398,8 @@ def _log_base_term(term: sp.Expr, variable: sp.Symbol) -> tuple[sp.Expr, sp.Expr
 
 
 def _as_power_with_base(expression: sp.Expr, variable: sp.Symbol) -> tuple[sp.Expr, sp.Expr] | None:
+    if expression.func is sp.exp and expression.args[0].has(variable):
+        return sp.E, expression.args[0]
     if isinstance(expression, sp.Pow) and expression.exp.has(variable):
         return expression.base, expression.exp
     if expression.is_Integer and expression > 0:
@@ -389,23 +410,46 @@ def _as_power_with_base(expression: sp.Expr, variable: sp.Symbol) -> tuple[sp.Ex
     return None
 
 
+def _true_exp_nodes(expression: sp.Expr) -> list[sp.Expr]:
+    return [
+        node
+        for node in sp.preorder_traversal(expression)
+        if getattr(node, "func", None) is sp.exp and len(getattr(node, "args", ())) == 1
+    ]
+
+
 def _single_exponential_base(expression: sp.Expr, variable: sp.Symbol) -> sp.Expr | None:
-    bases = sorted({
-        power.base
-        for power in expression.atoms(sp.Pow)
-        if power.exp.has(variable) and not power.base.has(variable)
-    }, key=sp.default_sort_key)
+    bases: set[sp.Expr] = set()
+    for power in expression.atoms(sp.Pow):
+        if power.exp.has(variable) and not power.base.has(variable):
+            bases.add(power.base)
+    if _true_exp_nodes(expression):
+        bases.add(sp.E)
     if not bases:
         return None
-    for candidate in bases:
-        if all(_base_power_ratio(base, candidate) is not None for base in bases):
+    ordered = sorted(bases, key=sp.default_sort_key)
+    for candidate in ordered:
+        if all(_base_power_ratio(base, candidate) is not None for base in ordered):
             return candidate
     return None
 
 
 def _replace_base_power(expression: sp.Expr, variable: sp.Symbol, base: sp.Expr, t: sp.Symbol) -> sp.Expr | None:
     replaced = expression
-    for power in sorted(expression.atoms(sp.Pow), key=lambda item: len(sp.sstr(item.exp)), reverse=True):
+    if _base_power_ratio(sp.E, base) is not None or sp.simplify(base - sp.E) == 0:
+        def _exp_to_t(node: sp.Expr) -> sp.Expr:
+            coeff = sp.simplify(node.args[0] / variable)
+            if coeff.has(variable) or not coeff.is_integer:
+                return node
+            return t ** int(coeff)
+
+        replaced = replaced.replace(
+            lambda node: getattr(node, "func", None) is sp.exp
+            and len(getattr(node, "args", ())) == 1
+            and node.args[0].has(variable),
+            _exp_to_t,
+        )
+    for power in sorted(replaced.atoms(sp.Pow), key=lambda item: len(sp.sstr(item.exp)), reverse=True):
         if not power.exp.has(variable):
             continue
         ratio = _base_power_ratio(power.base, base)
@@ -414,7 +458,12 @@ def _replace_base_power(expression: sp.Expr, variable: sp.Symbol, base: sp.Expr,
         coefficient = sp.simplify(ratio * power.exp / variable)
         if coefficient.has(variable) or not coefficient.is_integer:
             return None
-        replaced = replaced.xreplace({power: t ** int(coefficient)})
+        replaced = replaced.replace(power, t ** int(coefficient))
+    if replaced.has(variable) and (
+        _true_exp_nodes(replaced)
+        or any(isinstance(p, sp.Pow) and p.exp.has(variable) for p in replaced.atoms(sp.Pow))
+    ):
+        return None
     return sp.expand(replaced)
 
 
@@ -438,7 +487,21 @@ def _values_latex(variable: sp.Symbol, values: list[sp.Expr] | None) -> str:
 
 
 def _is_exp_log_expression(expression: sp.Expr) -> bool:
-    return expression.has(sp.log) or expression.has(sp.exp) or any(isinstance(power, sp.Pow) and power.exp.has(*expression.free_symbols) for power in expression.atoms(sp.Pow))
+    if _has_exp_log_atoms(expression):
+        return True
+    # After simplify, exp±exp may become cosh/sinh; still treat as exp-log family.
+    return expression.has(sp.cosh, sp.sinh, sp.tanh)
+
+
+def _has_exp_log_atoms(expression: sp.Expr) -> bool:
+    return (
+        expression.has(sp.log)
+        or expression.has(sp.exp)
+        or any(
+            isinstance(power, sp.Pow) and power.exp.has(*expression.free_symbols)
+            for power in expression.atoms(sp.Pow)
+        )
+    )
 
 
 def _unsupported(problem: ParsedAlgebraProblem, message: str) -> AlgebraSolveResponse:

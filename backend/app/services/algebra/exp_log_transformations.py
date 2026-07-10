@@ -418,6 +418,8 @@ def _log_method_title(log_terms: list[LogTerm], constant: sp.Expr) -> str:
 
 
 def _as_power_with_base(expression: sp.Expr, variable: sp.Symbol) -> tuple[sp.Expr, sp.Expr] | None:
+    if expression.func is sp.exp and expression.args[0].has(variable):
+        return sp.E, expression.args[0]
     if isinstance(expression, sp.Pow) and expression.exp.has(variable):
         return expression.base, expression.exp
     if expression.is_Integer and expression > 0:
@@ -428,32 +430,73 @@ def _as_power_with_base(expression: sp.Expr, variable: sp.Symbol) -> tuple[sp.Ex
     return None
 
 
+def _true_exp_nodes(expression: sp.Expr) -> list[sp.Expr]:
+    """Nodes whose func is exp (not Pow(E, ·), which also matches atoms(sp.exp))."""
+    return [
+        node
+        for node in sp.preorder_traversal(expression)
+        if getattr(node, "func", None) is sp.exp and len(getattr(node, "args", ())) == 1
+    ]
+
+
 def _single_exponential_base(expression: sp.Expr, variable: sp.Symbol) -> sp.Expr | None:
-    bases = sorted({
-        power.base
-        for power in expression.atoms(sp.Pow)
-        if power.exp.has(variable) and not power.base.has(variable)
-    }, key=sp.default_sort_key)
+    bases: set[sp.Expr] = set()
+    for power in expression.atoms(sp.Pow):
+        if power.exp.has(variable) and not power.base.has(variable):
+            bases.add(power.base)
+    if _true_exp_nodes(expression):
+        bases.add(sp.E)
     if not bases:
         return None
-    for candidate in bases:
-        if all(_base_power_ratio(base, candidate) is not None for base in bases):
+    ordered = sorted(bases, key=sp.default_sort_key)
+    for candidate in ordered:
+        if all(_base_power_ratio(base, candidate) is not None for base in ordered):
             return candidate
     return None
 
 
 def _replace_base_power(expression: sp.Expr, variable: sp.Symbol, base: sp.Expr, t: sp.Symbol) -> sp.Expr | None:
     replaced = expression
-    for power in sorted(expression.atoms(sp.Pow), key=lambda item: len(sp.sstr(item.exp)), reverse=True):
+    # Natural exponential: exp(k·x) → t^k via replace (avoids E**x rebuilding as exp(x)).
+    if _base_power_ratio(sp.E, base) is not None or sp.simplify(base - sp.E) == 0:
+        def _exp_to_t(node: sp.Expr) -> sp.Expr:
+            coeff = sp.simplify(node.args[0] / variable)
+            if coeff.has(variable) or not coeff.is_integer:
+                return node
+            return t ** int(coeff)
+
+        replaced = replaced.replace(
+            lambda node: getattr(node, "func", None) is sp.exp
+            and len(getattr(node, "args", ())) == 1
+            and node.args[0].has(variable),
+            _exp_to_t,
+        )
+
+    for power in sorted(replaced.atoms(sp.Pow), key=lambda item: len(sp.sstr(item.exp)), reverse=True):
         if not power.exp.has(variable):
             continue
         ratio = _base_power_ratio(power.base, base)
         if ratio is None:
             continue
         coefficient = sp.simplify(ratio * power.exp / variable)
-        if coefficient.has(variable) or not coefficient.is_integer:
+        if coefficient.has(variable):
             return None
-        replaced = replaced.xreplace({power: t ** int(coefficient)})
+        if not coefficient.is_integer:
+            try:
+                if sp.Integer(coefficient) != coefficient:
+                    return None
+                coefficient = sp.Integer(coefficient)
+            except Exception:
+                return None
+        # Use replace, not xreplace: Mul reconstruction can revive exp from E**x.
+        target = t ** int(coefficient)
+        replaced = replaced.replace(power, target)
+
+    if replaced.has(variable) and (
+        _true_exp_nodes(replaced)
+        or any(isinstance(p, sp.Pow) and p.exp.has(variable) for p in replaced.atoms(sp.Pow))
+    ):
+        return None
     return sp.expand(replaced)
 
 

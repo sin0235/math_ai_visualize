@@ -28,7 +28,7 @@ _ALLOWED_FUNCTION_NAMES = {
     "log", "ln", "exp", "abs", "Abs", "re", "im", "arg", "conjugate",
     "factorial", "binomial", "floor", "ceiling", "sign",
     "Piecewise", "C",
-    "I", "i", "pi", "E", "oo", "zoo", "nan",
+    "I", "i", "pi", "E", "e", "oo", "zoo", "nan",
 }
 _ALLOWED_TOKEN_OPS = {"+", "-", "*", "/", "**", "(", ")", ",", "="}
 
@@ -345,6 +345,8 @@ def _local_dict(variable_names: list[str], real: bool = True) -> dict[str, objec
         "pi": sp.pi,
         "oo": sp.oo,
         "E": sp.E,
+        # High-school input often uses e for Euler's number (not a free variable).
+        "e": sp.E,
         "I": sp.I,
         "i": sp.I,
     })

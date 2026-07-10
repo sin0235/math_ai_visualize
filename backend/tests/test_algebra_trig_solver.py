@@ -82,3 +82,27 @@ def test_trig_solver_evaluates_latex_inverse_trig_expression():
     assert result.topic == "trigonometry"
     assert result.problem_type == "evaluate_trigonometric_expression"
     assert result.answer_latex == r"\frac{\pi}{4}"
+
+
+def test_trig_solver_product_to_double_angle_for_sin_cos():
+    result = solve_algebra(AlgebraSolveRequest(input="sin(x)*cos(x)=1/4", topic="trigonometry"))
+
+    assert result.status == "solved"
+    assert result.solution_set.kind == "periodic"
+    assert result.steps[0].method == "product_to_double_angle"
+    assert "sin" in (result.steps[0].after_latex or "")
+
+
+def test_trig_solver_rejects_condition_set_as_unsupported():
+    result = solve_algebra(AlgebraSolveRequest(input="sin(x**2)+cos(x)=0", topic="trigonometry"))
+
+    assert result.status == "unsupported"
+    assert any("ConditionSet" in err for err in result.errors)
+
+
+def test_trig_solver_quadratic_sin_substitution():
+    result = solve_algebra(AlgebraSolveRequest(input="2*sin(x)**2-sin(x)-1=0", topic="trigonometry"))
+
+    assert result.status == "solved"
+    assert result.solution_set.kind == "periodic"
+    assert [step.method for step in result.steps if step.method][:2] == ["trig_substitution", "solve_trig_substitution"]

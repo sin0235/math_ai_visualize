@@ -89,10 +89,28 @@ def solve_parameter(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
     )
 
 
+_QUADRATIC_KINDS = (
+    "quadratic_double_root",
+    "quadratic_has_two_roots",
+    "quadratic_has_real_root",
+    "quadratic_no_real_root",
+    "quadratic_positive_all",
+    "quadratic_opposite_roots",
+    "quadratic_opposite_sign_roots",
+    "quadratic_same_sign_roots",
+)
+
+
 def _parse_quadratic_template(text: str) -> QuadraticTemplate:
-    match = re.fullmatch(r"(quadratic_double_root|quadratic_has_two_roots|quadratic_has_real_root|quadratic_no_real_root|quadratic_positive_all)\((.*)\)", text)
+    kind_pattern = "|".join(_QUADRATIC_KINDS)
+    match = re.fullmatch(rf"({kind_pattern})\((.*)\)", text)
     if not match:
-        raise ValueError("Dạng tham số này chưa được hỗ trợ. Hãy dùng quadratic_double_root(...), quadratic_has_two_roots(...), quadratic_has_real_root(...), quadratic_no_real_root(...) hoặc quadratic_positive_all(...).")
+        raise ValueError(
+            "Dạng tham số này chưa được hỗ trợ. Hãy dùng quadratic_double_root(...), "
+            "quadratic_has_two_roots(...), quadratic_has_real_root(...), quadratic_no_real_root(...), "
+            "quadratic_positive_all(...), quadratic_opposite_roots(...), "
+            "quadratic_opposite_sign_roots(...) hoặc quadratic_same_sign_roots(...)."
+        )
     kind, args_text = match.groups()
     args = _parse_args(args_text)
     variable_name = args.get("var", "x")
@@ -172,6 +190,47 @@ def _solve_quadratic_template(template: QuadraticTemplate) -> tuple[sp.Expr | sp
         condition = sp.And(template.a > 0, delta_condition)
         condition = sp.simplify(condition)
         explanation = "Tam thức bậc hai dương với mọi x khi a dương và discriminant âm."
+    elif template.kind == "quadratic_opposite_roots":
+        # x1 = −x2 ⇔ sum = 0 ⇔ b = 0, and real roots ⇔ Delta ≥ 0 (with a ≠ 0).
+        b_zero = sp.solveset(sp.Eq(template.b, 0), parameter, domain=sp.S.Reals)
+        delta_ok = sp.solve_univariate_inequality(delta >= 0, parameter, relational=False)
+        try:
+            condition = b_zero.intersect(delta_ok)
+        except Exception:
+            condition = sp.And(sp.Eq(template.b, 0), delta >= 0)
+            condition = sp.simplify(condition)
+        explanation = "Hai nghiệm đối nhau khi tổng nghiệm bằng 0 (b = 0) và Δ ≥ 0."
+        latex = rf"b = {sp.latex(template.b)},\ \Delta = {sp.latex(delta)}"
+        condition, case_note = _apply_leading_coefficient_case_split(template, condition)
+        if case_note:
+            explanation = f"{explanation} {case_note}"
+        return condition, explanation, latex
+    elif template.kind == "quadratic_opposite_sign_roots":
+        # Trái dấu ⇔ product < 0 ⇔ c/a < 0 (implies Δ > 0 automatically when real coeffs).
+        product = sp.simplify(template.c / template.a)
+        condition = sp.solve_univariate_inequality(product < 0, parameter, relational=False)
+        explanation = "Hai nghiệm trái dấu khi tích nghiệm c/a < 0."
+        latex = rf"P = \frac{{c}}{{a}} = {sp.latex(product)},\ \Delta = {sp.latex(delta)}"
+        condition, case_note = _apply_leading_coefficient_case_split(template, condition)
+        if case_note:
+            explanation = f"{explanation} {case_note}"
+        return condition, explanation, latex
+    elif template.kind == "quadratic_same_sign_roots":
+        # Cùng dấu: product > 0 and real roots (Δ ≥ 0). Both positive/negative left open.
+        product = sp.simplify(template.c / template.a)
+        try:
+            prod_ok = sp.solve_univariate_inequality(product > 0, parameter, relational=False)
+            delta_ok = sp.solve_univariate_inequality(delta >= 0, parameter, relational=False)
+            condition = prod_ok.intersect(delta_ok)
+        except Exception:
+            condition = sp.And(product > 0, delta >= 0)
+            condition = sp.simplify(condition)
+        explanation = "Hai nghiệm cùng dấu khi tích nghiệm c/a > 0 và Δ ≥ 0."
+        latex = rf"P = \frac{{c}}{{a}} = {sp.latex(product)},\ \Delta = {sp.latex(delta)}"
+        condition, case_note = _apply_leading_coefficient_case_split(template, condition)
+        if case_note:
+            explanation = f"{explanation} {case_note}"
+        return condition, explanation, latex
     else:
         raise ValueError("Template tham số chưa được hỗ trợ.")
     latex = rf"\Delta = {sp.latex(delta)}"
@@ -230,8 +289,14 @@ def _degenerate_parameter_set(template: QuadraticTemplate, a_zero: sp.Set) -> sp
     if a_zero is sp.EmptySet:
         return sp.EmptySet
     kind = template.kind
-    # Two distinct roots / double root never hold for a true quadratic when a=0.
-    if kind in {"quadratic_double_root", "quadratic_has_two_roots"}:
+    # Two distinct / double / opposite / sign-pattern roots need a genuine quadratic.
+    if kind in {
+        "quadratic_double_root",
+        "quadratic_has_two_roots",
+        "quadratic_opposite_roots",
+        "quadratic_opposite_sign_roots",
+        "quadratic_same_sign_roots",
+    }:
         return sp.EmptySet
 
     accepted: list[sp.Expr] = []
@@ -302,7 +367,13 @@ def _actual_property(template: QuadraticTemplate, parameter_value: int) -> bool:
     c = sp.simplify(template.c.subs(template.parameter, parameter_value))
     delta = sp.simplify(b ** 2 - 4 * a * c)
     if a == 0:
-        if template.kind in {"quadratic_double_root", "quadratic_has_two_roots"}:
+        if template.kind in {
+            "quadratic_double_root",
+            "quadratic_has_two_roots",
+            "quadratic_opposite_roots",
+            "quadratic_opposite_sign_roots",
+            "quadratic_same_sign_roots",
+        }:
             return False
         if template.kind == "quadratic_has_real_root":
             return bool(b != 0 or c == 0)
@@ -321,6 +392,12 @@ def _actual_property(template: QuadraticTemplate, parameter_value: int) -> bool:
         return bool(delta < 0)
     if template.kind == "quadratic_positive_all":
         return bool(a > 0 and delta < 0)
+    if template.kind == "quadratic_opposite_roots":
+        return bool(b == 0 and delta >= 0)
+    if template.kind == "quadratic_opposite_sign_roots":
+        return bool(sp.simplify(c / a) < 0)
+    if template.kind == "quadratic_same_sign_roots":
+        return bool(sp.simplify(c / a) > 0 and delta >= 0)
     return False
 
 

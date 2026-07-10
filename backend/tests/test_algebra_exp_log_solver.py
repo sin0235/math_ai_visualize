@@ -93,3 +93,49 @@ def test_exp_log_solver_uses_log_both_sides_for_single_exponential():
     assert {value.text for value in result.solution_set.values} == {"log(10)/log(3)"}
     assert result.steps[0].title == "Lấy log hai vế"
     assert result.steps[0].method == "log_both_sides"
+
+
+def test_exp_log_solver_accepts_lowercase_e_as_euler():
+    result = solve_algebra(AlgebraSolveRequest(input="e**x=5"))
+
+    assert result.status == "solved"
+    assert result.topic == "exponential_log"
+    assert {value.text for value in result.solution_set.values} == {"log(5)"}
+    assert result.steps[0].method == "log_both_sides"
+
+
+def test_exp_log_solver_accepts_uppercase_E_without_stealing_variable():
+    result = solve_algebra(AlgebraSolveRequest(input="E**x=5"))
+
+    assert result.status == "solved"
+    assert result.topic == "exponential_log"
+    assert {value.text for value in result.solution_set.values} == {"log(5)"}
+    assert result.input_interpretation is not None
+    assert result.input_interpretation.variables == ["x"]
+
+
+def test_exp_log_solver_substitutes_exp_sum_of_reciprocals():
+    result = solve_algebra(AlgebraSolveRequest(input="exp(x)+exp(-x)=2"))
+
+    assert result.status == "solved"
+    assert {value.text for value in result.solution_set.values} == {"0"}
+    titles = [step.title for step in result.steps]
+    assert titles[:3] == ["Đặt ẩn phụ", "Giải phương trình theo ẩn phụ", "Trả về biến ban đầu"]
+
+
+def test_exp_log_solver_substitutes_quadratic_in_exp():
+    result = solve_algebra(AlgebraSolveRequest(input="exp(2*x)-3*exp(x)+2=0"))
+
+    assert result.status == "solved"
+    assert {value.text for value in result.solution_set.values} == {"0", "log(2)"}
+    assert result.steps[0].method == "exponential_substitution"
+
+
+def test_exp_log_domain_filters_spurious_root():
+    # log(x-1)+log(x+1)=log(3) ⇒ (x-1)(x+1)=3 ⇒ x^2=4 ⇒ x=±2; domain x>1 keeps only 2.
+    result = solve_algebra(AlgebraSolveRequest(input="log(x-1)+log(x+1)=log(3)"))
+
+    assert result.status == "solved"
+    assert {value.text for value in result.solution_set.values} == {"2"}
+    assert any("Thử lại điều kiện log" in (step.title or "") for step in result.steps)
+    assert any("1" in a and "infty" in a for a in result.assumptions)

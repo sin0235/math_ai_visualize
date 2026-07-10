@@ -46,12 +46,27 @@ def solve_trigonometry(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
     # Default: general solution on R. When solve_interval is set, solve/filter on that interval.
     # Interval bounds are interpreted in the same unit as angle_unit (degrees if degree mode).
     try:
-        if problem.solve_interval is not None and isinstance(problem.solve_interval, sp.Interval):
-            solution_set = sp.solveset(simplified_expression, variable, domain=problem.solve_interval)
-        else:
-            solution_set = sp.solveset(simplified_expression, variable, domain=sp.S.Reals)
-            if problem.solve_interval is not None:
-                solution_set = solution_set.intersect(problem.solve_interval)
+        domain = problem.solve_interval if (
+            problem.solve_interval is not None and isinstance(problem.solve_interval, sp.Interval)
+        ) else sp.S.Reals
+        solution_set = sp.solveset(simplified_expression, variable, domain=domain)
+        # ConditionSet: retry with expand_trig / rewrite so quadratic substitutions become explicit.
+        if isinstance(solution_set, sp.ConditionSet):
+            for candidate in (
+                sp.expand_trig(simplified_expression),
+                sp.trigsimp(simplified_expression),
+                sp.expand(sp.expand_trig(work_expression)),
+            ):
+                try:
+                    alt = sp.solveset(candidate, variable, domain=domain)
+                except Exception:
+                    continue
+                if not isinstance(alt, sp.ConditionSet):
+                    solution_set = alt
+                    simplified_expression = candidate
+                    break
+        if problem.solve_interval is not None and not isinstance(problem.solve_interval, sp.Interval):
+            solution_set = solution_set.intersect(problem.solve_interval)
     except Exception as exc:
         return _unsupported(problem, f"SymPy chưa giải được phương trình lượng giác này: {exc}")
     if isinstance(solution_set, sp.ConditionSet):
