@@ -15,6 +15,7 @@ AlgebraTopic = Literal[
     "complex",
     "sequence",
     "combinatorics_probability",
+    "statistics",
     "system",
     "parameter",
     "calculus_derivative",

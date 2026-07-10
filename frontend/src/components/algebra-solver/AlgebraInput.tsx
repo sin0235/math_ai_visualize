@@ -342,7 +342,8 @@ export function AlgebraInput({
             <option value="complex">Số phức</option>
             <option value="system">Hệ phương trình</option>
             <option value="sequence">Cấp số</option>
-            <option value="combinatorics_probability">Tổ hợp</option>
+            <option value="combinatorics_probability">Tổ hợp / XS</option>
+            <option value="statistics">Thống kê</option>
             <option value="parameter">Tham số</option>
             <option value="calculus_derivative">Đạo hàm</option>
             <option value="calculus_limit">Giới hạn</option>
@@ -469,6 +470,7 @@ export function AlgebraInput({
 export function suggestTopic(input: string): AlgebraTopic | null {
   const text = input.trim().toLowerCase();
   if (!text) return null;
+  if (/stats\(|stats_freq\(|thống kê|thong ke|trung bình|trung binh|phương sai|phuong sai|median|mean|variance/.test(text)) return 'statistics';
   if (/derivative|đạo hàm|dao ham|d\/dx|\\frac\{d\}\{d[a-z]\}/.test(text)) return 'calculus_derivative';
   if (/limit|giới hạn|gioi han|lim|\\lim/.test(text)) return 'calculus_limit';
   if (/integral|tích phân|tich phan|nguyên hàm|nguyen ham|\\int/.test(text)) return 'calculus_integral';
@@ -489,6 +491,8 @@ function topicLabel(topic: AlgebraTopic) {
   if (topic === 'exponential_log') return 'Mũ-log';
   if (topic === 'parameter') return 'Tham số';
   if (topic === 'sequence') return 'Cấp số';
+  if (topic === 'statistics') return 'Thống kê';
+  if (topic === 'combinatorics_probability') return 'Tổ hợp / XS';
   if (topic === 'calculus_derivative') return 'Đạo hàm';
   if (topic === 'calculus_limit') return 'Giới hạn';
   if (topic === 'calculus_integral') return 'Tích phân';

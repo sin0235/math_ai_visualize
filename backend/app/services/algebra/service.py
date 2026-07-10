@@ -25,6 +25,7 @@ from app.services.algebra.solvers.exp_log_solver import solve_exp_log
 from app.services.algebra.solvers.inequality_solver import solve_inequality
 from app.services.algebra.solvers.parameter_solver import solve_parameter
 from app.services.algebra.solvers.sequence_solver import solve_sequence
+from app.services.algebra.solvers.statistics_solver import solve_statistics
 from app.services.algebra.solvers.system_solver import solve_system
 from app.services.algebra.solvers.trig_solver import solve_trigonometry
 from app.services.algebra.solvers.expression_solver import solve_expression
@@ -240,6 +241,12 @@ def _solve_algebra_core(request: AlgebraSolveRequest) -> tuple[AlgebraSolveRespo
             _with_interpretation(_timed_solve(solve_combinatorics_probability, problem), request.input, interpretation),
             solve_ms=stage_ms.get("solve_ms", 0),
         )
+    if requested_topic == "statistics":
+        problem = _raw_problem(request, interpretation.canonical_input, variables, domain, requested_topic, solve_interval)
+        return _done(
+            _with_interpretation(_timed_solve(solve_statistics, problem), request.input, interpretation),
+            solve_ms=stage_ms.get("solve_ms", 0),
+        )
     if requested_topic == "sequence":
         problem = _raw_problem(request, interpretation.canonical_input, variables, domain, requested_topic, solve_interval)
         return _done(
@@ -290,6 +297,7 @@ def _solve_algebra_core(request: AlgebraSolveRequest) -> tuple[AlgebraSolveRespo
         "complex": solve_complex,
         "system": solve_system,
         "combinatorics_probability": solve_combinatorics_probability,
+        "statistics": solve_statistics,
         "sequence": solve_sequence,
         "parameter": solve_parameter,
         "calculus_derivative": solve_calculus,

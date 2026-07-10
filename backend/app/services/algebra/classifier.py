@@ -21,10 +21,13 @@ def classify_algebra_problem(problem: ParsedAlgebraProblem) -> str:
         normalized = problem.normalized_input.strip()
         if normalized.startswith(("arithmetic(", "arithmetic_sum(", "geometric(", "geometric_sum(")):
             return "sequence"
+        if normalized.lower().startswith(("stats(", "stats_freq(")):
+            return "statistics"
         if (
             normalized.startswith((
                 "C(", "A(", "binomial(", "factorial(", "coefficient(",
                 "P(", "P_not(", "P_and(", "Punion(", "Pcond(", "Pcomb(",
+                "bernoulli(", "Pbinom(",
                 "probability(", "probability_not(", "probability_and(",
                 "probability_union(", "probability_cond(", "probability_comb(",
             ))

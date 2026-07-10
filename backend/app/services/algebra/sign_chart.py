@@ -4,17 +4,14 @@ import sympy as sp
 
 
 def sign_chart_summary(expression: sp.Expr, variable: sp.Symbol) -> str | None:
+    """Build a textual sign chart using SymPy real roots / solveset (stdlib-free)."""
     numerator, denominator = sp.fraction(sp.factor(expression))
-    candidates = set()
+    candidates: set[sp.Expr] = set()
     for part in (numerator, denominator):
-        try:
-            roots = sp.solve(sp.Eq(part, 0), variable)
-        except Exception:
-            continue
-        for root in roots:
+        for root in _real_critical_points(part, variable):
             if root.is_real is False:
                 continue
-            candidates.add(root)
+            candidates.add(sp.simplify(root))
     if not candidates:
         return None
     ordered = sorted(candidates, key=sp.default_sort_key)
@@ -29,6 +26,26 @@ def sign_chart_summary(expression: sp.Expr, variable: sp.Symbol) -> str | None:
     if signs:
         summary += ". Dấu trên từng khoảng: " + "; ".join(signs)
     return summary
+
+
+def _real_critical_points(part: sp.Expr, variable: sp.Symbol) -> list[sp.Expr]:
+    if part == 0 or part == 1 or not part.has(variable):
+        return []
+    try:
+        poly = sp.Poly(sp.together(part).as_numer_denom()[0], variable)
+        return [sp.simplify(r) for r in poly.real_roots()]
+    except Exception:
+        pass
+    try:
+        sol = sp.solveset(part, variable, domain=sp.S.Reals)
+        if isinstance(sol, sp.FiniteSet):
+            return [sp.simplify(r) for r in sol]
+    except Exception:
+        pass
+    try:
+        return [sp.simplify(r) for r in sp.solve(sp.Eq(part, 0), variable) if r.is_real is not False]
+    except Exception:
+        return []
 
 
 def _sample_intervals(points: list[sp.Expr]) -> list[tuple[sp.Expr, sp.Expr, sp.Expr]]:

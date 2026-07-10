@@ -167,6 +167,28 @@ def _evaluate(text: str) -> tuple[sp.Expr, str, str, str]:
             rf"P(A\mid B)=\frac{{{a}}}{{{b}}}\ \text{{(độc lập)}}",
             "probability",
         )
+    # Bernoulli / binomial PMF: bernoulli(n,k,a/b) or Pbinom(n,k,a/b)
+    binom = re.fullmatch(
+        r"(?:bernoulli|Pbinom)\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*/\s*(\d+)\s*\)",
+        text,
+        re.IGNORECASE,
+    )
+    if binom:
+        n, k, a, b = (int(binom.group(i)) for i in range(1, 5))
+        _validate_n_k(n, k)
+        if b <= 0 or a < 0 or a > b:
+            raise ValueError("p = a/b phải thỏa 0 ≤ a ≤ b và b > 0.")
+        if n > MAX_COMBINATORICS_N:
+            raise ValueError(f"Bernoulli chỉ hỗ trợ n ≤ {MAX_COMBINATORICS_N}.")
+        p = sp.Rational(a, b)
+        value = sp.Integer(math.comb(n, k)) * (p ** k) * ((1 - p) ** (n - k))
+        value = sp.simplify(value)
+        return (
+            value,
+            f"Phân phối nhị thức: P(X={k}) = C({n},{k}) p^{k} (1-p)^{n-k} với p={a}/{b}.",
+            rf"C_{{{n}}}^{{{k}}}\left(\frac{{{a}}}{{{b}}}\right)^{{{k}}}\left(1-\frac{{{a}}}{{{b}}}\right)^{{{n - k}}}",
+            "probability",
+        )
     # Combination probability: P(C(n,k)/C(n,m)) style — Pcomb(n,k,total_choose)
     pcomb = re.fullmatch(r"(?:Pcomb|probability_comb)\((\d+)\s*,\s*(\d+)\s*,\s*(\d+)\)", text)
     if pcomb:
@@ -224,7 +246,8 @@ def _evaluate(text: str) -> tuple[sp.Expr, str, str, str]:
         return result, f"Khai triển biểu thức và lấy hệ số của {variable_name}^{power}.", sp.latex(expression), "combinatorics"
     raise ValueError(
         "Dạng tổ hợp-xác suất chưa hỗ trợ. Dùng C(n,k), A(n,k), n!, coefficient(...), "
-        "P(k/n), P_not(k/n), P_and(a/b,c/d), Punion(a/b,c/d), Pcond(a/b,c/d), Pcomb(n,k,r)."
+        "P(k/n), P_not(k/n), P_and(a/b,c/d), Punion(a/b,c/d), Pcond(a/b,c/d), "
+        "Pcomb(n,k,r), bernoulli(n,k,a/b)."
     )
 
 

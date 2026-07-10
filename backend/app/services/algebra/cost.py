@@ -17,6 +17,7 @@ _TOPIC_WEIGHT = {
     "system": 1.6,
     "sequence": 0.7,
     "combinatorics_probability": 0.6,
+    "statistics": 0.7,
     "parameter": 1.4,
     "calculus_derivative": 1.4,
     "calculus_limit": 1.5,

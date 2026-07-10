@@ -56,7 +56,8 @@ def solve_equation(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
         
     steps.extend(_technique_steps(problem, raw_expression, variable, len(steps) + 1))
     detailed_steps = (
-        _radical_equation_steps(problem, expression, variable, values, start_index=len(steps) + 1)
+        _absolute_value_steps(problem, raw_expression, variable, values, start_index=len(steps) + 1)
+        or _radical_equation_steps(problem, expression, variable, values, start_index=len(steps) + 1)
         or _biquadratic_steps(solve_expression, variable, start_index=len(steps) + 1)
         or _rational_root_division_steps(solve_expression, variable, start_index=len(steps) + 1)
         or _factor_steps(solve_expression, variable, start_index=len(steps) + 1)
@@ -145,6 +146,69 @@ def _technique_steps(problem: ParsedAlgebraProblem, expression: sp.Expr, variabl
     if rational_step:
         steps.append(rational_step)
     return steps
+
+
+def _absolute_value_steps(
+    problem: ParsedAlgebraProblem,
+    expression: sp.Expr,
+    variable: sp.Symbol,
+    final_values: list[sp.Expr] | None,
+    start_index: int,
+) -> list[AlgebraSolveStep]:
+    """Pedagogical case-split notes for Abs equations (solve still uses solveset)."""
+    abs_atoms = [atom for atom in expression.atoms(sp.Abs) if atom.args and atom.args[0].has(variable)]
+    if not abs_atoms or len(abs_atoms) > 2:
+        return []
+    notes: list[str] = []
+    for atom in abs_atoms:
+        g = atom.args[0]
+        notes.append(
+            rf"{sp.latex(atom)}:\ g={sp.latex(g)}\ge 0 \Rightarrow {sp.latex(atom)}={sp.latex(g)};\ "
+            rf"g<0 \Rightarrow {sp.latex(atom)}={sp.latex(-g)}"
+        )
+    result_latex = (
+        ", ".join(sp.latex(sp.Eq(variable, val, evaluate=False)) for val in final_values)
+        if final_values
+        else None
+    )
+    return [
+        AlgebraSolveStep(
+            index=start_index,
+            title="Xét dấu trị tuyệt đối",
+            explanation=(
+                "Phương trình có trị tuyệt đối; chia miền theo zero của biểu thức trong |·| "
+                "rồi ghép nghiệm. " + " ".join(notes)
+            ),
+            short_explanation="Case-split theo định nghĩa |g|.",
+            method="abs_case_split",
+            goal="Chia miền g≥0 và g<0 cho từng Abs.",
+            why="|g|=g khi g≥0 và |g|=−g khi g<0.",
+            rule="Định nghĩa trị tuyệt đối",
+            operation="Viết hai trường hợp theo dấu của biểu thức trong Abs.",
+            before_latex=sp.latex(problem.relation) if problem.relation is not None else sp.latex(expression),
+            after_latex="; ".join(notes),
+            pitfall="Phải kiểm tra nghiệm thuộc đúng miền đã giả sử.",
+            check="Thay nghiệm vào phương trình gốc (có Abs).",
+            expression=sp.sstr(expression),
+            expression_latex=sp.latex(expression),
+            kind="transform",
+            confidence="symbolic",
+        ),
+        AlgebraSolveStep(
+            index=start_index + 1,
+            title="Giải và ghép nghiệm",
+            explanation="Dùng solveset trên R; các nghiệm ứng viên được kiểm chứng bằng thay vào đề gốc.",
+            method="abs_solveset",
+            goal="Tìm nghiệm thỏa phương trình Abs.",
+            why="SymPy solveset xử lý Abs trên miền thực; bước trên giải thích case-split sư phạm.",
+            rule="solveset + verify",
+            operation="Giải symbolic rồi lọc bằng substitution.",
+            result="; ".join(sp.sstr(v) for v in (final_values or [])),
+            result_latex=result_latex,
+            kind="solve",
+            confidence="symbolic",
+        ),
+    ]
 
 
 def _has_candidate_filter_step(steps: list[AlgebraSolveStep]) -> bool:

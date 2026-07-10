@@ -130,6 +130,11 @@ def _structured_from_natural_language(raw: str) -> str | None:
     )
     if union_vi:
         return f"Punion({union_vi.group(1)}/{union_vi.group(2)},{union_vi.group(3)}/{union_vi.group(4)})"
+    # Descriptive stats: "trung binh cua 1 2 3 4", "phuong sai day 1,2,3"
+    if any(k in plain for k in ("trung binh", "trung vi", "phuong sai", "thong ke", "do lech chuan", "mean", "median", "variance")):
+        nums = re.findall(r"-?\d+(?:/\d+)?(?:\.\d+)?", plain)
+        if len(nums) >= 2:
+            return "stats(data=" + ",".join(nums) + ")"
     coefficient = re.search(r"he so cua\s+([a-zA-Z])\^?(\d+)\s+trong\s+(.+)$", plain)
     if coefficient:
         variable, power, expression = coefficient.groups()
@@ -412,9 +417,14 @@ def _detect_topic(raw: str, normalized: str) -> str:
     plain = _strip_accents(raw.lower())
     if normalized.startswith(("arithmetic(", "arithmetic_sum(", "geometric(", "geometric_sum(")):
         return "sequence"
+    if normalized.lower().startswith(("stats(", "stats_freq(")):
+        return "statistics"
+    if any(key in plain for key in ("thong ke", "trung binh", "trung vi", "phuong sai", "do lech chuan", "mean", "median", "variance")):
+        return "statistics"
     if normalized.startswith((
         "C(", "A(", "binomial(", "factorial(", "coefficient(",
         "P(", "P_not(", "P_and(", "Punion(", "Pcond(", "Pcomb(",
+        "bernoulli(", "Pbinom(",
         "probability(", "probability_not(", "probability_and(", "probability_union(", "probability_cond(", "probability_comb(",
     )) or normalized.endswith("!"):
         return "combinatorics_probability"

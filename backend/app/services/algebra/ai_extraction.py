@@ -22,7 +22,7 @@ Schema bắt buộc:
 {
   "input": string,
   "input_format": "plain" | "structured",
-  "topic": "equation" | "inequality" | "exponential_log" | "trigonometry" | "complex" | "sequence" | "combinatorics_probability" | "system" | "parameter" | "calculus_derivative" | "calculus_derivative_by_definition" | "calculus_limit" | "calculus_continuous_at" | "calculus_integral",
+  "topic": "equation" | "inequality" | "exponential_log" | "trigonometry" | "complex" | "sequence" | "combinatorics_probability" | "statistics" | "system" | "parameter" | "calculus_derivative" | "calculus_derivative_by_definition" | "calculus_limit" | "calculus_continuous_at" | "calculus_integral",
   "variables": [string],
   "parameters": [string],
   "domain": "R" | "C" | "N" | "Z",
