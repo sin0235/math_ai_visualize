@@ -113,6 +113,23 @@ def _structured_from_natural_language(raw: str) -> str | None:
     probability_frac = re.search(r"\bP\s*\(\s*(\d+)\s*/\s*(\d+)\s*\)", text, re.IGNORECASE)
     if probability_frac:
         return f"P({probability_frac.group(1)}/{probability_frac.group(2)})"
+    # "xac suat phan bu 2/5"
+    complement_vi = re.search(r"xac suat\s+phan\s+bu\s+(\d+)\s*(?:/|tren)\s*(\d+)", plain)
+    if complement_vi:
+        return f"P_not({complement_vi.group(1)}/{complement_vi.group(2)})"
+    # "hai bien co doc lap 1/2 va 1/3"
+    independent_vi = re.search(
+        r"(?:hai\s+bien\s+co\s+doc\s+lap|doc\s+lap)\s+(\d+)\s*(?:/|tren)\s*(\d+)\s*(?:va|,)\s*(\d+)\s*(?:/|tren)\s*(\d+)",
+        plain,
+    )
+    if independent_vi:
+        return f"P_and({independent_vi.group(1)}/{independent_vi.group(2)},{independent_vi.group(3)}/{independent_vi.group(4)})"
+    union_vi = re.search(
+        r"xac suat\s+hop\s+(\d+)\s*(?:/|tren)\s*(\d+)\s*(?:va|,)\s*(\d+)\s*(?:/|tren)\s*(\d+)",
+        plain,
+    )
+    if union_vi:
+        return f"Punion({union_vi.group(1)}/{union_vi.group(2)},{union_vi.group(3)}/{union_vi.group(4)})"
     coefficient = re.search(r"he so cua\s+([a-zA-Z])\^?(\d+)\s+trong\s+(.+)$", plain)
     if coefficient:
         variable, power, expression = coefficient.groups()
@@ -397,7 +414,8 @@ def _detect_topic(raw: str, normalized: str) -> str:
         return "sequence"
     if normalized.startswith((
         "C(", "A(", "binomial(", "factorial(", "coefficient(",
-        "P(", "P_not(", "P_and(", "Pcomb(", "probability(", "probability_not(", "probability_and(", "probability_comb(",
+        "P(", "P_not(", "P_and(", "Punion(", "Pcond(", "Pcomb(",
+        "probability(", "probability_not(", "probability_and(", "probability_union(", "probability_cond(", "probability_comb(",
     )) or normalized.endswith("!"):
         return "combinatorics_probability"
     if any(key in plain for key in ("xac suat", "xác suất", "probability")):

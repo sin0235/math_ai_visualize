@@ -24,8 +24,9 @@ def classify_algebra_problem(problem: ParsedAlgebraProblem) -> str:
         if (
             normalized.startswith((
                 "C(", "A(", "binomial(", "factorial(", "coefficient(",
-                "P(", "P_not(", "P_and(", "Pcomb(",
-                "probability(", "probability_not(", "probability_and(", "probability_comb(",
+                "P(", "P_not(", "P_and(", "Punion(", "Pcond(", "Pcomb(",
+                "probability(", "probability_not(", "probability_and(",
+                "probability_union(", "probability_cond(", "probability_comb(",
             ))
             or normalized.endswith("!")
         ):

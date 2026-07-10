@@ -1,5 +1,17 @@
-import { useMemo, useRef, useState } from 'react';
-import { ApiError, solveAlgebra, type AlgebraInputFormat, type AlgebraInterval, type AlgebraSolveResponse, type AlgebraTopic } from '../api/client';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ApiError,
+  deleteAlgebraHistory,
+  getAlgebraHistory,
+  listAlgebraHistory,
+  solveAlgebra,
+  type AlgebraDomainSource,
+  type AlgebraHistoryItem as ServerHistoryItem,
+  type AlgebraInputFormat,
+  type AlgebraInterval,
+  type AlgebraSolveResponse,
+  type AlgebraTopic,
+} from '../api/client';
 import { AlgebraInput, suggestTopic, type AlgebraAngleUnit, type AlgebraInputMode, type SequenceDraft } from './algebra-solver/AlgebraInput';
 import { AlgebraLoadingResult, AlgebraResult, EmptyAlgebraResult } from './algebra-solver/AlgebraResult';
 import {
@@ -18,10 +30,10 @@ export function AlgebraSolverPage() {
   const [inputFormat, setInputFormat] = useState<AlgebraInputFormat>('auto');
   const [topic, setTopic] = useState<AlgebraTopic>('auto');
   const [domain, setDomain] = useState<AlgebraDomain>('R');
+  const [domainSource, setDomainSource] = useState<AlgebraDomainSource>('default');
   const [variables, setVariables] = useState('');
   const [useAiExtraction, setUseAiExtraction] = useState(false);
   const [angleUnit, setAngleUnit] = useState<AlgebraAngleUnit>('radian');
-  /** empty = full R; unit_circle = [0, 2π); custom = user bounds */
   const [intervalPreset, setIntervalPreset] = useState<IntervalPreset>('');
   const [intervalStart, setIntervalStart] = useState('0');
   const [intervalEnd, setIntervalEnd] = useState('2*pi');
@@ -31,10 +43,13 @@ export function AlgebraSolverPage() {
   const [solvedFingerprint, setSolvedFingerprint] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  /** Pre-solve confirmation for natural / AI paths (trust boundary). */
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [pendingConfirm, setPendingConfirm] = useState(false);
-  const [history, setHistory] = useState<AlgebraHistoryItem[]>(() => loadAlgebraHistory());
+  const [localHistory, setLocalHistory] = useState<AlgebraHistoryItem[]>(() => loadAlgebraHistory());
+  const [serverHistory, setServerHistory] = useState<ServerHistoryItem[]>([]);
+  const [historySource, setHistorySource] = useState<'local' | 'server'>('local');
   const submitLockRef = useRef(false);
+  const abortRef = useRef<AbortController | null>(null);
   const [sequenceDraft, setSequenceDraft] = useState<SequenceDraft>({
     kind: 'arithmetic',
     target: 'term',
@@ -44,12 +59,36 @@ export function AlgebraSolverPage() {
     n: '10',
   });
 
+  useEffect(() => {
+    void (async () => {
+      try {
+        const items = await listAlgebraHistory({ limit: 20 });
+        setServerHistory(items);
+        setHistorySource('server');
+      } catch {
+        setHistorySource('local');
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (!loading) {
+      setElapsedSeconds(0);
+      return;
+    }
+    const started = Date.now();
+    const timer = window.setInterval(() => {
+      setElapsedSeconds(Math.floor((Date.now() - started) / 1000));
+    }, 500);
+    return () => window.clearInterval(timer);
+  }, [loading]);
+
   const currentFingerprint = useMemo(
     () => fingerprintRequest({
-      input, inputMode, inputFormat, topic, domain, variables, useAiExtraction, angleUnit,
+      input, inputMode, inputFormat, topic, domain, domainSource, variables, useAiExtraction, angleUnit,
       intervalPreset, intervalStart, intervalEnd, intervalClosedStart, intervalClosedEnd, sequenceDraft,
     }),
-    [input, inputMode, inputFormat, topic, domain, variables, useAiExtraction, angleUnit, intervalPreset, intervalStart, intervalEnd, intervalClosedStart, intervalClosedEnd, sequenceDraft],
+    [input, inputMode, inputFormat, topic, domain, domainSource, variables, useAiExtraction, angleUnit, intervalPreset, intervalStart, intervalEnd, intervalClosedStart, intervalClosedEnd, sequenceDraft],
   );
   const resultStale = Boolean(result && solvedFingerprint && currentFingerprint !== solvedFingerprint);
 
@@ -70,7 +109,6 @@ export function AlgebraSolverPage() {
 
   function requestConfirmIfNeeded() {
     if (!payloadInput || loading || submitLockRef.current) return;
-    // Math mode + no AI: direct solve. Natural or AI: confirm interpretation intent first.
     if (inputMode === 'math' && !useAiExtraction && !sequenceInput) {
       void runSolve();
       return;
@@ -79,40 +117,57 @@ export function AlgebraSolverPage() {
     setError('');
   }
 
+  function cancelSolve() {
+    abortRef.current?.abort();
+    abortRef.current = null;
+  }
+
   async function runSolve() {
     if (!payloadInput || loading || submitLockRef.current) return;
     submitLockRef.current = true;
     setPendingConfirm(false);
     setLoading(true);
     setError('');
+    const controller = new AbortController();
+    abortRef.current = controller;
     try {
       const response = await solveAlgebra({
         input: payloadInput,
         input_format: sequenceInput ? 'structured' : inputFormat,
         topic: payloadTopic,
         domain,
+        domain_source: domainSource,
         variables: variableList,
         angle_unit: angleUnit,
         interval: intervalPayload,
+        save_history: true,
         options: {
-          // Natural mode defaults to rule-based; AI only when user opts in.
           use_ai_extraction: inputMode === 'natural' && useAiExtraction && !sequenceInput,
         },
-      });
+      }, { signal: controller.signal });
       setResult(response);
       setSolvedFingerprint(currentFingerprint);
-      if (response.status !== 'error' || response.problem_type === 'timeout') {
-        setHistory(saveAlgebraHistoryItem(response));
+      setLocalHistory(saveAlgebraHistoryItem(response));
+      if (historySource === 'server') {
+        try {
+          setServerHistory(await listAlgebraHistory({ limit: 20 }));
+        } catch {
+          // keep local
+        }
       }
     } catch (caught) {
-      // Do not leave a prior successful answer looking "current" after 429/5xx errors.
-      setResult(null);
-      setSolvedFingerprint('');
-      if (caught instanceof ApiError) setError(caught.message);
-      else setError(caught instanceof Error ? caught.message : 'Không thể giải bài đại số.');
+      if (caught instanceof ApiError && caught.message.includes('hủy')) {
+        setError(caught.message);
+      } else {
+        setResult(null);
+        setSolvedFingerprint('');
+        if (caught instanceof ApiError) setError(caught.message);
+        else setError(caught instanceof Error ? caught.message : 'Không thể giải bài đại số.');
+      }
     } finally {
       setLoading(false);
       submitLockRef.current = false;
+      abortRef.current = null;
     }
   }
 
@@ -124,13 +179,36 @@ export function AlgebraSolverPage() {
     setPendingConfirm(false);
   }
 
-  function restoreHistoryItem(item: AlgebraHistoryItem) {
+  function handleDomainChange(value: AlgebraDomain) {
+    setDomain(value);
+    setDomainSource('user');
+    setPendingConfirm(false);
+  }
+
+  function restoreLocalHistoryItem(item: AlgebraHistoryItem) {
     setInput(item.input);
     setInputMode('math');
     setInputFormat('plain');
     setUseAiExtraction(false);
     setPendingConfirm(false);
     setError('');
+  }
+
+  async function restoreServerHistoryItem(item: ServerHistoryItem) {
+    try {
+      const detail = await getAlgebraHistory(item.id);
+      if (detail.response) {
+        setResult(detail.response);
+        setSolvedFingerprint('');
+      }
+      setInput(detail.problem_preview || item.problem_preview);
+      setInputMode('math');
+      setInputFormat('plain');
+      setPendingConfirm(false);
+      setError('');
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Không tải được lịch sử.');
+    }
   }
 
   return (
@@ -155,7 +233,7 @@ export function AlgebraSolverPage() {
           onInputFormatChange={setInputFormat}
           onInputModeChange={(value) => { setInputMode(value); setPendingConfirm(false); }}
           onTopicChange={(value) => { setTopic(value); setPendingConfirm(false); }}
-          onDomainChange={(value) => { setDomain(value); setPendingConfirm(false); }}
+          onDomainChange={handleDomainChange}
           onVariablesChange={(value) => { setVariables(value); setPendingConfirm(false); }}
           onUseAiExtractionChange={(value) => { setUseAiExtraction(value); setPendingConfirm(false); }}
           onAngleUnitChange={(value) => { setAngleUnit(value); setPendingConfirm(false); }}
@@ -169,28 +247,57 @@ export function AlgebraSolverPage() {
           onSubmit={requestConfirmIfNeeded}
         />
         <div className="algebra-result-wrap">
-          {history.length > 0 && (
+          {(historySource === 'server' ? serverHistory.length > 0 : localHistory.length > 0) && (
             <section className="algebra-history-panel" aria-label="Lịch sử bài gần đây">
               <div className="algebra-history-head">
-                <strong>Lịch sử gần đây (máy này)</strong>
+                <strong>
+                  {historySource === 'server' ? 'Lịch sử tài khoản' : 'Lịch sử máy này'}
+                </strong>
                 <button
                   type="button"
                   className="algebra-action-btn"
-                  onClick={() => { clearAlgebraHistory(); setHistory([]); }}
+                  onClick={() => {
+                    if (historySource === 'server') {
+                      setServerHistory([]);
+                    } else {
+                      clearAlgebraHistory();
+                      setLocalHistory([]);
+                    }
+                  }}
                 >
-                  Xóa
+                  Ẩn
                 </button>
               </div>
               <ul className="algebra-history-list">
-                {history.slice(0, 8).map((item) => (
-                  <li key={item.id}>
-                    <button type="button" className="algebra-history-item" onClick={() => restoreHistoryItem(item)}>
-                      <span className="algebra-history-meta">{item.topic} · {item.status}</span>
-                      <span className="algebra-history-input">{item.input}</span>
-                      <span className="algebra-history-answer">{item.answer}</span>
-                    </button>
-                  </li>
-                ))}
+                {historySource === 'server'
+                  ? serverHistory.slice(0, 8).map((item) => (
+                    <li key={item.id}>
+                      <button type="button" className="algebra-history-item" onClick={() => void restoreServerHistoryItem(item)}>
+                        <span className="algebra-history-meta">{item.topic} · {item.status}</span>
+                        <span className="algebra-history-input">{item.problem_preview}</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="algebra-action-btn"
+                        onClick={() => {
+                          void deleteAlgebraHistory(item.id).then(async () => {
+                            setServerHistory(await listAlgebraHistory({ limit: 20 }));
+                          }).catch(() => undefined);
+                        }}
+                      >
+                        Xóa
+                      </button>
+                    </li>
+                  ))
+                  : localHistory.slice(0, 8).map((item) => (
+                    <li key={item.id}>
+                      <button type="button" className="algebra-history-item" onClick={() => restoreLocalHistoryItem(item)}>
+                        <span className="algebra-history-meta">{item.topic} · {item.status}</span>
+                        <span className="algebra-history-input">{item.input}</span>
+                        <span className="algebra-history-answer">{item.answer}</span>
+                      </button>
+                    </li>
+                  ))}
               </ul>
             </section>
           )}
@@ -202,7 +309,8 @@ export function AlgebraSolverPage() {
                 <h2 id="algebra-confirm-title">Cách hệ thống sẽ hiểu đề</h2>
               </div>
               <p className="algebra-confirm-lead">
-                Kiểm tra topic, miền, biến, đơn vị góc và khoảng. AI (nếu bật) chỉ diễn giải ngôn ngữ — không được đè lựa chọn explicit của bạn.
+                Kiểm tra topic, miền, biến, đơn vị góc và khoảng.
+                {domainSource === 'default' ? ' Miền R đang là mặc định — đổi nếu bài số phức.' : ' Miền do bạn chọn (sticky).'}
               </p>
               <dl className="algebra-interpretation-grid">
                 <div>
@@ -211,11 +319,11 @@ export function AlgebraSolverPage() {
                 </div>
                 <div>
                   <dt>Dạng bài</dt>
-                  <dd>{payloadTopic}{inferredTopic && inferredTopic !== topic ? ' (đã gợi ý từ đề)' : ''}</dd>
+                  <dd>{payloadTopic}</dd>
                 </div>
                 <div>
                   <dt>Miền</dt>
-                  <dd>{domain}</dd>
+                  <dd>{domain} ({domainSource === 'user' ? 'user' : 'default'})</dd>
                 </div>
                 <div>
                   <dt>Biến</dt>
@@ -229,10 +337,6 @@ export function AlgebraSolverPage() {
                   <dt>Khoảng</dt>
                   <dd>{intervalSummary(intervalPayload)}</dd>
                 </div>
-                <div>
-                  <dt>AI extraction</dt>
-                  <dd>{inputMode === 'natural' && useAiExtraction && !sequenceInput ? 'bật (cần đăng nhập)' : 'tắt — rule-based'}</dd>
-                </div>
               </dl>
               <div className="algebra-confirm-actions">
                 <button type="button" className="algebra-action-btn" onClick={() => setPendingConfirm(false)}>
@@ -245,7 +349,7 @@ export function AlgebraSolverPage() {
             </section>
           )}
           {loading ? (
-            <AlgebraLoadingResult />
+            <AlgebraLoadingResult elapsedSeconds={elapsedSeconds} onCancel={cancelSolve} />
           ) : result && !pendingConfirm ? (
             <AlgebraResult
               result={result}
@@ -311,6 +415,7 @@ function fingerprintRequest(state: {
   inputFormat: AlgebraInputFormat;
   topic: AlgebraTopic;
   domain: AlgebraDomain;
+  domainSource: AlgebraDomainSource;
   variables: string;
   useAiExtraction: boolean;
   angleUnit: AlgebraAngleUnit;
@@ -327,6 +432,7 @@ function fingerprintRequest(state: {
     inputFormat: state.inputFormat,
     topic: state.topic,
     domain: state.domain,
+    domainSource: state.domainSource,
     variables: state.variables,
     useAiExtraction: state.useAiExtraction,
     angleUnit: state.angleUnit,

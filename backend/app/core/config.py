@@ -125,6 +125,10 @@ class Settings(BaseSettings):
     # Rolling 24h quotas (RateLimitRepository window); guests counted by IP.
     algebra_daily_limit: int = 200
     algebra_ai_daily_limit: int = 50
+    algebra_max_cost_per_request: int = 80
+    algebra_circuit_failure_threshold: int = 8
+    algebra_circuit_window_seconds: float = 120.0
+    algebra_circuit_open_seconds: float = 60.0
     dev_bypass_auth: bool = False
     user_secret_encryption_key: str | None = None
 

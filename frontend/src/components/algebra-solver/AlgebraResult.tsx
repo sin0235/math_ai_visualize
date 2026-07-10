@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { AlgebraSolveResponse, AlgebraVerificationCheck } from '../../api/client';
+import { downloadAlgebraPdf, type AlgebraSolveResponse, type AlgebraVerificationCheck } from '../../api/client';
 import { KatexSpan, MixedTextRenderer } from '../KatexSpan';
 import { AlgebraStepList } from './AlgebraStepList';
 
@@ -15,12 +15,27 @@ export function EmptyAlgebraResult() {
   );
 }
 
-export function AlgebraLoadingResult() {
+export function AlgebraLoadingResult({
+  elapsedSeconds = 0,
+  onCancel,
+}: {
+  elapsedSeconds?: number;
+  onCancel?: () => void;
+}) {
   return (
     <div className="algebra-empty-result" aria-live="polite" aria-busy="true">
       <EmptyResultIllustration />
       <strong>Đang giải bài toán...</strong>
-      <span>Đang lập lời giải từng bước và kiểm tra lại kết quả.</span>
+      <span>
+        Đang lập lời giải từng bước và kiểm tra lại kết quả
+        {elapsedSeconds > 0 ? ` · ${elapsedSeconds}s` : ''}.
+        Có thể mất tới ~15 giây.
+      </span>
+      {onCancel && (
+        <button type="button" className="algebra-action-btn" onClick={onCancel}>
+          Hủy chờ
+        </button>
+      )}
     </div>
   );
 }
@@ -114,7 +129,19 @@ export function AlgebraResult({
                 Tải .md
               </button>
               <button type="button" className="algebra-action-btn" onClick={() => downloadPrintableHtml(result)}>
-                Tải HTML/PDF
+                Tải HTML/in
+              </button>
+              <button
+                type="button"
+                className="algebra-action-btn"
+                onClick={() => {
+                  void downloadAlgebraPdf(result).catch(() => {
+                    setCopyFeedback('Không tải được PDF server');
+                    window.setTimeout(() => setCopyFeedback(''), 2500);
+                  });
+                }}
+              >
+                Tải PDF (server)
               </button>
             </>
           )}

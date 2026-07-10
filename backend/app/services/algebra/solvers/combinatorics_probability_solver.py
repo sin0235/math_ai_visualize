@@ -116,7 +116,7 @@ def _evaluate(text: str) -> tuple[sp.Expr, str, str, str]:
             rf"P(\bar{{A}})=1-\frac{{{k}}}{{{n}}}=\frac{{{n - k}}}{{{n}}}",
             "probability",
         )
-    # Independent product: P_and(p,q) with p,q as fractions a/b,c/d or decimals limited
+    # Independent product: P_and(p,q) with p,q as fractions a/b,c/d
     independent = re.fullmatch(
         r"(?:P_and|probability_and)\(\s*(\d+)\s*/\s*(\d+)\s*,\s*(\d+)\s*/\s*(\d+)\s*\)",
         text,
@@ -124,15 +124,47 @@ def _evaluate(text: str) -> tuple[sp.Expr, str, str, str]:
     )
     if independent:
         a, b, c, d = (int(independent.group(i)) for i in range(1, 5))
-        if b <= 0 or d <= 0:
-            raise ValueError("Mẫu số xác suất phải là số nguyên dương.")
-        if a < 0 or a > b or c < 0 or c > d:
-            raise ValueError("Mỗi xác suất thành phần phải nằm trong [0, 1].")
-        value = sp.Rational(a, b) * sp.Rational(c, d)
+        pa, pb = _validate_probability_pair(a, b, c, d)
+        value = pa * pb
         return (
             value,
             f"Hai biến cố độc lập: P(A∩B) = P(A)·P(B) = ({a}/{b})·({c}/{d}).",
             rf"P(A\cap B)=\frac{{{a}}}{{{b}}}\cdot\frac{{{c}}}{{{d}}}",
+            "probability",
+        )
+    # Independent union: Punion(a/b,c/d) = P(A)+P(B)-P(A)P(B)
+    punion = re.fullmatch(
+        r"(?:Punion|probability_union)\(\s*(\d+)\s*/\s*(\d+)\s*,\s*(\d+)\s*/\s*(\d+)\s*\)",
+        text,
+        re.IGNORECASE,
+    )
+    if punion:
+        a, b, c, d = (int(punion.group(i)) for i in range(1, 5))
+        pa, pb = _validate_probability_pair(a, b, c, d)
+        value = pa + pb - pa * pb
+        return (
+            value,
+            f"Hai biến cố độc lập: P(A∪B) = P(A)+P(B)−P(A)P(B) = {a}/{b} + {c}/{d} − ({a}/{b})({c}/{d}).",
+            rf"P(A\cup B)=\frac{{{a}}}{{{b}}}+\frac{{{c}}}{{{d}}}-\frac{{{a}}}{{{b}}}\cdot\frac{{{c}}}{{{d}}}",
+            "probability",
+        )
+    # Conditional under independence: Pcond(a/b,c/d) = P(A∩B)/P(B) = P(A)
+    # (documented assumption: A,B independent → P(A|B)=P(A))
+    pcond = re.fullmatch(
+        r"(?:Pcond|probability_cond)\(\s*(\d+)\s*/\s*(\d+)\s*,\s*(\d+)\s*/\s*(\d+)\s*\)",
+        text,
+        re.IGNORECASE,
+    )
+    if pcond:
+        a, b, c, d = (int(pcond.group(i)) for i in range(1, 5))
+        pa, pb = _validate_probability_pair(a, b, c, d)
+        if pb == 0:
+            raise ValueError("P(B) phải khác 0 khi tính xác suất có điều kiện.")
+        value = pa  # independence assumption
+        return (
+            value,
+            f"Giả sử A,B độc lập: P(A|B) = P(A∩B)/P(B) = P(A)·P(B)/P(B) = P(A) = {a}/{b}.",
+            rf"P(A\mid B)=\frac{{{a}}}{{{b}}}\ \text{{(độc lập)}}",
             "probability",
         )
     # Combination probability: P(C(n,k)/C(n,m)) style — Pcomb(n,k,total_choose)
@@ -192,8 +224,16 @@ def _evaluate(text: str) -> tuple[sp.Expr, str, str, str]:
         return result, f"Khai triển biểu thức và lấy hệ số của {variable_name}^{power}.", sp.latex(expression), "combinatorics"
     raise ValueError(
         "Dạng tổ hợp-xác suất chưa hỗ trợ. Dùng C(n,k), A(n,k), n!, coefficient(...), "
-        "P(k/n), P_not(k/n), P_and(a/b,c/d), Pcomb(n,k,r)."
+        "P(k/n), P_not(k/n), P_and(a/b,c/d), Punion(a/b,c/d), Pcond(a/b,c/d), Pcomb(n,k,r)."
     )
+
+
+def _validate_probability_pair(a: int, b: int, c: int, d: int) -> tuple[sp.Rational, sp.Rational]:
+    if b <= 0 or d <= 0:
+        raise ValueError("Mẫu số xác suất phải là số nguyên dương.")
+    if a < 0 or a > b or c < 0 or c > d:
+        raise ValueError("Mỗi xác suất thành phần phải nằm trong [0, 1].")
+    return sp.Rational(a, b), sp.Rational(c, d)
 
 
 def _parse_pair(match: re.Match[str]) -> tuple[int, int]:

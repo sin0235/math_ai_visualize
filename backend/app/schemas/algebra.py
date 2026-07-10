@@ -71,10 +71,14 @@ class AlgebraSolveRequest(BaseModel):
     variables: list[str] = Field(default_factory=list, max_length=8)
     parameters: list[str] = Field(default_factory=list, max_length=8)
     domain: Literal["R", "C", "N", "Z"] = "R"
+    # "default" = FE default R (AI may warn); "user" = explicit user choice (sticky).
+    domain_source: Literal["default", "user"] = "default"
     # Radian is the only internal unit; degree rewrites trig args as x*pi/180.
     angle_unit: Literal["radian", "degree"] = "radian"
     interval: AlgebraInterval | None = None
     options: AlgebraSolveOptions = Field(default_factory=AlgebraSolveOptions)
+    # When true and user is logged in, server persists a history row after solve.
+    save_history: bool = True
 
 
 class AlgebraSolveStep(BaseModel):
@@ -145,3 +149,40 @@ class AlgebraSolveResponse(BaseModel):
     errors: list[str] = Field(default_factory=list)
     request_id: str | None = None
     timings_ms: dict[str, int] = Field(default_factory=dict)
+    history_id: str | None = None
+    cost_score: int | None = None
+
+
+class AlgebraHistoryItem(BaseModel):
+    id: str
+    title: str | None = None
+    problem_preview: str = ""
+    topic: str = "auto"
+    status: str = "solved"
+    request_id: str | None = None
+    is_favorite: bool = False
+    archived_at: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+class AlgebraHistoryDetail(AlgebraHistoryItem):
+    request_json: dict = Field(default_factory=dict)
+    response: AlgebraSolveResponse | None = None
+
+
+class AlgebraHistoryCreateRequest(BaseModel):
+    request: AlgebraSolveRequest
+    response: AlgebraSolveResponse
+    title: str | None = None
+
+
+class AlgebraHistoryPatchRequest(BaseModel):
+    title: str | None = None
+    is_favorite: bool | None = None
+    archive: bool | None = None
+
+
+class AlgebraExportPdfRequest(BaseModel):
+    response: AlgebraSolveResponse | None = None
+    history_id: str | None = None

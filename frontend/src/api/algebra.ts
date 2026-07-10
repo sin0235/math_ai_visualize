@@ -1,4 +1,4 @@
-import { ApiError, apiUrl, fetchWithRetry, networkApiError, parseApiError } from './core';
+import { ApiError, apiUrl, fetchWithRetry, networkApiError, parseApiError, requestJson } from './core';
 
 export type AlgebraTopic = 'auto' | 'equation' | 'inequality' | 'exponential_log' | 'trigonometry' | 'complex' | 'sequence' | 'combinatorics_probability' | 'system' | 'parameter' | 'calculus_derivative' | 'calculus_limit' | 'calculus_integral';
 export type AlgebraStatus = 'solved' | 'partial' | 'unsupported' | 'error';
@@ -24,6 +24,7 @@ export interface AlgebraInterval {
 }
 
 export type AlgebraAngleUnit = 'radian' | 'degree';
+export type AlgebraDomainSource = 'default' | 'user';
 
 export interface AlgebraSolveRequest {
   input: string;
@@ -32,9 +33,11 @@ export interface AlgebraSolveRequest {
   variables?: string[];
   parameters?: string[];
   domain?: 'R' | 'C' | 'N' | 'Z';
+  domain_source?: AlgebraDomainSource;
   angle_unit?: AlgebraAngleUnit;
   interval?: AlgebraInterval | null;
   options?: AlgebraSolveOptions;
+  save_history?: boolean;
 }
 
 export interface AlgebraInputChip {
@@ -121,15 +124,39 @@ export interface AlgebraSolveResponse {
   errors: string[];
   request_id?: string | null;
   timings_ms?: Record<string, number>;
+  history_id?: string | null;
+  cost_score?: number | null;
 }
 
-export async function solveAlgebra(payload: AlgebraSolveRequest): Promise<AlgebraSolveResponse> {
+export interface AlgebraHistoryItem {
+  id: string;
+  title?: string | null;
+  problem_preview: string;
+  topic: string;
+  status: string;
+  request_id?: string | null;
+  is_favorite: boolean;
+  archived_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface AlgebraHistoryDetail extends AlgebraHistoryItem {
+  request_json: Record<string, unknown>;
+  response?: AlgebraSolveResponse | null;
+}
+
+export async function solveAlgebra(
+  payload: AlgebraSolveRequest,
+  init?: { signal?: AbortSignal },
+): Promise<AlgebraSolveResponse> {
   try {
     const response = await fetchWithRetry(apiUrl('/api/algebra/solve'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
       body: JSON.stringify(payload),
+      signal: init?.signal,
     });
     const body = await response.text();
     if (!body.trim()) throw new ApiError('Không thể giải bài đại số.');
@@ -139,7 +166,6 @@ export async function solveAlgebra(payload: AlgebraSolveRequest): Promise<Algebr
     } catch {
       throw new ApiError('Không thể giải bài đại số.');
     }
-    // 504 may still carry a structured AlgebraSolveResponse (request_id, warnings, timings).
     if (
       response.status === 504
       && parsed
@@ -157,7 +183,62 @@ export async function solveAlgebra(payload: AlgebraSolveRequest): Promise<Algebr
     }
     return parsed as AlgebraSolveResponse;
   } catch (caught) {
+    if (caught instanceof DOMException && caught.name === 'AbortError') {
+      throw new ApiError('Đã hủy yêu cầu giải.');
+    }
     if (caught instanceof ApiError) throw caught;
     throw networkApiError(caught, 'Không thể giải bài đại số.');
   }
+}
+
+export async function listAlgebraHistory(params?: {
+  limit?: number;
+  q?: string;
+  topic?: string;
+}): Promise<AlgebraHistoryItem[]> {
+  const search = new URLSearchParams();
+  if (params?.limit) search.set('limit', String(params.limit));
+  if (params?.q) search.set('q', params.q);
+  if (params?.topic) search.set('topic', params.topic);
+  const qs = search.toString();
+  return requestJson(
+    `/api/algebra/history${qs ? `?${qs}` : ''}`,
+    { method: 'GET', credentials: 'include' },
+    'Không tải được lịch sử đại số.',
+  );
+}
+
+export async function getAlgebraHistory(id: string): Promise<AlgebraHistoryDetail> {
+  return requestJson(
+    `/api/algebra/history/${encodeURIComponent(id)}`,
+    { method: 'GET', credentials: 'include' },
+    'Không tải được chi tiết lịch sử.',
+  );
+}
+
+export async function deleteAlgebraHistory(id: string): Promise<void> {
+  await requestJson(
+    `/api/algebra/history/${encodeURIComponent(id)}`,
+    { method: 'DELETE', credentials: 'include' },
+    'Không xóa được lịch sử.',
+  );
+}
+
+export async function downloadAlgebraPdf(response: AlgebraSolveResponse): Promise<void> {
+  const res = await fetchWithRetry(apiUrl('/api/algebra/export/pdf'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ response }),
+  });
+  if (!res.ok) {
+    throw await parseApiError(res, 'Không xuất được PDF.');
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = `algebra-solution-${(response.request_id || 'export').slice(0, 16)}.pdf`;
+  anchor.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
