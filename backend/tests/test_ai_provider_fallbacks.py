@@ -1142,7 +1142,12 @@ def test_render_tries_full_provider_order_before_mock(monkeypatch):
         "openrouter": {},
         "nvidia": {},
     })
-    scene, warnings = asyncio.run(extract_scene("x", runtime_settings=runtime_settings))
+    # preferred_ai_provider forces the multi-provider legacy fallback path (not tier-only).
+    scene, warnings = asyncio.run(extract_scene(
+        "x",
+        preferred_ai_provider="openrouter",
+        runtime_settings=runtime_settings,
+    ))
 
     assert scene.topic == "unknown"
     assert {provider for provider, _ in calls} >= {"openrouter", "nvidia", "ollama_gpt_oss"}

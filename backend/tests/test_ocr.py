@@ -713,7 +713,7 @@ def test_ocr_route_uses_env_openrouter_key_with_registry_ocr_profile(monkeypatch
 
 
 def test_ocr_route_uses_provider_default_for_empty_registry_ocr_profile(monkeypatch, isolated_database):
-    from app.services.model_registry import load_model_registry, save_provider_config, save_task_profile
+    from app.services.model_registry import invalidate_model_registry_cache, load_model_registry, save_provider_config
 
     settings = Settings(
         _env_file=None,
@@ -721,13 +721,29 @@ def test_ocr_route_uses_provider_default_for_empty_registry_ocr_profile(monkeypa
         openrouter_api_key="env-openrouter-key",
         openrouter_text_model="admin/text",
         openrouter_vision_model="env/vision",
+        local_ocr_enabled=False,
     )
     app.dependency_overrides[get_settings] = lambda: settings
     monkeypatch.setattr("app.api.routes_ocr.get_settings", lambda: settings)
     monkeypatch.setattr("app.services.model_registry.get_settings", lambda: settings)
     asyncio.run(load_model_registry(isolated_database, settings))
     asyncio.run(save_provider_config(isolated_database, "openrouter", "https://openrouter.ai/api/v1"))
-    asyncio.run(save_task_profile(isolated_database, "ocr", "openrouter", "", []))
+    # Empty model is not allowed via save_task_profile; store provider-only profile directly.
+    asyncio.run(
+        isolated_database.execute(
+            """
+            INSERT INTO ai_task_profiles (task, provider_id, model_id, fallbacks_json)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(task) DO UPDATE SET
+              provider_id = excluded.provider_id,
+              model_id = excluded.model_id,
+              fallbacks_json = excluded.fallbacks_json,
+              updated_at = CURRENT_TIMESTAMP
+            """,
+            ["ocr", "openrouter", "", "[]"],
+        )
+    )
+    invalidate_model_registry_cache()
     payloads = []
 
     class FakeAsyncClient:
@@ -809,16 +825,18 @@ def test_ocr_route_uses_router9_for_router9_github_profile(monkeypatch, isolated
 
 
 def test_ocr_route_uses_admin_stored_router9_key_and_profile(monkeypatch, isolated_database):
-    settings = Settings(_env_file=None, sqlite_path=isolated_database.path)
+    from app.services.model_registry import load_model_registry, save_provider_config, save_task_profile, set_allowed_models
+
+    settings = Settings(_env_file=None, sqlite_path=isolated_database.path, local_ocr_enabled=False)
     app.dependency_overrides[get_settings] = lambda: settings
     monkeypatch.setattr("app.api.routes_ocr.get_settings", lambda: settings)
     monkeypatch.setattr("app.services.model_registry.get_settings", lambda: settings)
+    # Registry is the authority for OCR profile; legacy ai_settings still supplies the API key.
     admin_ai_settings = {
         "version": 1,
         "router9": {
             "api_key": "router9-secret",
             "base_url": "https://api.9router.com/v1",
-            "model": "gh/gpt-5-mini",
             "allowed_model_ids": ["gh/gpt-5-mini"],
         },
         "ocr": {"provider": "router9", "model": "gh/gpt-5-mini", "max_image_mb": 5},
@@ -829,6 +847,10 @@ def test_ocr_route_uses_admin_stored_router9_key_and_profile(monkeypatch, isolat
             ["ai_settings", json.dumps(admin_ai_settings)],
         )
     )
+    asyncio.run(load_model_registry(isolated_database, settings))
+    asyncio.run(save_provider_config(isolated_database, "router9", "https://api.9router.com/v1", api_key_configured=True))
+    asyncio.run(set_allowed_models(isolated_database, "router9", ["gh/gpt-5-mini"]))
+    asyncio.run(save_task_profile(isolated_database, "ocr", "router9", "gh/gpt-5-mini", []))
     calls = []
 
     async def fake_router9(self, image_data_url: str, model: str | None = None):
@@ -843,7 +865,7 @@ def test_ocr_route_uses_admin_stored_router9_key_and_profile(monkeypatch, isolat
 
     response = TestClient(app).post("/api/ocr", json={"image_data_url": _IMAGE_DATA_URL})
 
-    assert response.status_code == 200
+    assert response.status_code == 200, response.text
     assert response.json()["provider"] == "router9"
     assert response.json()["model"] == "gh/gpt-5-mini"
     assert calls == [("router9-secret", "gh/gpt-5-mini")]

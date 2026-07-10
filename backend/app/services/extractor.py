@@ -209,43 +209,6 @@ async def extract_scene(
                 attempts.append(attempt)
                 _log_render_attempt_failure(attempt, stage="extract")
 
-        # Tier exhausted: try remaining configured providers before mock (legacy resilience).
-        tried = {attempt.provider for attempt in attempts}
-        for provider in _render_provider_order(settings, None, False):
-            if provider in tried:
-                continue
-            for model in _provider_model_candidates(provider, settings, None):
-                remaining = _render_budget_remaining(started_at)
-                if remaining < _RENDER_MIN_ATTEMPT_SECONDS:
-                    break
-                attempt_timeout = min(remaining, _RENDER_MAX_ATTEMPT_SECONDS)
-                selected_model = model or _provider_model(provider, settings)
-                try:
-                    scene_json = await asyncio.wait_for(
-                        _extract_with_provider(
-                            provider, settings, problem_text, grade,
-                            render_settings.reasoning_layer,
-                            preferred_ai_model=model,
-                            reasoning_plan=reasoning_plan,
-                            system_prompt=scene_sys_prompt,
-                            thinking_enabled=render_settings.thinking_enabled,
-                        ),
-                        timeout=attempt_timeout,
-                    )
-                    warnings.extend(_render_attempt_warnings(attempts))
-                    try:
-                        scene, cas_warnings = build_scene_with_cas_fix(scene_json, verify=render_settings.verify_scene)
-                    except (ValidationError, ValueError, KeyError) as error:
-                        attempt = RenderAttempt(provider, selected_model, str(error))
-                        attempts.append(attempt)
-                        continue
-                    warnings.extend(cas_warnings)
-                    return scene, warnings
-                except Exception as error:
-                    attempt = RenderAttempt(provider, selected_model, str(error) or error.__class__.__name__)
-                    attempts.append(attempt)
-                    tried.add(provider)
-
         warnings.extend(_render_attempt_warnings(attempts))
         if attempts:
             warnings.append("Tất cả AI provider đều lỗi; đang dùng mock extractor.")

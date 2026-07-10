@@ -280,9 +280,6 @@ async def seed_model_registry(db: DatabaseClient, settings: Settings) -> None:
     repo = ModelRegistryRepository(db)
     if await repo.has_any_provider():
         return
-    legacy = await load_legacy_ai_settings(db)
-    if legacy is not None:
-        settings = settings_from_admin_ai_settings(settings, legacy, registry_from_settings(settings))
     provider_data = _provider_seed_data(settings, None)
     for provider_id, data in provider_data.items():
         await repo.insert_seed_provider(provider_id, PROVIDER_LABELS[provider_id], data["base_url"], bool(data["api_key_configured"]))
@@ -302,14 +299,15 @@ async def seed_model_registry(db: DatabaseClient, settings: Settings) -> None:
     await set_model_setting(db, "openrouter_reasoning_enabled", settings.openrouter_reasoning_enabled)
     await set_model_setting(db, "ocr_max_image_mb", 5)
     await set_model_setting(db, "default_provider", settings.ai_provider)
-    ocr_provider, ocr_model = default_ocr_profile(settings, legacy)
+    ocr_provider, ocr_model = default_ocr_profile(settings)
     text_provider, text_model = default_text_profile(settings, settings.ai_provider)
     for task in TIERED_TASKS:
         for tier in TIER_KEYS:
             await save_task_profile(db, f"{task}_{tier}", text_provider, text_model, [])
     await save_task_profile(db, "reasoning", text_provider, text_model, [])
     await save_task_profile(db, "solver_explanation", text_provider, text_model, [])
-    await save_task_profile(db, "ocr", ocr_provider, ocr_model or "", [])
+    if ocr_model:
+        await save_task_profile(db, "ocr", ocr_provider, ocr_model, [])
 
 
 
@@ -440,15 +438,12 @@ async def save_provider_check(db: DatabaseClient, provider_id: str, status: str,
 async def save_task_profile(db: DatabaseClient, task: str, provider_id: str, model_id: str, fallbacks: list[str]) -> None:
     if provider_id == "auto":
         raise ValueError("Task profile phải lưu provider_id rõ ràng, không dùng auto.")
-    provider_id = canonical_provider_id(provider_id) or provider_id
-    if model_id:
-        ref = canonicalize_explicit_provider_model(provider_id, model_id)
-        provider_id = ref.provider_id
-        model_id = ref.model_id
-        fallbacks, _ = canonicalize_fallback_models(provider_id, fallbacks, strict=True)
-    else:
-        # Empty model means "use provider default" at resolve/extract time (legacy admin/OCR flows).
-        fallbacks, _ = canonicalize_fallback_models(provider_id, fallbacks, strict=True)
+    if not model_id:
+        raise ValueError(f"Task profile {task} phải chọn model.")
+    ref = canonicalize_explicit_provider_model(provider_id, model_id)
+    provider_id = ref.provider_id
+    model_id = ref.model_id
+    fallbacks, _ = canonicalize_fallback_models(provider_id, fallbacks, strict=True)
     await ModelRegistryRepository(db).upsert_task_profile(task, provider_id, model_id, fallbacks)
     invalidate_model_registry_cache()
 
@@ -692,20 +687,20 @@ def resolve_task_profile(registry: ModelRegistry, task: str, preferred_provider:
         raw_model_id = ""
     model_id = normalize_model_for_provider(provider_id, raw_model_id) or ""
     if not model_id:
-        # Provider-only profile: allow empty model so callers can fall back to settings defaults.
-        if preferred_model:
-            raise ValueError(f"Task profile {task} phải chọn model.")
+        # Prefer first allowed/enabled model; empty bare profile (no preferred) stays empty for default fallback.
         allowed = registry.allowed_model_ids(provider_id)
         enabled = registry.enabled_model_ids(provider_id)
         model_id = (allowed[0] if allowed else enabled[0] if enabled else "") or ""
         if not model_id:
+            if preferred_provider_id or preferred_model:
+                raise ValueError(f"Task profile {task} phải chọn model.")
             fallbacks = _resolve_profile_fallbacks(registry, profile.fallbacks, provider_id) if profile else []
             return TaskProfile(task, provider_id, "", fallbacks)
-    if model_id and not model_is_allowed(registry, provider_id, model_id):
+    if not model_is_allowed(registry, provider_id, model_id):
         raise ValueError(f"Model {model_id} của task profile {task} không khả dụng trong provider {provider_id}.")
 
     fallbacks = _resolve_profile_fallbacks(registry, profile.fallbacks, provider_id) if profile else []
-    if task == "reasoning" and model_id:
+    if task == "reasoning":
         provider_id, model_id, fallbacks = _prefer_thinking_model(registry, provider_id, model_id, fallbacks)
     return TaskProfile(task, provider_id, model_id, fallbacks)
 
