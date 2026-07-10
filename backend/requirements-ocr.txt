@@ -1,6 +1,6 @@
 --extra-index-url https://download.pytorch.org/whl/cpu
 
-Pillow>=10,<12
+Pillow>=12.3.0,<13
 opencv-python-headless>=4.10,<5
 paddlepaddle>=3.0,<4
 paddleocr>=3.0,<4
