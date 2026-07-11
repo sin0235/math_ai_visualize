@@ -17691,3 +17691,291 @@ button.analyzer-guide-label:hover {
     break-inside: avoid;
   }
 }
+
+/* Analyzer focused workspace */
+.fa2-panel {
+  gap: 12px;
+}
+
+.fa2-control-panel {
+  display: grid;
+  gap: 12px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  padding: 0 0 14px;
+}
+
+.fa2-sticky-controls {
+  grid-template-columns: minmax(210px, 0.28fr) minmax(0, 1fr);
+  align-items: center;
+  gap: clamp(16px, 2vw, 28px);
+  border: 0;
+  padding: 0;
+}
+
+.fa2-sticky-controls > .fa2-header {
+  min-width: 0;
+}
+
+.fa2-sticky-controls > .fa2-formula-card {
+  min-width: 0;
+}
+
+.fa2-advanced-panel {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  padding-top: 2px;
+}
+
+.fa2-advanced-panel .fa2-control-card {
+  padding-bottom: 0;
+}
+
+.fa2-results-panel {
+  min-height: 420px;
+}
+
+.fa2-actions {
+  position: relative;
+  z-index: 20;
+  display: grid;
+  gap: 6px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 10px;
+}
+
+.fa2-action-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.fa2-action-menu {
+  position: relative;
+}
+
+.fa2-action-menu > summary,
+.fa2-graph-settings > summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  border-radius: 8px;
+  padding: 6px 10px;
+  background: var(--paper);
+  color: var(--ink-2);
+  font-size: 0.8rem;
+  font-weight: 800;
+  cursor: pointer;
+  list-style: none;
+}
+
+.fa2-action-menu > summary::-webkit-details-marker,
+.fa2-graph-settings > summary::-webkit-details-marker {
+  display: none;
+}
+
+.fa2-action-menu[open] > summary,
+.fa2-graph-settings[open] > summary {
+  background: var(--surface-2);
+}
+
+.fa2-action-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 30;
+  width: min(340px, calc(100vw - 32px));
+  max-height: min(420px, 70vh);
+  overflow: auto;
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  padding: 10px;
+  background: var(--paper);
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.16);
+}
+
+.fa2-action-menu-end .fa2-action-popover {
+  right: 0;
+  left: auto;
+}
+
+.fa2-action-list,
+.fa2-action-form,
+.fa2-history-popover,
+.fa2-history-popover ul {
+  display: grid;
+  gap: 8px;
+}
+
+.fa2-action-list button,
+.fa2-history-popover button {
+  width: 100%;
+  border: 0;
+  border-radius: 8px;
+  padding: 9px 10px;
+  background: var(--surface);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.fa2-action-form label,
+.fa2-history-popover label {
+  display: grid;
+  gap: 5px;
+  color: var(--ink-3);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.fa2-action-form input,
+.fa2-action-form select,
+.fa2-history-popover input {
+  width: 100%;
+  min-height: 36px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  padding: 7px 9px;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.fa2-history-popover ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fa2-history-popover p {
+  margin: 4px;
+  color: var(--ink-4);
+  font-size: 0.8rem;
+}
+
+.fa2-action-message,
+.fa2-tool-status,
+.fa2-empty-note {
+  margin: 0;
+  color: var(--ink-4);
+  font-size: 0.78rem;
+}
+
+.fa2-result-disclosure,
+.fa2-warning-summary {
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+.fa2-result-disclosure > summary,
+.fa2-warning-summary > summary {
+  color: var(--ink-3);
+  font-size: 0.8rem;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.fa2-result-disclosure[open] > summary,
+.fa2-warning-summary[open] > summary {
+  margin-bottom: 10px;
+  color: var(--ink);
+}
+
+.fa2-warning-summary {
+  color: #92400e;
+}
+
+.fa2-warning-summary ul {
+  margin: 8px 0 0;
+  padding-left: 20px;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.fa2-graph-primary-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.fa2-graph-settings {
+  position: relative;
+  margin-left: auto;
+}
+
+.fa2-graph-settings-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 15;
+  display: grid;
+  gap: 12px;
+  width: min(460px, calc(100vw - 32px));
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  padding: 12px;
+  background: var(--paper);
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.16);
+}
+
+@media (min-width: 1101px) {
+  .fa2-result-shell {
+    grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.65fr);
+    gap: clamp(18px, 2vw, 28px);
+  }
+}
+
+@media (max-width: 900px) {
+  .fa2-sticky-controls,
+  .fa2-advanced-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .fa2-sticky-controls {
+    align-items: stretch;
+  }
+
+  .fa2-action-menu-end .fa2-action-popover {
+    right: auto;
+    left: 0;
+  }
+}
+
+@media (max-width: 560px) {
+  .fa2-formula-row-control {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .fa2-header-sub,
+  .fa2-expression-preview > span:first-child {
+    display: none;
+  }
+
+  .fa2-action-bar {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    padding-bottom: 2px;
+  }
+
+  .fa2-action-bar > *,
+  .fa2-action-menu > summary {
+    flex: 0 0 auto;
+  }
+
+  .fa2-graph-settings {
+    margin-left: 0;
+  }
+
+  .fa2-graph-settings-panel {
+    right: auto;
+    left: 0;
+  }
+}
+
+@media print {
+  .fa2-actions,
+  .fa2-graph-primary-toolbar {
+    display: none !important;
+  }
+}

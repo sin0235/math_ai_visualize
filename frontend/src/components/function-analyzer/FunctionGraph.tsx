@@ -35,7 +35,7 @@ export function FunctionGraph({ result }: { result: AnalyzeResponse }) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const dragRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
   const [view, setView] = useState({ scale: 1, tx: 0, ty: 0 });
-  const [rendererMode, setRendererMode] = useState<RendererMode>('auto');
+  const [rendererMode, setRendererMode] = useState<RendererMode>('svg');
   const [geogebraStatus, setGeogebraStatus] = useState<GeoGebraStatus>('loading');
   const [rendererAttempt, setRendererAttempt] = useState(0);
   const [selectedPointKey, setSelectedPointKey] = useState<string | null>(null);
@@ -64,7 +64,7 @@ export function FunctionGraph({ result }: { result: AnalyzeResponse }) {
   }, [result.line_analysis?.graph_expression, result.line_analysis?.graph_expressions]);
 
   useEffect(() => {
-    setRendererMode('auto');
+    setRendererMode('svg');
     setGeogebraStatus('loading');
     setSampledGraph(null);
     setFitMode('auto');
@@ -348,39 +348,43 @@ export function FunctionGraph({ result }: { result: AnalyzeResponse }) {
 
   return (
     <div className="fa2-graph-card">
-      <GraphRendererToolbar
-        active="svg"
-        status={geogebraStatus}
-        onSelect={setRendererMode}
-        commands={result.geogebra_commands}
-        onRetry={() => {
-          setGeogebraStatus('loading');
-          setRendererMode('auto');
-          setRendererAttempt((attempt) => attempt + 1);
-        }}
-      />
-      <div className="fa2-graph-toolbar fa2-graph-controls" aria-label="Điều khiển khung nhìn đồ thị">
-        <div className="fa2-graph-toolbar-actions" role="group" aria-label="Chế độ căn khung">
-          <button type="button" className="sp-btn-secondary" aria-pressed={fitMode === 'auto'} onClick={() => selectFitMode('auto')}>Tự căn</button>
-          <button type="button" className="sp-btn-secondary" aria-pressed={fitMode === 'domain'} onClick={() => selectFitMode('domain')}>Theo miền</button>
-          <button type="button" className="sp-btn-secondary" aria-pressed={fitMode === 'manual'} disabled>Thủ công</button>
-        </div>
-        <div className="fa2-graph-toggle-list" role="group" aria-label="Lớp hiển thị">
-          <GraphToggle label="Lưới" checked={showGrid} onChange={setShowGrid} />
-          <GraphToggle label="Trục" checked={showAxes} onChange={setShowAxes} />
-          <GraphToggle label="Tiệm cận" checked={showAsymptotes} onChange={setShowAsymptotes} />
-          <GraphToggle label="Điểm" checked={showPoints} onChange={setShowPoints} />
-          <GraphToggle label="f′" checked={showDerivative} onChange={setShowDerivative} disabled={!derivativeExpression} />
-          <GraphToggle label="f″" checked={showSecondDerivative} onChange={setShowSecondDerivative} disabled={!secondDerivativeExpression} />
-          <GraphToggle label="Công cụ" checked={showToolOverlay} onChange={setShowToolOverlay} disabled={!result.interval_analysis && !result.line_analysis} />
-        </div>
-        <div className="fa2-graph-toolbar-actions">
-          <button type="button" className="sp-btn-secondary" onClick={() => zoomAt(1.14)} aria-label="Phóng to">+</button>
-          <button type="button" className="sp-btn-secondary" onClick={() => zoomAt(1 / 1.14)} aria-label="Thu nhỏ">-</button>
-          <button type="button" className="sp-btn-secondary" onClick={() => selectFitMode('auto')}>Reset</button>
-          <button type="button" className="sp-btn-secondary" onClick={exportSvg}>SVG</button>
-          <button type="button" className="sp-btn-secondary" onClick={() => void exportPng()}>PNG</button>
-        </div>
+      <div className="fa2-graph-primary-toolbar" aria-label="Điều khiển đồ thị">
+        <button type="button" className="sp-btn-secondary" aria-pressed={fitMode === 'auto'} onClick={() => selectFitMode('auto')}>Tự căn</button>
+        <button type="button" className="sp-btn-secondary" onClick={() => zoomAt(1.14)} aria-label="Phóng to">+</button>
+        <button type="button" className="sp-btn-secondary" onClick={() => zoomAt(1 / 1.14)} aria-label="Thu nhỏ">−</button>
+        <button type="button" className="sp-btn-secondary" onClick={() => selectFitMode('auto')}>Đặt lại</button>
+        <details className="fa2-graph-settings">
+          <summary>Tùy chỉnh đồ thị</summary>
+          <div className="fa2-graph-settings-panel">
+            <GraphRendererToolbar
+              active="svg"
+              status={geogebraStatus}
+              onSelect={setRendererMode}
+              commands={result.geogebra_commands}
+              onRetry={() => {
+                setGeogebraStatus('loading');
+                setRendererMode('geogebra');
+                setRendererAttempt((attempt) => attempt + 1);
+              }}
+            />
+            <div className="fa2-graph-toolbar-actions" role="group" aria-label="Chế độ căn khung">
+              <button type="button" className="sp-btn-secondary" aria-pressed={fitMode === 'domain'} onClick={() => selectFitMode('domain')}>Theo miền</button>
+            </div>
+            <div className="fa2-graph-toggle-list" role="group" aria-label="Lớp hiển thị">
+              <GraphToggle label="Lưới" checked={showGrid} onChange={setShowGrid} />
+              <GraphToggle label="Trục" checked={showAxes} onChange={setShowAxes} />
+              <GraphToggle label="Tiệm cận" checked={showAsymptotes} onChange={setShowAsymptotes} />
+              <GraphToggle label="Điểm" checked={showPoints} onChange={setShowPoints} />
+              <GraphToggle label="f′" checked={showDerivative} onChange={setShowDerivative} disabled={!derivativeExpression} />
+              <GraphToggle label="f″" checked={showSecondDerivative} onChange={setShowSecondDerivative} disabled={!secondDerivativeExpression} />
+              <GraphToggle label="Công cụ" checked={showToolOverlay} onChange={setShowToolOverlay} disabled={!result.interval_analysis && !result.line_analysis} />
+            </div>
+            <div className="fa2-graph-toolbar-actions">
+              <button type="button" className="sp-btn-secondary" onClick={exportSvg}>Tải SVG</button>
+              <button type="button" className="sp-btn-secondary" onClick={() => void exportPng()}>Tải PNG</button>
+            </div>
+          </div>
+        </details>
       </div>
       {exportStatus && <span className="fa2-graph-status" role="status">{exportStatus}</span>}
       <p id={`${svgId}-description`} className="sr-only">

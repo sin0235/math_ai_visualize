@@ -43,7 +43,7 @@ export function AnalyzerInput({
   onImageChange,
   onOpenGuide,
 }: AnalyzerInputProps) {
-  const [showAdvancedControls, setShowAdvancedControls] = useState(true);
+  const [showAdvancedControls, setShowAdvancedControls] = useState(false);
   const [isDraggingImage, setIsDraggingImage] = useState(false);
   const [inputMode, setInputMode] = useState<'plain' | 'latex'>('plain');
   const [registry, setRegistry] = useState<AnalyzerCapabilityRegistry | null>(null);
@@ -132,7 +132,7 @@ export function AnalyzerInput({
   }
 
   return (
-    <aside className="fa2-control-panel">
+    <section className="fa2-control-panel" aria-label="Nhập hàm số">
       <div className="fa2-sticky-controls">
         <div className="fa2-header">
           <div className="fa2-header-icon" aria-hidden="true"><SvgIcon name="wave" /></div>
@@ -203,7 +203,7 @@ export function AnalyzerInput({
             {expression.trim() ? <KatexSpan tex={previewTex} /> : <span>Nhập biểu thức để xem công thức.</span>}
           </div>
           <small id="fa-expression-syntax" className="fa2-expression-syntax">
-            Biến: <code>x</code>{registry?.parameters.supported.includes('m') ? <>; tham số: <code>m</code></> : null}. Hàm: {registry?.parser.functions.join(', ') ?? 'đang tải…'}
+            Dùng biến <code>x</code>{registry?.parameters.supported.includes('m') ? <> và tham số <code>m</code></> : null}. Xem hướng dẫn để biết cú pháp hỗ trợ.
           </small>
           {parameterDetected && (
             <fieldset className="fa2-parameter-controls" disabled={loading || ocrLoading}>
@@ -278,7 +278,7 @@ export function AnalyzerInput({
             </fieldset>
           )}
           <button type="button" className="fa2-advanced-toggle" onClick={() => setShowAdvancedControls((value) => !value)} aria-expanded={showAdvancedControls}>
-            {showAdvancedControls ? 'Ẩn tùy chọn' : 'Hiện tùy chọn'}
+            {showAdvancedControls ? 'Ẩn nhập nâng cao' : 'Ví dụ và nhập bằng ảnh'}
             <SvgIcon name="chevron" />
           </button>
         </div>
@@ -375,7 +375,7 @@ export function AnalyzerInput({
       </div>}
 
       {error && <div id="fa-expression-error" className="sp-error" role="alert">{error}</div>}
-    </aside>
+    </section>
   );
 }
 
