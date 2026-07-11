@@ -35,7 +35,7 @@ export function FunctionGraph({ result }: { result: AnalyzeResponse }) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const dragRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
   const [view, setView] = useState({ scale: 1, tx: 0, ty: 0 });
-  const [rendererMode, setRendererMode] = useState<RendererMode>('svg');
+  const [rendererMode, setRendererMode] = useState<RendererMode>('geogebra');
   const [geogebraStatus, setGeogebraStatus] = useState<GeoGebraStatus>('loading');
   const [rendererAttempt, setRendererAttempt] = useState(0);
   const [selectedPointKey, setSelectedPointKey] = useState<string | null>(null);
@@ -69,7 +69,7 @@ export function FunctionGraph({ result }: { result: AnalyzeResponse }) {
   }, [result.line_analysis?.graph_expression, result.line_analysis?.graph_expressions]);
 
   useEffect(() => {
-    setRendererMode('svg');
+    setRendererMode('geogebra');
     setGeogebraStatus('loading');
     setSampledGraph(null);
     setFitMode('auto');
@@ -219,6 +219,7 @@ export function FunctionGraph({ result }: { result: AnalyzeResponse }) {
             renderer="geogebra_2d"
             scene={scene}
             view={scene.view}
+            viewBounds={graph.bounds}
             onStatusChange={handleGeoGebraStatus}
             embedded
           />
@@ -701,7 +702,7 @@ class RendererErrorBoundary extends Component<{
   }
 
   render() {
-    if (this.state.failed) return <div className="info-box">Đang chuyển sang SVG...</div>;
+    if (this.state.failed) return <div className="info-box">GeoGebra không thể hiển thị đồ thị này. Chọn SVG để tiếp tục.</div>;
     return this.props.children;
   }
 }

@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { getAnalyzerCapabilities, type AnalyzerCapabilityRegistry, type FunctionOcrExtraction } from '../../api/client';
 import { KatexSpan, sympyToLatex } from '../KatexSpan';
-import { EXAMPLE_GROUPS } from './constants';
 import { SvgIcon } from './icons';
 
 interface AnalyzerInputProps {
@@ -43,7 +42,6 @@ export function AnalyzerInput({
   onImageChange,
   onOpenGuide,
 }: AnalyzerInputProps) {
-  const [showAdvancedControls, setShowAdvancedControls] = useState(false);
   const [isDraggingImage, setIsDraggingImage] = useState(false);
   const [inputMode, setInputMode] = useState<'plain' | 'latex'>('plain');
   const [registry, setRegistry] = useState<AnalyzerCapabilityRegistry | null>(null);
@@ -51,16 +49,6 @@ export function AnalyzerInput({
   const [parameterMinDraft, setParameterMinDraft] = useState('-10');
   const [parameterMaxDraft, setParameterMaxDraft] = useState('10');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const exampleGroups = useMemo(() => {
-    if (!registry) return EXAMPLE_GROUPS;
-    const groups = new Map<string, Array<{ label: string; value: string }>>();
-    for (const example of registry.examples) {
-      const items = groups.get(example.category) ?? [];
-      items.push({ label: example.label, value: example.expression });
-      groups.set(example.category, items);
-    }
-    return Array.from(groups, ([label, items]) => ({ label, items }));
-  }, [registry]);
   const previewTex = inputMode === 'latex' ? expression : sympyToLatex(expression);
   const parameterMin = Number(parameterMinDraft);
   const parameterMax = Number(parameterMaxDraft);
@@ -142,7 +130,12 @@ export function AnalyzerInput({
           </div>
         </div>
 
-        <div className="fa2-control-card fa2-formula-card">
+        <div
+          className={`fa2-control-card fa2-formula-card ${isDraggingImage ? 'is-dragging' : ''}`}
+          onDragOver={handleImageDragOver}
+          onDragLeave={handleImageDragLeave}
+          onDrop={handleImageDrop}
+        >
           <div className="fa2-control-card-head">
             <span>Nhập công thức</span>
             <label className="fa2-input-mode">
@@ -163,6 +156,7 @@ export function AnalyzerInput({
               <SvgIcon name="hint" />
             </button>
           </div>
+          <input ref={fileInputRef} type="file" accept="image/*" capture="environment" hidden onChange={(e) => void handleFileChange(e.target.files?.[0])} />
           <div className="fa2-formula-row-control">
             <div className="fa2-input-wrap">
               <span className="fa2-prefix">y =</span>
@@ -194,6 +188,16 @@ export function AnalyzerInput({
                 {registry?.parser.functions.map((name) => <option key={name} value={`${name}(`} />)}
               </datalist>
             </div>
+            <button
+              type="button"
+              className="sp-btn-secondary fa2-image-input-button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={loading || ocrLoading}
+              aria-label="Chọn ảnh công thức"
+            >
+              {ocrLoading ? <span className="sp-spinner" aria-hidden="true" /> : <SvgIcon name="attach" />}
+              <span>{ocrLoading ? 'Đang đọc' : 'Chọn ảnh'}</span>
+            </button>
             <button id="fa-submit-btn" type="button" className="sp-btn-primary" onClick={onAnalyze} disabled={loading || ocrLoading || !!ocrCandidate || !expression.trim()}>
               {loading ? <span className="sp-spinner" aria-hidden="true" /> : ocrCandidate ? 'Xác nhận bên dưới' : 'Phân tích'}
             </button>
@@ -277,10 +281,6 @@ export function AnalyzerInput({
               )}
             </fieldset>
           )}
-          <button type="button" className="fa2-advanced-toggle" onClick={() => setShowAdvancedControls((value) => !value)} aria-expanded={showAdvancedControls}>
-            {showAdvancedControls ? 'Ẩn nhập nâng cao' : 'Ví dụ và nhập bằng ảnh'}
-            <SvgIcon name="chevron" />
-          </button>
         </div>
         {ocrCandidate && (
           <section className="fa2-ocr-review" aria-labelledby="fa2-ocr-review-title">
@@ -326,53 +326,6 @@ export function AnalyzerInput({
           </section>
         )}
       </div>
-
-      {showAdvancedControls && <div className="fa2-advanced-panel">
-        <div className="fa2-control-card">
-          <div className="fa2-control-card-head"><span>Ví dụ nhanh</span></div>
-          <div className="fa2-chip-groups">
-            {exampleGroups.map((group) => (
-              <div key={group.label} className="fa2-chip-group">
-                <div className="fa2-chip-group-title">{group.label}</div>
-                <div className="sp-chips">
-                  {group.items.map((ex) => <button key={ex.value} type="button" className="sp-chip" onClick={() => onExpressionChange(ex.value)}>{ex.label}</button>)}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="fa2-control-card fa2-upload-card">
-          <div className="fa2-control-card-head"><span>Nhập bằng ảnh</span></div>
-          <input ref={fileInputRef} type="file" accept="image/*" capture="environment" hidden onChange={(e) => void handleFileChange(e.target.files?.[0])} />
-          <div
-            className={`fa2-ocr-dropzone ${isDraggingImage ? 'is-dragging' : ''}`}
-            role="button"
-            tabIndex={loading || ocrLoading ? -1 : 0}
-            aria-label="Chọn ảnh để OCR công thức"
-            aria-disabled={loading || ocrLoading}
-            onKeyDown={(event) => {
-              if ((event.key === 'Enter' || event.key === ' ') && !loading && !ocrLoading) {
-                event.preventDefault();
-                fileInputRef.current?.click();
-              }
-            }}
-            onDragOver={handleImageDragOver}
-            onDragLeave={handleImageDragLeave}
-            onDrop={handleImageDrop}
-          >
-            <div className="fa2-ocr-dropzone-icon" aria-hidden="true"><SvgIcon name="upload" /></div>
-            <strong>{ocrLoading ? 'Đang đọc ảnh...' : 'Kéo thả ảnh vào đây'}</strong>
-            <span>Hoặc chọn tệp / dán ảnh từ clipboard để OCR công thức.</span>
-            <div className="fa2-upload-actions">
-              <button type="button" className="sp-btn-secondary" onClick={() => fileInputRef.current?.click()} disabled={loading || ocrLoading}>
-                {ocrLoading ? <span className="sp-spinner" aria-hidden="true" /> : <SvgIcon name="attach" />} Chọn ảnh
-              </button>
-              <button type="button" className="sp-btn-secondary" onClick={() => void handleImageButtonClick()} disabled={loading || ocrLoading}>Dán ảnh clipboard</button>
-            </div>
-          </div>
-        </div>
-      </div>}
 
       {error && <div id="fa-expression-error" className="sp-error" role="alert">{error}</div>}
     </section>

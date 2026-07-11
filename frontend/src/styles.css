@@ -8256,9 +8256,27 @@ pre {
 
 .fa2-formula-row-control {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 112px;
+  grid-template-columns: minmax(0, 1fr) auto 112px;
   gap: 8px;
   align-items: center;
+}
+
+.fa2-formula-card.is-dragging {
+  outline: 2px dashed var(--ink);
+  outline-offset: 8px;
+}
+
+.fa2-image-input-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.fa2-image-input-button svg {
+  width: 16px;
+  height: 16px;
 }
 
 .fa2-input-mode {
