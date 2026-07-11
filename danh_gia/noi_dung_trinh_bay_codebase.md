@@ -1,431 +1,186 @@
-# Nội dung trình bày dự án AI Math Renderer sau khi rà soát codebase
+# Nội dung thuyết trình dự án AI Math Renderer
 
-Tài liệu này dùng để trình bày dự án. Nội dung được đối chiếu theo mã nguồn hiện có, không tin tuyệt đối vào README hay mô tả cũ.
+## 1. Mở đầu từ trải nghiệm thực tế
 
-## 1. Nguyên tắc rà soát
+Trong quá trình gia sư cho một học sinh chuẩn bị từ lớp 11 lên lớp 12, nhóm gặp một tình huống lặp lại nhiều lần. Khi học đến hình học không gian, học sinh có thể nhớ công thức nhưng không hình dung rõ đường thẳng chéo nhau, vị trí của mặt phẳng, chân đường vuông góc hay góc giữa các đối tượng trong không gian. Một hình vẽ tĩnh trên giấy không đủ để em quan sát từ nhiều góc, xoay mô hình hoặc tự kiểm tra giả thuyết.
 
-Nguyên tắc chính:
+Ở phía người dạy, để tạo một tiết học trực quan phải chuyển qua nhiều công cụ rời rạc: đọc đề từ ảnh hoặc PDF, gõ lại dữ kiện, dựng hình, khảo sát hàm số, soạn lời giải rồi xuất tài liệu. Mỗi bước đều có chi phí thao tác và nguy cơ sai lệch dữ liệu. Từ trải nghiệm đó, nhóm nhận ra đây không phải khó khăn của riêng một học sinh, mà là khoảng trống chung giữa đề toán, công cụ trực quan và quá trình dạy học.
 
-- Code là nguồn sự thật chính.
-- Docs chỉ dùng để tham khảo ngữ cảnh.
-- Chỉ trình bày là “đã có” khi frontend/backend/migration/config/test có bằng chứng tương ứng.
-- Phần chưa đủ bằng chứng được chuyển sang “lộ trình”, không nói như hiện trạng hoàn tất.
+Câu hỏi đặt ra là: có thể biến một đề toán thành học liệu trực quan, có lời giải và có khả năng kiểm chứng trong cùng một không gian làm việc hay không?
 
-Các nhóm code đã đối chiếu:
+## 2. Vấn đề và định vị sản phẩm
 
-- Frontend React/Vite: routing, page/component, module render, analyzer, algebra solver, simulation, GeoLab, PDF to Word, account, admin.
-- Backend FastAPI: router đăng ký trong app, API render, OCR, analyzer, algebra, solve, export, auth, admin, health, telemetry.
-- Database: SQLite/D1/PostgreSQL client, migrations, repositories.
-- Security: session, origin gate, rate limit, Turnstile, Google OAuth, BYOK, mã hóa API key, upload validation.
-- Vận hành: GitHub Actions, Dockerfile, nginx, supervisord, render worker, health check.
+Ba vấn đề chính dẫn đến AI Math Renderer là nội dung toán học, nhất là hình học không gian và giải tích, khó trực quan hóa; các công cụ hỗ trợ hiện có mạnh nhưng rời rạc và đòi hỏi nhiều thao tác; chatbot AI tiếp nhận ngôn ngữ tự nhiên linh hoạt nhưng có thể tạo câu trả lời nghe hợp lý mà sai về mặt toán học.
 
-## 2. Lý do chọn đề tài
+> **AI Math Renderer là không gian làm việc toán học sử dụng AI để hiểu yêu cầu bằng ngôn ngữ tự nhiên, đồng thời sử dụng các lõi toán học chuyên biệt để dựng hình, phân tích và tính toán chính xác.**
 
-Trong quá trình gia sư cho một học sinh từ lớp 11 lên lớp 12, nhóm nhận thấy một vấn đề rất rõ: học sinh không chỉ thiếu công thức, mà còn khó hình dung đối tượng toán học.
+Thông điệp xuyên suốt sản phẩm là:
 
-Vấn đề này đặc biệt rõ ở hình học không gian. Các khái niệm như đường thẳng chéo nhau, mặt phẳng, góc giữa đường thẳng và mặt phẳng, khoảng cách trong không gian, hình chóp, lăng trụ thường được trình bày bằng hình tĩnh. Khi học sinh không thể xoay, phóng to, quan sát từ nhiều góc nhìn hoặc kiểm tra quan hệ hình học, việc học dễ trở thành học thuộc.
+> **AI hiểu ngôn ngữ; lõi chuyên biệt chịu trách nhiệm về toán học.**
 
-Ở phía người dạy, việc soạn tài liệu cũng gặp khó khăn:
+Sản phẩm có frontend React/Vite và backend FastAPI. Codebase hiện có các luồng render hình học, OCR ảnh, analyzer khảo sát hàm số, algebra solver, mô phỏng tương tác, GeoGebra Lab, chuyển đổi PDF qua MinerU, export, lịch sử, tài khoản, quản trị và phản hồi. Các module này không được định vị là các công cụ tách rời, mà là các thành phần của một workspace phục vụ học, dạy và biên soạn học liệu toán.
 
-- Dựng hình toán học chính xác tốn nhiều thời gian.
-- Chuyển PDF sang Word thường làm hỏng công thức.
-- Công cụ convert hay biến công thức thành unicode hoặc text thường, không phải Equation/LaTeX dễ chỉnh sửa.
-- Khi cần sửa đề, sửa lời giải hoặc tái sử dụng hình vẽ, giáo viên/gia sư phải thao tác thủ công nhiều lần.
+## 3. Câu chuyện sản phẩm: từ đề toán đến học liệu tương tác
 
-Từ hai nhu cầu đó, nhóm xây dựng AI Math Renderer như một workspace hỗ trợ học, dạy và biên soạn tài liệu toán học.
+Tình huống trung tâm của phần trình bày là một giáo viên có đề hình học không gian trong tệp PDF và muốn biến đề đó thành học liệu trực quan có lời giải. Giáo viên không chỉ cần một ảnh hình học đẹp, mà cần dữ liệu có thể rà soát, mô hình có thể tương tác, kết quả có trạng thái tin cậy và đầu ra có thể tái sử dụng.
 
-Câu chốt:
-
-> Nhóm chọn đề tài này vì bài toán đến từ trải nghiệm dạy học thật: học sinh cần nhìn thấy toán học, còn giáo viên cần công cụ giúp dựng hình và soạn tài liệu nhanh nhưng vẫn giữ được độ chính xác.
-
-## 3. Tổng quan sản phẩm theo codebase
-
-AI Math Renderer là nền tảng web hỗ trợ nhập đề toán, nhận dạng ảnh, phân tích hàm số, giải toán, dựng hình 2D/3D, mô phỏng tương tác và xuất tài liệu.
-
-Các màn hình chính trong frontend:
-
-- Render hình học.
-- Analyzer khảo sát hàm số.
-- Algebra Solver.
-- Simulation Library.
-- GeoGebra Lab.
-- PDF to Word.
-- History.
-- Account/Settings/Admin/Feedback.
-
-Backend có các nhóm API chính:
-
-- Auth, user profile, user settings.
-- Render, render jobs, history, export.
-- OCR, analyzer, algebra solver, solver/advisory.
-- Admin, analytics, telemetry, health, AI models.
-- Chat và feedback.
-
-Luồng sản phẩm tổng quát:
+Chuỗi giá trị mà AI Math Renderer hướng tới là:
 
 ```text
-Đề bài / ảnh / PDF
-→ OCR hoặc AI extraction
+Đề bài
 → dữ liệu có cấu trúc
-→ validate / solver / analyzer / renderer
-→ hình ảnh, lời giải, mô phỏng hoặc tài liệu xuất ra
+→ trực quan hóa
+→ phân tích
+→ lời giải
+→ học liệu tương tác
 ```
 
-## 4. Sáu chức năng hiện có
+Trong phiên bản hiện tại, PDF to Word là module chuyển đổi qua API MinerU riêng, còn luồng render nhận văn bản hoặc ảnh đề bài. Vì vậy, câu chuyện PDF là workflow dạy học thống nhất, không phải tuyên bố rằng PDF đã tự động chuyển thẳng sang renderer qua một API liên thông. Giáo viên có thể dùng PDF to Word để tạo bản có thể chỉnh sửa, sau đó đưa dữ kiện đã rà soát vào luồng OCR, renderer, analyzer hoặc solver.
 
-### 4.1. Render hình học 2D/3D
+### 3.1. Tiếp nhận đề bài
 
-Chức năng render cho phép người dùng nhập đề toán bằng văn bản hoặc ảnh. Hệ thống phân tích đề, dựng scene toán học và hiển thị bằng renderer phù hợp.
+Đề bài có thể bắt đầu từ văn bản, ảnh hoặc PDF. Với ảnh, backend có API upload và OCR, có giới hạn tải, kiểm soát quyền truy cập và giới hạn đồng thời để tránh quá tải. Với PDF, giao diện PDF to Word gọi trực tiếp dịch vụ MinerU đang được chọn, hỗ trợ lựa chọn phương thức parse, ngôn ngữ, OCR bắt buộc, nhận diện công thức, bảng, phạm vi trang và chế độ LLM review khi provider sẵn sàng.
 
-Bằng chứng từ code:
+PDF to Word theo dõi trạng thái `queued`, `running`, `completed` và `failed`, đồng thời hiển thị tiến độ, log xử lý, preview và artifact đầu ra. Cơ chế này giúp người dùng biết tài liệu đang ở giai đoạn nào thay vì chỉ chờ một kết quả cuối cùng.
 
-- Frontend có `ProblemInput`, `RendererPanel`, `GeoGebraView`, `ThreeGeometryView`, `SceneEditorPanel`.
-- Backend có API render đồng bộ và render job bất đồng bộ.
-- Có render history để lưu lại kết quả theo tài khoản.
-- Có export scene sang TikZ, GeoGebra, PDF, PNG, JPG, SVG, KaTeX HTML.
+### 3.2. Trích xuất và chuẩn hóa dữ kiện
 
-Năng lực đã có:
+Dữ liệu đầu vào không được đưa thẳng vào mô hình toán học. Trong renderer, AI hoặc BYOK có thể trích xuất scene ban đầu từ đề bài tiếng Việt; scene này tiếp tục đi qua validator, bước sửa chuẩn hóa, kiểm chứng quan hệ hình học, kiểm tra khả năng tương thích renderer và quality gate.
 
-- Nhập text hoặc OCR ảnh.
-- Dựng hình 2D/3D bằng GeoGebra hoặc Three.js.
-- Chỉnh sửa scene sau khi dựng.
-- Kéo điểm, thêm điểm, nối đoạn, tạo chân chiếu/giao điểm/vector.
-- Thay đổi tham số cục bộ bằng slider.
-- Hiển thị trạng thái tin cậy: verified, fallback, cần xác nhận, có giả định, không theo tỉ lệ.
+Analyzer cũng có luồng OCR biểu thức riêng. Prompt trích xuất yêu cầu trả về biểu thức, biến, tham số, độ tin cậy, token mơ hồ và cờ `needs_confirmation`. Khi độ tin cậy thấp, có token mơ hồ hoặc biểu thức trống, hệ thống yêu cầu xác nhận trước khi dùng biểu thức cho khảo sát.
 
-Giá trị khi trình bày:
+Đây là điểm quan trọng trong cách hệ thống xử lý đầu vào không chắc chắn: dữ liệu được mô tả bằng trạng thái và cảnh báo, không bị âm thầm biến thành một kết luận toán học.
 
-> Render giúp học sinh chuyển từ “đọc đề” sang “nhìn thấy đề”, đồng thời cho biết kết quả nào đã kiểm chứng và kết quả nào chỉ nên xem như minh họa.
+### 3.3. Dựng hình và trực quan hóa
 
-### 4.2. Analyzer khảo sát hàm số
+Sau chuẩn hóa, renderer tạo scene 2D hoặc 3D bằng GeoGebra hoặc Three.js. Scene có cấu trúc gồm đối tượng, quan hệ, annotation, góc nhìn và thông tin audit về nguồn sinh. Geometry engine còn chuẩn hóa các cạnh từ mặt, nhận diện giao điểm đoạn thẳng, biểu diễn dấu bằng nhau và góc vuông khi quan hệ đạt điều kiện hình học tương ứng.
 
-Analyzer hỗ trợ phân tích biểu thức hàm số, vẽ đồ thị và hiển thị các thông tin phục vụ khảo sát.
+Giao diện renderer có thể hiển thị GeoGebra 2D, GeoGebra 3D hoặc mô hình Three.js. Người dùng có thể thao tác scene, kéo điểm và chỉnh sửa đối tượng. Kết quả có export sang TikZ, GeoGebra, PDF, PNG, JPG, SVG và KaTeX HTML, phục vụ cả trình chiếu lẫn biên soạn tài liệu.
 
-Bằng chứng từ code:
+### 3.4. Phân tích toán học
 
-- Frontend có `FunctionAnalyzerPanel`, `AnalyzerInput`, `AnalyzerResult`, `AnalyzerToolControls`, `FunctionGraph`, `VariationTable`.
-- Backend có API analyze, graph samples và OCR extraction cho hàm số.
-- Backend có parser, domain sampling, semaphore, cache ngắn hạn và timeout.
+Analyzer phục vụ khảo sát hàm số với biểu thức, đạo hàm, cực trị, bảng biến thiên, tiệm cận, đồ thị, tiếp tuyến, khoảng xét, phép biến đổi và tham số. Backend có cache ngắn hạn, giới hạn đồng thời, timeout, giới hạn đầu ra và session cho các công cụ phân tích tiếp theo.
 
-Năng lực đã có:
+Điểm kỹ thuật nằm ở việc analyzer không chỉ vẽ đường cong. Module kiểm tra tập xác định, backcheck đạo hàm, kiểm tra điểm tới hạn thuộc miền xác định, dấu trên các khoảng, tiệm cận, nghiệm giao trục, tiếp tuyến, cực trị trên khoảng và sự phù hợp giữa graph sampling với miền xác định. Báo cáo trả về trạng thái `verified`, `partially_verified`, `failed` hoặc `unverified` tùy evidence thực tế.
 
-- Nhập biểu thức hàm số.
-- OCR công thức từ ảnh.
-- Phân tích đạo hàm, cực trị, bảng biến thiên, tiệm cận và đồ thị.
-- Hỗ trợ khoảng xét, đường thẳng phụ, phép biến đổi đồ thị.
-- Lấy mẫu đồ thị theo miền xác định, tránh nối sai qua điểm gián đoạn hoặc tiệm cận đứng.
+Khi dùng cho hình học, bộ dựng hình và bộ kiểm chứng quan hệ cung cấp phần phân tích tương ứng: đối tượng nào được dựng, quan hệ nào đã kiểm tra, quan hệ nào còn cần xác nhận. Khi dùng cho giải tích, Analyzer nối đồ thị với bằng chứng toán học thay vì chỉ trả về một hình ảnh.
 
-Giá trị khi trình bày:
+### 3.5. Giải toán và kiểm chứng lời giải
 
-> Analyzer không chỉ vẽ đồ thị mà còn nối đồ thị với bảng biến thiên và các đặc trưng toán học của hàm số.
+Algebra Solver nhận input có cấu trúc, phân loại bài toán và chuyển đến solver phù hợp cho phương trình, bất phương trình, mũ–logarit, lượng giác, hệ phương trình, số phức, dãy số, xác suất–thống kê và một số bài giải tích. Lõi này dùng parser, normalizer, interpreter, bộ phân loại và SymPy; lời giải được tạo theo từng bước và có thông tin thời gian xử lý.
 
-### 4.3. Bộ giải toán học / Algebra Solver
+AI có thể hỗ trợ trích xuất đề hoặc diễn giải lời giải khi người dùng bật tùy chọn. Tuy nhiên, code thực tế ưu tiên đường giải rule-based/tất định trước. Chỉ khi đường này chưa giải được hoặc không hỗ trợ, hệ thống mới dùng AI extraction để tạo request chuẩn hóa rồi quay lại lõi giải toán. Khi lần giải tất định thành công, hệ thống không gọi AI extraction không cần thiết.
 
-Bộ giải toán học xử lý các bài đại số và trình bày kết quả theo cấu trúc.
+Để tránh một bài nặng làm ảnh hưởng toàn hệ thống, API solver có cost score, rate limit, quota ngày, giới hạn đồng thời, timeout, circuit breaker và tùy chọn process isolation cho worker SymPy. Lời giải có thể lưu lịch sử và xuất PDF.
 
-Bằng chứng từ code:
+### 3.6. Mô phỏng, khám phá và xuất học liệu
 
-- Frontend có `AlgebraSolverPage` và nhóm component `algebra-solver`.
-- Backend có API `/api/algebra/solve`, export PDF, algebra history.
-- Service algebra có cost limit, timeout, concurrency gate và circuit breaker.
+Sau khi có hình hoặc kết quả phân tích, người học có thể tiếp tục khám phá bằng Simulation Library. Catalog hiện có các mô phỏng lớp 11 và 12 về đạo hàm, nguyên hàm, diện tích, khối tròn xoay, tiệm cận, xác suất, thống kê, lượng giác và quan hệ không gian. Nhiều mô phỏng có mục tiêu học tập, điều kiện tiên quyết, câu hỏi dự đoán, checkpoint và tham số tương tác.
 
-Năng lực đã có:
+GeoGebra Lab mở rộng khả năng thao tác tự do với bốn không gian: Graphing Calculator, Geometry, 3D Calculator và Probability. Code tích hợp `GGBApplet`, có preset lệnh, command input, command history, save state và undo/redo. Module này không thay thế GeoGebra; nó đặt GeoGebra vào cùng ngữ cảnh học toán của sản phẩm.
 
-- Giải bài đại số theo input có cấu trúc.
-- Hỗ trợ AI extraction hoặc AI explanation khi bật tùy chọn.
-- Giới hạn bài quá nặng bằng cost score.
-- Có quota ngày, rate limit và concurrency limit.
-- Có circuit breaker khi nhiều timeout gần nhau.
-- Có process isolation cho SymPy theo cấu hình.
-- Có lưu lịch sử và export PDF lời giải.
+Kết quả cuối cùng có thể là hình dựng, lời giải, mô phỏng hoặc tài liệu xuất ra. Giá trị của workflow không nằm ở việc gom nhiều nút bấm vào một màn hình, mà nằm ở việc giảm đứt gãy giữa tiếp nhận đề, xử lý dữ kiện, kiểm chứng, trực quan hóa và tái sử dụng học liệu.
 
-Giá trị khi trình bày:
+## 4. Kiến trúc tạo độ tin cậy
 
-> AI có thể hỗ trợ nhận dạng và diễn giải, nhưng bộ giải có lớp kiểm soát tải, timeout và xử lý toán học riêng, không phụ thuộc hoàn toàn vào câu trả lời AI.
-
-### 4.4. PDF to Word
-
-Chức năng PDF to Word phục vụ nhu cầu biên soạn tài liệu toán học.
-
-Bằng chứng từ code:
-
-- Frontend có `PdfToWordPage`.
-- Module này gọi API MinerU qua `frontend/src/api/mineru.ts`.
-- Có cấu hình backend xử lý, parse method, ngôn ngữ, nhận diện công thức, bảng, LLM mode/provider/model.
-
-Năng lực đã có:
-
-- Tải PDF lên.
-- Theo dõi trạng thái queued/running/completed/failed.
-- Hiển thị progress và terminal logs.
-- Xem preview artifact.
-- Cấu hình OCR, công thức, bảng, khoảng trang, chế độ LLM review.
-
-Giới hạn cần nói rõ:
-
-- Chức năng phụ thuộc dịch vụ MinerU/API tương ứng.
-- Chất lượng Word đầu ra phụ thuộc chất lượng PDF và engine OCR/parse.
-
-Giá trị khi trình bày:
-
-> PDF to Word giải quyết nỗi đau khi convert tài liệu toán: công thức cần được giữ ở dạng có thể chỉnh sửa, không biến thành chuỗi ký tự rời rạc.
-
-### 4.5. GeoLab tích hợp GeoGebra API
-
-GeoLab là phòng thí nghiệm toán học tích hợp GeoGebra trực tiếp vào sản phẩm.
-
-Bằng chứng từ code:
-
-- Frontend có `GeoGebraLabPage`.
-- Code load `GGBApplet` từ GeoGebra deploy script.
-- Có các mode: Graphing Calculator, Geometry, 3D Calculator, Probability.
-
-Năng lực đã có:
-
-- Dùng Graphing Calculator cho đồ thị 2D.
-- Dùng Geometry cho hình học phẳng.
-- Dùng 3D Calculator cho mặt phẳng, mặt cầu, khối đa diện, bề mặt.
-- Dùng Probability cho mô phỏng xác suất.
-- Có preset lệnh dựng hình.
-- Có command input, history, save state, undo/redo.
-
-Giá trị khi trình bày:
-
-> GeoLab không thay thế GeoGebra, mà đưa sức mạnh của GeoGebra vào workflow học toán dễ tiếp cận hơn, có preset và ngữ cảnh sẵn cho người mới.
-
-### 4.6. Simulation / mô phỏng toán học
-
-Simulation cung cấp thư viện mô phỏng tương tác theo chủ đề.
-
-Bằng chứng từ code:
-
-- Frontend có `SimulationHubPage`, `SimulationLibraryPage`, `SimulationShell`.
-- Catalog `SIMULATIONS` chứa nhiều mô phỏng lớp 11/12.
-- Có template mô phỏng đạo hàm, nguyên hàm, diện tích, khối tròn xoay, xác suất, thống kê, lượng giác, không gian.
-
-Năng lực đã có:
-
-- Mô phỏng theo bước.
-- Có learning outcomes, prerequisites, predict prompt, checkpoint.
-- Có chế độ khám phá tự do ở nhiều mô phỏng.
-- Có slider/tham số và đồ thị/mô hình tương tác.
-
-Giá trị khi trình bày:
-
-> Simulation biến toán học từ kết quả tĩnh thành quá trình có thể thay đổi tham số, quan sát và tự kiểm chứng.
-
-## 5. Điểm mới và sáng tạo
-
-### 5.1. AI chỉ là lớp NLP, không phải nguồn chân lý duy nhất
-
-Điểm khác biệt của dự án là không đặt AI ở vị trí phán quyết đúng sai tuyệt đối.
-
-AI chủ yếu đảm nhiệm:
-
-- Hiểu đề bài tiếng Việt.
-- Trích xuất dữ liệu từ ảnh hoặc văn bản.
-- Sinh cấu trúc ban đầu.
-- Diễn giải lời giải hoặc phản hồi bằng ngôn ngữ dễ hiểu.
-
-Sau đó dữ liệu đi qua các lớp khác:
-
-- Schema validation.
-- Safe parser.
-- Math service.
-- Renderer compatibility check.
-- Render quality gate.
-- Solver/analyzer riêng.
-- Trạng thái verified/fallback/cần xác nhận.
-
-Luồng nên trình bày:
+AI Math Renderer được thiết kế theo kiến trúc tách biệt giữa lớp hiểu ngôn ngữ và động cơ toán học chuyên biệt. LLM và OCR giúp hệ thống tiếp nhận yêu cầu linh hoạt bằng tiếng Việt, nhận dạng ảnh và tạo cấu trúc ban đầu. Kết quả toán học được xử lý, kiểm tra và trình bày bởi parser, validator, CAS, geometry engine, analyzer, solver, renderer và simulation runtime.
 
 ```text
-Ngôn ngữ tự nhiên
-→ AI/OCR/NLP
-→ dữ liệu có cấu trúc
-→ math core / validator / solver / renderer
-→ kết quả trực quan hoặc lời giải
+Người dùng
+    ↓
+Lớp xử lý ngôn ngữ tự nhiên và OCR
+Hiểu ý định, trích xuất, chuẩn hóa yêu cầu
+    ↓
+Bộ kiểm tra dữ kiện và ràng buộc
+Schema validation | scene validation | relation verification
+    ↓
+Lõi toán học chuyên biệt
+Renderer | Geometry engine | Analyzer | Solver | CAS | Simulation
+    ↓
+Kết quả trực quan, có cấu trúc và có thể kiểm chứng
 ```
 
-Câu chốt:
+Thiết kế này giải quyết một rủi ro phổ biến của chatbot: tạo lời giải hoặc hình vẽ có vẻ hợp lý nhưng không có đủ cơ sở toán học. AI vẫn có vai trò quan trọng ở lớp giao tiếp và trích xuất, nhưng không thay thế các thành phần có trách nhiệm kiểm tra ràng buộc.
 
-> AI trong dự án là lớp giao tiếp. Tính đúng đắn phải đi qua lõi toán học, parser, validator và các lớp kiểm chứng.
+> **Sự linh hoạt của AI được bảo chứng bởi độ chính xác của động cơ toán học chuyên biệt.**
 
-### 5.2. Kết nối điểm thiếu của nhiều công cụ riêng lẻ
+### 4.1. Ranh giới tin cậy của scene hình học
 
-So với AI chatbot:
+Render pipeline áp dụng một chuỗi rõ ràng: validate và repair scene, kiểm chứng quan hệ bằng CAS, chuẩn hóa hình học, kiểm tra tương thích renderer, gắn advisory và xác định trạng thái kết quả. Nếu scene dùng mock fallback, dùng provider fallback, có giả định, có dữ kiện thiếu, quan hệ kiểm chứng lỗi hoặc renderer không tương thích, kết quả không được gắn nhãn như một hình dựng chính xác.
 
-- Chatbot dễ dùng nhưng dễ trả lời sai mà nghe hợp lý.
-- Sản phẩm có trạng thái tin cậy, validator, analyzer, solver và cảnh báo fallback.
+Giao diện phân biệt `Dựng theo dữ kiện` và `Hình minh họa`. Hình không đạt điều kiện dựng chính xác được gắn thêm `Không theo tỉ lệ`; scene có dữ kiện thiếu hoặc giả định được gắn `Có giả định`. Các nhãn đo hoặc quan hệ không có nguồn tin cậy có thể bị ẩn khỏi hiển thị.
 
-So với GeoGebra thuần:
+Các thao tác downstream như giải, tạo biến thể hoặc export bị chặn khi scene fallback chưa được người dùng xác nhận, khi giả định chưa được xác nhận, khi có quan hệ kiểm chứng thất bại hoặc khi còn lỗi CAS chặn. Đây là cơ chế thực tế trong codebase, không phải chỉ là mô tả định hướng.
 
-- GeoGebra mạnh nhưng người mới khó bắt đầu vì cần biết công cụ/lệnh.
-- Sản phẩm có preset, nhập đề tự nhiên, render từ đề và tích hợp vào workspace học toán.
+### 4.2. Bằng chứng và khả năng truy vết
 
-So với PDF converter:
+Render response giữ source, provider, model, trạng thái fallback, lý do fallback, cảnh báo, validation report, verification report, repair report, renderer compatibility và cờ cần xác nhận. Analyzer giữ provenance cho input và report các check của từng đặc trưng hàm số. Algebra Solver trả request ID, cảnh báo, lỗi, trạng thái, cost score và thời gian xử lý.
 
-- Converter thường không hiểu ngữ cảnh toán học, dễ phá công thức.
-- Sản phẩm có module PDF to Word riêng với cấu hình formula/table/OCR/LLM review.
+Khả năng truy vết này giúp người dùng và người vận hành phân biệt giữa kết quả đã kiểm chứng, kết quả kiểm chứng một phần, fallback và kết quả cần xác nhận. Nó cũng là nền tảng để kiểm thử, đo chất lượng và cải thiện các bước trích xuất sau này.
 
-So với nền tảng nội dung học tập tĩnh:
+## 5. Giá trị khác biệt của sản phẩm
 
-- Nội dung tĩnh chỉ giải bài mẫu cố định.
-- Sản phẩm cho người dùng nhập bài của họ, dựng hình, phân tích, giải và mô phỏng tương tác.
+So với chatbot AI, AI Math Renderer không dừng ở một câu trả lời văn bản. Sản phẩm chuyển đề bài thành dữ liệu có cấu trúc, đi qua validator và lõi toán học, sau đó trả về scene, đồ thị, báo cáo kiểm chứng hoặc lời giải có trạng thái rõ ràng. Điều này không làm AI kém linh hoạt; nó đặt AI vào đúng vị trí có giá trị cao nhất là hiểu yêu cầu và hỗ trợ diễn giải.
 
-### 5.3. Một workflow đầy đủ cho học, dạy và biên soạn
+So với GeoGebra thuần, sản phẩm giữ sức mạnh thao tác của GeoGebra nhưng giảm rào cản bắt đầu cho người mới. Người dùng có thể xuất phát từ đề bài, ảnh hoặc preset thay vì phải biết trước toàn bộ câu lệnh và công cụ dựng hình.
 
-Workflow sản phẩm:
+So với một PDF converter, module PDF to Word tập trung vào workflow tài liệu toán: lựa chọn OCR, công thức, bảng, phạm vi trang và artifact để chỉnh sửa tiếp. Kết quả phụ thuộc chất lượng PDF đầu vào và dịch vụ MinerU đang kết nối; sản phẩm hiển thị trạng thái xử lý, preview và cảnh báo từ job thay vì coi mọi PDF là đầu vào hoàn hảo.
 
-```text
-Nhập đề / ảnh / PDF
-→ OCR hoặc AI extraction
-→ validate
-→ render / analyze / solve / simulate
-→ chỉnh sửa scene hoặc tham số
-→ lưu lịch sử / export tài liệu
-```
+So với nền tảng học tĩnh, Simulation Library cho phép thay đổi tham số, dự đoán, quan sát và đi qua checkpoint. Người học không chỉ xem đáp án cuối, mà có thể quan sát quá trình biến đổi của đối tượng toán học.
 
-Điểm mới không chỉ là từng chức năng riêng lẻ, mà là cách nối chúng thành một không gian làm việc toán học.
+## 6. Phạm vi triển khai hiện tại và nguyên tắc kiểm soát độ tin cậy
 
-### 5.4. Kiến trúc có khả năng mở rộng
+Phiên bản hiện tại ưu tiên các chuyên đề có nhu cầu trực quan hóa và kiểm chứng cao: hình học phẳng, hình học không gian, tọa độ Oxyz, khảo sát hàm số, một số mảng đại số–giải tích, xác suất–thống kê và mô phỏng lớp 11–12. Nhóm lựa chọn phát triển theo chiều sâu của luồng xử lý và độ tin cậy trước khi mở rộng sang toàn bộ chương trình phổ thông.
 
-Codebase đã chia module khá rõ:
+Các ranh giới triển khai hiện tại gồm:
 
-- API routes riêng theo domain.
-- Service layer cho OCR, render, analyzer, algebra, AI provider, storage.
-- Repository layer cho auth, history, analytics, user settings, upload.
-- Schema layer cho contract dữ liệu.
-- Frontend page/component tách theo chức năng.
+- Render hình học có cơ chế phân loại `verified`, `partially_verified`, `fallback`, `needs_confirmation` và `failed`. Hình minh họa không được dùng để suy ra quan hệ hoặc kết luận số học.
+- Analyzer biểu diễn mức độ hoàn chỉnh của kiểm chứng theo từng check. Một đặc trưng không có evidence đủ sẽ ở trạng thái cảnh báo hoặc chưa kiểm chứng.
+- Algebra Solver có giới hạn độ phức tạp và thời gian. Khi vượt ngân sách, hệ thống trả timeout thay vì cố tạo câu trả lời không có căn cứ.
+- PDF to Word gọi API MinerU đã cấu hình. Code hiện có hiển thị trạng thái job, artifact và cảnh báo từ dịch vụ, nhưng chưa có bằng chứng về một cơ chế cấp độ ký tự hay vùng công thức để tự cô lập mọi kết quả OCR có độ tin cậy thấp.
+- PDF to Word và renderer chưa có contract tự động nối PDF đã parse sang scene render. Đây là điểm mở rộng hợp lý của workflow, không phải năng lực đã hoàn thành.
+- Không có căn cứ trong codebase để khẳng định bao phủ toàn bộ toán phổ thông, autoscale worker độc lập, zero-downtime cho mọi triển khai, pentest đạt chuẩn cụ thể hoặc độ chính xác tuyệt đối của AI và OCR.
 
-Điều này giúp mở rộng thêm dạng bài, provider AI, renderer, export format hoặc mô phỏng mà không phải viết lại toàn bộ hệ thống.
+Các ranh giới này là tiêu chuẩn thiết kế: hệ thống ưu tiên báo đúng mức độ chắc chắn, yêu cầu xác nhận khi cần và chặn thao tác downstream ở các trust boundary quan trọng.
 
-## 6. Hiện trạng sản phẩm
+## 7. Hiện trạng kỹ thuật có thể kiểm chứng
 
-Hiện trạng có thể nói chắc:
+Codebase hiện có frontend React/Vite, backend FastAPI, migration cho SQLite/D1/PostgreSQL, render worker, cấu hình Docker, nginx và supervisord. Backend đăng ký route cho auth, profile, settings, render, OCR, analyzer, algebra solver, export, history, chat, feedback, admin, telemetry, health và AI models.
 
-- Có frontend web React/Vite.
-- Có backend FastAPI.
-- Có auth email/password, email verification, Google OAuth, reset password.
-- Có session, hashed session token, trusted origin gate, rate limit.
-- Có OCR ảnh cho đề bài và analyzer.
-- Có render hình học 2D/3D.
-- Có scene editor và parameter slider.
-- Có analyzer khảo sát hàm số.
-- Có algebra solver.
-- Có simulation library.
-- Có GeoLab tích hợp GeoGebra.
-- Có PDF to Word qua MinerU/API.
-- Có export nhiều định dạng.
-- Có history, account, settings, admin, feedback.
-- Có BYOK OpenAI-compatible với mã hóa API key bằng Fernet.
-- Có validate base URL chống SSRF cho BYOK.
-- Có SQLite/D1/PostgreSQL client và migrations.
-- Có render worker, Docker, nginx, supervisord.
-- Có CI chạy backend tests, frontend build và Docker smoke build.
-- Có analytics/admin, error events, AI call metrics và health checks.
+Hệ thống tài khoản có email/password, xác minh email, Google OAuth, reset password, session và gate trusted origin cho mutation. BYOK OpenAI-compatible có mã hóa secret bằng Fernet và validation base URL chống SSRF. Những thành phần này phục vụ vận hành sản phẩm, không phải điểm trình diễn chính của bài toán học.
 
-Điểm nên nói thận trọng:
+CI trên GitHub Actions chạy backend tests, kiểm tra migration, frontend typecheck/build và Docker smoke build theo điều kiện branch. Codebase cũng có health check, error event, analytics, AI call metrics và các bài test cho render, scene trust, analyzer, OCR, algebra, auth, export, migration và upload.
 
-- Sản phẩm đã có lõi chức năng và có thể demo/thử nghiệm thật.
-- Chưa nên nói là đã bao phủ toàn bộ toán phổ thông.
-- Chưa nên nói PDF to Word luôn giữ đúng mọi công thức.
-- Chưa nên nói đã có backup/rollback/zero-downtime hoàn chỉnh nếu chưa có bằng chứng vận hành.
+Các chi tiết kỹ thuật này chứng minh sản phẩm không chỉ là mockup giao diện hoặc một lớp gọi API. Tuy vậy, việc có CI, health check và test không đồng nghĩa với tuyên bố sản phẩm đã hoàn thiện mọi năng lực vận hành ở quy mô lớn.
 
-## 7. Những claim không nên dùng như hiện trạng
+## 8. Lộ trình phát triển gắn với người dùng
 
-Không nên nói các ý sau là đã hoàn tất:
+### Giai đoạn 1. Ổn định nguyên mẫu
 
-- Backup cloud định kỳ và khôi phục thảm họa hoàn chỉnh.
-- Zero-downtime deployment được bảo đảm toàn bộ.
-- Cụm worker autoscale độc lập.
-- Fine-tuning model bằng hàng chục nghìn mẫu đã hoàn thành.
-- Bao phủ toàn bộ chương trình phổ thông.
-- Đã qua pentest hoặc đạt chuẩn bảo mật cụ thể.
-- PDF to Word đảm bảo đúng mọi công thức trong mọi tài liệu.
-- AI luôn cho kết quả đúng.
+Mục tiêu kỹ thuật là hoàn thiện workflow chính từ đề bài đến scene, phân tích, lời giải và export; đồng thời làm rõ trạng thái fallback, cần xác nhận và lỗi đầu vào. Mục tiêu kiểm chứng thực tế là chạy bộ đề chuẩn nội bộ, đo khả năng tái lập kết quả và bảo đảm một người dùng mới có thể hoàn thành luồng demo mà không cần hỗ trợ trực tiếp từ nhóm.
 
-Cách nói đúng hơn:
+### Giai đoạn 2. Đo độ chính xác
 
-> Các phần này là hướng phát triển hoặc đã có nền tảng kỹ thuật ban đầu, nhưng cần thêm dữ liệu vận hành, kiểm thử thực nghiệm và hạ tầng triển khai trước khi khẳng định là năng lực hoàn chỉnh.
+Mục tiêu kỹ thuật là xây benchmark đề toán tiếng Việt có đáp án chuẩn, đo tách riêng OCR, trích xuất dữ kiện, render scene, analyzer và algebra solver. Mục tiêu kiểm chứng thực tế là cho học sinh dùng thử trên các dạng bài đã chọn, đo thời gian hoàn thành, tỷ lệ phải sửa dữ kiện và mức độ hiểu sau khi dùng trực quan hóa.
 
-## 8. Lộ trình phát triển sau cuộc thi
+### Giai đoạn 3. Hoàn thiện công cụ giáo viên
 
-### Giai đoạn 1: Ổn định demo thành sản phẩm dùng thường xuyên
+Mục tiêu kỹ thuật là cải thiện PDF to Word, chỉnh sửa công thức, scene editor, export và chuyển dữ liệu giữa các module. Điểm mở rộng quan trọng là contract an toàn từ dữ liệu PDF đã được xác nhận sang renderer hoặc solver. Mục tiêu kiểm chứng thực tế là thí điểm với giáo viên hoặc lớp học, thu thập phản hồi về thời gian chuẩn bị bài, chất lượng đầu ra và các bước còn gây cản trở.
 
-Mục tiêu: người dùng mới có thể tự dùng sản phẩm mà không cần nhóm hướng dẫn trực tiếp.
+### Giai đoạn 4. Mở rộng vận hành
 
-Việc cần làm:
+Mục tiêu kỹ thuật là tối ưu hiệu năng, tách worker theo nhu cầu tải thật, hoàn thiện backup/restore có kiểm chứng và chuẩn hóa API nếu có đối tác tích hợp. Mục tiêu kiểm chứng thực tế là theo dõi tỷ lệ quay lại, tần suất sử dụng, thời gian xử lý và tỷ lệ lỗi của các workflow chính trong môi trường sử dụng thường xuyên.
 
-- Chuẩn hóa các workflow demo chính.
-- Thêm hướng dẫn trong app cho render, analyzer, solver, GeoLab, PDF to Word.
-- Cải thiện thông báo khi OCR nhận sai, render fallback hoặc cần xác nhận.
-- Bổ sung ví dụ theo chương trình lớp 11 và 12.
-- Thêm end-to-end test cho luồng nhập đề → render → chỉnh scene → export.
+### Giai đoạn 5. Cá nhân hóa học tập
 
-### Giai đoạn 2: Tăng độ đúng toán học
+Mục tiêu kỹ thuật là dùng history và learning profile để gợi ý mô phỏng, bài luyện hoặc ví dụ theo năng lực. Mục tiêu kiểm chứng thực tế là đánh giá tác động đến trải nghiệm học, khả năng tự phát hiện lỗi và tiến bộ theo thời gian, thay vì chỉ đo số lượng tính năng đã thêm.
 
-Mục tiêu: tăng độ tin cậy bằng dữ liệu kiểm thử thực nghiệm.
+Ba ưu tiên xuyên suốt lộ trình là hoàn thiện workflow thay vì bổ sung công cụ rời rạc, đo độ tin cậy bằng dữ liệu thay vì chỉ mô tả bằng cảm nhận, và đưa phản hồi của học sinh–giáo viên vào chu kỳ phát triển.
 
-Việc cần làm:
+## 9. Kết luận
 
-- Xây bộ benchmark đề toán tiếng Việt có đáp án chuẩn.
-- Đo riêng độ đúng OCR, trích xuất đề, render scene, analyzer, algebra solver.
-- Mở rộng rule kiểm chứng hình học không gian.
-- Tách rõ kết quả đã kiểm chứng, minh họa, fallback và cần xác nhận.
-- Ưu tiên các dạng bài lớp 11/12 có tần suất cao.
+AI Math Renderer không phải chatbot giải toán đơn thuần và cũng không chỉ là công cụ dựng hình. Sản phẩm tạo một không gian làm việc toán học, nơi đề bài có thể đi từ dữ liệu đầu vào đến trực quan hóa, phân tích, lời giải, mô phỏng và học liệu xuất ra.
 
-### Giai đoạn 3: Phục vụ giáo viên và biên soạn tài liệu
+AI giúp người dùng giao tiếp tự nhiên với hệ thống. Parser, validator, geometry engine, analyzer, solver, CAS, renderer và quality gate chịu trách nhiệm biến yêu cầu đó thành kết quả có cấu trúc, có trạng thái tin cậy và có thể kiểm chứng.
 
-Mục tiêu: biến sản phẩm thành công cụ soạn bài thực tế.
-
-Việc cần làm:
-
-- Cải thiện PDF to Word bằng bộ tài liệu toán thực tế.
-- Tối ưu export Word/LaTeX/PDF/ảnh cho giáo viên.
-- Thêm template đề kiểm tra, worksheet và lời giải.
-- Cho phép lưu bộ sưu tập hình vẽ/bài học theo chương.
-- Thêm quy trình sửa công thức sau OCR/PDF conversion.
-
-### Giai đoạn 4: Mở rộng vận hành và tích hợp
-
-Mục tiêu: chuẩn bị cho lượng người dùng và tích hợp bên ngoài.
-
-Việc cần làm:
-
-- Tách worker render/OCR khi tải tăng thật.
-- Chuẩn hóa public API cho render/analyze/solve nếu có đối tác tích hợp.
-- Thêm dashboard chất lượng toán học và chi phí AI.
-- Thiết lập backup/restore có script kiểm chứng.
-- Bổ sung rolling deployment hoặc rollback có bằng chứng vận hành.
-
-### Giai đoạn 5: Cá nhân hóa học tập
-
-Mục tiêu: giúp học sinh học theo điểm mạnh/yếu thật của mình.
-
-Việc cần làm:
-
-- Dựa trên learning profile và history để gợi ý bài luyện tập.
-- Ghi nhận lỗi sai phổ biến theo chủ đề.
-- Sinh mô phỏng hoặc ví dụ tương tự theo điểm yếu.
-- Tạo chế độ luyện tập từng bước có phản hồi.
-- Theo dõi tiến bộ theo thời gian.
-
-## 9. Câu kết luận để trình bày
-
-> AI Math Renderer không phải một chatbot giải toán đơn thuần. Sản phẩm là một workspace toán học gồm nhập đề, OCR, phân tích, kiểm chứng, dựng hình, giải toán, mô phỏng và xuất tài liệu. AI được dùng để giúp người dùng giao tiếp tự nhiên hơn với hệ thống, còn độ tin cậy đến từ các lớp cấu trúc dữ liệu, parser, solver, renderer và quality gate trong code.
-
-## 10. Gợi ý chia slide
-
-1. Vấn đề thực tế khi gia sư lớp 11 lên 12.
-2. Nỗi đau học sinh: khó hình dung hình học không gian.
-3. Nỗi đau giáo viên: dựng hình và convert tài liệu toán.
-4. Tổng quan AI Math Renderer.
-5. 6 chức năng chính đã có.
-6. Demo workflow: nhập đề/ảnh/PDF → OCR/AI → validate → render/analyze/solve.
-7. Điểm mới: AI là lớp NLP, math core/validator là lớp kiểm chứng.
-8. So sánh với AI chatbot, GeoGebra, PDF converter, nền tảng học tĩnh.
-9. Hiện trạng codebase: frontend, backend, DB, auth, worker, CI.
-10. Giới hạn hiện tại: không claim quá mức.
-11. Lộ trình sau cuộc thi.
-12. Kết luận: nhìn thấy toán học, kiểm chứng được toán học, soạn tài liệu nhanh hơn.
+> **Mục tiêu của AI Math Renderer là giúp người học nhìn thấy toán học, giúp người dạy tạo học liệu nhanh hơn, và giữ cho sự linh hoạt của AI đi cùng trách nhiệm kiểm chứng của lõi toán học.**
