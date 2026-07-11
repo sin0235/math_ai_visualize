@@ -1,4 +1,5 @@
 import asyncio
+import os
 import time
 
 import pytest
@@ -7,15 +8,79 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 
 from app.api import routes_function_analysis
-from app.api.routes_function_analysis import _analysis_response, _apply_analyzer_output_limits, _run_analyzer_job, _run_analyzer_job_sync
-from app.schemas.analysis import AnalyzeRequest, GraphSamplesRequest
-from app.services import function_analyzer, function_roots
+from app.api.routes_function_analysis import _analysis_response, _apply_analyzer_output_limits, _run_analyzer_job, _run_analyzer_job_sync, analyzer_capabilities_endpoint
+from app.schemas.analysis import AnalyzeRequest, AnalyzerBaseRequest, AnalyzerIntervalToolRequest, AnalyzerSessionResponse, AnalyzerToolResponse, GraphAnalysis, GraphSamplesRequest
+from app.services import analyzer_runtime, function_analyzer, function_roots
+from app.services.analyzer_errors import AnalyzerErrorCode, analyzer_error_from_payload
+from app.services.function_analysis_capabilities import analyzer_capability_registry
+from app.services.function_analysis_steps import build_analysis_steps
 from app.services.function_analyzer import analyze_function
+from app.services.function_analysis_verification import build_verification_report
 from app.services.function_domain import FunctionDomain
 from app.services.function_graph_builder import build_function_graph
 from app.services.function_graph_sampling import build_graph_analysis
 from app.services.function_roots import analyze_real_roots
-from app.services.safe_math_parser import parse_safe_math_expression
+from app.services.safe_math_parser import parse_safe_math_expression, safe_math_parser_registry
+
+
+def _runtime_test_worker(result_queue, payload):
+    delay = (payload.get("parameters") or {}).get("delay", payload.get("delay", 0))
+    time.sleep(delay)
+    result_queue.put(("ok", {"expression": payload["expression"], "worker_pid": os.getpid()}))
+
+
+class _DisconnectAfter:
+    def __init__(self, delay: float):
+        self.deadline = time.monotonic() + delay
+
+    async def is_disconnected(self) -> bool:
+        return time.monotonic() >= self.deadline
+
+
+@pytest.fixture(autouse=True)
+def _clear_analyzer_runtime_state():
+    analyzer_runtime.clear_runtime_state()
+    yield
+    analyzer_runtime.clear_runtime_state()
+
+
+def test_capability_registry_uses_parser_allowlist_and_tested_examples():
+    registry = analyzer_capability_registry()
+
+    assert registry["parser"] == safe_math_parser_registry()
+    assert analyzer_capabilities_endpoint().version == registry["version"]
+    assert registry["parameters"]["ranges"]["m"] == {"min": -10.0, "max": 10.0, "step": 0.1}
+    for example in registry["examples"]:
+        parsed = parse_safe_math_expression(example["expression"])
+        assert parsed.expr is not None, example["expression"]
+
+
+def test_analyzer_capabilities_are_expression_specific():
+    polynomial = analyze_function("x^2 - 1")
+    piecewise = analyze_function("Piecewise((x^2, x<0), (x, x>=0))")
+    parameterized = analyze_function("x^2 + m*x + 1", parameter_mode="symbolic")
+
+    assert polynomial["capabilities"]["expression"]["piecewise"] is False
+    assert polynomial["capabilities_v2"] == polynomial["capabilities"]
+    assert polynomial["capabilities"]["tools"]["tangent"] is True
+    assert piecewise["capabilities"]["expression"]["piecewise"] is True
+    assert piecewise["capabilities"]["limitations"]
+    assert parameterized["capabilities"]["expression"]["parameters"] == ["m"]
+    assert parameterized["capabilities"]["tools"]["parameter_conditions"] is True
+
+
+def test_exact_approx_contract_is_additive_for_roots_points_extrema_and_asymptotes():
+    polynomial = analyze_function("x^3 - 3*x", interval={"a": -2, "b": 2})
+    rational = analyze_function("1/(x-1)")
+
+    root = polynomial["x_intercepts_v2"]["roots"][0]
+    point = polynomial["critical_points"][0]
+    assert root["x"] and root["value"]["exact"]
+    assert point["x"] and point["x_value"]["latex"]
+    assert polynomial["interval_analysis"]["supremum"]["value"]
+    assert polynomial["interval_analysis"]["supremum"]["value_v2"]["method"] == "symbolic_range"
+    assert rational["vertical_asymptotes"][0]["x"] == "1"
+    assert rational["asymptotes_v2"]["vertical"][0]["x_value"]["exact"] == "1"
 
 
 def test_analyzer_api_worker_returns_clean_payload():
@@ -31,6 +96,150 @@ def test_analyzer_api_worker_returns_clean_payload():
     assert result["complexity_score"] > 0
 
 
+def test_analyzer_session_and_tool_use_serialized_evidence(monkeypatch):
+    data = _run_analyzer_job_sync("1/(x-1)", None, None, None, None, None)
+    response = _analysis_response("1/(x-1)", data).model_dump(mode="json")
+    session = analyzer_runtime.create_analysis_session("user:one", response)
+    quadratic_data = _run_analyzer_job_sync("x^2", None, None, None, None, None)
+    quadratic_response = _analysis_response("x^2", quadratic_data).model_dump(mode="json")
+    quadratic_session = analyzer_runtime.create_analysis_session("user:one", quadratic_response)
+
+    monkeypatch.setattr(function_analyzer, "continuous_domain", lambda *_args, **_kwargs: pytest.fail("tool không được giải lại miền"))
+    tool = function_analyzer.analyze_function_tool_from_evidence(
+        session.result,
+        "interval-extrema",
+        {"a": 0, "b": 2},
+    )
+
+    assert session.analysis_id
+    assert analyzer_runtime.get_analysis_session(session.analysis_id, "user:one") == session
+    with pytest.raises(KeyError):
+        analyzer_runtime.get_analysis_session(session.analysis_id, "user:two")
+    assert tool["interval_analysis"]["status"] == "complete"
+    assert len(tool["interval_analysis"]["domain_components"]) == 2
+
+    tangent_family = function_analyzer.analyze_function_tool_from_evidence(
+        quadratic_session.result,
+        "line",
+        {"mode": "tangent_through_point", "x0": 0, "b": -1},
+    )
+    assert set(tangent_family["line_analysis"]["graph_expressions"]) == {"-2*x - 1", "2*x - 1"}
+
+
+def test_analyzer_session_rejects_engine_version_mismatch(monkeypatch):
+    session = analyzer_runtime.create_analysis_session("user:one", {"expression": "x"})
+
+    monkeypatch.setattr(analyzer_runtime, "ANALYZER_ENGINE_VERSION", "changed-engine")
+
+    with pytest.raises(KeyError):
+        analyzer_runtime.get_analysis_session(session.analysis_id, "user:one")
+
+
+def test_analyzer_cache_is_scoped_and_reuses_completed_result(monkeypatch):
+    starts = 0
+    original_start = analyzer_runtime._start_job
+
+    def counted_start(*args, **kwargs):
+        nonlocal starts
+        starts += 1
+        return original_start(*args, **kwargs)
+
+    monkeypatch.setattr(analyzer_runtime, "_analysis_worker", _runtime_test_worker)
+    monkeypatch.setattr(analyzer_runtime, "_start_job", counted_start)
+
+    async def scenario():
+        first = await analyzer_runtime.run_cached_analysis("x", scope="user:one")
+        reused = await analyzer_runtime.run_cached_analysis("x", scope="user:one")
+        isolated = await analyzer_runtime.run_cached_analysis("x", scope="user:two")
+        return first, reused, isolated
+
+    first, reused, isolated = asyncio.run(scenario())
+
+    assert starts == 2
+    assert reused == first
+    assert isolated["expression"] == first["expression"]
+
+
+def test_analyzer_shared_job_survives_one_waiter_disconnect(monkeypatch):
+    monkeypatch.setattr(analyzer_runtime, "_analysis_worker", _runtime_test_worker)
+
+    async def scenario():
+        payload = {"delay": 0.2}
+        disconnected = asyncio.create_task(analyzer_runtime.run_cached_analysis(
+            "x", parameters=payload, scope="shared", request=_DisconnectAfter(0.08)
+        ))
+        waiting = asyncio.create_task(analyzer_runtime.run_cached_analysis(
+            "x", parameters=payload, scope="shared"
+        ))
+        with pytest.raises(asyncio.CancelledError):
+            await disconnected
+        result = await waiting
+        return result
+
+    result = asyncio.run(scenario())
+
+    assert result["expression"] == "x"
+    assert analyzer_runtime._ANALYZER_INFLIGHT == {}
+
+
+def test_analyzer_last_waiter_disconnect_terminates_process(monkeypatch):
+    jobs = []
+    original_start = analyzer_runtime._start_job
+
+    def capture_job(*args, **kwargs):
+        job = original_start(*args, **kwargs)
+        jobs.append(job)
+        return job
+
+    monkeypatch.setattr(analyzer_runtime, "_analysis_worker", _runtime_test_worker)
+    monkeypatch.setattr(analyzer_runtime, "_start_job", capture_job)
+
+    async def scenario():
+        with pytest.raises(asyncio.CancelledError):
+            await analyzer_runtime.run_cached_analysis(
+                "x", parameters={"delay": 2}, scope="cancelled", request=_DisconnectAfter(0.05)
+            )
+        await asyncio.sleep(0.05)
+
+    asyncio.run(scenario())
+
+    assert analyzer_runtime._ANALYZER_INFLIGHT == {}
+    assert len(jobs) == 1 and not jobs[0].process.is_alive()
+
+
+def test_analyzer_timeout_cleans_process_and_inflight(monkeypatch):
+    jobs = []
+    original_start = analyzer_runtime._start_job
+
+    def capture_job(*args, **kwargs):
+        job = original_start(*args, **kwargs)
+        jobs.append(job)
+        return job
+
+    monkeypatch.setattr(analyzer_runtime, "_analysis_worker", _runtime_test_worker)
+    monkeypatch.setattr(analyzer_runtime, "_start_job", capture_job)
+    monkeypatch.setattr(analyzer_runtime, "ANALYZER_TIMEOUT_SECONDS", 0.05)
+
+    result = asyncio.run(analyzer_runtime.run_cached_analysis(
+        "x", parameters={"delay": 2}, scope="timeout"
+    ))
+
+    assert result["error_code"] == AnalyzerErrorCode.TIMEOUT.value
+    assert analyzer_runtime._ANALYZER_INFLIGHT == {}
+    assert len(jobs) == 1 and not jobs[0].process.is_alive()
+
+
+def test_analyzer_session_tool_schemas_and_openapi_are_typed():
+    base_schema = AnalyzerBaseRequest.model_json_schema()
+    tool_schema = AnalyzerIntervalToolRequest.model_json_schema()
+
+    assert base_schema["additionalProperties"] is False
+    assert tool_schema["additionalProperties"] is False
+    assert tool_schema["properties"]["interval"]["$ref"].endswith("/AnalysisInterval")
+    assert "analysis_id" in AnalyzerSessionResponse.model_fields
+    assert AnalyzerToolResponse.model_fields["tool"].annotation is not str
+
+
 def test_analyzer_stage_timeout_returns_partial_response(monkeypatch):
     def slow_domain(*args, **kwargs):
         time.sleep(1)
@@ -44,6 +253,8 @@ def test_analyzer_stage_timeout_returns_partial_response(monkeypatch):
     assert result["domain"] is None
     assert result["stage_statuses"]["domain"]["status"] == "timeout"
     assert result["derivative"] is not None
+    assert build_verification_report(result)["status"] == "partially_verified"
+    assert build_verification_report(result)["possibly_incomplete"] is True
 
 
 def test_analyzer_core_timeout_marks_graph_skip(monkeypatch):
@@ -81,6 +292,37 @@ def test_analyzer_output_limit_returns_error_code():
     result = _apply_analyzer_output_limits({"geogebra_commands": ["A=(0,0)"] * 301})
 
     assert result["error_code"] == "ANALYZER_OUTPUT_LIMIT"
+
+
+def test_analyzer_error_taxonomy_hides_internal_detail():
+    error = analyzer_error_from_payload({
+        "error": "provider-secret raw traceback",
+        "error_code": "ANALYZE_FAILED",
+        "stage_statuses": {"solver": {"status": "failed"}},
+    })
+
+    assert error.status_code == 500
+    assert error.detail == {
+        "code": AnalyzerErrorCode.INTERNAL_ERROR.value,
+        "message": "Analyzer gặp lỗi nội bộ.",
+        "correlation_id": "",
+        "stage": "solver",
+        "retryable": True,
+    }
+    assert "provider-secret" not in str(error.detail)
+
+
+def test_analyzer_error_taxonomy_maps_parse_complexity_and_timeout():
+    cases = [
+        ("ANALYZER_PARSE_FAILED", 422, AnalyzerErrorCode.PARSE_FAILED),
+        ("ANALYZER_OUTPUT_LIMIT", 413, AnalyzerErrorCode.COMPLEXITY_LIMIT),
+        ("ANALYZER_TIMEOUT", 504, AnalyzerErrorCode.TIMEOUT),
+    ]
+
+    for legacy_code, expected_status, expected_code in cases:
+        error = analyzer_error_from_payload({"error": "raw", "error_code": legacy_code})
+        assert error.status_code == expected_status
+        assert error.detail["code"] == expected_code.value
 
 
 def test_analyzer_rejects_unsafe_parser_constructs():
@@ -199,6 +441,33 @@ def test_absolute_transform_uses_geogebra_safe_abs_command():
     assert "abs(" in transform_commands[0]
 
 
+def test_transform_contract_uses_confirmed_horizontal_shift_convention():
+    preview = analyze_function("x^2", transform={"type": "horizontal_shift", "value": 2})["transform_preview"]
+
+    assert preview["expression"] == "(x - 2.0)**2"
+    assert preview["expression_template"] == "g(x)=f(x-a)"
+    assert preview["convention"] == "g(x)=f(x-a); a>0: dịch phải; a<0: dịch trái"
+    assert preview["requires_value"] is True
+    assert {(anchor["source_x"], anchor["target_x"]) for anchor in preview["anchors"]} == {
+        (-1.0, 1.0),
+        (0.0, 2.0),
+        (1.0, 3.0),
+    }
+
+
+def test_transform_contract_handles_negative_and_zero_scales():
+    vertical = analyze_function("x + 1", transform={"type": "vertical_scale", "value": -2})["transform_preview"]
+    horizontal_zero = analyze_function("x^2 + 1", transform={"type": "horizontal_scale", "value": 0})["transform_preview"]
+    reflection = analyze_function("x^2 + 1", transform={"type": "reflect_x"})["transform_preview"]
+
+    assert vertical["expression"] == "-2.0*x - 2.0"
+    assert all(anchor["target_y"] == pytest.approx(-2 * anchor["source_y"]) for anchor in vertical["anchors"])
+    assert horizontal_zero["expression"] == "1"
+    assert horizontal_zero["anchors"] == []
+    assert "a=0" in horizontal_zero["convention"]
+    assert reflection["requires_value"] is False
+
+
 def test_analyzer_keeps_domain_hole_out_of_intersections_and_graph():
     result = analyze_function("(x^2 - 1)/(x - 1)", line={"k": 0, "b": 2})
 
@@ -273,6 +542,18 @@ def test_variation_table_v2_splits_domain_at_vertical_asymptote():
         ("-∞", "0", "decreasing"),
         ("0", "+∞", "decreasing"),
     ]
+
+
+def test_variation_table_v2_does_not_bridge_or_probe_outside_disconnected_domain():
+    table = _variation_v2("1/sqrt(x^2-1)")
+
+    left_asymptote = next(node for node in table["nodes"] if node["x_exact"] == "-1")
+    right_asymptote = next(node for node in table["nodes"] if node["x_exact"] == "1")
+    assert left_asymptote["left_limit"] == {"value": "+∞", "status": "infinite"}
+    assert "right_limit" not in left_asymptote
+    assert "left_limit" not in right_asymptote
+    assert right_asymptote["right_limit"] == {"value": "+∞", "status": "infinite"}
+    assert [(segment["left"], segment["right"]) for segment in table["segments"]] == [("-∞", "-1"), ("1", "+∞")]
 
 
 def test_variation_table_v2_preserves_two_sided_infinite_asymptote():
@@ -463,6 +744,8 @@ def test_interval_splits_domain_and_reports_unbounded_sides():
     interval = analyze_function("1/(x-1)", interval={"a": 0, "b": 2})["interval_analysis"]
 
     assert len(interval["domain_components"]) == 2
+    assert interval["domain_components"][0]["end_approx"] == 1.0
+    assert interval["domain_components"][1]["start_approx"] == 1.0
     assert interval["supremum"]["status"] == "unbounded_above"
     assert interval["infimum"]["status"] == "unbounded_below"
     singular_limits = [item for item in interval["boundary_evidence"] if item["x_exact"] == "1"]
@@ -474,9 +757,19 @@ def test_line_intersections_include_residual_and_complete_count():
 
     assert line["intersection_count"] == 2
     assert line["intersection_count_status"] == "complete"
+    assert line["graph_expression"] == "0"
+    assert line["equation_exact"] == "y = 0"
     assert line["roots_v2"]["status"] == "complete"
     assert all(point["residual"] == 0 for point in line["intersections"])
     assert all(point["verification"] == "symbolic_exact" for point in line["intersections"])
+
+
+def test_line_intersection_reports_exact_tangency_and_multiplicity():
+    line = analyze_function("x^2", line={"k": 0, "b": 0})["line_analysis"]
+
+    assert line["intersection_count"] == 1
+    assert line["intersections"][0]["multiplicity"] == 2
+    assert line["intersections"][0]["contact_kind"] == "tangent"
 
 
 def test_area_is_split_between_consecutive_intersections():
@@ -510,6 +803,8 @@ def test_tangent_supports_one_sided_vertical_domain_endpoint():
 
     assert tangent["status"] == "vertical_tangent"
     assert tangent["equation_exact"] == "x = 0"
+    assert tangent["x0_exact"] == "0"
+    assert "graph_expression" not in tangent
     assert tangent["left_slope"]["status"] == "unavailable"
     assert tangent["right_slope"]["value_exact"] == "oo"
 
@@ -520,7 +815,64 @@ def test_regular_tangent_keeps_exact_slope_and_contact_verification():
     assert tangent["status"] == "regular_tangent"
     assert tangent["k_exact"] == "2"
     assert tangent["equation_exact"] == "y = 2*x - 1"
+    assert tangent["graph_expression"] == "2*x - 1"
     assert tangent["contact_limit"] == "0"
+
+
+def test_normal_line_uses_verified_tangent_evidence():
+    normal = analyze_function("x^2", line={"mode": "normal_at", "x0": 1})["line_analysis"]
+
+    assert normal["status"] == "regular_normal"
+    assert normal["k_exact"] == "-1/2"
+    assert normal["equation_exact"] == "y = 3/2 - x/2"
+    assert normal["graph_expression"] == "3/2 - x/2"
+    assert normal["source_tangent_status"] == "regular_tangent"
+
+
+def test_normal_line_handles_horizontal_and_vertical_tangents():
+    vertical = analyze_function("x^2", line={"mode": "normal_at", "x0": 0})["line_analysis"]
+    horizontal = analyze_function("sqrt(x)", line={"mode": "normal_at", "x0": 0})["line_analysis"]
+
+    assert vertical["status"] == "vertical_normal"
+    assert vertical["equation_exact"] == "x = 0"
+    assert vertical["graph_expression"] is None
+    assert horizontal["status"] == "regular_normal"
+    assert horizontal["equation_exact"] == "y = 0"
+    assert horizontal["graph_expression"] == "0"
+
+
+def test_tangent_at_point_requires_exact_membership():
+    valid = analyze_function("x^2", line={"mode": "tangent_at_point", "x0": 1, "y0": 1})["line_analysis"]
+    invalid = analyze_function("x^2", line={"mode": "tangent_at_point", "x0": 1, "y0": 2})["line_analysis"]
+
+    assert valid["status"] == "regular_tangent"
+    assert valid["mode"] == "tangent_at_point"
+    assert valid["graph_expression"] == "2*x - 1"
+    assert valid["point_verification"] == "exact_point_substitution"
+    assert invalid["status"] == "point_not_on_graph"
+    assert invalid["actual_y_exact"] == "1"
+    assert invalid["graph_expression"] is None
+
+
+def test_tangent_family_supports_parallel_perpendicular_and_through_point():
+    parallel = analyze_function("x^2", line={"mode": "tangent_parallel", "k": 2})["line_analysis"]
+    perpendicular = analyze_function("x^2", line={"mode": "tangent_perpendicular", "k": 1})["line_analysis"]
+    through_point = analyze_function("x^2", line={"mode": "tangent_through_point", "x0": 0, "b": -1})["line_analysis"]
+
+    assert parallel["status"] == "complete"
+    assert parallel["graph_expressions"] == ["2*x - 1"]
+    assert perpendicular["graph_expressions"] == ["-x - 1/4"]
+    assert set(through_point["graph_expressions"]) == {"-2*x - 1", "2*x - 1"}
+    assert through_point["tangent_count"] == 2
+    assert all(item["verification"].startswith("difference_quotient") for item in through_point["tangents"])
+
+
+def test_tangent_family_does_not_claim_vertical_solution_for_horizontal_reference():
+    result = analyze_function("x^(1/3)", line={"mode": "tangent_perpendicular", "k": 0})["line_analysis"]
+
+    assert result["status"] == "unsupported"
+    assert result["graph_expressions"] == []
+    assert result["warnings"]
 
 
 def test_graph_analysis_splits_real_domain_and_respects_point_cap():
@@ -588,6 +940,7 @@ def test_analyze_response_keeps_legacy_and_v2_contracts():
     assert payload["x_intercepts_v2"]["status"] == "complete"
     assert payload["graph_points"]
     assert payload["graph_analysis_v2"]["segments"]
+    assert GraphAnalysis.model_validate(payload["graph_analysis_v2"]).point_count == len(payload["graph_points"])
 
 
 @pytest.mark.parametrize(
@@ -641,3 +994,116 @@ def test_analyze_request_schema_exposes_strict_typed_components():
     assert {"AnalysisInterval", "AnalysisLine", "ParameterConditionRequest", "PlotWindow"} - set(schema.get("$defs", {})) == {"PlotWindow"}
     assert schema["properties"]["interval"]["anyOf"][0]["$ref"].endswith("/AnalysisInterval")
     assert schema["properties"]["line"]["anyOf"][0]["$ref"].endswith("/AnalysisLine")
+
+
+def test_analysis_steps_use_existing_evidence_without_upgrading_unknown():
+    result = analyze_function("x^3 - 3*x")
+
+    assert len(result["analysis_steps"]) == 11
+    assert [step["order"] for step in result["analysis_steps"]] == list(range(1, 12))
+    assert next(step for step in result["analysis_steps"] if step["key"] == "domain")["status"] == "complete"
+
+    result["monotonicity_v2"]["status"] = "unknown"
+    steps = build_analysis_steps(result)
+    monotonicity = next(step for step in steps if step["key"] == "monotonicity")
+    assert monotonicity["status"] == "unknown"
+
+    result["monotonicity_v2"]["status"] = "partial"
+    steps = build_analysis_steps(result)
+    monotonicity = next(step for step in steps if step["key"] == "monotonicity")
+    assert monotonicity["status"] == "partial"
+
+
+def test_analysis_steps_exist_for_parameter_confirmation_without_running_solver():
+    result = analyze_function("x^2 + m")
+
+    assert result["analysis_mode"] == "requires_parameter_confirmation"
+    assert len(result["analysis_steps"]) == 11
+    assert all(step["status"] in {"unknown", "skipped"} for step in result["analysis_steps"])
+
+
+def test_analysis_steps_exist_for_safe_symbolic_without_claiming_completion():
+    result = analyze_function("x^2 + m", parameter_mode="symbolic")
+
+    assert result["analysis_mode"] == "safe_symbolic"
+    assert len(result["analysis_steps"]) == 11
+    assert all(step["status"] == "unknown" for step in result["analysis_steps"])
+
+
+def test_symbolic_parameter_cases_report_proven_root_and_asymptote_counts():
+    result = analyze_function("x^2 + m*x", parameter_mode="symbolic")
+    analysis = result["parameter_analysis_v2"]
+
+    assert analysis["status"] == "complete"
+    assert [boundary["exact"] for boundary in analysis["boundaries"]] == ["0"]
+    assert {case["root_count"] for case in analysis["cases"]} == {1, 2}
+    assert all(case["vertical_asymptote_count"] == 0 for case in analysis["cases"])
+    assert all(case["verification"] in {"exact_boundary", "algebraic_invariant_interval"} for case in analysis["cases"])
+
+
+def test_verification_report_backchecks_complete_analysis():
+    result = _run_analyzer_job_sync("x^3 - 3*x", None, None, None, None, None)
+    report = result["verification"]
+
+    assert report["status"] == "verified"
+    assert report["truncated"] is False
+    assert report["possibly_incomplete"] is False
+    assert {check["name"] for check in report["checks"]} == {
+        "domain",
+        "derivative_backcheck",
+        "critical_point_membership",
+        "monotonicity_components",
+        "inflection_sign_change",
+        "asymptote_limits",
+        "intercept_substitution",
+        "graph_domain_consistency",
+    }
+    assert all(check["status"] == "pass" for check in report["checks"])
+    assert result["stage_statuses"]["verification"]["status"] == "ok"
+
+
+def test_verification_report_detects_corrupted_derivative():
+    result = analyze_function("x^2")
+    result["derivative"] = "3*x"
+
+    report = build_verification_report(result)
+    derivative = next(check for check in report["checks"] if check["name"] == "derivative_backcheck")
+
+    assert derivative["status"] == "fail"
+    assert report["status"] == "failed"
+
+
+def test_verification_report_detects_graph_point_outside_domain():
+    result = analyze_function("sqrt(x)")
+    _, _, _ = build_function_graph(result)
+    result["graph_analysis_v2"]["segments"][0]["points"].append({"x": -1.0, "y": 0.0})
+
+    report = build_verification_report(result)
+    graph = next(check for check in report["checks"] if check["name"] == "graph_domain_consistency")
+
+    assert graph["status"] == "fail"
+    assert report["status"] == "failed"
+
+
+def test_verification_report_marks_truncated_roots_partial():
+    result = analyze_function("x^2 - 1")
+    result["x_intercepts_v2"]["status"] = "partial"
+    result["x_intercepts_v2"]["truncated"] = True
+
+    report = build_verification_report(result)
+    roots = next(check for check in report["checks"] if check["name"] == "intercept_substitution")
+
+    assert roots["status"] == "warn"
+    assert report["status"] == "partially_verified"
+    assert report["truncated"] is True
+    assert report["possibly_incomplete"] is True
+
+
+def test_verification_report_checks_tangent_and_extrema_attainment():
+    tangent = _run_analyzer_job_sync("x^2", None, None, {"mode": "tangent_at", "x0": 1}, None, None)
+    extrema = _run_analyzer_job_sync("x^2", None, {"a": -1, "b": 1}, None, None, None)
+
+    tangent_check = next(check for check in tangent["verification"]["checks"] if check["name"] == "tangent")
+    extrema_check = next(check for check in extrema["verification"]["checks"] if check["name"] == "extrema_attainment")
+    assert tangent_check["status"] == "pass"
+    assert extrema_check["status"] == "pass"

@@ -39,6 +39,10 @@ export function FunctionAnalyzerPanel({ initialExpression = '', onOpenGuide, onW
           {analyzer.loading ? <AnalyzerLoadingResult /> : analyzer.result ? (
             <AnalyzerResult
               result={analyzer.result}
+              parameterSnapshots={analyzer.parameterSnapshots}
+              onSaveParameterSnapshot={analyzer.saveParameterSnapshot}
+              onRemoveParameterSnapshot={analyzer.removeParameterSnapshot}
+              onClearParameterSnapshots={analyzer.clearParameterSnapshots}
               toolControls={
                 <AnalyzerToolControls
                   enableInterval={analyzer.enableInterval}
@@ -55,7 +59,8 @@ export function FunctionAnalyzerPanel({ initialExpression = '', onOpenGuide, onW
                   transformType={analyzer.transformType}
                   transformValue={analyzer.transformValue}
                   isAnimatingTransform={analyzer.isAnimatingTransform}
-                  disabled={analyzer.loading || analyzer.ocrLoading}
+                  animationFps={analyzer.animationFps}
+                  disabled={analyzer.analysisState !== 'current' || analyzer.loading || analyzer.ocrLoading}
                   onToggleTool={analyzer.updateToolEnabled}
                   onIntervalAChange={(value) => { analyzer.setIntervalA(value); analyzer.scheduleToolAnalyze({ intervalA: value, enableInterval: true }); }}
                   onIntervalBChange={(value) => { analyzer.setIntervalB(value); analyzer.scheduleToolAnalyze({ intervalB: value, enableInterval: true }); }}
@@ -67,7 +72,9 @@ export function FunctionAnalyzerPanel({ initialExpression = '', onOpenGuide, onW
                   onLineX0Change={(value) => { analyzer.setLineX0(value); analyzer.scheduleToolAnalyze({ lineX0: value, enableLine: true }); }}
                   onTransformTypeChange={(value) => { analyzer.setTransformType(value); analyzer.scheduleToolAnalyze({ transformType: value, enableTransform: true }); }}
                   onTransformValueChange={(value) => { analyzer.setTransformValue(value); analyzer.scheduleToolAnalyze({ transformValue: value, enableTransform: true }); }}
+                  onAnimationFpsChange={analyzer.setAnimationFps}
                   onToggleAnimation={() => analyzer.setIsAnimatingTransform((value) => !value)}
+                  onResetAnimation={analyzer.resetTransformAnimation}
                 />
               }
             />

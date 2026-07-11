@@ -2,10 +2,21 @@ import type { MathScene } from '../types/scene';
 import { requestJson } from './core';
 import { uploadOcrImage } from './render';
 
+export interface ExactApproxValue {
+  exact: string;
+  latex: string;
+  approx: number | null;
+  precision: number | null;
+  method: string;
+}
+
 export interface CriticalPoint {
   x: string;
   x_exact: string;
+  x_value?: ExactApproxValue | null;
   y: string | null;
+  y_exact?: string | null;
+  y_value?: ExactApproxValue | null;
   kind: string;
   kind_label: string;
 }
@@ -29,6 +40,7 @@ export interface VariationNodeV2 {
   y?: string | null;
   y_exact?: string | null;
   label?: string | null;
+  open?: boolean | null;
   left_limit?: VariationLimit | null;
   right_limit?: VariationLimit | null;
 }
@@ -85,6 +97,7 @@ export interface RootEvidenceV2 {
   x: string;
   x_exact: string | null;
   x_latex: string | null;
+  value?: ExactApproxValue;
   x_approx: string;
   verification: 'symbolic_exact' | 'numeric_verified' | string;
   residual: number;
@@ -108,6 +121,7 @@ export interface ExtremeResultV2 {
   value: string;
   value_exact: string;
   value_latex: string;
+  value_v2?: ExactApproxValue;
   attained: boolean;
   attainment_set_exact: string | null;
   attainment_set_latex: string | null;
@@ -133,6 +147,21 @@ export interface AreaAnalysisV2 {
   total_exact: string | null;
   total_latex: string | null;
   total_approx: string | null;
+  warnings: string[];
+}
+
+export interface ParameterAnalysisCase {
+  condition_exact: string;
+  condition_latex: string;
+  sample_exact?: string;
+  status: 'complete' | 'unknown' | string;
+  verification: string;
+  degree: number | null;
+  domain_exact: string | null;
+  stationary_root_count: number | null;
+  extrema_count: number | null;
+  root_count: number | null;
+  vertical_asymptote_count: number | null;
   warnings: string[];
 }
 
@@ -177,7 +206,14 @@ export interface FunctionOcrExtraction {
   provenance: FunctionOcrProvenance;
 }
 
-export type AnalyzeLineMode = 'intersect' | 'tangent_at';
+export type AnalyzeLineMode =
+  | 'intersect'
+  | 'tangent_at'
+  | 'tangent_at_point'
+  | 'normal_at'
+  | 'tangent_parallel'
+  | 'tangent_perpendicular'
+  | 'tangent_through_point';
 
 export type AnalyzeTransformType =
   | 'vertical_shift'
@@ -196,7 +232,7 @@ export interface AnalyzeOptions {
   parameter_mode?: 'symbolic' | 'substitute';
   provenance?: FunctionOcrProvenance;
   interval?: { a: number; b: number; open_a?: boolean; open_b?: boolean };
-  line?: { k?: number; b?: number; mode?: AnalyzeLineMode; x0?: number };
+  line?: { k?: number; b?: number; mode?: AnalyzeLineMode; x0?: number; y0?: number };
   parameter_conditions?: { targets: ParameterConditionTarget[]; extrema_count?: 0 | 1 | 2 };
   transform?: { type: AnalyzeTransformType; value?: number };
 }
@@ -240,6 +276,67 @@ export interface GraphAnalysisV2 {
   warnings: string[];
 }
 
+export interface VerificationCheck {
+  name: string;
+  status: 'pass' | 'warn' | 'fail' | 'unknown';
+  method: 'symbolic' | 'numeric' | 'fallback' | 'unknown';
+  detail?: string | null;
+  error_bound?: number | null;
+}
+
+export interface AnalyzerCapabilityExample {
+  category: string;
+  label: string;
+  expression: string;
+  latex: string;
+}
+
+export interface AnalyzerCapabilityRegistry {
+  version: string;
+  parser: {
+    functions: string[];
+    constants: string[];
+    variables: string[];
+    operators: string[];
+    aliases: Record<string, string>;
+    limits: Record<string, number>;
+  };
+  derivative: { supported: boolean; limitations: string[] };
+  piecewise_conditions: Record<string, unknown>;
+  parameters: { supported: string[]; modes: string[]; ranges: Record<string, AnalyzeParameterRange> };
+  tools: string[];
+  renderers: string[];
+  examples: AnalyzerCapabilityExample[];
+}
+
+export interface ExpressionCapabilities {
+  registry_version: string;
+  expression: { piecewise: boolean; parameters: string[]; parameter_mode: string | null };
+  exactness: Record<string, string>;
+  completeness: { roots: string; graph: string; truncated: boolean };
+  numeric_fallback: { available: boolean; used: boolean };
+  renderer: { geogebra: boolean; svg: boolean };
+  tools: Record<string, boolean>;
+  limitations: string[];
+}
+
+export interface VerificationReport {
+  status: 'verified' | 'partially_verified' | 'unverified' | 'failed';
+  checks: VerificationCheck[];
+  truncated: boolean;
+  possibly_incomplete: boolean;
+}
+
+export interface AnalysisStep {
+  key: string;
+  order: number;
+  title: string;
+  status: 'complete' | 'partial' | 'unknown' | 'skipped';
+  formula_latex: string | null;
+  evidence: string[];
+  warnings: string[];
+}
+
 export interface AnalyzeResponse {
   expression: string;
   expression_latex: string | null;
@@ -254,7 +351,7 @@ export interface AnalyzeResponse {
     status: string;
     parameter: string;
     boundaries: Array<{ exact: string; latex: string; approx: number }>;
-    cases: Array<Record<string, unknown>>;
+    cases: ParameterAnalysisCase[];
     warnings: string[];
   } | null;
   derivative: string | null;
@@ -305,7 +402,7 @@ export interface AnalyzeResponse {
     method?: string;
     warnings?: string[];
     domain_intersection_exact?: string;
-    domain_components?: Array<{ start: string; start_exact: string; end: string; end_exact: string; left_open: boolean; right_open: boolean }>;
+    domain_components?: Array<{ start: string; start_exact: string; start_approx?: number | null; end: string; end_exact: string; end_approx?: number | null; left_open: boolean; right_open: boolean }>;
     range_exact?: string;
     range_latex?: string;
     boundary_evidence?: Array<{
@@ -331,9 +428,29 @@ export interface AnalyzeResponse {
     equation: string;
     equation_exact?: string | null;
     equation_latex?: string | null;
+    graph_expression?: string | null;
+    graph_expressions?: string[];
+    tangents?: Array<{
+      x0: string;
+      x0_exact: string;
+      y0: string;
+      y0_exact: string;
+      equation: string;
+      equation_exact: string;
+      equation_latex: string;
+      graph_expression: string;
+      verification: string;
+    }>;
+    tangent_count?: number | null;
+    tangent_count_known?: number;
+    condition_exact?: string;
+    x0?: string;
+    x0_exact?: string;
+    y0?: string;
+    y0_exact?: string;
     intersection_count?: number | null;
     intersection_count_status?: string;
-    intersections?: Array<{ x: string; y: string; x_exact: string; x_latex?: string | null; y_exact?: string; y_latex?: string; residual?: number; error_bound?: number | null; verification?: string }>;
+    intersections?: Array<{ x: string; y: string; x_exact: string; x_latex?: string | null; y_exact?: string; y_latex?: string; residual?: number; error_bound?: number | null; verification?: string; multiplicity?: number | null; contact_kind?: 'crossing' | 'tangent' | 'unknown' | string }>;
     roots_v2?: RootAnalysisV2;
     relative_intervals?: { above: string[]; below: string[] };
     area_between_curves?: string | null;
@@ -342,22 +459,121 @@ export interface AnalyzeResponse {
     warnings?: string[];
   } | null;
   parameter_conditions?: Array<{ label: string; condition_latex?: string; solution: string; solution_latex?: string; warnings?: string[] }>;
-  transform_preview?: { type: string; value: string; label: string; expression: string; expression_latex: string; pedagogical_steps?: string[] } | null;
+  transform_preview?: {
+    type: AnalyzeTransformType;
+    value: string;
+    label: string;
+    expression: string;
+    expression_latex: string;
+    convention: string;
+    expression_template: string;
+    requires_value: boolean;
+    transformed_domain?: string | null;
+    transformed_range?: string | null;
+    invariants: string[];
+    anchors: Array<{ source_x: number; source_y: number; target_x: number; target_y: number }>;
+    pedagogical_steps?: string[];
+  } | null;
   capabilities?: Record<string, unknown> | null;
+  capabilities_v2?: ExpressionCapabilities | null;
   complexity_score?: number | null;
   stage_statuses?: Record<string, { status: string; error_code?: string }> | null;
+  verification?: VerificationReport | null;
+  analysis_steps?: AnalysisStep[];
   warnings: string[];
   error?: string | null;
   error_code?: string | null;
 }
 
-export async function analyzeFunction(expression: string, options?: AnalyzeOptions | { m?: number }): Promise<AnalyzeResponse> {
+let analyzerCapabilitiesRequest: Promise<AnalyzerCapabilityRegistry> | null = null;
+
+export function getAnalyzerCapabilities(): Promise<AnalyzerCapabilityRegistry> {
+  if (analyzerCapabilitiesRequest) return analyzerCapabilitiesRequest;
+  const request = requestJson<AnalyzerCapabilityRegistry>('/api/analyze/capabilities', {
+    method: 'GET',
+    credentials: 'include',
+  }, 'Không thể tải khả năng của bộ phân tích.').catch((error) => {
+    analyzerCapabilitiesRequest = null;
+    throw error;
+  });
+  analyzerCapabilitiesRequest = request;
+  return request;
+}
+
+export interface AnalyzerSessionResponse extends AnalyzeResponse {
+  analysis_id: string;
+  engine_version: string;
+  expires_at: string;
+}
+
+export type AnalyzerToolName = 'interval-extrema' | 'line' | 'tangent' | 'transform' | 'parameter';
+
+export interface AnalyzerToolResponse {
+  analysis_id: string;
+  engine_version: string;
+  tool: AnalyzerToolName;
+  interval_analysis?: AnalyzeResponse['interval_analysis'];
+  line_analysis?: AnalyzeResponse['line_analysis'];
+  transform_preview?: AnalyzeResponse['transform_preview'];
+  parameter_conditions?: AnalyzeResponse['parameter_conditions'];
+}
+
+export async function createAnalyzerSession(
+  expression: string,
+  options?: Pick<AnalyzeOptions, 'parameters' | 'parameter_mode' | 'provenance'>,
+  signal?: AbortSignal,
+): Promise<AnalyzerSessionResponse> {
+  return requestJson('/api/analyzer/analyze', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    signal,
+    body: JSON.stringify({ expression, ...options }),
+  }, 'Không thể tạo phiên phân tích.');
+}
+
+export function runAnalyzerIntervalTool(analysisId: string, interval: NonNullable<AnalyzeOptions['interval']>, signal?: AbortSignal): Promise<AnalyzerToolResponse> {
+  return requestAnalyzerTool('interval-extrema', { analysis_id: analysisId, interval }, signal);
+}
+
+export function runAnalyzerLineTool(analysisId: string, line: NonNullable<AnalyzeOptions['line']>, signal?: AbortSignal): Promise<AnalyzerToolResponse> {
+  return requestAnalyzerTool('line', { analysis_id: analysisId, line }, signal);
+}
+
+export function runAnalyzerTangentTool(analysisId: string, x0: number, signal?: AbortSignal): Promise<AnalyzerToolResponse> {
+  return requestAnalyzerTool('tangent', { analysis_id: analysisId, x0 }, signal);
+}
+
+export function runAnalyzerTransformTool(analysisId: string, transform: NonNullable<AnalyzeOptions['transform']>, signal?: AbortSignal): Promise<AnalyzerToolResponse> {
+  return requestAnalyzerTool('transform', { analysis_id: analysisId, transform }, signal);
+}
+
+export function runAnalyzerParameterTool(
+  analysisId: string,
+  request: NonNullable<AnalyzeOptions['parameter_conditions']>,
+  signal?: AbortSignal,
+): Promise<AnalyzerToolResponse> {
+  return requestAnalyzerTool('parameter', { analysis_id: analysisId, ...request }, signal);
+}
+
+function requestAnalyzerTool(tool: AnalyzerToolName, payload: object, signal?: AbortSignal): Promise<AnalyzerToolResponse> {
+  return requestJson(`/api/analyzer/tools/${tool}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    signal,
+    body: JSON.stringify(payload),
+  }, 'Không thể chạy công cụ phân tích.');
+}
+
+export async function analyzeFunction(expression: string, options?: AnalyzeOptions | { m?: number }, signal?: AbortSignal): Promise<AnalyzeResponse> {
   const hasAnalyzeOptions = !!options && ('parameters' in options || 'parameter_mode' in options || 'provenance' in options || 'interval' in options || 'line' in options || 'parameter_conditions' in options || 'transform' in options);
   const payloadOptions = hasAnalyzeOptions ? options as AnalyzeOptions : { parameters: options as { m?: number } | undefined };
   return requestJson('/api/analyze', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
+    signal,
     body: JSON.stringify({ expression, ...payloadOptions }),
   }, 'Không thể phân tích hàm số.');
 }
@@ -366,11 +582,13 @@ export async function sampleFunctionGraph(
   expression: string,
   window: { x_min: number; x_max: number },
   options?: { parameters?: Record<string, string | number>; max_points?: number },
+  signal?: AbortSignal,
 ): Promise<{ graph_analysis_v2: GraphAnalysisV2 }> {
   return requestJson('/api/analyze/graph-samples', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
+    signal,
     body: JSON.stringify({ expression, window, ...options }),
   }, 'Không thể cập nhật mẫu đồ thị.');
 }
@@ -379,16 +597,17 @@ export async function extractFunctionImage(imageDataUrl: string): Promise<Functi
   return extractFunctionImageByPayload({ image_data_url: imageDataUrl });
 }
 
-export async function extractFunctionImageFile(file: File): Promise<FunctionOcrExtraction> {
-  const uploaded = await uploadOcrImage(file);
-  return extractFunctionImageByPayload({ upload_id: uploaded.file_id });
+export async function extractFunctionImageFile(file: File, signal?: AbortSignal): Promise<FunctionOcrExtraction> {
+  const uploaded = await uploadOcrImage(file, signal);
+  return extractFunctionImageByPayload({ upload_id: uploaded.file_id }, signal);
 }
 
-function extractFunctionImageByPayload(payload: { image_data_url: string } | { upload_id: string }): Promise<FunctionOcrExtraction> {
+function extractFunctionImageByPayload(payload: { image_data_url: string } | { upload_id: string }, signal?: AbortSignal): Promise<FunctionOcrExtraction> {
   return requestJson('/api/analyze/ocr/extract', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
+    signal,
     body: JSON.stringify(payload),
   }, 'Không thể đọc hàm số từ ảnh.');
 }

@@ -1,6 +1,6 @@
 # AI Math Renderer
 
-Ứng dụng AI hỗ trợ dựng hình và phân tích toán học từ đề bài văn bản hoặc ảnh. Backend chuyển đề bài thành dữ liệu toán học có cấu trúc, kiểm tra schema và tạo payload render; frontend hiển thị bằng GeoGebra, Three.js, KaTeX và các công cụ tương tác.
+**AI Math Renderer** là nền tảng web ứng dụng trí tuệ nhân tạo nhằm hỗ trợ việc học, dạy và biên soạn tài liệu Toán học. Người dùng có thể nhập đề bài bằng tiếng Việt hoặc tải ảnh đề bài; hệ thống tự động nhận diện nội dung, trích xuất dữ liệu toán học bằng AI, kiểm tra theo cấu trúc an toàn và dựng mô hình trực quan 2D hoặc 3D tương tác.
 
 ## Nội dung
 
@@ -19,18 +19,37 @@
 
 ## Tổng quan
 
-AI Math Renderer hiện hỗ trợ:
+### Bài toán thực tế
 
-- Dựng hình 2D/3D từ đề bài tự nhiên.
-- OCR ảnh đề bài và ảnh trong clipboard.
-- Dựng scene GeoGebra, Three.js, xuất PNG/JPG/SVG/TikZ/PDF/HTML KaTeX.
-- Khảo sát hàm số, giải đại số, phân tích biểu thức và mô phỏng giải tích.
-- Auth backend bằng email/password, xác minh email, Google OAuth, session cookie.
-- Lịch sử dựng hình, tài khoản người dùng, gói sử dụng, admin console.
-- Chat hỗ trợ người dùng qua REST và WebSocket.
-- Nhiều provider AI: OpenRouter, NVIDIA, Ollama, OpenAI-compatible, 9router.
-- Lưu upload OCR qua database, R2 hoặc Appwrite.
-- Lưu ảnh chat qua Cloudinary.
+Học sinh phổ thông thường gặp ba khó khăn phổ biến khi học Toán:
+
+- Khó hình dung hình học không gian và tư duy ba chiều.
+- Khó dựng hình chính xác từ mô tả đề bài văn bản tiếng Việt.
+- Dễ sai khi khảo sát hàm số hoặc phân tích đồ thị phức tạp.
+
+AI Math Renderer giải quyết trực tiếp ba nhóm khó khăn này bằng cách kết hợp nhận diện ngôn ngữ tự nhiên, OCR, phân tích toán học và trực quan hóa tương tác trong một nền tảng duy nhất.
+
+### Đối tượng sử dụng
+
+- **Học sinh:** Quan sát hình vẽ trực quan, xoay và phóng to mô hình 3D, kiểm tra kết quả và hiểu bản chất bài toán nhanh hơn thay vì học vẹt.
+- **Giáo viên:** Tạo hình minh họa cho bài giảng, đề thi và tài liệu học tập chỉ bằng cách chụp ảnh hoặc gõ đề bài, xuất ra các định dạng phù hợp môi trường học thuật.
+- **Tác giả và nhà xuất bản sách giáo khoa:** Biên soạn tài liệu nhanh hơn nhờ quy trình xuất TikZ, PDF và hình vẽ chất lượng cao tự động.
+
+### Tính năng cốt lõi
+
+- **Nhập liệu đa phương thức:** Nhập đề bài tiếng Việt dạng văn bản hoặc tải ảnh đề bài (hỗ trợ cả clipboard), hệ thống nhận diện và phân tích tự động.
+- **Trực quan hóa hình học:**
+  - Hình học phẳng và hình học không gian (mô hình 3D tương tác).
+  - Tọa độ Oxyz, đường thẳng, mặt phẳng, khối đa diện.
+  - Phòng thí nghiệm GeoGebra tích hợp để thao tác tự do.
+- **Phân tích và mô phỏng hàm số:**
+  - Vẽ đồ thị và khảo sát hàm số từng bước.
+  - Mô phỏng tích phân (diện tích, thể tích).
+  - Mô phỏng lượng giác và biểu thức giải tích.
+- **Giải bài từng bước:** Giải đại số, phân tích biểu thức và trình bày lời giải có cấu trúc.
+- **Xuất tài liệu học thuật:** Xuất PNG, JPG, SVG, TikZ, GeoGebra, PDF và HTML KaTeX.
+- **Hệ thống người dùng đầy đủ:** Đăng ký/đăng nhập qua email, Google OAuth, xác minh email, lịch sử dựng hình, gói sử dụng và bảng quản trị.
+- **Hỗ trợ đa AI provider:** OpenRouter, NVIDIA, Ollama, OpenAI-compatible và 9router.
 
 ## Kiến trúc
 

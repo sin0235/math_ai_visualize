@@ -1,12 +1,27 @@
 import type { RuntimeSettings } from '../types/settings';
 
+export interface ApiErrorMetadata {
+  code?: string;
+  correlationId?: string;
+  stage?: string;
+  retryable?: boolean;
+}
+
 export class ApiError extends Error {
   details: string[];
+  code?: string;
+  correlationId?: string;
+  stage?: string;
+  retryable?: boolean;
 
-  constructor(message: string, details: string[] = []) {
+  constructor(message: string, details: string[] = [], metadata: ApiErrorMetadata = {}) {
     super(message);
     this.name = 'ApiError';
     this.details = details;
+    this.code = metadata.code;
+    this.correlationId = metadata.correlationId;
+    this.stage = metadata.stage;
+    this.retryable = metadata.retryable;
   }
 }
 
@@ -133,15 +148,33 @@ function parseDetail(detail: unknown): ApiError | null {
     }).join('\n'));
   }
   if (detail && typeof detail === 'object') {
-    const data = detail as { code?: unknown; message?: unknown; hint?: unknown; attempts?: unknown; suggestions?: unknown; debug_message?: unknown };
-    const code = typeof data.code === 'string' ? `[${data.code}] ` : '';
+    const data = detail as {
+      code?: unknown;
+      message?: unknown;
+      hint?: unknown;
+      attempts?: unknown;
+      suggestions?: unknown;
+      debug_message?: unknown;
+      correlation_id?: unknown;
+      stage?: unknown;
+      retryable?: unknown;
+    };
+    const codeValue = typeof data.code === 'string' ? data.code : undefined;
+    const code = codeValue ? `[${codeValue}] ` : '';
     const message = typeof data.message === 'string' ? `${code}${data.message}` : JSON.stringify(detail);
-    const details = [data.hint, data.suggestions, data.attempts, data.debug_message].flatMap((value) => {
+    const detailValues = [data.hint, data.suggestions, data.attempts];
+    if (!codeValue?.startsWith('ANALYZER_')) detailValues.push(data.debug_message);
+    const details = detailValues.flatMap((value) => {
       if (Array.isArray(value)) return value.map(String);
       if (typeof value === 'string') return [value];
       return [];
     });
-    return new ApiError(message, details);
+    return new ApiError(message, details, {
+      code: codeValue,
+      correlationId: typeof data.correlation_id === 'string' ? data.correlation_id : undefined,
+      stage: typeof data.stage === 'string' ? data.stage : undefined,
+      retryable: typeof data.retryable === 'boolean' ? data.retryable : undefined,
+    });
   }
   return null;
 }

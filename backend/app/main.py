@@ -2,6 +2,8 @@ from contextlib import asynccontextmanager
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -88,8 +90,38 @@ async def request_id_middleware(request: Request, call_next):
     return response
 
 
+@app.exception_handler(RequestValidationError)
+async def request_validation_exception_handler(request: Request, exc: RequestValidationError):
+    if request.url.path.startswith(("/api/analyze", "/api/analyzer")):
+        request_id = get_request_id() or ""
+        return JSONResponse(
+            status_code=422,
+            content={
+                "detail": {
+                    "code": "ANALYZER_INPUT_INVALID",
+                    "message": "Dữ liệu yêu cầu phân tích không hợp lệ.",
+                    "correlation_id": request_id,
+                    "stage": "request",
+                    "retryable": False,
+                }
+            },
+            headers={"X-Request-Id": request_id},
+        )
+    return JSONResponse(status_code=422, content={"detail": jsonable_encoder(exc.errors())})
+
+
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
+    if request.url.path.startswith(("/api/analyze", "/api/analyzer")) and exc.status_code == 429:
+        current = exc.detail if isinstance(exc.detail, dict) else {}
+        if current.get("code") != "ANALYZER_RATE_LIMITED":
+            exc.detail = {
+                "code": "ANALYZER_RATE_LIMITED",
+                "message": "Analyzer đang quá tải. Hãy thử lại sau.",
+                "correlation_id": get_request_id() or "",
+                "stage": "rate_limit",
+                "retryable": True,
+            }
     # Only persist true server failures — coded 4xx from api_error would flood analytics.
     if exc.status_code >= 500:
         try:

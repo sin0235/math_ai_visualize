@@ -75,6 +75,33 @@ _ALLOWED_NAMES = set(_SYMBOLS) | set(_FUNCTIONS) | set(_CONSTANTS)
 _ALLOWED_TOKEN_OPS = {"+", "-", "*", "/", "**", "^", "(", ")", ",", "<", "<=", ">", ">=", "=="}
 
 
+def safe_math_parser_registry() -> dict[str, object]:
+    """Xuất metadata công khai từ chính allowlist parser."""
+    aliases = {
+        "arcsin": "asin",
+        "arccos": "acos",
+        "arctan": "atan",
+        "ln": "log",
+        "Abs": "abs",
+    }
+    return {
+        "functions": tuple(_FUNCTIONS),
+        "constants": tuple(_CONSTANTS),
+        "variables": tuple(_SYMBOLS),
+        "operators": tuple(sorted(_ALLOWED_TOKEN_OPS)),
+        "aliases": aliases,
+        "limits": {
+            "max_chars": MAX_SAFE_MATH_CHARS,
+            "max_tokens": MAX_SAFE_MATH_TOKENS,
+            "max_ast_nodes": MAX_SAFE_MATH_AST_NODES,
+            "max_ast_depth": MAX_SAFE_MATH_AST_DEPTH,
+            "max_function_nesting": MAX_SAFE_MATH_FUNCTION_NESTING,
+            "max_polynomial_degree": MAX_SAFE_MATH_POLY_DEGREE,
+            "max_piecewise_branches": MAX_SAFE_PIECEWISE_BRANCHES,
+        },
+    }
+
+
 def parse_safe_math_expression(expression: str) -> SafeMathParseResult:
     if len(expression) > MAX_SAFE_MATH_CHARS:
         raise SafeMathComplexityError(f"Biểu thức vượt quá {MAX_SAFE_MATH_CHARS} ký tự.")

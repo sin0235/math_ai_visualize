@@ -1,6 +1,6 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { KatexSpan } from './KatexSpan';
-import type { RenderHistoryItem, RenderHistoryPatchRequest, UserResponse } from '../api/client';
+import { getAnalyzerCapabilities, type AnalyzerCapabilityRegistry, type RenderHistoryItem, type RenderHistoryPatchRequest, type UserResponse } from '../api/client';
 
 const HomeTetrahedronShowcase = lazy(() => import('./HomeTetrahedronShowcase').then((module) => ({ default: module.HomeTetrahedronShowcase })));
 
@@ -94,36 +94,24 @@ export function GuidePage({ onOpenAnalyzerGuide }: { onOpenAnalyzerGuide: () => 
 }
 
 export function AnalyzerGuidePage({ onOpenGeneralGuide }: { onOpenGeneralGuide: () => void }) {
-  const formulaGroups = [
-    {
-      title: 'Toán tử cơ bản',
-      rows: [
-        { raw: '2*x, x*(x-1)', tex: '2x,\\; x(x-1)', note: 'Dùng * để nhân tường minh.' },
-        { raw: '(x^2-1)/(x-2)', tex: '\\frac{x^2-1}{x-2}' },
-        { raw: 'x^3 - 3*x + 2', tex: 'x^3-3x+2', note: 'Lũy thừa dùng dấu ^.' },
-        { raw: 'pi, E', tex: '\\pi,\\; e' },
-      ],
-    },
-    {
-      title: 'Hàm thường gặp',
-      rows: [
-        { raw: 'sqrt(x^2+1), abs(x)', tex: '\\sqrt{x^2+1},\\; |x|' },
-        { raw: 'exp(x), ln(x), log(x)', tex: 'e^x,\\; \\ln(x),\\; \\ln(x)' },
-        { raw: 'log(x,2), log(x,10)', tex: '\\log_2(x),\\; \\log_{10}(x)', note: 'Log cơ số bất kỳ: log(x,a).' },
-        { raw: 'sin(x), cos(x), tan(x)', tex: '\\sin(x),\\; \\cos(x),\\; \\tan(x)' },
-        { raw: 'asin(x), acos(x), atan(x)', tex: '\\arcsin(x),\\; \\arccos(x),\\; \\arctan(x)' },
-        { raw: 'sinh(x), cosh(x), tanh(x)', tex: '\\sinh(x),\\; \\cosh(x),\\; \\tanh(x)' },
-      ],
-    },
-    {
-      title: 'Hàm hỗ trợ',
-      rows: [
-        { raw: 'floor(x), ceil(x)', tex: '\\lfloor x \\rfloor,\\; \\lceil x \\rceil' },
-        { raw: 'sign(x), Min(a,b), Max(a,b)', tex: '\\operatorname{sign}(x),\\; \\min(a,b),\\; \\max(a,b)' },
-        { raw: 'Piecewise((x^2, x<0), (x, x>=0))', tex: '\\begin{cases}x^2,&x<0\\\\x,&x\\ge 0\\end{cases}' },
-      ],
-    },
-  ];
+  const [registry, setRegistry] = useState<AnalyzerCapabilityRegistry | null>(null);
+  const formulaGroups = useMemo(() => {
+    const groups = new Map<string, AnalyzerCapabilityRegistry['examples']>();
+    for (const example of registry?.examples ?? []) {
+      const rows = groups.get(example.category) ?? [];
+      rows.push(example);
+      groups.set(example.category, rows);
+    }
+    return Array.from(groups, ([title, rows]) => ({ title, rows }));
+  }, [registry]);
+
+  useEffect(() => {
+    let active = true;
+    void getAnalyzerCapabilities().then((value) => {
+      if (active) setRegistry(value);
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, []);
 
   return (
     <section className="analyzer-guide-page">
@@ -137,16 +125,21 @@ export function AnalyzerGuidePage({ onOpenGeneralGuide }: { onOpenGeneralGuide: 
         </div>
       </div>
 
+      {registry ? (
+        <p className="analyzer-guide-syntax">
+          Hàm parser hỗ trợ: <code>{registry.parser.functions.join(', ')}</code>. Biến: <code>{registry.parser.variables.join(', ')}</code>.
+        </p>
+      ) : <p role="status">Đang tải cú pháp được hỗ trợ…</p>}
+
       <div className="analyzer-guide-grid">
         {formulaGroups.map((group) => (
           <article key={group.title} className="analyzer-guide-card">
             <h3>{group.title}</h3>
             <div className="analyzer-guide-table">
               {group.rows.map((row) => (
-                <div key={row.raw} className="analyzer-guide-row">
-                  <code>{row.raw}</code>
-                  <KatexSpan tex={row.tex} className="analyzer-guide-katex" />
-                  {row.note && <p>{row.note}</p>}
+                <div key={row.expression} className="analyzer-guide-row">
+                  <code>{row.expression}</code>
+                  <KatexSpan tex={row.latex} className="analyzer-guide-katex" />
                 </div>
               ))}
             </div>
