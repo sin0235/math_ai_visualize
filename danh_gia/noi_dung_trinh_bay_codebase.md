@@ -108,8 +108,6 @@ Thiết kế này giải quyết một rủi ro phổ biến của chatbot: tạ
 
 > **Sự linh hoạt của AI được bảo chứng bởi độ chính xác của động cơ toán học chuyên biệt.**
 
-
-
 ### 4.1. Ranh giới tin cậy của scene hình học
 
 Render pipeline áp dụng một chuỗi rõ ràng: validate và repair scene, kiểm chứng quan hệ bằng CAS, chuẩn hóa hình học, kiểm tra tương thích renderer, gắn advisory và xác định trạng thái kết quả. Nếu scene dùng mock fallback, dùng provider fallback, có giả định, có dữ kiện thiếu, quan hệ kiểm chứng lỗi hoặc renderer không tương thích, kết quả không được gắn nhãn như một hình dựng chính xác.
@@ -161,8 +159,6 @@ Các chi tiết kỹ thuật này chứng minh sản phẩm không chỉ là moc
 
 ## 8. Lộ trình phát triển gắn với người dùng
 
-
-
 ### Giai đoạn 1. Ổn định nguyên mẫu
 
 Mục tiêu kỹ thuật là hoàn thiện workflow chính từ đề bài đến scene, phân tích, lời giải và export; đồng thời làm rõ trạng thái fallback, cần xác nhận và lỗi đầu vào. Mục tiêu kiểm chứng thực tế là chạy bộ đề chuẩn nội bộ, đo khả năng tái lập kết quả và bảo đảm một người dùng mới có thể hoàn thành luồng demo mà không cần hỗ trợ trực tiếp từ nhóm.
@@ -171,19 +167,23 @@ Mục tiêu kỹ thuật là hoàn thiện workflow chính từ đề bài đế
 
 Mục tiêu kỹ thuật là xây benchmark đề toán tiếng Việt có đáp án chuẩn, đo tách riêng OCR, trích xuất dữ kiện, render scene, analyzer và algebra solver. Mục tiêu kiểm chứng thực tế là cho học sinh dùng thử trên các dạng bài đã chọn, đo thời gian hoàn thành, tỷ lệ phải sửa dữ kiện và mức độ hiểu sau khi dùng trực quan hóa.
 
-### Giai đoạn 3. Hoàn thiện công cụ giáo viên
+### Giai đoạn 3. Fine-tune model chuyên biệt
 
-Mục tiêu kỹ thuật là cải thiện độc lập hai nhóm công cụ: PDF to Word cho chuyển đổi tài liệu; scene editor và export cho luồng toán học. Mục tiêu kiểm chứng thực tế là thí điểm với giáo viên hoặc lớp học, đo riêng chất lượng chuyển đổi tài liệu và mức độ thuận tiện khi tạo học liệu trực quan.
+Mục tiêu kỹ thuật là xây dataset từ đề toán tiếng Việt, scene cấu trúc, yêu cầu solver và các trường hợp người dùng đã sửa; dữ liệu phải được làm sạch, ẩn thông tin cá nhân, gắn nhãn và kiểm duyệt trước khi huấn luyện. Nhóm fine-tune model phù hợp cho các tác vụ hiểu ý định, trích xuất dữ kiện và chuẩn hóa đầu vào, sau đó chỉ đưa model mới vào sử dụng khi vượt baseline trên benchmark của Giai đoạn 2. Kết quả toán học vẫn phải đi qua validator, geometry engine, CAS hoặc solver thay vì tin trực tiếp đầu ra model. Mục tiêu vận hành là giảm tỷ lệ phải sửa dữ kiện, giảm phụ thuộc API bên ngoài và kiểm soát chi phí mà không làm giảm độ tin cậy.
 
-### Giai đoạn 4. Mở rộng vận hành
+### Giai đoạn 4. Hoàn thiện công cụ giáo viên
+
+Mục tiêu kỹ thuật là cải thiện độc lập hai nhóm công cụ: PDF to Word cho chuyển đổi tài liệu; scene editor và export cho luồng toán học.
+
+### Giai đoạn 5. Mở rộng vận hành
 
 Mục tiêu kỹ thuật là tối ưu hiệu năng, tách worker theo nhu cầu tải thật, hoàn thiện backup/restore có kiểm chứng và chuẩn hóa API nếu có đối tác tích hợp. Mục tiêu kiểm chứng thực tế là theo dõi tỷ lệ quay lại, tần suất sử dụng, thời gian xử lý và tỷ lệ lỗi của các workflow chính trong môi trường sử dụng thường xuyên.
 
-### Giai đoạn 5. Cá nhân hóa học tập
+### Giai đoạn 6. Cá nhân hóa học tập
 
 Mục tiêu kỹ thuật là dùng history và learning profile để gợi ý mô phỏng, bài luyện hoặc ví dụ theo năng lực. Mục tiêu kiểm chứng thực tế là đánh giá tác động đến trải nghiệm học, khả năng tự phát hiện lỗi và tiến bộ theo thời gian, thay vì chỉ đo số lượng tính năng đã thêm.
 
-Ba ưu tiên xuyên suốt lộ trình là hoàn thiện workflow thay vì bổ sung công cụ rời rạc, đo độ tin cậy bằng dữ liệu thay vì chỉ mô tả bằng cảm nhận, và đưa phản hồi của học sinh–giáo viên vào chu kỳ phát triển.
+Bốn ưu tiên xuyên suốt lộ trình là hoàn thiện workflow thay vì bổ sung công cụ rời rạc, đo độ tin cậy bằng benchmark, chỉ fine-tune từ dữ liệu đã kiểm duyệt và đưa phản hồi của học sinh–giáo viên vào chu kỳ phát triển.
 
 ## 9. Kết luận
 
