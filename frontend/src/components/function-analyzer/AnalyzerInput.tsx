@@ -1,5 +1,6 @@
-import { useRef, useState } from 'react';
-import type { FunctionOcrExtraction } from '../../api/client';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { getAnalyzerCapabilities, type AnalyzerCapabilityRegistry, type FunctionOcrExtraction } from '../../api/client';
+import { KatexSpan, sympyToLatex } from '../KatexSpan';
 import { EXAMPLE_GROUPS } from './constants';
 import { SvgIcon } from './icons';
 
@@ -44,7 +45,43 @@ export function AnalyzerInput({
 }: AnalyzerInputProps) {
   const [showAdvancedControls, setShowAdvancedControls] = useState(true);
   const [isDraggingImage, setIsDraggingImage] = useState(false);
+  const [inputMode, setInputMode] = useState<'plain' | 'latex'>('plain');
+  const [registry, setRegistry] = useState<AnalyzerCapabilityRegistry | null>(null);
+  const [parameterRangeMode, setParameterRangeMode] = useState<'auto' | 'user'>('auto');
+  const [parameterMinDraft, setParameterMinDraft] = useState('-10');
+  const [parameterMaxDraft, setParameterMaxDraft] = useState('10');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const exampleGroups = useMemo(() => {
+    if (!registry) return EXAMPLE_GROUPS;
+    const groups = new Map<string, Array<{ label: string; value: string }>>();
+    for (const example of registry.examples) {
+      const items = groups.get(example.category) ?? [];
+      items.push({ label: example.label, value: example.expression });
+      groups.set(example.category, items);
+    }
+    return Array.from(groups, ([label, items]) => ({ label, items }));
+  }, [registry]);
+  const previewTex = inputMode === 'latex' ? expression : sympyToLatex(expression);
+  const parameterMin = Number(parameterMinDraft);
+  const parameterMax = Number(parameterMaxDraft);
+  const parameterRangeValid = parameterMinDraft.trim() !== '' && parameterMaxDraft.trim() !== ''
+    && Number.isFinite(parameterMin) && Number.isFinite(parameterMax) && parameterMin < parameterMax;
+  const sliderMin = parameterRangeValid ? parameterMin : -10;
+  const sliderMax = parameterRangeValid ? parameterMax : 10;
+
+  useEffect(() => {
+    let active = true;
+    void getAnalyzerCapabilities().then((value) => {
+      if (!active) return;
+      setRegistry(value);
+      const range = value.parameters.ranges.m;
+      if (range) {
+        setParameterMinDraft(String(range.min));
+        setParameterMaxDraft(String(range.max));
+      }
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, []);
 
   async function handleImageButtonClick() {
     if (loading || ocrLoading) return;
@@ -108,6 +145,13 @@ export function AnalyzerInput({
         <div className="fa2-control-card fa2-formula-card">
           <div className="fa2-control-card-head">
             <span>Nhập công thức</span>
+            <label className="fa2-input-mode">
+              <span className="sr-only">Chế độ nhập công thức</span>
+              <select value={inputMode} onChange={(event) => setInputMode(event.target.value as 'plain' | 'latex')} disabled={loading || ocrLoading}>
+                <option value="plain">Văn bản</option>
+                <option value="latex">LaTeX</option>
+              </select>
+            </label>
             <button
               type="button"
               className="fa2-guide-btn fa2-guide-btn-link"
@@ -126,7 +170,10 @@ export function AnalyzerInput({
                 id="fa-expression-input"
                 className="fa2-input"
                 type="text"
-                placeholder="x^3 - 3*x + 2"
+                placeholder={inputMode === 'latex' ? String.raw`\frac{x^2-1}{x-2}` : 'x^3 - 3*x + 2'}
+                list="fa-expression-functions"
+                aria-describedby={`fa-expression-syntax fa-expression-preview${error ? ' fa-expression-error' : ''}`}
+                aria-invalid={!!error}
                 value={expression}
                 onChange={(e) => onExpressionChange(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter' && !ocrCandidate) onAnalyze(); }}
@@ -143,11 +190,21 @@ export function AnalyzerInput({
                 autoComplete="off"
                 spellCheck={false}
               />
+              <datalist id="fa-expression-functions">
+                {registry?.parser.functions.map((name) => <option key={name} value={`${name}(`} />)}
+              </datalist>
             </div>
             <button id="fa-submit-btn" type="button" className="sp-btn-primary" onClick={onAnalyze} disabled={loading || ocrLoading || !!ocrCandidate || !expression.trim()}>
               {loading ? <span className="sp-spinner" aria-hidden="true" /> : ocrCandidate ? 'Xác nhận bên dưới' : 'Phân tích'}
             </button>
           </div>
+          <div id="fa-expression-preview" className="fa2-expression-preview" aria-live="polite">
+            <span>Xem trước</span>
+            {expression.trim() ? <KatexSpan tex={previewTex} /> : <span>Nhập biểu thức để xem công thức.</span>}
+          </div>
+          <small id="fa-expression-syntax" className="fa2-expression-syntax">
+            Biến: <code>x</code>{registry?.parameters.supported.includes('m') ? <>; tham số: <code>m</code></> : null}. Hàm: {registry?.parser.functions.join(', ') ?? 'đang tải…'}
+          </small>
           {parameterDetected && (
             <fieldset className="fa2-parameter-controls" disabled={loading || ocrLoading}>
               <legend>Tham số m</legend>
@@ -176,14 +233,43 @@ export function AnalyzerInput({
                     />
                   </label>
                   <label>
-                    Slider gợi ý từ -10 đến 10
+                    Miền slider
+                    <select value={parameterRangeMode} onChange={(event) => {
+                      const mode = event.target.value as 'auto' | 'user';
+                      setParameterRangeMode(mode);
+                      if (mode === 'auto') {
+                        const range = registry?.parameters.ranges.m;
+                        setParameterMinDraft(String(range?.min ?? -10));
+                        setParameterMaxDraft(String(range?.max ?? 10));
+                      }
+                    }}>
+                      <option value="auto">Tự động theo registry backend</option>
+                      <option value="user">Tùy chỉnh</option>
+                    </select>
+                  </label>
+                  {parameterRangeMode === 'user' && (
+                    <div className="fa2-parameter-range-inputs">
+                      <label>
+                        Giá trị nhỏ nhất
+                        <input type="number" value={parameterMinDraft} aria-invalid={!parameterRangeValid} step="any" onChange={(event) => setParameterMinDraft(event.target.value)} />
+                      </label>
+                      <label>
+                        Giá trị lớn nhất
+                        <input type="number" value={parameterMaxDraft} aria-invalid={!parameterRangeValid} step="any" onChange={(event) => setParameterMaxDraft(event.target.value)} />
+                      </label>
+                      {!parameterRangeValid && <small role="alert">Cận slider phải là số hữu hạn và cận trái nhỏ hơn cận phải.</small>}
+                    </div>
+                  )}
+                  <label>
+                    Slider gợi ý từ {parameterMinDraft || '?'} đến {parameterMaxDraft || '?'}
                     <input
                       type="range"
-                      min="-10"
-                      max="10"
-                      step="0.1"
-                      value={suggestedParameterValue(parameterValue)}
+                      min={sliderMin}
+                      max={sliderMax}
+                      step={registry?.parameters.ranges.m?.step ?? 0.1}
+                      value={suggestedParameterValue(parameterValue, sliderMin, sliderMax)}
                       onChange={(event) => onParameterValueChange(event.target.value)}
+                      disabled={!parameterRangeValid}
                     />
                   </label>
                   <small>Slider chỉ gợi ý; giá trị exact nhập tay không bị giới hạn.</small>
@@ -245,7 +331,7 @@ export function AnalyzerInput({
         <div className="fa2-control-card">
           <div className="fa2-control-card-head"><span>Ví dụ nhanh</span></div>
           <div className="fa2-chip-groups">
-            {EXAMPLE_GROUPS.map((group) => (
+            {exampleGroups.map((group) => (
               <div key={group.label} className="fa2-chip-group">
                 <div className="fa2-chip-group-title">{group.label}</div>
                 <div className="sp-chips">
@@ -261,6 +347,16 @@ export function AnalyzerInput({
           <input ref={fileInputRef} type="file" accept="image/*" capture="environment" hidden onChange={(e) => void handleFileChange(e.target.files?.[0])} />
           <div
             className={`fa2-ocr-dropzone ${isDraggingImage ? 'is-dragging' : ''}`}
+            role="button"
+            tabIndex={loading || ocrLoading ? -1 : 0}
+            aria-label="Chọn ảnh để OCR công thức"
+            aria-disabled={loading || ocrLoading}
+            onKeyDown={(event) => {
+              if ((event.key === 'Enter' || event.key === ' ') && !loading && !ocrLoading) {
+                event.preventDefault();
+                fileInputRef.current?.click();
+              }
+            }}
             onDragOver={handleImageDragOver}
             onDragLeave={handleImageDragLeave}
             onDrop={handleImageDrop}
@@ -278,13 +374,13 @@ export function AnalyzerInput({
         </div>
       </div>}
 
-      {error && <div className="sp-error" role="alert">{error}</div>}
+      {error && <div id="fa-expression-error" className="sp-error" role="alert">{error}</div>}
     </aside>
   );
 }
 
-function suggestedParameterValue(value: string) {
+function suggestedParameterValue(value: string, min: number, max: number) {
   const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return 0;
-  return Math.max(-10, Math.min(10, numeric));
+  if (!Number.isFinite(numeric)) return Math.max(min, Math.min(max, 0));
+  return Math.max(min, Math.min(max, numeric));
 }

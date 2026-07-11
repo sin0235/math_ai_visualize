@@ -4,13 +4,6 @@ API routes for:
   POST /api/analyze/ocr      — OCR image → function analysis
 """
 import asyncio
-import copy
-import hashlib
-import json
-import multiprocessing as mp
-import queue
-import threading
-import time
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -24,6 +17,15 @@ from app.schemas.analysis import (
     AnalyzeOcrRequest,
     AnalyzeRequest,
     AnalyzeResponse,
+    AnalyzerBaseRequest,
+    AnalyzerCapabilityRegistry,
+    AnalyzerIntervalToolRequest,
+    AnalyzerLineToolRequest,
+    AnalyzerParameterToolRequest,
+    AnalyzerSessionResponse,
+    AnalyzerTangentToolRequest,
+    AnalyzerToolResponse,
+    AnalyzerTransformToolRequest,
     CriticalPoint,
     FunctionOcrCandidate,
     FunctionOcrExtraction,
@@ -35,25 +37,36 @@ from app.schemas.analysis import (
 )
 from app.schemas.scene import MAX_PROBLEM_TEXT_CHARS
 from app.services.ai_resolution import resolve_byok_ai_config, settings_with_byok_connection
+from app.services.analyzer_errors import AnalyzerErrorCode, analyzer_error, analyzer_error_from_payload
+from app.services.analyzer_runtime import (
+    ANALYZER_CACHE_TTL_SECONDS,
+    ANALYZER_CONCURRENCY_LIMIT,
+    ANALYZER_ENGINE_VERSION,
+    ANALYZER_OUTPUT_LIMIT,
+    ANALYZER_OVERLOAD_RETRY_SECONDS,
+    ANALYZER_TIMEOUT_SECONDS,
+    MAX_ANALYZER_GEOGEBRA_COMMANDS,
+    MAX_ANALYZER_GRAPH_POINTS,
+    MAX_ANALYZER_RESPONSE_CHARS,
+    _ANALYZER_CACHE,
+    _ANALYZER_INFLIGHT,
+    _ANALYZER_SEMAPHORE,
+    analysis_scope,
+    apply_output_limits,
+    create_analysis_session,
+    run_analysis_sync,
+    run_cached_analysis,
+    run_session_tool,
+    session_expiry_iso,
+)
 from app.services.api_errors import api_error
 from app.services.model_registry import load_model_registry, resolve_effective_settings, resolve_task_profile
 from app.services.user_ai_settings import UserAiSettingsError
 
 router = APIRouter(prefix="/api", tags=["function-analysis"])
 
-ANALYZER_TIMEOUT_SECONDS = 12
 ANALYZER_COMPLEXITY_LIMIT = "ANALYZER_COMPLEXITY_LIMIT"
-MAX_ANALYZER_GEOGEBRA_COMMANDS = 300
-MAX_ANALYZER_GRAPH_POINTS = 500
-MAX_ANALYZER_RESPONSE_CHARS = 200_000
-ANALYZER_OUTPUT_LIMIT = "ANALYZER_OUTPUT_LIMIT"
 ANALYZER_OVERLOADED = "ANALYZER_OVERLOADED"
-ANALYZER_CONCURRENCY_LIMIT = 2
-ANALYZER_OVERLOAD_RETRY_SECONDS = 3
-ANALYZER_CACHE_TTL_SECONDS = 15
-_ANALYZER_SEMAPHORE = threading.BoundedSemaphore(ANALYZER_CONCURRENCY_LIMIT)
-_ANALYZER_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
-_ANALYZER_INFLIGHT: dict[str, asyncio.Task[dict[str, Any]]] = {}
 
 FUNCTION_EXTRACT_PROMPT = """Bạn là bộ trích xuất biểu thức hàm số từ văn bản OCR không tin cậy.
 Chỉ trả về một JSON object hợp lệ, không markdown, không code fence, không văn xuôi.
@@ -72,6 +85,125 @@ Văn bản OCR:
 
 def _dump_option(value: Any | None) -> dict[str, Any] | None:
     return value.model_dump(mode="json", exclude_none=True) if value is not None else None
+
+
+@router.get("/analyze/capabilities", response_model=AnalyzerCapabilityRegistry)
+def analyzer_capabilities_endpoint() -> AnalyzerCapabilityRegistry:
+    from app.services.function_analysis_capabilities import analyzer_capability_registry
+
+    return AnalyzerCapabilityRegistry.model_validate(analyzer_capability_registry())
+
+
+@router.post("/analyzer/analyze", response_model=AnalyzerSessionResponse, dependencies=[Depends(require_trusted_origin)])
+async def analyze_session_endpoint(
+    request: AnalyzerBaseRequest,
+    http_request: Request,
+    user: UserRecord | None = Depends(get_optional_current_user),
+    db: DatabaseClient = Depends(get_database),
+) -> AnalyzerSessionResponse:
+    await enforce_rate_limit(db, http_request, None, "analyzer_base_ip", 30, 60)
+    if user is not None:
+        await enforce_rate_limit(db, http_request, user, "analyzer_base_user", 60, 60)
+    scope = analysis_scope(user.id if user else None, http_request)
+    data = await run_cached_analysis(
+        request.expression,
+        _dump_option(request.parameters),
+        parameter_mode=request.parameter_mode,
+        scope=scope,
+        request=http_request,
+    )
+    if data.get("error"):
+        raise analyzer_error_from_payload(data)
+    if request.provenance is not None:
+        data["provenance"] = request.provenance.model_dump()
+    from app.services.function_analysis_curriculum import apply_curriculum_profile
+
+    data = apply_curriculum_profile(data, request.curriculum_profile)
+    response = _analysis_response(request.expression, data)
+    session = create_analysis_session(scope, response.model_dump(mode="json"))
+    return AnalyzerSessionResponse(
+        **response.model_dump(),
+        analysis_id=session.analysis_id,
+        engine_version=session.engine_version,
+        expires_at=session_expiry_iso(session),
+    )
+
+
+@router.post("/analyzer/tools/interval-extrema", response_model=AnalyzerToolResponse, dependencies=[Depends(require_trusted_origin)])
+async def analyzer_interval_tool_endpoint(
+    request: AnalyzerIntervalToolRequest,
+    http_request: Request,
+    user: UserRecord | None = Depends(get_optional_current_user),
+    db: DatabaseClient = Depends(get_database),
+) -> AnalyzerToolResponse:
+    return await _run_session_tool_endpoint(request.analysis_id, "interval-extrema", _dump_option(request.interval) or {}, http_request, user, db)
+
+
+@router.post("/analyzer/tools/line", response_model=AnalyzerToolResponse, dependencies=[Depends(require_trusted_origin)])
+async def analyzer_line_tool_endpoint(
+    request: AnalyzerLineToolRequest,
+    http_request: Request,
+    user: UserRecord | None = Depends(get_optional_current_user),
+    db: DatabaseClient = Depends(get_database),
+) -> AnalyzerToolResponse:
+    return await _run_session_tool_endpoint(request.analysis_id, "line", _dump_option(request.line) or {}, http_request, user, db)
+
+
+@router.post("/analyzer/tools/tangent", response_model=AnalyzerToolResponse, dependencies=[Depends(require_trusted_origin)])
+async def analyzer_tangent_tool_endpoint(
+    request: AnalyzerTangentToolRequest,
+    http_request: Request,
+    user: UserRecord | None = Depends(get_optional_current_user),
+    db: DatabaseClient = Depends(get_database),
+) -> AnalyzerToolResponse:
+    return await _run_session_tool_endpoint(request.analysis_id, "tangent", {"x0": request.x0}, http_request, user, db)
+
+
+@router.post("/analyzer/tools/transform", response_model=AnalyzerToolResponse, dependencies=[Depends(require_trusted_origin)])
+async def analyzer_transform_tool_endpoint(
+    request: AnalyzerTransformToolRequest,
+    http_request: Request,
+    user: UserRecord | None = Depends(get_optional_current_user),
+    db: DatabaseClient = Depends(get_database),
+) -> AnalyzerToolResponse:
+    return await _run_session_tool_endpoint(request.analysis_id, "transform", _dump_option(request.transform) or {}, http_request, user, db)
+
+
+@router.post("/analyzer/tools/parameter", response_model=AnalyzerToolResponse, dependencies=[Depends(require_trusted_origin)])
+async def analyzer_parameter_tool_endpoint(
+    request: AnalyzerParameterToolRequest,
+    http_request: Request,
+    user: UserRecord | None = Depends(get_optional_current_user),
+    db: DatabaseClient = Depends(get_database),
+) -> AnalyzerToolResponse:
+    payload = request.model_dump(mode="json", exclude={"analysis_id"}, exclude_none=True)
+    return await _run_session_tool_endpoint(request.analysis_id, "parameter", payload, http_request, user, db)
+
+
+async def _run_session_tool_endpoint(
+    analysis_id: str,
+    tool: str,
+    payload: dict[str, Any],
+    http_request: Request,
+    user: UserRecord | None,
+    db: DatabaseClient,
+) -> AnalyzerToolResponse:
+    await enforce_rate_limit(db, http_request, None, "analyzer_tool_ip", 90, 60)
+    if user is not None:
+        await enforce_rate_limit(db, http_request, user, "analyzer_tool_user", 120, 60)
+    scope = analysis_scope(user.id if user else None, http_request)
+    try:
+        result = await run_session_tool(analysis_id, scope, tool, payload, http_request)
+    except KeyError as error:
+        raise api_error(404, str(error.args[0]), "ANALYZER_SESSION_NOT_FOUND") from error
+    except ValueError as error:
+        raise analyzer_error(AnalyzerErrorCode.UNSUPPORTED, stage=f"tool:{tool}", cause=error) from error
+    return AnalyzerToolResponse(
+        analysis_id=analysis_id,
+        engine_version=ANALYZER_ENGINE_VERSION,
+        tool=tool,
+        **result,
+    )
 
 
 @router.post("/analyze", response_model=AnalyzeResponse, dependencies=[Depends(require_trusted_origin)])
@@ -97,6 +229,8 @@ async def analyze_function_endpoint(
             line=_dump_option(request.line),
             parameter_conditions=_dump_option(request.parameter_conditions),
             transform=_dump_option(request.transform),
+            scope=analysis_scope(user.id if user else None, http_request),
+            request=http_request,
         )
     except Exception as error:
         if user is not None:
@@ -110,6 +244,8 @@ async def analyze_function_endpoint(
                 metadata={"error": str(error)[:200]},
             )
         raise
+    if data.get("error"):
+        raise analyzer_error_from_payload(data)
     if request.provenance is not None:
         data["provenance"] = request.provenance.model_dump()
     if user is not None:
@@ -149,9 +285,10 @@ async def sample_function_graph_endpoint(
             timeout=4.0,
         )
     except asyncio.TimeoutError as error:
-        raise api_error(408, "Sampling đồ thị vượt giới hạn thời gian.", ANALYZER_COMPLEXITY_LIMIT) from error
+        raise analyzer_error(AnalyzerErrorCode.TIMEOUT, stage="graph_sampling", cause=error) from error
     except ValueError as error:
-        raise api_error(400, str(error), getattr(error, "code", "ANALYZER_PARSE_FAILED")) from error
+        code = AnalyzerErrorCode.PARSE_FAILED if getattr(error, "code", "") == "ANALYZER_PARSE_FAILED" else AnalyzerErrorCode.INPUT_INVALID
+        raise analyzer_error(code, stage="graph_sampling", cause=error) from error
     return GraphSamplesResponse(graph_analysis_v2=graph_analysis)
 
 
@@ -207,7 +344,7 @@ async def extract_function_from_ocr(
     except HTTPException:
         raise
     except Exception as error:
-        raise api_error(400, f"Lỗi khi đọc hàm số từ ảnh: {error}", "ANALYZE_OCR_FAILED") from error
+        raise analyzer_error(AnalyzerErrorCode.OCR_FAILED, stage="ocr", cause=error) from error
     if not byok_used:
         await AdminRepository(db).record_user_usage_event(user.id, "ocr", {"source": "analyze_ocr_extract"})
     from app.repositories.activity import try_log_user_activity
@@ -241,7 +378,11 @@ async def analyze_from_ocr(
                 ocr_text=extraction.ocr_text,
                 warnings=extraction.warnings,
             )
-        data = await _run_cached_analyzer_job(extraction.expression)
+        data = await _run_cached_analyzer_job(
+            extraction.expression,
+            scope=analysis_scope(user.id, http_request),
+            request=http_request,
+        )
         data["ocr_text"] = extraction.ocr_text
         data["ocr_expression"] = extraction.expression
         data["warnings"] = _dedupe_strings([*data.get("warnings", []), *extraction.warnings])
@@ -257,7 +398,7 @@ async def analyze_from_ocr(
             target_type="analyzer",
             metadata={"source": "ocr", "error": str(error)[:200]},
         )
-        raise api_error(400, f"Lỗi khi phân tích ảnh: {error}", "ANALYZE_OCR_FAILED") from error
+        raise analyzer_error(AnalyzerErrorCode.OCR_FAILED, stage="ocr_analyze", cause=error) from error
 
     if not byok_used:
         await AdminRepository(db).record_user_usage_event(user.id, "ocr", {"source": "analyze_ocr"})
@@ -336,57 +477,20 @@ async def _run_cached_analyzer_job(
     line: dict[str, Any] | None = None,
     parameter_conditions: dict[str, Any] | None = None,
     transform: dict[str, Any] | None = None,
+    scope: str = "legacy",
+    request: Request | None = None,
 ) -> dict[str, Any]:
-    key = _analyzer_request_key(expression, parameters, parameter_mode, interval, line, parameter_conditions, transform)
-    now = time.monotonic()
-    cached = _ANALYZER_CACHE.get(key)
-    if cached and cached[0] > now:
-        return copy.deepcopy(cached[1])
-    task = _ANALYZER_INFLIGHT.get(key)
-    if task is None:
-        task = asyncio.create_task(_run_analyzer_job(expression, parameters, parameter_mode=parameter_mode, interval=interval, line=line, parameter_conditions=parameter_conditions, transform=transform))
-        _ANALYZER_INFLIGHT[key] = task
-    try:
-        data = await task
-    finally:
-        if _ANALYZER_INFLIGHT.get(key) is task:
-            _ANALYZER_INFLIGHT.pop(key, None)
-    if "error" not in data:
-        _ANALYZER_CACHE[key] = (time.monotonic() + ANALYZER_CACHE_TTL_SECONDS, copy.deepcopy(data))
-        if len(_ANALYZER_CACHE) > 128:
-            _prune_analyzer_cache()
-    return copy.deepcopy(data)
-
-
-def _analyzer_request_key(
-    expression: str,
-    parameters: dict[str, Any] | None,
-    parameter_mode: str | None,
-    interval: dict[str, Any] | None,
-    line: dict[str, Any] | None,
-    parameter_conditions: dict[str, Any] | None,
-    transform: dict[str, Any] | None,
-) -> str:
-    payload = {
-        "expression": expression,
-        "parameters": parameters or {},
-        "parameter_mode": parameter_mode,
-        "interval": interval,
-        "line": line,
-        "parameter_conditions": parameter_conditions,
-        "transform": transform,
-    }
-    raw = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
-
-
-def _prune_analyzer_cache() -> None:
-    now = time.monotonic()
-    expired = [key for key, (expires_at, _) in _ANALYZER_CACHE.items() if expires_at <= now]
-    for key in expired:
-        _ANALYZER_CACHE.pop(key, None)
-    while len(_ANALYZER_CACHE) > 128:
-        _ANALYZER_CACHE.pop(next(iter(_ANALYZER_CACHE)))
+    return await run_cached_analysis(
+        expression,
+        parameters,
+        parameter_mode=parameter_mode,
+        interval=interval,
+        line=line,
+        parameter_conditions=parameter_conditions,
+        transform=transform,
+        scope=scope,
+        request=request,
+    )
 
 
 async def _run_analyzer_job(
@@ -399,25 +503,16 @@ async def _run_analyzer_job(
     parameter_conditions: dict[str, Any] | None = None,
     transform: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    if not _ANALYZER_SEMAPHORE.acquire(blocking=False):
-        raise HTTPException(
-            status_code=429,
-            detail="Analyzer đang quá tải. Hãy thử lại sau.",
-            headers={"Retry-After": str(ANALYZER_OVERLOAD_RETRY_SECONDS), "X-Error-Code": ANALYZER_OVERLOADED},
-        )
-    try:
-        return await asyncio.to_thread(
-            _run_analyzer_job_sync,
-            expression,
-            parameters,
-            interval,
-            line,
-            parameter_conditions,
-            transform,
-            parameter_mode,
-        )
-    finally:
-        _ANALYZER_SEMAPHORE.release()
+    return await run_cached_analysis(
+        expression,
+        parameters,
+        parameter_mode=parameter_mode,
+        interval=interval,
+        line=line,
+        parameter_conditions=parameter_conditions,
+        transform=transform,
+        scope="legacy-direct",
+    )
 
 
 def _run_analyzer_job_sync(
@@ -429,86 +524,19 @@ def _run_analyzer_job_sync(
     transform: dict[str, Any] | None,
     parameter_mode: str | None = None,
 ) -> dict[str, Any]:
-    try:
-        ctx = mp.get_context("fork")
-    except ValueError:  # pragma: no cover - non-POSIX fallback
-        ctx = mp.get_context()
-    result_queue = ctx.Queue(maxsize=1)
-    process = ctx.Process(
-        target=_analyzer_worker,
-        args=(result_queue, expression, parameters, interval, line, parameter_conditions, transform, parameter_mode),
+    return run_analysis_sync(
+        expression,
+        parameters,
+        interval,
+        line,
+        parameter_conditions,
+        transform,
+        parameter_mode,
     )
-    process.start()
-    process.join(ANALYZER_TIMEOUT_SECONDS)
-    if process.is_alive():
-        process.terminate()
-        process.join(1)
-        return _analyzer_error("Analyzer vượt giới hạn thời gian xử lý.", ANALYZER_COMPLEXITY_LIMIT)
-    try:
-        status, payload = result_queue.get_nowait()
-    except queue.Empty:
-        return _analyzer_error("Analyzer không trả kết quả.", "ANALYZE_FAILED")
-    if status == "ok":
-        return payload
-    return _analyzer_error(str(payload), "ANALYZE_FAILED")
-
-
-def _analyzer_worker(
-    result_queue,
-    expression: str,
-    parameters: dict[str, Any] | None,
-    interval: dict[str, Any] | None,
-    line: dict[str, Any] | None,
-    parameter_conditions: dict[str, Any] | None,
-    transform: dict[str, Any] | None,
-    parameter_mode: str | None = None,
-) -> None:
-    try:
-        from app.services.function_analyzer import AnalyzerStageTimeout, analyze_function, analyzer_stage_timeout
-        from app.services.function_graph_builder import build_function_graph
-
-        data = analyze_function(
-            expression,
-            parameters,
-            parameter_mode=parameter_mode,
-            interval=interval,
-            line=line,
-            parameter_conditions=parameter_conditions,
-            transform=transform,
-        )
-        if "error" not in data and not data.get("_skip_graph"):
-            try:
-                with analyzer_stage_timeout("graph", 2.0):
-                    scene, data["geogebra_commands"], data["graph_points"] = build_function_graph(data)
-                    data["graph_scene"] = scene.model_dump(mode="json")
-                data.setdefault("stage_statuses", {})["graph"] = {"status": "ok"}
-            except AnalyzerStageTimeout as error:
-                data.setdefault("stage_statuses", {})[error.stage] = {"status": "timeout", "error_code": error.code}
-                data.setdefault("warnings", []).append(str(error))
-        elif data.get("_skip_graph"):
-            data.setdefault("stage_statuses", {})["graph"] = {"status": "skipped"}
-        data.pop("_parsed_expr", None)
-        data.pop("_evaluated_expr", None)
-        data.pop("_domain_set", None)
-        data.pop("_domain_info", None)
-        data.pop("_graph_expr", None)
-        data.pop("_skip_graph", None)
-        result_queue.put(("ok", _apply_analyzer_output_limits(data)))
-    except Exception as error:  # pragma: no cover - child-process defensive path
-        result_queue.put(("error", f"Lỗi khi phân tích hàm số: {error}"))
 
 
 def _apply_analyzer_output_limits(data: dict[str, Any]) -> dict[str, Any]:
-    commands = data.get("geogebra_commands") or []
-    if len(commands) > MAX_ANALYZER_GEOGEBRA_COMMANDS:
-        return _analyzer_error("Analyzer tạo quá nhiều lệnh GeoGebra.", ANALYZER_OUTPUT_LIMIT)
-    points = data.get("graph_points") or []
-    if len(points) > MAX_ANALYZER_GRAPH_POINTS:
-        return _analyzer_error("Analyzer tạo quá nhiều điểm đồ thị.", ANALYZER_OUTPUT_LIMIT)
-    response_chars = len(json.dumps(data, ensure_ascii=False, default=str))
-    if response_chars > MAX_ANALYZER_RESPONSE_CHARS:
-        return _analyzer_error("Analyzer tạo phản hồi quá lớn.", ANALYZER_OUTPUT_LIMIT)
-    return data
+    return apply_output_limits(data)
 
 
 def _analyzer_error(message: str, code: str) -> dict[str, Any]:
@@ -572,9 +600,13 @@ def _analysis_response(expression: str, data: dict[str, Any]) -> AnalyzeResponse
         parameter_conditions=data.get("parameter_conditions", []),
         transform_preview=data.get("transform_preview"),
         capabilities=data.get("capabilities"),
+        capabilities_v2=data.get("capabilities_v2"),
         method_used=data.get("method_used"),
         complexity_score=data.get("complexity_score"),
         stage_statuses=data.get("stage_statuses"),
+        verification=data.get("verification"),
+        analysis_steps=data.get("analysis_steps", []),
+        curriculum_presentation=data.get("curriculum_presentation"),
         warnings=data.get("warnings", []),
     )
 

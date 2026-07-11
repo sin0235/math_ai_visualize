@@ -1,4 +1,10 @@
-from app.main import app
+import asyncio
+import json
+
+from fastapi import HTTPException, Request
+from fastapi.exceptions import RequestValidationError
+
+from app.main import app, http_exception_handler, request_validation_exception_handler
 from app.schemas.analysis import AnalyzeResponse, CriticalPoint, VariationRow
 
 
@@ -24,6 +30,16 @@ def test_split_solve_and_analysis_routes_stay_registered():
     assert "/api/solve" in paths
     assert "/api/analyze" in paths
     assert "/api/analyze/ocr" in paths
+    assert "/api/analyzer/analyze" in paths
+    assert "/api/analyzer/history" in paths
+    assert "/api/analyzer/export" in paths
+    assert {
+        "/api/analyzer/tools/interval-extrema",
+        "/api/analyzer/tools/line",
+        "/api/analyzer/tools/tangent",
+        "/api/analyzer/tools/transform",
+        "/api/analyzer/tools/parameter",
+    } <= paths
 
 
 def test_solve_and_analysis_routes_have_separate_tags():
@@ -62,7 +78,18 @@ def test_analysis_response_keeps_frontend_contract_field_names():
         interval_analysis={"conclusion": "ok"},
         line_analysis={"intersection_count": 1},
         parameter_conditions=[{"label": "m"}],
-        transform_preview={"type": "vertical_shift"},
+        transform_preview={
+            "type": "vertical_shift",
+            "value": "1",
+            "label": "f(x) + 1",
+            "expression": "x**2 + 1",
+            "expression_latex": "x^{2} + 1",
+            "convention": "a>0: dịch lên; a<0: dịch xuống",
+            "expression_template": "g(x)=f(x)+a",
+            "requires_value": True,
+            "invariants": ["domain", "shape"],
+            "anchors": [],
+        },
         capabilities={"mode": "symbolic"},
     ).model_dump(mode="json")
 
@@ -80,3 +107,74 @@ def test_analysis_response_keeps_frontend_contract_field_names():
         "capabilities",
     ]:
         assert key in payload
+
+
+def test_analyzer_openapi_uses_strict_typed_components():
+    schema = app.openapi()
+    body = schema["paths"]["/api/analyze"]["post"]["requestBody"]["content"]["application/json"]["schema"]
+    session_body = schema["paths"]["/api/analyzer/analyze"]["post"]["requestBody"]["content"]["application/json"]["schema"]
+    tool_body = schema["paths"]["/api/analyzer/tools/interval-extrema"]["post"]["requestBody"]["content"]["application/json"]["schema"]
+    components = schema["components"]["schemas"]
+
+    assert body["$ref"].endswith("/AnalyzeRequest")
+    assert session_body["$ref"].endswith("/AnalyzerBaseRequest")
+    assert tool_body["$ref"].endswith("/AnalyzerIntervalToolRequest")
+    for name in [
+        "AnalysisInterval",
+        "AnalysisLine",
+        "ParameterConditionRequest",
+        "PlotWindow",
+        "ValuedGraphTransform",
+        "FixedGraphTransform",
+        "GraphAnalysis",
+        "AnalyzerBaseRequest",
+        "AnalyzerIntervalToolRequest",
+    ]:
+        assert components[name]["additionalProperties"] is False
+
+
+def test_analyzer_validation_error_has_safe_typed_envelope():
+    request = Request({
+        "type": "http",
+        "method": "POST",
+        "path": "/api/analyze",
+        "headers": [],
+        "query_string": b"",
+        "server": ("test", 80),
+        "client": ("test", 1),
+        "scheme": "http",
+        "root_path": "",
+    })
+    response = asyncio.run(request_validation_exception_handler(request, RequestValidationError([{"secret": "raw"}])))
+    payload = json.loads(response.body)
+
+    assert response.status_code == 422
+    assert payload["detail"] == {
+        "code": "ANALYZER_INPUT_INVALID",
+        "message": "Dữ liệu yêu cầu phân tích không hợp lệ.",
+        "correlation_id": "",
+        "stage": "request",
+        "retryable": False,
+    }
+    assert "raw" not in response.body.decode()
+
+
+def test_analyzer_rate_limit_uses_analyzer_error_code():
+    request = Request({
+        "type": "http",
+        "method": "POST",
+        "path": "/api/analyze",
+        "headers": [],
+        "query_string": b"",
+        "server": ("test", 80),
+        "client": ("test", 1),
+        "scheme": "http",
+        "root_path": "",
+    })
+    response = asyncio.run(http_exception_handler(request, HTTPException(status_code=429, detail="rate limited", headers={"Retry-After": "3"})))
+    payload = json.loads(response.body)
+
+    assert response.status_code == 429
+    assert response.headers["Retry-After"] == "3"
+    assert payload["detail"]["code"] == "ANALYZER_RATE_LIMITED"
+    assert payload["detail"]["retryable"] is True

@@ -22,7 +22,7 @@ export const EXAMPLE_GROUPS = [
 
 export const TRANSFORMS = [
   { value: 'vertical_shift', label: 'f(x) + a' },
-  { value: 'horizontal_shift', label: 'f(x + a)' },
+  { value: 'horizontal_shift', label: 'f(x - a)' },
   { value: 'vertical_scale', label: 'a·f(x)' },
   { value: 'horizontal_scale', label: 'f(a·x)' },
   { value: 'reflect_x', label: '-f(x)' },
@@ -33,7 +33,7 @@ export const TRANSFORMS = [
 
 export const TRANSFORM_LABEL_TEX: Record<string, string> = {
   vertical_shift: 'g(x)=f(x)+a',
-  horizontal_shift: 'g(x)=f(x+a)',
+  horizontal_shift: 'g(x)=f(x-a)',
   vertical_scale: 'g(x)=a f(x)',
   horizontal_scale: 'g(x)=f(a x)',
   reflect_x: 'g(x)=-f(x)',

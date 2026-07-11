@@ -30,6 +30,8 @@ from sympy import (
 from sympy.calculus.util import continuous_domain, function_range
 from sympy.calculus.singularities import singularities
 
+from app.services.function_analysis_capabilities import exact_approx_value, expression_capabilities
+from app.services.function_analysis_steps import build_analysis_steps
 from app.services.function_domain import DomainPartition, FunctionDomain, filter_domain_values, in_domain, intersect_domain, removable_holes
 from app.services.function_roots import RootAnalysis, analyze_real_roots
 from app.services.safe_math_parser import SafeMathComplexityError, SafeMathParseError, SafeMathParseResult, parse_safe_math_expression
@@ -636,6 +638,7 @@ def _asymptotes_v2(f_expr, domain_info: FunctionDomain | None, periodicity: dict
             "x": expr_data["approx"] or expr_data["exact"],
             "x_exact": expr_data["exact"],
             "x_latex": expr_data["latex"],
+            "x_value": exact_approx_value(point, method="symbolic_limit"),
             "approx": expr_data["approx"],
             "precision": expr_data["precision"],
             "left_limit": left_payload,
@@ -652,7 +655,7 @@ def _asymptotes_v2(f_expr, domain_info: FunctionDomain | None, periodicity: dict
         if not _is_limit_finite(value):
             continue
         data = _expr_payload(simplify(value))
-        horizontal.append({"kind": "horizontal", "direction": direction, "value": data["approx"] or data["exact"], "value_exact": data["exact"], "value_latex": data["latex"], "approx": data["approx"], "precision": data["precision"]})
+        horizontal.append({"kind": "horizontal", "direction": direction, "value": data["approx"] or data["exact"], "value_exact": data["exact"], "value_latex": data["latex"], "value_v2": exact_approx_value(value, method="symbolic_limit"), "approx": data["approx"], "precision": data["precision"]})
 
     oblique = []
     for direction, target in (("+∞", oo), ("-∞", -oo)):
@@ -677,9 +680,11 @@ def _asymptotes_v2(f_expr, domain_info: FunctionDomain | None, periodicity: dict
             "slope": slope_data["approx"] or slope_data["exact"],
             "slope_exact": slope_data["exact"],
             "slope_latex": slope_data["latex"],
+            "slope_value": exact_approx_value(slope, method="symbolic_limit"),
             "intercept": intercept_data["approx"] or intercept_data["exact"],
             "intercept_exact": intercept_data["exact"],
             "intercept_latex": intercept_data["latex"],
+            "intercept_value": exact_approx_value(intercept, method="symbolic_limit"),
             "equation": f"y = {_fmt_sym(equation)}",
             "equation_latex": f"y={latex(equation)}",
             "validation_limit": "0",
@@ -723,7 +728,7 @@ def analyze_function(
         "ranges": {name: dict(config) for name, config in _PARAMETER_RANGES.items() if name in detected_parameters},
     }
     if detected_parameters and parameter_mode is None:
-        return {
+        pending_result = {
             "expression": expression,
             "expression_latex": latex(parsed),
             "evaluated_expression": None,
@@ -736,14 +741,20 @@ def analyze_function(
             "complexity_score": parse_result.complexity_score,
             "stage_statuses": {"parse": {"status": "ok"}, "graph": {"status": "skipped"}},
             "warnings": ["Chọn chế độ symbolic hoặc thay giá trị m trước khi phân tích."],
+            "_parsed_expr": parsed,
             "_skip_graph": True,
         }
+        capabilities = expression_capabilities(parsed, pending_result)
+        pending_result["capabilities"] = capabilities
+        pending_result["capabilities_v2"] = capabilities
+        pending_result["analysis_steps"] = build_analysis_steps(pending_result)
+        return pending_result
     if detected_parameters and parameter_mode == "symbolic":
         from app.services.function_parameter_analysis import analyze_parameter_cases
 
         parameter_analysis = analyze_parameter_cases(parsed, x, m)
         parameter_payload["provenance"] = {"mode": "symbolic", "source": "request", "exact": True}
-        return {
+        symbolic_result = {
             "expression": expression,
             "expression_latex": latex(parsed),
             "evaluated_expression": None,
@@ -758,8 +769,14 @@ def analyze_function(
             "complexity_score": parse_result.complexity_score,
             "stage_statuses": {"parse": {"status": "ok"}, "parameter_analysis": {"status": parameter_analysis["status"]}, "graph": {"status": "skipped"}},
             "warnings": parameter_analysis.get("warnings", []),
+            "_parsed_expr": parsed,
             "_skip_graph": True,
         }
+        capabilities = expression_capabilities(parsed, symbolic_result)
+        symbolic_result["capabilities"] = capabilities
+        symbolic_result["capabilities_v2"] = capabilities
+        symbolic_result["analysis_steps"] = build_analysis_steps(symbolic_result)
+        return symbolic_result
 
     f = parsed
     if detected_parameters:
@@ -927,8 +944,10 @@ def analyze_function(
                 critical_points.append({
                     "x": _fmt_num(cp_float),
                     "x_exact": _fmt_sym(cp),
+                    "x_value": exact_approx_value(cp, method="symbolic_exact"),
                     "y": _fmt_num(y_val) if y_val is not None else None,
                     "y_exact": _fmt_sym(y_expr) if y_expr is not None else None,
+                    "y_value": exact_approx_value(y_expr, method="symbolic_exact") if y_expr is not None else None,
                     "kind": kind,
                     "kind_label": kind_label,
                 })
@@ -1127,11 +1146,66 @@ def analyze_function(
 
     result["variation_table"] = _build_variation_table(result, critical_points)
     result["variation_table_v2"] = _build_variation_table_v2(f, fp_simplified, domain_info, critical_points, result)
-    result["capabilities"] = {"trig_periodic": True, "exact_solving": True, "numeric_fallback": True}
+    capabilities = expression_capabilities(f, result)
+    result["capabilities"] = capabilities
+    result["capabilities_v2"] = capabilities
     result["method_used"] = method_details
     result["warnings"] = warnings
+    result["analysis_steps"] = build_analysis_steps(result)
 
     return result
+
+
+def analyze_function_tool_from_evidence(
+    base_result: Mapping[str, Any],
+    tool: str,
+    payload: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Chạy tool hẹp từ evidence JSON; không chạy lại full analyzer."""
+    if tool == "parameter":
+        parsed = _parse_expr(str(base_result.get("expression") or "")).expr
+        return {"parameter_conditions": _solve_parameter_conditions(parsed, payload)}
+
+    evaluated = base_result.get("evaluated_expression")
+    if not isinstance(evaluated, str) or not evaluated:
+        raise ValueError("Analysis session chưa có biểu thức đã xác nhận cho tool này.")
+    f_expr = parse_safe_math_expression(evaluated).expr
+    domain_info = _domain_from_serialized_evidence(base_result.get("domain_partition_v2"))
+
+    if tool == "interval-extrema":
+        derivative = base_result.get("derivative")
+        if not isinstance(derivative, str) or not derivative:
+            raise ValueError("Analysis session không có evidence đạo hàm.")
+        fp_expr = parse_safe_math_expression(derivative).expr
+        return {"interval_analysis": _analyze_interval(f_expr, fp_expr, payload, domain_info)}
+    if tool in {"line", "tangent"}:
+        line_payload = dict(payload)
+        if tool == "tangent":
+            line_payload["mode"] = "tangent_at"
+        return {"line_analysis": _analyze_line_position(f_expr, line_payload, domain_info, {})}
+    if tool == "transform":
+        return {"transform_preview": _build_transform_preview(f_expr, payload)}
+    raise ValueError("Công cụ analyzer không được hỗ trợ.")
+
+
+def _domain_from_serialized_evidence(payload: Any) -> FunctionDomain:
+    if not isinstance(payload, Mapping) or payload.get("status") != "complete":
+        raise ValueError("Analysis session không có evidence miền đầy đủ.")
+    intervals = []
+    for component in payload.get("components") or []:
+        if not isinstance(component, Mapping):
+            raise ValueError("Evidence miền không hợp lệ.")
+        start = simplify(parse_safe_math_expression(str(component["start"])).expr)
+        end = simplify(parse_safe_math_expression(str(component["end"])).expr)
+        intervals.append(Interval(
+            start,
+            end,
+            left_open=bool(component.get("left_open", False)),
+            right_open=bool(component.get("right_open", False)),
+        ))
+    if not intervals:
+        raise ValueError("Analysis session không có thành phần miền.")
+    return FunctionDomain.from_set(sp.Union(*intervals))
 
 
 def _analyze_interval(f_expr, fp_expr, interval: Mapping[str, Any], domain_info: FunctionDomain | None = None) -> dict[str, Any]:
@@ -1266,6 +1340,7 @@ def _extreme_bound_payload(f_expr, active_set, value, kind: str, boundary_eviden
             "value": "+∞" if value == oo else "-∞",
             "value_exact": _fmt_sym(value),
             "value_latex": latex(value),
+            "value_v2": exact_approx_value(value, method="symbolic_range"),
             "attained": False,
             "attainment_set_exact": None,
             "attainment_set_latex": None,
@@ -1287,6 +1362,7 @@ def _extreme_bound_payload(f_expr, active_set, value, kind: str, boundary_eviden
         "value": _expr_payload(value)["approx"] or _fmt_sym(value),
         "value_exact": _fmt_sym(value),
         "value_latex": latex(value),
+        "value_v2": exact_approx_value(value, method="symbolic_range"),
         "attained": attained,
         "attainment_set_exact": _fmt_sym(attainment_set) if complete else None,
         "attainment_set_latex": latex(attainment_set) if complete else None,
@@ -1313,9 +1389,11 @@ def _point_value_payload(f_expr, point) -> dict[str, Any]:
         "x": _expr_payload(point)["approx"] or _fmt_sym(point),
         "x_exact": _fmt_sym(point),
         "x_latex": latex(point),
+        "x_value": exact_approx_value(point, method="symbolic_range"),
         "y": _expr_payload(value)["approx"] or _fmt_sym(value),
         "y_exact": _fmt_sym(value),
         "y_latex": latex(value),
+        "y_value": exact_approx_value(value, method="symbolic_range"),
     }
 
 
@@ -1323,8 +1401,10 @@ def _interval_component_payload(component) -> dict[str, Any]:
     return {
         "start": _fmt_boundary(component.start),
         "start_exact": _fmt_sym(component.start),
+        "start_approx": exact_approx_value(component.start, method="domain_intersection")["approx"],
         "end": _fmt_boundary(component.end),
         "end_exact": _fmt_sym(component.end),
+        "end_approx": exact_approx_value(component.end, method="domain_intersection")["approx"],
         "left_open": bool(component.left_open),
         "right_open": bool(component.right_open),
     }
@@ -1403,13 +1483,19 @@ def _analyze_line_position(f_expr, line: Mapping[str, Any], domain_info: Functio
 
     if mode == "tangent_at":
         return _analyze_tangent(f_expr, line, domain_info)
+    if mode == "tangent_at_point":
+        return _analyze_tangent_at_point(f_expr, line, domain_info)
+    if mode == "normal_at":
+        return _analyze_normal(f_expr, line, domain_info)
+    if mode in {"tangent_parallel", "tangent_perpendicular", "tangent_through_point"}:
+        return _analyze_tangent_family(f_expr, line, domain_info, mode)
 
     k = _finite_float(line.get("k", 0), "k")
     b_val = _finite_float(line.get("b", 0), "b")
     line_expr = sp.Rational(str(k)) * x + sp.Rational(str(b_val))
     difference = simplify(f_expr - line_expr)
     root_analysis = analyze_real_roots(difference, x, domain_info)
-    intersections = [_intersection_payload(root, line_expr) for root in root_analysis.roots]
+    intersections = [_intersection_payload(root, line_expr, difference) for root in root_analysis.roots]
     split_points = [root.value for root in root_analysis.roots]
     above, below = _sign_intervals(difference, split_points, domain_info, method_details, "line_position")
     area = _area_between_intersections(difference, root_analysis, domain_info)
@@ -1420,6 +1506,9 @@ def _analyze_line_position(f_expr, line: Mapping[str, Any], domain_info: Functio
         "k": _fmt_num(k),
         "b": _fmt_num(b_val),
         "equation": f"y = {_fmt_num(k)}x + {_fmt_num(b_val)}",
+        "equation_exact": f"y = {_fmt_sym(line_expr)}",
+        "equation_latex": f"y={latex(line_expr)}",
+        "graph_expression": _fmt_sym(line_expr),
         "intersection_count": count,
         "intersection_count_status": "complete" if count is not None else "unknown",
         "intersections": intersections,
@@ -1431,17 +1520,33 @@ def _analyze_line_position(f_expr, line: Mapping[str, Any], domain_info: Functio
     }
 
 
-def _intersection_payload(root, line_expr) -> dict[str, Any]:
+def _intersection_payload(root, line_expr, difference) -> dict[str, Any]:
     root_payload = root.payload()
     y_value = simplify(line_expr.subs(x, root.value))
     y_payload = _expr_payload(y_value)
+    multiplicity = _exact_root_multiplicity(difference, root.value) if root.exact else None
     return {
         **root_payload,
         "x": _fmt_num(sp.N(root.value)),
         "y": y_payload["approx"] or y_payload["exact"],
         "y_exact": y_payload["exact"],
         "y_latex": y_payload["latex"],
+        "multiplicity": multiplicity,
+        "contact_kind": "tangent" if multiplicity is not None and multiplicity >= 2 else "crossing" if multiplicity == 1 else "unknown",
     }
+
+
+def _exact_root_multiplicity(expression, root) -> int | None:
+    try:
+        polynomial = sp.Poly(expression, x)
+    except (sp.PolynomialError, TypeError, ValueError):
+        return None
+    derivative = polynomial.as_expr()
+    for multiplicity in range(1, polynomial.degree() + 1):
+        if simplify(derivative.subs(x, root)) != 0:
+            return multiplicity - 1
+        derivative = diff(derivative, x)
+    return polynomial.degree()
 
 
 def _area_between_intersections(difference, roots: RootAnalysis, domain_info: FunctionDomain | None) -> dict[str, Any]:
@@ -1521,7 +1626,7 @@ def _area_between_intersections(difference, roots: RootAnalysis, domain_info: Fu
 
 def _analyze_tangent(f_expr, line: Mapping[str, Any], domain_info: FunctionDomain | None) -> dict[str, Any]:
     x0 = _finite_float(line.get("x0", 0), "x0")
-    point = sp.Rational(str(x0))
+    point = simplify(line["_x0_exact"]) if "_x0_exact" in line else sp.Rational(str(x0))
     if not in_domain(domain_info, point):
         raise ValueError(f"x0={_fmt_num(x0)} không thuộc tập xác định.")
     y0 = simplify(f_expr.subs(x, point))
@@ -1579,9 +1684,197 @@ def _analyze_tangent(f_expr, line: Mapping[str, Any], domain_info: FunctionDomai
         "equation": equation,
         "equation_exact": equation,
         "equation_latex": f"y={latex(equation_expr)}",
+        "graph_expression": _fmt_sym(equation_expr),
         "verification": "difference_quotient_one_sided" if len(slopes) == 1 else "difference_quotient_two_sided",
         "contact_limit": _fmt_sym(contact),
         "conclusion": f"Tiếp tuyến tại điểm ({_fmt_num(x0)}, {_fmt_num(y0)}) là: {equation}",
+    }
+
+
+def _analyze_tangent_at_point(f_expr, line: Mapping[str, Any], domain_info: FunctionDomain | None) -> dict[str, Any]:
+    point_x = sp.Rational(str(_finite_float(line.get("x0", 0), "x0")))
+    requested_y = sp.Rational(str(_finite_float(line.get("y0", 0), "y0")))
+    if not in_domain(domain_info, point_x):
+        raise ValueError(f"x={_fmt_sym(point_x)} không thuộc tập xác định.")
+    actual_y = simplify(f_expr.subs(x, point_x))
+    if simplify(actual_y - requested_y) != 0:
+        return {
+            "mode": "tangent_at_point",
+            "status": "point_not_on_graph",
+            "kind": "invalid_contact_point",
+            "x0": _fmt_sym(point_x),
+            "x0_exact": _fmt_sym(point_x),
+            "y0": _fmt_sym(requested_y),
+            "y0_exact": _fmt_sym(requested_y),
+            "actual_y_exact": _fmt_sym(actual_y),
+            "equation": "Không tồn tại",
+            "equation_exact": None,
+            "graph_expression": None,
+            "verification": "exact_point_substitution",
+            "warnings": ["Điểm yêu cầu không thuộc đồ thị."],
+            "conclusion": f"Điểm ({_fmt_sym(point_x)}, {_fmt_sym(requested_y)}) không thuộc đồ thị; f({_fmt_sym(point_x)}) = {_fmt_sym(actual_y)}.",
+        }
+    tangent = _analyze_tangent(f_expr, {"x0": float(point_x), "_x0_exact": point_x}, domain_info)
+    return {
+        **tangent,
+        "mode": "tangent_at_point",
+        "requested_point": {"x_exact": _fmt_sym(point_x), "y_exact": _fmt_sym(requested_y)},
+        "point_verification": "exact_point_substitution",
+    }
+
+
+def _analyze_tangent_family(
+    f_expr,
+    line: Mapping[str, Any],
+    domain_info: FunctionDomain | None,
+    mode: str,
+) -> dict[str, Any]:
+    derivative = simplify(diff(f_expr, x))
+    condition: Any
+    condition_label: str
+    if mode == "tangent_parallel":
+        target_slope = sp.Rational(str(_finite_float(line.get("k", 0), "k")))
+        condition = simplify(derivative - target_slope)
+        condition_label = f"f'(x) = {_fmt_sym(target_slope)}"
+    elif mode == "tangent_perpendicular":
+        reference_slope = sp.Rational(str(_finite_float(line.get("k", 0), "k")))
+        if reference_slope == 0:
+            return {
+                "mode": mode,
+                "status": "unsupported",
+                "equation": "Chưa xác định",
+                "equation_exact": None,
+                "graph_expression": None,
+                "graph_expressions": [],
+                "tangents": [],
+                "warnings": ["Đường thẳng tham chiếu nằm ngang cần tìm tiếp tuyến đứng; mode này chưa chứng minh được tiếp tuyến đứng toàn cục."],
+            }
+        target_slope = simplify(-1 / reference_slope)
+        condition = simplify(derivative - target_slope)
+        condition_label = f"f'(x) = {_fmt_sym(target_slope)}"
+    else:
+        point_x = sp.Rational(str(_finite_float(line.get("x0", 0), "x0")))
+        point_y = sp.Rational(str(_finite_float(line.get("b", 0), "b")))
+        condition = simplify(f_expr + derivative * (point_x - x) - point_y)
+        condition_label = f"f(x) + f'(x)*({_fmt_sym(point_x)} - x) = {_fmt_sym(point_y)}"
+
+    roots = analyze_real_roots(condition, x, domain_info)
+    tangents: list[dict[str, Any]] = []
+    warnings = list(roots.warnings)
+    for root in roots.roots[:12]:
+        try:
+            tangent = _analyze_tangent(f_expr, {"x0": float(sp.N(root.value)), "_x0_exact": root.value}, domain_info)
+        except (TypeError, ValueError, AttributeError) as error:
+            warnings.append(f"Bỏ qua tiếp điểm {_fmt_sym(root.value)}: {error}")
+            continue
+        if tangent["status"] != "regular_tangent":
+            warnings.append(f"Ứng viên {_fmt_sym(root.value)} không cho tiếp tuyến hữu hạn phù hợp.")
+            continue
+        tangents.append({
+            "x0": tangent["x0"],
+            "x0_exact": _fmt_sym(root.value),
+            "y0": tangent["y0"],
+            "y0_exact": tangent["y0_exact"],
+            "equation": tangent["equation"],
+            "equation_exact": tangent["equation_exact"],
+            "equation_latex": tangent["equation_latex"],
+            "graph_expression": tangent["graph_expression"],
+            "verification": tangent["verification"],
+        })
+    truncated = len(roots.roots) > 12 or roots.truncated
+    complete = roots.status == "complete" and not truncated and not warnings
+    equations = [item["graph_expression"] for item in tangents]
+    return {
+        "mode": mode,
+        "status": "complete" if complete else "partial" if tangents else roots.status,
+        "condition_exact": condition_label,
+        "candidate_roots_v2": roots.payload(),
+        "tangent_count": len(tangents) if complete else None,
+        "tangent_count_known": len(tangents),
+        "tangents": tangents,
+        "equation": tangents[0]["equation"] if len(tangents) == 1 else f"{len(tangents)} tiếp tuyến đã xác nhận",
+        "equation_exact": tangents[0]["equation_exact"] if len(tangents) == 1 else None,
+        "equation_latex": tangents[0]["equation_latex"] if len(tangents) == 1 else None,
+        "graph_expression": equations[0] if len(equations) == 1 else None,
+        "graph_expressions": equations,
+        "warnings": warnings + (["Danh sách tiếp tuyến bị giới hạn ở 12 kết quả."] if truncated else []),
+    }
+
+
+def _analyze_normal(f_expr, line: Mapping[str, Any], domain_info: FunctionDomain | None) -> dict[str, Any]:
+    tangent = _analyze_tangent(f_expr, line, domain_info)
+    base = {
+        "mode": "normal_at",
+        "x0": tangent["x0"],
+        "x0_exact": tangent["x0_exact"],
+        "y0": tangent["y0"],
+        "y0_exact": tangent["y0_exact"],
+        "source_tangent_status": tangent["status"],
+        "source_tangent_equation_exact": tangent.get("equation_exact"),
+    }
+    if tangent["status"] == "nondifferentiable":
+        return {
+            **base,
+            "status": "nondifferentiable",
+            "kind": tangent["kind"],
+            "equation": "Không tồn tại",
+            "equation_exact": None,
+            "graph_expression": None,
+            "verification": tangent["verification"],
+            "conclusion": "Không xác định pháp tuyến vì hàm không khả vi tại điểm đã chọn.",
+        }
+
+    point = parse_safe_math_expression(tangent["x0_exact"]).expr
+    y0 = parse_safe_math_expression(tangent["y0_exact"]).expr
+    if tangent["status"] == "vertical_tangent":
+        equation_expr = simplify(y0)
+        equation = f"y = {_fmt_sym(equation_expr)}"
+        return {
+            **base,
+            "status": "regular_normal",
+            "kind": "horizontal",
+            "k_exact": "0",
+            "b_exact": _fmt_sym(y0),
+            "equation": equation,
+            "equation_exact": equation,
+            "equation_latex": f"y={latex(equation_expr)}",
+            "graph_expression": _fmt_sym(equation_expr),
+            "verification": "perpendicular_to_vertical_tangent",
+            "conclusion": f"Pháp tuyến tại ({tangent['x0']}, {tangent['y0']}) là: {equation}",
+        }
+
+    tangent_slope = parse_safe_math_expression(str(tangent["k_exact"])).expr
+    if simplify(tangent_slope) == 0:
+        equation = f"x = {_fmt_sym(point)}"
+        return {
+            **base,
+            "status": "vertical_normal",
+            "kind": "vertical",
+            "equation": equation,
+            "equation_exact": equation,
+            "graph_expression": None,
+            "verification": "perpendicular_to_horizontal_tangent",
+            "conclusion": f"Pháp tuyến đứng tại ({tangent['x0']}, {tangent['y0']}) là: {equation}",
+        }
+
+    slope = simplify(-1 / tangent_slope)
+    intercept = simplify(y0 - slope * point)
+    equation_expr = simplify(slope * x + intercept)
+    equation = f"y = {_fmt_sym(equation_expr)}"
+    return {
+        **base,
+        "status": "regular_normal",
+        "kind": "regular",
+        "k": _expr_payload(slope)["approx"] or _fmt_sym(slope),
+        "k_exact": _fmt_sym(slope),
+        "b": _expr_payload(intercept)["approx"] or _fmt_sym(intercept),
+        "b_exact": _fmt_sym(intercept),
+        "equation": equation,
+        "equation_exact": equation,
+        "equation_latex": f"y={latex(equation_expr)}",
+        "graph_expression": _fmt_sym(equation_expr),
+        "verification": "negative_reciprocal_of_verified_tangent",
+        "conclusion": f"Pháp tuyến tại ({tangent['x0']}, {tangent['y0']}) là: {equation}",
     }
 
 
@@ -1684,14 +1977,97 @@ def _build_transform_preview(f_expr, transform: Mapping[str, Any]) -> dict[str, 
         steps.append("Không có biến đổi nào được áp dụng.")
 
     transformed = simplify(transformed)
+    requires_value = transform_type in {"vertical_shift", "horizontal_shift", "vertical_scale", "horizontal_scale"}
+    transformed_domain = None
+    transformed_range = None
+    try:
+        transformed_domain_set = continuous_domain(transformed, x, S.Reals)
+        transformed_domain = _fmt_sym(transformed_domain_set)
+        transformed_range = _fmt_sym(function_range(transformed, x, transformed_domain_set))
+    except Exception:
+        pass
     return {
         "type": transform_type,
         "value": _fmt_num(value),
         "label": label,
         "expression": _fmt_sym(transformed),
         "expression_latex": latex(transformed),
-        "pedagogical_steps": steps
+        "convention": _transform_convention(transform_type),
+        "expression_template": _transform_template(transform_type),
+        "requires_value": requires_value,
+        "transformed_domain": transformed_domain,
+        "transformed_range": transformed_range,
+        "invariants": _transform_invariants(transform_type),
+        "anchors": _transform_anchors(f_expr, transform_type, value),
+        "pedagogical_steps": steps,
     }
+
+
+def _transform_convention(transform_type: str) -> str:
+    return {
+        "vertical_shift": "a>0: dịch lên; a<0: dịch xuống",
+        "horizontal_shift": "g(x)=f(x-a); a>0: dịch phải; a<0: dịch trái",
+        "vertical_scale": "|a| co/kéo dọc; a<0 đối xứng qua Ox; a=0 cho hàm hằng 0",
+        "horizontal_scale": "|a| co/kéo ngang theo 1/|a|; a<0 đối xứng qua Oy; a=0 cho hàm hằng f(0) nếu xác định",
+        "reflect_x": "đối xứng qua Ox",
+        "reflect_y": "đối xứng qua Oy",
+        "absolute_all": "phần y<0 đối xứng lên trên",
+        "absolute_x": "nửa phải phản chiếu qua Oy",
+    }[transform_type]
+
+
+def _transform_template(transform_type: str) -> str:
+    return {
+        "vertical_shift": "g(x)=f(x)+a",
+        "horizontal_shift": "g(x)=f(x-a)",
+        "vertical_scale": "g(x)=a*f(x)",
+        "horizontal_scale": "g(x)=f(a*x)",
+        "reflect_x": "g(x)=-f(x)",
+        "reflect_y": "g(x)=f(-x)",
+        "absolute_all": "g(x)=|f(x)|",
+        "absolute_x": "g(x)=f(|x|)",
+    }[transform_type]
+
+
+def _transform_invariants(transform_type: str) -> list[str]:
+    return {
+        "vertical_shift": ["domain", "shape"],
+        "horizontal_shift": ["range", "shape"],
+        "vertical_scale": ["domain", "x_coordinates"],
+        "horizontal_scale": ["range"],
+        "reflect_x": ["domain", "x_coordinates"],
+        "reflect_y": ["range", "y_coordinates"],
+        "absolute_all": ["domain", "x_coordinates", "zeros"],
+        "absolute_x": ["even_symmetry"],
+    }[transform_type]
+
+
+def _transform_anchors(f_expr, transform_type: str, value: float) -> list[dict[str, float]]:
+    anchors: list[dict[str, float]] = []
+    for source_x in (-1.0, 0.0, 1.0):
+        source_y = _eval_float(f_expr, source_x)
+        if source_y is None:
+            continue
+        if transform_type == "vertical_shift":
+            target_x, target_y = source_x, source_y + value
+        elif transform_type == "horizontal_shift":
+            target_x, target_y = source_x + value, source_y
+        elif transform_type == "vertical_scale":
+            target_x, target_y = source_x, source_y * value
+        elif transform_type == "horizontal_scale":
+            if value == 0:
+                continue
+            target_x, target_y = source_x / value, source_y
+        elif transform_type == "reflect_x":
+            target_x, target_y = source_x, -source_y
+        elif transform_type == "reflect_y":
+            target_x, target_y = -source_x, source_y
+        elif transform_type == "absolute_all":
+            target_x, target_y = source_x, abs(source_y)
+        else:
+            target_x, target_y = abs(source_x), source_y
+        anchors.append({"source_x": source_x, "source_y": source_y, "target_x": target_x, "target_y": target_y})
+    return anchors
 
 
 def _solve_polynomial_nonnegative(poly) -> Any:
@@ -2139,14 +2515,17 @@ def _variation_node_for_point(
     key = _fmt_sym(point)
     if key in vertical_map:
         data = vertical_map[key]
-        return {
+        node = {
             "kind": "asymptote",
             "x": data.get("x", key),
             "x_exact": key,
             "label": "tiệm cận đứng",
-            "left_limit": _limit_from_text(data.get("lim_left")),
-            "right_limit": _limit_from_text(data.get("lim_right")),
         }
+        if index > 0:
+            node["left_limit"] = _limit_from_text(data.get("lim_left"))
+        if index < total - 1:
+            node["right_limit"] = _limit_from_text(data.get("lim_right"))
+        return node
     if key in holes_by_x:
         data = holes_by_x[key]
         return {
@@ -2168,7 +2547,13 @@ def _variation_node_for_point(
             "label": data.get("kind_label"),
         }
 
-    node: dict[str, Any] = {"kind": "boundary", "x": _fmt_boundary(point), "x_exact": key, "label": "biên miền"}
+    node: dict[str, Any] = {
+        "kind": "boundary",
+        "x": _fmt_boundary(point),
+        "x_exact": key,
+        "label": "biên miền",
+        "open": bool(component.left_open if index == 0 else component.right_open),
+    }
     if index == 0:
         node["right_limit"] = _limit_payload(f_expr, point, "+")
     if index == total - 1:

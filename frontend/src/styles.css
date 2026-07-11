@@ -7547,6 +7547,29 @@ pre {
   gap: 12px;
 }
 
+.fa2-interval-components {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.fa2-interval-components > span {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 8px;
+  background: var(--paper);
+}
+
+.fa2-tool-warnings {
+  margin: 0;
+  padding: 10px 12px 10px 30px;
+  border: 1px solid #f59e0b;
+  border-radius: 10px;
+  color: #92400e;
+  background: #fffbeb;
+}
+
 .fa2-interval-note {
   display: flex;
   align-items: center;
@@ -8236,6 +8259,71 @@ pre {
   align-items: center;
 }
 
+.fa2-input-mode {
+  margin-left: auto;
+}
+
+.fa2-input-mode select {
+  border: 1px solid var(--line-2);
+  border-radius: 7px;
+  padding: 4px 6px;
+  background: var(--paper);
+  color: var(--ink-2);
+  font: inherit;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.fa2-expression-preview {
+  display: flex;
+  min-height: 40px;
+  align-items: center;
+  gap: 10px;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: var(--paper);
+}
+
+.fa2-expression-preview > span:first-child,
+.fa2-expression-syntax {
+  color: var(--ink-4);
+  font-size: 0.7rem;
+}
+
+.fa2-expression-preview > span:first-child {
+  flex: 0 0 auto;
+  font-weight: 800;
+}
+
+.fa2-expression-syntax {
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.fa2-copy-values {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.fa2-copy-values button {
+  border: 1px solid var(--line-2);
+  border-radius: 7px;
+  padding: 4px 7px;
+  background: var(--paper);
+  color: var(--ink-2);
+  font: inherit;
+  cursor: pointer;
+}
+
+.fa2-copy-values [role="status"] {
+  color: var(--ink-4);
+  font-size: 0.72rem;
+}
+
 .fa2-parameter-controls {
   display: grid;
   gap: 10px;
@@ -8259,7 +8347,8 @@ pre {
 }
 
 .fa2-parameter-controls select,
-.fa2-parameter-controls input[type="text"] {
+.fa2-parameter-controls input[type="text"],
+.fa2-parameter-controls input[type="number"] {
   width: 100%;
   border: 1px solid var(--line-2);
   border-radius: 8px;
@@ -8267,6 +8356,16 @@ pre {
   background: var(--paper);
   color: var(--ink);
   font: inherit;
+}
+
+.fa2-parameter-range-inputs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.fa2-parameter-range-inputs small {
+  grid-column: 1 / -1;
 }
 
 .fa2-parameter-value-controls small {
@@ -8870,30 +8969,66 @@ pre {
 }
 
 .fa2-quick-rows {
-  display: flex;
-  flex-wrap: nowrap;
-  align-items: flex-start;
-  justify-content: center;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  align-items: stretch;
   gap: 10px 14px;
   min-width: 0;
-  text-align: center;
 }
 
 .fa2-quick-rows .fa2-summary-card {
-  flex: 1 1 0;
   min-width: 0;
-  justify-items: center;
-  overflow-x: auto;
-  border-top: none;
-  padding-top: 4px;
-  padding-bottom: 4px;
-  border-left: 1px solid var(--line);
-  padding-left: 12px;
+  overflow-wrap: anywhere;
+  border-top: 1px solid var(--line);
+  padding: 8px 0;
 }
 
-.fa2-quick-rows .fa2-summary-card:first-child {
-  border-left: none;
-  padding-left: 0;
+.fa2-verification-badge {
+  width: fit-content;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  padding: 4px 9px;
+  color: var(--ink-3);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.fa2-verification-badge.is-verified { color: #166534; }
+.fa2-verification-badge.is-partially_verified,
+.fa2-verification-badge.is-unverified { color: #92400e; }
+.fa2-verification-badge.is-failed { color: #b91c1c; }
+
+.fa2-analysis-steps {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fa2-analysis-steps details {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+
+.fa2-analysis-steps summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.fa2-analysis-steps details > ul {
+  margin: 8px 0 0;
+  padding-left: 20px;
+}
+
+.fa2-step-status {
+  color: var(--ink-4);
+  font-size: 0.75rem;
+  white-space: nowrap;
 }
 
 @media (max-width: 1100px) {
@@ -9081,6 +9216,40 @@ pre {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  flex-wrap: wrap;
+}
+
+.fa2-graph-controls {
+  align-items: flex-start;
+}
+
+.fa2-graph-toggle-list {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.fa2-graph-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+
+.fa2-graph-toggle input {
+  margin: 0;
+}
+
+.fa2-graph-toggle.is-disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.fa2-graph-status {
+  color: var(--ink-4);
+  font-size: 0.75rem;
 }
 
 .fa2-svg-graph {
@@ -9110,6 +9279,68 @@ pre {
 .fa2-graph-axis {
   stroke: var(--ink-4);
   stroke-width: 1.5;
+}
+
+.fa2-graph-asymptote {
+  stroke: #dc2626;
+  stroke-width: 1.5;
+  stroke-dasharray: 7 5;
+  vector-effect: non-scaling-stroke;
+}
+
+.fa2-graph-interval-highlight {
+  fill: rgba(14, 116, 144, 0.1);
+  stroke: rgba(14, 116, 144, 0.38);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.fa2-graph-overlay {
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.fa2-graph-derivative {
+  stroke: #2563eb;
+}
+
+.fa2-graph-second-derivative {
+  stroke: #7c3aed;
+  stroke-dasharray: 5 4;
+}
+
+.fa2-graph-tool-line {
+  stroke: #ea580c;
+  stroke-dasharray: 8 4;
+}
+
+.fa2-graph-trace {
+  pointer-events: none;
+}
+
+.fa2-graph-trace line {
+  stroke: var(--ink-4);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.fa2-graph-trace circle {
+  fill: var(--ink);
+  stroke: var(--paper);
+  stroke-width: 2;
+}
+
+.fa2-graph-trace text {
+  fill: var(--ink);
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  font-weight: 800;
+  paint-order: stroke;
+  stroke: var(--paper);
+  stroke-width: 3px;
 }
 
 .fa2-graph-path {
@@ -17298,5 +17529,165 @@ button.analyzer-guide-label:hover {
   .admin-analytics-legend small {
     width: 100%;
     margin-left: 0;
+  }
+}
+
+.fa2-persistence {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.fa2-persistence-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 10px;
+}
+
+.fa2-persistence label {
+  display: grid;
+  gap: 4px;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.fa2-persistence input,
+.fa2-persistence select {
+  min-height: 36px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  padding: 6px 9px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.fa2-tags-input {
+  min-width: min(260px, 100%);
+  flex: 1;
+}
+
+.fa2-pin-toggle {
+  display: flex !important;
+  align-items: center;
+  min-height: 36px;
+}
+
+.fa2-pin-toggle input {
+  min-height: auto;
+}
+
+.fa2-curriculum-chapter,
+.fa2-persistence-message {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.fa2-ecosystem-row {
+  padding-top: 10px;
+  border-top: 1px solid var(--line-2);
+}
+
+.fa2-share-output {
+  display: block;
+  overflow-wrap: anywhere;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--surface-subtle, #f8fafc);
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+}
+
+.fa2-history-drawer {
+  display: grid;
+  gap: 10px;
+  max-height: 280px;
+  overflow: auto;
+  border-top: 1px solid var(--line-2);
+  padding-top: 10px;
+}
+
+.fa2-history-drawer ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fa2-history-drawer button {
+  display: grid;
+  width: 100%;
+  gap: 3px;
+  padding: 9px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.fa2-history-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+}
+
+.fa2-history-item > .sp-btn-secondary {
+  width: auto;
+  align-content: center;
+}
+
+.fa2-history-drawer button span {
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+}
+
+.fa2-curriculum-summary {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line-2);
+  font-size: 0.85rem;
+}
+
+.fa2-curriculum-summary ul {
+  margin: 4px 0 0;
+  padding-left: 20px;
+}
+
+@media print {
+  .fa2-control-panel,
+  .fa2-persistence,
+  .fa2-result-tabs > .fa2-tab-list,
+  .fa2-print-button,
+  .fa2-graph-toolbar,
+  .bbt-actions,
+  .bbt-modal {
+    display: none !important;
+  }
+
+  .fa2-workspace,
+  .fa2-result-shell {
+    display: block;
+    height: auto;
+    overflow: visible;
+  }
+
+  .fa2-results-panel,
+  .fa2-analysis-column,
+  .fa2-graph-column {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .fa2-section,
+  .fa2-quick-card {
+    break-inside: avoid;
   }
 }

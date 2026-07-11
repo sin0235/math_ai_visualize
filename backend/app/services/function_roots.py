@@ -6,6 +6,7 @@ from typing import Any
 
 import sympy as sp
 
+from app.services.function_analysis_capabilities import exact_approx_value
 from app.services.function_domain import FunctionDomain, in_domain
 
 
@@ -23,6 +24,10 @@ class RootEvidence:
             "x": _format_number(approximation),
             "x_exact": exact_value,
             "x_latex": sp.latex(self.value) if self.exact else None,
+            "value": exact_approx_value(
+                self.value,
+                method="symbolic_exact" if self.exact else "numeric_verified",
+            ),
             "x_approx": _format_number(approximation),
             "verification": "symbolic_exact" if self.exact else "numeric_verified",
             "residual": self.residual,

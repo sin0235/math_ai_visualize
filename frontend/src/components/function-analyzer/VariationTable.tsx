@@ -1,4 +1,4 @@
-import { Fragment, useId, useState, type CSSProperties } from 'react';
+import { Fragment, useEffect, useId, useRef, useState, type CSSProperties } from 'react';
 import type { AnalyzeResponse, VariationNodeV2, VariationSegmentV2, VariationTableV2 } from '../../api/client';
 import { KatexSpan, sympyToLatex } from '../KatexSpan';
 import { SvgIcon } from './icons';
@@ -17,12 +17,48 @@ export function VariationTable({
   hideZoomButton?: boolean;
 }) {
   const [internalExpanded, setInternalExpanded] = useState(false);
+  const modalRef = useRef<HTMLDivElement | null>(null);
+  const zoomButtonRef = useRef<HTMLButtonElement | null>(null);
   const controlled = expandedProp !== undefined && onExpandedChange !== undefined;
   const isExpanded = controlled ? expandedProp : internalExpanded;
   const setIsExpanded = (open: boolean) => {
     if (controlled) onExpandedChange(open);
     else setInternalExpanded(open);
   };
+
+  useEffect(() => {
+    if (!isExpanded) return;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : zoomButtonRef.current;
+    const modal = modalRef.current;
+    modal?.querySelector<HTMLElement>('button')?.focus();
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setIsExpanded(false);
+        return;
+      }
+      if (event.key !== 'Tab' || !modal) return;
+      const focusable = Array.from(modal.querySelectorAll<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'));
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      previousFocus?.focus();
+    };
+  }, [isExpanded]);
+
   const canRenderV2 = !!tableV2 && tableV2.nodes.length > 0;
   const hasLegacyRows = !!rows && rows.length > 0;
   if (!canRenderV2 && !hasLegacyRows) return null;
@@ -35,18 +71,19 @@ export function VariationTable({
     <div className={`bbt-layout ${forceTimeline ? 'bbt-layout-force-timeline' : ''}`}>
       {!hideZoomButton && (
         <div className="bbt-actions">
-          <button type="button" className="bbt-zoom-btn" onClick={() => setIsExpanded(true)} aria-label="Ấn để phóng to">
+          <button ref={zoomButtonRef} type="button" className="bbt-zoom-btn" onClick={() => setIsExpanded(true)} aria-label="Phóng to bảng biến thiên">
             <span aria-hidden="true"><SvgIcon name="magnify" /></span>
           </button>
         </div>
       )}
       {canRenderV2 ? <VariationGridV2 table={tableV2} style={gridStyle} /> : <VariationGridLegacy rows={rows} style={gridStyle} />}
+      {canRenderV2 && <VariationSemanticTable table={tableV2} />}
       {canRenderV2 ? <VariationTimelineV2 table={tableV2} /> : <VariationTimelineLegacy rows={rows} />}
       {isExpanded && (
-        <div className="bbt-modal" role="dialog" aria-modal="true" aria-label="Bảng biến thiên phóng to" onClick={() => setIsExpanded(false)}>
-          <div className="bbt-modal-card" onClick={(event) => event.stopPropagation()}>
+        <div className="bbt-modal" role="dialog" aria-modal="true" aria-labelledby="bbt-modal-title" onClick={() => setIsExpanded(false)}>
+          <div ref={modalRef} className="bbt-modal-card" onClick={(event) => event.stopPropagation()}>
             <div className="bbt-modal-head">
-              <span>Bảng biến thiên phóng to</span>
+              <span id="bbt-modal-title">Bảng biến thiên phóng to</span>
               <button type="button" className="bbt-modal-close" onClick={() => setIsExpanded(false)} aria-label="Đóng bảng biến thiên phóng to">Đóng</button>
             </div>
             {canRenderV2 ? <VariationGridV2 table={tableV2} style={gridStyle} className="bbt-wrap-expanded" /> : <VariationGridLegacy rows={rows} style={gridStyle} className="bbt-wrap-expanded" />}
@@ -55,6 +92,29 @@ export function VariationTable({
       )}
     </div>
   );
+}
+
+function VariationSemanticTable({ table }: { table: VariationTableV2 }) {
+  return (
+    <table className="sr-only">
+      <caption>Bảng biến thiên dạng văn bản</caption>
+      <thead><tr><th>Khoảng</th><th>Dấu đạo hàm</th><th>Chiều biến thiên</th><th>Kiểm chứng</th></tr></thead>
+      <tbody>
+        {table.segments.map((segment, index) => (
+          <tr key={`semantic-${index}`}>
+            <td>{segment.left} đến {segment.right}</td>
+            <td>{segment.derivative_sign}</td>
+            <td>{directionLabel(segment.direction)}</td>
+            <td>{segment.verification}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function directionLabel(direction: string) {
+  return direction === 'increasing' ? 'Đồng biến' : direction === 'decreasing' ? 'Nghịch biến' : direction === 'constant' ? 'Không đổi' : 'Chưa xác định';
 }
 
 function VariationGridV2({ table, style, className = '' }: { table: VariationTableV2; style: CSSProperties; className?: string }) {
@@ -69,7 +129,7 @@ function VariationGridV2({ table, style, className = '' }: { table: VariationTab
         <div className="bbt-cell bbt-label"><KatexSpan tex="x" className="bbt-label-tex" /></div>
         {table.nodes.map((node, index) => (
           <Fragment key={`x-${index}-${node.x}`}>
-            <div className={`bbt-cell bbt-x-val ${node.kind === 'asymptote' ? 'bbt-asymptote' : ''}`}><KatexSpan tex={sympyToLatex(node.x)} /></div>
+            <div className={`bbt-cell bbt-x-val ${node.kind === 'asymptote' ? 'bbt-asymptote' : ''}`}><KatexSpan tex={sympyToLatex(node.x_exact || node.x)} /></div>
             {index < table.nodes.length - 1 && <div className="bbt-cell bbt-gap" />}
           </Fragment>
         ))}
@@ -78,7 +138,7 @@ function VariationGridV2({ table, style, className = '' }: { table: VariationTab
         <div className="bbt-cell bbt-label"><KatexSpan tex="f'(x)" className="bbt-label-tex" /></div>
         {table.nodes.map((node, index) => (
           <Fragment key={`fp-${index}-${node.x}`}>
-            <div className="bbt-cell bbt-zero">{renderMarkerLatex(node.kind)}</div>
+            <div className="bbt-cell bbt-zero">{renderMarkerLatex(node)}</div>
             {index < table.nodes.length - 1 && (
               <div className="bbt-cell bbt-gap bbt-fp-arrow">
                 {renderDerivativeSignLatexV2(table.segments[index])}
@@ -183,10 +243,13 @@ function VariationTimelineLegacy({ rows }: { rows: AnalyzeResponse['variation_ta
   );
 }
 
-function renderMarkerLatex(kind: string) {
-  if (kind === 'max' || kind === 'min') return <KatexSpan tex="0" className="bbt-katex-inline" />;
+function renderMarkerLatex(value: string | VariationNodeV2) {
+  const node = typeof value === 'string' ? null : value;
+  const kind = typeof value === 'string' ? value : value.kind;
+  if (kind === 'max' || kind === 'min' || kind === 'critical' || kind === 'stationary_inflection') return <KatexSpan tex="0" className="bbt-katex-inline" />;
   if (kind === 'asymptote') return <KatexSpan tex="\\parallel" className="bbt-katex-inline" />;
-  if (kind === 'hole') return <KatexSpan tex="\\circ" className="bbt-katex-inline" />;
+  if (kind === 'hole' || (kind === 'boundary' && node?.open && !['-oo', 'oo'].includes(node.x_exact || ''))) return <KatexSpan tex="\\circ" className="bbt-katex-inline" />;
+  if (kind === 'unknown') return <span className="bbt-unknown">?</span>;
   return <span className="bbt-katex-placeholder" aria-hidden="true"> </span>;
 }
 
@@ -287,20 +350,8 @@ function renderFunctionValueLatexLegacy(rows: AnalyzeResponse['variation_table']
   return <span className="bbt-katex-placeholder" aria-hidden="true"> </span>;
 }
 
-function boundaryInfinityTexLegacy(rows: AnalyzeResponse['variation_table'], index: number) {
-  if (index === 0) {
-    const direction = normalizeDirectionLegacy(rows[index]?.arrow_to_next ?? null);
-    if (direction === 'down') return '+\\infty';
-    if (direction === 'up') return '-\\infty';
-    return '\\infty';
-  }
-  if (index === rows.length - 1) {
-    const direction = normalizeDirectionLegacy(rows[index - 1]?.arrow_to_next ?? null);
-    if (direction === 'up') return '+\\infty';
-    if (direction === 'down') return '-\\infty';
-    return '\\infty';
-  }
-  return '\\infty';
+function boundaryInfinityTexLegacy(_rows: AnalyzeResponse['variation_table'], _index: number) {
+  return '?';
 }
 
 function nodeValueTexLegacy(rows: AnalyzeResponse['variation_table'], index: number) {

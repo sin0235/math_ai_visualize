@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ApiError, changePassword, deleteRenderHistory, forgotPassword, getCurrentUser, getHealth, getLearningProfile, getRenderHistory, getRenderHistoryDetail, getSessions, getSettingsDefaults, login, loginWithGoogle, logout, ocrImageByUploadId, patchRenderHistory, register, renderEditedScene, renderProblem, resendVerification, resetPassword, revokeOtherSessions, revokeSession, updateLearningProfile, updateProfile, uploadOcrImage, verifyEmail, type AdminRenderHistoryDetail, type RenderHistoryItem, type SessionResponse, type UserLearningProfileResponse, type UserLearningProfileUpdateRequest, type UserResponse } from './api/client';
+import { ApiError, changePassword, consumeAnalyzerLinkFromLocation, deleteRenderHistory, forgotPassword, getCurrentUser, getHealth, getLearningProfile, getRenderHistory, getRenderHistoryDetail, getSessions, getSettingsDefaults, login, loginWithGoogle, logout, ocrImageByUploadId, patchRenderHistory, register, renderEditedScene, renderProblem, resendVerification, resetPassword, revokeOtherSessions, revokeSession, updateLearningProfile, updateProfile, uploadOcrImage, verifyEmail, type AdminRenderHistoryDetail, type PracticeHandoffPayload, type RenderHandoffPayload, type RenderHistoryItem, type SessionResponse, type UserLearningProfileResponse, type UserLearningProfileUpdateRequest, type UserResponse } from './api/client';
 import { defaultAdvancedSettings, ProblemInput, type TierKey } from './components/ProblemInput';
 import { AccountPage } from './components/AccountPage';
 import { SettingsPage } from './components/SettingsPage';
@@ -88,6 +88,7 @@ function pathToView(pathname: string): AppView {
   const normalized = pathname.replace(/\/+$/, '') || '/';
   // Simulation hub owns sub-routes `/simulation/:id` without coupling other tools.
   if (normalized === '/simulation' || normalized.startsWith('/simulation/')) return 'simulation';
+  if (normalized === '/practice') return 'render';
   const match = Object.entries(viewPaths).find(([, path]) => path === normalized);
   return match ? match[0] as AppView : 'home';
 }
@@ -206,6 +207,7 @@ export default function App() {
   const toolsMenuRef = useRef<HTMLDivElement | null>(null);
   const renderToolsMenuRef = useRef<HTMLDivElement | null>(null);
   const ocrInFlightRef = useRef(false);
+  const linkConsumeStartedRef = useRef(false);
   const editorButtonDragRef = useRef<{ pointerId: number; startY: number; startTop: number; moved: boolean } | null>(null);
   const editSaveSeqRef = useRef(0);
   const renderToolsMenuTop = Math.min(Math.max(editorButtonTop - 8, 72), Math.max(72, window.innerHeight - 430));
@@ -260,6 +262,29 @@ export default function App() {
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
+
+  useEffect(() => {
+    if (activeView !== 'render' || linkConsumeStartedRef.current) return;
+    const search = new URLSearchParams(window.location.search);
+    if (!search.has('handoff') && !search.has('share')) return;
+    linkConsumeStartedRef.current = true;
+    const practice = window.location.pathname === '/practice';
+    const consume = practice
+      ? consumeAnalyzerLinkFromLocation<PracticeHandoffPayload>('practice')
+      : consumeAnalyzerLinkFromLocation<RenderHandoffPayload>('render');
+    void consume
+      .then((payload) => {
+        if (!payload) return;
+        setProblemText(payload.problem_text);
+        setSidebarTool('input');
+      })
+      .catch((caught) => showNotification(
+        'Không mở được link analyzer',
+        caught instanceof Error ? caught.message : 'Link không tồn tại hoặc đã hết hiệu lực.',
+        [],
+        'error',
+      ));
+  }, [activeView, showNotification]);
 
   useEffect(() => {
     if (!accountMenuOpen && !toolsMenuOpen && !renderToolsOpen) return;

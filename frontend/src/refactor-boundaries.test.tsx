@@ -179,6 +179,7 @@ const analyzerToolProps: ComponentProps<typeof AnalyzerToolControls> = {
   transformType: 'vertical_shift',
   transformValue: 1,
   isAnimatingTransform: false,
+  animationFps: 30,
   disabled: false,
   intervalOpenA: false,
   intervalOpenB: false,
@@ -195,7 +196,9 @@ const analyzerToolProps: ComponentProps<typeof AnalyzerToolControls> = {
   onLineX0Change: () => undefined,
   onTransformTypeChange: () => undefined,
   onTransformValueChange: () => undefined,
+  onAnimationFpsChange: () => undefined,
   onToggleAnimation: () => undefined,
+  onResetAnimation: () => undefined,
 };
 
 const notificationStackProps: ComponentProps<typeof NotificationStack> = {

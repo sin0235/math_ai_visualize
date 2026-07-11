@@ -21,6 +21,11 @@ class FunctionOcrProvenance(StrictModel):
 class LineMode(str, Enum):
     INTERSECT = "intersect"
     TANGENT_AT = "tangent_at"
+    TANGENT_AT_POINT = "tangent_at_point"
+    NORMAL_AT = "normal_at"
+    TANGENT_PARALLEL = "tangent_parallel"
+    TANGENT_PERPENDICULAR = "tangent_perpendicular"
+    TANGENT_THROUGH_POINT = "tangent_through_point"
 
 
 class TransformType(str, Enum):
@@ -74,6 +79,7 @@ class AnalysisLine(StrictModel):
     k: BoundedFiniteFloat = 0
     b: BoundedFiniteFloat = 0
     x0: BoundedFiniteFloat = 0
+    y0: BoundedFiniteFloat = 0
 
 
 class ParameterConditionRequest(StrictModel):
@@ -135,6 +141,59 @@ class AnalysisOptions(StrictModel):
         if self.parameter_mode == "substitute" and not has_parameter_value:
             raise ValueError("Chế độ substitute cần giá trị tham số m.")
         return self
+
+
+class CurriculumProfile(StrictModel):
+    grade: Literal[10, 11, 12] = 12
+    chapter: str = Field(default="Khảo sát hàm số", min_length=1, max_length=96)
+    explanation_level: Literal["concise", "standard", "detailed"] = "standard"
+
+
+class CurriculumPresentation(StrictModel):
+    profile: CurriculumProfile
+    terminology: dict[str, str]
+    step_order: list[str]
+    common_mistakes: list[str]
+    predicted_questions: list[str]
+
+
+class AnalyzerBaseRequest(StrictModel):
+    expression: str = Field(min_length=1, max_length=1000)
+    parameters: ParameterValues | None = None
+    parameter_mode: Literal["symbolic", "substitute"] | None = None
+    provenance: FunctionOcrProvenance | None = None
+    curriculum_profile: CurriculumProfile = Field(default_factory=CurriculumProfile)
+
+    @model_validator(mode="after")
+    def validate_parameter_mode(self) -> "AnalyzerBaseRequest":
+        has_parameter_value = self.parameters is not None and self.parameters.m is not None
+        if self.parameter_mode == "substitute" and not has_parameter_value:
+            raise ValueError("Chế độ substitute cần giá trị tham số m.")
+        return self
+
+
+class AnalyzerSessionReference(StrictModel):
+    analysis_id: str = Field(min_length=16, max_length=128)
+
+
+class AnalyzerIntervalToolRequest(AnalyzerSessionReference):
+    interval: AnalysisInterval
+
+
+class AnalyzerLineToolRequest(AnalyzerSessionReference):
+    line: AnalysisLine
+
+
+class AnalyzerTangentToolRequest(AnalyzerSessionReference):
+    x0: BoundedFiniteFloat
+
+
+class AnalyzerTransformToolRequest(AnalyzerSessionReference):
+    transform: GraphTransform
+
+
+class AnalyzerParameterToolRequest(AnalyzerSessionReference, ParameterConditionRequest):
+    pass
 
 
 class AnalyzeRequest(AnalysisOptions):
@@ -269,10 +328,21 @@ class FunctionOcrExtraction(FunctionOcrCandidate):
     provenance: FunctionOcrProvenance
 
 
+class ExactApproxValue(StrictModel):
+    exact: str
+    latex: str
+    approx: FiniteFloat | None = None
+    precision: int | None = Field(default=None, ge=1, le=50)
+    method: str = Field(min_length=1, max_length=64)
+
+
 class CriticalPoint(BaseModel):
     x: str
     x_exact: str
+    x_value: ExactApproxValue | None = None
     y: str | None = None
+    y_exact: str | None = None
+    y_value: ExactApproxValue | None = None
     kind: str
     kind_label: str
 
@@ -296,6 +366,7 @@ class VariationNode(BaseModel):
     y: str | None = None
     y_exact: str | None = None
     label: str | None = None
+    open: bool | None = None
     left_limit: VariationLimit | None = None
     right_limit: VariationLimit | None = None
 
@@ -313,6 +384,83 @@ class VariationTableV2(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     nodes: list[VariationNode] = Field(default_factory=list)
     segments: list[VariationSegment] = Field(default_factory=list)
+
+
+class AnalyzerCapabilityExample(StrictModel):
+    category: str
+    label: str
+    expression: str
+    latex: str
+
+
+class AnalyzerCapabilityRegistry(StrictModel):
+    version: str
+    parser: dict[str, Any]
+    derivative: dict[str, Any]
+    piecewise_conditions: dict[str, Any]
+    parameters: dict[str, Any]
+    tools: list[str]
+    renderers: list[str]
+    examples: list[AnalyzerCapabilityExample]
+
+
+class ExpressionCapabilities(StrictModel):
+    registry_version: str
+    expression: dict[str, Any]
+    exactness: dict[str, str]
+    completeness: dict[str, Any]
+    numeric_fallback: dict[str, bool]
+    renderer: dict[str, bool]
+    tools: dict[str, bool]
+    limitations: list[str] = Field(default_factory=list)
+
+
+class VerificationCheck(StrictModel):
+    name: str
+    status: Literal["pass", "warn", "fail", "unknown"]
+    method: Literal["symbolic", "numeric", "fallback", "unknown"]
+    detail: str | None = None
+    error_bound: FiniteFloat | None = None
+
+
+class VerificationReport(StrictModel):
+    status: Literal["verified", "partially_verified", "unverified", "failed"]
+    checks: list[VerificationCheck] = Field(default_factory=list)
+    truncated: bool = False
+    possibly_incomplete: bool = False
+
+
+class TransformAnchor(StrictModel):
+    source_x: FiniteFloat
+    source_y: FiniteFloat
+    target_x: FiniteFloat
+    target_y: FiniteFloat
+
+
+class TransformPreview(StrictModel):
+    type: TransformType
+    value: str
+    label: str
+    expression: str
+    expression_latex: str
+    convention: str
+    expression_template: str
+    requires_value: bool
+    transformed_domain: str | None = None
+    transformed_range: str | None = None
+    invariants: list[str] = Field(default_factory=list)
+    anchors: list[TransformAnchor] = Field(default_factory=list)
+    pedagogical_steps: list[str] = Field(default_factory=list)
+
+
+class AnalysisStep(StrictModel):
+    key: str = Field(min_length=1, max_length=64)
+    order: int = Field(ge=1, le=20)
+    title: str = Field(min_length=1, max_length=128)
+    status: Literal["complete", "partial", "unknown", "skipped"]
+    formula_latex: str | None = None
+    evidence: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
 
 
 class AnalyzeResponse(BaseModel):
@@ -366,11 +514,31 @@ class AnalyzeResponse(BaseModel):
     interval_analysis: dict[str, Any] | None = None
     line_analysis: dict[str, Any] | None = None
     parameter_conditions: list[dict[str, Any]] = Field(default_factory=list)
-    transform_preview: dict[str, Any] | None = None
+    transform_preview: TransformPreview | None = None
     capabilities: dict[str, Any] | None = None
+    capabilities_v2: ExpressionCapabilities | None = None
     method_used: dict[str, Any] | None = None
     complexity_score: int | None = None
     stage_statuses: dict[str, Any] | None = None
+    verification: VerificationReport | None = None
+    analysis_steps: list[AnalysisStep] = Field(default_factory=list)
+    curriculum_presentation: CurriculumPresentation | None = None
     warnings: list[str] = Field(default_factory=list)
     error: str | None = None
     error_code: str | None = None
+
+
+class AnalyzerSessionResponse(AnalyzeResponse):
+    analysis_id: str
+    engine_version: str
+    expires_at: str
+
+
+class AnalyzerToolResponse(StrictModel):
+    analysis_id: str
+    engine_version: str
+    tool: Literal["interval-extrema", "line", "tangent", "transform", "parameter"]
+    interval_analysis: dict[str, Any] | None = None
+    line_analysis: dict[str, Any] | None = None
+    transform_preview: TransformPreview | None = None
+    parameter_conditions: list[dict[str, Any]] | None = None

@@ -257,12 +257,13 @@ function preferredAiModelPayload(selection?: string) {
   return { preferred_ai_model: value };
 }
 
-export async function uploadOcrImage(file: File): Promise<OcrUploadResponse> {
+export async function uploadOcrImage(file: File, signal?: AbortSignal): Promise<OcrUploadResponse> {
   const formData = new FormData();
   formData.set('file', file);
   return requestJson('/api/ocr/uploads', {
     method: 'POST',
     credentials: 'include',
+    signal,
     body: formData,
   }, 'Không thể upload ảnh OCR.');
 }

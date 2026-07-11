@@ -1,7 +1,29 @@
 import { useEffect, useRef, useState } from 'react';
-import { analyzeFunction, extractFunctionImageFile, type AnalyzeLineMode, type AnalyzeOptions, type AnalyzeResponse, type AnalyzeTransformType, type FunctionOcrExtraction } from '../../api/client';
+import {
+  createAnalyzerSession,
+  extractFunctionImageFile,
+  openAnalyzerHistory,
+  runAnalyzerIntervalTool,
+  runAnalyzerLineTool,
+  runAnalyzerTangentTool,
+  runAnalyzerTransformTool,
+  type AnalyzeLineMode,
+  type AnalyzeOptions,
+  type AnalyzeResponse,
+  type AnalyzeTransformType,
+  type AnalyzerSessionResponse,
+  type CurriculumProfile,
+  type FunctionOcrExtraction,
+} from '../../api/client';
+
+type AnalysisState = 'editing' | 'loading' | 'current' | 'stale' | 'error';
 
 type ToolKey = 'interval' | 'line' | 'transform';
+
+export interface ParameterSnapshot {
+  value: string;
+  result: AnalyzerSessionResponse;
+}
 
 type AnalyzeOptionOverrides = Partial<AnalyzeOptions & {
   intervalA: number;
@@ -38,7 +60,13 @@ export function useFunctionAnalysis(initialExpression: string, onWarnings?: (war
   const [expression, setExpression] = useState(() => readAnalyzerPrefill(initialExpression));
   const [parameterMode, setParameterMode] = useState<'' | 'symbolic' | 'substitute'>('');
   const [parameterValue, setParameterValue] = useState('1');
+  const [curriculumProfile, setCurriculumProfile] = useState<CurriculumProfile>({
+    grade: 12,
+    chapter: 'Khảo sát hàm số',
+    explanation_level: 'standard',
+  });
   const [loading, setLoading] = useState(false);
+  const [analysisState, setAnalysisState] = useState<AnalysisState>('editing');
   const [ocrLoading, setOcrLoading] = useState(false);
   const [ocrCandidate, setOcrCandidate] = useState<FunctionOcrExtraction | null>(null);
   const [ocrPreviewUrl, setOcrPreviewUrl] = useState<string | null>(null);
@@ -56,17 +84,27 @@ export function useFunctionAnalysis(initialExpression: string, onWarnings?: (war
   const [transformType, setTransformType] = useState<AnalyzeTransformType>('vertical_shift');
   const [transformValue, setTransformValue] = useState(1);
   const [isAnimatingTransform, setIsAnimatingTransform] = useState(false);
+  const [animationFps, setAnimationFps] = useState<30 | 60>(30);
+  const [pageVisible, setPageVisible] = useState(() => typeof document === 'undefined' || !document.hidden);
   const [result, setResult] = useState<AnalyzeResponse | null>(null);
+  const [parameterSnapshots, setParameterSnapshots] = useState<ParameterSnapshot[]>([]);
   const [error, setError] = useState<string | null>(null);
   const analyzeRequestRef = useRef(0);
+  const baseAbortRef = useRef<AbortController | null>(null);
+  const toolAbortRef = useRef<AbortController | null>(null);
+  const ocrAbortRef = useRef<AbortController | null>(null);
   const sliderDebounceRef = useRef<number | null>(null);
   const animationRef = useRef<number | null>(null);
-  const baseResultRef = useRef<AnalyzeResponse | null>(null);
+  const animationStartedRef = useRef<number | null>(null);
+  const baseResultRef = useRef<AnalyzerSessionResponse | null>(null);
 
   useEffect(() => {
     return () => {
+      baseAbortRef.current?.abort();
+      toolAbortRef.current?.abort();
+      ocrAbortRef.current?.abort();
       if (sliderDebounceRef.current !== null) window.clearTimeout(sliderDebounceRef.current);
-      if (animationRef.current !== null) window.clearInterval(animationRef.current);
+      if (animationRef.current !== null) window.cancelAnimationFrame(animationRef.current);
     };
   }, []);
 
@@ -77,23 +115,43 @@ export function useFunctionAnalysis(initialExpression: string, onWarnings?: (war
   }, [ocrPreviewUrl]);
 
   useEffect(() => {
-    if (!isAnimatingTransform) {
-      if (animationRef.current !== null) window.clearInterval(animationRef.current);
+    const syncVisibility = () => setPageVisible(!document.hidden);
+    document.addEventListener('visibilitychange', syncVisibility);
+    return () => document.removeEventListener('visibilitychange', syncVisibility);
+  }, []);
+
+  useEffect(() => {
+    if (!isAnimatingTransform || !enableTransform || !requiresTransformValue(transformType) || !pageVisible) {
+      if (animationRef.current !== null) window.cancelAnimationFrame(animationRef.current);
       animationRef.current = null;
+      animationStartedRef.current = null;
       return;
     }
-    animationRef.current = window.setInterval(() => {
-      setTransformValue((current) => {
-        const next = current >= 3 ? -3 : Number((current + 0.1).toFixed(2));
-        scheduleToolAnalyze({ transformValue: next, enableTransform: true });
-        return next;
-      });
-    }, 160);
-    return () => {
-      if (animationRef.current !== null) window.clearInterval(animationRef.current);
-      animationRef.current = null;
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reducedMotion) {
+      setIsAnimatingTransform(false);
+      return;
+    }
+    const frameDuration = 1000 / animationFps;
+    const tick = (timestamp: number) => {
+      const previous = animationStartedRef.current ?? timestamp;
+      if (timestamp - previous >= frameDuration) {
+        animationStartedRef.current = timestamp;
+        setTransformValue((current) => {
+          const next = current >= 3 ? -3 : Number((current + 0.1).toFixed(2));
+          applyAnimatedTransform(next);
+          return next;
+        });
+      }
+      animationRef.current = window.requestAnimationFrame(tick);
     };
-  }, [isAnimatingTransform, expression, enableInterval, intervalA, intervalB, enableLine, lineK, lineB, transformType]);
+    animationRef.current = window.requestAnimationFrame(tick);
+    return () => {
+      if (animationRef.current !== null) window.cancelAnimationFrame(animationRef.current);
+      animationRef.current = null;
+      animationStartedRef.current = null;
+    };
+  }, [isAnimatingTransform, enableTransform, transformType, animationFps, pageVisible]);
 
   function buildAnalyzeOptions(overrides?: AnalyzeOptionOverrides): AnalyzeOptions {
     const nextEnableInterval = overrides?.enableInterval ?? enableInterval;
@@ -112,56 +170,108 @@ export function useFunctionAnalysis(initialExpression: string, onWarnings?: (war
     const nextTransformType = overrides?.transformType ?? transformType;
     const nextTransformValue = overrides?.transformValue ?? transformValue;
     return {
+      curriculum_profile: curriculumProfile,
       ...(containsParameterM(expression) && parameterMode ? {
         parameter_mode: parameterMode,
         ...(parameterMode === 'substitute' ? { parameters: { m: parameterValue } } : {}),
       } : {}),
       ...(nextEnableInterval ? { interval: { a: nextIntervalA, b: nextIntervalB, open_a: nextIntervalOpenA, open_b: nextIntervalOpenB } } : {}),
-      ...(nextEnableLine ? { line: { k: nextLineK, b: nextLineB, mode: nextLineMode, x0: nextLineX0 } } : {}),
-      ...(nextEnableTransform ? { transform: { type: nextTransformType, value: nextTransformValue } } : {}),
+      ...(nextEnableLine ? { line: { k: nextLineK, b: nextLineB, mode: nextLineMode, x0: nextLineX0, y0: nextLineB } } : {}),
+      ...(nextEnableTransform ? {
+        transform: requiresTransformValue(nextTransformType)
+          ? { type: nextTransformType, value: nextTransformValue }
+          : { type: nextTransformType },
+      } : {}),
     };
   }
 
   function scheduleToolAnalyze(overrides?: AnalyzeOptionOverrides) {
-    const expr = expression.trim();
-    if (!expr || !result) return;
+    if (!baseResultRef.current || analysisState !== 'current') return;
     const requestOptions = buildAnalyzeOptions(overrides);
-    if (requestOptions.transform && !requestOptions.interval && !requestOptions.line) {
-      applyLocalTransform(requestOptions.transform);
-      return;
-    }
     if (!requestOptions.interval && !requestOptions.line && !requestOptions.transform) {
-      analyzeRequestRef.current += 1;
-      setResult(baseResultRef.current ?? stripToolArtifacts(result));
+      toolAbortRef.current?.abort();
+      setResult(baseResultRef.current);
       return;
     }
     if (sliderDebounceRef.current !== null) window.clearTimeout(sliderDebounceRef.current);
-    sliderDebounceRef.current = window.setTimeout(() => {
-      void runAnalyze(expr, { slider: true, requestOptions });
-    }, 280);
+    sliderDebounceRef.current = window.setTimeout(() => void runTool(requestOptions), 280);
   }
 
-  async function runAnalyze(expr: string, options?: { slider?: boolean; clearResult?: boolean; requestOptions?: AnalyzeOptions }) {
+  async function runTool(options: AnalyzeOptions, baseOverride?: AnalyzerSessionResponse) {
+    const base = baseOverride ?? baseResultRef.current;
+    if (!base || (!baseOverride && analysisState !== 'current')) return false;
+    toolAbortRef.current?.abort();
+    const controller = new AbortController();
+    toolAbortRef.current = controller;
+    try {
+      const response = options.interval
+        ? await runAnalyzerIntervalTool(base.analysis_id, options.interval, controller.signal)
+        : options.line?.mode === 'tangent_at'
+          ? await runAnalyzerTangentTool(base.analysis_id, options.line.x0 ?? 0, controller.signal)
+          : options.line
+            ? await runAnalyzerLineTool(base.analysis_id, options.line, controller.signal)
+            : options.transform
+              ? await runAnalyzerTransformTool(base.analysis_id, options.transform, controller.signal)
+              : null;
+      if (!response || controller.signal.aborted) return false;
+      setResult({
+        ...base,
+        interval_analysis: response.interval_analysis ?? null,
+        line_analysis: response.line_analysis ?? null,
+        transform_preview: response.transform_preview ?? null,
+        geogebra_commands: response.transform_preview
+          ? buildTransformCommands(base.geogebra_commands, response.transform_preview.expression)
+          : base.geogebra_commands,
+      });
+      return true;
+    } catch (error: unknown) {
+      if (!isAbortError(error)) {
+        setError(error instanceof Error ? error.message : 'Không chạy được công cụ phân tích.');
+      }
+      return false;
+    }
+  }
+
+  async function runAnalyze(expr: string, options?: { clearResult?: boolean; requestOptions?: AnalyzeOptions }) {
     const requestId = ++analyzeRequestRef.current;
-    if (!options?.slider) setLoading(true);
+    baseAbortRef.current?.abort();
+    toolAbortRef.current?.abort();
+    const controller = new AbortController();
+    baseAbortRef.current = controller;
+    setLoading(true);
+    setAnalysisState('loading');
     setError(null);
     if (options?.clearResult) setResult(null);
     try {
-      const res = await analyzeFunction(expr, options?.requestOptions ?? {});
-      if (requestId !== analyzeRequestRef.current) return false;
+      const requestOptions = options?.requestOptions ?? {};
+      const res = await createAnalyzerSession(expr, {
+        parameters: requestOptions.parameters,
+        parameter_mode: requestOptions.parameter_mode,
+        provenance: requestOptions.provenance,
+        curriculum_profile: requestOptions.curriculum_profile ?? curriculumProfile,
+      }, controller.signal);
+      if (requestId !== analyzeRequestRef.current || controller.signal.aborted) return false;
       if (res.error) {
         setError(formatAnalyzeError(res));
+        setAnalysisState('error');
         return false;
       }
-      if (!options?.slider) baseResultRef.current = stripToolArtifacts(res);
+      baseResultRef.current = res;
       setResult(res);
-      if (!options?.slider) onWarnings?.(res.warnings);
+      setAnalysisState('current');
+      onWarnings?.(res.warnings);
+      if (requestOptions.interval || requestOptions.line || requestOptions.transform) {
+        await runTool(requestOptions, res);
+      }
       return true;
-    } catch (e: unknown) {
-      if (requestId === analyzeRequestRef.current) setError(e instanceof Error ? e.message : 'Lỗi không xác định.');
+    } catch (error: unknown) {
+      if (requestId === analyzeRequestRef.current && !isAbortError(error)) {
+        setError(error instanceof Error ? error.message : 'Lỗi không xác định.');
+        setAnalysisState('error');
+      }
       return false;
     } finally {
-      if (requestId === analyzeRequestRef.current && !options?.slider) setLoading(false);
+      if (requestId === analyzeRequestRef.current) setLoading(false);
     }
   }
 
@@ -188,44 +298,145 @@ export function useFunctionAnalysis(initialExpression: string, onWarnings?: (war
 
   function discardOcrCandidate() {
     analyzeRequestRef.current += 1;
+    ocrAbortRef.current?.abort();
     setOcrCandidate(null);
     setOcrPreviewUrl(null);
     setExpression('');
     setError(null);
+    setAnalysisState('editing');
   }
 
   async function handleImageChange(file?: File) {
     if (!file) return;
     const requestId = ++analyzeRequestRef.current;
+    ocrAbortRef.current?.abort();
+    const controller = new AbortController();
+    ocrAbortRef.current = controller;
+    baseAbortRef.current?.abort();
+    toolAbortRef.current?.abort();
     setOcrLoading(true);
+    setAnalysisState('loading');
     setError(null);
     setResult(null);
     setOcrCandidate(null);
     setOcrPreviewUrl(URL.createObjectURL(file));
     try {
-      const candidate = await extractFunctionImageFile(file);
-      if (requestId !== analyzeRequestRef.current) return;
+      const candidate = await extractFunctionImageFile(file, controller.signal);
+      if (requestId !== analyzeRequestRef.current || controller.signal.aborted) return;
       setExpression(candidate.expression);
       setOcrCandidate(candidate);
+      setAnalysisState('editing');
       onWarnings?.(candidate.warnings);
     } catch (e: unknown) {
-      if (requestId === analyzeRequestRef.current) setError(e instanceof Error ? e.message : 'Lỗi OCR không xác định.');
+      if (requestId === analyzeRequestRef.current && !isAbortError(e)) {
+        setError(e instanceof Error ? e.message : 'Lỗi OCR không xác định.');
+        setAnalysisState('error');
+      }
     } finally {
       if (requestId === analyzeRequestRef.current) setOcrLoading(false);
     }
   }
 
-  function applyLocalTransform(transform: NonNullable<AnalyzeOptions['transform']>, baseOverride?: AnalyzeResponse | null) {
-    if (sliderDebounceRef.current !== null) window.clearTimeout(sliderDebounceRef.current);
-    analyzeRequestRef.current += 1;
-    const base = baseOverride ?? baseResultRef.current ?? (result ? stripToolArtifacts(result) : null);
-    if (!base) return;
-    const preview = buildLocalTransformPreview(transform.type, transform.value ?? 0);
+  function applyAnimatedTransform(value: number) {
+    const base = baseResultRef.current;
+    const model = result?.transform_preview;
+    if (!base || !model || !model.requires_value) return;
+    const expression = instantiateTransformTemplate(model.expression_template, value);
     setResult({
       ...base,
-      transform_preview: preview,
-      geogebra_commands: buildLocalTransformCommands(base.geogebra_commands, preview.expression),
+      transform_preview: { ...model, value: formatToolNumber(value), expression, expression_latex: expression },
+      geogebra_commands: buildTransformCommands(base.geogebra_commands, expression),
     });
+  }
+
+  function resetTransformAnimation() {
+    setIsAnimatingTransform(false);
+    setTransformValue(1);
+    applyAnimatedTransform(1);
+  }
+
+  function setTransformTypeAndReset(value: AnalyzeTransformType) {
+    setIsAnimatingTransform(false);
+    setTransformType(value);
+  }
+
+  function invalidateCurrentAnalysis() {
+    analyzeRequestRef.current += 1;
+    baseAbortRef.current?.abort();
+    toolAbortRef.current?.abort();
+    ocrAbortRef.current?.abort();
+    if (sliderDebounceRef.current !== null) window.clearTimeout(sliderDebounceRef.current);
+    setIsAnimatingTransform(false);
+    baseResultRef.current = null;
+    setResult(null);
+    setError(null);
+    setAnalysisState(result ? 'stale' : 'editing');
+  }
+
+  function setParameterModeAndInvalidate(value: '' | 'symbolic' | 'substitute') {
+    if (value === parameterMode) return;
+    invalidateCurrentAnalysis();
+    setParameterMode(value);
+  }
+
+  function setParameterValueAndInvalidate(value: string) {
+    if (value === parameterValue) return;
+    invalidateCurrentAnalysis();
+    setParameterValue(value);
+  }
+
+  function setCurriculumProfileAndInvalidate(value: CurriculumProfile) {
+    if (
+      value.grade === curriculumProfile.grade
+      && value.chapter === curriculumProfile.chapter
+      && value.explanation_level === curriculumProfile.explanation_level
+    ) return;
+    invalidateCurrentAnalysis();
+    setCurriculumProfile(value);
+  }
+
+  async function openHistoryItem(id: string) {
+    baseAbortRef.current?.abort();
+    toolAbortRef.current?.abort();
+    setLoading(true);
+    setError(null);
+    try {
+      const detail = await openAnalyzerHistory(id);
+      baseResultRef.current = detail.result;
+      setExpression(detail.original_expression);
+      setResult(detail.result);
+      if (detail.result.curriculum_presentation?.profile) {
+        setCurriculumProfile(detail.result.curriculum_presentation.profile);
+      }
+      setAnalysisState('current');
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Không mở được lịch sử analyzer.');
+      setAnalysisState('error');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function saveParameterSnapshot() {
+    const base = baseResultRef.current;
+    const value = base?.parameters?.active_exact?.m;
+    if (!base || base.parameter_mode !== 'substitute' || !value) return;
+    setParameterSnapshots((current) => {
+      const next = [...current.filter((item) => item.value !== value), { value, result: base }];
+      // ponytail: snapshot cục bộ giới hạn 6 để tránh giữ payload lớn; M9 history thay bằng lưu trữ phân trang.
+      return next.slice(-6);
+    });
+  }
+
+  function removeParameterSnapshot(value: string) {
+    setParameterSnapshots((current) => current.filter((item) => item.value !== value));
+  }
+
+  function setExpressionAndInvalidate(value: string) {
+    if (value === expression) return;
+    invalidateCurrentAnalysis();
+    setParameterSnapshots([]);
+    setExpression(value);
   }
 
   function updateToolEnabled(key: ToolKey, enabled: boolean) {
@@ -236,48 +447,56 @@ export function useFunctionAnalysis(initialExpression: string, onWarnings?: (war
     setEnableInterval(nextEnableInterval);
     setEnableLine(nextEnableLine);
     setEnableTransform(nextEnableTransform);
-    if (key === 'transform') {
-      if (!enabled) setIsAnimatingTransform(false);
-    } else {
-      setIsAnimatingTransform(false);
-    }
+    if (key !== 'transform' || !enabled) setIsAnimatingTransform(false);
 
-    const baseResult = baseResultRef.current ?? (result ? stripToolArtifacts(result) : null);
-    if (baseResult) setResult(baseResult);
-
+    const base = baseResultRef.current;
+    if (base) setResult(base);
     const requestOptions = buildAnalyzeOptions({
       enableInterval: nextEnableInterval,
       enableLine: nextEnableLine,
       enableTransform: nextEnableTransform,
     });
-    if (requestOptions.transform && !requestOptions.interval && !requestOptions.line) {
-      applyLocalTransform(requestOptions.transform, baseResult);
-      return;
-    }
     if (!requestOptions.interval && !requestOptions.line && !requestOptions.transform) {
-      analyzeRequestRef.current += 1;
+      toolAbortRef.current?.abort();
       return;
     }
+    void runTool(requestOptions);
+  }
 
-    const expr = expression.trim();
-    if (!expr) return;
-    if (sliderDebounceRef.current !== null) window.clearTimeout(sliderDebounceRef.current);
-    void runAnalyze(expr, { slider: true, requestOptions });
+  function buildHistoryTools(): AnalyzeOptions {
+    const options = buildAnalyzeOptions();
+    return {
+      parameters: options.parameters,
+      parameter_mode: options.parameter_mode,
+      interval: options.interval,
+      line: options.line,
+      transform: options.transform,
+    };
   }
 
   return {
     expression,
-    setExpression,
+    setExpression: setExpressionAndInvalidate,
+    analysisState,
     parameterMode,
     parameterValue,
+    curriculumProfile,
+    setCurriculumProfile: setCurriculumProfileAndInvalidate,
     parameterDetected: containsParameterM(expression),
-    setParameterMode,
-    setParameterValue,
+    setParameterMode: setParameterModeAndInvalidate,
+    setParameterValue: setParameterValueAndInvalidate,
     loading,
     ocrLoading,
     ocrCandidate,
     ocrPreviewUrl,
     result,
+    sessionResult: baseResultRef.current,
+    historyTools: buildHistoryTools(),
+    historyWindow: result?.graph_analysis_v2?.window,
+    parameterSnapshots,
+    saveParameterSnapshot,
+    removeParameterSnapshot,
+    clearParameterSnapshots: () => setParameterSnapshots([]),
     error,
     intervalA,
     intervalB,
@@ -293,7 +512,9 @@ export function useFunctionAnalysis(initialExpression: string, onWarnings?: (war
     transformType,
     transformValue,
     isAnimatingTransform,
+    animationFps,
     handleAnalyze,
+    openHistoryItem,
     handleConfirmOcr,
     discardOcrCandidate,
     handleImageChange,
@@ -306,9 +527,11 @@ export function useFunctionAnalysis(initialExpression: string, onWarnings?: (war
     setLineB,
     setLineMode,
     setLineX0,
-    setTransformType,
+    setTransformType: setTransformTypeAndReset,
     setTransformValue,
+    setAnimationFps,
     setIsAnimatingTransform,
+    resetTransformAnimation,
     scheduleToolAnalyze,
   };
 }
@@ -322,40 +545,7 @@ function formatAnalyzeError(response: AnalyzeResponse): string {
   return `${response.error ?? 'Không thể phân tích hàm số.'} Mã lỗi: ${response.error_code}.`;
 }
 
-function stripToolArtifacts(result: AnalyzeResponse): AnalyzeResponse {
-  return {
-    ...result,
-    interval_analysis: null,
-    line_analysis: null,
-    transform_preview: null,
-    geogebra_commands: stripToolCommands(result.geogebra_commands),
-    graph_scene: result.graph_scene
-      ? {
-          ...result.graph_scene,
-          objects: result.graph_scene.objects.map((object) => object.type === 'function_graph' ? { ...object, domain: null } : object),
-        }
-      : result.graph_scene,
-  };
-}
-
-function stripToolCommands(commands: string[]) {
-  return commands.filter((command) => !/^\s*(h\(x\)\s*=|g\(x\)\s*=|Set(Color|LineThickness)\((f|g|h),)/i.test(command));
-}
-
-function buildLocalTransformPreview(type: AnalyzeTransformType, value: number): NonNullable<AnalyzeResponse['transform_preview']> {
-  const a = formatToolNumber(value);
-  const meta = localTransformMeta(type, a);
-  return {
-    type,
-    value: a,
-    label: meta.label,
-    expression: meta.expression,
-    expression_latex: meta.expressionLatex,
-    pedagogical_steps: meta.steps,
-  };
-}
-
-function buildLocalTransformCommands(baseCommands: string[], expression: string) {
+function buildTransformCommands(baseCommands: string[], expression: string) {
   return [
     ...stripToolCommands(baseCommands),
     `h(x)=${expression}`,
@@ -366,30 +556,21 @@ function buildLocalTransformCommands(baseCommands: string[], expression: string)
   ];
 }
 
-function localTransformMeta(type: AnalyzeTransformType, a: string) {
-  const signedA = signedToolNumber(a);
-  switch (type) {
-    case 'horizontal_shift':
-      return { label: `f(x${signedA})`, expression: `f(x${signedA})`, expressionLatex: `f(x${signedA})`, steps: [`Dịch đồ thị theo phương ngang với tham số a = ${a}.`] };
-    case 'vertical_scale':
-      return { label: `${a}f(x)`, expression: `${a}*f(x)`, expressionLatex: `${a}f(x)`, steps: [`Kéo dãn/co đồ thị theo phương thẳng đứng với hệ số ${a}.`] };
-    case 'horizontal_scale':
-      return { label: `f(${a}x)`, expression: `f(${a}*x)`, expressionLatex: `f(${a}x)`, steps: [`Kéo dãn/co đồ thị theo phương ngang với hệ số ${a}.`] };
-    case 'reflect_x':
-      return { label: '-f(x)', expression: '-f(x)', expressionLatex: '-f(x)', steps: ['Lấy đối xứng toàn bộ đồ thị qua trục hoành.'] };
-    case 'reflect_y':
-      return { label: 'f(-x)', expression: 'f(-x)', expressionLatex: 'f(-x)', steps: ['Lấy đối xứng toàn bộ đồ thị qua trục tung.'] };
-    case 'absolute_all':
-      return { label: '|f(x)|', expression: 'abs(f(x))', expressionLatex: '|f(x)|', steps: ['Giữ phần phía trên trục hoành, đối xứng phần phía dưới lên trên.'] };
-    case 'absolute_x':
-      return { label: 'f(|x|)', expression: 'f(abs(x))', expressionLatex: 'f(|x|)', steps: ['Giữ nửa phải đồ thị rồi đối xứng qua trục tung.'] };
-    default:
-      return { label: `f(x)${signedA}`, expression: `f(x)${signedA}`, expressionLatex: `f(x)${signedA}`, steps: [`Tịnh tiến đồ thị theo phương thẳng đứng với a = ${a}.`] };
-  }
+function stripToolCommands(commands: string[]) {
+  return commands.filter((command) => !/^\s*(h\(x\)\s*=|g\(x\)\s*=|Set(Color|LineThickness)\((f|g|h),)/i.test(command));
 }
 
-function signedToolNumber(value: string) {
-  return value.startsWith('-') ? value : `+${value}`;
+function requiresTransformValue(type: AnalyzeTransformType) {
+  return ['vertical_shift', 'horizontal_shift', 'vertical_scale', 'horizontal_scale'].includes(type);
+}
+
+function instantiateTransformTemplate(template: string, value: number) {
+  const expression = template.replace(/^g\(x\)=/, '');
+  return expression.replace(/\ba\b/g, `(${formatToolNumber(value)})`);
+}
+
+function isAbortError(error: unknown) {
+  return error instanceof DOMException && error.name === 'AbortError';
 }
 
 function formatToolNumber(value: number) {

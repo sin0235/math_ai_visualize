@@ -24,6 +24,8 @@ def analyze_parameter_cases(expr: Any, variable: Any, parameter: Any) -> dict[st
                 "domain_exact": None,
                 "stationary_root_count": None,
                 "extrema_count": None,
+                "root_count": None,
+                "vertical_asymptote_count": None,
                 "warnings": ["Chưa chứng minh được phân hoạch tham số cho họ hàm này."],
             }],
             "legacy_conditions": [],
@@ -156,6 +158,7 @@ def _case_payload(
         degree = None
         warnings.append("Không xác định được bậc theo x.")
 
+    domain = None
     try:
         sampled_domain = sp.calculus.util.continuous_domain(substituted, variable, sp.S.Reals)
         symbolic_domain = None if is_boundary else _rational_symbolic_domain(expr, variable)
@@ -167,8 +170,13 @@ def _case_payload(
 
     derivative = sp.simplify(sp.diff(substituted, variable))
     stationary_count, extrema_count = _stationary_counts(derivative, variable)
+    root_count, vertical_asymptote_count = _case_feature_counts(substituted, variable)
     if stationary_count is None:
         warnings.append("Không chứng minh được số nghiệm thực của đạo hàm.")
+    if root_count is None:
+        warnings.append("Không chứng minh được số nghiệm thực của hàm trong case.")
+    if vertical_asymptote_count is None:
+        warnings.append("Không chứng minh được số tiệm cận đứng trong case.")
 
     return {
         "condition_exact": sp.sstr(condition),
@@ -180,6 +188,8 @@ def _case_payload(
         "domain_exact": domain_exact,
         "stationary_root_count": stationary_count,
         "extrema_count": extrema_count,
+        "root_count": root_count,
+        "vertical_asymptote_count": vertical_asymptote_count,
         "warnings": warnings,
     }
 
@@ -199,6 +209,32 @@ def _rational_symbolic_domain(expr: Any, variable: Any):
     if all(variable not in root.free_symbols for root in roots):
         return sp.S.Reals - sp.FiniteSet(*roots)
     return None
+
+
+def _case_feature_counts(expr: Any, variable: Any) -> tuple[int | None, int | None]:
+    try:
+        domain = sp.calculus.util.continuous_domain(expr, variable, sp.S.Reals)
+        roots = sp.solveset(expr, variable, domain=domain)
+        root_count = len(roots) if isinstance(roots, sp.FiniteSet) else None
+    except (TypeError, ValueError, NotImplementedError):
+        root_count = None
+
+    try:
+        _, denominator = sp.fraction(sp.cancel(expr))
+        candidates = sp.solveset(denominator, variable, domain=sp.S.Reals)
+        if candidates is sp.S.EmptySet:
+            return root_count, 0
+        if not isinstance(candidates, sp.FiniteSet):
+            return root_count, None
+        asymptote_count = 0
+        for point in candidates:
+            left = sp.limit(expr, variable, point, dir="-")
+            right = sp.limit(expr, variable, point, dir="+")
+            if left in (sp.oo, -sp.oo) or right in (sp.oo, -sp.oo):
+                asymptote_count += 1
+    except (TypeError, ValueError, NotImplementedError):
+        return root_count, None
+    return root_count, asymptote_count
 
 
 def _stationary_counts(derivative: Any, variable: Any) -> tuple[int | None, int | None]:
