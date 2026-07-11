@@ -1,5 +1,5 @@
 import type { MathScene } from '../types/scene';
-import { requestJson } from './core';
+import { apiUrl, fetchWithRetry, parseApiError, requestJson } from './core';
 import { uploadOcrImage } from './render';
 
 export interface ExactApproxValue {
@@ -231,6 +231,7 @@ export interface AnalyzeOptions {
   parameters?: { m?: string | number };
   parameter_mode?: 'symbolic' | 'substitute';
   provenance?: FunctionOcrProvenance;
+  curriculum_profile?: CurriculumProfile;
   interval?: { a: number; b: number; open_a?: boolean; open_b?: boolean };
   line?: { k?: number; b?: number; mode?: AnalyzeLineMode; x0?: number; y0?: number };
   parameter_conditions?: { targets: ParameterConditionTarget[]; extrema_count?: 0 | 1 | 2 };
@@ -335,6 +336,51 @@ export interface AnalysisStep {
   formula_latex: string | null;
   evidence: string[];
   warnings: string[];
+}
+
+export interface CurriculumProfile {
+  grade: 10 | 11 | 12;
+  chapter: string;
+  explanation_level: 'concise' | 'standard' | 'detailed';
+}
+
+export interface CurriculumPresentation {
+  profile: CurriculumProfile;
+  terminology: Record<string, string>;
+  step_order: string[];
+  common_mistakes: string[];
+  predicted_questions: string[];
+}
+
+export interface AnalyzerHistoryItem {
+  id: string;
+  original_expression: string;
+  canonical_expression: string;
+  parameters: Record<string, unknown>;
+  tags: string[];
+  pinned: boolean;
+  grade: number | null;
+  chapter: string | null;
+  explanation_level: string;
+  engine_version: string;
+  schema_version: string;
+  parent_history_id?: string | null;
+  created_at: string;
+  updated_at: string;
+  last_opened_at?: string | null;
+}
+
+export interface AnalyzerHistoryDetail extends AnalyzerHistoryItem {
+  result: AnalyzerSessionResponse;
+  window: Record<string, unknown>;
+  tools: Record<string, unknown>;
+  version_diff?: {
+    engine_changed: boolean;
+    schema_changed: boolean;
+    verification_changed: boolean;
+    warning_count_before: number;
+    warning_count_after: number;
+  } | null;
 }
 
 export interface AnalyzeResponse {
@@ -480,6 +526,7 @@ export interface AnalyzeResponse {
   stage_statuses?: Record<string, { status: string; error_code?: string }> | null;
   verification?: VerificationReport | null;
   analysis_steps?: AnalysisStep[];
+  curriculum_presentation?: CurriculumPresentation | null;
   warnings: string[];
   error?: string | null;
   error_code?: string | null;
@@ -520,7 +567,7 @@ export interface AnalyzerToolResponse {
 
 export async function createAnalyzerSession(
   expression: string,
-  options?: Pick<AnalyzeOptions, 'parameters' | 'parameter_mode' | 'provenance'>,
+  options?: Pick<AnalyzeOptions, 'parameters' | 'parameter_mode' | 'provenance' | 'curriculum_profile'>,
   signal?: AbortSignal,
 ): Promise<AnalyzerSessionResponse> {
   return requestJson('/api/analyzer/analyze', {
@@ -591,6 +638,173 @@ export async function sampleFunctionGraph(
     signal,
     body: JSON.stringify({ expression, window, ...options }),
   }, 'Không thể cập nhật mẫu đồ thị.');
+}
+
+export function listAnalyzerHistory(filters: { q?: string; tag?: string; pinned?: boolean } = {}): Promise<AnalyzerHistoryItem[]> {
+  const search = new URLSearchParams();
+  if (filters.q?.trim()) search.set('q', filters.q.trim());
+  if (filters.tag?.trim()) search.set('tag', filters.tag.trim());
+  if (filters.pinned !== undefined) search.set('pinned', String(filters.pinned));
+  const query = search.toString();
+  return requestJson(`/api/analyzer/history${query ? `?${query}` : ''}`, { method: 'GET', credentials: 'include' }, 'Không tải được lịch sử analyzer.');
+}
+
+export function saveAnalyzerHistory(
+  analysisId: string,
+  profile: CurriculumProfile,
+  options: { tags?: string[]; pinned?: boolean; window?: { x_min: number; x_max: number }; tools?: AnalyzeOptions } = {},
+): Promise<AnalyzerHistoryItem> {
+  return requestJson('/api/analyzer/history', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ analysis_id: analysisId, curriculum_profile: profile, ...options }),
+  }, 'Không lưu được lịch sử analyzer.');
+}
+
+export function openAnalyzerHistory(id: string): Promise<AnalyzerHistoryDetail> {
+  return requestJson(`/api/analyzer/history/${encodeURIComponent(id)}`, { method: 'GET', credentials: 'include' }, 'Không mở được lịch sử analyzer.');
+}
+
+export function reanalyzeAnalyzerHistory(id: string, profile: CurriculumProfile): Promise<AnalyzerHistoryDetail> {
+  return requestJson(`/api/analyzer/history/${encodeURIComponent(id)}/reanalyze`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ curriculum_profile: profile }),
+  }, 'Không phân tích lại được lịch sử analyzer.');
+}
+
+export async function exportAnalyzer(
+  source: { analysis_id: string } | { history_id: string },
+  format: 'markdown' | 'json' | 'latex' | 'pdf',
+  template: 'full' | 'teacher_report' | 'student_worksheet',
+  profile: CurriculumProfile,
+): Promise<void> {
+  const response = await fetchWithRetry(apiUrl('/api/analyzer/export'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ ...source, format, template, curriculum_profile: profile }),
+  });
+  if (!response.ok) throw await parseApiError(response, 'Không xuất được kết quả analyzer.');
+  const blob = await response.blob();
+  const disposition = response.headers.get('content-disposition') || '';
+  const filename = /filename="([^"]+)"/.exec(disposition)?.[1] || `function-analysis.${format === 'markdown' ? 'md' : format === 'latex' ? 'tex' : format}`;
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+export type AnalyzerHandoffTarget = 'algebra_solver' | 'simulation' | 'geogebra_lab' | 'render' | 'practice';
+export type AnalyzerLinkScope = 'open' | 'embed' | 'api';
+
+export interface AlgebraHandoffPayload {
+  version: 'algebra-solver-v1';
+  input: string;
+  input_format: 'plain';
+  topic: 'equation';
+  domain: 'R';
+}
+
+export interface SimulationHandoffPayload {
+  version: 'function-simulation-v1';
+  simulation_id: 'g12.calc.derivative-survey';
+  expression: string;
+  x_min: number;
+  x_max: number;
+  verification_status: string;
+}
+
+export interface GeoGebraHandoffPayload {
+  version: 'geogebra-commands-v1';
+  mode: 'graphing';
+  commands: string[];
+}
+
+export interface RenderHandoffPayload {
+  version: 'render-problem-v1';
+  problem_text: string;
+  preferred_renderer: 'geogebra';
+}
+
+export interface PracticeHandoffPayload {
+  version: 'practice-prompt-v1';
+  problem_text: string;
+  source_verification: string;
+}
+
+export type AnalyzerHandoffPayload = AlgebraHandoffPayload | SimulationHandoffPayload | GeoGebraHandoffPayload | RenderHandoffPayload | PracticeHandoffPayload;
+
+export interface AnalyzerLinkCreated {
+  short_id: string;
+  kind: 'handoff' | 'share';
+  target: AnalyzerHandoffTarget;
+  url: string;
+  expires_at: string;
+  visibility: 'user' | 'public';
+  scopes: AnalyzerLinkScope[];
+}
+
+export interface AnalyzerLinkConsumed {
+  short_id: string;
+  kind: 'handoff' | 'share';
+  target: AnalyzerHandoffTarget;
+  payload_version: string;
+  payload: AnalyzerHandoffPayload;
+  expires_at: string;
+}
+
+export function createAnalyzerHandoff(analysisId: string, target: AnalyzerHandoffTarget): Promise<AnalyzerLinkCreated> {
+  return requestJson('/api/analyzer/handoffs', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+    body: JSON.stringify({ analysis_id: analysisId, target }),
+  }, 'Không tạo được handoff analyzer.');
+}
+
+export function createAnalyzerShare(
+  analysisId: string,
+  target: AnalyzerHandoffTarget,
+  options: { visibility: 'user' | 'public'; expires_in_minutes: number; scopes?: AnalyzerLinkScope[]; allowed_origins?: string[]; max_uses?: number },
+): Promise<AnalyzerLinkCreated> {
+  return requestJson('/api/analyzer/shares', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+    body: JSON.stringify({ analysis_id: analysisId, target, ...options }),
+  }, 'Không tạo được link chia sẻ analyzer.');
+}
+
+export function consumeAnalyzerLink(
+  shortId: string,
+  target: AnalyzerHandoffTarget,
+  scope: AnalyzerLinkScope = 'open',
+): Promise<AnalyzerLinkConsumed> {
+  return requestJson(`/api/analyzer/links/${encodeURIComponent(shortId)}/consume`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+    body: JSON.stringify({ target, scope }),
+  }, 'Link analyzer không tồn tại hoặc đã hết hiệu lực.');
+}
+
+export function revokeAnalyzerLink(shortId: string): Promise<void> {
+  return requestJson(`/api/analyzer/links/${encodeURIComponent(shortId)}`, {
+    method: 'DELETE', credentials: 'include',
+  }, 'Không thu hồi được link analyzer.');
+}
+
+export async function consumeAnalyzerLinkFromLocation<T extends AnalyzerHandoffPayload>(
+  target: AnalyzerHandoffTarget,
+): Promise<T | null> {
+  const search = new URLSearchParams(window.location.search);
+  const shortId = search.get('handoff') || search.get('share');
+  if (!shortId) return null;
+  const consumed = await consumeAnalyzerLink(shortId, target);
+  search.delete('handoff');
+  search.delete('share');
+  const query = search.toString();
+  window.history.replaceState({}, document.title, `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`);
+  return consumed.payload as T;
 }
 
 export async function extractFunctionImage(imageDataUrl: string): Promise<FunctionOcrExtraction> {

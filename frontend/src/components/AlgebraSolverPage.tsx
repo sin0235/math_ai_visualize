@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ApiError,
+  consumeAnalyzerLinkFromLocation,
   deleteAlgebraHistory,
   getAlgebraHistory,
   listAlgebraHistory,
@@ -8,6 +9,7 @@ import {
   type AlgebraDomainSource,
   type AlgebraHistoryItem as ServerHistoryItem,
   type AlgebraInputFormat,
+  type AlgebraHandoffPayload,
   type AlgebraInterval,
   type AlgebraSolveResponse,
   type AlgebraTopic,
@@ -65,6 +67,20 @@ export function AlgebraSolverPage() {
     q: '2',
     n: '10',
   });
+
+  useEffect(() => {
+    void consumeAnalyzerLinkFromLocation<AlgebraHandoffPayload>('algebra_solver')
+      .then((payload) => {
+        if (!payload || payload.version !== 'algebra-solver-v1') return;
+        setInput(payload.input);
+        setInputMode('math');
+        setInputFormat(payload.input_format);
+        setTopic(payload.topic);
+        setDomain(payload.domain);
+        setDomainSource('user');
+      })
+      .catch((caught) => setError(caught instanceof Error ? caught.message : 'Không mở được handoff analyzer.'));
+  }, []);
 
   useEffect(() => {
     void (async () => {

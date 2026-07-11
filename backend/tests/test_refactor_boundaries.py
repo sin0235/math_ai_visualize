@@ -31,6 +31,8 @@ def test_split_solve_and_analysis_routes_stay_registered():
     assert "/api/analyze" in paths
     assert "/api/analyze/ocr" in paths
     assert "/api/analyzer/analyze" in paths
+    assert "/api/analyzer/history" in paths
+    assert "/api/analyzer/export" in paths
     assert {
         "/api/analyzer/tools/interval-extrema",
         "/api/analyzer/tools/line",

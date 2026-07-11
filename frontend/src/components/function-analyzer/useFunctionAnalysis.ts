@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   createAnalyzerSession,
   extractFunctionImageFile,
+  openAnalyzerHistory,
   runAnalyzerIntervalTool,
   runAnalyzerLineTool,
   runAnalyzerTangentTool,
@@ -11,6 +12,7 @@ import {
   type AnalyzeResponse,
   type AnalyzeTransformType,
   type AnalyzerSessionResponse,
+  type CurriculumProfile,
   type FunctionOcrExtraction,
 } from '../../api/client';
 
@@ -58,6 +60,11 @@ export function useFunctionAnalysis(initialExpression: string, onWarnings?: (war
   const [expression, setExpression] = useState(() => readAnalyzerPrefill(initialExpression));
   const [parameterMode, setParameterMode] = useState<'' | 'symbolic' | 'substitute'>('');
   const [parameterValue, setParameterValue] = useState('1');
+  const [curriculumProfile, setCurriculumProfile] = useState<CurriculumProfile>({
+    grade: 12,
+    chapter: 'Khảo sát hàm số',
+    explanation_level: 'standard',
+  });
   const [loading, setLoading] = useState(false);
   const [analysisState, setAnalysisState] = useState<AnalysisState>('editing');
   const [ocrLoading, setOcrLoading] = useState(false);
@@ -163,6 +170,7 @@ export function useFunctionAnalysis(initialExpression: string, onWarnings?: (war
     const nextTransformType = overrides?.transformType ?? transformType;
     const nextTransformValue = overrides?.transformValue ?? transformValue;
     return {
+      curriculum_profile: curriculumProfile,
       ...(containsParameterM(expression) && parameterMode ? {
         parameter_mode: parameterMode,
         ...(parameterMode === 'substitute' ? { parameters: { m: parameterValue } } : {}),
@@ -240,6 +248,7 @@ export function useFunctionAnalysis(initialExpression: string, onWarnings?: (war
         parameters: requestOptions.parameters,
         parameter_mode: requestOptions.parameter_mode,
         provenance: requestOptions.provenance,
+        curriculum_profile: requestOptions.curriculum_profile ?? curriculumProfile,
       }, controller.signal);
       if (requestId !== analyzeRequestRef.current || controller.signal.aborted) return false;
       if (res.error) {
@@ -376,6 +385,38 @@ export function useFunctionAnalysis(initialExpression: string, onWarnings?: (war
     setParameterValue(value);
   }
 
+  function setCurriculumProfileAndInvalidate(value: CurriculumProfile) {
+    if (
+      value.grade === curriculumProfile.grade
+      && value.chapter === curriculumProfile.chapter
+      && value.explanation_level === curriculumProfile.explanation_level
+    ) return;
+    invalidateCurrentAnalysis();
+    setCurriculumProfile(value);
+  }
+
+  async function openHistoryItem(id: string) {
+    baseAbortRef.current?.abort();
+    toolAbortRef.current?.abort();
+    setLoading(true);
+    setError(null);
+    try {
+      const detail = await openAnalyzerHistory(id);
+      baseResultRef.current = detail.result;
+      setExpression(detail.original_expression);
+      setResult(detail.result);
+      if (detail.result.curriculum_presentation?.profile) {
+        setCurriculumProfile(detail.result.curriculum_presentation.profile);
+      }
+      setAnalysisState('current');
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Không mở được lịch sử analyzer.');
+      setAnalysisState('error');
+    } finally {
+      setLoading(false);
+    }
+  }
+
   function saveParameterSnapshot() {
     const base = baseResultRef.current;
     const value = base?.parameters?.active_exact?.m;
@@ -422,12 +463,25 @@ export function useFunctionAnalysis(initialExpression: string, onWarnings?: (war
     void runTool(requestOptions);
   }
 
+  function buildHistoryTools(): AnalyzeOptions {
+    const options = buildAnalyzeOptions();
+    return {
+      parameters: options.parameters,
+      parameter_mode: options.parameter_mode,
+      interval: options.interval,
+      line: options.line,
+      transform: options.transform,
+    };
+  }
+
   return {
     expression,
     setExpression: setExpressionAndInvalidate,
     analysisState,
     parameterMode,
     parameterValue,
+    curriculumProfile,
+    setCurriculumProfile: setCurriculumProfileAndInvalidate,
     parameterDetected: containsParameterM(expression),
     setParameterMode: setParameterModeAndInvalidate,
     setParameterValue: setParameterValueAndInvalidate,
@@ -436,6 +490,9 @@ export function useFunctionAnalysis(initialExpression: string, onWarnings?: (war
     ocrCandidate,
     ocrPreviewUrl,
     result,
+    sessionResult: baseResultRef.current,
+    historyTools: buildHistoryTools(),
+    historyWindow: result?.graph_analysis_v2?.window,
     parameterSnapshots,
     saveParameterSnapshot,
     removeParameterSnapshot,
@@ -457,6 +514,7 @@ export function useFunctionAnalysis(initialExpression: string, onWarnings?: (war
     isAnimatingTransform,
     animationFps,
     handleAnalyze,
+    openHistoryItem,
     handleConfirmOcr,
     discardOcrCandidate,
     handleImageChange,

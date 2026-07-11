@@ -257,6 +257,19 @@ function QuickSummary({ result }: { result: AnalyzeResponse }) {
       )}
       {result.parameter_analysis_v2 && <ParameterCaseSummary analysis={result.parameter_analysis_v2} />}
       {result.x_intercepts_v2 && <RootSummary analysis={result.x_intercepts_v2} />}
+      {result.curriculum_presentation && (
+        <div className="fa2-curriculum-summary">
+          <strong>Lớp {result.curriculum_presentation.profile.grade} · {result.curriculum_presentation.profile.chapter}</strong>
+          <div>
+            <span>Lỗi thường gặp</span>
+            <ul>{result.curriculum_presentation.common_mistakes.map((item) => <li key={item}>{item}</li>)}</ul>
+          </div>
+          <div>
+            <span>Câu hỏi dự đoán</span>
+            <ul>{result.curriculum_presentation.predicted_questions.map((item) => <li key={item}>{item}</li>)}</ul>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

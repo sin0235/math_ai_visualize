@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { consumeAnalyzerLinkFromLocation, type SimulationHandoffPayload } from '../../api/client';
 import { AreaBetweenCurvesSimulation } from '../../components/calculus/AreaBetweenCurvesSimulation';
 import { SolidOfRevolutionSimulation } from '../../components/calculus/SolidOfRevolutionSimulation';
 import { CrossSectionVolumeSimulation } from '../../components/calculus/CrossSectionVolumeSimulation';
@@ -28,6 +29,18 @@ function parseSimulationId(pathname: string): string | null {
 
 export function SimulationHubPage() {
   const [simId, setSimId] = useState<string | null>(() => parseSimulationId(window.location.pathname));
+  const [analyzerHandoff, setAnalyzerHandoff] = useState<SimulationHandoffPayload | null>(null);
+  const [handoffError, setHandoffError] = useState('');
+
+  useEffect(() => {
+    void consumeAnalyzerLinkFromLocation<SimulationHandoffPayload>('simulation')
+      .then((payload) => {
+        if (!payload || payload.version !== 'function-simulation-v1') return;
+        setAnalyzerHandoff(payload);
+        setSimId(payload.simulation_id);
+      })
+      .catch((caught) => setHandoffError(caught instanceof Error ? caught.message : 'Không mở được handoff analyzer.'));
+  }, []);
 
   useEffect(() => {
     function syncFromLocation() {
@@ -85,7 +98,9 @@ export function SimulationHubPage() {
   }
 
   return (
-    <SimulationShell spec={spec} onBack={backToLibrary}>
+    <>
+      {handoffError && <div className="sim-library-empty" role="alert">{handoffError}</div>}
+      <SimulationShell spec={spec} onBack={backToLibrary}>
       {({ step, progress, playing, freeMode }) => {
         switch (spec.template) {
           case 'riemann-area':
@@ -97,7 +112,7 @@ export function SimulationHubPage() {
           case 'unit-circle-trig':
             return <TrigonometrySimulation playing={playing} />;
           case 'derivative-survey':
-            return <DerivativeSurveySimulation step={step} progress={progress} freeMode={freeMode} />;
+            return <DerivativeSurveySimulation step={step} progress={progress} freeMode={freeMode} initialHandoff={analyzerHandoff} />;
           case 'antiderivative-family':
             return <AntiderivativeFamilySimulation step={step} progress={progress} freeMode={freeMode} />;
           case 'space-coords':
@@ -122,6 +137,7 @@ export function SimulationHubPage() {
             return <div className="sim-library-empty"><strong>Template chưa gắn</strong></div>;
         }
       }}
-    </SimulationShell>
+      </SimulationShell>
+    </>
   );
 }

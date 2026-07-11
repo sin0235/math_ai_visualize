@@ -1,4 +1,5 @@
 import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from 'react';
+import { consumeAnalyzerLinkFromLocation, type GeoGebraHandoffPayload } from '../api/client';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                             */
@@ -175,10 +176,30 @@ export function GeoGebraLabPage() {
   const rawId = useId();
   const containerId = `gglab-${rawId.replace(/[^a-zA-Z0-9]/g, '')}`;
   const apiRef = useRef<GeoGebraApi | null>(null);
+  const handoffCommandsRef = useRef<string[] | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const workspaceRef = useRef<HTMLDivElement | null>(null);
 
   const tab = TABS.find((t) => t.key === mode)!;
+
+  useEffect(() => {
+    void consumeAnalyzerLinkFromLocation<GeoGebraHandoffPayload>('geogebra_lab')
+      .then((payload) => {
+        if (!payload || payload.version !== 'geogebra-commands-v1') return;
+        handoffCommandsRef.current = payload.commands;
+        const api = apiRef.current;
+        if (api) {
+          payload.commands.forEach((command) => api.evalCommand(command));
+          handoffCommandsRef.current = null;
+          refreshObjectCount(api);
+          setCmdHistory((current) => [payload.commands.join('\n'), ...current]);
+        }
+      })
+      .catch((caught) => {
+        setStatus('error');
+        setErrorMsg(caught instanceof Error ? caught.message : 'Không mở được handoff analyzer.');
+      });
+  }, []);
 
   useEffect(() => {
     const workspace = workspaceRef.current;
@@ -238,6 +259,12 @@ export function GeoGebraLabPage() {
             apiRef.current = api;
             api.setErrorDialogsActive?.(false);
             if (tab.perspective) api.setPerspective?.(tab.perspective);
+            const handoffCommands = handoffCommandsRef.current;
+            if (handoffCommands) {
+              handoffCommands.forEach((command) => api.evalCommand(command));
+              handoffCommandsRef.current = null;
+              setCmdHistory((current) => [handoffCommands.join('\n'), ...current]);
+            }
             setStatus('ready');
             refreshObjectCount(api);
           },

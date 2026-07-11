@@ -116,6 +116,9 @@ async def analyze_session_endpoint(
         raise analyzer_error_from_payload(data)
     if request.provenance is not None:
         data["provenance"] = request.provenance.model_dump()
+    from app.services.function_analysis_curriculum import apply_curriculum_profile
+
+    data = apply_curriculum_profile(data, request.curriculum_profile)
     response = _analysis_response(request.expression, data)
     session = create_analysis_session(scope, response.model_dump(mode="json"))
     return AnalyzerSessionResponse(
@@ -603,6 +606,7 @@ def _analysis_response(expression: str, data: dict[str, Any]) -> AnalyzeResponse
         stage_statuses=data.get("stage_statuses"),
         verification=data.get("verification"),
         analysis_steps=data.get("analysis_steps", []),
+        curriculum_presentation=data.get("curriculum_presentation"),
         warnings=data.get("warnings", []),
     )
 

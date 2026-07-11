@@ -143,11 +143,26 @@ class AnalysisOptions(StrictModel):
         return self
 
 
+class CurriculumProfile(StrictModel):
+    grade: Literal[10, 11, 12] = 12
+    chapter: str = Field(default="Khảo sát hàm số", min_length=1, max_length=96)
+    explanation_level: Literal["concise", "standard", "detailed"] = "standard"
+
+
+class CurriculumPresentation(StrictModel):
+    profile: CurriculumProfile
+    terminology: dict[str, str]
+    step_order: list[str]
+    common_mistakes: list[str]
+    predicted_questions: list[str]
+
+
 class AnalyzerBaseRequest(StrictModel):
     expression: str = Field(min_length=1, max_length=1000)
     parameters: ParameterValues | None = None
     parameter_mode: Literal["symbolic", "substitute"] | None = None
     provenance: FunctionOcrProvenance | None = None
+    curriculum_profile: CurriculumProfile = Field(default_factory=CurriculumProfile)
 
     @model_validator(mode="after")
     def validate_parameter_mode(self) -> "AnalyzerBaseRequest":
@@ -507,6 +522,7 @@ class AnalyzeResponse(BaseModel):
     stage_statuses: dict[str, Any] | None = None
     verification: VerificationReport | None = None
     analysis_steps: list[AnalysisStep] = Field(default_factory=list)
+    curriculum_presentation: CurriculumPresentation | None = None
     warnings: list[str] = Field(default_factory=list)
     error: str | None = None
     error_code: str | None = None

@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import type { SimulationHandoffPayload } from '../../api/client';
 import { KatexSpan, MixedTextRenderer } from '../../components/KatexSpan';
 import { FormulaInput, PresetButtons, ResultCard, SliderInput } from '../runtime/SimulationPrimitives';
 import { formatNumber, sampleFunction, validateBounds } from '../../utils/calculusNumerics';
@@ -16,7 +17,7 @@ import {
 } from '../math/derivativeAnalysis';
 import { RichGraph2D } from '../renderers/RichGraph2D';
 
-type Props = { step: number; progress: number; freeMode?: boolean };
+type Props = { step: number; progress: number; freeMode?: boolean; initialHandoff?: SimulationHandoffPayload | null };
 
 type State = {
   f: string;
@@ -38,7 +39,7 @@ const PRESETS: Array<{ label: string; patch: Partial<State> }> = [
   { label: 'e^x', patch: { f: 'exp(x)', a: -2, b: 2, x0: 0.4, h: 0.8 } },
 ];
 
-export function DerivativeSurveySimulation({ step, progress, freeMode = false }: Props) {
+export function DerivativeSurveySimulation({ step, progress, freeMode = false, initialHandoff = null }: Props) {
   const [state, setState] = useState<State>({
     f: 'x^3 - 3*x',
     a: -3,
@@ -48,6 +49,17 @@ export function DerivativeSurveySimulation({ step, progress, freeMode = false }:
     showFPrime: true,
     showAsymptotes: false,
   });
+
+  useEffect(() => {
+    if (!initialHandoff) return;
+    setState((current) => ({
+      ...current,
+      f: initialHandoff.expression,
+      a: initialHandoff.x_min,
+      b: initialHandoff.x_max,
+      x0: Math.min(initialHandoff.x_max, Math.max(initialHandoff.x_min, 0)),
+    }));
+  }, [initialHandoff]);
 
   const model = useMemo(() => analyze(state, step, progress), [state, step, progress]);
   const canEditF = freeMode || step >= 1;

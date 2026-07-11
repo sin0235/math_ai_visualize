@@ -170,6 +170,45 @@ def test_postgres_user_activity_events_migration_exists():
     assert "CREATE INDEX IF NOT EXISTS idx_user_activity_events_user_created" in sql
 
 
+def test_analyzer_history_migrations_are_additive(tmp_path):
+    db = SQLiteClient(str(tmp_path / "test.db"))
+
+    asyncio.run(apply_sqlite_migrations(db))
+    columns = asyncio.run(db.fetch_all("PRAGMA table_info(analyzer_history)"))
+    indexes = asyncio.run(db.fetch_all("PRAGMA index_list(analyzer_history)"))
+    migration_names = {migration.name for migration in list_postgres_migration_files()}
+
+    assert {
+        "user_id", "original_expression", "canonical_expression", "result_json", "verification_json",
+        "tags_json", "is_pinned", "grade", "chapter", "engine_version", "schema_version", "parent_history_id",
+    }.issubset({str(row["name"]) for row in columns})
+    assert {
+        "idx_analyzer_history_user_updated",
+        "idx_analyzer_history_user_pinned",
+        "idx_analyzer_history_user_chapter",
+    }.issubset({str(row["name"]) for row in indexes})
+    assert "0009_analyzer_history.sql" in migration_names
+
+
+def test_analyzer_links_migrations_are_additive(tmp_path):
+    db = SQLiteClient(str(tmp_path / "test.db"))
+
+    asyncio.run(apply_sqlite_migrations(db))
+    columns = asyncio.run(db.fetch_all("PRAGMA table_info(analyzer_links)"))
+    indexes = asyncio.run(db.fetch_all("PRAGMA index_list(analyzer_links)"))
+    migration_names = {migration.name for migration in list_postgres_migration_files()}
+
+    assert {
+        "short_id", "owner_user_id", "kind", "target", "payload_version", "payload_json",
+        "visibility", "scopes_json", "allowed_origins_json", "max_uses", "use_count",
+        "expires_at", "revoked_at", "consumed_at",
+    }.issubset({str(row["name"]) for row in columns})
+    assert {"idx_analyzer_links_owner_created", "idx_analyzer_links_expiry"}.issubset(
+        {str(row["name"]) for row in indexes}
+    )
+    assert "0010_analyzer_links.sql" in migration_names
+
+
 def test_postgres_sql_translates_placeholders_outside_literals():
     assert postgres_sql("SELECT * FROM users WHERE email = ? AND note = '?' AND created_at >= CURRENT_TIMESTAMP") == (
         "SELECT * FROM users WHERE email = $1 AND note = '?' AND created_at >= (CURRENT_TIMESTAMP::text)"

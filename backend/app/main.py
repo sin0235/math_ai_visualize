@@ -10,6 +10,8 @@ from fastapi.responses import JSONResponse
 from app.api.routes_admin import router as admin_router
 from app.api.routes_ai_models import router as ai_models_router
 from app.api.routes_algebra_solve import router as algebra_solve_router
+from app.api.routes_analyzer_history import router as analyzer_history_router
+from app.api.routes_analyzer_links import router as analyzer_links_router
 from app.api.routes_auth import router as auth_router
 from app.api.routes_chat import router as chat_router
 from app.api.routes_diagram import router as diagram_router
@@ -185,6 +187,8 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 app.include_router(admin_router)
 app.include_router(ai_models_router)
 app.include_router(algebra_solve_router)
+app.include_router(analyzer_history_router)
+app.include_router(analyzer_links_router)
 app.include_router(auth_router)
 app.include_router(chat_router)
 app.include_router(health_router)

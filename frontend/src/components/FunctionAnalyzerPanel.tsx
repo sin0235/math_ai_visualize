@@ -1,5 +1,6 @@
 import { AnalyzerToolControls } from './function-analyzer/AnalyzerToolControls';
 import { AnalyzerInput } from './function-analyzer/AnalyzerInput';
+import { AnalyzerPersistenceControls } from './function-analyzer/AnalyzerPersistenceControls';
 import { AnalyzerLoadingResult, AnalyzerResult, EmptyAnalyzerResult } from './function-analyzer/AnalyzerResult';
 import { useFunctionAnalysis } from './function-analyzer/useFunctionAnalysis';
 
@@ -14,6 +15,15 @@ export function FunctionAnalyzerPanel({ initialExpression = '', onOpenGuide, onW
 
   return (
     <div className="fa2-panel">
+      <AnalyzerPersistenceControls
+        result={analyzer.sessionResult}
+        profile={analyzer.curriculumProfile}
+        graphWindow={analyzer.historyWindow}
+        tools={analyzer.historyTools}
+        disabled={analyzer.analysisState !== 'current' || analyzer.loading || analyzer.ocrLoading}
+        onProfileChange={analyzer.setCurriculumProfile}
+        onOpenHistory={analyzer.openHistoryItem}
+      />
       <div className="fa2-workspace">
         <AnalyzerInput
           expression={analyzer.expression}
