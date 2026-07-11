@@ -4,9 +4,11 @@ import time
 import pytest
 import sympy as sp
 from fastapi import HTTPException
+from pydantic import ValidationError
 
 from app.api import routes_function_analysis
-from app.api.routes_function_analysis import _apply_analyzer_output_limits, _run_analyzer_job, _run_analyzer_job_sync
+from app.api.routes_function_analysis import _analysis_response, _apply_analyzer_output_limits, _run_analyzer_job, _run_analyzer_job_sync
+from app.schemas.analysis import AnalyzeRequest, GraphSamplesRequest
 from app.services import function_analyzer, function_roots
 from app.services.function_analyzer import analyze_function
 from app.services.function_domain import FunctionDomain
@@ -574,3 +576,68 @@ def test_graph_builder_exposes_v2_and_uses_domain_components_for_geogebra():
     function_commands = [command for command in commands if "Function(" in command]
     assert len(function_commands) == 2
     assert all(", 1" in command for command in function_commands)
+
+
+def test_analyze_response_keeps_legacy_and_v2_contracts():
+    data = _run_analyzer_job_sync("x^2 - 1", None, None, None, None, None)
+    payload = _analysis_response("x^2 - 1", data).model_dump(mode="json")
+
+    assert {"x_intercepts", "interval_analysis", "line_analysis", "graph_points"} <= payload.keys()
+    assert {"x_intercepts_v2", "domain_partition_v2", "variation_table_v2", "graph_analysis_v2"} <= payload.keys()
+    assert payload["x_intercepts"] == ["-1", "1"]
+    assert payload["x_intercepts_v2"]["status"] == "complete"
+    assert payload["graph_points"]
+    assert payload["graph_analysis_v2"]["segments"]
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"expression": "x^2", "unknown": True},
+        {"expression": "x^2", "interval": {"a": 1, "b": 1}},
+        {"expression": "x^2", "interval": {"a": float("nan"), "b": 1}},
+        {"expression": "x^2", "line": {"mode": "invalid"}},
+        {"expression": "x^2", "line": {"mode": "intersect", "k": float("inf")}},
+        {"expression": "x^2", "transform": {"type": "invalid", "value": 1}},
+        {"expression": "x^2", "parameter_conditions": {"targets": ["invalid"]}},
+        {"expression": "x^2", "parameter_conditions": {"targets": ["extrema_count"]}},
+        {"expression": "x^2", "parameter_conditions": {"targets": ["increasing_r"], "extrema_count": 1}},
+        {"expression": "x^2", "parameters": {"n": 1}},
+        {"expression": "x^2", "parameter_mode": "substitute"},
+    ],
+)
+def test_analyze_request_rejects_invalid_typed_options(payload):
+    with pytest.raises(ValidationError):
+        AnalyzeRequest.model_validate(payload)
+
+
+def test_analyze_request_accepts_legacy_tool_payloads_and_exact_parameter():
+    request = AnalyzeRequest.model_validate({
+        "expression": "m*x^2",
+        "parameters": {"m": "sqrt(2)"},
+        "parameter_mode": "substitute",
+        "interval": {"a": -2, "b": 2, "open_a": True},
+        "line": {"mode": "tangent_at", "x0": 1, "k": 0, "b": 0},
+        "transform": {"type": "absolute_all", "value": 1},
+    })
+
+    assert request.parameters is not None and request.parameters.m == "sqrt(2)"
+    assert request.interval is not None and request.interval.open_a is True
+    assert request.line is not None and request.line.mode.value == "tangent_at"
+    assert request.transform is not None and request.transform.type.value == "absolute_all"
+
+
+def test_graph_samples_request_rejects_unknown_parameters_and_invalid_window():
+    with pytest.raises(ValidationError):
+        GraphSamplesRequest.model_validate({"expression": "x", "parameters": {"n": 1}, "window": {"x_min": -1, "x_max": 1}})
+    with pytest.raises(ValidationError):
+        GraphSamplesRequest.model_validate({"expression": "x", "window": {"x_min": 2, "x_max": 1}})
+
+
+def test_analyze_request_schema_exposes_strict_typed_components():
+    schema = AnalyzeRequest.model_json_schema()
+
+    assert schema["additionalProperties"] is False
+    assert {"AnalysisInterval", "AnalysisLine", "ParameterConditionRequest", "PlotWindow"} - set(schema.get("$defs", {})) == {"PlotWindow"}
+    assert schema["properties"]["interval"]["anyOf"][0]["$ref"].endswith("/AnalysisInterval")
+    assert schema["properties"]["line"]["anyOf"][0]["$ref"].endswith("/AnalysisLine")

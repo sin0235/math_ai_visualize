@@ -70,6 +70,10 @@ Văn bản OCR:
 {text}"""
 
 
+def _dump_option(value: Any | None) -> dict[str, Any] | None:
+    return value.model_dump(mode="json", exclude_none=True) if value is not None else None
+
+
 @router.post("/analyze", response_model=AnalyzeResponse, dependencies=[Depends(require_trusted_origin)])
 async def analyze_function_endpoint(
     request: AnalyzeRequest,
@@ -87,12 +91,12 @@ async def analyze_function_endpoint(
     try:
         data = await _run_cached_analyzer_job(
             request.expression,
-            request.parameters,
+            _dump_option(request.parameters),
             parameter_mode=request.parameter_mode,
-            interval=request.interval,
-            line=request.line,
-            parameter_conditions=request.parameter_conditions,
-            transform=request.transform,
+            interval=_dump_option(request.interval),
+            line=_dump_option(request.line),
+            parameter_conditions=_dump_option(request.parameter_conditions),
+            transform=_dump_option(request.transform),
         )
     except Exception as error:
         if user is not None:
@@ -160,7 +164,7 @@ def _build_graph_samples(request: GraphSamplesRequest) -> dict[str, Any]:
 
     parse_result = parse_safe_math_expression(request.expression)
     expression = parse_result.expr
-    parameters = request.parameters or {}
+    parameters = _dump_option(request.parameters) or {}
     unsupported = set(parameters) - {"m"}
     if unsupported:
         raise ValueError(f"Tham số không được hỗ trợ: {', '.join(sorted(unsupported))}.")

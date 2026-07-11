@@ -177,14 +177,28 @@ export interface FunctionOcrExtraction {
   provenance: FunctionOcrProvenance;
 }
 
+export type AnalyzeLineMode = 'intersect' | 'tangent_at';
+
+export type AnalyzeTransformType =
+  | 'vertical_shift'
+  | 'horizontal_shift'
+  | 'vertical_scale'
+  | 'horizontal_scale'
+  | 'reflect_x'
+  | 'reflect_y'
+  | 'absolute_all'
+  | 'absolute_x';
+
+export type ParameterConditionTarget = 'increasing_r' | 'decreasing_r' | 'extrema_count';
+
 export interface AnalyzeOptions {
   parameters?: { m?: string | number };
   parameter_mode?: 'symbolic' | 'substitute';
   provenance?: FunctionOcrProvenance;
   interval?: { a: number; b: number; open_a?: boolean; open_b?: boolean };
-  line?: { k?: number; b?: number; mode?: string; x0?: number };
-  parameter_conditions?: { targets: string[]; extrema_count?: number };
-  transform?: { type: string; value: number };
+  line?: { k?: number; b?: number; mode?: AnalyzeLineMode; x0?: number };
+  parameter_conditions?: { targets: ParameterConditionTarget[]; extrema_count?: 0 | 1 | 2 };
+  transform?: { type: AnalyzeTransformType; value?: number };
 }
 
 export interface GraphBoundV2 {

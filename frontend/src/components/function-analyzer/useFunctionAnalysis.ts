@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { analyzeFunction, extractFunctionImageFile, type AnalyzeOptions, type AnalyzeResponse, type FunctionOcrExtraction } from '../../api/client';
+import { analyzeFunction, extractFunctionImageFile, type AnalyzeLineMode, type AnalyzeOptions, type AnalyzeResponse, type AnalyzeTransformType, type FunctionOcrExtraction } from '../../api/client';
 
 type ToolKey = 'interval' | 'line' | 'transform';
 
@@ -11,10 +11,10 @@ type AnalyzeOptionOverrides = Partial<AnalyzeOptions & {
   enableInterval: boolean;
   lineK: number;
   lineB: number;
-  lineMode: string;
+  lineMode: AnalyzeLineMode;
   lineX0: number;
   enableLine: boolean;
-  transformType: string;
+  transformType: AnalyzeTransformType;
   transformValue: number;
   enableTransform: boolean;
 }>;
@@ -49,11 +49,11 @@ export function useFunctionAnalysis(initialExpression: string, onWarnings?: (war
   const [enableInterval, setEnableInterval] = useState(false);
   const [lineK, setLineK] = useState(1);
   const [lineB, setLineB] = useState(0);
-  const [lineMode, setLineMode] = useState('intersect');
+  const [lineMode, setLineMode] = useState<AnalyzeLineMode>('intersect');
   const [lineX0, setLineX0] = useState(0);
   const [enableLine, setEnableLine] = useState(false);
   const [enableTransform, setEnableTransform] = useState(false);
-  const [transformType, setTransformType] = useState('vertical_shift');
+  const [transformType, setTransformType] = useState<AnalyzeTransformType>('vertical_shift');
   const [transformValue, setTransformValue] = useState(1);
   const [isAnimatingTransform, setIsAnimatingTransform] = useState(false);
   const [result, setResult] = useState<AnalyzeResponse | null>(null);
@@ -220,7 +220,7 @@ export function useFunctionAnalysis(initialExpression: string, onWarnings?: (war
     analyzeRequestRef.current += 1;
     const base = baseOverride ?? baseResultRef.current ?? (result ? stripToolArtifacts(result) : null);
     if (!base) return;
-    const preview = buildLocalTransformPreview(transform.type, transform.value);
+    const preview = buildLocalTransformPreview(transform.type, transform.value ?? 0);
     setResult({
       ...base,
       transform_preview: preview,
@@ -342,7 +342,7 @@ function stripToolCommands(commands: string[]) {
   return commands.filter((command) => !/^\s*(h\(x\)\s*=|g\(x\)\s*=|Set(Color|LineThickness)\((f|g|h),)/i.test(command));
 }
 
-function buildLocalTransformPreview(type: string, value: number): NonNullable<AnalyzeResponse['transform_preview']> {
+function buildLocalTransformPreview(type: AnalyzeTransformType, value: number): NonNullable<AnalyzeResponse['transform_preview']> {
   const a = formatToolNumber(value);
   const meta = localTransformMeta(type, a);
   return {
@@ -366,7 +366,7 @@ function buildLocalTransformCommands(baseCommands: string[], expression: string)
   ];
 }
 
-function localTransformMeta(type: string, a: string) {
+function localTransformMeta(type: AnalyzeTransformType, a: string) {
   const signedA = signedToolNumber(a);
   switch (type) {
     case 'horizontal_shift':

@@ -1,12 +1,16 @@
-from typing import Any, Literal
+from enum import Enum
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, FiniteFloat, field_validator, model_validator
 
 from app.schemas.scene import MAX_IMAGE_DATA_URL_CHARS, RuntimeSettings
 
 
-class FunctionOcrProvenance(BaseModel):
+class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+class FunctionOcrProvenance(StrictModel):
 
     source: Literal["ocr", "ocr_confirmed"]
     provider: str = Field(min_length=1, max_length=64)
@@ -14,23 +18,136 @@ class FunctionOcrProvenance(BaseModel):
     extraction_version: str = Field(default="function-ocr-v2", max_length=64)
 
 
-class AnalyzeRequest(BaseModel):
-    expression: str = Field(min_length=1, max_length=1000)
-    parameters: dict[str, str | float] | None = None
-    parameter_mode: Literal["symbolic", "substitute"] | None = None
-    provenance: FunctionOcrProvenance | None = None
-    interval: dict[str, Any] | None = None
-    line: dict[str, Any] | None = None
-    parameter_conditions: dict[str, Any] | None = None
-    transform: dict[str, Any] | None = None
+class LineMode(str, Enum):
+    INTERSECT = "intersect"
+    TANGENT_AT = "tangent_at"
 
 
-class GraphWindow(BaseModel):
-    x_min: float
-    x_max: float
+class TransformType(str, Enum):
+    VERTICAL_SHIFT = "vertical_shift"
+    HORIZONTAL_SHIFT = "horizontal_shift"
+    VERTICAL_SCALE = "vertical_scale"
+    HORIZONTAL_SCALE = "horizontal_scale"
+    REFLECT_X = "reflect_x"
+    REFLECT_Y = "reflect_y"
+    ABSOLUTE_ALL = "absolute_all"
+    ABSOLUTE_X = "absolute_x"
+
+
+class ParameterConditionTarget(str, Enum):
+    INCREASING_R = "increasing_r"
+    DECREASING_R = "decreasing_r"
+    EXTREMA_COUNT = "extrema_count"
+
+
+BoundedFiniteFloat = Annotated[FiniteFloat, Field(ge=-1_000_000, le=1_000_000)]
+
+
+class ParameterValues(StrictModel):
+    m: str | FiniteFloat | None = None
+
+    @field_validator("m")
+    @classmethod
+    def validate_exact_value(cls, value: str | float | None) -> str | float | None:
+        if isinstance(value, str):
+            value = value.strip()
+            if not value or len(value) > 128:
+                raise ValueError("Giá trị tham số exact phải có từ 1 đến 128 ký tự.")
+        return value
+
+
+class AnalysisInterval(StrictModel):
+    a: BoundedFiniteFloat
+    b: BoundedFiniteFloat
+    open_a: bool = False
+    open_b: bool = False
 
     @model_validator(mode="after")
-    def validate_bounds(self) -> "GraphWindow":
+    def validate_order(self) -> "AnalysisInterval":
+        if self.a >= self.b:
+            raise ValueError("a phải nhỏ hơn b.")
+        return self
+
+
+class AnalysisLine(StrictModel):
+    mode: LineMode = LineMode.INTERSECT
+    k: BoundedFiniteFloat = 0
+    b: BoundedFiniteFloat = 0
+    x0: BoundedFiniteFloat = 0
+
+
+class ParameterConditionRequest(StrictModel):
+    targets: list[ParameterConditionTarget] = Field(min_length=1, max_length=3)
+    extrema_count: int | None = Field(default=None, ge=0, le=2)
+
+    @field_validator("targets")
+    @classmethod
+    def validate_unique_targets(cls, value: list[ParameterConditionTarget]) -> list[ParameterConditionTarget]:
+        if len(set(value)) != len(value):
+            raise ValueError("Danh sách target không được trùng lặp.")
+        return value
+
+    @model_validator(mode="after")
+    def validate_extrema_target(self) -> "ParameterConditionRequest":
+        needs_count = ParameterConditionTarget.EXTREMA_COUNT in self.targets
+        if needs_count and self.extrema_count is None:
+            raise ValueError("extrema_count là bắt buộc khi target là extrema_count.")
+        if not needs_count and self.extrema_count is not None:
+            raise ValueError("extrema_count chỉ hợp lệ với target extrema_count.")
+        return self
+
+
+class ValuedGraphTransform(StrictModel):
+    type: Literal[
+        TransformType.VERTICAL_SHIFT,
+        TransformType.HORIZONTAL_SHIFT,
+        TransformType.VERTICAL_SCALE,
+        TransformType.HORIZONTAL_SCALE,
+    ]
+    value: BoundedFiniteFloat
+
+
+class FixedGraphTransform(StrictModel):
+    type: Literal[
+        TransformType.REFLECT_X,
+        TransformType.REFLECT_Y,
+        TransformType.ABSOLUTE_ALL,
+        TransformType.ABSOLUTE_X,
+    ]
+    # Giữ value optional cho client legacy; frontend mới không gửi field này.
+    value: BoundedFiniteFloat | None = None
+
+
+GraphTransform = Annotated[ValuedGraphTransform | FixedGraphTransform, Field(discriminator="type")]
+
+
+class AnalysisOptions(StrictModel):
+    parameters: ParameterValues | None = None
+    parameter_mode: Literal["symbolic", "substitute"] | None = None
+    interval: AnalysisInterval | None = None
+    line: AnalysisLine | None = None
+    parameter_conditions: ParameterConditionRequest | None = None
+    transform: GraphTransform | None = None
+
+    @model_validator(mode="after")
+    def validate_parameter_mode(self) -> "AnalysisOptions":
+        has_parameter_value = self.parameters is not None and self.parameters.m is not None
+        if self.parameter_mode == "substitute" and not has_parameter_value:
+            raise ValueError("Chế độ substitute cần giá trị tham số m.")
+        return self
+
+
+class AnalyzeRequest(AnalysisOptions):
+    expression: str = Field(min_length=1, max_length=1000)
+    provenance: FunctionOcrProvenance | None = None
+
+
+class PlotWindow(StrictModel):
+    x_min: BoundedFiniteFloat
+    x_max: BoundedFiniteFloat
+
+    @model_validator(mode="after")
+    def validate_bounds(self) -> "PlotWindow":
         if self.x_min >= self.x_max:
             raise ValueError("x_min phải nhỏ hơn x_max.")
         if self.x_max - self.x_min > 1_000_000:
@@ -38,17 +155,63 @@ class GraphWindow(BaseModel):
         return self
 
 
-class GraphSamplesRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+# Tên cũ giữ lại cho import nội bộ/client cũ.
+GraphWindow = PlotWindow
 
+
+class GraphSamplesRequest(StrictModel):
     expression: str = Field(min_length=1, max_length=1000)
-    parameters: dict[str, str | float] | None = None
-    window: GraphWindow
+    parameters: ParameterValues | None = None
+    window: PlotWindow
     max_points: int = Field(default=500, ge=32, le=2_000)
 
 
-class GraphSamplesResponse(BaseModel):
-    graph_analysis_v2: dict[str, Any]
+class GraphNumber(StrictModel):
+    exact: str
+    latex: str
+    approx: FiniteFloat | None = None
+
+
+class GraphEndpoint(GraphNumber):
+    open: bool
+    attained: bool
+    y: FiniteFloat | None = None
+
+
+class GraphPoint(StrictModel):
+    x: FiniteFloat
+    y: FiniteFloat
+
+
+class GraphSegment(StrictModel):
+    component_id: str
+    expression_exact: str
+    expression_latex: str
+    start: GraphNumber
+    end: GraphNumber
+    left_open: bool
+    right_open: bool
+    left_endpoint: GraphEndpoint
+    right_endpoint: GraphEndpoint
+    points: list[GraphPoint]
+    sample_count: int = Field(ge=0, le=2_000)
+    verification: str
+
+
+class GraphAnalysis(StrictModel):
+    status: Literal["complete", "partial", "unknown"]
+    method: str
+    window: PlotWindow
+    max_points: int = Field(ge=32, le=2_000)
+    point_count: int = Field(ge=0, le=2_000)
+    segments: list[GraphSegment]
+    singularities: list[GraphNumber]
+    features: list[GraphNumber] = Field(default_factory=list)
+    warnings: list[str]
+
+
+class GraphSamplesResponse(StrictModel):
+    graph_analysis_v2: GraphAnalysis
 
 
 class AnalyzeOcrRequest(BaseModel):
