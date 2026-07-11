@@ -4,7 +4,7 @@ import { compileExpression } from '../../utils/calculusExpression';
 import { clamp, domainWarningFor, formatNumber, integrate, sampleFunction, safeEval, validateBounds } from '../../utils/calculusNumerics';
 import { CalculusGraph2D } from './CalculusGraph2D';
 import { RevolutionThreeView } from './CalculusThreeViews';
-import { BoundsInput, FormulaInput, PresetButtons, ResultCard, SliderInput } from './AreaBetweenCurvesSimulation';
+import { BoundsInput, FormulaInput, PresetButtons, ResultCard, SliderInput } from '../../simulation/runtime/SimulationPrimitives';
 
 interface Props {
   step: number;
@@ -29,7 +29,7 @@ type State = {
 const SOLID_PRESETS: Array<{ label: string; patch: Partial<State> }> = [
   { label: 'Disk Ox', patch: { f: 'sqrt(x)', g: '0', useWasher: false, a: 0, b: 4, sliceX: 2, axis: 'Ox', n: 36 } },
   { label: 'Washer Ox', patch: { f: 'sqrt(x)', g: 'x/2', useWasher: true, a: 0, b: 4, sliceX: 2, axis: 'Ox', n: 36 } },
-  { label: 'Shell Oy · x²', patch: { f: 'x^2', g: '0', useWasher: false, a: 0, b: 2, sliceX: 1, axis: 'Oy', n: 40 } },
+  { label: 'Shell $Oy$ · $x^2$', patch: { f: 'x^2', g: '0', useWasher: false, a: 0, b: 2, sliceX: 1, axis: 'Oy', n: 40 } },
   { label: 'Shell Oy · 1-x', patch: { f: '1-x', g: '0', useWasher: false, a: 0, b: 1, sliceX: 0.4, axis: 'Oy', n: 36 } },
   { label: 'Shell miền kẹp', patch: { f: '2-x', g: 'x', useWasher: true, a: 0, b: 1, sliceX: 0.5, axis: 'Oy', n: 40 } },
 ];
@@ -366,9 +366,9 @@ function solidStepCopy(step: number, method: Method): ReactNode {
   if (step === 1) return <>Quan sát đồ thị trên đoạn <KatexSpan tex="[a,b]" /> và trục <KatexSpan tex="Ox" />. Bật washer nếu có lỗ trong.</>;
   if (step === 2) return <>Đường cong quay quanh <KatexSpan tex="Ox" />, quét ra bề mặt 3D.</>;
   if (step === 3) return method === 'washer'
-    ? <>Lát cắt vành khăn — A(x)=π(R²−r²).</>
-    : <>Lát cắt đĩa — A(x)=π[f(x)]².</>;
-  if (step === 4) return <>Các lát mỏng xếp chồng: tổng A(xᵢ*)Δx xấp xỉ thể tích.</>;
-  if (step === 5) return <>Đối chiếu tổng Riemann với V=∫A(x)dx.</>;
+    ? <>Lát cắt vành khăn với <KatexSpan tex="A(x)=\\pi(R^2-r^2)" />.</>
+    : <>Lát cắt đĩa với <KatexSpan tex="A(x)=\\pi f(x)^2" />.</>;
+  if (step === 4) return <>Các lát mỏng xếp chồng thành tổng <KatexSpan tex="\\sum A(x_i^*)\\Delta x" />.</>;
+  if (step === 5) return <>Đối chiếu tổng Riemann với <KatexSpan tex="V=\\int A(x)\\,dx" />.</>;
   return null;
 }

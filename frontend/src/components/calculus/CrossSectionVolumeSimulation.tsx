@@ -4,7 +4,7 @@ import { compileExpression } from '../../utils/calculusExpression';
 import { clamp, domainWarningFor, formatNumber, integrate, sampleFunction, safeEval, validateBounds } from '../../utils/calculusNumerics';
 import { CalculusGraph2D } from './CalculusGraph2D';
 import { CrossSectionThreeView } from './CalculusThreeViews';
-import { BoundsInput, FormulaInput, PresetButtons, ResultCard, SliderInput } from './AreaBetweenCurvesSimulation';
+import { BoundsInput, FormulaInput, PresetButtons, ResultCard, SliderInput } from '../../simulation/runtime/SimulationPrimitives';
 
 interface Props {
   step: number;

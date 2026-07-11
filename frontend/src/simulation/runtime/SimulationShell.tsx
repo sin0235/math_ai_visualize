@@ -1,4 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react';
+import { MixedTextRenderer } from '../../components/KatexSpan';
 import type { SimulationSpec, StepMissionDef } from '../types';
 import { KIND_LABELS, STRAND_LABELS } from '../types';
 import { topicTitle } from '../catalog';
@@ -39,27 +40,25 @@ export function SimulationShell({ spec, onBack, children }: Props) {
   return (
     <section className="csim-page sim-workspace-page">
       <header className="sim-workspace-header">
-        <button type="button" className="csim-btn csim-btn-ghost sim-back-btn" onClick={onBack}>
-          ← Thư viện
-        </button>
+        <nav className="sim-breadcrumb" aria-label="Đường dẫn">
+          <button type="button" className="sim-breadcrumb-back" onClick={onBack}>← Thư viện</button>
+          <span aria-hidden="true">/</span>
+          <span>Lớp {spec.grade}</span>
+          <span aria-hidden="true">/</span>
+          <span>{STRAND_LABELS[spec.strand]}</span>
+          <span aria-hidden="true">/</span>
+          <span>{topicTitle(spec.topicCode)}</span>
+        </nav>
         <div className="sim-workspace-meta">
-          <nav className="sim-breadcrumb" aria-label="Đường dẫn">
-            <span>Mô phỏng</span>
-            <span aria-hidden="true">/</span>
-            <span>Lớp {spec.grade}</span>
-            <span aria-hidden="true">/</span>
-            <span>{STRAND_LABELS[spec.strand]}</span>
-            <span aria-hidden="true">/</span>
-            <span>{topicTitle(spec.topicCode)}</span>
-          </nav>
-          <h1>{spec.title}</h1>
-          <p>{spec.subtitle}</p>
-          <div className="sim-chip-row" aria-label="Nhãn mô phỏng">
-            <span className="sim-chip">Lớp {spec.grade}</span>
+          <div className="sim-workspace-title">
+            <h1><MixedTextRenderer text={spec.title} /></h1>
+            <p><MixedTextRenderer text={spec.subtitle} /></p>
+          </div>
+          <div className="sim-chip-row" aria-label="Thông tin mô phỏng">
             <span className="sim-chip">{KIND_LABELS[spec.kind]}</span>
             <span className="sim-chip">{spec.dims.toUpperCase()}</span>
-            <span className="sim-chip sim-chip-status">{spec.status === 'published' ? 'Đã xuất bản' : 'Nháp'}</span>
-            {spec.toolTripReady && <span className="sim-chip sim-chip-trip">Tool-trip</span>}
+            {spec.toolTripReady && <span className="sim-chip">Hướng dẫn từng bước</span>}
+            {spec.status === 'draft' && <span className="sim-chip">Nháp</span>}
           </div>
         </div>
       </header>
@@ -68,14 +67,10 @@ export function SimulationShell({ spec, onBack, children }: Props) {
         <div className="sim-workspace-main">
           {showProcessBar && (
             <div className="csim-playbar">
-              <div className="csim-playbar-title">
-                <span>{STRAND_LABELS[spec.strand]}</span>
-                <strong>{spec.title}</strong>
-              </div>
               <div className="csim-playbar-actions" aria-label="Điều khiển mô phỏng">
                 <button type="button" className="csim-btn csim-btn-ghost" onClick={player.previousStep} disabled={player.step <= 1}>← Lùi</button>
-                <button type="button" className="csim-btn csim-btn-ghost" onClick={player.nextStep} disabled={player.step >= player.totalSteps}>Bước →</button>
                 <button type="button" className="csim-btn csim-btn-filled" onClick={player.toggle}>{player.playing ? 'Tạm dừng' : 'Chạy'}</button>
+                <button type="button" className="csim-btn csim-btn-ghost" onClick={player.nextStep} disabled={player.step >= player.totalSteps}>Bước →</button>
                 <button type="button" className="csim-btn csim-btn-ghost" onClick={player.reset}>Đặt lại</button>
               </div>
               <div className="csim-playbar-status">
@@ -118,14 +113,11 @@ export function SimulationShell({ spec, onBack, children }: Props) {
 
           {!showProcessBar && (
             <div className="csim-playbar csim-playbar-compact">
-              <div className="csim-playbar-title">
-                <span>Tương tác</span>
-                <strong>{spec.title}</strong>
-              </div>
               <div className="csim-playbar-actions" aria-label="Điều khiển mô phỏng">
                 <button type="button" className="csim-btn csim-btn-filled" onClick={player.toggle}>{player.playing ? 'Tạm dừng' : 'Chạy'}</button>
                 <button type="button" className="csim-btn csim-btn-ghost" onClick={player.reset}>Đặt lại</button>
               </div>
+              <span className="sim-command-hint">Thay đổi điều khiển để quan sát kết quả theo thời gian thực.</span>
             </div>
           )}
 

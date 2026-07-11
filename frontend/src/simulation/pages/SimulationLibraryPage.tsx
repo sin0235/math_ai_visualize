@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
+import { MixedTextRenderer } from '../../components/KatexSpan';
 import { listSimulations } from '../catalog';
-import { KIND_LABELS, STATUS_LABELS, STRAND_LABELS, type Grade, type Strand } from '../types';
+import { KIND_LABELS, STRAND_LABELS, type Grade, type Strand } from '../types';
 
 type Props = {
   onOpen: (id: string) => void;
@@ -30,14 +31,13 @@ export function SimulationLibraryPage({ onOpen }: Props) {
           <p className="sim-kicker">Thư viện mô phỏng Toán THPT <span className="sim-beta-badge">Beta</span></p>
           <h1>Mô phỏng tương tác</h1>
           <p className="sim-library-lead">
-            Khám phá kiến thức bằng đồ thị, animation và câu hỏi kiểm tra nhanh.
-            Nội dung công khai, chạy hoàn toàn trên trình duyệt — không cần đăng nhập.
+            Khám phá kiến thức bằng đồ thị, chuyển động và câu hỏi kiểm tra nhanh.
+            Nội dung chạy hoàn toàn trên trình duyệt, không cần đăng nhập.
           </p>
         </div>
-        <div className="sim-library-stats" aria-label="Thống kê thư viện">
-          <div><strong>{listSimulations().length}</strong><span>mô phỏng</span></div>
-          <div><strong>{listSimulations({ status: 'published' }).length}</strong><span>đã xuất bản</span></div>
-          <div><strong>10–12</strong><span>lớp</span></div>
+        <div className="sim-library-summary" aria-label="Thống kê thư viện">
+          <strong>{listSimulations({ status: 'published' }).length}</strong>
+          <span>mô phỏng đã xuất bản · lớp 10–12</span>
         </div>
       </header>
 
@@ -90,24 +90,26 @@ export function SimulationLibraryPage({ onOpen }: Props) {
               <div className="sim-card-top">
                 <span className="sim-chip">Lớp {item.grade}</span>
                 <span className="sim-chip">{STRAND_LABELS[item.strand]}</span>
-                <span className="sim-chip">{item.dims.toUpperCase()}</span>
-                <span className={`sim-chip sim-chip-status ${item.status}`}>{STATUS_LABELS[item.status]}</span>
-                {item.toolTripReady && <span className="sim-chip sim-chip-trip">Tool-trip</span>}
               </div>
-              <h2>{item.title}</h2>
-              <p>{item.subtitle}</p>
-              <div className="sim-card-meta">
-                <span>{KIND_LABELS[item.kind]}</span>
-                <span>{item.steps > 1 ? `${item.steps} bước` : 'Tương tác tự do'}</span>
-              </div>
+              <h2><MixedTextRenderer text={item.title} /></h2>
+              <p><MixedTextRenderer text={item.subtitle} /></p>
               <ul className="sim-card-outcomes">
                 {item.learningOutcomes.slice(0, 2).map((line) => (
-                  <li key={line}>{line}</li>
+                  <li key={line}><MixedTextRenderer text={line} /></li>
                 ))}
               </ul>
-              <button type="button" className="csim-btn csim-btn-filled sim-card-open" onClick={() => onOpen(item.id)}>
-                Mở mô phỏng
-              </button>
+              <div className="sim-card-footer">
+                <div className="sim-card-meta" aria-label="Thông tin mô phỏng">
+                  <span>{KIND_LABELS[item.kind]}</span>
+                  <span>{item.dims.toUpperCase()}</span>
+                  <span>{item.steps > 1 ? `${item.steps} bước` : 'Tương tác tự do'}</span>
+                  {item.toolTripReady && <span>Hướng dẫn từng bước</span>}
+                  {item.status === 'draft' && <span>Nháp</span>}
+                </div>
+                <button type="button" className="csim-btn csim-btn-filled sim-card-open" onClick={() => onOpen(item.id)}>
+                  Mở mô phỏng
+                </button>
+              </div>
             </article>
           ))}
         </div>

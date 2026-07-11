@@ -3,7 +3,7 @@ import { OrbitControls, Line, Text, Html } from '@react-three/drei';
 import { useMemo, useState } from 'react';
 import * as THREE from 'three';
 import { KatexSpan } from '../../components/KatexSpan';
-import { SliderInput } from '../../components/calculus/AreaBetweenCurvesSimulation';
+import { SliderInput } from '../runtime/SimulationPrimitives';
 import { formatNumber } from '../../utils/calculusNumerics';
 
 type Props = { step: number; progress: number; freeMode?: boolean };
@@ -128,13 +128,13 @@ export function SpaceCoordsSimulation({ step, progress, freeMode = false }: Prop
         <div className="csim-card">
           <div className="csim-card-head"><strong>Công thức & số</strong><span>CAS số phía client</span></div>
           <div className="sim-kv-list">
-            <div className="sim-kv-row"><span>Phương trình mp</span><strong className="sim-mono">{geo.planeEq}</strong></div>
-            <div className="sim-kv-row"><span>PT đường (tham số)</span><strong className="sim-mono">{geo.lineEq}</strong></div>
-            <div className="sim-kv-row"><span>PT mặt cầu</span><strong className="sim-mono">{geo.sphereEq}</strong></div>
-            <div className="sim-kv-row"><span>d(A, mp)</span><strong>{formatNumber(geo.distPointPlane, 4)}</strong></div>
-            <div className="sim-kv-row"><span>d(I, mp)</span><strong>{formatNumber(geo.distCenterPlane, 4)}</strong></div>
+            <div className="sim-kv-row"><span>Phương trình mặt phẳng</span><strong><KatexSpan tex={geo.planeEq} /></strong></div>
+            <div className="sim-kv-row"><span>Phương trình đường</span><strong><KatexSpan tex={geo.lineEq.replace(/;/g, String.raw`\;`)} /></strong></div>
+            <div className="sim-kv-row"><span>Phương trình mặt cầu</span><strong><KatexSpan tex={geo.sphereEq} /></strong></div>
+            <div className="sim-kv-row"><span><KatexSpan tex="d(A,(P))" /></span><strong>{formatNumber(geo.distPointPlane, 4)}</strong></div>
+            <div className="sim-kv-row"><span><KatexSpan tex="d(I,(P))" /></span><strong>{formatNumber(geo.distCenterPlane, 4)}</strong></div>
             <div className="sim-kv-row"><span>Góc đường–mp</span><strong>{formatNumber(geo.linePlaneAngleDeg, 2)}°</strong></div>
-            <div className="sim-kv-row highlight"><span>Mp ∩ cầu</span><strong>{geo.spherePlaneRelation}</strong></div>
+            <div className="sim-kv-row highlight"><span>Mặt phẳng–mặt cầu</span><strong>{geo.spherePlaneRelation}</strong></div>
             <div className="sim-kv-row"><span>Bán kính giao tuyến</span><strong>{formatNumber(geo.intersectCircleRadius, 4)}</strong></div>
             <div className="sim-kv-row"><span>d(A, I)</span><strong>{formatNumber(geo.distAI, 4)}</strong></div>
             <div className="sim-kv-row"><span>A so với cầu</span><strong>{geo.pointSphereRelation}</strong></div>
@@ -215,7 +215,7 @@ function analyzeSpace(s: State) {
 
   const uLen = Math.hypot(s.ux, s.uy, s.uz) || 1e-9;
   const lineEq = `x=${fmt(s.ax)}+${fmt(s.ux)}t; y=${fmt(s.ay)}+${fmt(s.uy)}t; z=${fmt(s.az)}+${fmt(s.uz)}t`;
-  const sphereEq = `(x-${fmt(s.cx)})²+(y-${fmt(s.cy)})²+(z-${fmt(s.cz)})²=${fmt(s.radius)}²`;
+  const sphereEq = `(x-${fmt(s.cx)})^2+(y-${fmt(s.cy)})^2+(z-${fmt(s.cz)})^2=${fmt(s.radius)}^2`;
 
   const distPointPlane = Math.abs(s.nx * s.ax + s.ny * s.ay + s.nz * s.az + d) / nLen;
   const distCenterPlane = Math.abs(s.nx * s.cx + s.ny * s.cy + s.nz * s.cz + d) / nLen;

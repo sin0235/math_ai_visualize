@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { KatexSpan } from '../../components/KatexSpan';
-import { FormulaInput, PresetButtons, ResultCard, SliderInput } from '../../components/calculus/AreaBetweenCurvesSimulation';
+import { FormulaInput, PresetButtons, ResultCard, SliderInput } from '../runtime/SimulationPrimitives';
 import { formatNumber, validateBounds } from '../../utils/calculusNumerics';
 import {
   findCriticalPoints,
@@ -23,12 +23,12 @@ type State = {
 };
 
 const PRESETS: Array<{ label: string; patch: Partial<State> }> = [
-  { label: '(x²−1)/(x−1) hố', patch: { num: 'x^2-1', den: 'x-1', a: -3, b: 4, x0: 2 } },
-  { label: '(2x+1)/(x-2) ngang', patch: { num: '2*x+1', den: 'x-2', a: -2, b: 6, x0: 0 } },
-  { label: '(x²+1)/(x-1) xiên', patch: { num: 'x^2+1', den: 'x-1', a: -3, b: 5, x0: 2 } },
-  { label: 'x/(x²−1) hai TC', patch: { num: 'x', den: 'x^2-1', a: -4, b: 4, x0: 0.5 } },
-  { label: '(x³−x)/(x²+1)', patch: { num: 'x^3-x', den: 'x^2+1', a: -4, b: 4, x0: 1 } },
-  { label: '1/x', patch: { num: '1', den: 'x', a: -5, b: 5, x0: 1.5 } },
+  { label: '$\\dfrac{x^2-1}{x-1}$ · hố', patch: { num: 'x^2-1', den: 'x-1', a: -3, b: 4, x0: 2 } },
+  { label: '$\\dfrac{2x+1}{x-2}$ · ngang', patch: { num: '2*x+1', den: 'x-2', a: -2, b: 6, x0: 0 } },
+  { label: '$\\dfrac{x^2+1}{x-1}$ · xiên', patch: { num: 'x^2+1', den: 'x-1', a: -3, b: 5, x0: 2 } },
+  { label: '$\\dfrac{x}{x^2-1}$ · hai TC', patch: { num: 'x', den: 'x^2-1', a: -4, b: 4, x0: 0.5 } },
+  { label: '$\\dfrac{x^3-x}{x^2+1}$', patch: { num: 'x^3-x', den: 'x^2+1', a: -4, b: 4, x0: 1 } },
+  { label: '$\\dfrac{1}{x}$', patch: { num: '1', den: 'x', a: -5, b: 5, x0: 1.5 } },
 ];
 
 export function RationalAsymptoteSimulation({ step, progress, freeMode = false }: Props) {
@@ -138,7 +138,7 @@ export function RationalAsymptoteSimulation({ step, progress, freeMode = false }
           <strong>{titles[step - 1] ?? titles[0]}</strong>
           <p>{copies[step - 1] ?? copies[0]}</p>
           <ul className="sim-mono-list">
-            <li>TC đứng: Q(x)=0 nhưng P(x)≠0 (sau rút gọn).</li>
+            <li>TC đứng: <KatexSpan tex="Q(x)=0" /> nhưng <KatexSpan tex="P(x)\\ne0" /> sau rút gọn.</li>
             <li>Hố: nhân tử chung triệt tiêu — gián đoạn khử được.</li>
             <li>TC ngang / xiên: so sánh bậc P và Q (ở đây ước lượng bằng hành vi |x| lớn).</li>
           </ul>
@@ -190,14 +190,14 @@ function build(state: State, step: number, progress: number) {
     const vLines = [
       ...(showV ? rat.vertical.map((v) => ({ x: v.x, className: 'sim-asymp-v', label: `x=${formatNumber(v.x, 2)}` })) : []),
       ...(step >= 2 ? rat.holes.map((h) => ({ x: h, className: 'sim-hole-line', label: 'hố' })) : []),
-      { x: state.x0, className: 'csim-marker-line', label: 'x₀' },
+      { x: state.x0, className: 'csim-marker-line', label: 'x_0' },
     ];
     const hLines = showH && rat.horizontal !== null
       ? [{ y: rat.horizontal, className: 'sim-asymp-h', label: `y=${formatNumber(rat.horizontal, 2)}` }]
       : [];
 
     const markers = [
-      ...(Number.isFinite(y0) ? [{ x: state.x0, y: y0, label: `f(x₀)`, className: 'sim-marker' }] : []),
+      ...(Number.isFinite(y0) ? [{ x: state.x0, y: y0, label: 'f(x_0)', className: 'sim-marker' }] : []),
       ...rat.holes.map((h) => {
         // hole y limit from nearby
         const yl = rat.f.evaluate(h - 1e-3);

@@ -7,6 +7,13 @@ import { isToolbarActionSupported } from './toolbarCapability';
 addStyles();
 
 type AlgebraDomain = 'R' | 'C' | 'N' | 'Z';
+const DOMAIN_TEX: Record<AlgebraDomain, string> = {
+  R: String.raw`\mathbb{R}`,
+  C: String.raw`\mathbb{C}`,
+  N: String.raw`\mathbb{N}`,
+  Z: String.raw`\mathbb{Z}`,
+};
+
 export type AlgebraInputMode = 'natural' | 'math';
 export interface SequenceDraft {
   kind: 'arithmetic' | 'geometric';
@@ -258,11 +265,13 @@ export function AlgebraInput({
   return (
     <section className="algebra-input-panel">
       <div className="algebra-panel-heading">
-        <span>Bộ giải đại số</span>
-        <h2>Nhập bài toán</h2>
+        <span>Thiết lập bài toán</span>
+        <h2>Nhập và cấu hình</h2>
       </div>
 
-      <div className="algebra-mode-tabs" role="tablist" aria-label="Chế độ nhập">
+      <div className="algebra-input-section">
+        <div className="algebra-input-section-head"><span>01</span><strong>Đề bài</strong></div>
+        <div className="algebra-mode-tabs" role="tablist" aria-label="Chế độ nhập">
         <button type="button" className={inputMode === 'natural' ? 'active' : ''} onClick={() => { onInputModeChange('natural'); onInputFormatChange('auto'); }} disabled={loading}>Tiếng Việt</button>
         <button type="button" className={inputMode === 'math' ? 'active' : ''} onClick={() => { onInputModeChange('math'); onInputFormatChange('latex'); }} disabled={loading}>Công thức</button>
       </div>
@@ -300,8 +309,11 @@ export function AlgebraInput({
           Gợi ý dạng bài: {topicLabel(suggestedTopic)}
         </button>
       )}
+      </div>
 
-      <div className="algebra-math-toolbar" aria-label="Chèn ô công thức">
+      <div className="algebra-input-section">
+        <div className="algebra-input-section-head"><span>02</span><strong>Bàn phím toán</strong></div>
+        <div className="algebra-math-toolbar" aria-label="Chèn ô công thức">
         <div className="algebra-snippet-tabs" role="tablist" aria-label="Nhóm công thức">
           {MATH_SNIPPET_GROUPS.map((group, index) => (
             <button
@@ -328,9 +340,12 @@ export function AlgebraInput({
             </button>
           ))}
         </div>
+        </div>
       </div>
 
-      <div className="algebra-option-grid">
+      <div className="algebra-input-section">
+        <div className="algebra-input-section-head"><span>03</span><strong>Thiết lập lời giải</strong></div>
+        <div className="algebra-option-grid">
         <label className="field-label">
           Dạng bài
           <select value={topic} onChange={(event) => onTopicChange(event.target.value as AlgebraTopic)} disabled={loading}>
@@ -351,12 +366,15 @@ export function AlgebraInput({
           </select>
         </label>
         <label className="field-label">
-          Miền nghiệm
+          <span className="algebra-field-heading">
+            <span>Miền nghiệm</span>
+            <KatexSpan tex={DOMAIN_TEX[domain]} />
+          </span>
           <select value={domain} onChange={(event) => onDomainChange(event.target.value as AlgebraDomain)} disabled={loading}>
-            <option value="R">R</option>
-            <option value="C">C</option>
-            <option value="N">N</option>
-            <option value="Z">Z</option>
+            <option value="R">Số thực (R)</option>
+            <option value="C">Số phức (C)</option>
+            <option value="N">Số tự nhiên (N)</option>
+            <option value="Z">Số nguyên (Z)</option>
           </select>
         </label>
         <label className="field-label">
@@ -367,7 +385,7 @@ export function AlgebraInput({
             disabled={loading}
           >
             <option value="">Không giới hạn (miền đầy đủ)</option>
-            <option value="unit_circle">[0, 2π)</option>
+            <option value="unit_circle">Một vòng lượng giác</option>
             <option value="custom">Tùy chỉnh…</option>
           </select>
         </label>
@@ -379,7 +397,7 @@ export function AlgebraInput({
             disabled={loading}
           >
             <option value="radian">Radian</option>
-            <option value="degree">Độ (°)</option>
+            <option value="degree">Độ</option>
           </select>
         </label>
       </div>
@@ -454,11 +472,12 @@ export function AlgebraInput({
             Dùng AI diễn giải đề
           </span>
           <span className="algebra-ai-option-hint">
-            Mặc định dùng interpreter tiếng Việt (không cần đăng nhập). Bật AI khi đề mơ hồ — cần đăng nhập.
-            Với chế độ tiếng Việt, bạn sẽ xác nhận topic/miền/biến trước khi giải.
+            Mặc định dùng bộ phân tích tiếng Việt. Bật AI khi đề mơ hồ; tính năng này cần đăng nhập.
+            Bạn luôn xác nhận dạng bài, miền và biến trước khi giải.
           </span>
         </label>
       )}
+      </div>
 
       <button type="button" className="auth-primary-button algebra-submit" onClick={onSubmit} disabled={loading || (!input.trim() && topic !== 'sequence')}>
         {loading ? 'Đang giải...' : (inputMode === 'natural' || useAiExtraction ? 'Tiếp theo: xác nhận' : 'Giải bài')}
@@ -511,27 +530,27 @@ function SequenceBuilder({ draft, loading, onChange }: { draft: SequenceDraft; l
         <button type="button" className={draft.kind === 'geometric' ? 'active' : ''} onClick={() => update({ kind: 'geometric' })} disabled={loading}>Cấp số nhân</button>
       </div>
       <div className="algebra-segmented-row" role="group" aria-label="Cần tính">
-        <button type="button" className={draft.target === 'term' ? 'active' : ''} onClick={() => update({ target: 'term' })} disabled={loading}>Tính uₙ</button>
-        <button type="button" className={draft.target === 'sum' ? 'active' : ''} onClick={() => update({ target: 'sum' })} disabled={loading}>Tính Sₙ</button>
+        <button type="button" className={draft.target === 'term' ? 'active' : ''} onClick={() => update({ target: 'term' })} disabled={loading}>Tính <KatexSpan tex="u_n" /></button>
+        <button type="button" className={draft.target === 'sum' ? 'active' : ''} onClick={() => update({ target: 'sum' })} disabled={loading}>Tính <KatexSpan tex="S_n" /></button>
       </div>
       <div className="algebra-sequence-grid">
         <label className="field-label">
-          u₁
+          <KatexSpan tex="u_1" />
           <input value={draft.u1} onChange={(event) => update({ u1: event.target.value })} disabled={loading} inputMode="decimal" />
         </label>
         {draft.kind === 'arithmetic' ? (
           <label className="field-label">
-            d
+            <KatexSpan tex="d" />
             <input value={draft.d} onChange={(event) => update({ d: event.target.value })} disabled={loading} inputMode="decimal" />
           </label>
         ) : (
           <label className="field-label">
-            q
+            <KatexSpan tex="q" />
             <input value={draft.q} onChange={(event) => update({ q: event.target.value })} disabled={loading} inputMode="decimal" />
           </label>
         )}
         <label className="field-label">
-          n
+          <KatexSpan tex="n" />
           <input value={draft.n} onChange={(event) => update({ n: event.target.value })} disabled={loading} inputMode="numeric" />
         </label>
       </div>

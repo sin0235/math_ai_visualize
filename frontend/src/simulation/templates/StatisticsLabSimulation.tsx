@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { KatexSpan } from '../../components/KatexSpan';
-import { SliderInput } from '../../components/calculus/AreaBetweenCurvesSimulation';
+import { SliderInput } from '../runtime/SimulationPrimitives';
 import { formatNumber } from '../../utils/calculusNumerics';
 import {
   computeDescriptive,
@@ -94,7 +94,7 @@ export function StatisticsLabSimulation({ step, progress, freeMode = false }: Pr
             <div className="sim-kv-row"><span>Q1 · Q3</span><strong>{formatNumber(stats.q1, 3)} · {formatNumber(stats.q3, 3)}</strong></div>
             <div className="sim-kv-row"><span>IQR</span><strong>{formatNumber(stats.iqr, 3)}</strong></div>
             <div className="sim-kv-row"><span>Khoảng biến thiên</span><strong>{formatNumber(stats.range, 3)}</strong></div>
-            <div className="sim-kv-row highlight"><span>Phương sai mẫu s²</span><strong>{formatNumber(stats.variance, 4)}</strong></div>
+            <div className="sim-kv-row highlight"><span>Phương sai mẫu <KatexSpan tex="s^2" /></span><strong>{formatNumber(stats.variance, 4)}</strong></div>
             <div className="sim-kv-row highlight"><span>Độ lệch chuẩn s</span><strong>{formatNumber(stats.std, 4)}</strong></div>
             <div className="sim-kv-row"><span>Ngoại lệ</span><strong>{stats.outliers.length ? stats.outliers.map((v) => formatNumber(v, 2)).join(', ') : 'không'}</strong></div>
           </div>
@@ -104,7 +104,7 @@ export function StatisticsLabSimulation({ step, progress, freeMode = false }: Pr
           <div className="csim-card-head"><strong>Ước lượng ghép nhóm</strong><span>dùng giá trị đại diện</span></div>
           <div className="sim-kv-list">
             <div className="sim-kv-row"><span>Trung bình ghép nhóm</span><strong>{formatNumber(stats.groupedMean, 4)}</strong></div>
-            <div className="sim-kv-row"><span>s² ghép nhóm</span><strong>{formatNumber(stats.groupedVariance, 4)}</strong></div>
+            <div className="sim-kv-row"><span><KatexSpan tex="s^2" /> ghép nhóm</span><strong>{formatNumber(stats.groupedVariance, 4)}</strong></div>
             <div className="sim-kv-row"><span>s ghép nhóm</span><strong>{formatNumber(stats.groupedStd, 4)}</strong></div>
             <div className="sim-kv-row"><span>|mean − mean nhóm|</span><strong>{formatNumber(Math.abs(stats.mean - stats.groupedMean), 4)}</strong></div>
           </div>
@@ -184,7 +184,7 @@ export function StatisticsLabSimulation({ step, progress, freeMode = false }: Pr
           <strong>{titles[step - 1] ?? titles[0]}</strong>
           <p>{copies[step - 1] ?? copies[0]}</p>
           <ul className="sim-mono-list">
-            <li>s² mẫu chia cho n−1 (không thiên vị).</li>
+            <li><KatexSpan tex="s^2" /> mẫu chia cho <KatexSpan tex="n-1" /> (không thiên vị).</li>
             <li>Ngoại lệ: ngoài [Q1−1.5·IQR, Q3+1.5·IQR].</li>
             <li>Ghép nhóm: xấp xỉ bằng trung điểm — sai lệch so với mean thô khi phân bố lệch.</li>
           </ul>

@@ -170,6 +170,13 @@ export function AlgebraResult({
         </section>
       )}
 
+      {steps.length > 0 && (
+        <section className="algebra-result-card algebra-solution-steps">
+          <SectionTitle title="Các bước giải" />
+          <AlgebraStepList steps={steps} />
+        </section>
+      )}
+
       {interpretation && (
         <section className="algebra-result-card">
           <SectionTitle title="Hệ thống hiểu đề" />
@@ -250,12 +257,12 @@ export function AlgebraResult({
             <SectionTitle title="Kiểm chứng" />
             {allChecks.length > 0 && (
               <span className="algebra-verify-summary">
-                {passCount}/{allChecks.length} checks pass · {verificationStatusLabel(result.verification.status)}
+                {passCount}/{allChecks.length} kiểm tra đạt · {verificationStatusLabel(result.verification.status)}
               </span>
             )}
           </div>
           {result.verification.method.length > 0 && (
-            <p className="algebra-verify-method">Method: {result.verification.method.join(', ')}</p>
+            <p className="algebra-verify-method">Phương pháp: {result.verification.method.join(', ')}</p>
           )}
           {visibleChecks.length > 0 && (
             <div className="algebra-check-list">
@@ -270,18 +277,12 @@ export function AlgebraResult({
               className="algebra-action-btn"
               onClick={() => setShowAllChecks((value) => !value)}
             >
-              {showAllChecks ? 'Ẩn checks đã pass' : 'Hiện tất cả checks (kể cả pass)'}
+              {showAllChecks ? 'Ẩn kiểm tra đã đạt' : 'Hiện tất cả kiểm tra'}
             </button>
           )}
         </section>
       )}
 
-      {steps.length > 0 && (
-        <section className="algebra-result-card">
-          <SectionTitle title="Các bước giải" />
-          <AlgebraStepList steps={steps} />
-        </section>
-      )}
     </section>
   );
 }
@@ -290,7 +291,9 @@ function CheckCard({ check }: { check: AlgebraVerificationCheck }) {
   return (
     <article className={`algebra-check ${check.status}`}>
       {hasText(check.name) && <strong>{verificationCheckLabel(check.name)}</strong>}
-      <span className="algebra-check-status">{check.status}</span>
+      <span className="algebra-check-status">
+        {check.status === 'pass' ? 'Đạt' : check.status === 'fail' ? 'Không đạt' : check.status === 'warn' ? 'Cảnh báo' : 'Bỏ qua'}
+      </span>
       {hasText(check.detail) && <span>{check.detail}</span>}
       {check.latex && <KatexSpan tex={check.latex} className="algebra-katex" />}
     </article>

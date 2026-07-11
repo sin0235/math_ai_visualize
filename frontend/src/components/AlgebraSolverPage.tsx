@@ -14,6 +14,7 @@ import {
 } from '../api/client';
 import { AlgebraInput, suggestTopic, type AlgebraAngleUnit, type AlgebraInputMode, type SequenceDraft } from './algebra-solver/AlgebraInput';
 import { AlgebraLoadingResult, AlgebraResult, EmptyAlgebraResult } from './algebra-solver/AlgebraResult';
+import { KatexSpan, MixedTextRenderer } from './KatexSpan';
 import {
   clearAlgebraHistory,
   loadAlgebraHistory,
@@ -22,6 +23,12 @@ import {
 } from './algebra-solver/algebraHistory';
 
 type AlgebraDomain = 'R' | 'C' | 'N' | 'Z';
+const DOMAIN_TEX: Record<AlgebraDomain, string> = {
+  R: String.raw`\mathbb{R}`,
+  C: String.raw`\mathbb{C}`,
+  N: String.raw`\mathbb{N}`,
+  Z: String.raw`\mathbb{Z}`,
+};
 export type IntervalPreset = '' | 'unit_circle' | 'custom';
 
 export function AlgebraSolverPage() {
@@ -213,6 +220,18 @@ export function AlgebraSolverPage() {
 
   return (
     <section className="algebra-solver-page">
+      <header className="algebra-page-header">
+        <div>
+          <p className="algebra-page-kicker">Không gian giải toán</p>
+          <h1>Bộ giải đại số</h1>
+          <p>Nhập đề bằng tiếng Việt hoặc công thức, kiểm tra cách hiểu rồi theo dõi lời giải từng bước.</p>
+        </div>
+        <div className="algebra-page-meta" aria-label="Khả năng bộ giải">
+          <span>MathQuill để nhập</span>
+          <span>KaTeX để đọc</span>
+          <span>Kiểm chứng kết quả</span>
+        </div>
+      </header>
       <div className="algebra-workspace">
         <AlgebraInput
           input={input}
@@ -315,7 +334,11 @@ export function AlgebraSolverPage() {
               <dl className="algebra-interpretation-grid">
                 <div>
                   <dt>Đề gửi</dt>
-                  <dd><code>{payloadInput}</code></dd>
+                  <dd>
+                    {inputMode === 'math' || inputFormat === 'latex'
+                      ? <KatexSpan tex={payloadInput} />
+                      : <code>{payloadInput}</code>}
+                  </dd>
                 </div>
                 <div>
                   <dt>Dạng bài</dt>
@@ -323,7 +346,7 @@ export function AlgebraSolverPage() {
                 </div>
                 <div>
                   <dt>Miền</dt>
-                  <dd>{domain} ({domainSource === 'user' ? 'user' : 'default'})</dd>
+                  <dd><KatexSpan tex={DOMAIN_TEX[domain]} /> <span className="algebra-domain-source">{domainSource === 'user' ? 'do bạn chọn' : 'mặc định'}</span></dd>
                 </div>
                 <div>
                   <dt>Biến</dt>
@@ -331,11 +354,11 @@ export function AlgebraSolverPage() {
                 </div>
                 <div>
                   <dt>Đơn vị góc</dt>
-                  <dd>{angleUnit === 'degree' ? 'độ (°)' : 'radian'}</dd>
+                  <dd>{angleUnit === 'degree' ? <KatexSpan tex="{}^\\circ" /> : 'radian'}</dd>
                 </div>
                 <div>
                   <dt>Khoảng</dt>
-                  <dd>{intervalSummary(intervalPayload)}</dd>
+                  <dd><MixedTextRenderer text={intervalSummary(intervalPayload)} /></dd>
                 </div>
               </dl>
               <div className="algebra-confirm-actions">
@@ -406,7 +429,17 @@ function intervalSummary(interval: AlgebraInterval | null): string {
   if (!interval) return 'không giới hạn (miền đầy đủ)';
   const left = interval.closed_start === false ? '(' : '[';
   const right = interval.closed_end === false ? ')' : ']';
-  return `${left}${interval.start ?? '-∞'}, ${interval.end ?? '+∞'}${right}`;
+  const start = intervalBoundTex(interval.start, '-\\infty');
+  const end = intervalBoundTex(interval.end, '+\\infty');
+  return `$${left}${start},${end}${right}$`;
+}
+
+function intervalBoundTex(value: string | number | null | undefined, fallback: string) {
+  if (value === null || value === undefined || value === '') return fallback;
+  return String(value)
+    .replace(/\bpi\b/g, '\\pi')
+    .replace(/\boo\b/g, '\\infty')
+    .replace(/\*/g, '\\cdot ');
 }
 
 function fingerprintRequest(state: {

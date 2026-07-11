@@ -10500,39 +10500,11 @@ button.analyzer-guide-label:hover {
 
 .csim-playbar {
   display: grid;
-  grid-template-columns: minmax(170px, 0.55fr) auto minmax(280px, 1fr);
+  grid-template-columns: auto minmax(300px, 1fr);
   align-items: center;
-  gap: 14px;
-  border: 0;
+  gap: 16px;
   border-bottom: 1px solid var(--line-2);
-  border-radius: 0;
   padding: 0 0 14px;
-  background: transparent;
-  box-shadow: none;
-}
-
-.csim-playbar-title {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-}
-
-.csim-playbar-title span {
-  color: var(--ink-4);
-  font-size: 0.7rem;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-
-.csim-playbar-title strong {
-  min-width: 0;
-  color: var(--ink);
-  font-size: 0.96rem;
-  font-weight: 720;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .csim-playbar-actions,
@@ -13360,17 +13332,74 @@ button.analyzer-guide-label:hover {
 }
 
 .algebra-solver-page {
+  display: grid;
+  gap: 20px;
   width: 100%;
   margin: 0;
-  padding: 0;
+  padding: 8px 0 0;
+}
+
+.algebra-page-header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 28px;
+  padding: 0 0 20px;
+  border-bottom: 1px solid var(--line-2);
+}
+
+.algebra-page-kicker {
+  margin: 0 0 7px;
+  color: var(--ink-4);
+  font-size: 0.74rem;
+  font-weight: 720;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.algebra-page-header h1 {
+  margin: 0;
+  color: var(--ink);
+  font-size: clamp(1.6rem, 2.8vw, 2.3rem);
+  font-weight: 730;
+  letter-spacing: -0.04em;
+  line-height: 1.08;
+}
+
+.algebra-page-header p:not(.algebra-page-kicker) {
+  max-width: 66ch;
+  margin: 9px 0 0;
+  color: var(--ink-3);
+  font-size: 0.94rem;
+  line-height: 1.55;
+}
+
+.algebra-page-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px 14px;
+  color: var(--ink-4);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.algebra-page-meta span + span::before {
+  content: '·';
+  margin-right: 14px;
+  color: var(--line-2);
 }
 
 .algebra-workspace {
   display: grid;
-  grid-template-columns: minmax(360px, 0.42fr) minmax(0, 1fr);
-  min-height: calc(100vh - 248px);
+  grid-template-columns: minmax(360px, 420px) minmax(0, 1fr);
+  min-height: calc(100dvh - 210px);
   align-items: stretch;
+  overflow: clip;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
   background: var(--paper);
+  box-shadow: var(--shadow-subtle);
   font-family: inherit;
 }
 
@@ -13387,10 +13416,10 @@ button.analyzer-guide-label:hover {
 .algebra-input-panel {
   display: grid;
   align-content: start;
-  gap: 15px;
-  padding: 28px clamp(18px, 2.6vw, 36px);
+  gap: 20px;
+  padding: 24px;
   border-right: 1px solid var(--line);
-  background: color-mix(in srgb, var(--paper) 72%, transparent);
+  background: #fafafa;
 }
 
 .algebra-panel-heading span,
@@ -13419,6 +13448,36 @@ button.analyzer-guide-label:hover {
   color: var(--ink-3);
   line-height: 1.65;
   text-wrap: pretty;
+}
+
+.algebra-input-section {
+  display: grid;
+  gap: 12px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.algebra-input-section-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--ink-2);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+}
+
+.algebra-input-section-head span {
+  color: var(--ink-4);
+  font-variant-numeric: tabular-nums;
+}
+
+.algebra-field-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .algebra-input-panel textarea,
@@ -13535,7 +13594,7 @@ button.analyzer-guide-label:hover {
 
 .algebra-math-field {
   width: 100%;
-  min-height: 128px;
+  min-height: 96px;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   padding: 14px;
@@ -13665,7 +13724,7 @@ button.analyzer-guide-label:hover {
 
 .algebra-option-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 120px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -13684,13 +13743,14 @@ button.analyzer-guide-label:hover {
 }
 
 .algebra-confirm-panel {
-  margin: 16px;
-  padding: 18px 20px;
-  border: 1px solid color-mix(in srgb, var(--accent, #3b82f6) 35%, var(--line));
-  border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--paper) 92%, var(--accent, #3b82f6) 8%);
   display: grid;
   gap: 14px;
+  margin: 18px 22px;
+  padding: 18px 20px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--ink);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
 }
 
 .algebra-confirm-lead {
@@ -13708,11 +13768,12 @@ button.analyzer-guide-label:hover {
 }
 
 .algebra-history-panel {
-  margin: 12px 16px 0;
-  padding: 12px 14px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--surface);
+  margin: 0;
+  padding: 14px 22px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: rgba(255, 255, 255, 0.9);
 }
 
 .algebra-history-head {
@@ -13748,7 +13809,8 @@ button.analyzer-guide-label:hover {
 }
 
 .algebra-history-item:hover {
-  border-color: color-mix(in srgb, var(--accent, #3b82f6) 40%, var(--line));
+  border-color: var(--line-2);
+  background: var(--surface);
 }
 
 .algebra-history-meta {
@@ -13819,12 +13881,11 @@ button.analyzer-guide-label:hover {
 .algebra-result-wrap {
   min-width: 0;
   min-height: 100%;
-  border-left: 1px solid color-mix(in srgb, var(--line) 65%, transparent);
   background-color: var(--paper);
   background-image:
-    linear-gradient(color-mix(in srgb, var(--line) 32%, transparent) 1px, transparent 1px),
-    linear-gradient(90deg, color-mix(in srgb, var(--line) 32%, transparent) 1px, transparent 1px);
-  background-size: 28px 28px;
+    linear-gradient(color-mix(in srgb, var(--line) 18%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--line) 18%, transparent) 1px, transparent 1px);
+  background-size: 40px 40px;
   background-position: -1px -1px;
 }
 
@@ -14324,6 +14385,15 @@ button.analyzer-guide-label:hover {
 }
 
 @media (max-width: 960px) {
+  .algebra-page-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .algebra-page-meta {
+    justify-content: flex-start;
+  }
+
   .algebra-workspace,
   .algebra-result-grid,
   .algebra-sequence-grid,
@@ -14343,6 +14413,26 @@ button.analyzer-guide-label:hover {
 
   .algebra-math-toolbar {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .algebra-page-meta {
+    display: grid;
+    justify-content: start;
+  }
+
+  .algebra-page-meta span + span::before {
+    content: none;
+  }
+
+  .algebra-input-panel,
+  .algebra-result-panel {
+    padding: 20px 16px;
+  }
+
+  .algebra-snippet-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
@@ -14890,7 +14980,7 @@ button.analyzer-guide-label:hover {
 .sim-library-page,
 .sim-workspace-page {
   display: grid;
-  gap: 18px;
+  gap: 22px;
   width: 100%;
   min-height: 0;
 }
@@ -14898,12 +14988,10 @@ button.analyzer-guide-label:hover {
 .sim-library-hero {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 18px;
+  gap: 32px;
   align-items: end;
-  padding: 18px 20px;
-  border: 1px solid var(--line);
-  border-radius: 18px;
-  background: linear-gradient(180deg, rgba(248, 250, 252, 0.95), var(--paper));
+  padding: 10px 0 22px;
+  border-bottom: 1px solid var(--line-2);
 }
 
 .sim-kicker {
@@ -14933,8 +15021,11 @@ button.analyzer-guide-label:hover {
 .sim-library-hero h1,
 .sim-workspace-meta h1 {
   margin: 0 0 8px;
-  font-size: clamp(1.35rem, 2vw, 1.75rem);
-  line-height: 1.2;
+  color: var(--ink);
+  font-size: clamp(1.55rem, 2.6vw, 2.2rem);
+  font-weight: 720;
+  letter-spacing: -0.035em;
+  line-height: 1.08;
 }
 
 .sim-library-lead,
@@ -14946,37 +15037,32 @@ button.analyzer-guide-label:hover {
   line-height: 1.55;
 }
 
-.sim-library-stats {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.sim-library-stats > div {
-  min-width: 88px;
-  padding: 12px 14px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: var(--paper);
+.sim-library-summary {
   display: grid;
-  gap: 2px;
-  text-align: center;
+  justify-items: end;
+  gap: 3px;
+  padding-bottom: 2px;
+  text-align: right;
 }
 
-.sim-library-stats strong {
-  font-size: 1.15rem;
+.sim-library-summary strong {
+  color: var(--ink);
+  font-size: 1.35rem;
+  font-variant-numeric: tabular-nums;
 }
 
-.sim-library-stats span {
+.sim-library-summary span {
   color: var(--ink-4);
-  font-size: 0.78rem;
+  font-size: 0.8rem;
 }
 
 .sim-library-filters {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(160px, 0.7fr) minmax(180px, 1fr);
+  grid-template-columns: minmax(0, 1.4fr) minmax(190px, 0.7fr) minmax(240px, 1fr);
   gap: 12px;
   align-items: end;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
 }
 
 .sim-grade-tabs {
@@ -15023,18 +15109,20 @@ button.analyzer-guide-label:hover {
 
 .sim-card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
 }
 
 .sim-card {
   display: grid;
-  gap: 10px;
-  padding: 16px;
+  grid-template-rows: auto auto auto 1fr auto;
+  gap: 11px;
+  min-width: 0;
+  padding: 18px;
   border: 1px solid var(--line);
-  border-radius: 16px;
+  border-radius: var(--radius-md);
   background: var(--paper);
-  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.03);
+  box-shadow: var(--shadow-subtle);
 }
 
 .sim-card h2 {
@@ -15084,10 +15172,16 @@ button.analyzer-guide-label:hover {
 
 .sim-card-meta {
   display: flex;
-  justify-content: space-between;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 4px 12px;
   color: var(--ink-4);
-  font-size: 0.8rem;
+  font-size: 0.78rem;
+}
+
+.sim-card-meta span + span::before {
+  content: '·';
+  margin-right: 12px;
+  color: var(--line-2);
 }
 
 .sim-card-outcomes {
@@ -15098,9 +15192,17 @@ button.analyzer-guide-label:hover {
   line-height: 1.45;
 }
 
+.sim-card-footer {
+  display: grid;
+  gap: 12px;
+  align-self: end;
+  padding-top: 2px;
+  border-top: 1px solid var(--line);
+}
+
 .sim-card-open {
   justify-self: start;
-  margin-top: 4px;
+  margin-top: 0;
 }
 
 .sim-library-empty {
@@ -15115,30 +15217,61 @@ button.analyzer-guide-label:hover {
 
 .sim-workspace-header {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 14px;
-  align-items: start;
+  gap: 12px;
+  padding: 8px 0 20px;
+  border-bottom: 1px solid var(--line-2);
+}
+
+.sim-workspace-meta {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.sim-workspace-title {
+  min-width: 0;
+}
+
+.sim-workspace-meta .sim-chip-row {
+  justify-content: flex-end;
+  flex: 0 0 auto;
 }
 
 .sim-breadcrumb {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  align-items: center;
+  gap: 7px;
   color: var(--ink-4);
   font-size: 0.8rem;
-  margin-bottom: 6px;
+}
+
+.sim-breadcrumb-back {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.sim-breadcrumb-back:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .sim-workspace-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
-  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 310px);
+  gap: clamp(20px, 2.2vw, 30px);
   align-items: start;
 }
 
 .sim-workspace-main {
   display: grid;
-  gap: 12px;
+  gap: 16px;
   min-width: 0;
 }
 
@@ -15147,7 +15280,14 @@ button.analyzer-guide-label:hover {
 }
 
 .csim-playbar-compact {
-  grid-template-columns: 1fr auto;
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.sim-command-hint {
+  justify-self: end;
+  color: var(--ink-4);
+  font-size: 0.82rem;
+  line-height: 1.4;
 }
 
 .sim-step-dot-btn {
@@ -15162,18 +15302,27 @@ button.analyzer-guide-label:hover {
 
 .sim-pedagogy {
   display: grid;
-  gap: 12px;
+  gap: 0;
   position: sticky;
-  top: 12px;
+  top: 76px;
+  max-height: calc(100dvh - 96px);
+  overflow: auto;
+  border-left: 1px solid var(--line);
+  padding-left: 20px;
 }
 
 .sim-pedagogy-card {
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: var(--paper);
-  padding: 12px 14px;
   display: grid;
-  gap: 10px;
+  gap: 12px;
+  padding: 16px 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+}
+
+.sim-pedagogy-card:first-child {
+  padding-top: 0;
 }
 
 .sim-pedagogy-head,
@@ -15351,14 +15500,56 @@ button.analyzer-guide-label:hover {
 
   .sim-pedagogy {
     position: static;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    max-height: none;
+    overflow: visible;
+    border-top: 1px solid var(--line-2);
+    border-left: 0;
+    padding-top: 16px;
+    padding-left: 0;
+    gap: 18px;
+  }
+
+  .sim-pedagogy-card,
+  .sim-pedagogy-card:first-child {
+    padding-top: 0;
+  }
+
+  .sim-card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 900px) {
   .sim-library-hero,
-  .sim-library-filters,
-  .sim-workspace-header {
+  .sim-library-filters {
     grid-template-columns: 1fr;
+  }
+
+  .sim-library-summary {
+    justify-items: start;
+    text-align: left;
+  }
+
+  .sim-workspace-meta {
+    align-items: start;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .sim-workspace-meta .sim-chip-row {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 760px) {
+  .sim-card-grid,
+  .sim-pedagogy {
+    grid-template-columns: 1fr;
+  }
+
+  .sim-command-hint {
+    justify-self: start;
   }
 }
 
@@ -15902,17 +16093,19 @@ button.analyzer-guide-label:hover {
 /* ===== Tool-trip runtime ===== */
 .sim-step-mission {
   display: flex;
-  gap: 14px;
+  gap: 18px;
   align-items: flex-start;
   justify-content: space-between;
-  padding: 12px 14px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: linear-gradient(180deg, #eff6ff, #f8fafc);
+  padding: 12px 0 14px 16px;
+  border: 0;
+  border-left: 2px solid var(--ink);
+  border-radius: 0;
+  background: transparent;
 }
 
 .sim-step-mission.is-free {
-  background: linear-gradient(180deg, #ecfdf5, #f8fafc);
+  border-left-color: var(--up);
+  background: transparent;
 }
 
 .sim-step-mission-main {
@@ -15922,15 +16115,15 @@ button.analyzer-guide-label:hover {
 }
 
 .sim-step-mission-kicker {
+  color: var(--ink-4);
   font-size: 0.72rem;
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: #1d4ed8;
 }
 
 .sim-step-mission.is-free .sim-step-mission-kicker {
-  color: #047857;
+  color: var(--up);
 }
 
 .sim-step-mission strong {

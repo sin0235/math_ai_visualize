@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { MixedTextRenderer } from '../../components/KatexSpan';
 import type { CheckpointDef, SimulationSpec } from '../types';
 
 type Props = {
@@ -48,12 +49,18 @@ export function PedagogyPanel({ spec, step = 1, freeMode = false }: Props) {
         </div>
         <ul className="sim-pedagogy-list">
           {outcomes.map((line) => (
-            <li key={line}>{line}</li>
+            <li key={line}><MixedTextRenderer text={line} /></li>
           ))}
         </ul>
         {spec.prerequisites.length > 0 && (
           <p className="sim-pedagogy-prereq">
-            <strong>Tiên quyết:</strong> {spec.prerequisites.join(' · ')}
+            <strong>Tiên quyết:</strong>{' '}
+            {spec.prerequisites.map((item, index) => (
+              <span key={item}>
+                {index > 0 && ' · '}
+                <MixedTextRenderer text={item} />
+              </span>
+            ))}
           </p>
         )}
       </div>
@@ -65,7 +72,7 @@ export function PedagogyPanel({ spec, step = 1, freeMode = false }: Props) {
         </button>
         {predictOpen && (
           <div className="sim-pedagogy-body">
-            <p>{spec.predictPrompt}</p>
+            <p><MixedTextRenderer text={spec.predictPrompt} /></p>
             <label className="sim-pedagogy-field">
               <span>Ghi chú dự đoán (chỉ trên máy bạn, không gửi đi)</span>
               <textarea
@@ -97,7 +104,7 @@ export function PedagogyPanel({ spec, step = 1, freeMode = false }: Props) {
                 <article key={item.id} className="sim-checkpoint">
                   <p>
                     <span className="sim-checkpoint-index">Câu {index + 1}</span>
-                    {item.prompt}
+                    <MixedTextRenderer text={item.prompt} />
                     {(item.unlockAtStep ?? 1) > 1 && (
                       <em className="sim-checkpoint-unlock"> · từ bước {item.unlockAtStep}</em>
                     )}
@@ -115,7 +122,7 @@ export function PedagogyPanel({ spec, step = 1, freeMode = false }: Props) {
                               [item.id]: { ...current[item.id], choice, checked: false },
                             }))}
                           />
-                          <span>{choice}</span>
+                          <span><MixedTextRenderer text={choice} /></span>
                         </label>
                       ))}
                     </div>
@@ -144,7 +151,7 @@ export function PedagogyPanel({ spec, step = 1, freeMode = false }: Props) {
                     )}
                   </div>
                   {state?.checked && (
-                    <p className="sim-checkpoint-explain">{item.explanation}</p>
+                    <p className="sim-checkpoint-explain"><MixedTextRenderer text={item.explanation} /></p>
                   )}
                 </article>
               );

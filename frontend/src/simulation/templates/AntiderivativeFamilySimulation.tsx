@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { KatexSpan } from '../../components/KatexSpan';
-import { FormulaInput, PresetButtons, ResultCard, SliderInput } from '../../components/calculus/AreaBetweenCurvesSimulation';
+import { FormulaInput, PresetButtons, ResultCard, SliderInput } from '../runtime/SimulationPrimitives';
 import { formatNumber, integrate, sampleFunction, validateBounds } from '../../utils/calculusNumerics';
 import { numericalDerivative, parseUserFunction } from '../math/derivativeAnalysis';
 import { RichGraph2D } from '../renderers/RichGraph2D';
@@ -20,7 +20,7 @@ type State = {
 
 const PRESETS = [
   { label: '2x', patch: { f: '2*x', a: -2, b: 2, xAnchor: 0, c: 0 } },
-  { label: '3x²', patch: { f: '3*x^2', a: -1.5, b: 1.5, xAnchor: 0, c: 1 } },
+  { label: '$3x^2$', patch: { f: '3*x^2', a: -1.5, b: 1.5, xAnchor: 0, c: 1 } },
   { label: 'cos x', patch: { f: 'cos(x)', a: -6.3, b: 6.3, xAnchor: 0, c: 0 } },
   { label: 'e^x', patch: { f: 'exp(x)', a: -2, b: 2, xAnchor: 0, c: 0 } },
   { label: '1/x (x>0)', patch: { f: '1/x', a: 0.3, b: 4, xAnchor: 1, c: 0 } },
@@ -75,9 +75,9 @@ export function AntiderivativeFamilySimulation({ step, progress, freeMode = fals
           highlight={step >= 3}
           rows={[
             ['F(x) tại điểm giữa', formatNumber(model.fMid, 4)],
-            ['F′ số ≈ f (sai số max mẫu)', formatNumber(model.derivErr, 5)],
-            ['ΔC giữa hai đường kề', formatNumber(model.deltaC, 3)],
-            ['Diện tích có hướng ∫_a^b f', formatNumber(model.signedArea, 4)],
+            ['$F^{\\prime}\\approx f$ (sai số lớn nhất)', formatNumber(model.derivErr, 5)],
+            ['$\\Delta C$ giữa hai đường kề', formatNumber(model.deltaC, 3)],
+            ['$\\int_a^b f(x)\\,dx$', formatNumber(model.signedArea, 4)],
           ]}
         />
 

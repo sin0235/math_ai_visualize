@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { KatexSpan } from '../../components/KatexSpan';
-import { SliderInput } from '../../components/calculus/AreaBetweenCurvesSimulation';
+import { SliderInput } from '../runtime/SimulationPrimitives';
 import { formatNumber } from '../../utils/calculusNumerics';
 
 type Props = { step: number; progress: number };
@@ -68,9 +68,9 @@ export function ProbabilityTreeG11Simulation({ step, progress }: Props) {
         <div className="csim-card">
           <div className="csim-card-head"><strong>Công thức</strong><span>nhân · toàn phần · hợp</span></div>
           <div className="sim-kv-list">
-            <div className="sim-kv-row"><span>P(A∩B)=P(A)P(B|A)</span><strong>{formatNumber(m.pAandB, 4)}</strong></div>
+            <div className="sim-kv-row"><span><KatexSpan tex="P(A\\cap B)=P(A)P(B|A)" /></span><strong>{formatNumber(m.pAandB, 4)}</strong></div>
             <div className="sim-kv-row"><span>P(B) toàn phần</span><strong>{formatNumber(m.pB, 4)}</strong></div>
-            <div className="sim-kv-row"><span>P(A∪B)</span><strong>{formatNumber(m.pAorB, 4)}</strong></div>
+            <div className="sim-kv-row"><span><KatexSpan tex="P(A\\cup B)" /></span><strong>{formatNumber(m.pAorB, 4)}</strong></div>
             <div className="sim-kv-row"><span>P(A|B)</span><strong>{formatNumber(m.pAgB, 4)}</strong></div>
             <div className="sim-kv-row highlight"><span>A,B độc lập?</span><strong>{m.indep ? 'Gần đúng (P(B|A)≈P(B))' : 'Không (có điều kiện khác nhau)'}</strong></div>
           </div>
@@ -130,7 +130,7 @@ export function ProbabilityTreeG11Simulation({ step, progress }: Props) {
               <text x="175" y="78" className="sim-venn-lbl">B</text>
               <text x="20" y="30" className="sim-venn-lbl">Ω</text>
             </svg>
-            <p className="sim-muted">P(A∪B)=P(A)+P(B)−P(A∩B). Giao = nhánh A→B trên cây.</p>
+            <p className="sim-muted"><KatexSpan tex="P(A\\cup B)=P(A)+P(B)-P(A\\cap B)" />. Giao là nhánh <KatexSpan tex="A\\to B" /> trên cây.</p>
           </div>
         </div>
 

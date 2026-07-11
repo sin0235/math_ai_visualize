@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { KatexSpan } from '../../components/KatexSpan';
-import { SliderInput } from '../../components/calculus/AreaBetweenCurvesSimulation';
+import { SliderInput } from '../runtime/SimulationPrimitives';
 import { formatNumber } from '../../utils/calculusNumerics';
 import {
   degToRad,
@@ -59,8 +59,8 @@ export function TrigEquationsSimulation({ step, progress }: Props) {
           <label className="csim-field">
             <span>Cửa sổ nghiệm</span>
             <select value={state.window} onChange={(e) => setState({ ...state, window: e.target.value as State['window'] })}>
-              <option value="0-2pi">[0; 2π]</option>
-              <option value="-2pi-2pi">[−2π; 2π]</option>
+              <option value="0-2pi">Một chu kỳ dương</option>
+              <option value="-2pi-2pi">Hai chu kỳ quanh 0</option>
             </select>
           </label>
           <label className="csim-check">
@@ -83,12 +83,12 @@ export function TrigEquationsSimulation({ step, progress }: Props) {
             <div className="sim-kv-row highlight"><span>Số nghiệm (cửa sổ)</span><strong>{model.solutions.length}</strong></div>
             {model.solutions.map((s, i) => (
               <div key={i} className="sim-kv-row">
-                <span>x_{i + 1}</span>
-                <strong>{formatAngleLabel(s, false)} · {formatNumber(radToDeg(s), 1)}°</strong>
+                <span><KatexSpan tex={`x_${i + 1}`} /></span>
+                <strong><KatexSpan tex={`${formatAngleLabel(s, false)}\\;(${formatNumber(radToDeg(s), 1)}^\\circ)`} /></strong>
               </div>
             ))}
             {state.showGeneral && model.general.map((g) => (
-              <div key={g} className="sim-kv-row"><span>Họ</span><strong className="sim-mono">{g}</strong></div>
+              <div key={g} className="sim-kv-row"><span>Họ</span><strong><KatexSpan tex={g} /></strong></div>
             ))}
           </div>
         </div>
@@ -117,9 +117,9 @@ export function TrigEquationsSimulation({ step, progress }: Props) {
           <strong>{titles[step - 1] ?? titles[0]}</strong>
           <p>{copies[step - 1] ?? copies[0]}</p>
           <ul className="sim-mono-list">
-            <li>sin x = m (|m|≤1): x = (−1)^k α + kπ, α=arcsin m.</li>
-            <li>cos x = m: x = ±α + 2kπ, α=arccos m.</li>
-            <li>tan x = m: x = α + kπ, α=arctan m (không tiệm cận).</li>
+            <li><KatexSpan tex={String.raw`\sin x=m,\ |m|\le1:\quad x=(-1)^k\alpha+k\pi`} /></li>
+            <li><KatexSpan tex={String.raw`\cos x=m:\quad x=\pm\alpha+2k\pi`} /></li>
+            <li><KatexSpan tex={String.raw`\tan x=m:\quad x=\alpha+k\pi`} /></li>
           </ul>
         </div>
       </section>
@@ -149,16 +149,16 @@ function solve(state: State, step: number, progress: number) {
     } else {
       const a = Math.asin(m);
       baseAngles = uniqueAngles([a, Math.PI - a]);
-      general = [`x = (-1)^k·(${fmt(a)}) + kπ`, `α = arcsin(m) ≈ ${fmt(a)}`];
+      general = [String.raw`x=(-1)^k(${fmt(a)})+k\pi`, String.raw`\alpha=\arcsin(m)\approx ${fmt(a)}`];
     }
   } else if (fn === 'cos') {
     const a = Math.acos(m);
     baseAngles = uniqueAngles([a, -a]);
-    general = [`x = ±(${fmt(a)}) + 2kπ`, `α = arccos(m) ≈ ${fmt(a)}`];
+    general = [String.raw`x=\pm(${fmt(a)})+2k\pi`, String.raw`\alpha=\arccos(m)\approx ${fmt(a)}`];
   } else {
     const a = Math.atan(m);
     baseAngles = [normalizeAngleRad(a)];
-    general = [`x = ${fmt(a)} + kπ`, `α = arctan(m) ≈ ${fmt(a)}`];
+    general = [String.raw`x=${fmt(a)}+k\pi`, String.raw`\alpha=\arctan(m)\approx ${fmt(a)}`];
   }
 
   const [w0, w1] = window === '0-2pi' ? [0, TAU] : [-TAU, TAU];

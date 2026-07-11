@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
-import { KatexSpan } from '../../components/KatexSpan';
-import { FormulaInput, PresetButtons, ResultCard, SliderInput } from '../../components/calculus/AreaBetweenCurvesSimulation';
+import { KatexSpan, MixedTextRenderer } from '../../components/KatexSpan';
+import { FormulaInput, PresetButtons, ResultCard, SliderInput } from '../runtime/SimulationPrimitives';
 import { formatNumber, sampleFunction, validateBounds } from '../../utils/calculusNumerics';
 import {
   buildVariationTable,
@@ -29,9 +29,9 @@ type State = {
 };
 
 const PRESETS: Array<{ label: string; patch: Partial<State> }> = [
-  { label: 'x³ − 3x', patch: { f: 'x^3 - 3*x', a: -3, b: 3, x0: 1.2, h: 1.2 } },
-  { label: 'x²', patch: { f: 'x^2', a: -2.5, b: 2.5, x0: 1, h: 1 } },
-  { label: 'x³', patch: { f: 'x^3', a: -2, b: 2, x0: 0.8, h: 0.9 } },
+  { label: '$x^3-3x$', patch: { f: 'x^3 - 3*x', a: -3, b: 3, x0: 1.2, h: 1.2 } },
+  { label: '$x^2$', patch: { f: 'x^2', a: -2.5, b: 2.5, x0: 1, h: 1 } },
+  { label: '$x^3$', patch: { f: 'x^3', a: -2, b: 2, x0: 0.8, h: 0.9 } },
   { label: '1/x', patch: { f: '1/x', a: -4, b: 4, x0: 1.5, h: 1.2, showAsymptotes: true } },
   { label: 'x + 1/x', patch: { f: 'x + 1/x', a: 0.3, b: 4, x0: 1.2, h: 0.8, showAsymptotes: true } },
   { label: 'sin x', patch: { f: 'sin(x)', a: -6.3, b: 6.3, x0: 1, h: 1.2 } },
@@ -116,14 +116,14 @@ export function DerivativeSurveySimulation({ step, progress, freeMode = false }:
             [<KatexSpan tex="f(x_0)" />, formatNumber(model.y0, 4)],
             [<><KatexSpan tex="h" /> (cát tuyến)</>, formatNumber(model.effectiveH, 3)],
             ['Hệ số góc cát tuyến', formatNumber(model.secantSlope, 4)],
-            ['Hệ số góc tiếp tuyến ≈ f′', formatNumber(model.tangentSlope, 4)],
-            ['|m_cát − m_tiếp|', formatNumber(model.slopeGap, 4)],
+            ['Hệ số góc tiếp tuyến $\\approx f^{\\prime}$', formatNumber(model.tangentSlope, 4)],
+            ['$|m_{\\text{cát}}-m_{\\text{tiếp}}|$', formatNumber(model.slopeGap, 4)],
           ]}
         />
 
         {step >= 4 && !model.error && (
           <div className="csim-card">
-            <div className="csim-card-head"><strong>Cực trị trên [a,b]</strong><span>f′ = 0 + đầu mút</span></div>
+            <div className="csim-card-head"><strong>Cực trị trên <KatexSpan tex="[a,b]" /></strong><span><KatexSpan tex="f'(x)=0" /> và đầu mút</span></div>
             <div className="sim-kv-list">
               {model.critical.map((c) => (
                 <div key={`${c.x}-${c.kind}`} className="sim-kv-row">
@@ -152,7 +152,7 @@ export function DerivativeSurveySimulation({ step, progress, freeMode = false }:
 
         {step >= 5 && !model.error && (
           <div className="csim-card sim-bbt-card">
-            <div className="csim-card-head"><strong>Bảng biến thiên (rút gọn)</strong><span>Dấu f′ theo khoảng</span></div>
+            <div className="csim-card-head"><strong>Bảng biến thiên (rút gọn)</strong><span>Dấu <KatexSpan tex="f'(x)" /> theo khoảng</span></div>
             <div className="sim-bbt-scroll">
               <table className="sim-bbt-table">
                 <thead>
@@ -204,8 +204,8 @@ export function DerivativeSurveySimulation({ step, progress, freeMode = false }:
         )}
 
         <div className="csim-card csim-step-copy">
-          <strong>{stepTitle(step)}</strong>
-          <p>{stepCopy(step)}</p>
+          <strong><MixedTextRenderer text={stepTitle(step)} /></strong>
+          <p><MixedTextRenderer text={stepCopy(step)} /></p>
           {step >= 3 && model.tangent && (
             <p className="sim-eq-line">Phương trình tiếp tuyến: <code>{model.tangent.equation}</code></p>
           )}
@@ -299,7 +299,7 @@ function analyze(state: State, step: number, progress: number) {
       : [];
 
     const vLines = [
-      ...(step >= 1 ? [{ x: x0, className: 'csim-marker-line', label: 'x₀' }] : []),
+      ...(step >= 1 ? [{ x: x0, className: 'csim-marker-line', label: 'x_0' }] : []),
       ...asymptotes.vertical.map((x) => ({ x, className: 'sim-asymp-v', label: 'TC đứng' })),
     ];
     const hLines = [
@@ -359,9 +359,9 @@ function empty(error: string) {
 function stepTitle(step: number) {
   return [
     'Bước 1 — Đồ thị và điểm khảo sát',
-    'Bước 2 — Cát tuyến và cho h → 0',
-    'Bước 3 — Tiếp tuyến và f′(x₀)',
-    'Bước 4 — Liên hệ f và f′, điểm tới hạn',
+    'Bước 2 — Cát tuyến khi $h\\to0$',
+    'Bước 3 — Tiếp tuyến và $f^{\\prime}(x_0)$',
+    'Bước 4 — Liên hệ $f$ và $f^{\\prime}$, điểm tới hạn',
     'Bước 5 — Khoảng đồng/nghịch biến',
     'Bước 6 — Bảng biến thiên & GTLN/GTNN',
   ][Math.max(0, Math.min(5, step - 1))];
@@ -369,11 +369,11 @@ function stepTitle(step: number) {
 
 function stepCopy(step: number) {
   return [
-    'Chọn hàm và điểm x₀. Quan sát hình dạng đồ thị trước khi nói về đạo hàm.',
-    'Cát tuyến qua A(x₀, f(x₀)) và B(x₀+h, f(x₀+h)). Hệ số góc cát tuyến là thương số [f(x₀+h)−f(x₀)]/h. Cho h nhỏ dần.',
-    'Giới hạn khi h→0 (nếu tồn tại) là f′(x₀) — hệ số góc tiếp tuyến. So sánh phương trình tiếp tuyến với cát tuyến.',
-    'Đồ thị f′ cho biết tốc độ biến thiên. Nghiệm f′=0 (và f′ không xác định) là ứng viên cực trị. Dùng dấu f′′ hoặc bảng dấu f′ để phân loại.',
-    'f′>0 ⇒ đồng biến; f′<0 ⇒ nghịch biến. Dải màu trên đồ thị minh họa các khoảng.',
-    'Tổng hợp thành bảng biến thiên: dòng x, dấu f′, mũi tên biến thiên, giá trị f tại điểm đặc biệt. So sánh với GTLN/GTNN trên đoạn đóng [a,b].',
+    'Chọn hàm và điểm $x_0$. Quan sát hình dạng đồ thị trước khi nói về đạo hàm.',
+    'Cát tuyến qua $A(x_0,f(x_0))$ và $B(x_0+h,f(x_0+h))$ có hệ số góc $\\dfrac{f(x_0+h)-f(x_0)}{h}$. Cho $h$ nhỏ dần.',
+    'Giới hạn khi $h\\to0$ là $f^{\\prime}(x_0)$ khi tồn tại. So sánh tiếp tuyến với cát tuyến.',
+    'Đồ thị $f^{\\prime}$ cho biết tốc độ biến thiên. Nghiệm $f^{\\prime}=0$ là ứng viên cực trị.',
+    '$f^{\\prime}>0$ cho khoảng đồng biến; $f^{\\prime}<0$ cho khoảng nghịch biến.',
+    'Tổng hợp dòng $x$, dấu $f^{\\prime}$, mũi tên biến thiên và giá trị $f$ trên đoạn $[a,b]$.',
   ][Math.max(0, Math.min(5, step - 1))];
 }
