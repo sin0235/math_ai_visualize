@@ -1,3 +1,4 @@
+import { MixedTextRenderer } from '../../components/KatexSpan';
 import type { StepMissionDef } from '../types';
 
 type Props = {
@@ -19,8 +20,8 @@ export function StepMission({ step, totalSteps, mission, freeMode, onToggleFreeM
         <span className="sim-step-mission-kicker">
           {freeMode ? 'Chế độ tự do' : `Nhiệm vụ · Bước ${step}/${totalSteps}`}
         </span>
-        <strong>{freeMode ? 'Mọi điều khiển đã mở — khám phá tự do' : title}</strong>
-        <p>{freeMode ? 'Tắt chế độ tự do để quay lại hành trình từng bước (tool-trip).' : instruction}</p>
+        <strong>{freeMode ? 'Mọi điều khiển đã mở — khám phá tự do' : <MixedTextRenderer text={title} />}</strong>
+        <p>{freeMode ? 'Tắt chế độ tự do để quay lại hành trình từng bước.' : <MixedTextRenderer text={instruction} />}</p>
       </div>
       <label className="sim-free-mode-toggle">
         <input type="checkbox" checked={freeMode} onChange={onToggleFreeMode} />

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { KatexSpan } from '../../components/KatexSpan';
-import { FormulaInput, PresetButtons, ResultCard, SliderInput } from '../../components/calculus/AreaBetweenCurvesSimulation';
+import { FormulaInput, PresetButtons, ResultCard, SliderInput } from '../runtime/SimulationPrimitives';
 import { formatNumber, sampleFunction, validateBounds } from '../../utils/calculusNumerics';
 import { classifyContinuity, parseFn, twoSidedLimit } from '../math/limitsAnalysis';
 import { RichGraph2D } from '../renderers/RichGraph2D';
@@ -54,11 +54,11 @@ export function LimitsContinuitySimulation({ step, progress }: Props) {
                 setState((s) => ({ ...s, mode, ...patch }));
               }}
             >
-              <option value="hole">Hố: (x²−1)/(x−1)</option>
+              <option value="hole">Hố khử được</option>
               <option value="jump">Nhảy (từng khúc)</option>
-              <option value="pole">Cực: 1/x</option>
-              <option value="sinx_x">sin(x)/x</option>
-              <option value="smooth">Trơn: x²</option>
+              <option value="pole">Giới hạn vô cực</option>
+              <option value="sinx_x">Giới hạn lượng giác</option>
+              <option value="smooth">Hàm trơn</option>
               <option value="custom">Tùy chỉnh biểu thức</option>
             </select>
           </label>
@@ -66,7 +66,7 @@ export function LimitsContinuitySimulation({ step, progress }: Props) {
             <FormulaInput label="f(x)" value={state.expr} onChange={(expr) => setState({ ...state, expr })} />
           )}
           {state.mode === 'jump' && (
-            <SliderInput label="Độ nhảy k (f = x nếu x&lt;a; x+k nếu x≥a)" value={state.jumpK} min={-3} max={3} step={0.1} onChange={(jumpK) => setState({ ...state, jumpK })} />
+            <SliderInput label="Độ nhảy $k$: $f=x$ nếu $x<a$, $f=x+k$ nếu $x\\ge a$" value={state.jumpK} min={-3} max={3} step={0.1} onChange={(jumpK) => setState({ ...state, jumpK })} />
           )}
           <div className="csim-two-cols">
             <label className="csim-field"><span>Cửa sổ a</span><input type="number" value={state.a} onChange={(e) => setState({ ...state, a: Number(e.target.value) })} /></label>

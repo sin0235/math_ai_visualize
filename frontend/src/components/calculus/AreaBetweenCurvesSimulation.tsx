@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState } from 'react';
 import { KatexSpan } from '../KatexSpan';
 import { compileExpression } from '../../utils/calculusExpression';
 import { domainWarningFor, findIntersections, formatNumber, functionsCoincide, integrate, riemannBetween, sampleFunction, validateBounds, type RiemannRule } from '../../utils/calculusNumerics';
 import { formatVerifyTone, verifyAreaBetweenCurves } from '../../simulation/math/verify';
+import { BoundsInput, FormulaInput, PresetButtons, ResultCard, SliderInput } from '../../simulation/runtime/SimulationPrimitives';
 import { CalculusGraph2D } from './CalculusGraph2D';
 
 interface Props {
@@ -106,7 +107,7 @@ function useAreaState() {
 type AreaState = { f: string; g: string; a: number; b: number; n: number; rule: RiemannRule };
 
 const AREA_PRESETS: Array<{ label: string; patch: Partial<AreaState> }> = [
-  { label: 'x và x²', patch: { f: 'x', g: 'x^2', a: 0, b: 1, n: 24, rule: 'mid' } },
+  { label: '$x$ và $x^2$', patch: { f: 'x', g: 'x^2', a: 0, b: 1, n: 24, rule: 'mid' } },
   { label: 'Hằng số', patch: { f: '5', g: '0', a: -5, b: 5, n: 20, rule: 'mid' } },
   { label: 'sqrt(x)', patch: { f: 'sqrt(x)', g: '0', a: 0, b: 4, n: 32, rule: 'mid' } },
 ];
@@ -162,63 +163,8 @@ function StepExplanation({ step, rule }: { step: number; rule: RiemannRule }) {
   const copy = [
     ['Bước 1 — Hai đường cong & giao điểm', <>Vẽ <KatexSpan tex="f" />, <KatexSpan tex="g" />; giao điểm gợi ý các khoảng tích phân tự nhiên.</>],
     ['Bước 2 — Dựng tổng Riemann', <>Hình chữ nhật theo quy tắc {RULE_LABELS[rule]}: <KatexSpan tex={String.raw`\sum |f(x_i^*)-g(x_i^*)|\Delta x`} />.</>],
-    ['Bước 3 — Tiến tới diện tích đúng', <>Tô miền |f−g|. Khi n→∞ tổng tiến tới <KatexSpan tex={String.raw`S=\int_a^b |f-g|\,dx`} />.</>],
+    ['Bước 3 — Tiến tới diện tích đúng', <>Tô miền giữa hai đồ thị. Khi <KatexSpan tex="n\\to\\infty" />, tổng tiến tới <KatexSpan tex={String.raw`S=\int_a^b |f-g|\,dx`} />.</>],
     ['Bước 4 — So left / mid / right', <>Cùng n, ba quy tắc cho sai số khác nhau. Mid thường tốt hơn left/right với hàm trơn. Đổi n và quan sát bảng so sánh.</>],
   ][Math.max(0, Math.min(3, step - 1))];
   return <div className="csim-card csim-step-copy"><strong>{copy[0]}</strong><p>{copy[1]}</p></div>;
-}
-
-export function FormulaInput({ label, value, onChange, placeholder = 'vd: sin(x), x^2, sqrt(x), 5', disabled = false }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string; disabled?: boolean }) {
-  const [touched, setTouched] = useState(false);
-  const error = touched && !disabled ? formulaError(value) : null;
-  return <label className={`csim-field ${error ? 'has-error' : ''}${disabled ? ' is-step-locked' : ''}`}><span><KatexSpan tex={label} /></span><input value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} onBlur={() => setTouched(true)} placeholder={placeholder} spellCheck={false} />{error ? <small className="csim-field-error">{error}</small> : <small className="csim-field-hint">Dùng biến <KatexSpan tex="x" />. Ví dụ: <KatexSpan tex="x^2" />, <KatexSpan tex={String.raw`\sin(x)`} />, <KatexSpan tex={String.raw`\sqrt{x}`} />, <KatexSpan tex="5" />.</small>}</label>;
-}
-
-export function BoundsInput({ a, b, onChange, disabled = false }: { a: number; b: number; onChange: (patch: { a?: number; b?: number }) => void; disabled?: boolean }) {
-  const [rawA, setRawA] = useState(String(a));
-  const [rawB, setRawB] = useState(String(b));
-  const [touched, setTouched] = useState({ a: false, b: false });
-  useEffect(() => setRawA(String(a)), [a]);
-  useEffect(() => setRawB(String(b)), [b]);
-  const parsedA = parseBound(rawA);
-  const parsedB = parseBound(rawB);
-  const orderError = parsedA.value !== null && parsedB.value !== null && parsedA.value >= parsedB.value ? 'Cận trái a phải nhỏ hơn cận phải b.' : null;
-  const errorA = touched.a ? parsedA.error ?? orderError : null;
-  const errorB = touched.b ? parsedB.error ?? orderError : null;
-  const update = (key: 'a' | 'b', raw: string) => {
-    if (key === 'a') setRawA(raw);
-    else setRawB(raw);
-    const parsed = parseBound(raw);
-    if (parsed.value !== null) onChange({ [key]: parsed.value });
-  };
-  return <div className={`csim-two-cols${disabled ? ' is-step-locked' : ''}`}><label className={`csim-field ${errorA ? 'has-error' : ''}`}><span>a</span><input type="number" disabled={disabled} value={rawA} onBlur={() => setTouched((current) => ({ ...current, a: true }))} onChange={(e) => update('a', e.target.value)} />{errorA && <small className="csim-field-error">{errorA}</small>}</label><label className={`csim-field ${errorB ? 'has-error' : ''}`}><span>b</span><input type="number" disabled={disabled} value={rawB} onBlur={() => setTouched((current) => ({ ...current, b: true }))} onChange={(e) => update('b', e.target.value)} />{errorB && <small className="csim-field-error">{errorB}</small>}</label></div>;
-}
-
-export function PresetButtons<T extends object>({ presets, onApply }: { presets: Array<{ label: string; patch: Partial<T> }>; onApply: (preset: { label: string; patch: Partial<T> }) => void }) {
-  return <div className="csim-preset-row" aria-label="Ví dụ mẫu">{presets.map((preset) => <button type="button" className="csim-chip" key={preset.label} onClick={() => onApply(preset)}>{preset.label}</button>)}</div>;
-}
-
-function formulaError(value: string) {
-  if (!value.trim()) return 'Vui lòng nhập biểu thức hàm số.';
-  try {
-    compileExpression(value);
-    return null;
-  } catch (error) {
-    return error instanceof Error ? error.message : 'Không đọc được biểu thức.';
-  }
-}
-
-function parseBound(raw: string) {
-  if (!raw.trim()) return { value: null, error: 'Vui lòng nhập cận.' };
-  const value = Number(raw);
-  if (!Number.isFinite(value)) return { value: null, error: 'Cận phải là số hữu hạn.' };
-  return { value, error: null };
-}
-
-export function SliderInput({ label, value, min, max, step, onChange, disabled = false }: { label: ReactNode; value: number; min: number; max: number; step: number; onChange: (value: number) => void; disabled?: boolean }) {
-  return <label className={`csim-slider${disabled ? ' is-step-locked' : ''}`}><span>{label}: <strong>{formatNumber(value, 2)}</strong></span><input type="range" min={min} max={max} step={step} value={value} disabled={disabled} onChange={(e) => onChange(Number(e.target.value))} /></label>;
-}
-
-export function ResultCard({ title, error, rows, formula, highlight }: { title: string; error: string | null; rows: Array<[ReactNode, string]>; formula: string; highlight?: boolean }) {
-  return <div className={`csim-card csim-result-card ${highlight ? 'is-complete' : ''}`}><div className="csim-card-head"><strong>{title}</strong><span>Kết quả số</span></div>{error ? <div className="sp-error">{error}</div> : <><KatexSpan tex={formula} className="csim-formula" /> <div className="csim-result-grid">{rows.map(([label, value], index) => <div className="csim-result-row" key={index}><span>{label}</span><strong>{value}</strong></div>)}</div></>}</div>;
 }

@@ -1,6 +1,6 @@
 import { formatNumber } from '../../utils/calculusNumerics';
 import type { SamplePoint } from '../../utils/calculusNumerics';
-import { KatexSpan } from '../../components/KatexSpan';
+import { KatexSpan, MixedTextRenderer } from '../../components/KatexSpan';
 
 export type GraphCurve = {
   points: SamplePoint[];
@@ -96,7 +96,7 @@ export function RichGraph2D({
   return (
     <div className="csim-graph-card">
       <div className="csim-graph-head">
-        <strong>{title ?? 'Đồ thị'}</strong>
+        <strong>{title ? <MixedTextRenderer text={title} /> : 'Đồ thị'}</strong>
         <span className="sim-rich-legend">
           {curves.filter((c) => c.label).map((c) => (
             <span key={c.label} className="sim-rich-legend-item">

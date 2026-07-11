@@ -74,12 +74,18 @@ export function runSimulationBaselineTests() {
 
   // Catalog integrity
   const all = listSimulations();
+  const rawMathGlyph = /[∫√π∞≤≥≠≈∑²³₀₁₂₃₄₅₆₇₈₉′∩∪∥⊥]/;
   assert(all.length >= 4, 'catalog has seeds');
   for (const item of all) {
     assert(Boolean(getSimulation(item.id)), `get ${item.id}`);
     assert(item.learningOutcomes.length > 0, `outcomes ${item.id}`);
     assert(item.checkpoints.length > 0, `checkpoints ${item.id}`);
     assert(item.predictPrompt.length > 0, `predict ${item.id}`);
+    assert(!rawMathGlyph.test(`${item.title} ${item.subtitle}`), `raw math glyph in card ${item.id}`);
+    assert(
+      item.stepMissions?.every((mission) => !rawMathGlyph.test(`${mission.title} ${mission.instruction}`)) ?? true,
+      `raw math glyph in mission ${item.id}`,
+    );
   }
   assert(getSimulation('missing') === undefined, 'missing id');
 

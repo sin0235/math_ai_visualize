@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { KatexSpan } from '../../components/KatexSpan';
-import { SliderInput } from '../../components/calculus/AreaBetweenCurvesSimulation';
+import { SliderInput } from '../runtime/SimulationPrimitives';
 import { formatNumber } from '../../utils/calculusNumerics';
 import { RichGraph2D } from '../renderers/RichGraph2D';
 import type { SamplePoint } from '../../utils/calculusNumerics';
@@ -48,33 +48,33 @@ export function SequencesLabSimulation({ step, progress }: Props) {
             <select value={state.kind} onChange={(e) => setState({ ...state, kind: e.target.value as Kind })}>
               <option value="arithmetic">Cấp số cộng (CSC)</option>
               <option value="geometric">Cấp số nhân (CSN)</option>
-              <option value="recursive">Truy hồi uₙ₊₁ = p·uₙ + r</option>
+              <option value="recursive">Truy hồi tuyến tính</option>
               <option value="compound">Lãi kép A(1+i)ⁿ</option>
             </select>
           </label>
 
           {state.kind === 'arithmetic' && (
             <>
-              <SliderInput label={<>u₁</>} value={state.u1} min={-10} max={20} step={0.5} onChange={(u1) => setState({ ...state, u1 })} />
+              <SliderInput label={<KatexSpan tex="u_1" />} value={state.u1} min={-10} max={20} step={0.5} onChange={(u1) => setState({ ...state, u1 })} />
               <SliderInput label={<>Công sai d</>} value={state.d} min={-5} max={5} step={0.25} onChange={(d) => setState({ ...state, d })} />
             </>
           )}
           {state.kind === 'geometric' && (
             <>
-              <SliderInput label={<>u₁</>} value={state.u1} min={-5} max={10} step={0.25} onChange={(u1) => setState({ ...state, u1 })} />
+              <SliderInput label={<KatexSpan tex="u_1" />} value={state.u1} min={-5} max={10} step={0.25} onChange={(u1) => setState({ ...state, u1 })} />
               <SliderInput label={<>Công bội q</>} value={state.q} min={-2.5} max={2.5} step={0.05} onChange={(q) => setState({ ...state, q })} />
             </>
           )}
           {state.kind === 'recursive' && (
             <>
-              <SliderInput label={<>u₁</>} value={state.u1} min={-5} max={10} step={0.5} onChange={(u1) => setState({ ...state, u1 })} />
+              <SliderInput label={<KatexSpan tex="u_1" />} value={state.u1} min={-5} max={10} step={0.5} onChange={(u1) => setState({ ...state, u1 })} />
               <SliderInput label="p" value={state.p} min={-1.5} max={1.5} step={0.05} onChange={(p) => setState({ ...state, p })} />
               <SliderInput label="r" value={state.r} min={-5} max={5} step={0.25} onChange={(r) => setState({ ...state, r })} />
             </>
           )}
           {state.kind === 'compound' && (
             <>
-              <SliderInput label="Vốn A₀" value={state.principal} min={10} max={500} step={10} onChange={(principal) => setState({ ...state, principal })} />
+              <SliderInput label={<>Vốn <KatexSpan tex="A_0" /></>} value={state.principal} min={10} max={500} step={10} onChange={(principal) => setState({ ...state, principal })} />
               <SliderInput label="Lãi suất i (năm)" value={state.rate} min={0.01} max={0.25} step={0.005} onChange={(rate) => setState({ ...state, rate })} />
             </>
           )}
@@ -228,7 +228,7 @@ function formulas(state: State, N: number, uN: number, sN: number) {
       formulaTex: String.raw`u_n=u_1 q^{n-1},\quad S_n=u_1\frac{1-q^n}{1-q}\ (q\neq 1)`,
       extra: [
         ['S_N (công thức)', formatNumber(closed, 4)],
-        ['|q|>1?', Math.abs(q) > 1 ? 'dãy |u| tăng' : Math.abs(q) < 1 ? 'dãy |u| → 0 (nếu u₁ cố định)' : '|q|=1'],
+        ['$|q|>1$?', Math.abs(q) > 1 ? 'dãy $|u|$ tăng' : Math.abs(q) < 1 ? 'dãy $|u|\\to0$' : '$|q|=1$'],
       ] as Array<[string, string]>,
     };
   }

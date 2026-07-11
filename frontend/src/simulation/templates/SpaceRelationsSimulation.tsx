@@ -46,12 +46,12 @@ export function SpaceRelationsSimulation({ step, progress }: Props) {
         <div className="csim-card">
           <div className="csim-card-head"><strong>Song song · vuông góc KG</strong><span>Lớp 11</span></div>
           <fieldset className="sim-fieldset">
-            <legend>Đường Δ₁: A + t u</legend>
+            <legend>Đường <KatexSpan tex="\\Delta_1: A+t\\vec u" /></legend>
             <Vec3 labels={['A', '', '']} values={[state.ax, state.ay, state.az]} onChange={([ax, ay, az]) => setState({ ...state, ax, ay, az })} />
             <Vec3 labels={['u', '', '']} values={[state.ux, state.uy, state.uz]} onChange={([ux, uy, uz]) => setState({ ...state, ux, uy, uz })} />
           </fieldset>
           <fieldset className="sim-fieldset">
-            <legend>Đường Δ₂: B + s v</legend>
+            <legend>Đường <KatexSpan tex="\\Delta_2: B+s\\vec v" /></legend>
             <Vec3 labels={['B', '', '']} values={[state.bx, state.by, state.bz]} onChange={([bx, by, bz]) => setState({ ...state, bx, by, bz })} />
             <Vec3 labels={['v', '', '']} values={[state.vx, state.vy, state.vz]} onChange={([vx, vy, vz]) => setState({ ...state, vx, vy, vz })} />
           </fieldset>
@@ -61,7 +61,7 @@ export function SpaceRelationsSimulation({ step, progress }: Props) {
             <Vec3 labels={['n', '', '']} values={[state.nx, state.ny, state.nz]} onChange={([nx, ny, nz]) => setState({ ...state, nx, ny, nz })} />
           </fieldset>
           <div className="sim-toggle-grid">
-            <label className="csim-check"><input type="checkbox" checked={state.showL2} onChange={(e) => setState({ ...state, showL2: e.target.checked })} /> Hiện Δ₂</label>
+            <label className="csim-check"><input type="checkbox" checked={state.showL2} onChange={(e) => setState({ ...state, showL2: e.target.checked })} /> Hiện <KatexSpan tex="\\Delta_2" /></label>
             <label className="csim-check"><input type="checkbox" checked={state.showPlane} onChange={(e) => setState({ ...state, showPlane: e.target.checked })} /> Hiện mp</label>
           </div>
           <div className="sim-preset-row">
@@ -70,13 +70,13 @@ export function SpaceRelationsSimulation({ step, progress }: Props) {
               bx: 0, by: 1, bz: 0, vx: 1, vy: 0, vz: 0,
               px: 0, py: 0, pz: 0, nx: 0, ny: 0, nz: 1,
               showL2: true, showPlane: true,
-            })}>Δ₁ ∥ Δ₂ · ⊥ mp Oxy</button>
+            })}><KatexSpan tex={String.raw`\Delta_1\parallel\Delta_2,\quad \Delta_1\perp(Oxy)`} /></button>
             <button type="button" className="csim-chip" onClick={() => setState({
               ax: 0, ay: 0, az: 0, ux: 1, uy: 0, uz: 0,
               bx: 0, by: 0, bz: 0, vx: 0, vy: 1, vz: 0,
               px: 0, py: 0, pz: 0, nx: 1, ny: 0, nz: 0,
               showL2: true, showPlane: true,
-            })}>Δ₁ ⊥ Δ₂</button>
+            })}><KatexSpan tex={String.raw`\Delta_1\perp\Delta_2`} /></button>
             <button type="button" className="csim-chip" onClick={() => setState({
               ax: 1, ay: 0, az: 1, ux: 1, uy: 1, uz: 0,
               bx: 0, by: 0, bz: 0, vx: 0, vy: 1, vz: 1,
@@ -89,15 +89,15 @@ export function SpaceRelationsSimulation({ step, progress }: Props) {
         <div className="csim-card">
           <div className="csim-card-head"><strong>Quan hệ</strong><span>vectơ</span></div>
           <div className="sim-kv-list">
-            <div className="sim-kv-row highlight"><span>Δ₁ và Δ₂</span><strong>{rel.lines}</strong></div>
-            <div className="sim-kv-row"><span>u·v</span><strong>{formatNumber(rel.udotv, 4)}</strong></div>
-            <div className="sim-kv-row"><span>|u×v|</span><strong>{formatNumber(rel.ucrossv, 4)}</strong></div>
-            <div className="sim-kv-row"><span>Góc (u,v)</span><strong>{formatNumber(rel.angleUV, 1)}°</strong></div>
-            <div className="sim-kv-row highlight"><span>Δ₁ và mp</span><strong>{rel.linePlane}</strong></div>
-            <div className="sim-kv-row"><span>|u·n| /…</span><strong>{formatNumber(rel.cosLineNormal, 4)}</strong></div>
-            <div className="sim-kv-row"><span>Góc Δ₁–mp</span><strong>{formatNumber(rel.angleLinePlane, 1)}°</strong></div>
-            <div className="sim-kv-row"><span>d(A, mp)</span><strong>{formatNumber(rel.distA, 4)}</strong></div>
-            <div className="sim-kv-row"><span>Δ₁ ∥ mp?</span><strong>{rel.lineParallelPlane ? 'có (u⊥n)' : 'không'}</strong></div>
+            <div className="sim-kv-row highlight"><span><KatexSpan tex="\\Delta_1" /> và <KatexSpan tex="\\Delta_2" /></span><strong>{rel.lines}</strong></div>
+            <div className="sim-kv-row"><span><KatexSpan tex="\\vec u\\cdot\\vec v" /></span><strong>{formatNumber(rel.udotv, 4)}</strong></div>
+            <div className="sim-kv-row"><span><KatexSpan tex="|\\vec u\\times\\vec v|" /></span><strong>{formatNumber(rel.ucrossv, 4)}</strong></div>
+            <div className="sim-kv-row"><span>Góc <KatexSpan tex="(\\vec u,\\vec v)" /></span><strong><KatexSpan tex={`${formatNumber(rel.angleUV, 1)}^\\circ`} /></strong></div>
+            <div className="sim-kv-row highlight"><span><KatexSpan tex="\\Delta_1" /> và mặt phẳng</span><strong>{rel.linePlane}</strong></div>
+            <div className="sim-kv-row"><span><KatexSpan tex={String.raw`\dfrac{|\vec u\cdot\vec n|}{|\vec u||\vec n|}`} /></span><strong>{formatNumber(rel.cosLineNormal, 4)}</strong></div>
+            <div className="sim-kv-row"><span>Góc đường–mặt phẳng</span><strong><KatexSpan tex={`${formatNumber(rel.angleLinePlane, 1)}^\\circ`} /></strong></div>
+            <div className="sim-kv-row"><span><KatexSpan tex="d(A,(P))" /></span><strong>{formatNumber(rel.distA, 4)}</strong></div>
+            <div className="sim-kv-row"><span><KatexSpan tex="\\Delta_1\\parallel(P)" />?</span><strong>{rel.lineParallelPlane ? <KatexSpan tex="\\vec u\\perp\\vec n" /> : 'không'}</strong></div>
           </div>
         </div>
       </aside>
@@ -125,9 +125,9 @@ export function SpaceRelationsSimulation({ step, progress }: Props) {
           <strong>{titles[step - 1] ?? titles[0]}</strong>
           <p>{copies[step - 1] ?? copies[0]}</p>
           <ul className="sim-mono-list">
-            <li>Δ ∥ Δ′ ⇔ u × v = 0 (cùng phương).</li>
-            <li>Δ ⊥ Δ′ ⇔ u · v = 0.</li>
-            <li>Δ ∥ mp ⇔ u · n = 0; Δ ⊥ mp ⇔ u ∥ n.</li>
+            <li><KatexSpan tex={String.raw`\Delta\parallel\Delta'\Leftrightarrow\vec u\times\vec v=\vec0`} />.</li>
+            <li><KatexSpan tex={String.raw`\Delta\perp\Delta'\Leftrightarrow\vec u\cdot\vec v=0`} />.</li>
+            <li><KatexSpan tex={String.raw`\Delta\parallel(P)\Leftrightarrow\vec u\cdot\vec n=0`} />.</li>
             <li>Hai đường chéo: không song song, không đồng phẳng.</li>
           </ul>
         </div>

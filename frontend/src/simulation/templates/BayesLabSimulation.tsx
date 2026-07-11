@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { KatexSpan } from '../../components/KatexSpan';
-import { SliderInput } from '../../components/calculus/AreaBetweenCurvesSimulation';
+import { SliderInput } from '../runtime/SimulationPrimitives';
 import { formatNumber } from '../../utils/calculusNumerics';
 
 type Props = { step: number; progress: number; freeMode?: boolean };
@@ -206,7 +206,7 @@ export function BayesLabSimulation({ step, progress, freeMode = false }: Props) 
               </tbody>
             </table>
             <p className="sim-muted">
-              Trong số người dương tính, chỉ có TP là bệnh thật → P(B|+) ≈ TP / (TP+FP).
+              Trong số người dương tính, chỉ TP là bệnh thật: <KatexSpan tex={String.raw`P(B|+)\approx\frac{TP}{TP+FP}`} />.
             </p>
           </div>
         </div>
@@ -228,7 +228,7 @@ export function BayesLabSimulation({ step, progress, freeMode = false }: Props) 
                 {' '}= <strong>{formatNumber(m.ppv, 4)}</strong> ({formatNumber(m.ppv * 100, 2)}%)
               </p>
               <KatexSpan tex={String.raw`P(\bar B|+)=1-P(B|+)`} />
-              <p>So sánh với trực giác: dương tính ≠ “chắc chắn bệnh”, đặc biệt khi P(B) nhỏ.</p>
+              <p>So sánh với trực giác: dương tính không đồng nghĩa chắc chắn bệnh, nhất là khi <KatexSpan tex="P(B)" /> nhỏ.</p>
             </div>
           )}
           {!canFormula && (
