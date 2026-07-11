@@ -182,7 +182,7 @@ export default function App() {
   const [renderTier, setRenderTier] = useState<TierKey>('tier1');
   const [settingsDefaults, setSettingsDefaults] = useState<SettingsDefaults | null>(null);
   const [backendStatus, setBackendStatus] = useState<BackendStatus>({ state: 'checking' });
-  const { notifications, showNotification, dismissNotification, showApiError, showWarnings, showAnalyzerWarnings } = useNotifications();
+  const { notifications, showNotification, dismissNotification, showApiError, showWarnings } = useNotifications();
   const [mobileWarningDismissed, setMobileWarningDismissed] = useState(readMobileWarningDismissed);
   const [sceneEditorOpen, setSceneEditorOpen] = useState(false);
   const [renderToolsOpen, setRenderToolsOpen] = useState(false);
@@ -1335,7 +1335,7 @@ export default function App() {
         {activeView === 'analyzer' && (
           <Suspense fallback={<PageLoadingFallback />}>
             <div className="analyzer-standalone-wrap">
-              <FunctionAnalyzerPanel onOpenGuide={() => navigateTo('analyzer-guide')} onWarnings={showAnalyzerWarnings} />
+              <FunctionAnalyzerPanel onOpenGuide={() => navigateTo('analyzer-guide')} />
             </div>
           </Suspense>
         )}

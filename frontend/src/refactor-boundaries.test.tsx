@@ -124,7 +124,6 @@ const notification: Notification = { id: 1, kind: 'info', title: 't', message: '
 const analyzerPanelProps: ComponentProps<typeof FunctionAnalyzerPanel> = {
   initialExpression: 'x^2',
   onOpenGuide: () => undefined,
-  onWarnings: () => undefined,
 };
 
 const ocrCandidate: FunctionOcrExtraction = {
@@ -169,9 +168,7 @@ const analyzerResultProps: ComponentProps<typeof AnalyzerResult> = {
 };
 
 const analyzerToolProps: ComponentProps<typeof AnalyzerToolControls> = {
-  enableInterval: false,
-  enableLine: false,
-  enableTransform: false,
+  activeTool: null,
   intervalA: -2,
   intervalB: 2,
   lineK: 1,
@@ -185,7 +182,7 @@ const analyzerToolProps: ComponentProps<typeof AnalyzerToolControls> = {
   intervalOpenB: false,
   lineMode: 'intersect',
   lineX0: 0,
-  onToggleTool: () => undefined,
+  onSelectTool: () => undefined,
   onIntervalAChange: () => undefined,
   onIntervalBChange: () => undefined,
   onIntervalOpenAChange: () => undefined,

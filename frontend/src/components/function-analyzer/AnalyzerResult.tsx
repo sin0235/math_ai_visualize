@@ -12,7 +12,7 @@ export function EmptyAnalyzerResult() {
     <div className="fa2-empty-result">
       <div className="fa2-empty-icon" aria-hidden="true"><SvgIcon name="graph" /></div>
       <strong>Đồ thị và kết quả sẽ hiện ở đây</strong>
-      <span>Nhập công thức ở cột trái rồi bấm Phân tích để xem đồ thị, bảng biến thiên và các điểm đặc biệt.</span>
+      <span>Nhập công thức phía trên rồi bấm Phân tích để xem đồ thị, bảng biến thiên và các điểm đặc biệt.</span>
     </div>
   );
 }
@@ -33,6 +33,9 @@ export function AnalyzerLoadingResult() {
 export function AnalyzerResult({
   result,
   toolControls,
+  warnings = [],
+  toolError = null,
+  toolLoading = false,
   parameterSnapshots = [],
   onSaveParameterSnapshot = () => undefined,
   onRemoveParameterSnapshot = () => undefined,
@@ -40,6 +43,9 @@ export function AnalyzerResult({
 }: {
   result: AnalyzeResponse;
   toolControls: ReactNode;
+  warnings?: string[];
+  toolError?: string | null;
+  toolLoading?: boolean;
   parameterSnapshots?: ParameterSnapshot[];
   onSaveParameterSnapshot?: () => void;
   onRemoveParameterSnapshot?: (value: string) => void;
@@ -70,16 +76,25 @@ export function AnalyzerResult({
               {activeResultTab === 'quick' ? (
                 <div className="fa2-quick-workbench">
                   <QuickSummary result={result} />
+                  {warnings.length > 0 && <WarningSummary warnings={warnings} />}
                   {(result.parameter_mode === 'substitute' || parameterSnapshots.length > 0) && (
-                    <ParameterSnapshotComparison
-                      current={result}
-                      snapshots={parameterSnapshots}
-                      onSave={onSaveParameterSnapshot}
-                      onRemove={onRemoveParameterSnapshot}
-                      onClear={onClearParameterSnapshots}
-                    />
+                    <details className="fa2-result-disclosure">
+                      <summary>So sánh tham số</summary>
+                      <ParameterSnapshotComparison
+                        current={result}
+                        snapshots={parameterSnapshots}
+                        onSave={onSaveParameterSnapshot}
+                        onRemove={onRemoveParameterSnapshot}
+                        onClear={onClearParameterSnapshots}
+                      />
+                    </details>
                   )}
-                  {!!result.analysis_steps?.length && <AnalysisSteps steps={result.analysis_steps} />}
+                  {!!result.analysis_steps?.length && (
+                    <details className="fa2-result-disclosure">
+                      <summary>Các bước khảo sát</summary>
+                      <AnalysisSteps steps={result.analysis_steps} />
+                    </details>
+                  )}
 
                   {(result.derivative_latex || result.derivative) && (
                   <Section
@@ -114,6 +129,8 @@ export function AnalyzerResult({
               ) : (
                 <div className="fa2-tools-workbench">
                   {toolControls}
+                  {toolLoading && <div className="fa2-tool-status" role="status">Đang cập nhật công cụ…</div>}
+                  {toolError && <div className="sp-error" role="alert">{toolError}</div>}
                   <ToolAnalysisResults result={result} />
                 </div>
               )}
@@ -223,11 +240,18 @@ function ToolAnalysisResults({ result }: { result: AnalyzeResponse }) {
 
 function QuickSummary({ result }: { result: AnalyzeResponse }) {
   const expressionTex = result.evaluated_expression_latex || result.expression_latex || sympyToLatex(result.evaluated_expression || result.expression);
+  const hasHighlights = Boolean(
+    result.domain_latex
+    || result.range_latex
+    || result.x_intercepts.length
+    || result.y_intercept != null
+    || result.critical_points.length,
+  );
 
   return (
     <div className="fa2-quick-card">
       <div className="fa2-quick-head">
-        <span className="fa2-quick-eyebrow">Kết quả nhanh</span>
+        <span className="fa2-quick-eyebrow">Kết quả chính</span>
         <KatexSpan tex={`y=${expressionTex}`} className="fa2-quick-expression" />
         {result.verification && (
           <span className={`fa2-verification-badge is-${result.verification.status}`}>
@@ -236,41 +260,48 @@ function QuickSummary({ result }: { result: AnalyzeResponse }) {
         )}
       </div>
       <div className="fa2-quick-rows">
-        <SummaryTextCard label="Chế độ" value={result.analysis_mode || 'Chưa xác định'} />
-        <SummaryTextCard label="Tính chẵn lẻ" value={parityLabel(result.parity)} />
-        {result.parameters?.active_exact?.m && <SummaryCard label="Giá trị tham số" tex={`m=${sympyToLatex(result.parameters.active_exact.m)}`} />}
         {result.domain_latex && <SummaryCard label="Tập xác định" tex={result.domain_latex} />}
         {result.range_latex && <SummaryCard label="Tập giá trị" tex={result.range_latex} />}
-        {(result.derivative_latex || result.derivative) && <SummaryCard label="Đạo hàm" tex={result.derivative_latex || sympyToLatex(result.derivative || '')} />}
-        <SummaryTextCard label="Giao Ox" value={result.x_intercepts.length ? result.x_intercepts.join(', ') : 'Không có điểm đã xác nhận'} />
-        <SummaryTextCard label="Giao Oy" value={result.y_intercept ?? 'Không có điểm đã xác nhận'} />
-        <SummaryTextCard label="Cực trị" value={result.critical_points.length ? result.critical_points.map((point) => `${point.kind_label}: (${point.x_exact}; ${point.y_exact ?? point.y ?? '?'})`).join(' · ') : 'Không có điểm đã xác nhận'} />
-        <SummaryTextCard label="Điểm uốn" value={result.inflection_points.length ? result.inflection_points.map((point) => `(${point.x_exact}; ${point.y})`).join(', ') : 'Không có điểm đã xác nhận'} />
-        <SummaryTextCard label="Đồng biến" value={result.intervals_increasing.join(', ') || 'Không có khoảng đã xác nhận'} />
-        <SummaryTextCard label="Nghịch biến" value={result.intervals_decreasing.join(', ') || 'Không có khoảng đã xác nhận'} />
-        <SummaryTextCard label="Lồi" value={result.concave_up_intervals.join(', ') || 'Không có khoảng đã xác nhận'} />
-        <SummaryTextCard label="Lõm" value={result.concave_down_intervals.join(', ') || 'Không có khoảng đã xác nhận'} />
-        <SummaryTextCard label="Tiệm cận" value={asymptoteSummary(result)} />
+        {result.x_intercepts.length > 0 && <SummaryTextCard label="Giao Ox" value={result.x_intercepts.join(', ')} />}
+        {result.y_intercept != null && <SummaryTextCard label="Giao Oy" value={result.y_intercept} />}
+        {result.critical_points.length > 0 && (
+          <SummaryTextCard label="Cực trị" value={result.critical_points.map((point) => `${point.kind_label}: (${point.x_exact}; ${point.y_exact ?? point.y ?? '?'})`).join(' · ')} />
+        )}
+        {result.parameters?.active_exact?.m && <SummaryCard label="Giá trị tham số" tex={`m=${sympyToLatex(result.parameters.active_exact.m)}`} />}
       </div>
+      {!hasHighlights && <p className="fa2-empty-note">Backend chưa xác nhận được đặc trưng chính cho hàm này.</p>}
       {result.requires_parameter_confirmation && (
         <div className="fa2-interval-note" role="status">Chọn chế độ symbolic hoặc nhập giá trị exact của m rồi phân tích lại.</div>
       )}
       {result.parameter_analysis_v2 && <ParameterCaseSummary analysis={result.parameter_analysis_v2} />}
       {result.x_intercepts_v2 && <RootSummary analysis={result.x_intercepts_v2} />}
       {result.curriculum_presentation && (
-        <div className="fa2-curriculum-summary">
-          <strong>Lớp {result.curriculum_presentation.profile.grade} · {result.curriculum_presentation.profile.chapter}</strong>
-          <div>
-            <span>Lỗi thường gặp</span>
-            <ul>{result.curriculum_presentation.common_mistakes.map((item) => <li key={item}>{item}</li>)}</ul>
+        <details className="fa2-result-disclosure">
+          <summary>Gợi ý học tập lớp {result.curriculum_presentation.profile.grade}</summary>
+          <div className="fa2-curriculum-summary">
+            <div>
+              <span>Lỗi thường gặp</span>
+              <ul>{result.curriculum_presentation.common_mistakes.map((item) => <li key={item}>{item}</li>)}</ul>
+            </div>
+            <div>
+              <span>Câu hỏi dự đoán</span>
+              <ul>{result.curriculum_presentation.predicted_questions.map((item) => <li key={item}>{item}</li>)}</ul>
+            </div>
           </div>
-          <div>
-            <span>Câu hỏi dự đoán</span>
-            <ul>{result.curriculum_presentation.predicted_questions.map((item) => <li key={item}>{item}</li>)}</ul>
-          </div>
-        </div>
+        </details>
       )}
     </div>
+  );
+}
+
+function WarningSummary({ warnings }: { warnings: string[] }) {
+  const uniqueWarnings = Array.from(new Set(warnings.map((warning) => warning.trim()).filter(Boolean)));
+  if (uniqueWarnings.length === 0) return null;
+  return (
+    <details className="fa2-warning-summary">
+      <summary>{uniqueWarnings.length} lưu ý về kết quả</summary>
+      <ul>{uniqueWarnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>
+    </details>
   );
 }
 
@@ -314,10 +345,6 @@ function verificationLabel(status: NonNullable<AnalyzeResponse['verification']>[
     unverified: 'Chưa kiểm chứng',
     failed: 'Kiểm chứng thất bại',
   }[status];
-}
-
-function parityLabel(parity: AnalyzeResponse['parity']) {
-  return parity === 'even' ? 'Hàm chẵn' : parity === 'odd' ? 'Hàm lẻ' : parity === 'neither' ? 'Không chẵn, không lẻ' : 'Chưa xác định';
 }
 
 function asymptoteSummary(result: AnalyzeResponse) {

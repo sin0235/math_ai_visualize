@@ -83,9 +83,7 @@ function SliderNumber({ label, value, min, max, step, disabled, onChange }: { la
 }
 
 export interface AnalyzerToolControlsProps {
-  enableInterval: boolean;
-  enableLine: boolean;
-  enableTransform: boolean;
+  activeTool: 'interval' | 'line' | 'transform' | null;
   intervalA: number;
   intervalB: number;
   intervalOpenA: boolean;
@@ -99,7 +97,7 @@ export interface AnalyzerToolControlsProps {
   isAnimatingTransform: boolean;
   animationFps: 30 | 60;
   disabled: boolean;
-  onToggleTool: (key: 'interval' | 'line' | 'transform', enabled: boolean) => void;
+  onSelectTool: (key: 'interval' | 'line' | 'transform' | null) => void;
   onIntervalAChange: (value: number) => void;
   onIntervalBChange: (value: number) => void;
   onIntervalOpenAChange: (value: boolean) => void;
@@ -116,9 +114,7 @@ export interface AnalyzerToolControlsProps {
 }
 
 export function AnalyzerToolControls({
-  enableInterval,
-  enableLine,
-  enableTransform,
+  activeTool,
   intervalA,
   intervalB,
   intervalOpenA,
@@ -132,7 +128,7 @@ export function AnalyzerToolControls({
   isAnimatingTransform,
   animationFps,
   disabled,
-  onToggleTool,
+  onSelectTool,
   onIntervalAChange,
   onIntervalBChange,
   onIntervalOpenAChange,
@@ -147,12 +143,20 @@ export function AnalyzerToolControls({
   onToggleAnimation,
   onResetAnimation,
 }: AnalyzerToolControlsProps) {
+  const enableInterval = activeTool === 'interval';
+  const enableLine = activeTool === 'line';
+  const enableTransform = activeTool === 'transform';
+
+  function toggleTool(tool: NonNullable<AnalyzerToolControlsProps['activeTool']>) {
+    onSelectTool(activeTool === tool ? null : tool);
+  }
+
   return (
     <div className="fa2-tools-card">
       <div className="fa2-tool-strip" role="group" aria-label="Công cụ khảo sát">
-        <button type="button" className={`fa2-tool-pill ${enableInterval ? 'is-active' : ''}`} onClick={() => onToggleTool('interval', !enableInterval)} disabled={disabled}>GTLN/GTNN</button>
-        <button type="button" className={`fa2-tool-pill ${enableLine ? 'is-active' : ''}`} onClick={() => onToggleTool('line', !enableLine)} disabled={disabled}>Đường thẳng</button>
-        <button type="button" className={`fa2-tool-pill ${enableTransform ? 'is-active' : ''}`} onClick={() => onToggleTool('transform', !enableTransform)} disabled={disabled}>Biến đổi</button>
+        <button type="button" className={`fa2-tool-pill ${enableInterval ? 'is-active' : ''}`} onClick={() => toggleTool('interval')} disabled={disabled}>GTLN/GTNN</button>
+        <button type="button" className={`fa2-tool-pill ${enableLine ? 'is-active' : ''}`} onClick={() => toggleTool('line')} disabled={disabled}>Đường thẳng</button>
+        <button type="button" className={`fa2-tool-pill ${enableTransform ? 'is-active' : ''}`} onClick={() => toggleTool('transform')} disabled={disabled}>Biến đổi</button>
       </div>
 
       {(enableInterval || enableLine || enableTransform) && (

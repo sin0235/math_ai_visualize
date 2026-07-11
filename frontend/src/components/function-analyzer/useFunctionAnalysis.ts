@@ -56,7 +56,7 @@ function readAnalyzerPrefill(fallback: string) {
   return fallback;
 }
 
-export function useFunctionAnalysis(initialExpression: string, onWarnings?: (warnings: string[]) => void) {
+export function useFunctionAnalysis(initialExpression: string) {
   const [expression, setExpression] = useState(() => readAnalyzerPrefill(initialExpression));
   const [parameterMode, setParameterMode] = useState<'' | 'symbolic' | 'substitute'>('');
   const [parameterValue, setParameterValue] = useState('1');
@@ -89,6 +89,9 @@ export function useFunctionAnalysis(initialExpression: string, onWarnings?: (war
   const [result, setResult] = useState<AnalyzeResponse | null>(null);
   const [parameterSnapshots, setParameterSnapshots] = useState<ParameterSnapshot[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [warnings, setWarnings] = useState<string[]>([]);
+  const [toolError, setToolError] = useState<string | null>(null);
+  const [toolLoading, setToolLoading] = useState(false);
   const analyzeRequestRef = useRef(0);
   const baseAbortRef = useRef<AbortController | null>(null);
   const toolAbortRef = useRef<AbortController | null>(null);
@@ -203,6 +206,8 @@ export function useFunctionAnalysis(initialExpression: string, onWarnings?: (war
     toolAbortRef.current?.abort();
     const controller = new AbortController();
     toolAbortRef.current = controller;
+    setToolLoading(true);
+    setToolError(null);
     try {
       const response = options.interval
         ? await runAnalyzerIntervalTool(base.analysis_id, options.interval, controller.signal)
@@ -226,9 +231,11 @@ export function useFunctionAnalysis(initialExpression: string, onWarnings?: (war
       return true;
     } catch (error: unknown) {
       if (!isAbortError(error)) {
-        setError(error instanceof Error ? error.message : 'Không chạy được công cụ phân tích.');
+        setToolError(error instanceof Error ? error.message : 'Không chạy được công cụ phân tích.');
       }
       return false;
+    } finally {
+      if (toolAbortRef.current === controller) setToolLoading(false);
     }
   }
 
@@ -241,6 +248,9 @@ export function useFunctionAnalysis(initialExpression: string, onWarnings?: (war
     setLoading(true);
     setAnalysisState('loading');
     setError(null);
+    setWarnings([]);
+    setToolError(null);
+    setToolLoading(false);
     if (options?.clearResult) setResult(null);
     try {
       const requestOptions = options?.requestOptions ?? {};
@@ -259,7 +269,7 @@ export function useFunctionAnalysis(initialExpression: string, onWarnings?: (war
       baseResultRef.current = res;
       setResult(res);
       setAnalysisState('current');
-      onWarnings?.(res.warnings);
+      setWarnings(Array.from(new Set(res.warnings.map((warning) => warning.trim()).filter(Boolean))));
       if (requestOptions.interval || requestOptions.line || requestOptions.transform) {
         await runTool(requestOptions, res);
       }
@@ -326,7 +336,7 @@ export function useFunctionAnalysis(initialExpression: string, onWarnings?: (war
       setExpression(candidate.expression);
       setOcrCandidate(candidate);
       setAnalysisState('editing');
-      onWarnings?.(candidate.warnings);
+      setWarnings(Array.from(new Set(candidate.warnings.map((warning) => warning.trim()).filter(Boolean))));
     } catch (e: unknown) {
       if (requestId === analyzeRequestRef.current && !isAbortError(e)) {
         setError(e instanceof Error ? e.message : 'Lỗi OCR không xác định.');
@@ -370,6 +380,9 @@ export function useFunctionAnalysis(initialExpression: string, onWarnings?: (war
     baseResultRef.current = null;
     setResult(null);
     setError(null);
+    setWarnings([]);
+    setToolError(null);
+    setToolLoading(false);
     setAnalysisState(result ? 'stale' : 'editing');
   }
 
@@ -439,27 +452,28 @@ export function useFunctionAnalysis(initialExpression: string, onWarnings?: (war
     setExpression(value);
   }
 
-  function updateToolEnabled(key: ToolKey, enabled: boolean) {
-    const nextEnableInterval = key === 'interval' ? enabled : false;
-    const nextEnableLine = key === 'line' ? enabled : false;
-    const nextEnableTransform = key === 'transform' ? enabled : false;
+  function selectTool(key: ToolKey | null) {
+    const nextEnableInterval = key === 'interval';
+    const nextEnableLine = key === 'line';
+    const nextEnableTransform = key === 'transform';
 
     setEnableInterval(nextEnableInterval);
     setEnableLine(nextEnableLine);
     setEnableTransform(nextEnableTransform);
-    if (key !== 'transform' || !enabled) setIsAnimatingTransform(false);
+    setToolError(null);
+    if (key !== 'transform') setIsAnimatingTransform(false);
 
+    toolAbortRef.current?.abort();
+    setToolLoading(false);
     const base = baseResultRef.current;
     if (base) setResult(base);
+    if (!key) return;
+
     const requestOptions = buildAnalyzeOptions({
       enableInterval: nextEnableInterval,
       enableLine: nextEnableLine,
       enableTransform: nextEnableTransform,
     });
-    if (!requestOptions.interval && !requestOptions.line && !requestOptions.transform) {
-      toolAbortRef.current?.abort();
-      return;
-    }
     void runTool(requestOptions);
   }
 
@@ -498,17 +512,18 @@ export function useFunctionAnalysis(initialExpression: string, onWarnings?: (war
     removeParameterSnapshot,
     clearParameterSnapshots: () => setParameterSnapshots([]),
     error,
+    warnings,
+    toolError,
+    toolLoading,
     intervalA,
     intervalB,
     intervalOpenA,
     intervalOpenB,
-    enableInterval,
+    activeTool: enableInterval ? 'interval' as const : enableLine ? 'line' as const : enableTransform ? 'transform' as const : null,
     lineK,
     lineB,
     lineMode,
     lineX0,
-    enableLine,
-    enableTransform,
     transformType,
     transformValue,
     isAnimatingTransform,
@@ -518,7 +533,7 @@ export function useFunctionAnalysis(initialExpression: string, onWarnings?: (war
     handleConfirmOcr,
     discardOcrCandidate,
     handleImageChange,
-    updateToolEnabled,
+    selectTool,
     setIntervalA,
     setIntervalB,
     setIntervalOpenA,
