@@ -10,12 +10,14 @@ declare global {
 }
 
 type Vec3 = { x: number; y: number; z: number };
+type GraphViewBounds = { left: number; right: number; bottom: number; top: number };
 
 interface GeoGebraViewProps {
   commands: string[];
   renderer: Extract<Renderer, 'geogebra_2d' | 'geogebra_3d'>;
   scene: MathScene;
   view: SceneView;
+  viewBounds?: GraphViewBounds;
   onPointChange?: (name: string, point: Vec3) => void | Promise<void>;
   onStatusChange?: (status: LoadStatus, detail?: string) => void;
   embedded?: boolean;
@@ -95,7 +97,7 @@ function resetGeoGebraLoader() {
   geogebraLoadPromise = null;
 }
 
-export function GeoGebraView({ commands, renderer, scene, view, onPointChange, onStatusChange, embedded = false }: GeoGebraViewProps) {
+export function GeoGebraView({ commands, renderer, scene, view, viewBounds, onPointChange, onStatusChange, embedded = false }: GeoGebraViewProps) {
   const rawId = useId();
   const appletId = `ggb-${rawId.replace(/[^a-zA-Z0-9]/g, '')}`;
   const appName = renderer === 'geogebra_3d' ? '3d' : 'classic';
@@ -203,14 +205,14 @@ export function GeoGebraView({ commands, renderer, scene, view, onPointChange, o
     if (!apiReady || !apiRef.current) return;
     const api = apiRef.current;
     applyingCommandsRef.current = true;
-    const failures = applyCommands(api, commands, view, scene, renderer === 'geogebra_3d');
+    const failures = applyCommands(api, commands, view, scene, renderer === 'geogebra_3d', viewBounds);
     requestAnimationFrame(() => resizeAppletToContainer(api, containerRef.current));
     window.setTimeout(() => {
       applyingCommandsRef.current = false;
     }, 0);
     setCommandErrors(failures);
     setStatus(failures.length > 0 ? 'error' : 'ready');
-  }, [apiReady, commandSignature, commands, renderer, scene, view.show_axes, view.show_grid]);
+  }, [apiReady, commandSignature, commands, renderer, scene, view.show_axes, view.show_grid, viewBounds?.bottom, viewBounds?.left, viewBounds?.right, viewBounds?.top]);
 
   useEffect(() => {
     if (!apiReady || !apiRef.current || !containerRef.current || typeof ResizeObserver === 'undefined') return;
@@ -261,7 +263,7 @@ export function GeoGebraView({ commands, renderer, scene, view, onPointChange, o
       {status === 'error' && (
         <div className="error-box">
           <strong>GeoGebra chưa sẵn sàng.</strong>
-          <p>{errorMessage || 'Một số lệnh GeoGebra không chạy được. Hãy kiểm tra mạng/CDN hoặc thử renderer Three.js nếu phù hợp.'}</p>
+          <p>{errorMessage || 'GeoGebra không chạy được lệnh dựng đồ thị. Thử tải lại hoặc chọn SVG.'}</p>
           {commandErrors.length > 0 && (
             <details>
               <summary>Lệnh lỗi</summary>
@@ -322,7 +324,7 @@ function resizeAppletToContainer(api: GeoGebraApi | null, container: HTMLDivElem
   api.setHeight?.(height);
 }
 
-function applyCommands(api: GeoGebraApi, commands: string[], view: SceneView, scene: MathScene, is3d: boolean) {
+function applyCommands(api: GeoGebraApi, commands: string[], view: SceneView, scene: MathScene, is3d: boolean, viewBounds?: GraphViewBounds) {
   const failures: string[] = [];
   try {
     api.reset?.();
@@ -346,7 +348,7 @@ function applyCommands(api: GeoGebraApi, commands: string[], view: SceneView, sc
 
   if (!is3d) {
     try {
-      fit2dView(api, scene);
+      fit2dView(api, scene, viewBounds);
     } catch (caught) {
       const detail = caught instanceof Error ? caught.message : 'Không rõ lỗi';
       failures.push(`Auto-fit view: ${detail}`);
@@ -359,12 +361,17 @@ function applyCommands(api: GeoGebraApi, commands: string[], view: SceneView, sc
 function isSideEffectCommand(command: string) {
   // GeoGebra's JS API can return false for scripting commands that mutate
   // existing objects because those commands do not create a new object.
-  return /^\s*(Set(Color|Caption|Filling|LineStyle|LineThickness|PointSize|VisibleInView|LabelMode)|ShowLabel)\s*\(/i.test(command);
+  return /^\s*(Set[A-Za-z]+|ShowLabel)\s*\(/i.test(command);
 }
 
-function fit2dView(api: GeoGebraApi, scene: MathScene) {
+function fit2dView(api: GeoGebraApi, scene: MathScene, viewBounds?: GraphViewBounds) {
   if (!api.setCoordSystem) return;
-  
+  if (viewBounds && [viewBounds.left, viewBounds.right, viewBounds.bottom, viewBounds.top].every(Number.isFinite)
+    && viewBounds.left < viewBounds.right && viewBounds.bottom < viewBounds.top) {
+    api.setCoordSystem(viewBounds.left, viewBounds.right, viewBounds.bottom, viewBounds.top);
+    return;
+  }
+
   const min = { x: Infinity, y: Infinity };
   const max = { x: -Infinity, y: -Infinity };
   let hasGeometry = false;

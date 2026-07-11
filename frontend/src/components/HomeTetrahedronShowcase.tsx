@@ -3,15 +3,18 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import { Suspense, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 
-/** Monochrome palette aligned with product black/white academic theme. */
-const MONO = {
-  ink: '#111111',
-  charcoal: '#2a2a2a',
-  slate: '#4a4a4a',
-  mid: '#6b6b6b',
-  silver: '#9a9a9a',
-  mist: '#c8c8c8',
-  paper: '#f2f2f2',
+const PALETTE = {
+  indigo: '#a5b4fc',
+  pink: '#f9a8d4',
+  mint: '#99f6e4',
+  amber: '#fde68a',
+  blue: '#bfdbfe',
+  rose: '#fecdd3',
+  violet: '#c4b5fd',
+  green: '#bbf7d0',
+  orange: '#fed7aa',
+  lavender: '#ddd6fe',
+  wire: '#cbd5e1',
   white: '#ffffff',
 } as const;
 
@@ -39,19 +42,19 @@ function OrbitingElements() {
       <group ref={ringRef}>
         <mesh>
           <torusGeometry args={[3.2, 0.015, 16, 100]} />
-          <meshBasicMaterial color={MONO.mid} transparent opacity={0.45} />
+          <meshBasicMaterial color={PALETTE.indigo} transparent opacity={0.24} />
         </mesh>
         <mesh rotation={[Math.PI / 2.5, 0, 0]}>
           <torusGeometry args={[3.8, 0.01, 16, 100]} />
-          <meshBasicMaterial color={MONO.silver} transparent opacity={0.35} />
+          <meshBasicMaterial color={PALETTE.pink} transparent opacity={0.18} />
         </mesh>
       </group>
 
       <mesh ref={satelliteRef}>
         <tetrahedronGeometry args={[0.25]} />
-        <meshStandardMaterial color={MONO.paper} emissive={MONO.mist} emissiveIntensity={0.35} roughness={0.35} metalness={0.1} />
-        <pointLight intensity={4} color={MONO.white} distance={3} />
-        <Edges color={MONO.ink} threshold={10} />
+        <meshStandardMaterial color={PALETTE.white} emissive={PALETTE.white} emissiveIntensity={1.5} />
+        <pointLight intensity={8} color={PALETTE.white} distance={3} />
+        <Edges color={PALETTE.white} threshold={10} />
       </mesh>
     </group>
   );
@@ -59,8 +62,18 @@ function OrbitingElements() {
 
 function PolyhedronFaces() {
   const groupRef = useRef<THREE.Group>(null);
-  // Alternating greys for face contrast on a monochrome solid.
-  const palette = [MONO.ink, MONO.charcoal, MONO.slate, MONO.mid, MONO.silver, MONO.mist, MONO.paper, MONO.white, MONO.slate, MONO.charcoal];
+  const palette = [
+    PALETTE.indigo,
+    PALETTE.pink,
+    PALETTE.mint,
+    PALETTE.amber,
+    PALETTE.blue,
+    PALETTE.rose,
+    PALETTE.violet,
+    PALETTE.green,
+    PALETTE.orange,
+    PALETTE.lavender,
+  ];
   const geometry = useMemo(() => {
     const shape = new THREE.IcosahedronGeometry(2.05, 0);
     shape.clearGroups();
@@ -85,16 +98,16 @@ function PolyhedronFaces() {
             attach={`material-${index}`}
             color={color}
             transparent
-            opacity={0.78}
-            transmission={0.06}
-            roughness={0.48}
-            metalness={0.08}
+            opacity={0.56}
+            transmission={0.22}
+            roughness={0.42}
+            metalness={0.02}
             side={THREE.DoubleSide}
           />
         ))}
-        <Edges color={MONO.ink} threshold={10} opacity={0.92} transparent />
+        <Edges color={PALETTE.white} threshold={10} opacity={0.78} transparent />
       </mesh>
-      <pointLight intensity={8} color={MONO.white} distance={4} />
+      <pointLight intensity={12} color={PALETTE.white} distance={4} />
     </group>
   );
 }
@@ -121,7 +134,7 @@ function BackgroundParticles() {
         yFactor,
         zFactor,
         type,
-        color: Math.random() > 0.5 ? MONO.mid : MONO.silver,
+        color: Math.random() > 0.5 ? PALETTE.violet : PALETTE.blue,
       });
     }
     return temp;
@@ -155,7 +168,7 @@ function BackgroundParticles() {
           ) : (
             <boxGeometry args={[0.06, 0.06, 0.06]} />
           )}
-          <meshBasicMaterial color={p.color} transparent opacity={0.28} />
+          <meshBasicMaterial color={p.color} transparent opacity={0.2} />
         </mesh>
       ))}
     </group>
@@ -164,26 +177,18 @@ function BackgroundParticles() {
 
 function PlaneGrid() {
   return (
-    <group position={[0, -2.5, 0]}>
-      {/* Infinite academic plane grid */}
-      <Grid
-        infiniteGrid
-        fadeDistance={28}
-        fadeStrength={4}
-        sectionSize={1}
-        sectionColor={MONO.ink}
-        sectionThickness={1.15}
-        cellSize={0.5}
-        cellColor={MONO.silver}
-        cellThickness={0.7}
-        position={[0, 0.01, 0]}
-      />
-      {/* Soft ground plane so the grid reads clearly against transparent page bg */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]} receiveShadow>
-        <planeGeometry args={[40, 40]} />
-        <meshBasicMaterial color={MONO.paper} transparent opacity={0.55} side={THREE.DoubleSide} />
-      </mesh>
-    </group>
+    <Grid
+      infiniteGrid
+      fadeDistance={25}
+      fadeStrength={5}
+      sectionSize={1.5}
+      sectionColor={PALETTE.violet}
+      sectionThickness={2}
+      cellSize={0.75}
+      cellColor={PALETTE.blue}
+      cellThickness={1}
+      position={[0, -2.5, 0]}
+    />
   );
 }
 
@@ -198,10 +203,9 @@ function Scene({ hideHelpers = false }: { hideHelpers?: boolean }) {
 
   return (
     <>
-      <ambientLight intensity={0.85} color={MONO.white} />
-      <spotLight ref={lightRef} position={[15, 15, 15]} angle={0.25} penumbra={1} intensity={7} color={MONO.white} />
-      <pointLight position={[-12, 8, -10]} intensity={3.5} color={MONO.mist} />
-      <directionalLight position={[4, 10, 2]} intensity={1.2} color={MONO.white} />
+      <ambientLight intensity={0.58} />
+      <spotLight ref={lightRef} position={[15, 15, 15]} angle={0.2} penumbra={1} intensity={10} color={PALETTE.violet} />
+      <pointLight position={[-15, -15, -15]} intensity={5} color={PALETTE.pink} />
 
       <BackgroundParticles />
       <OrbitingElements />
@@ -210,19 +214,18 @@ function Scene({ hideHelpers = false }: { hideHelpers?: boolean }) {
         <PolyhedronFaces />
       </Float>
 
-      {/* Far wireframe accents — monochrome */}
+      {/* Far wireframe accents */}
       <group>
         <mesh position={[-10, 8, -15]} rotation={[0.5, 0.5, 0.5]}>
           <boxGeometry args={[5, 5, 5]} />
-          <meshBasicMaterial color={MONO.mid} wireframe transparent opacity={0.12} />
+          <meshBasicMaterial color={PALETTE.wire} wireframe transparent opacity={0.04} />
         </mesh>
         <mesh position={[12, -5, -18]} rotation={[-0.2, 0.8, 0.3]}>
           <dodecahedronGeometry args={[4]} />
-          <meshBasicMaterial color={MONO.slate} wireframe transparent opacity={0.1} />
+          <meshBasicMaterial color={PALETTE.wire} wireframe transparent opacity={0.04} />
         </mesh>
       </group>
 
-      {/* Always show plane grid (product monochrome math paper look) */}
       <PlaneGrid />
 
       {!hideHelpers && <primitive object={new THREE.AxesHelper(3.5)} position={[0, -2.45, 0]} />}
@@ -239,7 +242,7 @@ function Scene({ hideHelpers = false }: { hideHelpers?: boolean }) {
 
       {!hideHelpers && (
         <GizmoHelper alignment="bottom-right" margin={[80, 80]}>
-          <GizmoViewport axisColors={[MONO.ink, MONO.mid, MONO.silver]} labelColor={MONO.ink} />
+          <GizmoViewport axisColors={['#ef4444', '#22c55e', '#3b82f6']} labelColor={PALETTE.white} />
         </GizmoHelper>
       )}
     </>
