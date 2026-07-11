@@ -157,33 +157,66 @@ CI trên GitHub Actions chạy backend tests, kiểm tra migration, frontend typ
 
 Các chi tiết kỹ thuật này chứng minh sản phẩm không chỉ là mockup giao diện hoặc một lớp gọi API. Tuy vậy, việc có CI, health check và test không đồng nghĩa với tuyên bố sản phẩm đã hoàn thiện mọi năng lực vận hành ở quy mô lớn.
 
-## 8. Lộ trình phát triển gắn với người dùng
+## 8. Lộ trình phát triển sản phẩm sau cuộc thi
 
-### Giai đoạn 1. Ổn định nguyên mẫu
+Cuộc thi là mốc kiểm chứng nguyên mẫu, không phải điểm kết thúc của AI Math Renderer. Sau cuộc thi, sản phẩm tiếp tục được vận hành dưới dạng ứng dụng web với tài khoản, lịch sử, phản hồi, telemetry, CI và quy trình triển khai đã có trong codebase. Lộ trình phát triển dựa trên một vòng lặp liên tục:
 
-Mục tiêu kỹ thuật là hoàn thiện workflow chính từ đề bài đến scene, phân tích, lời giải và export; đồng thời làm rõ trạng thái fallback, cần xác nhận và lỗi đầu vào. Mục tiêu kiểm chứng thực tế là chạy bộ đề chuẩn nội bộ, đo khả năng tái lập kết quả và bảo đảm một người dùng mới có thể hoàn thành luồng demo mà không cần hỗ trợ trực tiếp từ nhóm.
+```text
+Phát hành phiên bản
+→ người học và giáo viên sử dụng
+→ ghi nhận lỗi, phản hồi và chỉ số
+→ bổ sung dữ liệu kiểm thử
+→ cải thiện ứng dụng và lõi toán học
+→ phát hành phiên bản tiếp theo
+```
 
-### Giai đoạn 2. Đo độ chính xác
+Mỗi giai đoạn chỉ mở rộng khi giai đoạn trước có dữ liệu sử dụng và chất lượng đủ rõ. Cách này tránh biến sản phẩm thành bản demo nhiều tính năng nhưng không có người dùng thường xuyên.
 
-Mục tiêu kỹ thuật là xây benchmark đề toán tiếng Việt có đáp án chuẩn, đo tách riêng OCR, trích xuất dữ kiện, render scene, analyzer và algebra solver. Mục tiêu kiểm chứng thực tế là cho học sinh dùng thử trên các dạng bài đã chọn, đo thời gian hoàn thành, tỷ lệ phải sửa dữ kiện và mức độ hiểu sau khi dùng trực quan hóa.
+### Giai đoạn 1. Sau cuộc thi: duy trì bản beta công khai
 
-### Giai đoạn 3. Fine-tune model chuyên biệt
+- **Ứng dụng:** ổn định luồng chính từ văn bản hoặc ảnh đề bài đến scene, phân tích, lời giải và export; sửa các điểm khiến người dùng mới không thể tự hoàn thành tác vụ.
+- **Người dùng:** mời nhóm nhỏ học sinh và giáo viên dùng lại hằng tuần, tiếp nhận phản hồi ngay trong ứng dụng và xây bộ tình huống lỗi thực tế.
+- **Nền tảng:** duy trì CI, health check, telemetry, backup và quy trình phát hành; theo dõi lỗi theo từng workflow thay vì chỉ kiểm tra trang web còn hoạt động.
+- **Chỉ số quyết định:** tỷ lệ hoàn thành tác vụ, tỷ lệ kết quả cần sửa, thời gian xử lý, lỗi hệ thống và tỷ lệ người dùng quay lại.
 
-Mục tiêu kỹ thuật là xây dataset từ đề toán tiếng Việt, scene cấu trúc, yêu cầu solver và các trường hợp người dùng đã sửa; dữ liệu phải được làm sạch, ẩn thông tin cá nhân, gắn nhãn và kiểm duyệt trước khi huấn luyện. Nhóm fine-tune model phù hợp cho các tác vụ hiểu ý định, trích xuất dữ kiện và chuẩn hóa đầu vào, sau đó chỉ đưa model mới vào sử dụng khi vượt baseline trên benchmark của Giai đoạn 2. Kết quả toán học vẫn phải đi qua validator, geometry engine, CAS hoặc solver thay vì tin trực tiếp đầu ra model. Mục tiêu vận hành là giảm tỷ lệ phải sửa dữ kiện, giảm phụ thuộc API bên ngoài và kiểm soát chi phí mà không làm giảm độ tin cậy.
+### Giai đoạn 2. Thí điểm học tập và đo độ chính xác
 
-### Giai đoạn 4. Hoàn thiện công cụ giáo viên
+- **Ứng dụng:** tinh chỉnh trải nghiệm renderer, analyzer, solver và simulation theo các buổi học thật; bổ sung hướng dẫn tại đúng bước người dùng gặp khó khăn.
+- **Người dùng:** tổ chức thí điểm với giáo viên hoặc nhóm học sinh theo từng chuyên đề lớp 11–12, không mở rộng đồng loạt khi chưa đo được hiệu quả.
+- **Nền tảng:** xây benchmark đề toán tiếng Việt có đáp án chuẩn, tách riêng phép đo OCR, trích xuất dữ kiện, scene, analyzer và solver; đưa các lỗi đã xác nhận thành regression test.
+- **Chỉ số quyết định:** độ chính xác theo chuyên đề, tỷ lệ phải sửa dữ kiện, thời gian chuẩn bị bài của giáo viên, mức độ hoàn thành bài của học sinh và mức độ quay lại sau đợt thí điểm.
 
-Mục tiêu kỹ thuật là cải thiện độc lập hai nhóm công cụ: PDF to Word cho chuyển đổi tài liệu; scene editor và export cho luồng toán học.
+### Giai đoạn 3. Hoàn thiện ứng dụng cho giáo viên và học sinh
 
-### Giai đoạn 5. Mở rộng vận hành
+- **Ứng dụng giáo viên:** cải thiện scene editor, quản lý lịch sử, tái sử dụng kết quả và export học liệu. PDF to Word tiếp tục là nhánh chuyển đổi tài liệu độc lập, không bị ghép thành đầu vào của renderer.
+- **Ứng dụng học sinh:** tổ chức mô phỏng và bài luyện theo chuyên đề, làm rõ trạng thái kiểm chứng, giả định và lỗi để người học không nhầm hình minh họa với kết luận toán học.
+- **Nền tảng:** hoàn thiện learning profile ở mức dữ liệu tối thiểu cần thiết, phân quyền dữ liệu cá nhân và dashboard chất lượng cho nhóm vận hành.
+- **Chỉ số quyết định:** số học liệu được tạo và tái sử dụng, số phiên học hoàn thành, tỷ lệ người dùng quay lại và phản hồi định tính từ giáo viên.
 
-Mục tiêu kỹ thuật là tối ưu hiệu năng, tách worker theo nhu cầu tải thật, hoàn thiện backup/restore có kiểm chứng và chuẩn hóa API nếu có đối tác tích hợp. Mục tiêu kiểm chứng thực tế là theo dõi tỷ lệ quay lại, tần suất sử dụng, thời gian xử lý và tỷ lệ lỗi của các workflow chính trong môi trường sử dụng thường xuyên.
+### Giai đoạn 4. Fine-tune model từ dữ liệu đã kiểm duyệt
 
-### Giai đoạn 6. Cá nhân hóa học tập
+- **Ứng dụng:** giảm số bước người dùng phải sửa khi nhập đề tiếng Việt, nhưng giữ cơ chế xác nhận khi model không chắc chắn.
+- **Dữ liệu:** xây dataset từ đề toán, scene cấu trúc, yêu cầu solver và các trường hợp người dùng đã sửa; dữ liệu phải được ẩn thông tin cá nhân, gắn nhãn và kiểm duyệt trước khi huấn luyện.
+- **Nền tảng AI:** fine-tune model phù hợp cho hiểu ý định, trích xuất dữ kiện và chuẩn hóa đầu vào. Model mới chỉ được phát hành khi vượt baseline của Giai đoạn 2 trên tập kiểm thử tách biệt.
+- **Ranh giới:** kết quả toán học vẫn đi qua validator, geometry engine, CAS hoặc solver. Fine-tune không thay thế lõi kiểm chứng.
+- **Chỉ số quyết định:** độ chính xác trích xuất, tỷ lệ người dùng phải sửa, độ trễ, chi phí mỗi tác vụ và mức phụ thuộc vào API bên ngoài.
 
-Mục tiêu kỹ thuật là dùng history và learning profile để gợi ý mô phỏng, bài luyện hoặc ví dụ theo năng lực. Mục tiêu kiểm chứng thực tế là đánh giá tác động đến trải nghiệm học, khả năng tự phát hiện lỗi và tiến bộ theo thời gian, thay vì chỉ đo số lượng tính năng đã thêm.
+### Giai đoạn 5. Phát triển thành nền tảng có khả năng mở rộng
 
-Bốn ưu tiên xuyên suốt lộ trình là hoàn thiện workflow thay vì bổ sung công cụ rời rạc, đo độ tin cậy bằng benchmark, chỉ fine-tune từ dữ liệu đã kiểm duyệt và đưa phản hồi của học sinh–giáo viên vào chu kỳ phát triển.
+- **Ứng dụng:** giữ web app là kênh chính; chỉ đầu tư thêm PWA hoặc ứng dụng di động khi dữ liệu thiết bị và tần suất sử dụng chứng minh nhu cầu.
+- **Nền tảng:** chuẩn hóa contract giữa frontend và các lõi toán học, tách worker khi hàng đợi và tải thực tế yêu cầu, kiểm chứng backup/restore, tăng khả năng quan sát và cô lập tác vụ nặng.
+- **Tích hợp:** mở API hoặc tích hợp với hệ thống trường học, kho học liệu khi có đối tác và use case cụ thể; không mở rộng API chỉ để có thêm tính năng trình diễn.
+- **Vận hành:** xác định quota, chi phí hạ tầng và gói sử dụng phù hợp cho cá nhân hoặc tổ chức để sản phẩm có nguồn lực duy trì lâu dài.
+- **Chỉ số quyết định:** độ ổn định, chi phí trên người dùng hoạt động, thời gian phản hồi, số tích hợp được sử dụng thật và khả năng duy trì vận hành.
+
+### Giai đoạn 6. Hệ sinh thái học tập cá nhân hóa
+
+- **Ứng dụng:** dùng history và learning profile để gợi ý mô phỏng, bài luyện hoặc ví dụ theo năng lực; giáo viên có thể theo dõi tiến trình trong phạm vi được người học cho phép.
+- **Nội dung:** mở rộng chuyên đề dựa trên nhu cầu và benchmark, ưu tiên chiều sâu kiểm chứng thay vì tuyên bố bao phủ toàn bộ chương trình.
+- **Nền tảng:** cung cấp cơ chế để giáo viên đóng góp, rà soát và tái sử dụng học liệu có phiên bản và nguồn gốc rõ ràng.
+- **Chỉ số quyết định:** tiến bộ học tập, mức độ tái sử dụng học liệu, tỷ lệ đóng góp được kiểm duyệt và tỷ lệ duy trì người dùng dài hạn.
+
+Cam kết phát triển sau cuộc thi không nằm ở số lượng tính năng dự kiến, mà ở vòng lặp phát hành–đo lường–cải tiến, nhóm người dùng thí điểm, dữ liệu benchmark và nền tảng vận hành đã được đặt làm phần chính của sản phẩm. Nếu một hướng mở rộng không tạo giá trị sử dụng hoặc không đạt ngưỡng chất lượng, nhóm dừng hướng đó và ưu tiên workflow đang được dùng thật.
 
 ## 9. Kết luận
 
