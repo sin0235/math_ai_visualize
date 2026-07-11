@@ -70,8 +70,8 @@ def build_graph_analysis(
             "end": _bound_payload(component.end),
             "left_open": bool(component.left_open),
             "right_open": bool(component.right_open),
-            "left_window_clipped": _window_clips_domain(effective_domain, component.start, "left"),
-            "right_window_clipped": _window_clips_domain(effective_domain, component.end, "right"),
+            "left_window_clipped": _window_clips_domain(effective_domain, component.start, "left", window),
+            "right_window_clipped": _window_clips_domain(effective_domain, component.end, "right", window),
             "left_endpoint": _endpoint_payload(branch_expr, variable, component.start, bool(component.left_open), "+"),
             "right_endpoint": _endpoint_payload(branch_expr, variable, component.end, bool(component.right_open), "-"),
             "points": points,
@@ -158,8 +158,11 @@ def _windowed_domain(active: Any, window: tuple[float, float]):
     return active.intersect(sp.Interval(left, right))
 
 
-def _window_clips_domain(domain_set: Any, bound: Any, side: str) -> bool:
+def _window_clips_domain(domain_set: Any, bound: Any, side: str, window: tuple[float, float]) -> bool:
     try:
+        window_bound = sp.Rational(str(window[0 if side == "left" else 1]))
+        if bound != window_bound:
+            return False
         epsilon = sp.Rational(1, 1_000_000)
         probe = bound - epsilon if side == "left" else bound + epsilon
         return domain_set.contains(probe) is sp.S.true

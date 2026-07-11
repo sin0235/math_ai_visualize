@@ -143,6 +143,17 @@ def test_function_graph_builds_all_tangent_family_commands():
     assert "g2(x)=2*x-1" in commands
 
 
+def test_function_graph_does_not_clip_piecewise_boundary():
+    analysis = analyze_function("Piecewise((x^2, x<0), (x, x>=0))")
+
+    build_function_graph(analysis)
+
+    left_branch = next(segment for segment in analysis["graph_analysis_v2"]["segments"] if segment["end"]["exact"] == "0")
+    right_branch = next(segment for segment in analysis["graph_analysis_v2"]["segments"] if segment["start"]["exact"] == "0")
+    assert left_branch["right_window_clipped"] is False
+    assert right_branch["left_window_clipped"] is False
+
+
 def test_analyzer_session_rejects_engine_version_mismatch(monkeypatch):
     session = analyzer_runtime.create_analysis_session("user:one", {"expression": "x"})
 
