@@ -50,13 +50,13 @@ export function MixedTextRenderer({ text, className }: { text: string; className
     <span className={className}>
       {parts.map((part, index) => {
         if (part.startsWith('$$') && part.endsWith('$$')) {
-          return <KatexSpan key={index} tex={part.slice(2, -2)} display={false} className="inline-math" />;
+          return <KatexSpan key={index} tex={part.slice(2, -2)} display className="display-math" />;
         }
         if (part.startsWith('$') && part.endsWith('$')) {
           return <KatexSpan key={index} tex={part.slice(1, -1)} display={false} className="inline-math" />;
         }
         if (part.startsWith('\\[') && part.endsWith('\\]')) {
-          return <KatexSpan key={index} tex={part.slice(2, -2)} display={false} className="inline-math" />;
+          return <KatexSpan key={index} tex={part.slice(2, -2)} display className="display-math" />;
         }
         if (part.startsWith('\\(') && part.endsWith('\\)')) {
           return <KatexSpan key={index} tex={part.slice(2, -2)} display={false} className="inline-math" />;

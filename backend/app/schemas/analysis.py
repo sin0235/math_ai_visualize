@@ -1,17 +1,217 @@
-from typing import Any
+from enum import Enum
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, FiniteFloat, field_validator, model_validator
 
 from app.schemas.scene import MAX_IMAGE_DATA_URL_CHARS, RuntimeSettings
 
 
-class AnalyzeRequest(BaseModel):
+class StrictModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class FunctionOcrProvenance(StrictModel):
+
+    source: Literal["ocr", "ocr_confirmed"]
+    provider: str = Field(min_length=1, max_length=64)
+    model: str = Field(min_length=1, max_length=256)
+    extraction_version: str = Field(default="function-ocr-v2", max_length=64)
+
+
+class LineMode(str, Enum):
+    INTERSECT = "intersect"
+    TANGENT_AT = "tangent_at"
+
+
+class TransformType(str, Enum):
+    VERTICAL_SHIFT = "vertical_shift"
+    HORIZONTAL_SHIFT = "horizontal_shift"
+    VERTICAL_SCALE = "vertical_scale"
+    HORIZONTAL_SCALE = "horizontal_scale"
+    REFLECT_X = "reflect_x"
+    REFLECT_Y = "reflect_y"
+    ABSOLUTE_ALL = "absolute_all"
+    ABSOLUTE_X = "absolute_x"
+
+
+class ParameterConditionTarget(str, Enum):
+    INCREASING_R = "increasing_r"
+    DECREASING_R = "decreasing_r"
+    EXTREMA_COUNT = "extrema_count"
+
+
+BoundedFiniteFloat = Annotated[FiniteFloat, Field(ge=-1_000_000, le=1_000_000)]
+
+
+class ParameterValues(StrictModel):
+    m: str | FiniteFloat | None = None
+
+    @field_validator("m")
+    @classmethod
+    def validate_exact_value(cls, value: str | float | None) -> str | float | None:
+        if isinstance(value, str):
+            value = value.strip()
+            if not value or len(value) > 128:
+                raise ValueError("Giá trị tham số exact phải có từ 1 đến 128 ký tự.")
+        return value
+
+
+class AnalysisInterval(StrictModel):
+    a: BoundedFiniteFloat
+    b: BoundedFiniteFloat
+    open_a: bool = False
+    open_b: bool = False
+
+    @model_validator(mode="after")
+    def validate_order(self) -> "AnalysisInterval":
+        if self.a >= self.b:
+            raise ValueError("a phải nhỏ hơn b.")
+        return self
+
+
+class AnalysisLine(StrictModel):
+    mode: LineMode = LineMode.INTERSECT
+    k: BoundedFiniteFloat = 0
+    b: BoundedFiniteFloat = 0
+    x0: BoundedFiniteFloat = 0
+
+
+class ParameterConditionRequest(StrictModel):
+    targets: list[ParameterConditionTarget] = Field(min_length=1, max_length=3)
+    extrema_count: int | None = Field(default=None, ge=0, le=2)
+
+    @field_validator("targets")
+    @classmethod
+    def validate_unique_targets(cls, value: list[ParameterConditionTarget]) -> list[ParameterConditionTarget]:
+        if len(set(value)) != len(value):
+            raise ValueError("Danh sách target không được trùng lặp.")
+        return value
+
+    @model_validator(mode="after")
+    def validate_extrema_target(self) -> "ParameterConditionRequest":
+        needs_count = ParameterConditionTarget.EXTREMA_COUNT in self.targets
+        if needs_count and self.extrema_count is None:
+            raise ValueError("extrema_count là bắt buộc khi target là extrema_count.")
+        if not needs_count and self.extrema_count is not None:
+            raise ValueError("extrema_count chỉ hợp lệ với target extrema_count.")
+        return self
+
+
+class ValuedGraphTransform(StrictModel):
+    type: Literal[
+        TransformType.VERTICAL_SHIFT,
+        TransformType.HORIZONTAL_SHIFT,
+        TransformType.VERTICAL_SCALE,
+        TransformType.HORIZONTAL_SCALE,
+    ]
+    value: BoundedFiniteFloat
+
+
+class FixedGraphTransform(StrictModel):
+    type: Literal[
+        TransformType.REFLECT_X,
+        TransformType.REFLECT_Y,
+        TransformType.ABSOLUTE_ALL,
+        TransformType.ABSOLUTE_X,
+    ]
+    # Giữ value optional cho client legacy; frontend mới không gửi field này.
+    value: BoundedFiniteFloat | None = None
+
+
+GraphTransform = Annotated[ValuedGraphTransform | FixedGraphTransform, Field(discriminator="type")]
+
+
+class AnalysisOptions(StrictModel):
+    parameters: ParameterValues | None = None
+    parameter_mode: Literal["symbolic", "substitute"] | None = None
+    interval: AnalysisInterval | None = None
+    line: AnalysisLine | None = None
+    parameter_conditions: ParameterConditionRequest | None = None
+    transform: GraphTransform | None = None
+
+    @model_validator(mode="after")
+    def validate_parameter_mode(self) -> "AnalysisOptions":
+        has_parameter_value = self.parameters is not None and self.parameters.m is not None
+        if self.parameter_mode == "substitute" and not has_parameter_value:
+            raise ValueError("Chế độ substitute cần giá trị tham số m.")
+        return self
+
+
+class AnalyzeRequest(AnalysisOptions):
     expression: str = Field(min_length=1, max_length=1000)
-    parameters: dict[str, float] | None = None
-    interval: dict[str, Any] | None = None
-    line: dict[str, Any] | None = None
-    parameter_conditions: dict[str, Any] | None = None
-    transform: dict[str, Any] | None = None
+    provenance: FunctionOcrProvenance | None = None
+
+
+class PlotWindow(StrictModel):
+    x_min: BoundedFiniteFloat
+    x_max: BoundedFiniteFloat
+
+    @model_validator(mode="after")
+    def validate_bounds(self) -> "PlotWindow":
+        if self.x_min >= self.x_max:
+            raise ValueError("x_min phải nhỏ hơn x_max.")
+        if self.x_max - self.x_min > 1_000_000:
+            raise ValueError("Cửa sổ vẽ quá rộng.")
+        return self
+
+
+# Tên cũ giữ lại cho import nội bộ/client cũ.
+GraphWindow = PlotWindow
+
+
+class GraphSamplesRequest(StrictModel):
+    expression: str = Field(min_length=1, max_length=1000)
+    parameters: ParameterValues | None = None
+    window: PlotWindow
+    max_points: int = Field(default=500, ge=32, le=2_000)
+
+
+class GraphNumber(StrictModel):
+    exact: str
+    latex: str
+    approx: FiniteFloat | None = None
+
+
+class GraphEndpoint(GraphNumber):
+    open: bool
+    attained: bool
+    y: FiniteFloat | None = None
+
+
+class GraphPoint(StrictModel):
+    x: FiniteFloat
+    y: FiniteFloat
+
+
+class GraphSegment(StrictModel):
+    component_id: str
+    expression_exact: str
+    expression_latex: str
+    start: GraphNumber
+    end: GraphNumber
+    left_open: bool
+    right_open: bool
+    left_endpoint: GraphEndpoint
+    right_endpoint: GraphEndpoint
+    points: list[GraphPoint]
+    sample_count: int = Field(ge=0, le=2_000)
+    verification: str
+
+
+class GraphAnalysis(StrictModel):
+    status: Literal["complete", "partial", "unknown"]
+    method: str
+    window: PlotWindow
+    max_points: int = Field(ge=32, le=2_000)
+    point_count: int = Field(ge=0, le=2_000)
+    segments: list[GraphSegment]
+    singularities: list[GraphNumber]
+    features: list[GraphNumber] = Field(default_factory=list)
+    warnings: list[str]
+
+
+class GraphSamplesResponse(StrictModel):
+    graph_analysis_v2: GraphAnalysis
 
 
 class AnalyzeOcrRequest(BaseModel):
@@ -26,6 +226,47 @@ class AnalyzeOcrRequest(BaseModel):
         if bool(self.image_data_url) == bool(self.upload_id):
             raise ValueError("Cần gửi đúng một trong hai trường image_data_url hoặc upload_id.")
         return self
+
+
+class FunctionOcrAmbiguousToken(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    token: str = Field(min_length=1, max_length=64)
+    alternatives: list[str] = Field(default_factory=list, max_length=8)
+    reason: str = Field(default="", max_length=256)
+    start: int | None = Field(default=None, ge=0, le=1000)
+    end: int | None = Field(default=None, ge=0, le=1000)
+
+    @model_validator(mode="after")
+    def validate_range(self) -> "FunctionOcrAmbiguousToken":
+        if (self.start is None) != (self.end is None):
+            raise ValueError("Vị trí token OCR phải có đủ start và end.")
+        if self.start is not None and self.end is not None and self.start >= self.end:
+            raise ValueError("Vị trí token OCR không hợp lệ.")
+        return self
+
+
+class FunctionOcrCandidate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expression: str = Field(default="", max_length=1000)
+    variable: Literal["x"] = "x"
+    parameters: list[Literal["m"]] = Field(default_factory=list, max_length=1)
+    confidence: float = Field(ge=0, le=1)
+    warnings: list[str] = Field(default_factory=list, max_length=20)
+    ambiguous_tokens: list[FunctionOcrAmbiguousToken] = Field(default_factory=list, max_length=20)
+    needs_confirmation: bool = True
+
+    @model_validator(mode="after")
+    def validate_token_ranges(self) -> "FunctionOcrCandidate":
+        if any(token.end is not None and token.end > len(self.expression) for token in self.ambiguous_tokens):
+            raise ValueError("Vị trí token OCR vượt ngoài biểu thức.")
+        return self
+
+
+class FunctionOcrExtraction(FunctionOcrCandidate):
+    ocr_text: str = Field(default="", max_length=20_000)
+    provenance: FunctionOcrProvenance
 
 
 class CriticalPoint(BaseModel):
@@ -81,6 +322,10 @@ class AnalyzeResponse(BaseModel):
     evaluated_expression_latex: str | None = None
     parameters: dict[str, Any] | None = None
     analysis_mode: str | None = None
+    parameter_mode: str | None = None
+    requires_parameter_confirmation: bool = False
+    requires_substitution_for_graph: bool = False
+    parameter_analysis_v2: dict[str, Any] | None = None
     derivative: str | None = None
     derivative_latex: str | None = None
     second_derivative: str | None = None
@@ -114,8 +359,10 @@ class AnalyzeResponse(BaseModel):
     geogebra_commands: list[str] = Field(default_factory=list)
     graph_scene: dict[str, Any] | None = None
     graph_points: list[dict[str, float]] = Field(default_factory=list)
+    graph_analysis_v2: dict[str, Any] | None = None
     ocr_text: str | None = None
     ocr_expression: str | None = None
+    provenance: FunctionOcrProvenance | None = None
     interval_analysis: dict[str, Any] | None = None
     line_analysis: dict[str, Any] | None = None
     parameter_conditions: list[dict[str, Any]] = Field(default_factory=list)

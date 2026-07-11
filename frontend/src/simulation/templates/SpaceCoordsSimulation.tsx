@@ -2,7 +2,7 @@ import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Line, Text, Html } from '@react-three/drei';
 import { useMemo, useState } from 'react';
 import * as THREE from 'three';
-import { KatexSpan } from '../../components/KatexSpan';
+import { KatexSpan, MixedTextRenderer } from '../../components/KatexSpan';
 import { SliderInput } from '../runtime/SimulationPrimitives';
 import { formatNumber } from '../../utils/calculusNumerics';
 
@@ -191,8 +191,8 @@ export function SpaceCoordsSimulation({ step, progress, freeMode = false }: Prop
         </div>
 
         <div className="csim-card csim-step-copy">
-          <strong>{titles[step - 1] ?? titles[0]}</strong>
-          <p>{copies[step - 1] ?? copies[0]}</p>
+          <strong><MixedTextRenderer text={titles[step - 1] ?? titles[0]} /></strong>
+          <p><MixedTextRenderer text={copies[step - 1] ?? copies[0]} /></p>
           <ul className="sim-mono-list">
             <li>Khoảng cách điểm–mp: <KatexSpan tex={String.raw`d=\dfrac{|ax_0+by_0+cz_0+d|}{\sqrt{a^2+b^2+c^2}}`} /></li>
             <li>Mp & cầu: so sánh d(I, mp) với R → không giao / tiếp xúc / cắt (đường tròn).</li>
@@ -388,19 +388,19 @@ function IntersectionCircle({
 }
 
 const titles = [
-  'Bước 1 — Hệ Oxyz, điểm A và vectơ',
-  'Bước 2 — Đường thẳng tham số qua A phương u',
-  'Bước 3 — Mặt phẳng: điểm + pháp tuyến',
-  'Bước 4 — Mặt cầu tâm I bán kính R',
-  'Bước 5 — Vị trí tương đối mp ∩ cầu, khoảng cách',
-  'Bước 6 — Tổng hợp góc, khoảng cách, quan hệ điểm–cầu',
+  'Bước 1 — Hệ $Oxyz$, điểm $A$ và vectơ',
+  'Bước 2 — Đường thẳng tham số qua $A$ có phương $\\vec u$',
+  'Bước 3 — Mặt phẳng: điểm và pháp tuyến',
+  'Bước 4 — Mặt cầu tâm $I$, bán kính $R$',
+  'Bước 5 — Vị trí tương đối mặt phẳng và mặt cầu',
+  'Bước 6 — Tổng hợp góc, khoảng cách và quan hệ điểm–cầu',
 ];
 
 const copies = [
-  'Làm quen trục tọa độ vuông góc trong không gian. Mỗi điểm là bộ ba (x; y; z).',
-  'Đường thẳng: (x;y;z) = A + t u. Kéo u để đổi phương; điểm A cố định đường đi qua.',
-  'Mặt phẳng xác định bởi điểm P và pháp tuyến n: n · (M − P) = 0.',
-  'Mặt cầu: mọi điểm cách I một khoảng R. Xoay mô hình để thấy tính đối xứng.',
-  'So sánh d(I, mp) với R. Nếu cắt nhau, giao tuyến là đường tròn nằm trên mặt phẳng.',
-  'Đọc bảng số: khoảng cách, góc đường–mặt, điểm trong/trên/ngoài cầu. Đây là bộ công cụ tọa độ lớp 12.',
+  'Làm quen hệ trục tọa độ vuông góc trong không gian. Mỗi điểm là bộ ba $(x;y;z)$.',
+  'Đường thẳng có dạng $(x;y;z)=A+t\\vec u$. Thay đổi $\\vec u$ để đổi phương.',
+  'Mặt phẳng xác định bởi điểm $P$ và pháp tuyến $\\vec n$: $\\vec n\\cdot(\\vec{PM})=0$.',
+  'Mọi điểm trên mặt cầu cách tâm $I$ một khoảng $R$. Xoay mô hình để quan sát tính đối xứng.',
+  'So sánh $d(I,(P))$ với $R$. Khi cắt nhau, giao tuyến là đường tròn nằm trên mặt phẳng.',
+  'Đọc khoảng cách, góc đường–mặt và vị trí điểm so với mặt cầu.',
 ];

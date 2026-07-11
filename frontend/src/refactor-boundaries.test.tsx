@@ -1,7 +1,7 @@
 import type { ComponentProps } from 'react';
 import { ApiError } from './api/client';
-import type { AnalyzeOptions, AnalyzeResponse, RenderHistoryItem, SolveResponse, UserResponse } from './api/client';
-import { analyzeFunction, analyzeFunctionImage } from './api/analyze';
+import type { AnalyzeOptions, AnalyzeResponse, FunctionOcrExtraction, RenderHistoryItem, SolveResponse, UserResponse } from './api/client';
+import { analyzeFunction, analyzeFunctionImage, extractFunctionImage } from './api/analyze';
 import { getCurrentUser, login, logout } from './api/auth';
 import { checkAllAdminProviders, getAdminSummary } from './api/admin';
 import { getHealth, renderProblem, solveProblem } from './api/render';
@@ -127,13 +127,39 @@ const analyzerPanelProps: ComponentProps<typeof FunctionAnalyzerPanel> = {
   onWarnings: () => undefined,
 };
 
+const ocrCandidate: FunctionOcrExtraction = {
+  expression: 'x^2',
+  variable: 'x',
+  parameters: [],
+  confidence: 0.9,
+  warnings: ['Kiểm tra số mũ.'],
+  ambiguous_tokens: [{ token: '2', alternatives: ['z'], reason: 'Nét mờ', start: 2, end: 3 }],
+  needs_confirmation: true,
+  ocr_text: 'y = x²',
+  provenance: {
+    source: 'ocr',
+    provider: 'local',
+    model: 'test-model',
+    extraction_version: 'function-ocr-v2',
+  },
+};
+
 const analyzerInputProps: ComponentProps<typeof AnalyzerInput> = {
   expression: 'x^2',
   loading: false,
   ocrLoading: false,
+  ocrCandidate,
+  ocrPreviewUrl: 'blob:test',
   error: null,
+  parameterDetected: false,
+  parameterMode: '',
+  parameterValue: '1',
+  onParameterModeChange: () => undefined,
+  onParameterValueChange: () => undefined,
   onExpressionChange: () => undefined,
   onAnalyze: () => undefined,
+  onConfirmOcr: () => undefined,
+  onDiscardOcr: () => undefined,
   onImageChange: () => undefined,
 };
 
@@ -211,6 +237,7 @@ void iconProps;
 void useFunctionAnalysis;
 void analyzeFunction;
 void analyzeFunctionImage;
+void extractFunctionImage;
 void getCurrentUser;
 void login;
 void logout;

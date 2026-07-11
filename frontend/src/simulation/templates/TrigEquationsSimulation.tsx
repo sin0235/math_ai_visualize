@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { KatexSpan } from '../../components/KatexSpan';
+import { KatexSpan, MixedTextRenderer } from '../../components/KatexSpan';
 import { SliderInput } from '../runtime/SimulationPrimitives';
 import { formatNumber } from '../../utils/calculusNumerics';
 import {
@@ -114,8 +114,8 @@ export function TrigEquationsSimulation({ step, progress }: Props) {
         </div>
 
         <div className="csim-card csim-step-copy">
-          <strong>{titles[step - 1] ?? titles[0]}</strong>
-          <p>{copies[step - 1] ?? copies[0]}</p>
+          <strong><MixedTextRenderer text={titles[step - 1] ?? titles[0]} /></strong>
+          <p><MixedTextRenderer text={copies[step - 1] ?? copies[0]} /></p>
           <ul className="sim-mono-list">
             <li><KatexSpan tex={String.raw`\sin x=m,\ |m|\le1:\quad x=(-1)^k\alpha+k\pi`} /></li>
             <li><KatexSpan tex={String.raw`\cos x=m:\quad x=\pm\alpha+2k\pi`} /></li>
@@ -291,17 +291,17 @@ function UnitCircleSolutions({
 }
 
 const titles = [
-  'Bước 1 — Chọn sin/cos/tan = m',
+  'Bước 1 — Chọn $\\sin x$, $\\cos x$ hoặc $\\tan x$ bằng $m$',
   'Bước 2 — Đánh dấu nghiệm trên đường tròn',
-  'Bước 3 — Giao điểm trên đồ thị y=m',
+  'Bước 3 — Giao điểm trên đồ thị $y=m$',
   'Bước 4 — Họ nghiệm tổng quát',
-  'Bước 5 — Đổi cửa sổ & đếm số nghiệm',
+  'Bước 5 — Đổi cửa sổ và đếm số nghiệm',
 ];
 
 const copies = [
-  '|m|>1 với sin/cos ⇒ vô nghiệm. tan luôn có nghiệm với mọi m.',
+  '$|m|>1$ khiến phương trình sin/cos vô nghiệm; phương trình tan luôn có nghiệm với mọi $m$.',
   'Mỗi nghiệm là một hướng từ gốc trên đường tròn đơn vị.',
-  'Đồ thị sóng cắt đường ngang y=m tại các x nghiệm.',
-  'Công thức k∈Z sinh vô hạn nghiệm — thi thường hỏi trên một đoạn.',
-  'Đổi [0,2π] vs [−2π,2π] để thấy chu kỳ lặp.',
+  'Đồ thị sóng cắt đường ngang $y=m$ tại các hoành độ nghiệm.',
+  'Tham số $k\\in\\mathbb{Z}$ sinh vô hạn nghiệm; đề thi thường giới hạn trên một đoạn.',
+  'Đổi $[0,2\\pi]$ và $[-2\\pi,2\\pi]$ để quan sát chu kỳ lặp.',
 ];

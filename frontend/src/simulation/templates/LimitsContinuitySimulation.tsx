@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { KatexSpan } from '../../components/KatexSpan';
+import { KatexSpan, MixedTextRenderer } from '../../components/KatexSpan';
 import { FormulaInput, PresetButtons, ResultCard, SliderInput } from '../runtime/SimulationPrimitives';
 import { formatNumber, sampleFunction, validateBounds } from '../../utils/calculusNumerics';
 import { classifyContinuity, parseFn, twoSidedLimit } from '../math/limitsAnalysis';
@@ -63,7 +63,7 @@ export function LimitsContinuitySimulation({ step, progress }: Props) {
             </select>
           </label>
           {state.mode === 'custom' && (
-            <FormulaInput label="f(x)" value={state.expr} onChange={(expr) => setState({ ...state, expr })} />
+            <FormulaInput label="$f(x)$" value={state.expr} onChange={(expr) => setState({ ...state, expr })} />
           )}
           {state.mode === 'jump' && (
             <SliderInput label="Độ nhảy $k$: $f=x$ nếu $x<a$, $f=x+k$ nếu $x\\ge a$" value={state.jumpK} min={-3} max={3} step={0.1} onChange={(jumpK) => setState({ ...state, jumpK })} />
@@ -149,8 +149,8 @@ export function LimitsContinuitySimulation({ step, progress }: Props) {
         </div>
 
         <div className="csim-card csim-step-copy">
-          <strong>{titles[step - 1] ?? titles[0]}</strong>
-          <p>{copies[step - 1] ?? copies[0]}</p>
+          <strong><MixedTextRenderer text={titles[step - 1] ?? titles[0]} /></strong>
+          <p><MixedTextRenderer text={copies[step - 1] ?? copies[0]} /></p>
           <ul className="sim-mono-list">
             <li>lim tồn tại ⇔ lim trái = lim phải (hữu hạn).</li>
             <li>Liên tục tại a ⇔ lim = f(a) (f xác định tại a).</li>
@@ -282,19 +282,19 @@ function blank(error: string) {
 }
 
 const titles = [
-  'Bước 1 — Chọn hàm và điểm a',
-  'Bước 2 — Bảng giá trị hai phía h→0',
-  'Bước 3 — So lim trái / lim phải',
-  'Bước 4 — So với f(a): liên tục hay gián đoạn?',
-  'Bước 5 — Khử gián đoạn (nếu có thể)',
-  'Bước 6 — Phân loại: khử được / nhảy / vô hạn',
+  'Bước 1 — Chọn hàm và điểm $a$',
+  'Bước 2 — Bảng giá trị hai phía khi $h\\to0$',
+  'Bước 3 — So sánh giới hạn trái và phải',
+  'Bước 4 — So với $f(a)$: liên tục hay gián đoạn?',
+  'Bước 5 — Khử gián đoạn nếu có thể',
+  'Bước 6 — Phân loại: khử được, nhảy hoặc vô hạn',
 ];
 
 const copies = [
-  'Giới hạn mô tả “xu hướng” f khi x tiến tới a, không nhất thiết bằng f(a).',
-  'Thu nhỏ h: nếu f(a±h) ổn định quanh một số L thì nghi ngờ lim = L.',
-  'Hai phía phải khớp. Nhảy: trái ≠ phải. Cực: một/phía |f| phình to.',
-  'Ba điều kiện liên tục: f(a) có, lim có, lim = f(a).',
-  'Hố: đặt f(a)=L. Nhảy/cực: không khử chỉ bằng một điểm.',
-  'Đặt tên đúng loại gián đoạn — đó là kỹ năng thi lớp 11.',
+  'Giới hạn mô tả xu hướng của $f(x)$ khi $x\\to a$, không nhất thiết bằng $f(a)$.',
+  'Thu nhỏ $h$: nếu $f(a\\pm h)$ ổn định quanh $L$ thì có cơ sở dự đoán giới hạn bằng $L$.',
+  'Hai giới hạn một phía phải bằng nhau. Gián đoạn nhảy có hai phía khác nhau; gián đoạn vô hạn làm $|f(x)|$ tăng không giới hạn.',
+  'Ba điều kiện liên tục: $f(a)$ xác định, $\\lim_{x\\to a}f(x)$ tồn tại và giới hạn bằng $f(a)$.',
+  'Với hố, đặt $f(a)=L$. Gián đoạn nhảy hoặc vô hạn không thể khử bằng cách đổi một điểm.',
+  'Đặt đúng tên loại gián đoạn để chọn phương pháp xử lý.',
 ];

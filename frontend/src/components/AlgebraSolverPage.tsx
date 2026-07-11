@@ -220,18 +220,6 @@ export function AlgebraSolverPage() {
 
   return (
     <section className="algebra-solver-page">
-      <header className="algebra-page-header">
-        <div>
-          <p className="algebra-page-kicker">Không gian giải toán</p>
-          <h1>Bộ giải đại số</h1>
-          <p>Nhập đề bằng tiếng Việt hoặc công thức, kiểm tra cách hiểu rồi theo dõi lời giải từng bước.</p>
-        </div>
-        <div className="algebra-page-meta" aria-label="Khả năng bộ giải">
-          <span>MathQuill để nhập</span>
-          <span>KaTeX để đọc</span>
-          <span>Kiểm chứng kết quả</span>
-        </div>
-      </header>
       <div className="algebra-workspace">
         <AlgebraInput
           input={input}

@@ -145,15 +145,99 @@ export interface AnalyzeParameterRange {
 export interface AnalyzeParameters {
   detected: string[];
   active: Record<string, number>;
+  active_exact?: Record<string, string>;
+  provenance?: { mode: string; source: string; exact: boolean };
   ranges: Record<string, AnalyzeParameterRange>;
 }
 
+export interface FunctionOcrProvenance {
+  source: 'ocr' | 'ocr_confirmed';
+  provider: string;
+  model: string;
+  extraction_version: string;
+}
+
+export interface FunctionOcrAmbiguousToken {
+  token: string;
+  alternatives: string[];
+  reason: string;
+  start?: number | null;
+  end?: number | null;
+}
+
+export interface FunctionOcrExtraction {
+  expression: string;
+  variable: 'x';
+  parameters: Array<'m'>;
+  confidence: number;
+  warnings: string[];
+  ambiguous_tokens: FunctionOcrAmbiguousToken[];
+  needs_confirmation: boolean;
+  ocr_text: string;
+  provenance: FunctionOcrProvenance;
+}
+
+export type AnalyzeLineMode = 'intersect' | 'tangent_at';
+
+export type AnalyzeTransformType =
+  | 'vertical_shift'
+  | 'horizontal_shift'
+  | 'vertical_scale'
+  | 'horizontal_scale'
+  | 'reflect_x'
+  | 'reflect_y'
+  | 'absolute_all'
+  | 'absolute_x';
+
+export type ParameterConditionTarget = 'increasing_r' | 'decreasing_r' | 'extrema_count';
+
 export interface AnalyzeOptions {
-  parameters?: { m?: number };
+  parameters?: { m?: string | number };
+  parameter_mode?: 'symbolic' | 'substitute';
+  provenance?: FunctionOcrProvenance;
   interval?: { a: number; b: number; open_a?: boolean; open_b?: boolean };
-  line?: { k?: number; b?: number; mode?: string; x0?: number };
-  parameter_conditions?: { targets: string[]; extrema_count?: number };
-  transform?: { type: string; value: number };
+  line?: { k?: number; b?: number; mode?: AnalyzeLineMode; x0?: number };
+  parameter_conditions?: { targets: ParameterConditionTarget[]; extrema_count?: 0 | 1 | 2 };
+  transform?: { type: AnalyzeTransformType; value?: number };
+}
+
+export interface GraphBoundV2 {
+  exact: string;
+  latex: string;
+  approx: number | null;
+}
+
+export interface GraphEndpointV2 extends GraphBoundV2 {
+  open: boolean;
+  attained: boolean;
+  y: number | null;
+}
+
+export interface GraphSegmentV2 {
+  component_id: string;
+  expression_exact: string;
+  expression_latex: string;
+  start: GraphBoundV2;
+  end: GraphBoundV2;
+  left_open: boolean;
+  right_open: boolean;
+  left_endpoint: GraphEndpointV2;
+  right_endpoint: GraphEndpointV2;
+  points: Array<{ x: number; y: number }>;
+  sample_count: number;
+  verification: string;
+}
+
+export interface GraphAnalysisV2 {
+  status: 'complete' | 'partial' | 'unknown' | string;
+  method: string;
+  window: { x_min: number; x_max: number };
+  max_points: number;
+  point_count: number;
+  segments: GraphSegmentV2[];
+  singularities: Array<{ exact: string; latex: string; approx: number | null }>;
+  features?: Array<{ exact: string; latex: string; approx: number | null }>;
+  warnings: string[];
 }
 
 export interface AnalyzeResponse {
@@ -162,7 +246,17 @@ export interface AnalyzeResponse {
   evaluated_expression: string | null;
   evaluated_expression_latex: string | null;
   parameters: AnalyzeParameters | null;
-  analysis_mode: 'symbolic' | 'numeric_substituted' | null;
+  analysis_mode: 'symbolic' | 'numeric_substituted' | 'safe_symbolic' | 'requires_parameter_confirmation' | null;
+  parameter_mode?: 'symbolic' | 'substitute' | null;
+  requires_parameter_confirmation?: boolean;
+  requires_substitution_for_graph?: boolean;
+  parameter_analysis_v2?: {
+    status: string;
+    parameter: string;
+    boundaries: Array<{ exact: string; latex: string; approx: number }>;
+    cases: Array<Record<string, unknown>>;
+    warnings: string[];
+  } | null;
   derivative: string | null;
   derivative_latex: string | null;
   second_derivative: string | null;
@@ -196,8 +290,10 @@ export interface AnalyzeResponse {
   geogebra_commands: string[];
   graph_scene: MathScene | null;
   graph_points: Array<{ x: number; y: number }>;
+  graph_analysis_v2?: GraphAnalysisV2 | null;
   ocr_text: string | null;
   ocr_expression: string | null;
+  provenance?: FunctionOcrProvenance | null;
   interval_analysis?: {
     a: string;
     b: string;
@@ -256,7 +352,7 @@ export interface AnalyzeResponse {
 }
 
 export async function analyzeFunction(expression: string, options?: AnalyzeOptions | { m?: number }): Promise<AnalyzeResponse> {
-  const hasAnalyzeOptions = !!options && ('parameters' in options || 'interval' in options || 'line' in options || 'parameter_conditions' in options || 'transform' in options);
+  const hasAnalyzeOptions = !!options && ('parameters' in options || 'parameter_mode' in options || 'provenance' in options || 'interval' in options || 'line' in options || 'parameter_conditions' in options || 'transform' in options);
   const payloadOptions = hasAnalyzeOptions ? options as AnalyzeOptions : { parameters: options as { m?: number } | undefined };
   return requestJson('/api/analyze', {
     method: 'POST',
@@ -264,6 +360,37 @@ export async function analyzeFunction(expression: string, options?: AnalyzeOptio
     credentials: 'include',
     body: JSON.stringify({ expression, ...payloadOptions }),
   }, 'Không thể phân tích hàm số.');
+}
+
+export async function sampleFunctionGraph(
+  expression: string,
+  window: { x_min: number; x_max: number },
+  options?: { parameters?: Record<string, string | number>; max_points?: number },
+): Promise<{ graph_analysis_v2: GraphAnalysisV2 }> {
+  return requestJson('/api/analyze/graph-samples', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ expression, window, ...options }),
+  }, 'Không thể cập nhật mẫu đồ thị.');
+}
+
+export async function extractFunctionImage(imageDataUrl: string): Promise<FunctionOcrExtraction> {
+  return extractFunctionImageByPayload({ image_data_url: imageDataUrl });
+}
+
+export async function extractFunctionImageFile(file: File): Promise<FunctionOcrExtraction> {
+  const uploaded = await uploadOcrImage(file);
+  return extractFunctionImageByPayload({ upload_id: uploaded.file_id });
+}
+
+function extractFunctionImageByPayload(payload: { image_data_url: string } | { upload_id: string }): Promise<FunctionOcrExtraction> {
+  return requestJson('/api/analyze/ocr/extract', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(payload),
+  }, 'Không thể đọc hàm số từ ảnh.');
 }
 
 export async function analyzeFunctionImage(imageDataUrl: string): Promise<AnalyzeResponse> {

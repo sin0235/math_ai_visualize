@@ -17,6 +17,7 @@ interface GeoGebraViewProps {
   scene: MathScene;
   view: SceneView;
   onPointChange?: (name: string, point: Vec3) => void | Promise<void>;
+  onStatusChange?: (status: LoadStatus, detail?: string) => void;
   embedded?: boolean;
 }
 
@@ -69,6 +70,7 @@ function loadGeoGebraScript(): Promise<void> {
     };
     const handleError = () => {
       cleanup();
+      script.remove();
       geogebraLoadPromise = null;
       reject(new Error('Không tải được GeoGebra API.'));
     };
@@ -87,7 +89,13 @@ function loadGeoGebraScript(): Promise<void> {
   return geogebraLoadPromise;
 }
 
-export function GeoGebraView({ commands, renderer, scene, view, onPointChange, embedded = false }: GeoGebraViewProps) {
+function resetGeoGebraLoader() {
+  if (window.GGBApplet) return;
+  document.querySelector<HTMLScriptElement>('script[data-geogebra]')?.remove();
+  geogebraLoadPromise = null;
+}
+
+export function GeoGebraView({ commands, renderer, scene, view, onPointChange, onStatusChange, embedded = false }: GeoGebraViewProps) {
   const rawId = useId();
   const appletId = `ggb-${rawId.replace(/[^a-zA-Z0-9]/g, '')}`;
   const appName = renderer === 'geogebra_3d' ? '3d' : 'classic';
@@ -108,7 +116,17 @@ export function GeoGebraView({ commands, renderer, scene, view, onPointChange, e
   const [showAlgebraPanel, setShowAlgebraPanel] = useState(false);
 
   useEffect(() => {
+    onStatusChange?.(status, status === 'error' ? (errorMessage ?? 'GeoGebra command failed') : undefined);
+  }, [errorMessage, onStatusChange, status]);
+
+  useEffect(() => {
     let cancelled = false;
+    const loadTimeout = window.setTimeout(() => {
+      if (cancelled) return;
+      resetGeoGebraLoader();
+      setStatus('error');
+      setErrorMessage('GeoGebra vượt thời gian tải hoặc khởi tạo.');
+    }, 12_000);
     const clickCallbackName = `${appletId}Click`;
     const updateCallbackName = `${appletId}Update`;
     setStatus('loading');
@@ -139,6 +157,7 @@ export function GeoGebraView({ commands, renderer, scene, view, onPointChange, e
           perspective: renderer === 'geogebra_2d' ? (showAlgebraPanel ? 'AG' : 'G') : undefined,
           appletOnLoad: (api: GeoGebraApi) => {
             if (cancelled) return;
+            window.clearTimeout(loadTimeout);
             apiRef.current = api;
             api.setErrorDialogsActive?.(false);
             if (renderer === 'geogebra_2d') api.setPerspective?.(showAlgebraPanel ? 'AG' : 'G');
@@ -158,6 +177,7 @@ export function GeoGebraView({ commands, renderer, scene, view, onPointChange, e
         applet.inject(appletId);
       })
       .catch((caught) => {
+        window.clearTimeout(loadTimeout);
         if (cancelled) return;
         setStatus('error');
         setErrorMessage(caught instanceof Error ? caught.message : 'Không tải được GeoGebra API.');
@@ -165,6 +185,7 @@ export function GeoGebraView({ commands, renderer, scene, view, onPointChange, e
 
     return () => {
       cancelled = true;
+      window.clearTimeout(loadTimeout);
       const api = apiRef.current;
       api?.unregisterObjectClickListener?.(clickCallbackName);
       api?.unregisterUpdateListener?.(updateCallbackName);
@@ -247,7 +268,10 @@ export function GeoGebraView({ commands, renderer, scene, view, onPointChange, e
               <ul>{commandErrors.map((error) => <li key={error}>{error}</li>)}</ul>
             </details>
           )}
-          <button type="button" className="secondary-button" onClick={() => setRetryCount((count) => count + 1)}>Thử tải lại</button>
+          <button type="button" className="secondary-button" onClick={() => {
+            resetGeoGebraLoader();
+            setRetryCount((count) => count + 1);
+          }}>Thử tải lại</button>
         </div>
       )}
       <div className="geogebra-shell">

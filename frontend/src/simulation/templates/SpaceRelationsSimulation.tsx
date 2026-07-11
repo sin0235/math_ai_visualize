@@ -2,7 +2,7 @@ import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Line, Text, Html } from '@react-three/drei';
 import { useMemo, useState } from 'react';
 import * as THREE from 'three';
-import { KatexSpan } from '../../components/KatexSpan';
+import { KatexSpan, MixedTextRenderer } from '../../components/KatexSpan';
 import { formatNumber } from '../../utils/calculusNumerics';
 
 type Props = { step: number; progress: number };
@@ -122,8 +122,8 @@ export function SpaceRelationsSimulation({ step, progress }: Props) {
           </Canvas>
         </div>
         <div className="csim-card csim-step-copy">
-          <strong>{titles[step - 1] ?? titles[0]}</strong>
-          <p>{copies[step - 1] ?? copies[0]}</p>
+          <strong><MixedTextRenderer text={titles[step - 1] ?? titles[0]} /></strong>
+          <p><MixedTextRenderer text={copies[step - 1] ?? copies[0]} /></p>
           <ul className="sim-mono-list">
             <li><KatexSpan tex={String.raw`\Delta\parallel\Delta'\Leftrightarrow\vec u\times\vec v=\vec0`} />.</li>
             <li><KatexSpan tex={String.raw`\Delta\perp\Delta'\Leftrightarrow\vec u\cdot\vec v=0`} />.</li>
@@ -272,18 +272,18 @@ function PlaneMesh({ point, normal }: { point: [number, number, number]; normal:
 
 const titles = [
   'Bước 1 — Hai đường: điểm và vectơ chỉ phương',
-  'Bước 2 — So u, v: song song / vuông góc / chéo',
-  'Bước 3 — Thêm mặt phẳng pháp tuyến n',
-  'Bước 4 — Quan hệ đường–mặt phẳng',
+  'Bước 2 — So sánh $\\vec u$, $\\vec v$: song song, vuông góc hoặc chéo',
+  'Bước 3 — Thêm mặt phẳng có pháp tuyến $\\vec n$',
+  'Bước 4 — Quan hệ đường và mặt phẳng',
   'Bước 5 — Góc và khoảng cách',
   'Bước 6 — Tổng hợp tiêu chuẩn vectơ',
 ];
 
 const copies = [
-  'Trong KG, đường thẳng xác định bởi điểm + phương. Đổi u, v để thử các cấu hình.',
-  'u×v=0 ⇒ cùng phương. u·v=0 ⇒ vuông góc. Không ∥ và không đồng phẳng ⇒ chéo.',
-  'Mp: điểm P và pháp tuyến n. Mọi vector trong mp vuông góc n.',
-  'u·n=0 ⇒ đường ∥ mp (hoặc nằm trong). u∥n ⇒ đường ⊥ mp.',
-  'sinθ = |u·n|/(|u||n|) cho góc đường–mp. d = |ax+by+cz+d₀|/√…',
-  'Ghi nhớ bảng tiêu chuẩn — dùng khi giải bài tọa độ lớp 11–12.',
+  'Trong không gian, đường thẳng xác định bởi một điểm và vectơ chỉ phương. Đổi $\\vec u$, $\\vec v$ để thử các cấu hình.',
+  '$\\vec u\\times\\vec v=\\vec 0$ nghĩa là cùng phương; $\\vec u\\cdot\\vec v=0$ nghĩa là vuông góc. Không song song và không đồng phẳng thì hai đường chéo nhau.',
+  'Mặt phẳng xác định bởi điểm $P$ và pháp tuyến $\\vec n$. Mọi vectơ nằm trong mặt phẳng đều vuông góc $\\vec n$.',
+  '$\\vec u\\cdot\\vec n=0$ nghĩa là đường song song hoặc nằm trong mặt phẳng; $\\vec u\\parallel\\vec n$ nghĩa là đường vuông góc mặt phẳng.',
+  '$\\sin\\theta=\\dfrac{|\\vec u\\cdot\\vec n|}{|\\vec u||\\vec n|}$ cho góc đường–mặt phẳng; khoảng cách dùng công thức điểm–mặt phẳng.',
+  'Ghi nhớ bảng tiêu chuẩn để giải bài tọa độ không gian.',
 ];

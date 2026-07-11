@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { KatexSpan } from '../../components/KatexSpan';
+import { KatexSpan, MixedTextRenderer } from '../../components/KatexSpan';
 import { FormulaInput, PresetButtons, ResultCard, SliderInput } from '../runtime/SimulationPrimitives';
 import { formatNumber, integrate, sampleFunction, validateBounds } from '../../utils/calculusNumerics';
 import { numericalDerivative, parseUserFunction } from '../math/derivativeAnalysis';
@@ -51,7 +51,7 @@ export function AntiderivativeFamilySimulation({ step, progress, freeMode = fals
             <strong>Họ nguyên hàm</strong>
             <span><KatexSpan tex={String.raw`F(x)+C`} /></span>
           </div>
-          <FormulaInput label="f(x) = F'(x)" value={state.f} onChange={(f) => setState({ ...state, f })} disabled={!canF} />
+          <FormulaInput label="$f(x)=F^{\\prime}(x)$" value={state.f} onChange={(f) => setState({ ...state, f })} disabled={!canF} />
           <div className={!canF ? 'is-step-locked' : undefined}>
             <PresetButtons presets={PRESETS} onApply={(p) => canF && setState((s) => ({ ...s, ...p.patch }))} />
           </div>
@@ -93,8 +93,8 @@ export function AntiderivativeFamilySimulation({ step, progress, freeMode = fals
       <section className="csim-visual-stack">
         <RichGraph2D title={titles[step - 1] ?? titles[0]} curves={model.curves} markers={model.markers} />
         <div className="csim-card csim-step-copy">
-          <strong>{titles[step - 1] ?? titles[0]}</strong>
-          <p>{copies[step - 1] ?? copies[0]}</p>
+          <strong><MixedTextRenderer text={titles[step - 1] ?? titles[0]} /></strong>
+          <p><MixedTextRenderer text={copies[step - 1] ?? copies[0]} /></p>
           <KatexSpan tex={String.raw`\frac{d}{dx}\big(F(x)+C\big)=f(x)`} />
         </div>
       </section>
@@ -103,17 +103,17 @@ export function AntiderivativeFamilySimulation({ step, progress, freeMode = fals
 }
 
 const titles = [
-  'Bước 1 — Đồ thị hàm dưới dấu tích phân f',
-  'Bước 2 — Dựng một nguyên hàm F bằng tích phân biến thiên',
-  'Bước 3 — Họ F + C khi đổi hằng số',
-  'Bước 4 — Kiểm chứng F′ ≈ f',
+  'Bước 1 — Đồ thị hàm $f$ dưới dấu tích phân',
+  'Bước 2 — Dựng một nguyên hàm $F$ bằng tích phân biến thiên',
+  'Bước 3 — Họ $F+C$ khi đổi hằng số',
+  'Bước 4 — Kiểm chứng $F^{\\prime}\\approx f$',
 ];
 
 const copies = [
-  'f là “tốc độ biến thiên”. Diện tích có hướng dưới đồ thị f liên quan đến sự thay đổi của nguyên hàm.',
-  'Cố định mốc x_*, đặt F(x) = ∫_{x_*}^x f(t) dt. Đây là một nguyên hàm (khi f liên tục).',
-  'Thêm C dịch chuyển đồ thị lên/xuống. Mọi đường trong họ có cùng hình dạng “nghiêng” theo f.',
-  'So sánh đạo hàm số của F với f: sai số nhỏ chứng tỏ F đúng là nguyên hàm (trong giới hạn số).',
+  '$f$ biểu diễn tốc độ biến thiên. Diện tích có hướng dưới đồ thị $f$ liên hệ với độ thay đổi của nguyên hàm.',
+  'Cố định $x_*$ và đặt $F(x)=\\int_{x_*}^{x}f(t)\\,dt$. Khi $f$ liên tục, đây là một nguyên hàm.',
+  'Thêm $C$ dịch chuyển đồ thị theo phương đứng. Mọi đường trong họ có cùng đạo hàm $f$.',
+  'So sánh đạo hàm số của $F$ với $f$; sai số nhỏ xác nhận quan hệ $F^{\\prime}=f$ trong giới hạn tính số.',
 ];
 
 function build(state: State, step: number, progress: number) {

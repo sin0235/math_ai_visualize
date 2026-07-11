@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import type { FunctionOcrExtraction } from '../../api/client';
 import { EXAMPLE_GROUPS } from './constants';
 import { SvgIcon } from './icons';
 
@@ -6,14 +7,41 @@ interface AnalyzerInputProps {
   expression: string;
   loading: boolean;
   ocrLoading: boolean;
+  ocrCandidate: FunctionOcrExtraction | null;
+  ocrPreviewUrl: string | null;
   error: string | null;
+  parameterDetected: boolean;
+  parameterMode: '' | 'symbolic' | 'substitute';
+  parameterValue: string;
+  onParameterModeChange: (value: '' | 'symbolic' | 'substitute') => void;
+  onParameterValueChange: (value: string) => void;
   onExpressionChange: (value: string) => void;
   onAnalyze: () => void;
+  onConfirmOcr: () => void;
+  onDiscardOcr: () => void;
   onImageChange: (file?: File) => void | Promise<void>;
   onOpenGuide?: () => void;
 }
 
-export function AnalyzerInput({ expression, loading, ocrLoading, error, onExpressionChange, onAnalyze, onImageChange, onOpenGuide }: AnalyzerInputProps) {
+export function AnalyzerInput({
+  expression,
+  loading,
+  ocrLoading,
+  ocrCandidate,
+  ocrPreviewUrl,
+  error,
+  parameterDetected,
+  parameterMode,
+  parameterValue,
+  onParameterModeChange,
+  onParameterValueChange,
+  onExpressionChange,
+  onAnalyze,
+  onConfirmOcr,
+  onDiscardOcr,
+  onImageChange,
+  onOpenGuide,
+}: AnalyzerInputProps) {
   const [showAdvancedControls, setShowAdvancedControls] = useState(true);
   const [isDraggingImage, setIsDraggingImage] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -101,7 +129,7 @@ export function AnalyzerInput({ expression, loading, ocrLoading, error, onExpres
                 placeholder="x^3 - 3*x + 2"
                 value={expression}
                 onChange={(e) => onExpressionChange(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') onAnalyze(); }}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !ocrCandidate) onAnalyze(); }}
                 onMouseDown={(e) => {
                   if (e.button === 2) e.preventDefault();
                 }}
@@ -116,15 +144,101 @@ export function AnalyzerInput({ expression, loading, ocrLoading, error, onExpres
                 spellCheck={false}
               />
             </div>
-            <button id="fa-submit-btn" type="button" className="sp-btn-primary" onClick={onAnalyze} disabled={loading || ocrLoading || !expression.trim()}>
-              {loading ? <span className="sp-spinner" aria-hidden="true" /> : 'Phân tích'}
+            <button id="fa-submit-btn" type="button" className="sp-btn-primary" onClick={onAnalyze} disabled={loading || ocrLoading || !!ocrCandidate || !expression.trim()}>
+              {loading ? <span className="sp-spinner" aria-hidden="true" /> : ocrCandidate ? 'Xác nhận bên dưới' : 'Phân tích'}
             </button>
           </div>
+          {parameterDetected && (
+            <fieldset className="fa2-parameter-controls" disabled={loading || ocrLoading}>
+              <legend>Tham số m</legend>
+              <label>
+                Chế độ phân tích
+                <select
+                  value={parameterMode}
+                  onChange={(event) => onParameterModeChange(event.target.value as '' | 'symbolic' | 'substitute')}
+                >
+                  <option value="">Chọn chế độ</option>
+                  <option value="symbolic">Phân tích symbolic theo case</option>
+                  <option value="substitute">Thay giá trị exact</option>
+                </select>
+              </label>
+              {parameterMode === 'substitute' && (
+                <div className="fa2-parameter-value-controls">
+                  <label>
+                    Giá trị exact của m
+                    <input
+                      type="text"
+                      value={parameterValue}
+                      onChange={(event) => onParameterValueChange(event.target.value)}
+                      placeholder="1/2, pi, sqrt(2), 20"
+                      autoComplete="off"
+                      spellCheck={false}
+                    />
+                  </label>
+                  <label>
+                    Slider gợi ý từ -10 đến 10
+                    <input
+                      type="range"
+                      min="-10"
+                      max="10"
+                      step="0.1"
+                      value={suggestedParameterValue(parameterValue)}
+                      onChange={(event) => onParameterValueChange(event.target.value)}
+                    />
+                  </label>
+                  <small>Slider chỉ gợi ý; giá trị exact nhập tay không bị giới hạn.</small>
+                </div>
+              )}
+            </fieldset>
+          )}
           <button type="button" className="fa2-advanced-toggle" onClick={() => setShowAdvancedControls((value) => !value)} aria-expanded={showAdvancedControls}>
             {showAdvancedControls ? 'Ẩn tùy chọn' : 'Hiện tùy chọn'}
             <SvgIcon name="chevron" />
           </button>
         </div>
+        {ocrCandidate && (
+          <section className="fa2-ocr-review" aria-labelledby="fa2-ocr-review-title">
+            <div className="fa2-ocr-review-head">
+              <strong id="fa2-ocr-review-title">Kiểm tra kết quả OCR</strong>
+              <span>{ocrCandidate.needs_confirmation ? 'Cần xác nhận' : 'Sẵn sàng xác nhận'}</span>
+            </div>
+            {ocrPreviewUrl && <img src={ocrPreviewUrl} alt="Ảnh công thức đang được kiểm tra" />}
+            <label className="fa2-ocr-confidence">
+              Độ tin cậy {Math.round(ocrCandidate.confidence * 100)}%
+              <progress max="1" value={ocrCandidate.confidence} />
+            </label>
+            <p>Sửa biểu thức trong ô <strong>y =</strong> phía trên nếu OCR nhận sai.</p>
+            {ocrCandidate.ambiguous_tokens.length > 0 && (
+              <div className="fa2-ocr-ambiguities" role="status">
+                <strong>Ký hiệu chưa chắc chắn</strong>
+                <ul>
+                  {ocrCandidate.ambiguous_tokens.map((item, index) => (
+                    <li key={`${item.token}-${index}`}>
+                      <code>{item.token}</code>
+                      {item.alternatives.length > 0 ? `; có thể là ${item.alternatives.join(', ')}` : ''}
+                      {item.reason ? ` — ${item.reason}` : ''}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {ocrCandidate.warnings.length > 0 && (
+              <ul className="fa2-ocr-warnings">
+                {ocrCandidate.warnings.map((warning) => <li key={warning}>{warning}</li>)}
+              </ul>
+            )}
+            <details>
+              <summary>Văn bản OCR gốc</summary>
+              <pre>{ocrCandidate.ocr_text || 'Không có văn bản OCR.'}</pre>
+            </details>
+            <div className="fa2-ocr-review-actions">
+              <button type="button" className="sp-btn-primary" onClick={onConfirmOcr} disabled={loading || ocrLoading || !expression.trim()}>
+                {loading ? <span className="sp-spinner" aria-hidden="true" /> : 'Xác nhận và phân tích'}
+              </button>
+              <button type="button" className="sp-btn-secondary" onClick={onDiscardOcr} disabled={loading || ocrLoading}>Bỏ kết quả OCR</button>
+            </div>
+          </section>
+        )}
       </div>
 
       {showAdvancedControls && <div className="fa2-advanced-panel">
@@ -167,4 +281,10 @@ export function AnalyzerInput({ expression, loading, ocrLoading, error, onExpres
       {error && <div className="sp-error" role="alert">{error}</div>}
     </aside>
   );
+}
+
+function suggestedParameterValue(value: string) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 0;
+  return Math.max(-10, Math.min(10, numeric));
 }
