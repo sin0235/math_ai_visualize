@@ -3,19 +3,17 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import { Suspense, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 
-const PALETTE = {
-  indigo: '#6366f1',
-  pink: '#ec4899',
-  mint: '#14b8a6',
-  amber: '#f59e0b',
-  blue: '#3b82f6',
-  rose: '#fb7185',
-  violet: '#8b5cf6',
-  green: '#22c55e',
-  orange: '#f97316',
-  lavender: '#a78bfa',
-  edge: '#f8fafc',
-  white: '#ffffff',
+const MONO = {
+  ink: '#18181b',
+  graphite: '#27272a',
+  charcoal: '#3f3f46',
+  slate: '#52525b',
+  steel: '#71717a',
+  silver: '#a1a1aa',
+  mist: '#d4d4d8',
+  pearl: '#e4e4e7',
+  paper: '#f4f4f5',
+  white: '#fafafa',
 } as const;
 
 function OrbitingElements() {
@@ -42,19 +40,19 @@ function OrbitingElements() {
       <group ref={ringRef}>
         <mesh>
           <torusGeometry args={[3.2, 0.015, 16, 100]} />
-          <meshBasicMaterial color={PALETTE.indigo} transparent opacity={0.3} />
+          <meshBasicMaterial color={MONO.steel} transparent opacity={0.3} />
         </mesh>
         <mesh rotation={[Math.PI / 2.5, 0, 0]}>
           <torusGeometry args={[3.8, 0.01, 16, 100]} />
-          <meshBasicMaterial color={PALETTE.pink} transparent opacity={0.24} />
+          <meshBasicMaterial color={MONO.silver} transparent opacity={0.22} />
         </mesh>
       </group>
 
       <mesh ref={satelliteRef}>
         <tetrahedronGeometry args={[0.25]} />
-        <meshStandardMaterial color={PALETTE.amber} emissive={PALETTE.amber} emissiveIntensity={0.7} roughness={0.3} metalness={0.08} />
-        <pointLight intensity={5} color={PALETTE.amber} distance={3} />
-        <Edges color={PALETTE.edge} threshold={10} />
+        <meshStandardMaterial color={MONO.paper} emissive={MONO.white} emissiveIntensity={0.35} roughness={0.3} metalness={0.08} />
+        <pointLight intensity={4} color={MONO.white} distance={3} />
+        <Edges color={MONO.graphite} threshold={10} />
       </mesh>
     </group>
   );
@@ -63,16 +61,16 @@ function OrbitingElements() {
 function PolyhedronFaces() {
   const groupRef = useRef<THREE.Group>(null);
   const palette = [
-    PALETTE.indigo,
-    PALETTE.pink,
-    PALETTE.mint,
-    PALETTE.amber,
-    PALETTE.blue,
-    PALETTE.rose,
-    PALETTE.violet,
-    PALETTE.green,
-    PALETTE.orange,
-    PALETTE.lavender,
+    MONO.graphite,
+    MONO.charcoal,
+    MONO.slate,
+    MONO.steel,
+    MONO.silver,
+    MONO.mist,
+    MONO.pearl,
+    MONO.paper,
+    MONO.slate,
+    MONO.charcoal,
   ];
   const geometry = useMemo(() => {
     const shape = new THREE.IcosahedronGeometry(2.05, 0);
@@ -98,16 +96,16 @@ function PolyhedronFaces() {
             attach={`material-${index}`}
             color={color}
             transparent
-            opacity={0.72}
-            transmission={0.08}
-            roughness={0.5}
-            metalness={0.04}
+            opacity={0.82}
+            transmission={0.03}
+            roughness={0.54}
+            metalness={0.06}
             side={THREE.DoubleSide}
           />
         ))}
-        <Edges color={PALETTE.edge} threshold={10} opacity={0.82} transparent />
+        <Edges color={MONO.white} threshold={10} opacity={0.68} transparent />
       </mesh>
-      <pointLight intensity={5} color={PALETTE.white} distance={4} />
+      <pointLight intensity={3.5} color={MONO.white} distance={4} />
     </group>
   );
 }
@@ -134,7 +132,7 @@ function BackgroundParticles() {
         yFactor,
         zFactor,
         type,
-        color: Math.random() > 0.5 ? PALETTE.violet : PALETTE.blue,
+        color: Math.random() > 0.5 ? MONO.steel : MONO.silver,
       });
     }
     return temp;
@@ -182,11 +180,11 @@ function PlaneGrid() {
       fadeDistance={25}
       fadeStrength={5}
       sectionSize={1.5}
-      sectionColor={PALETTE.violet}
-      sectionThickness={1.4}
+      sectionColor={MONO.steel}
+      sectionThickness={1.25}
       cellSize={0.75}
-      cellColor={PALETTE.blue}
-      cellThickness={0.7}
+      cellColor={MONO.mist}
+      cellThickness={0.65}
       position={[0, -2.5, 0]}
     />
   );
@@ -203,10 +201,10 @@ function Scene({ hideHelpers = false }: { hideHelpers?: boolean }) {
 
   return (
     <>
-      <ambientLight intensity={0.62} />
-      <spotLight ref={lightRef} position={[15, 15, 15]} angle={0.22} penumbra={1} intensity={7} color={PALETTE.violet} />
-      <pointLight position={[-12, 8, -10]} intensity={3.5} color={PALETTE.pink} />
-      <directionalLight position={[4, 10, 2]} intensity={0.8} color={PALETTE.white} />
+      <ambientLight intensity={0.72} color={MONO.white} />
+      <spotLight ref={lightRef} position={[15, 15, 15]} angle={0.22} penumbra={1} intensity={6} color={MONO.white} />
+      <pointLight position={[-12, 8, -10]} intensity={2.8} color={MONO.mist} />
+      <directionalLight position={[4, 10, 2]} intensity={0.7} color={MONO.white} />
 
       <BackgroundParticles />
       <OrbitingElements />
@@ -219,11 +217,11 @@ function Scene({ hideHelpers = false }: { hideHelpers?: boolean }) {
       <group>
         <mesh position={[-10, 8, -15]} rotation={[0.5, 0.5, 0.5]}>
           <boxGeometry args={[5, 5, 5]} />
-          <meshBasicMaterial color={PALETTE.blue} wireframe transparent opacity={0.07} />
+          <meshBasicMaterial color={MONO.silver} wireframe transparent opacity={0.07} />
         </mesh>
         <mesh position={[12, -5, -18]} rotation={[-0.2, 0.8, 0.3]}>
           <dodecahedronGeometry args={[4]} />
-          <meshBasicMaterial color={PALETTE.violet} wireframe transparent opacity={0.06} />
+          <meshBasicMaterial color={MONO.steel} wireframe transparent opacity={0.06} />
         </mesh>
       </group>
 
@@ -243,7 +241,7 @@ function Scene({ hideHelpers = false }: { hideHelpers?: boolean }) {
 
       {!hideHelpers && (
         <GizmoHelper alignment="bottom-right" margin={[80, 80]}>
-          <GizmoViewport axisColors={['#ef4444', '#22c55e', '#3b82f6']} labelColor={PALETTE.white} />
+          <GizmoViewport axisColors={[MONO.graphite, MONO.steel, MONO.silver]} labelColor={MONO.white} />
         </GizmoHelper>
       )}
     </>

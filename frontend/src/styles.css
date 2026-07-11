@@ -5571,9 +5571,9 @@ button:disabled {
   border: 1px solid var(--line);
   padding: clamp(8px, 1.6vw, 14px);
   background:
-    radial-gradient(circle at 72% 22%, rgba(99, 102, 241, 0.12), transparent 38%),
-    radial-gradient(circle at 24% 82%, rgba(20, 184, 166, 0.09), transparent 34%),
-    linear-gradient(145deg, #f8fafc, #ffffff 54%, #f1f5f9);
+    radial-gradient(circle at 72% 22%, rgba(24, 24, 27, 0.055), transparent 38%),
+    radial-gradient(circle at 24% 82%, rgba(113, 113, 122, 0.045), transparent 34%),
+    linear-gradient(145deg, #f4f4f5, #ffffff 54%, #e4e4e7);
   cursor: pointer;
   min-width: 0;
 }

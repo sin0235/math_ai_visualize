@@ -108,6 +108,8 @@ Thiết kế này giải quyết một rủi ro phổ biến của chatbot: tạ
 
 > **Sự linh hoạt của AI được bảo chứng bởi độ chính xác của động cơ toán học chuyên biệt.**
 
+
+
 ### 4.1. Ranh giới tin cậy của scene hình học
 
 Render pipeline áp dụng một chuỗi rõ ràng: validate và repair scene, kiểm chứng quan hệ bằng CAS, chuẩn hóa hình học, kiểm tra tương thích renderer, gắn advisory và xác định trạng thái kết quả. Nếu scene dùng mock fallback, dùng provider fallback, có giả định, có dữ kiện thiếu, quan hệ kiểm chứng lỗi hoặc renderer không tương thích, kết quả không được gắn nhãn như một hình dựng chính xác.
@@ -170,53 +172,21 @@ Phát hành phiên bản
 → phát hành phiên bản tiếp theo
 ```
 
-Mỗi giai đoạn chỉ mở rộng khi giai đoạn trước có dữ liệu sử dụng và chất lượng đủ rõ. Cách này tránh biến sản phẩm thành bản demo nhiều tính năng nhưng không có người dùng thường xuyên.
+Mỗi giai đoạn phải tạo ra một năng lực sản phẩm chưa có ở phiên bản hiện tại. Các module renderer, analyzer, solver, simulation, history và export chỉ là nền móng để phát triển ba hướng mới dưới đây.
 
-### Giai đoạn 1. Sau cuộc thi: duy trì bản beta công khai
+### Giai đoạn 1. Biến đề toán thành “bài toán sống”
 
-- **Ứng dụng:** ổn định luồng chính từ văn bản hoặc ảnh đề bài đến scene, phân tích, lời giải và export; sửa các điểm khiến người dùng mới không thể tự hoàn thành tác vụ.
-- **Người dùng:** mời nhóm nhỏ học sinh và giáo viên dùng lại hằng tuần, tiếp nhận phản hồi ngay trong ứng dụng và xây bộ tình huống lỗi thực tế.
-- **Nền tảng:** duy trì CI, health check, telemetry, backup và quy trình phát hành; theo dõi lỗi theo từng workflow thay vì chỉ kiểm tra trang web còn hoạt động.
-- **Chỉ số quyết định:** tỷ lệ hoàn thành tác vụ, tỷ lệ kết quả cần sửa, thời gian xử lý, lỗi hệ thống và tỷ lệ người dùng quay lại.
+Sản phẩm phát triển từ việc dựng một kết quả đơn lẻ thành một đối tượng học tập có trạng thái. Từ một đề gốc, hệ thống tạo các biến thể đã được lõi toán học kiểm chứng, gợi ý theo từng mức, câu hỏi dự đoán và các nhánh phản hồi theo lỗi thường gặp. Khi học sinh thay đổi giả thiết, kéo điểm hoặc đổi tham số, hình, lời giải và kết luận liên quan được cập nhật đồng bộ; hệ thống chỉ công nhận một nhánh khi các ràng buộc vẫn đúng. Giáo viên có thể đóng gói đối tượng này thành một “bài toán sống” để giao, trình chiếu hoặc tái sử dụng. Điểm mới không phải thêm một kiểu export, mà là biến đề tĩnh thành học liệu có thể khám phá và tự kiểm chứng.
 
-### Giai đoạn 2. Thí điểm học tập và đo độ chính xác
+### Giai đoạn 2. Xây bản đồ tư duy toán học thích nghi
 
-- **Ứng dụng:** tinh chỉnh trải nghiệm renderer, analyzer, solver và simulation theo các buổi học thật; bổ sung hướng dẫn tại đúng bước người dùng gặp khó khăn.
-- **Người dùng:** tổ chức thí điểm với giáo viên hoặc nhóm học sinh theo từng chuyên đề lớp 11–12, không mở rộng đồng loạt khi chưa đo được hiệu quả.
-- **Nền tảng:** xây benchmark đề toán tiếng Việt có đáp án chuẩn, tách riêng phép đo OCR, trích xuất dữ kiện, scene, analyzer và solver; đưa các lỗi đã xác nhận thành regression test.
-- **Chỉ số quyết định:** độ chính xác theo chuyên đề, tỷ lệ phải sửa dữ kiện, thời gian chuẩn bị bài của giáo viên, mức độ hoàn thành bài của học sinh và mức độ quay lại sau đợt thí điểm.
+Thay vì chỉ lưu lịch sử câu hỏi, hệ thống biểu diễn quá trình học thành bản đồ năng lực: khái niệm nào học sinh đã nắm, lỗi nào lặp lại và kiến thức nền nào đang thiếu. Mỗi lỗi được liên kết với bằng chứng từ thao tác, bước giải hoặc checkpoint, không được suy đoán chỉ từ một câu trả lời cuối. Từ bản đồ này, ứng dụng đề xuất một đường học ngắn gồm hình trực quan, mô phỏng hoặc bài biến thể phù hợp; giáo viên thấy điểm nghẽn chung của lớp và có thể điều chỉnh lộ trình. Hướng này tạo trải nghiệm cá nhân hóa có thể giải thích được, khác với chatbot chỉ tiếp tục sinh câu hỏi theo hội thoại.
 
-### Giai đoạn 3. Hoàn thiện ứng dụng cho giáo viên và học sinh
+### Giai đoạn 3. Xây lõi AI toán tiếng Việt có thể mở rộng
 
-- **Ứng dụng giáo viên:** cải thiện scene editor, quản lý lịch sử, tái sử dụng kết quả và export học liệu. PDF to Word tiếp tục là nhánh chuyển đổi tài liệu độc lập, không bị ghép thành đầu vào của renderer.
-- **Ứng dụng học sinh:** tổ chức mô phỏng và bài luyện theo chuyên đề, làm rõ trạng thái kiểm chứng, giả định và lỗi để người học không nhầm hình minh họa với kết luận toán học.
-- **Nền tảng:** hoàn thiện learning profile ở mức dữ liệu tối thiểu cần thiết, phân quyền dữ liệu cá nhân và dashboard chất lượng cho nhóm vận hành.
-- **Chỉ số quyết định:** số học liệu được tạo và tái sử dụng, số phiên học hoàn thành, tỷ lệ người dùng quay lại và phản hồi định tính từ giáo viên.
+Nhóm xây một DSL thống nhất để mô tả đề bài, scene, quan hệ, bước giải, biến thể và bằng chứng kiểm chứng. Trên dữ liệu được đồng ý thu thập, ẩn thông tin cá nhân và kiểm duyệt, nhóm fine-tune model quy mô phù hợp để chuyển văn bản hoặc ảnh đề toán tiếng Việt sang DSL này; validator, geometry engine, CAS và solver tiếp tục quyết định tính đúng. DSL cho phép giáo viên hoặc nhà phát triển tạo thêm mẫu bài và mô phỏng mà không sửa toàn bộ hệ thống, đồng thời tạo dữ liệu huấn luyện có cấu trúc cho phiên bản model tiếp theo. Model mới chỉ được phát hành khi vượt baseline trên benchmark tách biệt và không làm tăng tỷ lệ kết quả sai được gắn nhãn tin cậy.
 
-### Giai đoạn 4. Fine-tune model từ dữ liệu đã kiểm duyệt
-
-- **Ứng dụng:** giảm số bước người dùng phải sửa khi nhập đề tiếng Việt, nhưng giữ cơ chế xác nhận khi model không chắc chắn.
-- **Dữ liệu:** xây dataset từ đề toán, scene cấu trúc, yêu cầu solver và các trường hợp người dùng đã sửa; dữ liệu phải được ẩn thông tin cá nhân, gắn nhãn và kiểm duyệt trước khi huấn luyện.
-- **Nền tảng AI:** fine-tune model phù hợp cho hiểu ý định, trích xuất dữ kiện và chuẩn hóa đầu vào. Model mới chỉ được phát hành khi vượt baseline của Giai đoạn 2 trên tập kiểm thử tách biệt.
-- **Ranh giới:** kết quả toán học vẫn đi qua validator, geometry engine, CAS hoặc solver. Fine-tune không thay thế lõi kiểm chứng.
-- **Chỉ số quyết định:** độ chính xác trích xuất, tỷ lệ người dùng phải sửa, độ trễ, chi phí mỗi tác vụ và mức phụ thuộc vào API bên ngoài.
-
-### Giai đoạn 5. Phát triển thành nền tảng có khả năng mở rộng
-
-- **Ứng dụng:** giữ web app là kênh chính; chỉ đầu tư thêm PWA hoặc ứng dụng di động khi dữ liệu thiết bị và tần suất sử dụng chứng minh nhu cầu.
-- **Nền tảng:** chuẩn hóa contract giữa frontend và các lõi toán học, tách worker khi hàng đợi và tải thực tế yêu cầu, kiểm chứng backup/restore, tăng khả năng quan sát và cô lập tác vụ nặng.
-- **Tích hợp:** mở API hoặc tích hợp với hệ thống trường học, kho học liệu khi có đối tác và use case cụ thể; không mở rộng API chỉ để có thêm tính năng trình diễn.
-- **Vận hành:** xác định quota, chi phí hạ tầng và gói sử dụng phù hợp cho cá nhân hoặc tổ chức để sản phẩm có nguồn lực duy trì lâu dài.
-- **Chỉ số quyết định:** độ ổn định, chi phí trên người dùng hoạt động, thời gian phản hồi, số tích hợp được sử dụng thật và khả năng duy trì vận hành.
-
-### Giai đoạn 6. Hệ sinh thái học tập cá nhân hóa
-
-- **Ứng dụng:** dùng history và learning profile để gợi ý mô phỏng, bài luyện hoặc ví dụ theo năng lực; giáo viên có thể theo dõi tiến trình trong phạm vi được người học cho phép.
-- **Nội dung:** mở rộng chuyên đề dựa trên nhu cầu và benchmark, ưu tiên chiều sâu kiểm chứng thay vì tuyên bố bao phủ toàn bộ chương trình.
-- **Nền tảng:** cung cấp cơ chế để giáo viên đóng góp, rà soát và tái sử dụng học liệu có phiên bản và nguồn gốc rõ ràng.
-- **Chỉ số quyết định:** tiến bộ học tập, mức độ tái sử dụng học liệu, tỷ lệ đóng góp được kiểm duyệt và tỷ lệ duy trì người dùng dài hạn.
-
-Cam kết phát triển sau cuộc thi không nằm ở số lượng tính năng dự kiến, mà ở vòng lặp phát hành–đo lường–cải tiến, nhóm người dùng thí điểm, dữ liệu benchmark và nền tảng vận hành đã được đặt làm phần chính của sản phẩm. Nếu một hướng mở rộng không tạo giá trị sử dụng hoặc không đạt ngưỡng chất lượng, nhóm dừng hướng đó và ưu tiên workflow đang được dùng thật.
+Ba giai đoạn tạo thành một hướng phát triển thống nhất: “bài toán sống” tạo trải nghiệm mới; bản đồ tư duy biến trải nghiệm thành khả năng thích nghi; model cùng DSL giúp mở rộng nội dung toán tiếng Việt mà vẫn giữ ranh giới kiểm chứng. Đây là phần phát triển mới sau cuộc thi, không phải liệt kê lại các module đã hoàn thành.
 
 ## 9. Kết luận
 
