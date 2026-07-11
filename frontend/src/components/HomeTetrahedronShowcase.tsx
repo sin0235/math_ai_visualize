@@ -4,17 +4,17 @@ import { Suspense, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 
 const PALETTE = {
-  indigo: '#a5b4fc',
-  pink: '#f9a8d4',
-  mint: '#99f6e4',
-  amber: '#fde68a',
-  blue: '#bfdbfe',
-  rose: '#fecdd3',
-  violet: '#c4b5fd',
-  green: '#bbf7d0',
-  orange: '#fed7aa',
-  lavender: '#ddd6fe',
-  wire: '#cbd5e1',
+  indigo: '#6366f1',
+  pink: '#ec4899',
+  mint: '#14b8a6',
+  amber: '#f59e0b',
+  blue: '#3b82f6',
+  rose: '#fb7185',
+  violet: '#8b5cf6',
+  green: '#22c55e',
+  orange: '#f97316',
+  lavender: '#a78bfa',
+  edge: '#f8fafc',
   white: '#ffffff',
 } as const;
 
@@ -42,19 +42,19 @@ function OrbitingElements() {
       <group ref={ringRef}>
         <mesh>
           <torusGeometry args={[3.2, 0.015, 16, 100]} />
-          <meshBasicMaterial color={PALETTE.indigo} transparent opacity={0.24} />
+          <meshBasicMaterial color={PALETTE.indigo} transparent opacity={0.3} />
         </mesh>
         <mesh rotation={[Math.PI / 2.5, 0, 0]}>
           <torusGeometry args={[3.8, 0.01, 16, 100]} />
-          <meshBasicMaterial color={PALETTE.pink} transparent opacity={0.18} />
+          <meshBasicMaterial color={PALETTE.pink} transparent opacity={0.24} />
         </mesh>
       </group>
 
       <mesh ref={satelliteRef}>
         <tetrahedronGeometry args={[0.25]} />
-        <meshStandardMaterial color={PALETTE.white} emissive={PALETTE.white} emissiveIntensity={1.5} />
-        <pointLight intensity={8} color={PALETTE.white} distance={3} />
-        <Edges color={PALETTE.white} threshold={10} />
+        <meshStandardMaterial color={PALETTE.amber} emissive={PALETTE.amber} emissiveIntensity={0.7} roughness={0.3} metalness={0.08} />
+        <pointLight intensity={5} color={PALETTE.amber} distance={3} />
+        <Edges color={PALETTE.edge} threshold={10} />
       </mesh>
     </group>
   );
@@ -98,16 +98,16 @@ function PolyhedronFaces() {
             attach={`material-${index}`}
             color={color}
             transparent
-            opacity={0.56}
-            transmission={0.22}
-            roughness={0.42}
-            metalness={0.02}
+            opacity={0.72}
+            transmission={0.08}
+            roughness={0.5}
+            metalness={0.04}
             side={THREE.DoubleSide}
           />
         ))}
-        <Edges color={PALETTE.white} threshold={10} opacity={0.78} transparent />
+        <Edges color={PALETTE.edge} threshold={10} opacity={0.82} transparent />
       </mesh>
-      <pointLight intensity={12} color={PALETTE.white} distance={4} />
+      <pointLight intensity={5} color={PALETTE.white} distance={4} />
     </group>
   );
 }
@@ -168,7 +168,7 @@ function BackgroundParticles() {
           ) : (
             <boxGeometry args={[0.06, 0.06, 0.06]} />
           )}
-          <meshBasicMaterial color={p.color} transparent opacity={0.2} />
+          <meshBasicMaterial color={p.color} transparent opacity={0.22} />
         </mesh>
       ))}
     </group>
@@ -183,10 +183,10 @@ function PlaneGrid() {
       fadeStrength={5}
       sectionSize={1.5}
       sectionColor={PALETTE.violet}
-      sectionThickness={2}
+      sectionThickness={1.4}
       cellSize={0.75}
       cellColor={PALETTE.blue}
-      cellThickness={1}
+      cellThickness={0.7}
       position={[0, -2.5, 0]}
     />
   );
@@ -203,9 +203,10 @@ function Scene({ hideHelpers = false }: { hideHelpers?: boolean }) {
 
   return (
     <>
-      <ambientLight intensity={0.58} />
-      <spotLight ref={lightRef} position={[15, 15, 15]} angle={0.2} penumbra={1} intensity={10} color={PALETTE.violet} />
-      <pointLight position={[-15, -15, -15]} intensity={5} color={PALETTE.pink} />
+      <ambientLight intensity={0.62} />
+      <spotLight ref={lightRef} position={[15, 15, 15]} angle={0.22} penumbra={1} intensity={7} color={PALETTE.violet} />
+      <pointLight position={[-12, 8, -10]} intensity={3.5} color={PALETTE.pink} />
+      <directionalLight position={[4, 10, 2]} intensity={0.8} color={PALETTE.white} />
 
       <BackgroundParticles />
       <OrbitingElements />
@@ -218,11 +219,11 @@ function Scene({ hideHelpers = false }: { hideHelpers?: boolean }) {
       <group>
         <mesh position={[-10, 8, -15]} rotation={[0.5, 0.5, 0.5]}>
           <boxGeometry args={[5, 5, 5]} />
-          <meshBasicMaterial color={PALETTE.wire} wireframe transparent opacity={0.04} />
+          <meshBasicMaterial color={PALETTE.blue} wireframe transparent opacity={0.07} />
         </mesh>
         <mesh position={[12, -5, -18]} rotation={[-0.2, 0.8, 0.3]}>
           <dodecahedronGeometry args={[4]} />
-          <meshBasicMaterial color={PALETTE.wire} wireframe transparent opacity={0.04} />
+          <meshBasicMaterial color={PALETTE.violet} wireframe transparent opacity={0.06} />
         </mesh>
       </group>
 

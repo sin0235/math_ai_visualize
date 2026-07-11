@@ -56,6 +56,11 @@ export function FunctionGraph({ result }: { result: AnalyzeResponse }) {
   const activeRenderer = rendererMode === 'svg' || !hasGeoGebra || (rendererMode === 'auto' && geogebraStatus === 'error') ? 'svg' : 'geogebra';
   const derivativeExpression = result.derivative?.trim() || null;
   const secondDerivativeExpression = result.second_derivative?.trim() || null;
+  const geogebraCommands = useMemo(() => [
+    ...result.geogebra_commands,
+    ...(showDerivative && derivativeExpression ? graphOverlayCommands('fPrime', derivativeExpression, '#2563eb') : []),
+    ...(showSecondDerivative && secondDerivativeExpression ? graphOverlayCommands('fSecond', secondDerivativeExpression, '#7c3aed', 1) : []),
+  ], [derivativeExpression, result.geogebra_commands, secondDerivativeExpression, showDerivative, showSecondDerivative]);
   const lineExpressions = useMemo(() => {
     const expressions = result.line_analysis?.graph_expressions?.length
       ? result.line_analysis.graph_expressions
@@ -194,19 +199,23 @@ export function FunctionGraph({ result }: { result: AnalyzeResponse }) {
           active="geogebra"
           status={geogebraStatus}
           onSelect={setRendererMode}
-          commands={result.geogebra_commands}
+          commands={geogebraCommands}
           onRetry={() => {
             setGeogebraStatus('loading');
             setRendererAttempt((attempt) => attempt + 1);
           }}
         />
+        <div className="fa2-graph-toggle-list" role="group" aria-label="Lớp hiển thị GeoGebra">
+          <GraphToggle label="f′" checked={showDerivative} onChange={setShowDerivative} disabled={!derivativeExpression} />
+          <GraphToggle label="f″" checked={showSecondDerivative} onChange={setShowSecondDerivative} disabled={!secondDerivativeExpression} />
+        </div>
         <RendererErrorBoundary
           key={rendererAttempt}
           onError={(error) => handleGeoGebraStatus('error', error.message)}
         >
           <GeoGebraView
             key={rendererAttempt}
-            commands={result.geogebra_commands}
+            commands={geogebraCommands}
             renderer="geogebra_2d"
             scene={scene}
             view={scene.view}
@@ -491,6 +500,16 @@ export function FunctionGraph({ result }: { result: AnalyzeResponse }) {
   );
 }
 
+function graphOverlayCommands(name: string, expression: string, color: string, lineStyle?: number) {
+  const command = `${name}(x)=${expression.replace(/\*\*/g, '^').replace(/Abs\(/g, 'abs(').replace(/\s+/g, '')}`;
+  return [
+    command,
+    `SetColor(${name}, "${color}")`,
+    `SetLineThickness(${name}, 4)`,
+    ...(lineStyle === undefined ? [] : [`SetLineStyle(${name}, ${lineStyle})`]),
+  ];
+}
+
 function GraphToggle({ label, checked, onChange, disabled = false }: { label: string; checked: boolean; onChange: (value: boolean) => void; disabled?: boolean }) {
   return (
     <label className={`fa2-graph-toggle ${disabled ? 'is-disabled' : ''}`}>
@@ -736,6 +755,8 @@ function legacySegment(points: Array<{ x: number; y: number }>): GraphSegmentV2 
     end: emptyBound,
     left_open: true,
     right_open: true,
+    left_window_clipped: false,
+    right_window_clipped: false,
     left_endpoint: { ...emptyBound, open: true, attained: false, y: null },
     right_endpoint: { ...emptyBound, open: true, attained: false, y: null },
     points,
@@ -861,8 +882,8 @@ function buildSvgGraph(segments: GraphSegmentV2[], result: AnalyzeResponse, fitD
     .filter((segment) => segment.length > 1)
     .map((segment) => segment.map((p, i) => `${i === 0 ? 'M' : 'L'} ${project(p).x.toFixed(2)} ${project(p).y.toFixed(2)}`).join(' '));
   const endpointMarkers = segments.flatMap((segment) => [
-    { key: `${segment.component_id}-left`, endpoint: segment.left_endpoint },
-    { key: `${segment.component_id}-right`, endpoint: segment.right_endpoint },
+    ...(!segment.left_window_clipped ? [{ key: `${segment.component_id}-left`, endpoint: segment.left_endpoint }] : []),
+    ...(!segment.right_window_clipped ? [{ key: `${segment.component_id}-right`, endpoint: segment.right_endpoint }] : []),
   ]).flatMap(({ key, endpoint }) => {
     const x = endpoint.approx;
     const y = endpoint.y;

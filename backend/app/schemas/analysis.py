@@ -250,6 +250,8 @@ class GraphSegment(StrictModel):
     end: GraphNumber
     left_open: bool
     right_open: bool
+    left_window_clipped: bool = False
+    right_window_clipped: bool = False
     left_endpoint: GraphEndpoint
     right_endpoint: GraphEndpoint
     points: list[GraphPoint]

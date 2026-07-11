@@ -258,6 +258,8 @@ export interface GraphSegmentV2 {
   end: GraphBoundV2;
   left_open: boolean;
   right_open: boolean;
+  left_window_clipped: boolean;
+  right_window_clipped: boolean;
   left_endpoint: GraphEndpointV2;
   right_endpoint: GraphEndpointV2;
   points: Array<{ x: number; y: number }>;

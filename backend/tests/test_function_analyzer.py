@@ -126,6 +126,34 @@ def test_analyzer_session_and_tool_use_serialized_evidence(monkeypatch):
     assert set(tangent_family["line_analysis"]["graph_expressions"]) == {"-2*x - 1", "2*x - 1"}
 
 
+def test_function_graph_builds_all_tangent_family_commands():
+    analysis = analyze_function("x^2")
+    analysis["line_analysis"] = {
+        "mode": "tangent_through_point",
+        "graph_expressions": ["-2*x - 1", "2*x - 1"],
+    }
+
+    _, commands, _ = build_function_graph(analysis)
+
+    assert analysis["graph_analysis_v2"]["segments"][0]["left_window_clipped"] is True
+    assert analysis["graph_analysis_v2"]["segments"][0]["right_window_clipped"] is True
+    assert "f(x)=x^2" in {command.replace(" ", "") for command in commands}
+    assert not any(command.startswith("D1") for command in commands)
+    assert "g1(x)=-2*x-1" in commands
+    assert "g2(x)=2*x-1" in commands
+
+
+def test_function_graph_does_not_clip_piecewise_boundary():
+    analysis = analyze_function("Piecewise((x^2, x<0), (x, x>=0))")
+
+    build_function_graph(analysis)
+
+    left_branch = next(segment for segment in analysis["graph_analysis_v2"]["segments"] if segment["end"]["exact"] == "0")
+    right_branch = next(segment for segment in analysis["graph_analysis_v2"]["segments"] if segment["start"]["exact"] == "0")
+    assert left_branch["right_window_clipped"] is False
+    assert right_branch["left_window_clipped"] is False
+
+
 def test_analyzer_session_rejects_engine_version_mismatch(monkeypatch):
     session = analyzer_runtime.create_analysis_session("user:one", {"expression": "x"})
 

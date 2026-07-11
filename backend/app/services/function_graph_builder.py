@@ -40,10 +40,12 @@ def build_function_graph(analysis: dict) -> tuple[MathScene, list[str], list[dic
             graph_name = "f" if len(graph_segments) == 1 else f"f{index + 1}"
             start = segment["start"]["exact"]
             end = segment["end"]["exact"]
+            left_window_clipped = bool(segment.get("left_window_clipped"))
+            right_window_clipped = bool(segment.get("right_window_clipped"))
             objects.append(FunctionGraph(
                 name=graph_name,
                 expression=_geogebra_expression(segment.get("expression_exact") or graph_expression),
-                domain=(start, end),
+                domain=None if left_window_clipped and right_window_clipped else (start, end),
                 left_open=bool(segment.get("left_open")),
                 right_open=bool(segment.get("right_open")),
                 component_id=segment.get("component_id"),
@@ -144,9 +146,18 @@ def build_function_graph(analysis: dict) -> tuple[MathScene, list[str], list[dic
     commands = build_geogebra_commands(scene)
     line_analysis = analysis.get("line_analysis")
     if line_analysis:
-        commands.append(f'g(x)={line_analysis["k"]}*x+{line_analysis["b"]}')
-        commands.append('SetColor(g, "#2563eb")')
-        commands.append('SetLineThickness(g, 4)')
+        line_expressions = line_analysis.get("graph_expressions") or (
+            [line_analysis["graph_expression"]] if line_analysis.get("graph_expression") else []
+        )
+        is_vertical = line_analysis.get("kind") == "vertical" and line_analysis.get("x0_exact") is not None
+        if is_vertical:
+            line_expressions = [f"x={line_analysis['x0_exact']}"]
+        for index, expression in enumerate(line_expressions):
+            name = "g" if len(line_expressions) == 1 else f"g{index + 1}"
+            definition = f"{name}: {_geogebra_expression(expression)}" if is_vertical else f"{name}(x)={_geogebra_expression(expression)}"
+            commands.append(definition)
+            commands.append(f'SetColor({name}, "#2563eb")')
+            commands.append(f'SetLineThickness({name}, 4)')
     transform_preview = analysis.get("transform_preview")
     if transform_preview:
         commands.append(f'h(x)={_geogebra_expression(transform_preview["expression"])}')
@@ -196,6 +207,8 @@ def _append_endpoint_marker(
     excluded_xs: set[str],
 ) -> None:
     endpoint = segment.get(f"{side}_endpoint") or {}
+    if segment.get(f"{side}_window_clipped"):
+        return
     exact_x = str(endpoint.get("exact"))
     x_value = _safe_float(endpoint.get("approx"))
     y_value = _safe_float(endpoint.get("y"))
