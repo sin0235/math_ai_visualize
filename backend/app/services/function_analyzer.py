@@ -361,16 +361,17 @@ def _is_limit_finite(value) -> bool:
     return value not in (oo, -oo, zoo, nan, S.NaN) and not str(value).startswith("AccumBounds") and not isinstance(value, sp.Limit)
 
 
-def _parameter_value(parameters: Mapping[str, float] | None, name: str) -> float:
-    raw = 1.0 if parameters is None else parameters.get(name, 1.0)
+def _parameter_value(parameters: Mapping[str, Any] | None, name: str):
+    if parameters is None or name not in parameters:
+        raise ValueError(f"Cần nhập giá trị exact cho tham số {name}.")
+    raw = parameters[name]
     try:
-        value = float(raw)
-    except (TypeError, ValueError) as e:
-        raise ValueError(f"Tham số {name} không hợp lệ.") from e
-    if not isfinite(value):
-        raise ValueError(f"Tham số {name} phải là số hữu hạn.")
-    config = _PARAMETER_RANGES[name]
-    return min(max(value, config["min"]), config["max"])
+        parsed = parse_safe_math_expression(str(raw)).expr
+    except (SafeMathParseError, SafeMathComplexityError) as error:
+        raise ValueError(f"Tham số {name} không hợp lệ: {error}") from error
+    if parsed.free_symbols or parsed.is_real is False or parsed.is_finite is not True:
+        raise ValueError(f"Tham số {name} phải là biểu thức số thực hữu hạn, không chứa biến.")
+    return simplify(parsed)
 
 
 def _periodicity_payload(f_expr, domain_info: FunctionDomain | None) -> dict[str, Any] | None:
@@ -693,8 +694,9 @@ def _asymptotes_v2(f_expr, domain_info: FunctionDomain | None, periodicity: dict
 
 def analyze_function(
     expression: str,
-    parameters: Mapping[str, float] | None = None,
+    parameters: Mapping[str, Any] | None = None,
     *,
+    parameter_mode: str | None = None,
     interval: Mapping[str, float] | None = None,
     line: Mapping[str, float] | None = None,
     parameter_conditions: Mapping[str, Any] | None = None,
@@ -714,16 +716,64 @@ def analyze_function(
         return {"error": str(e), "error_code": e.code, "warnings": [str(e)], "stage_statuses": {e.stage: {"status": "timeout", "error_code": e.code}}}
 
     detected_parameters = ["m"] if m in parsed.free_symbols else []
-    active_parameters: dict[str, float] = {}
+    parameter_payload: dict[str, Any] = {
+        "detected": detected_parameters,
+        "active": {},
+        "active_exact": {},
+        "ranges": {name: dict(config) for name, config in _PARAMETER_RANGES.items() if name in detected_parameters},
+    }
+    if detected_parameters and parameter_mode is None:
+        return {
+            "expression": expression,
+            "expression_latex": latex(parsed),
+            "evaluated_expression": None,
+            "evaluated_expression_latex": None,
+            "analysis_mode": "requires_parameter_confirmation",
+            "parameter_mode": None,
+            "parameters": parameter_payload,
+            "requires_parameter_confirmation": True,
+            "requires_substitution_for_graph": True,
+            "complexity_score": parse_result.complexity_score,
+            "stage_statuses": {"parse": {"status": "ok"}, "graph": {"status": "skipped"}},
+            "warnings": ["Chọn chế độ symbolic hoặc thay giá trị m trước khi phân tích."],
+            "_skip_graph": True,
+        }
+    if detected_parameters and parameter_mode == "symbolic":
+        from app.services.function_parameter_analysis import analyze_parameter_cases
+
+        parameter_analysis = analyze_parameter_cases(parsed, x, m)
+        parameter_payload["provenance"] = {"mode": "symbolic", "source": "request", "exact": True}
+        return {
+            "expression": expression,
+            "expression_latex": latex(parsed),
+            "evaluated_expression": None,
+            "evaluated_expression_latex": None,
+            "analysis_mode": "safe_symbolic",
+            "parameter_mode": "symbolic",
+            "parameters": parameter_payload,
+            "requires_parameter_confirmation": False,
+            "requires_substitution_for_graph": True,
+            "parameter_analysis_v2": parameter_analysis,
+            "parameter_conditions": parameter_analysis.get("legacy_conditions", []),
+            "complexity_score": parse_result.complexity_score,
+            "stage_statuses": {"parse": {"status": "ok"}, "parameter_analysis": {"status": parameter_analysis["status"]}, "graph": {"status": "skipped"}},
+            "warnings": parameter_analysis.get("warnings", []),
+            "_skip_graph": True,
+        }
+
     f = parsed
-    if "m" in detected_parameters:
+    if detected_parameters:
+        if parameter_mode != "substitute":
+            return {"error": "Chế độ tham số không hợp lệ.", "warnings": ["Chế độ tham số không hợp lệ."]}
         try:
             m_value = _parameter_value(parameters, "m")
         except ValueError as e:
             return {"error": str(e), "warnings": [str(e)]}
-        active_parameters["m"] = m_value
+        parameter_payload["active"]["m"] = float(sp.N(m_value))
+        parameter_payload["active_exact"]["m"] = _fmt_sym(m_value)
+        parameter_payload["provenance"] = {"mode": "substitute", "source": "request", "exact": True}
         f = f.subs(m, m_value)
-        warnings.append(f"Kết quả khảo sát tại m = {_fmt_num(m_value)}.")
+        warnings.append(f"Kết quả khảo sát tại m = {_fmt_sym(m_value)}.")
 
     result: dict[str, Any] = {
         "expression": expression,
@@ -731,11 +781,10 @@ def analyze_function(
         "evaluated_expression": _fmt_sym(f),
         "evaluated_expression_latex": latex(f),
         "analysis_mode": "numeric_substituted" if detected_parameters else "symbolic",
-        "parameters": {
-            "detected": detected_parameters,
-            "active": active_parameters,
-            "ranges": {name: dict(config) for name, config in _PARAMETER_RANGES.items() if name in detected_parameters},
-        },
+        "parameter_mode": parameter_mode if detected_parameters else None,
+        "parameters": parameter_payload,
+        "requires_parameter_confirmation": False,
+        "requires_substitution_for_graph": False,
         "complexity_score": parse_result.complexity_score,
         "stage_statuses": {"parse": {"status": "ok"}},
         "_parsed_expr": parsed,

@@ -36,7 +36,7 @@ export function CrossSectionVolumeSimulation({ step, progress, freeMode = false 
       <aside className="csim-control-stack">
         <div className="csim-card">
           <div className="csim-card-head"><strong>Thiết diện song song</strong><span><KatexSpan tex={String.raw`V=\int_a^b S(x)\,dx`} /></span></div>
-          <FormulaInput label="s(x)" value={state.base} onChange={(base) => setState({ ...state, base })} disabled={!canSetup} />
+          <FormulaInput label="$s(x)$" value={state.base} onChange={(base) => setState({ ...state, base })} disabled={!canSetup} />
           <div className={!canSetup ? 'is-step-locked' : undefined}>
             <PresetButtons presets={CROSS_PRESETS} onApply={(preset) => canSetup && setState((current) => ({ ...current, ...preset.patch }))} />
           </div>

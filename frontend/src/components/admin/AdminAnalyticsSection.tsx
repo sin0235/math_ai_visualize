@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useState, useRef, useEffect, type ReactNode } from 'react';
 import type {
   AdminAnalyticsActivity,
   AdminAnalyticsAiUsage,
@@ -14,6 +14,15 @@ import { formatHistoryDate, MetricCard } from './AdminComponents';
 
 export type AnalyticsSource = 'overview' | 'product' | 'renders' | 'errors' | 'activity' | 'funnel' | 'ai';
 export type AnalyticsSourceErrors = Partial<Record<AnalyticsSource, string>>;
+
+const ANALYTICS_FUNCTIONS = [
+  { id: 'analytics-overview', index: '01', title: 'Tổng quan', detail: 'Tín hiệu và xu hướng' },
+  { id: 'analytics-adoption', index: '02', title: 'Mức sử dụng', detail: 'Độ phủ tính năng' },
+  { id: 'analytics-reliability', index: '03', title: 'Độ tin cậy', detail: 'Luồng và render' },
+  { id: 'analytics-ai', index: '04', title: 'Hiệu suất AI', detail: 'Provider và tác vụ' },
+  { id: 'analytics-diagnostics', index: '05', title: 'Chẩn đoán', detail: 'Lỗi và ảnh hưởng' },
+  { id: 'analytics-users', index: '06', title: 'Người dùng', detail: 'Kích hoạt và hoạt động' },
+] as const;
 
 interface AdminAnalyticsSectionProps {
   days: number;
@@ -46,6 +55,26 @@ export function AdminAnalyticsSection({
   onDaysChange,
   onRefresh,
 }: AdminAnalyticsSectionProps) {
+  const [exportOpen, setExportOpen] = useState(false);
+  const exportRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!exportOpen) return;
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (exportRef.current && !exportRef.current.contains(event.target as Node)) {
+        setExportOpen(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setExportOpen(false);
+    };
+    document.addEventListener('mousedown', closeOnOutsideClick);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('mousedown', closeOnOutsideClick);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [exportOpen]);
   const topFeature = productUsage?.feature_usage[0];
   const weakestOutcome = [...(productUsage?.outcomes ?? [])]
     .filter((item) => item.completed + item.failed > 0)
@@ -76,10 +105,76 @@ export function AdminAnalyticsSection({
               <option value={30}>30 ngày</option>
             </select>
           </label>
-          <a className="secondary-button" href={apiUrl(adminAnalyticsExportUrl('errors', days))} target="_blank" rel="noreferrer">Xuất lỗi CSV</a>
-          <a className="secondary-button" href={apiUrl(adminAnalyticsExportUrl('activity', days))} target="_blank" rel="noreferrer">Xuất hoạt động CSV</a>
-          <button type="button" className="secondary-button" onClick={onRefresh} disabled={loading} aria-busy={loading}>
-            {loading ? 'Đang tải…' : 'Làm mới'}
+          <div className="admin-export-dropdown" ref={exportRef}>
+            <button
+              type="button"
+              className="secondary-button admin-export-trigger"
+              aria-haspopup="menu"
+              aria-expanded={exportOpen}
+              onClick={() => setExportOpen((v) => !v)}
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path d="M8 1v9M4 7l4 4 4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M2 12h12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+              </svg>
+              Xuất
+              <svg className="admin-export-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true" style={{ transform: exportOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.18s' }}>
+                <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+            {exportOpen && (
+              <div className="admin-export-menu" role="menu">
+                <a
+                  className="admin-export-item"
+                  href={apiUrl(adminAnalyticsExportUrl('errors', days))}
+                  target="_blank"
+                  rel="noreferrer"
+                  role="menuitem"
+                  onClick={() => setExportOpen(false)}
+                >
+                  <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.5"/>
+                    <path d="M8 5v4M8 11v.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                  </svg>
+                  Lỗi (.csv)
+                </a>
+                <a
+                  className="admin-export-item"
+                  href={apiUrl(adminAnalyticsExportUrl('activity', days))}
+                  target="_blank"
+                  rel="noreferrer"
+                  role="menuitem"
+                  onClick={() => setExportOpen(false)}
+                >
+                  <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <rect x="2" y="2" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.5"/>
+                    <path d="M5 8h6M5 5.5h4M5 10.5h3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                  </svg>
+                  Hoạt động (.csv)
+                </a>
+              </div>
+            )}
+          </div>
+          <button
+            type="button"
+            className="secondary-button admin-refresh-btn"
+            onClick={onRefresh}
+            disabled={loading}
+            aria-busy={loading}
+            title="Làm mới dữ liệu"
+            aria-label="Làm mới dữ liệu"
+          >
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 16 16"
+              fill="none"
+              aria-hidden="true"
+              style={{ animation: loading ? 'admin-spin 0.8s linear infinite' : 'none' }}
+            >
+              <path d="M13.5 8A5.5 5.5 0 1 1 8 2.5c1.8 0 3.4.87 4.4 2.2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/>
+              <path d="M12.5 1.5v3.2H9.3" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
           </button>
         </div>
       </header>
@@ -93,8 +188,18 @@ export function AdminAnalyticsSection({
           <small>{refreshedAt ? `Cập nhật ${formatHistoryDate(refreshedAt.toISOString())}` : 'Chưa tải dữ liệu'}{failedSources ? ` · ${failedSources} nguồn lỗi` : ''}</small>
         </div>
 
+        <nav className="admin-analytics-function-nav" aria-label="Sáu chức năng phân tích chính">
+          {ANALYTICS_FUNCTIONS.map((item) => (
+            <a href={`#${item.id}`} key={item.id}>
+              <span>{item.index}</span>
+              <strong>{item.title}</strong>
+              <small>{item.detail}</small>
+            </a>
+          ))}
+        </nav>
+
         <PanelState error={sourceErrors.product} loading={loading && !productUsage}>
-          <section className="admin-panel admin-panel-full admin-analytics-summary">
+          <section id="analytics-overview" className="admin-panel admin-panel-full admin-analytics-summary admin-analytics-anchor">
             <PanelHeading title="Tín hiệu cần chú ý" description="Bốn chỉ số ưu tiên để quyết định kiểm tra tiếp theo." />
             <div className="admin-analytics-insights" aria-label="Tín hiệu ưu tiên">
               <InsightCard label="Độ phủ cao nhất" value={topFeature?.feature ?? 'Chưa có dữ liệu'} detail={topFeature ? `${topFeature.unique_users} người dùng · ${topFeature.opens} lượt mở` : 'Cần traffic từ người dùng đăng nhập'} tone="accent" />
@@ -130,14 +235,14 @@ export function AdminAnalyticsSection({
 
         <div className="admin-analytics-grid">
           <PanelState error={sourceErrors.product} loading={loading && !productUsage}>
-            <section className="admin-panel">
+            <section id="analytics-adoption" className="admin-panel admin-analytics-anchor">
               <PanelHeading title="Độ phủ tính năng" description="Xếp theo số người dùng; lượt mở chỉ thể hiện tần suất quay lại." />
               <FeatureBars items={productUsage?.feature_usage ?? []} />
             </section>
           </PanelState>
 
           <PanelState error={sourceErrors.product} loading={loading && !productUsage}>
-            <section className="admin-panel">
+            <section id="analytics-reliability" className="admin-panel admin-analytics-anchor">
               <PanelHeading title="Độ tin cậy luồng" description="Kết quả hoàn tất và thất bại theo chức năng." />
               <OutcomeBars items={productUsage?.outcomes ?? []} />
             </section>
@@ -153,7 +258,7 @@ export function AdminAnalyticsSection({
           </PanelState>
 
           <PanelState error={sourceErrors.ai} loading={loading && !aiUsage}>
-            <section className="admin-panel">
+            <section id="analytics-ai" className="admin-panel admin-analytics-anchor">
               <PanelHeading title="Hiệu suất AI" description="Token là mức sử dụng; chưa quy đổi thành chi phí." />
               <div className="admin-metric-grid admin-metric-grid-4 admin-analytics-mini-metrics">
                 <MetricCard label="Lượt gọi" value={aiUsage?.calls ?? 0} variant="primary" icon="models" />
@@ -167,7 +272,7 @@ export function AdminAnalyticsSection({
           </PanelState>
 
           <PanelState error={sourceErrors.errors} loading={loading && !diagnostics}>
-            <section className="admin-panel admin-panel-full">
+            <section id="analytics-diagnostics" className="admin-panel admin-panel-full admin-analytics-anchor">
               <PanelHeading title="Chẩn đoán lỗi" description={`${diagnostics?.affected_users ?? 0} người dùng đăng nhập bị ảnh hưởng; route và source giữ riêng khỏi feature.`} />
               <div className="admin-analytics-diagnostics">
                 <CountList title="Theo route" items={diagnostics?.by_route ?? []} />
@@ -196,14 +301,9 @@ export function AdminAnalyticsSection({
           </PanelState>
 
           <PanelState error={sourceErrors.funnel} loading={loading && !funnel}>
-            <section className="admin-panel">
+            <section id="analytics-users" className="admin-panel admin-analytics-anchor">
               <PanelHeading title="Kích hoạt người dùng" description={`Phễu tài khoản trong ${days} ngày.`} />
-              <div className="admin-metric-grid admin-metric-grid-4 admin-analytics-mini-metrics">
-                <MetricCard label="Đăng ký" value={funnel?.registered ?? 0} variant="primary" icon="users" />
-                <MetricCard label="Xác minh" value={funnel?.verified ?? 0} variant="success" icon="active" />
-                <MetricCard label="Render OK" value={funnel?.users_with_completed_render ?? 0} variant="info" icon="renders" />
-                <MetricCard label="Có OCR" value={funnel?.users_with_ocr ?? 0} variant="info" icon="chart" />
-              </div>
+              <FunnelChart funnel={funnel} />
             </section>
           </PanelState>
 
@@ -328,8 +428,41 @@ function AiTable({ title, items }: { title: string; items: Array<{ key: string; 
   return <div className="admin-ai-breakdown"><h4>{title}</h4>{items.length ? <div className="admin-analytics-table"><div className="is-header"><span>Nhóm</span><span>Lượt gọi</span><span>Thành công</span><span>Token / độ trễ</span></div>{items.slice(0, 8).map((item) => <div key={item.key}><strong>{item.key}</strong><span>{item.calls}</span><span className={(item.success_rate ?? 100) < 95 ? 'is-danger' : ''}>{formatPercent(item.success_rate)}</span><span>{item.tokens} / {item.avg_ms ?? '—'}ms</span></div>)}</div> : <EmptyState text="Chưa có chỉ số AI." />}</div>;
 }
 
+function FunnelChart({ funnel }: { funnel: AdminAnalyticsFunnel | null }) {
+  const steps = [
+    { label: 'Đăng ký', value: funnel?.registered ?? 0 },
+    { label: 'Xác minh', value: funnel?.verified ?? 0 },
+    { label: 'Render thành công', value: funnel?.users_with_completed_render ?? 0 },
+    { label: 'Sử dụng OCR', value: funnel?.users_with_ocr ?? 0 },
+  ];
+  const baseline = Math.max(1, steps[0].value);
+
+  return (
+    <div className="admin-funnel" role="img" aria-label="Phễu kích hoạt từ đăng ký đến sử dụng OCR">
+      {steps.map((step, index) => {
+        const previous = index === 0 ? step.value : steps[index - 1].value;
+        const conversion = index === 0 ? 100 : (previous > 0 ? Math.round((step.value / previous) * 100) : 0);
+        return (
+          <div className="admin-funnel-step" key={step.label}>
+            <div>
+              <span>{step.label}</span>
+              <strong>{step.value}</strong>
+              <small>{index === 0 ? 'Mốc đầu kỳ' : `${conversion}% từ bước trước`}</small>
+            </div>
+            <i aria-hidden="true"><b style={{ width: `${Math.max(step.value > 0 ? 4 : 0, (step.value / baseline) * 100)}%` }} /></i>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function CountList({ title, items }: { title: string; items: Array<{ key: string; count: number }> }) {
-  return <div><h4>{title}</h4>{items.slice(0, 8).map((item) => <p key={item.key}><span>{item.key}</span><strong>{item.count}</strong></p>)}{items.length === 0 && <small>Chưa có dữ liệu.</small>}</div>;
+  const visibleItems = items.slice(0, 8);
+  const max = Math.max(1, ...visibleItems.map((item) => item.count));
+  const total = visibleItems.reduce((sum, item) => sum + item.count, 0);
+
+  return <div><h4>{title}</h4>{visibleItems.map((item) => <div className="admin-count-row" key={item.key}><p><span>{item.key}</span><strong>{item.count}</strong></p><i aria-hidden="true"><b style={{ width: `${(item.count / max) * 100}%` }} /></i><small>{total ? Math.round((item.count / total) * 100) : 0}% trong nhóm</small></div>)}{items.length === 0 && <small>Chưa có dữ liệu.</small>}</div>;
 }
 
 function EmptyState({ text }: { text: string }) {

@@ -1,8 +1,8 @@
-from sympy import Symbol, lambdify
+from sympy import Symbol
 
 from app.renderers.geogebra_commands import build_geogebra_commands
 from app.schemas.scene import Annotation, FunctionGraph, MathScene, Point2D, SceneView, Segment
-from app.services.function_domain import in_domain
+from app.services.function_graph_sampling import build_graph_analysis, flatten_graph_points
 
 x = Symbol("x", real=True)
 m = Symbol("m", real=True)
@@ -14,18 +14,42 @@ def build_function_graph(analysis: dict) -> tuple[MathScene, list[str], list[dic
 
     graph_expression = analysis.get("_graph_expr") or analysis.get("evaluated_expression") or analysis["expression"]
     interval_analysis = analysis.get("interval_analysis")
-    
-    domain = None
+    requested_interval = None
     if interval_analysis:
-        a = interval_analysis["a"]
-        b = interval_analysis["b"]
-        domain = (a, b)
+        requested_interval = {
+            "a": interval_analysis["a"],
+            "b": interval_analysis["b"],
+            "open_a": interval_analysis.get("open_a", False),
+            "open_b": interval_analysis.get("open_b", False),
+        }
+    graph_analysis = build_graph_analysis(
+        analysis.get("_evaluated_expr") or analysis.get("_parsed_expr"),
+        x,
+        analysis.get("_domain_info"),
+        analysis,
+        requested_interval=requested_interval,
+    )
+    analysis["graph_analysis_v2"] = graph_analysis
 
-    graph_domains = [domain] if domain is not None else _graph_domains_from_analysis(analysis)
-    if graph_domains:
-        for index, graph_domain in enumerate(graph_domains):
-            graph_name = "f" if len(graph_domains) == 1 else f"f{index + 1}"
-            objects.append(FunctionGraph(name=graph_name, expression=_geogebra_expression(graph_expression), domain=graph_domain))
+    graph_segments = graph_analysis.get("segments", [])
+    excluded_endpoint_xs = {
+        str(item.get("exact")) for item in graph_analysis.get("singularities", [])
+    }
+    if graph_segments:
+        for index, segment in enumerate(graph_segments):
+            graph_name = "f" if len(graph_segments) == 1 else f"f{index + 1}"
+            start = segment["start"]["exact"]
+            end = segment["end"]["exact"]
+            objects.append(FunctionGraph(
+                name=graph_name,
+                expression=_geogebra_expression(segment.get("expression_exact") or graph_expression),
+                domain=(start, end),
+                left_open=bool(segment.get("left_open")),
+                right_open=bool(segment.get("right_open")),
+                component_id=segment.get("component_id"),
+            ))
+            _append_endpoint_marker(objects, annotations, segment, index, "left", excluded_endpoint_xs)
+            _append_endpoint_marker(objects, annotations, segment, index, "right", excluded_endpoint_xs)
     else:
         objects.append(FunctionGraph(name="f", expression=_geogebra_expression(graph_expression), domain=None))
 
@@ -107,8 +131,10 @@ def build_function_graph(analysis: dict) -> tuple[MathScene, list[str], list[dic
             objects.append(point)
             annotations.append(Annotation(type="coordinate_label", target=point.name, label=hole.get("label", "điểm khuyết"), color="#dc2626"))
 
+    active_exact = (analysis.get("parameters") or {}).get("active_exact") or {}
+    parameter_suffix = f", m = {active_exact['m']}" if "m" in active_exact else ""
     scene = MathScene(
-        problem_text=f"Đồ thị y = {analysis['expression']}",
+        problem_text=f"Đồ thị y = {analysis.get('evaluated_expression') or analysis['expression']}{parameter_suffix}",
         topic="function_graph",
         renderer="geogebra_2d",
         objects=objects,
@@ -145,63 +171,47 @@ def build_function_graph(analysis: dict) -> tuple[MathScene, list[str], list[dic
         commands.append(f"SetPointSize(U{i + 1}, 4)")
 
     for obj in objects:
+        if isinstance(obj, Point2D) and obj.metadata.get("kind") in {"open_endpoint", "closed_endpoint"}:
+            commands.append(f'SetColor({obj.name}, "#2563eb")')
+            commands.append(f"SetPointStyle({obj.name}, {2 if obj.metadata['kind'] == 'open_endpoint' else 0})")
+            commands.append(f"SetPointSize({obj.name}, 5)")
+
+    for obj in objects:
         if isinstance(obj, Point2D) and obj.name.startswith(("VA", "HA", "ProjX", "ProjY")):
             commands.append(f"SetVisibleInView({obj.name}, 1, false)")
 
-    sample_expr = analysis.get("_evaluated_expr") or analysis.get("_parsed_expr")
-    return scene, commands, _sample_graph_points(sample_expr, analysis.get("_domain_info"))
-
-
-def _sample_graph_points(expr, domain_info=None) -> list[dict[str, float]]:
-    if expr is None:
-        return []
-    try:
-        fn = lambdify(x, expr, "math")
-    except Exception:
-        return []
-
-    points: list[dict[str, float]] = []
-    for i in range(161):
-        x_val = -8 + i * 0.1
-        if not in_domain(domain_info, x_val):
-            continue
-        try:
-            y_val = float(fn(x_val))
-        except (ValueError, ZeroDivisionError, OverflowError, TypeError):
-            continue
-        if y_val != y_val or y_val in (float("inf"), float("-inf")) or abs(y_val) > 1_000:
-            continue
-        points.append({"x": round(x_val, 4), "y": round(y_val, 4)})
-    return points
-
-
-def _graph_domains_from_analysis(analysis: dict) -> list[tuple[float | str, float | str]]:
-    domain_info = analysis.get("_domain_info")
-    components = getattr(domain_info, "components", ())
-    domains: list[tuple[float | str, float | str]] = []
-    for component in components:
-        start = _geogebra_bound(component.start)
-        end = _geogebra_bound(component.end)
-        if start is None or end is None:
-            continue
-        domains.append((start, end))
-    return domains
-
-
-def _geogebra_bound(value) -> float | str | None:
-    text = str(value)
-    if text in ("-oo", "-∞"):
-        return "-∞"
-    if text in ("oo", "+∞", "∞"):
-        return "+∞"
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
+    return scene, commands, flatten_graph_points(graph_analysis)
 
 
 def _geogebra_expression(expression: str) -> str:
     return expression.replace("**", "^").replace("Abs(", "abs(").replace(" ", "")
+
+
+def _append_endpoint_marker(
+    objects: list,
+    annotations: list,
+    segment: dict,
+    segment_index: int,
+    side: str,
+    excluded_xs: set[str],
+) -> None:
+    endpoint = segment.get(f"{side}_endpoint") or {}
+    exact_x = str(endpoint.get("exact"))
+    x_value = _safe_float(endpoint.get("approx"))
+    y_value = _safe_float(endpoint.get("y"))
+    if exact_x in excluded_xs or x_value is None or y_value is None:
+        return
+    name = f"D{segment_index + 1}{'L' if side == 'left' else 'R'}"
+    point = Point2D(name=name, x=x_value, y=y_value)
+    point.metadata["kind"] = "open_endpoint" if endpoint.get("open") else "closed_endpoint"
+    point.metadata["component_id"] = segment.get("component_id")
+    objects.append(point)
+    annotations.append(Annotation(
+        type="coordinate_label",
+        target=name,
+        label="biên mở" if endpoint.get("open") else "biên đóng",
+        color="#2563eb",
+    ))
 
 
 def _point_from_values(name: str, raw_x, raw_y) -> Point2D | None:

@@ -1,17 +1,54 @@
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.schemas.scene import MAX_IMAGE_DATA_URL_CHARS, RuntimeSettings
 
 
+class FunctionOcrProvenance(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source: Literal["ocr", "ocr_confirmed"]
+    provider: str = Field(min_length=1, max_length=64)
+    model: str = Field(min_length=1, max_length=256)
+    extraction_version: str = Field(default="function-ocr-v2", max_length=64)
+
+
 class AnalyzeRequest(BaseModel):
     expression: str = Field(min_length=1, max_length=1000)
-    parameters: dict[str, float] | None = None
+    parameters: dict[str, str | float] | None = None
+    parameter_mode: Literal["symbolic", "substitute"] | None = None
+    provenance: FunctionOcrProvenance | None = None
     interval: dict[str, Any] | None = None
     line: dict[str, Any] | None = None
     parameter_conditions: dict[str, Any] | None = None
     transform: dict[str, Any] | None = None
+
+
+class GraphWindow(BaseModel):
+    x_min: float
+    x_max: float
+
+    @model_validator(mode="after")
+    def validate_bounds(self) -> "GraphWindow":
+        if self.x_min >= self.x_max:
+            raise ValueError("x_min phải nhỏ hơn x_max.")
+        if self.x_max - self.x_min > 1_000_000:
+            raise ValueError("Cửa sổ vẽ quá rộng.")
+        return self
+
+
+class GraphSamplesRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expression: str = Field(min_length=1, max_length=1000)
+    parameters: dict[str, str | float] | None = None
+    window: GraphWindow
+    max_points: int = Field(default=500, ge=32, le=2_000)
+
+
+class GraphSamplesResponse(BaseModel):
+    graph_analysis_v2: dict[str, Any]
 
 
 class AnalyzeOcrRequest(BaseModel):
@@ -26,6 +63,47 @@ class AnalyzeOcrRequest(BaseModel):
         if bool(self.image_data_url) == bool(self.upload_id):
             raise ValueError("Cần gửi đúng một trong hai trường image_data_url hoặc upload_id.")
         return self
+
+
+class FunctionOcrAmbiguousToken(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    token: str = Field(min_length=1, max_length=64)
+    alternatives: list[str] = Field(default_factory=list, max_length=8)
+    reason: str = Field(default="", max_length=256)
+    start: int | None = Field(default=None, ge=0, le=1000)
+    end: int | None = Field(default=None, ge=0, le=1000)
+
+    @model_validator(mode="after")
+    def validate_range(self) -> "FunctionOcrAmbiguousToken":
+        if (self.start is None) != (self.end is None):
+            raise ValueError("Vị trí token OCR phải có đủ start và end.")
+        if self.start is not None and self.end is not None and self.start >= self.end:
+            raise ValueError("Vị trí token OCR không hợp lệ.")
+        return self
+
+
+class FunctionOcrCandidate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expression: str = Field(default="", max_length=1000)
+    variable: Literal["x"] = "x"
+    parameters: list[Literal["m"]] = Field(default_factory=list, max_length=1)
+    confidence: float = Field(ge=0, le=1)
+    warnings: list[str] = Field(default_factory=list, max_length=20)
+    ambiguous_tokens: list[FunctionOcrAmbiguousToken] = Field(default_factory=list, max_length=20)
+    needs_confirmation: bool = True
+
+    @model_validator(mode="after")
+    def validate_token_ranges(self) -> "FunctionOcrCandidate":
+        if any(token.end is not None and token.end > len(self.expression) for token in self.ambiguous_tokens):
+            raise ValueError("Vị trí token OCR vượt ngoài biểu thức.")
+        return self
+
+
+class FunctionOcrExtraction(FunctionOcrCandidate):
+    ocr_text: str = Field(default="", max_length=20_000)
+    provenance: FunctionOcrProvenance
 
 
 class CriticalPoint(BaseModel):
@@ -81,6 +159,10 @@ class AnalyzeResponse(BaseModel):
     evaluated_expression_latex: str | None = None
     parameters: dict[str, Any] | None = None
     analysis_mode: str | None = None
+    parameter_mode: str | None = None
+    requires_parameter_confirmation: bool = False
+    requires_substitution_for_graph: bool = False
+    parameter_analysis_v2: dict[str, Any] | None = None
     derivative: str | None = None
     derivative_latex: str | None = None
     second_derivative: str | None = None
@@ -114,8 +196,10 @@ class AnalyzeResponse(BaseModel):
     geogebra_commands: list[str] = Field(default_factory=list)
     graph_scene: dict[str, Any] | None = None
     graph_points: list[dict[str, float]] = Field(default_factory=list)
+    graph_analysis_v2: dict[str, Any] | None = None
     ocr_text: str | None = None
     ocr_expression: str | None = None
+    provenance: FunctionOcrProvenance | None = None
     interval_analysis: dict[str, Any] | None = None
     line_analysis: dict[str, Any] | None = None
     parameter_conditions: list[dict[str, Any]] = Field(default_factory=list)

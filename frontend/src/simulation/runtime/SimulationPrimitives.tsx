@@ -21,7 +21,7 @@ export function FormulaInput({
 
   return (
     <label className={`csim-field ${error ? 'has-error' : ''}${disabled ? ' is-step-locked' : ''}`}>
-      <span><KatexSpan tex={label} /></span>
+      <span><MixedTextRenderer text={label} /></span>
       <input
         value={value}
         disabled={disabled}

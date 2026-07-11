@@ -21,6 +21,7 @@ MAX_SAFE_MATH_INTEGER_DIGITS = 12
 MAX_SAFE_MATH_EXPONENT_ABS = 20
 MAX_SAFE_MATH_RESULT_NODES = 220
 MAX_SAFE_MATH_POLY_DEGREE = 12
+MAX_SAFE_PIECEWISE_BRANCHES = 8
 
 
 class SafeMathParseError(ValueError):
@@ -65,12 +66,13 @@ _FUNCTIONS: dict[str, Callable] = {
     "sqrt": sp.sqrt,
     "abs": sp.Abs,
     "Abs": sp.Abs,
+    "Piecewise": sp.Piecewise,
 }
 
-_CONSTANTS = {"pi": sp.pi, "E": sp.E, "oo": sp.oo}
+_CONSTANTS = {"pi": sp.pi, "E": sp.E, "oo": sp.oo, "True": sp.S.true}
 _SYMBOLS = {"x": sp.Symbol("x", real=True), "m": sp.Symbol("m", real=True)}
 _ALLOWED_NAMES = set(_SYMBOLS) | set(_FUNCTIONS) | set(_CONSTANTS)
-_ALLOWED_TOKEN_OPS = {"+", "-", "*", "/", "**", "(", ")", ","}
+_ALLOWED_TOKEN_OPS = {"+", "-", "*", "/", "**", "^", "(", ")", ",", "<", "<=", ">", ">=", "=="}
 
 
 def parse_safe_math_expression(expression: str) -> SafeMathParseResult:
@@ -145,7 +147,7 @@ def _tokens_to_python_expression(tokens: list[tokenize.TokenInfo]) -> str:
     for index, token in enumerate(tokens):
         if index > 0 and _needs_implicit_mul(tokens[index - 1], token):
             out.append((tokenize.OP, "*"))
-        out.append((token.type, token.string))
+        out.append((token.type, "**" if token.string == "^" else token.string))
     return tokenize.untokenize(out)
 
 
@@ -202,10 +204,33 @@ def _build_expr(node: ast.AST, ctx: _BuildContext, *, function_depth: int) -> sp
             raise SafeMathParseError(f"Hàm không được hỗ trợ: {func_name}.")
         if node.keywords:
             raise SafeMathParseError("Không cho phép keyword argument trong biểu thức.")
+        if func_name == "Piecewise":
+            if not 1 <= len(node.args) <= MAX_SAFE_PIECEWISE_BRANCHES:
+                raise SafeMathParseError(f"Piecewise chỉ nhận từ 1 đến {MAX_SAFE_PIECEWISE_BRANCHES} nhánh.")
+            branches = [
+                _build_piecewise_branch(arg, ctx, function_depth=function_depth + 1)
+                for arg in node.args
+            ]
+            return sp.Piecewise(*branches)
         if not 1 <= len(node.args) <= 2:
             raise SafeMathParseError(f"Hàm {func_name} chỉ nhận 1 hoặc 2 tham số.")
         args = [_build_expr(arg, ctx, function_depth=function_depth + 1) for arg in node.args]
         return ctx.functions[func_name](*args)
+    if isinstance(node, ast.Compare):
+        if len(node.ops) != 1 or len(node.comparators) != 1:
+            raise SafeMathParseError("Không hỗ trợ chuỗi điều kiện so sánh.")
+        left = _build_expr(node.left, ctx, function_depth=function_depth)
+        right = _build_expr(node.comparators[0], ctx, function_depth=function_depth)
+        relation = {
+            ast.Lt: sp.Lt,
+            ast.LtE: sp.Le,
+            ast.Gt: sp.Gt,
+            ast.GtE: sp.Ge,
+            ast.Eq: sp.Eq,
+        }.get(type(node.ops[0]))
+        if relation is None:
+            raise SafeMathParseError("Điều kiện so sánh không được hỗ trợ.")
+        return relation(left, right)
     if isinstance(node, ast.Name):
         if node.id in ctx.symbols:
             return ctx.symbols[node.id]
@@ -213,13 +238,30 @@ def _build_expr(node: ast.AST, ctx: _BuildContext, *, function_depth: int) -> sp
             return ctx.constants[node.id]
         raise SafeMathParseError(f"Tên không được hỗ trợ: {node.id}.")
     if isinstance(node, ast.Constant):
-        if isinstance(node.value, bool) or not isinstance(node.value, (int, float)):
+        if isinstance(node.value, bool):
+            return sp.S.true if node.value else sp.S.false
+        if not isinstance(node.value, (int, float)):
             raise SafeMathParseError("Chỉ cho phép hằng số số học.")
         if isinstance(node.value, int):
             _assert_number_token(str(abs(node.value)))
             return sp.Integer(node.value)
         return sp.Float(node.value)
     raise SafeMathParseError(f"Node AST không được hỗ trợ: {node.__class__.__name__}.")
+
+
+def _build_piecewise_branch(
+    node: ast.AST,
+    ctx: _BuildContext,
+    *,
+    function_depth: int,
+) -> tuple[sp.Expr, object]:
+    if not isinstance(node, ast.Tuple) or len(node.elts) != 2:
+        raise SafeMathParseError("Mỗi nhánh Piecewise phải có dạng (biểu thức, điều kiện).")
+    branch_expr = _build_expr(node.elts[0], ctx, function_depth=function_depth)
+    condition = _build_expr(node.elts[1], ctx, function_depth=function_depth)
+    if condition not in (sp.S.true, sp.S.false) and not bool(getattr(condition, "is_Relational", False)):
+        raise SafeMathParseError("Điều kiện Piecewise phải là so sánh theo x hoặc m.")
+    return branch_expr, condition
 
 
 def _assert_safe_exponent(value: sp.Expr) -> None:

@@ -135,6 +135,9 @@ class FunctionGraph(SceneObjectBase):
     name: str = "f"
     expression: str
     domain: tuple[float | str, float | str] | None = None
+    left_open: bool = False
+    right_open: bool = False
+    component_id: str | None = None
 
 
 class Face(SceneObjectBase):

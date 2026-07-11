@@ -63,7 +63,7 @@ export function DerivativeSurveySimulation({ step, progress, freeMode = false }:
             <strong>Khảo sát hàm & đạo hàm</strong>
             <span>Cát tuyến → tiếp tuyến → BBT</span>
           </div>
-          <FormulaInput label="f(x)" value={state.f} onChange={(f) => setState({ ...state, f })} disabled={!canEditF} />
+          <FormulaInput label="$f(x)$" value={state.f} onChange={(f) => setState({ ...state, f })} disabled={!canEditF} />
           <div className={!canEditF ? 'is-step-locked' : undefined}>
             <PresetButtons presets={PRESETS} onApply={(p) => canEditF && setState((s) => ({ ...s, ...p.patch }))} />
           </div>

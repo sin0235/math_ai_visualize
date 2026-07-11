@@ -1,34 +1,133 @@
-import { useId, useMemo, useRef, useState } from 'react';
+import { Component, useCallback, useEffect, useId, useMemo, useRef, useState, type ErrorInfo, type ReactNode } from 'react';
 import { GeoGebraView } from '../GeoGebraView';
-import type { AnalyzeResponse } from '../../api/client';
+import type { AnalyzeResponse, GraphAnalysisV2, GraphSegmentV2 } from '../../api/client';
+import { sampleFunctionGraph } from '../../api/client';
 import type { MathScene } from '../../types/scene';
+import { reportClientError } from '../../utils/telemetry';
+
+type RendererMode = 'auto' | 'geogebra' | 'svg';
+type GeoGebraStatus = 'loading' | 'ready' | 'error';
 
 export function FunctionGraph({ result }: { result: AnalyzeResponse }) {
-  const data = result.graph_points || [];
-  const graph = useMemo(() => buildSvgGraph(data, result), [data, result]);
+  const legacyData = result.graph_points || [];
+  const [sampledGraph, setSampledGraph] = useState<GraphAnalysisV2 | null>(null);
+  const viewportTimerRef = useRef<number | null>(null);
+  const viewportRequestRef = useRef(0);
+  const segments = useMemo<GraphSegmentV2[]>(() => (
+    sampledGraph?.segments ?? result.graph_analysis_v2?.segments ?? [legacySegment(legacyData)]
+  ).filter((segment) => segment.points.length > 0), [legacyData, result.graph_analysis_v2, sampledGraph]);
+  const graph = useMemo(() => buildSvgGraph(segments, result), [segments, result]);
   const svgId = useId();
   const svgRef = useRef<SVGSVGElement | null>(null);
   const dragRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
   const [view, setView] = useState({ scale: 1, tx: 0, ty: 0 });
+  const [rendererMode, setRendererMode] = useState<RendererMode>('auto');
+  const [geogebraStatus, setGeogebraStatus] = useState<GeoGebraStatus>('loading');
+  const [rendererAttempt, setRendererAttempt] = useState(0);
   const [selectedPointKey, setSelectedPointKey] = useState<string | null>(null);
-  const specialPoints = data.length >= 2 ? plotSpecialPoints(result, graph.project, SVG_WIDTH, SVG_HEIGHT, 28) : plotSpecialPoints(result, projectFallbackPoint, SVG_WIDTH, SVG_HEIGHT, 28);
+  const flatData = useMemo(() => segments.flatMap((segment) => segment.points), [segments]);
+  const specialPoints = flatData.length >= 2 ? plotSpecialPoints(result, graph.project, SVG_WIDTH, SVG_HEIGHT, 28) : plotSpecialPoints(result, projectFallbackPoint, SVG_WIDTH, SVG_HEIGHT, 28);
   const visibleSpecialPoints = specialPoints.filter((point) => point.x >= 0 && point.x <= SVG_WIDTH && point.y >= 0 && point.y <= SVG_HEIGHT);
   const selectedPoint = visibleSpecialPoints.find((point) => point.key === selectedPointKey) ?? null;
-  if (result.geogebra_commands.length > 0) {
+  const hasGeoGebra = result.geogebra_commands.length > 0;
+  const commandSignature = result.geogebra_commands.join('\n');
+  const activeRenderer = rendererMode === 'svg' || !hasGeoGebra || (rendererMode === 'auto' && geogebraStatus === 'error') ? 'svg' : 'geogebra';
+
+  useEffect(() => {
+    setRendererMode('auto');
+    setGeogebraStatus('loading');
+    setSampledGraph(null);
+    setView({ scale: 1, tx: 0, ty: 0 });
+  }, [result.expression, commandSignature]);
+
+  const handleGeoGebraStatus = useCallback((status: GeoGebraStatus, detail?: string) => {
+    setGeogebraStatus(status);
+    if (status === 'error') {
+      reportClientError({
+        message: detail || 'GeoGebra renderer failed',
+        error_code: 'FUNCTION_GRAPH_GEOGEBRA_FAILED',
+        component: 'FunctionGraph',
+        metadata: { kind: 'renderer', feature: 'function_graph' },
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeRenderer !== 'svg' || (view.scale === 1 && view.tx === 0)) return;
+    if (viewportTimerRef.current !== null) window.clearTimeout(viewportTimerRef.current);
+    const requestId = ++viewportRequestRef.current;
+    viewportTimerRef.current = window.setTimeout(() => {
+      const plotWidth = SVG_WIDTH - 56;
+      const toGraphX = (screenX: number) => {
+        const untransformedX = (screenX - view.tx) / view.scale;
+        return graph.bounds.left + ((untransformedX - 28) / plotWidth) * (graph.bounds.right - graph.bounds.left);
+      };
+      const xMin = toGraphX(28);
+      const xMax = toGraphX(SVG_WIDTH - 28);
+      if (!Number.isFinite(xMin) || !Number.isFinite(xMax) || xMin >= xMax) return;
+      void sampleFunctionGraph(
+        result.evaluated_expression || result.expression,
+        { x_min: xMin, x_max: xMax },
+        { max_points: result.graph_analysis_v2?.max_points ?? 500 },
+      ).then((response) => {
+        if (requestId !== viewportRequestRef.current) return;
+        setSampledGraph(response.graph_analysis_v2);
+        setView({ scale: 1, tx: 0, ty: 0 });
+      }).catch((error: unknown) => {
+        if (requestId !== viewportRequestRef.current) return;
+        reportClientError({
+          message: error instanceof Error ? error.message : 'Graph viewport sampling failed',
+          error_code: 'FUNCTION_GRAPH_SAMPLING_FAILED',
+          component: 'FunctionGraph',
+          metadata: { kind: 'sampling', feature: 'function_graph' },
+        });
+      });
+    }, 350);
+    return () => {
+      if (viewportTimerRef.current !== null) window.clearTimeout(viewportTimerRef.current);
+    };
+  }, [activeRenderer, graph.bounds.left, graph.bounds.right, result.evaluated_expression, result.expression, result.graph_analysis_v2?.max_points, view]);
+
+  useEffect(() => () => {
+    viewportRequestRef.current += 1;
+    if (viewportTimerRef.current !== null) window.clearTimeout(viewportTimerRef.current);
+  }, []);
+
+  if (result.requires_substitution_for_graph) {
+    return <div className="info-box">Chọn một giá trị exact của m để dựng đồ thị.</div>;
+  }
+
+  if (activeRenderer === 'geogebra') {
     const scene = result.graph_scene ?? createFallbackGraphScene(result.expression);
     return (
       <div className="fa2-graph-card fa2-geogebra-graph-card">
-        <GeoGebraView
-          commands={result.geogebra_commands}
-          renderer="geogebra_2d"
-          scene={scene}
-          view={scene.view}
-          embedded
+        <GraphRendererToolbar
+          active="geogebra"
+          status={geogebraStatus}
+          onSelect={setRendererMode}
+          onRetry={() => {
+            setGeogebraStatus('loading');
+            setRendererAttempt((attempt) => attempt + 1);
+          }}
         />
+        <RendererErrorBoundary
+          key={rendererAttempt}
+          onError={(error) => handleGeoGebraStatus('error', error.message)}
+        >
+          <GeoGebraView
+            key={rendererAttempt}
+            commands={result.geogebra_commands}
+            renderer="geogebra_2d"
+            scene={scene}
+            view={scene.view}
+            onStatusChange={handleGeoGebraStatus}
+            embedded
+          />
+        </RendererErrorBoundary>
       </div>
     );
   }
-  if (data.length < 2) return <div className="info-box">Chưa đủ dữ liệu để vẽ đồ thị.</div>;
+  if (flatData.length < 2) return <div className="info-box">Chưa đủ dữ liệu để vẽ đồ thị.</div>;
 
   const clipId = `${svgId}-clip`;
   const scaleMin = 0.7;
@@ -94,6 +193,16 @@ export function FunctionGraph({ result }: { result: AnalyzeResponse }) {
 
   return (
     <div className="fa2-graph-card">
+      <GraphRendererToolbar
+        active="svg"
+        status={geogebraStatus}
+        onSelect={setRendererMode}
+        onRetry={() => {
+          setGeogebraStatus('loading');
+          setRendererMode('auto');
+          setRendererAttempt((attempt) => attempt + 1);
+        }}
+      />
       <div className="fa2-graph-toolbar">
         <span>Kéo để di chuyển | Con lăn để zoom</span>
         <div className="fa2-graph-toolbar-actions">
@@ -125,6 +234,16 @@ export function FunctionGraph({ result }: { result: AnalyzeResponse }) {
           <line x1={graph.xAxis.x1} y1={graph.xAxis.y1} x2={graph.xAxis.x2} y2={graph.xAxis.y2} className="fa2-graph-axis" />
           <line x1={graph.yAxis.x1} y1={graph.yAxis.y1} x2={graph.yAxis.x2} y2={graph.yAxis.y2} className="fa2-graph-axis" />
           {graph.paths.map((path, i) => <path key={`path-${i}`} d={path} className="fa2-graph-path" />)}
+          {graph.endpointMarkers.map((point) => (
+            <circle
+              key={point.key}
+              cx={point.x}
+              cy={point.y}
+              r="4.5"
+              className={`fa2-graph-endpoint ${point.open ? 'is-open' : 'is-closed'}`}
+              aria-hidden="true"
+            />
+          ))}
           {visibleSpecialPoints.map((point) => (
             <g
               key={point.key}
@@ -174,6 +293,67 @@ export function FunctionGraph({ result }: { result: AnalyzeResponse }) {
   );
 }
 
+class RendererErrorBoundary extends Component<{
+  children: ReactNode;
+  onError: (error: Error) => void;
+}, { failed: boolean }> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch(error: Error, _info: ErrorInfo) {
+    this.props.onError(error);
+  }
+
+  render() {
+    if (this.state.failed) return <div className="info-box">Đang chuyển sang SVG...</div>;
+    return this.props.children;
+  }
+}
+
+function GraphRendererToolbar({
+  active,
+  status,
+  onSelect,
+  onRetry,
+}: {
+  active: 'geogebra' | 'svg';
+  status: GeoGebraStatus;
+  onSelect: (mode: RendererMode) => void;
+  onRetry: () => void;
+}) {
+  return (
+    <div className="fa2-graph-toolbar" aria-label="Chọn renderer đồ thị">
+      <span>Renderer: <strong>{active === 'geogebra' ? 'GeoGebra' : 'SVG'}</strong></span>
+      <div className="fa2-graph-toolbar-actions">
+        <button type="button" className="sp-btn-secondary" aria-pressed={active === 'geogebra'} onClick={() => onSelect('geogebra')}>GeoGebra</button>
+        <button type="button" className="sp-btn-secondary" aria-pressed={active === 'svg'} onClick={() => onSelect('svg')}>SVG</button>
+        {status === 'error' && <button type="button" className="sp-btn-secondary" onClick={onRetry}>Thử lại GeoGebra</button>}
+      </div>
+    </div>
+  );
+}
+
+function legacySegment(points: Array<{ x: number; y: number }>): GraphSegmentV2 {
+  const emptyBound = { exact: '', latex: '', approx: null };
+  return {
+    component_id: 'legacy',
+    expression_exact: '',
+    expression_latex: '',
+    start: emptyBound,
+    end: emptyBound,
+    left_open: true,
+    right_open: true,
+    left_endpoint: { ...emptyBound, open: true, attained: false, y: null },
+    right_endpoint: { ...emptyBound, open: true, attained: false, y: null },
+    points,
+    sample_count: points.length,
+    verification: 'legacy',
+  };
+}
+
 function createFallbackGraphScene(expression: string): MathScene {
   return {
     problem_text: `Khảo sát hàm số y = ${expression}`,
@@ -202,14 +382,19 @@ function projectFallbackPoint(point: { x: number; y: number }) {
   };
 }
 
-function buildSvgGraph(points: Array<{ x: number; y: number }>, result: AnalyzeResponse) {
+function buildSvgGraph(segments: GraphSegmentV2[], result: AnalyzeResponse) {
   const width = SVG_WIDTH;
   const height = SVG_HEIGHT;
   const pad = 28;
-  const finitePoints = points.filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y)).sort((a, b) => a.x - b.x);
+  const finitePoints = segments
+    .flatMap((segment) => segment.points)
+    .filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y))
+    .sort((a, b) => a.x - b.x);
   if (finitePoints.length < 2) {
     return {
       paths: [],
+      endpointMarkers: [],
+      bounds: { left: -6, right: 6 },
       grid: [],
       xTicks: [],
       yTicks: [],
@@ -271,15 +456,24 @@ function buildSvgGraph(points: Array<{ x: number; y: number }>, result: AnalyzeR
   y0 = cy - targetYRange / 2;
   y1 = cy + targetYRange / 2;
   const project = (p: { x: number; y: number }) => ({ x: pad + ((p.x - left) / (right - left)) * plotW, y: height - pad - ((p.y - y0) / (y1 - y0)) * plotH });
-  const yJump = Math.max(2.2, quantile(usableYs.map((v) => Math.abs(v)), 0.9));
-  const segments: Array<Array<{ x: number; y: number }>> = [];
-  for (const point of usable) {
-    const lastSegment = segments[segments.length - 1];
-    const lastPoint = lastSegment?.[lastSegment.length - 1];
-    if (!lastSegment || !lastPoint || Math.abs(point.x - lastPoint.x) > 0.2 || Math.abs(point.y - lastPoint.y) > yJump) segments.push([point]);
-    else lastSegment.push(point);
-  }
-  const paths = segments.filter((segment) => segment.length > 1).map((segment) => segment.map((p, i) => `${i === 0 ? 'M' : 'L'} ${project(p).x.toFixed(2)} ${project(p).y.toFixed(2)}`).join(' '));
+  const useFocusedWindow = focused.length >= 16;
+  const drawableSegments = segments.map((segment) => segment.points
+    .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y))
+    .filter((point) => !useFocusedWindow || (point.x >= x0 && point.x <= x1))
+    .sort((a, b) => a.x - b.x));
+  const paths = drawableSegments
+    .filter((segment) => segment.length > 1)
+    .map((segment) => segment.map((p, i) => `${i === 0 ? 'M' : 'L'} ${project(p).x.toFixed(2)} ${project(p).y.toFixed(2)}`).join(' '));
+  const endpointMarkers = segments.flatMap((segment) => [
+    { key: `${segment.component_id}-left`, endpoint: segment.left_endpoint },
+    { key: `${segment.component_id}-right`, endpoint: segment.right_endpoint },
+  ]).flatMap(({ key, endpoint }) => {
+    const x = endpoint.approx;
+    const y = endpoint.y;
+    if (x === null || y === null || !Number.isFinite(x) || !Number.isFinite(y)) return [];
+    if (useFocusedWindow && (x < x0 || x > x1)) return [];
+    return [{ key, open: endpoint.open, ...project({ x, y }) }];
+  });
   const xTicks = createTicks(left, right, 8).map((value) => ({ value, x: project({ x: value, y: y0 }).x, label: shortNumber(value) }));
   const yTicks = createTicks(y0, y1, 6).map((value) => ({ value, y: project({ x: left, y: value }).y, label: shortNumber(value) }));
   const grid = [
@@ -289,7 +483,7 @@ function buildSvgGraph(points: Array<{ x: number; y: number }>, result: AnalyzeR
   const axis0 = project({ x: 0, y: 0 });
   const axisX = Math.min(width - pad, Math.max(pad, axis0.x));
   const axisY = Math.min(height - pad, Math.max(pad, axis0.y));
-  return { paths, grid, xTicks, yTicks, project, xAxis: { x1: pad, y1: axisY, x2: width - pad, y2: axisY }, yAxis: { x1: axisX, y1: pad, x2: axisX, y2: height - pad } };
+  return { paths, endpointMarkers, bounds: { left, right }, grid, xTicks, yTicks, project, xAxis: { x1: pad, y1: axisY, x2: width - pad, y2: axisY }, yAxis: { x1: axisX, y1: pad, x2: axisX, y2: height - pad } };
 }
 
 function createTicks(min: number, max: number, targetCount: number) {

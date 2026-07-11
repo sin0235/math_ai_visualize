@@ -11,7 +11,9 @@ from app.services import function_analyzer, function_roots
 from app.services.function_analyzer import analyze_function
 from app.services.function_domain import FunctionDomain
 from app.services.function_graph_builder import build_function_graph
+from app.services.function_graph_sampling import build_graph_analysis
 from app.services.function_roots import analyze_real_roots
+from app.services.safe_math_parser import parse_safe_math_expression
 
 
 def test_analyzer_api_worker_returns_clean_payload():
@@ -517,3 +519,58 @@ def test_regular_tangent_keeps_exact_slope_and_contact_verification():
     assert tangent["k_exact"] == "2"
     assert tangent["equation_exact"] == "y = 2*x - 1"
     assert tangent["contact_limit"] == "0"
+
+
+def test_graph_analysis_splits_real_domain_and_respects_point_cap():
+    variable = sp.Symbol("x", real=True)
+    expression = parse_safe_math_expression("1/(x-1)").expr
+    domain = FunctionDomain.from_set(sp.calculus.util.continuous_domain(expression, variable, sp.S.Reals))
+
+    graph = build_graph_analysis(
+        expression,
+        variable,
+        domain,
+        {},
+        requested_interval={"a": 0, "b": 2},
+        plot_window=(-3, 3),
+        max_points=64,
+    )
+
+    assert graph["point_count"] <= 64
+    assert len(graph["segments"]) == 2
+    assert graph["segments"][0]["end"]["exact"] == "1"
+    assert graph["segments"][0]["right_open"] is True
+    assert graph["segments"][1]["start"]["exact"] == "1"
+    assert graph["segments"][1]["left_open"] is True
+
+
+def test_piecewise_parser_and_graph_preserve_branch_endpoints():
+    variable = sp.Symbol("x", real=True)
+    expression = parse_safe_math_expression("Piecewise((x, x < 0), (x^2, True))").expr
+
+    graph = build_graph_analysis(
+        expression,
+        variable,
+        FunctionDomain.from_set(sp.S.Reals),
+        {},
+        plot_window=(-2, 2),
+        max_points=80,
+    )
+
+    assert [segment["expression_exact"] for segment in graph["segments"]] == ["x", "x**2"]
+    assert graph["segments"][0]["right_endpoint"]["open"] is True
+    assert graph["segments"][1]["left_endpoint"]["open"] is False
+    assert graph["segments"][1]["left_endpoint"]["attained"] is True
+
+
+def test_graph_builder_exposes_v2_and_uses_domain_components_for_geogebra():
+    result = analyze_function("1/(x-1)", interval={"a": 0, "b": 2})
+
+    _, commands, legacy_points = build_function_graph(result)
+
+    assert result["graph_analysis_v2"]["segments"]
+    assert len(result["graph_analysis_v2"]["segments"]) == 2
+    assert len(legacy_points) == result["graph_analysis_v2"]["point_count"]
+    function_commands = [command for command in commands if "Function(" in command]
+    assert len(function_commands) == 2
+    assert all(", 1" in command for command in function_commands)
