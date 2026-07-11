@@ -25,7 +25,8 @@ def build_graph_analysis(
 ) -> dict[str, Any]:
     point_cap = max(32, min(int(max_points), 2_000))
     window = _resolve_window(analysis, domain, plot_window)
-    active_set = _active_domain(domain, requested_interval, window)
+    effective_domain = _effective_domain(domain, requested_interval)
+    active_set = _windowed_domain(effective_domain, window)
     singular_points = _singular_points(analysis, window)
     components = _graph_components(expr, variable, active_set, singular_points)
     feature_points = _feature_points(analysis, window)
@@ -69,6 +70,8 @@ def build_graph_analysis(
             "end": _bound_payload(component.end),
             "left_open": bool(component.left_open),
             "right_open": bool(component.right_open),
+            "left_window_clipped": _window_clips_domain(effective_domain, component.start, "left"),
+            "right_window_clipped": _window_clips_domain(effective_domain, component.end, "right"),
             "left_endpoint": _endpoint_payload(branch_expr, variable, component.start, bool(component.left_open), "+"),
             "right_endpoint": _endpoint_payload(branch_expr, variable, component.end, bool(component.right_open), "-"),
             "points": points,
@@ -133,25 +136,35 @@ def _resolve_window(
     return -6.0, 6.0
 
 
-def _active_domain(
+def _effective_domain(
     domain: FunctionDomain | None,
     requested_interval: Mapping[str, Any] | None,
-    window: tuple[float, float],
 ):
-    domain_set = domain.set if domain is not None and domain.set is not None else sp.S.Reals
-    left, right = (sp.Rational(str(window[0])), sp.Rational(str(window[1])))
-    active = domain_set.intersect(sp.Interval(left, right))
+    active = domain.set if domain is not None and domain.set is not None else sp.S.Reals
     if requested_interval:
-        a = sp.Rational(str(requested_interval.get("a", left)))
-        b = sp.Rational(str(requested_interval.get("b", right)))
-        requested = sp.Interval(
+        a = sp.Rational(str(requested_interval["a"]))
+        b = sp.Rational(str(requested_interval["b"]))
+        active = active.intersect(sp.Interval(
             a,
             b,
             left_open=bool(requested_interval.get("open_a", False)),
             right_open=bool(requested_interval.get("open_b", False)),
-        )
-        active = active.intersect(requested)
+        ))
     return active
+
+
+def _windowed_domain(active: Any, window: tuple[float, float]):
+    left, right = (sp.Rational(str(window[0])), sp.Rational(str(window[1])))
+    return active.intersect(sp.Interval(left, right))
+
+
+def _window_clips_domain(domain_set: Any, bound: Any, side: str) -> bool:
+    try:
+        epsilon = sp.Rational(1, 1_000_000)
+        probe = bound - epsilon if side == "left" else bound + epsilon
+        return domain_set.contains(probe) is sp.S.true
+    except (TypeError, ValueError, AttributeError):
+        return False
 
 
 def _graph_components(
