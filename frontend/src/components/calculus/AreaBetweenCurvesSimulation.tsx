@@ -41,8 +41,8 @@ export function AreaBetweenCurvesSimulation({ step, progress, freeMode = false }
       <aside className="csim-control-stack">
         <div className="csim-card">
           <div className="csim-card-head"><strong>Nhập dữ liệu</strong><span>Miền giữa hai đường</span></div>
-          <FormulaInput label="f(x)" value={state.f} onChange={(f) => setState({ ...state, f })} disabled={!canEditF} />
-          <FormulaInput label="g(x)" value={state.g} onChange={(g) => setState({ ...state, g })} disabled={!canEditF} />
+          <FormulaInput label="$f(x)$" value={state.f} onChange={(f) => setState({ ...state, f })} disabled={!canEditF} />
+          <FormulaInput label="$g(x)$" value={state.g} onChange={(g) => setState({ ...state, g })} disabled={!canEditF} />
           <div className={!canEditF ? 'is-step-locked' : undefined}>
             <PresetButtons presets={AREA_PRESETS} onApply={(preset) => canEditF && setState({ ...state, ...preset.patch })} />
           </div>

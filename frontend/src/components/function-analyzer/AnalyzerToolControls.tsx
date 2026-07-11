@@ -1,3 +1,4 @@
+import type { AnalyzeLineMode, AnalyzeTransformType } from '../../api/client';
 import { TRANSFORMS } from './constants';
 
 function SliderNumber({ label, value, min, max, step, onChange }: { label: string; value: number; min: number; max: number; step: number; onChange: (value: number) => void }) {
@@ -20,9 +21,9 @@ export interface AnalyzerToolControlsProps {
   intervalOpenB: boolean;
   lineK: number;
   lineB: number;
-  lineMode: string;
+  lineMode: AnalyzeLineMode;
   lineX0: number;
-  transformType: string;
+  transformType: AnalyzeTransformType;
   transformValue: number;
   isAnimatingTransform: boolean;
   disabled: boolean;
@@ -33,9 +34,9 @@ export interface AnalyzerToolControlsProps {
   onIntervalOpenBChange: (value: boolean) => void;
   onLineKChange: (value: number) => void;
   onLineBChange: (value: number) => void;
-  onLineModeChange: (value: string) => void;
+  onLineModeChange: (value: AnalyzeLineMode) => void;
   onLineX0Change: (value: number) => void;
-  onTransformTypeChange: (value: string) => void;
+  onTransformTypeChange: (value: AnalyzeTransformType) => void;
   onTransformValueChange: (value: number) => void;
   onToggleAnimation: () => void;
 }
@@ -104,7 +105,7 @@ export function AnalyzerToolControls({
             <div className="fa2-tool-stack">
               <div className="fa2-tool-row">
                 <span className="fa2-tool-label">Chế độ</span>
-                <select className="fa2-mini-input" value={lineMode} onChange={(e) => onLineModeChange(e.target.value)} disabled={disabled} style={{ flex: 1 }}>
+                <select className="fa2-mini-input" value={lineMode} onChange={(e) => onLineModeChange(e.target.value as AnalyzeLineMode)} disabled={disabled} style={{ flex: 1 }}>
                   <option value="intersect">Tương giao y = kx + b</option>
                   <option value="tangent_at">Tiếp tuyến tại điểm x0</option>
                 </select>
@@ -124,7 +125,7 @@ export function AnalyzerToolControls({
             <div className="fa2-tool-stack">
               <div className="fa2-tool-row">
                 <span className="fa2-tool-label">Biến đổi</span>
-                <select className="fa2-mini-input" value={transformType} onChange={(e) => onTransformTypeChange(e.target.value)} disabled={disabled}>
+                <select className="fa2-mini-input" value={transformType} onChange={(e) => onTransformTypeChange(e.target.value as AnalyzeTransformType)} disabled={disabled}>
                   {TRANSFORMS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
                 </select>
                 <button type="button" className="sp-btn-secondary" onClick={onToggleAnimation} disabled={disabled}>{isAnimatingTransform ? 'Dừng' : 'Animation'}</button>

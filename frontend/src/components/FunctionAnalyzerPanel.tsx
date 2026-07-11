@@ -19,9 +19,18 @@ export function FunctionAnalyzerPanel({ initialExpression = '', onOpenGuide, onW
           expression={analyzer.expression}
           loading={analyzer.loading}
           ocrLoading={analyzer.ocrLoading}
+          ocrCandidate={analyzer.ocrCandidate}
+          ocrPreviewUrl={analyzer.ocrPreviewUrl}
           error={analyzer.error}
+          parameterDetected={analyzer.parameterDetected}
+          parameterMode={analyzer.parameterMode}
+          parameterValue={analyzer.parameterValue}
+          onParameterModeChange={analyzer.setParameterMode}
+          onParameterValueChange={analyzer.setParameterValue}
           onExpressionChange={analyzer.setExpression}
           onAnalyze={() => void analyzer.handleAnalyze()}
+          onConfirmOcr={() => void analyzer.handleConfirmOcr()}
+          onDiscardOcr={analyzer.discardOcrCandidate}
           onImageChange={analyzer.handleImageChange}
           onOpenGuide={onOpenGuide}
         />

@@ -73,7 +73,7 @@ export function SolidOfRevolutionSimulation({ step, progress, freeMode = false }
             <strong>Khối tròn xoay</strong>
             <span>{methodLabel(method)}</span>
           </div>
-          <FormulaInput label="f(x)" value={state.f} onChange={(f) => setState({ ...state, f })} disabled={!canEditSetup} />
+          <FormulaInput label="$f(x)$" value={state.f} onChange={(f) => setState({ ...state, f })} disabled={!canEditSetup} />
           <label className={`csim-check${!canEditSetup ? ' is-step-locked' : ''}`}>
             <input
               type="checkbox"
@@ -85,7 +85,7 @@ export function SolidOfRevolutionSimulation({ step, progress, freeMode = false }
               ? <>Miền giữa <KatexSpan tex="f" /> và <KatexSpan tex="g" /> (shell)</>
               : <>Washer với <KatexSpan tex="g(x)" /></>}
           </label>
-          {state.useWasher && <FormulaInput label="g(x)" value={state.g} onChange={(g) => setState({ ...state, g })} disabled={!canEditSetup} />}
+          {state.useWasher && <FormulaInput label="$g(x)$" value={state.g} onChange={(g) => setState({ ...state, g })} disabled={!canEditSetup} />}
           <div className={!canEditSetup ? 'is-step-locked' : undefined}>
             <PresetButtons presets={SOLID_PRESETS} onApply={(preset) => canEditSetup && setState((current) => ({ ...current, ...preset.patch }))} />
           </div>

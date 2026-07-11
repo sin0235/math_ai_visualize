@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { analyzeFunction, analyzeFunctionImageFile, type AnalyzeOptions, type AnalyzeResponse } from '../../api/client';
+import { analyzeFunction, extractFunctionImageFile, type AnalyzeLineMode, type AnalyzeOptions, type AnalyzeResponse, type AnalyzeTransformType, type FunctionOcrExtraction } from '../../api/client';
 
 type ToolKey = 'interval' | 'line' | 'transform';
 
@@ -11,10 +11,10 @@ type AnalyzeOptionOverrides = Partial<AnalyzeOptions & {
   enableInterval: boolean;
   lineK: number;
   lineB: number;
-  lineMode: string;
+  lineMode: AnalyzeLineMode;
   lineX0: number;
   enableLine: boolean;
-  transformType: string;
+  transformType: AnalyzeTransformType;
   transformValue: number;
   enableTransform: boolean;
 }>;
@@ -36,8 +36,12 @@ function readAnalyzerPrefill(fallback: string) {
 
 export function useFunctionAnalysis(initialExpression: string, onWarnings?: (warnings: string[]) => void) {
   const [expression, setExpression] = useState(() => readAnalyzerPrefill(initialExpression));
+  const [parameterMode, setParameterMode] = useState<'' | 'symbolic' | 'substitute'>('');
+  const [parameterValue, setParameterValue] = useState('1');
   const [loading, setLoading] = useState(false);
   const [ocrLoading, setOcrLoading] = useState(false);
+  const [ocrCandidate, setOcrCandidate] = useState<FunctionOcrExtraction | null>(null);
+  const [ocrPreviewUrl, setOcrPreviewUrl] = useState<string | null>(null);
   const [intervalA, setIntervalA] = useState(-2);
   const [intervalB, setIntervalB] = useState(2);
   const [intervalOpenA, setIntervalOpenA] = useState(false);
@@ -45,11 +49,11 @@ export function useFunctionAnalysis(initialExpression: string, onWarnings?: (war
   const [enableInterval, setEnableInterval] = useState(false);
   const [lineK, setLineK] = useState(1);
   const [lineB, setLineB] = useState(0);
-  const [lineMode, setLineMode] = useState('intersect');
+  const [lineMode, setLineMode] = useState<AnalyzeLineMode>('intersect');
   const [lineX0, setLineX0] = useState(0);
   const [enableLine, setEnableLine] = useState(false);
   const [enableTransform, setEnableTransform] = useState(false);
-  const [transformType, setTransformType] = useState('vertical_shift');
+  const [transformType, setTransformType] = useState<AnalyzeTransformType>('vertical_shift');
   const [transformValue, setTransformValue] = useState(1);
   const [isAnimatingTransform, setIsAnimatingTransform] = useState(false);
   const [result, setResult] = useState<AnalyzeResponse | null>(null);
@@ -65,6 +69,12 @@ export function useFunctionAnalysis(initialExpression: string, onWarnings?: (war
       if (animationRef.current !== null) window.clearInterval(animationRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    return () => {
+      if (ocrPreviewUrl) URL.revokeObjectURL(ocrPreviewUrl);
+    };
+  }, [ocrPreviewUrl]);
 
   useEffect(() => {
     if (!isAnimatingTransform) {
@@ -102,6 +112,10 @@ export function useFunctionAnalysis(initialExpression: string, onWarnings?: (war
     const nextTransformType = overrides?.transformType ?? transformType;
     const nextTransformValue = overrides?.transformValue ?? transformValue;
     return {
+      ...(containsParameterM(expression) && parameterMode ? {
+        parameter_mode: parameterMode,
+        ...(parameterMode === 'substitute' ? { parameters: { m: parameterValue } } : {}),
+      } : {}),
       ...(nextEnableInterval ? { interval: { a: nextIntervalA, b: nextIntervalB, open_a: nextIntervalOpenA, open_b: nextIntervalOpenB } } : {}),
       ...(nextEnableLine ? { line: { k: nextLineK, b: nextLineB, mode: nextLineMode, x0: nextLineX0 } } : {}),
       ...(nextEnableTransform ? { transform: { type: nextTransformType, value: nextTransformValue } } : {}),
@@ -134,24 +148,50 @@ export function useFunctionAnalysis(initialExpression: string, onWarnings?: (war
     if (options?.clearResult) setResult(null);
     try {
       const res = await analyzeFunction(expr, options?.requestOptions ?? {});
-      if (requestId !== analyzeRequestRef.current) return;
-      if (res.error) setError(formatAnalyzeError(res));
-      else {
-        if (!options?.slider) baseResultRef.current = stripToolArtifacts(res);
-        setResult(res);
-        if (!options?.slider) onWarnings?.(res.warnings);
+      if (requestId !== analyzeRequestRef.current) return false;
+      if (res.error) {
+        setError(formatAnalyzeError(res));
+        return false;
       }
+      if (!options?.slider) baseResultRef.current = stripToolArtifacts(res);
+      setResult(res);
+      if (!options?.slider) onWarnings?.(res.warnings);
+      return true;
     } catch (e: unknown) {
       if (requestId === analyzeRequestRef.current) setError(e instanceof Error ? e.message : 'Lỗi không xác định.');
+      return false;
     } finally {
       if (requestId === analyzeRequestRef.current && !options?.slider) setLoading(false);
     }
   }
 
   async function handleAnalyze() {
+    if (ocrCandidate) return;
     const expr = expression.trim();
     if (!expr) return;
     await runAnalyze(expr, { clearResult: true, requestOptions: buildAnalyzeOptions() });
+  }
+
+  async function handleConfirmOcr() {
+    const expr = expression.trim();
+    if (!expr || !ocrCandidate) return;
+    const provenance = { ...ocrCandidate.provenance, source: 'ocr_confirmed' as const };
+    const succeeded = await runAnalyze(expr, {
+      clearResult: true,
+      requestOptions: { ...buildAnalyzeOptions(), provenance },
+    });
+    if (succeeded) {
+      setOcrCandidate(null);
+      setOcrPreviewUrl(null);
+    }
+  }
+
+  function discardOcrCandidate() {
+    analyzeRequestRef.current += 1;
+    setOcrCandidate(null);
+    setOcrPreviewUrl(null);
+    setExpression('');
+    setError(null);
   }
 
   async function handleImageChange(file?: File) {
@@ -160,16 +200,14 @@ export function useFunctionAnalysis(initialExpression: string, onWarnings?: (war
     setOcrLoading(true);
     setError(null);
     setResult(null);
+    setOcrCandidate(null);
+    setOcrPreviewUrl(URL.createObjectURL(file));
     try {
-      const res = await analyzeFunctionImageFile(file);
+      const candidate = await extractFunctionImageFile(file);
       if (requestId !== analyzeRequestRef.current) return;
-      if (res.ocr_expression) setExpression(res.ocr_expression);
-      if (res.error) setError(formatAnalyzeError(res));
-      else {
-        baseResultRef.current = stripToolArtifacts(res);
-        setResult(res);
-        onWarnings?.(res.warnings);
-      }
+      setExpression(candidate.expression);
+      setOcrCandidate(candidate);
+      onWarnings?.(candidate.warnings);
     } catch (e: unknown) {
       if (requestId === analyzeRequestRef.current) setError(e instanceof Error ? e.message : 'Lỗi OCR không xác định.');
     } finally {
@@ -182,7 +220,7 @@ export function useFunctionAnalysis(initialExpression: string, onWarnings?: (war
     analyzeRequestRef.current += 1;
     const base = baseOverride ?? baseResultRef.current ?? (result ? stripToolArtifacts(result) : null);
     if (!base) return;
-    const preview = buildLocalTransformPreview(transform.type, transform.value);
+    const preview = buildLocalTransformPreview(transform.type, transform.value ?? 0);
     setResult({
       ...base,
       transform_preview: preview,
@@ -230,8 +268,15 @@ export function useFunctionAnalysis(initialExpression: string, onWarnings?: (war
   return {
     expression,
     setExpression,
+    parameterMode,
+    parameterValue,
+    parameterDetected: containsParameterM(expression),
+    setParameterMode,
+    setParameterValue,
     loading,
     ocrLoading,
+    ocrCandidate,
+    ocrPreviewUrl,
     result,
     error,
     intervalA,
@@ -249,6 +294,8 @@ export function useFunctionAnalysis(initialExpression: string, onWarnings?: (war
     transformValue,
     isAnimatingTransform,
     handleAnalyze,
+    handleConfirmOcr,
+    discardOcrCandidate,
     handleImageChange,
     updateToolEnabled,
     setIntervalA,
@@ -264,6 +311,10 @@ export function useFunctionAnalysis(initialExpression: string, onWarnings?: (war
     setIsAnimatingTransform,
     scheduleToolAnalyze,
   };
+}
+
+function containsParameterM(expression: string) {
+  return /(^|[^A-Za-z0-9_])m([^A-Za-z0-9_]|$)/.test(expression);
 }
 
 function formatAnalyzeError(response: AnalyzeResponse): string {
@@ -291,7 +342,7 @@ function stripToolCommands(commands: string[]) {
   return commands.filter((command) => !/^\s*(h\(x\)\s*=|g\(x\)\s*=|Set(Color|LineThickness)\((f|g|h),)/i.test(command));
 }
 
-function buildLocalTransformPreview(type: string, value: number): NonNullable<AnalyzeResponse['transform_preview']> {
+function buildLocalTransformPreview(type: AnalyzeTransformType, value: number): NonNullable<AnalyzeResponse['transform_preview']> {
   const a = formatToolNumber(value);
   const meta = localTransformMeta(type, a);
   return {
@@ -315,7 +366,7 @@ function buildLocalTransformCommands(baseCommands: string[], expression: string)
   ];
 }
 
-function localTransformMeta(type: string, a: string) {
+function localTransformMeta(type: AnalyzeTransformType, a: string) {
   const signedA = signedToolNumber(a);
   switch (type) {
     case 'horizontal_shift':

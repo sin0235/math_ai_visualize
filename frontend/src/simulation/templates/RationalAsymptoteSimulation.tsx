@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { KatexSpan } from '../../components/KatexSpan';
+import { KatexSpan, MixedTextRenderer } from '../../components/KatexSpan';
 import { FormulaInput, PresetButtons, ResultCard, SliderInput } from '../runtime/SimulationPrimitives';
 import { formatNumber, validateBounds } from '../../utils/calculusNumerics';
 import {
@@ -56,8 +56,8 @@ export function RationalAsymptoteSimulation({ step, progress, freeMode = false }
             <strong>Hàm hữu tỉ & tiệm cận</strong>
             <span><KatexSpan tex={String.raw`f=\frac{P}{Q}`} /></span>
           </div>
-          <FormulaInput label="P(x) tử" value={state.num} onChange={(num) => setState({ ...state, num })} disabled={!canPQ} />
-          <FormulaInput label="Q(x) mẫu" value={state.den} onChange={(den) => setState({ ...state, den })} disabled={!canPQ} />
+          <FormulaInput label="$P(x)$ tử" value={state.num} onChange={(num) => setState({ ...state, num })} disabled={!canPQ} />
+          <FormulaInput label="$Q(x)$ mẫu" value={state.den} onChange={(den) => setState({ ...state, den })} disabled={!canPQ} />
           <div className={!canPQ ? 'is-step-locked' : undefined}>
             <PresetButtons presets={PRESETS} onApply={(p) => canPQ && setState((s) => ({ ...s, ...p.patch }))} />
           </div>
@@ -102,7 +102,7 @@ export function RationalAsymptoteSimulation({ step, progress, freeMode = false }
         <div className="csim-card">
           <div className="csim-card-head"><strong>Ghi chú thuật toán</strong><span>số + quy tắc bậc</span></div>
           <ul className="sim-mono-list">
-            {model.notes.map((n) => <li key={n}>{n}</li>)}
+            {model.notes.map((n) => <li key={n}><MixedTextRenderer text={n} /></li>)}
             {model.notes.length === 0 && <li>Nhập P, Q đa thức để dò nghiệm mẫu và hành vi vô cùng.</li>}
           </ul>
         </div>
@@ -135,8 +135,8 @@ export function RationalAsymptoteSimulation({ step, progress, freeMode = false }
           yPadFactor={0.12}
         />
         <div className="csim-card csim-step-copy">
-          <strong>{titles[step - 1] ?? titles[0]}</strong>
-          <p>{copies[step - 1] ?? copies[0]}</p>
+          <strong><MixedTextRenderer text={titles[step - 1] ?? titles[0]} /></strong>
+          <p><MixedTextRenderer text={copies[step - 1] ?? copies[0]} /></p>
           <ul className="sim-mono-list">
             <li>TC đứng: <KatexSpan tex="Q(x)=0" /> nhưng <KatexSpan tex="P(x)\\ne0" /> sau rút gọn.</li>
             <li>Hố: nhân tử chung triệt tiêu — gián đoạn khử được.</li>
@@ -264,19 +264,19 @@ function blank(error: string) {
 }
 
 const titles = [
-  'Bước 1 — Nhập P, Q và cửa sổ đồ thị',
-  'Bước 2 — Nghiệm mẫu: TC đứng & hố',
-  'Bước 3 — Hành vi vô cùng: ngang / xiên',
+  'Bước 1 — Nhập $P$, $Q$ và cửa sổ đồ thị',
+  'Bước 2 — Nghiệm mẫu: tiệm cận đứng và hố',
+  'Bước 3 — Hành vi vô cùng: ngang hoặc xiên',
   'Bước 4 — Đọc đồ thị gần các đường tiệm cận',
-  'Bước 5 — Dấu f′ và cực trị cục bộ',
+  'Bước 5 — Dấu $f^{\\prime}$ và cực trị cục bộ',
   'Bước 6 — Tổng hợp khảo sát hàm hữu tỉ',
 ];
 
 const copies = [
-  'Tách tử/mẫu giúp máy dò nghiệm Q=0 và so sánh bậc. Chọn preset để thấy đủ 3 loại tiệm cận.',
-  'Nếu Q(x₀)=0 và P(x₀)≠0 → nhánh tiến ±∞ (TC đứng). Nếu cả hai triệt tiêu → nghi hố (gián đoạn khử).',
-  'deg P < deg Q → y=0; deg bằng → y=L; deg P = deg Q+1 → TC xiên. Ở đây L, m, c ước lượng số tại |x| lớn.',
-  'Đồ thị không cắt TC đứng; có thể cắt TC ngang/xiên. Quan sát hai phía mỗi cực.',
-  'Tránh các lân cận cực khi tìm f′=0. Tô xanh = đồng biến, đỏ = nghịch biến.',
-  'Checklist: TXĐ, TC, giao trục, cực trị, BBT, phác đồ thị. Dùng Analyzer cho CAS đầy đủ nếu cần.',
+  'Tách tử/mẫu giúp máy dò nghiệm $Q(x)=0$ và so sánh bậc. Chọn preset để thấy đủ ba loại tiệm cận.',
+  'Nếu $Q(x_0)=0$ và $P(x_0)\\ne0$ thì nhánh tiến tới $\\pm\\infty$. Nếu cả hai triệt tiêu thì nghi ngờ có hố.',
+  '$\\deg P<\\deg Q$ cho tiệm cận $y=0$; hai bậc bằng nhau cho $y=L$; $\\deg P=\\deg Q+1$ cho tiệm cận xiên.',
+  'Đồ thị không cắt tiệm cận đứng; có thể cắt tiệm cận ngang hoặc xiên. Quan sát hai phía mỗi cực.',
+  'Tránh lân cận cực khi tìm $f^{\\prime}(x)=0$. Nền xanh biểu thị đồng biến, nền đỏ biểu thị nghịch biến.',
+  'Tổng hợp tập xác định, tiệm cận, giao trục, cực trị, bảng biến thiên và phác đồ thị.',
 ];

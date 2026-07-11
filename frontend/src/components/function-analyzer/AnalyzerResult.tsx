@@ -55,6 +55,7 @@ export function AnalyzerResult({ result, toolControls }: { result: AnalyzeRespon
                 <div className="fa2-quick-workbench">
                   <QuickSummary result={result} />
 
+                  {(result.derivative_latex || result.derivative) && (
                   <Section
                     title="Đạo hàm và biến thiên"
                     icon="derivative"
@@ -70,6 +71,7 @@ export function AnalyzerResult({ result, toolControls }: { result: AnalyzeRespon
                     {result.second_derivative && <div className="fa2-formula-row"><KatexSpan tex="f''(x)=" className="fa2-label-mono fa2-label-katex" /><KatexSpan tex={result.second_derivative_latex || sympyToLatex(result.second_derivative)} className="fa2-katex" /></div>}
                     <VariationTable rows={result.variation_table} tableV2={result.variation_table_v2 ?? null} expanded={variationBbtOpen} onExpandedChange={setVariationBbtOpen} hideZoomButton />
                   </Section>
+                  )}
 
                   {hasShapeDetails && (
                     <Section title="Lồi lõm và tiệm cận" icon="asymptote">
@@ -185,11 +187,32 @@ function QuickSummary({ result }: { result: AnalyzeResponse }) {
         <KatexSpan tex={`y=${expressionTex}`} className="fa2-quick-expression" />
       </div>
       <div className="fa2-quick-rows">
+        {result.parameters?.active_exact?.m && <SummaryCard label="Giá trị tham số" tex={`m=${sympyToLatex(result.parameters.active_exact.m)}`} />}
         {result.domain_latex && <SummaryCard label="Tập xác định" tex={result.domain_latex} />}
         {result.range_latex && <SummaryCard label="Tập giá trị" tex={result.range_latex} />}
         {(result.derivative_latex || result.derivative) && <SummaryCard label="Đạo hàm" tex={result.derivative_latex || sympyToLatex(result.derivative || '')} />}
       </div>
+      {result.requires_parameter_confirmation && (
+        <div className="fa2-interval-note" role="status">Chọn chế độ symbolic hoặc nhập giá trị exact của m rồi phân tích lại.</div>
+      )}
+      {result.parameter_analysis_v2 && <ParameterCaseSummary analysis={result.parameter_analysis_v2} />}
       {result.x_intercepts_v2 && <RootSummary analysis={result.x_intercepts_v2} />}
+    </div>
+  );
+}
+
+function ParameterCaseSummary({ analysis }: { analysis: NonNullable<AnalyzeResponse['parameter_analysis_v2']> }) {
+  return (
+    <div className="fa2-interval-note" style={{ marginTop: 12, flexDirection: 'column', alignItems: 'stretch' }}>
+      <strong>Phân hoạch tham số: {analysis.status}</strong>
+      {analysis.cases.map((item, index) => {
+        const condition = typeof item.condition_latex === 'string' ? item.condition_latex : String(item.condition_exact || '');
+        const status = typeof item.status === 'string' ? item.status : 'unknown';
+        const degree = typeof item.degree === 'number' ? `, bậc ${item.degree}` : '';
+        const extrema = typeof item.extrema_count === 'number' ? `, ${item.extrema_count} cực trị` : '';
+        return <div key={`${condition}-${index}`}><KatexSpan tex={condition} /> <span>— {status}{degree}{extrema}</span></div>;
+      })}
+      {analysis.warnings.map((warning) => <span key={warning}>{warning}</span>)}
     </div>
   );
 }

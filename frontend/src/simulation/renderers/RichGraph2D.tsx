@@ -1,6 +1,6 @@
 import { formatNumber } from '../../utils/calculusNumerics';
 import type { SamplePoint } from '../../utils/calculusNumerics';
-import { KatexSpan, MixedTextRenderer } from '../../components/KatexSpan';
+import { MixedTextRenderer } from '../../components/KatexSpan';
 
 export type GraphCurve = {
   points: SamplePoint[];
@@ -147,7 +147,7 @@ export function RichGraph2D({
           return (
             <g key={`vl-${i}`}>
               <line x1={x} x2={x} y1={PAD} y2={height - PAD} className={line.className ?? 'sim-vline'} />
-              {line.label && <text x={x + 4} y={PAD + 14} className="csim-tick">{line.label}</text>}
+              {line.label && <SvgGraphLabel x={x + 4} y={PAD + 2} label={line.label} />}
             </g>
           );
         })}
@@ -156,7 +156,7 @@ export function RichGraph2D({
           return (
             <g key={`hl-${i}`}>
               <line x1={PAD} x2={width - PAD} y1={y} y2={y} className={line.className ?? 'sim-hline'} />
-              {line.label && <text x={PAD + 4} y={y - 4} className="csim-tick">{line.label}</text>}
+              {line.label && <SvgGraphLabel x={PAD + 4} y={y - 20} label={line.label} />}
             </g>
           );
         })}
@@ -178,7 +178,7 @@ export function RichGraph2D({
           return (
             <g key={`mk-${i}`} className={m.className ?? 'sim-marker'}>
               <circle cx={p.x} cy={p.y} r="5.5" />
-              {m.label && <text x={p.x + 8} y={p.y - 8}>{m.label}</text>}
+              {m.label && <SvgGraphLabel x={p.x + 8} y={p.y - 24} label={m.label} />}
             </g>
           );
         })}
@@ -188,10 +188,15 @@ export function RichGraph2D({
 }
 
 function GraphLabel({ label }: { label: string }) {
-  if (label.includes('\\') || label.includes('^') || label.includes('_')) {
-    return <KatexSpan tex={label} />;
-  }
-  return <>{label}</>;
+  return <MixedTextRenderer text={label} />;
+}
+
+function SvgGraphLabel({ x, y, label }: { x: number; y: number; label: string }) {
+  return (
+    <foreignObject x={x} y={y} width="132" height="28" pointerEvents="none">
+      <div className="sim-svg-math-label"><GraphLabel label={label} /></div>
+    </foreignObject>
+  );
 }
 
 function buildPath(points: SamplePoint[], project: (x: number, y: number) => { x: number; y: number }) {

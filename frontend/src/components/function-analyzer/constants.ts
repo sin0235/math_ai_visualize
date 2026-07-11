@@ -1,3 +1,5 @@
+import type { AnalyzeTransformType } from '../../api/client';
+
 export const EXAMPLE_GROUPS = [
   {
     label: 'Đa thức',
@@ -27,7 +29,7 @@ export const TRANSFORMS = [
   { value: 'reflect_y', label: 'f(-x)' },
   { value: 'absolute_all', label: '|f(x)|' },
   { value: 'absolute_x', label: 'f(|x|)' },
-];
+] satisfies ReadonlyArray<{ value: AnalyzeTransformType; label: string }>;
 
 export const TRANSFORM_LABEL_TEX: Record<string, string> = {
   vertical_shift: 'g(x)=f(x)+a',

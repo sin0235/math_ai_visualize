@@ -26,21 +26,6 @@ export function SimulationLibraryPage({ onOpen }: Props) {
 
   return (
     <section className="csim-page sim-library-page">
-      <header className="sim-library-hero">
-        <div>
-          <p className="sim-kicker">Thư viện mô phỏng Toán THPT <span className="sim-beta-badge">Beta</span></p>
-          <h1>Mô phỏng tương tác</h1>
-          <p className="sim-library-lead">
-            Khám phá kiến thức bằng đồ thị, chuyển động và câu hỏi kiểm tra nhanh.
-            Nội dung chạy hoàn toàn trên trình duyệt, không cần đăng nhập.
-          </p>
-        </div>
-        <div className="sim-library-summary" aria-label="Thống kê thư viện">
-          <strong>{listSimulations({ status: 'published' }).length}</strong>
-          <span>mô phỏng đã xuất bản · lớp 10–12</span>
-        </div>
-      </header>
-
       <div className="sim-library-filters" role="search">
         <div className="sim-grade-tabs" role="tablist" aria-label="Lọc theo lớp">
           {GRADES.map((value) => (
@@ -76,6 +61,8 @@ export function SimulationLibraryPage({ onOpen }: Props) {
             placeholder="Riemann, lượng giác, khối tròn xoay…"
           />
         </label>
+
+        <output className="sim-library-count" aria-live="polite">{items.length} mô phỏng</output>
       </div>
 
       {items.length === 0 ? (

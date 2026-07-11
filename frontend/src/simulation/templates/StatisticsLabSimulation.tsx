@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { KatexSpan } from '../../components/KatexSpan';
+import { KatexSpan, MixedTextRenderer } from '../../components/KatexSpan';
 import { SliderInput } from '../runtime/SimulationPrimitives';
 import { formatNumber } from '../../utils/calculusNumerics';
 import {
@@ -181,8 +181,8 @@ export function StatisticsLabSimulation({ step, progress, freeMode = false }: Pr
         )}
 
         <div className="csim-card csim-step-copy">
-          <strong>{titles[step - 1] ?? titles[0]}</strong>
-          <p>{copies[step - 1] ?? copies[0]}</p>
+          <strong><MixedTextRenderer text={titles[step - 1] ?? titles[0]} /></strong>
+          <p><MixedTextRenderer text={copies[step - 1] ?? copies[0]} /></p>
           <ul className="sim-mono-list">
             <li><KatexSpan tex="s^2" /> mẫu chia cho <KatexSpan tex="n-1" /> (không thiên vị).</li>
             <li>Ngoại lệ: ngoài [Q1−1.5·IQR, Q3+1.5·IQR].</li>
@@ -282,17 +282,17 @@ function DotPlot({
 }
 
 const titles = [
-  'Bước 1 — Nhập / chọn mẫu dữ liệu',
+  'Bước 1 — Nhập hoặc chọn mẫu dữ liệu',
   'Bước 2 — Phân bố trên trục số',
   'Bước 3 — Histogram và bảng tần số ghép nhóm',
-  'Bước 4 — Mean, median, tứ phân vị',
-  'Bước 5 — Phương sai, σ, ngoại lệ, so ghép nhóm',
+  'Bước 4 — Trung bình, trung vị, tứ phân vị',
+  'Bước 5 — Phương sai, $\\sigma$, ngoại lệ và so sánh ghép nhóm',
 ];
 
 const copies = [
-  'Dán dãy số thực tế (điểm, đo lường). Đổi độ rộng nhóm để xem độ mịn histogram.',
-  'Mỗi chấm là một quan sát. Kéo chấm: mean nhạy với ngoại lệ hơn median.',
-  'Ghép nhóm mất thông tin chi tiết — trung điểm xᵢ là đại diện. Tần số nᵢ đếm trong [a,b).',
-  'IQR = Q3−Q1 đo độ phân tán trung tâm 50%. Box trên trục là [Q1,Q3].',
-  's lớn → phân tán mạnh. Bật “loại ngoại lệ” để thấy mean/s thay đổi bao nhiêu.',
+  'Dán dãy số thực tế. Đổi độ rộng nhóm để xem mức chi tiết của histogram.',
+  'Mỗi chấm là một quan sát. Trung bình nhạy với ngoại lệ hơn trung vị.',
+  'Ghép nhóm mất thông tin chi tiết: trung điểm $x_i$ là đại diện, tần số $n_i$ đếm phần tử trong $[a,b)$.',
+  '$IQR=Q_3-Q_1$ đo độ phân tán của 50% dữ liệu trung tâm. Hộp trên trục là $[Q_1,Q_3]$.',
+  '$s$ lớn biểu thị phân tán mạnh. Loại ngoại lệ để quan sát trung bình và $s$ thay đổi.',
 ];

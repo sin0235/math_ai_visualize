@@ -4,14 +4,18 @@ import time
 import pytest
 import sympy as sp
 from fastapi import HTTPException
+from pydantic import ValidationError
 
 from app.api import routes_function_analysis
-from app.api.routes_function_analysis import _apply_analyzer_output_limits, _run_analyzer_job, _run_analyzer_job_sync
+from app.api.routes_function_analysis import _analysis_response, _apply_analyzer_output_limits, _run_analyzer_job, _run_analyzer_job_sync
+from app.schemas.analysis import AnalyzeRequest, GraphSamplesRequest
 from app.services import function_analyzer, function_roots
 from app.services.function_analyzer import analyze_function
 from app.services.function_domain import FunctionDomain
 from app.services.function_graph_builder import build_function_graph
+from app.services.function_graph_sampling import build_graph_analysis
 from app.services.function_roots import analyze_real_roots
+from app.services.safe_math_parser import parse_safe_math_expression
 
 
 def test_analyzer_api_worker_returns_clean_payload():
@@ -517,3 +521,123 @@ def test_regular_tangent_keeps_exact_slope_and_contact_verification():
     assert tangent["k_exact"] == "2"
     assert tangent["equation_exact"] == "y = 2*x - 1"
     assert tangent["contact_limit"] == "0"
+
+
+def test_graph_analysis_splits_real_domain_and_respects_point_cap():
+    variable = sp.Symbol("x", real=True)
+    expression = parse_safe_math_expression("1/(x-1)").expr
+    domain = FunctionDomain.from_set(sp.calculus.util.continuous_domain(expression, variable, sp.S.Reals))
+
+    graph = build_graph_analysis(
+        expression,
+        variable,
+        domain,
+        {},
+        requested_interval={"a": 0, "b": 2},
+        plot_window=(-3, 3),
+        max_points=64,
+    )
+
+    assert graph["point_count"] <= 64
+    assert len(graph["segments"]) == 2
+    assert graph["segments"][0]["end"]["exact"] == "1"
+    assert graph["segments"][0]["right_open"] is True
+    assert graph["segments"][1]["start"]["exact"] == "1"
+    assert graph["segments"][1]["left_open"] is True
+
+
+def test_piecewise_parser_and_graph_preserve_branch_endpoints():
+    variable = sp.Symbol("x", real=True)
+    expression = parse_safe_math_expression("Piecewise((x, x < 0), (x^2, True))").expr
+
+    graph = build_graph_analysis(
+        expression,
+        variable,
+        FunctionDomain.from_set(sp.S.Reals),
+        {},
+        plot_window=(-2, 2),
+        max_points=80,
+    )
+
+    assert [segment["expression_exact"] for segment in graph["segments"]] == ["x", "x**2"]
+    assert graph["segments"][0]["right_endpoint"]["open"] is True
+    assert graph["segments"][1]["left_endpoint"]["open"] is False
+    assert graph["segments"][1]["left_endpoint"]["attained"] is True
+
+
+def test_graph_builder_exposes_v2_and_uses_domain_components_for_geogebra():
+    result = analyze_function("1/(x-1)", interval={"a": 0, "b": 2})
+
+    _, commands, legacy_points = build_function_graph(result)
+
+    assert result["graph_analysis_v2"]["segments"]
+    assert len(result["graph_analysis_v2"]["segments"]) == 2
+    assert len(legacy_points) == result["graph_analysis_v2"]["point_count"]
+    function_commands = [command for command in commands if "Function(" in command]
+    assert len(function_commands) == 2
+    assert all(", 1" in command for command in function_commands)
+
+
+def test_analyze_response_keeps_legacy_and_v2_contracts():
+    data = _run_analyzer_job_sync("x^2 - 1", None, None, None, None, None)
+    payload = _analysis_response("x^2 - 1", data).model_dump(mode="json")
+
+    assert {"x_intercepts", "interval_analysis", "line_analysis", "graph_points"} <= payload.keys()
+    assert {"x_intercepts_v2", "domain_partition_v2", "variation_table_v2", "graph_analysis_v2"} <= payload.keys()
+    assert payload["x_intercepts"] == ["-1", "1"]
+    assert payload["x_intercepts_v2"]["status"] == "complete"
+    assert payload["graph_points"]
+    assert payload["graph_analysis_v2"]["segments"]
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"expression": "x^2", "unknown": True},
+        {"expression": "x^2", "interval": {"a": 1, "b": 1}},
+        {"expression": "x^2", "interval": {"a": float("nan"), "b": 1}},
+        {"expression": "x^2", "line": {"mode": "invalid"}},
+        {"expression": "x^2", "line": {"mode": "intersect", "k": float("inf")}},
+        {"expression": "x^2", "transform": {"type": "invalid", "value": 1}},
+        {"expression": "x^2", "parameter_conditions": {"targets": ["invalid"]}},
+        {"expression": "x^2", "parameter_conditions": {"targets": ["extrema_count"]}},
+        {"expression": "x^2", "parameter_conditions": {"targets": ["increasing_r"], "extrema_count": 1}},
+        {"expression": "x^2", "parameters": {"n": 1}},
+        {"expression": "x^2", "parameter_mode": "substitute"},
+    ],
+)
+def test_analyze_request_rejects_invalid_typed_options(payload):
+    with pytest.raises(ValidationError):
+        AnalyzeRequest.model_validate(payload)
+
+
+def test_analyze_request_accepts_legacy_tool_payloads_and_exact_parameter():
+    request = AnalyzeRequest.model_validate({
+        "expression": "m*x^2",
+        "parameters": {"m": "sqrt(2)"},
+        "parameter_mode": "substitute",
+        "interval": {"a": -2, "b": 2, "open_a": True},
+        "line": {"mode": "tangent_at", "x0": 1, "k": 0, "b": 0},
+        "transform": {"type": "absolute_all", "value": 1},
+    })
+
+    assert request.parameters is not None and request.parameters.m == "sqrt(2)"
+    assert request.interval is not None and request.interval.open_a is True
+    assert request.line is not None and request.line.mode.value == "tangent_at"
+    assert request.transform is not None and request.transform.type.value == "absolute_all"
+
+
+def test_graph_samples_request_rejects_unknown_parameters_and_invalid_window():
+    with pytest.raises(ValidationError):
+        GraphSamplesRequest.model_validate({"expression": "x", "parameters": {"n": 1}, "window": {"x_min": -1, "x_max": 1}})
+    with pytest.raises(ValidationError):
+        GraphSamplesRequest.model_validate({"expression": "x", "window": {"x_min": 2, "x_max": 1}})
+
+
+def test_analyze_request_schema_exposes_strict_typed_components():
+    schema = AnalyzeRequest.model_json_schema()
+
+    assert schema["additionalProperties"] is False
+    assert {"AnalysisInterval", "AnalysisLine", "ParameterConditionRequest", "PlotWindow"} - set(schema.get("$defs", {})) == {"PlotWindow"}
+    assert schema["properties"]["interval"]["anyOf"][0]["$ref"].endswith("/AnalysisInterval")
+    assert schema["properties"]["line"]["anyOf"][0]["$ref"].endswith("/AnalysisLine")

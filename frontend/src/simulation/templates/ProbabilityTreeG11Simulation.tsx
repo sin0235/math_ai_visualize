@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { KatexSpan } from '../../components/KatexSpan';
+import { KatexSpan, MixedTextRenderer } from '../../components/KatexSpan';
 import { SliderInput } from '../runtime/SimulationPrimitives';
 import { formatNumber } from '../../utils/calculusNumerics';
 
@@ -135,8 +135,8 @@ export function ProbabilityTreeG11Simulation({ step, progress }: Props) {
         </div>
 
         <div className="csim-card csim-step-copy">
-          <strong>{titles[step - 1] ?? titles[0]}</strong>
-          <p>{copies[step - 1] ?? copies[0]}</p>
+          <strong><MixedTextRenderer text={titles[step - 1] ?? titles[0]} /></strong>
+          <p><MixedTextRenderer text={copies[step - 1] ?? copies[0]} /></p>
         </div>
       </section>
     </div>
@@ -167,17 +167,17 @@ function pct(v: number) {
 }
 
 const titles = [
-  'Bước 1 — Đặt P(A), P(B|A), P(B|Ā)',
+  'Bước 1 — Đặt $P(A)$, $P(B|A)$ và $P(B|\\overline A)$',
   'Bước 2 — Vẽ nhánh cây và xác suất nhánh',
-  'Bước 3 — Nhân dọc nhánh: P(A∩B),…',
-  'Bước 4 — Xác suất toàn phần P(B)',
-  'Bước 5 — Hợp, giao, độc lập, P(A|B)',
+  'Bước 3 — Nhân dọc nhánh: $P(A\\cap B)$',
+  'Bước 4 — Xác suất toàn phần $P(B)$',
+  'Bước 5 — Hợp, giao, độc lập và $P(A|B)$',
 ];
 
 const copies = [
-  'Tầng 1: phân hoạch A và Ā. Tầng 2: B hoặc B̄ phụ thuộc nhánh.',
+  'Tầng một là phân hoạch $A$ và $\\overline A$; tầng hai là $B$ hoặc $\\overline B$ tùy nhánh.',
   'Nhãn trên cạnh là xác suất có điều kiện theo nút cha.',
-  'Xác suất lá = tích các cạnh trên đường đi.',
-  'P(B)=P(B|A)P(A)+P(B|Ā)P(Ā).',
-  'Độc lập ⇔ P(B|A)=P(B). Bayes sơ cấp: P(A|B)=P(A∩B)/P(B).',
+  'Xác suất tại lá bằng tích các xác suất cạnh trên đường đi.',
+  '$P(B)=P(B|A)P(A)+P(B|\\overline A)P(\\overline A)$.',
+  'Độc lập khi $P(B|A)=P(B)$. Công thức Bayes: $P(A|B)=\\dfrac{P(A\\cap B)}{P(B)}$.',
 ];
