@@ -18232,3 +18232,690 @@ button.analyzer-guide-label:hover {
     grid-template-columns: 1fr;
   }
 }
+
+/* Responsive system contract: shared shell and page-level invariants. */
+html,
+body,
+#root {
+  min-width: 320px;
+  max-width: 100%;
+}
+
+html,
+body {
+  overflow-x: clip;
+}
+
+img,
+svg,
+canvas,
+iframe {
+  max-width: 100%;
+}
+
+.global-header,
+.app-shell,
+.app-footer,
+.workspace,
+.result-area,
+.render-stage,
+.product-page-card,
+.admin-console,
+.csim-page,
+.gglab-page,
+.pdf-word-page,
+.algebra-solver-page,
+.analyzer-standalone-wrap {
+  min-width: 0;
+}
+
+.header-left {
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+}
+
+.header-left:hover {
+  background: transparent;
+  transform: none;
+}
+
+.header-titles,
+.header-title,
+.nav-item-label {
+  min-width: 0;
+}
+
+.nav-item-label {
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .mobile-renderer-warning {
+    position: static;
+    display: block;
+    padding: 10px max(14px, env(safe-area-inset-right)) 0 max(14px, env(safe-area-inset-left));
+    background: transparent;
+  }
+
+  .mobile-renderer-warning-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: min(100%, 860px);
+    margin: 0 auto;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 10px 12px;
+    background: var(--paper);
+  }
+
+  .mobile-renderer-warning-card h2,
+  .mobile-renderer-warning-card p {
+    margin: 0;
+  }
+
+  .mobile-renderer-warning-card h2 {
+    font-size: 0.86rem;
+  }
+
+  .mobile-renderer-warning-card p {
+    margin-top: 2px;
+    color: var(--ink-4);
+    font-size: 0.78rem;
+    line-height: 1.35;
+  }
+
+  .mobile-renderer-warning-card button {
+    flex: 0 0 auto;
+    min-height: 40px;
+  }
+
+  .global-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding-right: max(12px, env(safe-area-inset-right));
+    padding-left: max(12px, env(safe-area-inset-left));
+  }
+
+  .header-nav {
+    min-width: 0;
+    overflow: visible;
+  }
+
+  .app-shell {
+    width: 100%;
+    padding: 14px max(14px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
+  }
+
+  .workspace {
+    gap: 22px;
+  }
+
+  .workspace-sidebar {
+    overflow: visible;
+    padding-right: 0;
+    border-right: 0;
+  }
+
+  .workspace-sidebar-tabs {
+    position: sticky;
+    top: 56px;
+    z-index: 30;
+    background: rgba(251, 251, 250, 0.97);
+  }
+
+  .workspace-sidebar-tabs button,
+  .ocr-action-row button,
+  .submit-button,
+  .secondary-button,
+  .primary-button,
+  .field-label select,
+  .field-label input {
+    min-height: 44px;
+  }
+
+  .problem-form textarea {
+    min-height: clamp(190px, 36dvh, 320px);
+    max-height: 52dvh;
+  }
+
+  .ocr-empty-hint {
+    right: 64px;
+    line-height: 1.35;
+  }
+
+  .submit-button-sticky {
+    position: static;
+    width: 100%;
+  }
+
+  .mobile-scroll-notice {
+    position: sticky;
+    bottom: max(10px, env(safe-area-inset-bottom));
+    z-index: 24;
+  }
+
+  .three-view,
+  .geogebra-view {
+    height: clamp(360px, 62dvh, 620px);
+    min-height: 360px;
+  }
+
+  .viewer-header-row,
+  .viewer-controls,
+  .geogebra-status,
+  .geogebra-actions,
+  .render-review-chip,
+  .page-title-row,
+  .admin-page-header,
+  .admin-detail-header,
+  .admin-toolbar,
+  .sim-workspace-meta {
+    align-items: stretch;
+  }
+
+  .viewer-header-row,
+  .render-review-chip {
+    flex-direction: column;
+  }
+
+  .viewer-status-badges {
+    justify-content: flex-start;
+    margin-left: 0;
+  }
+
+  .render-review-chip .secondary-button {
+    width: 100%;
+  }
+
+  .scene-editor-layer {
+    padding-top: calc(56px + env(safe-area-inset-top));
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .scene-editor-drawer {
+    max-height: calc(100dvh - 56px - env(safe-area-inset-top));
+  }
+
+  .notification-stack {
+    top: calc(64px + env(safe-area-inset-top));
+    right: max(10px, env(safe-area-inset-right));
+    left: max(10px, env(safe-area-inset-left));
+    width: auto;
+  }
+
+  .chat-panel {
+    width: min(390px, calc(100vw - 24px));
+    height: min(620px, calc(100dvh - 82px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
+  }
+
+  .footer-top,
+  .footer-bottom {
+    padding-right: max(18px, env(safe-area-inset-right));
+    padding-left: max(18px, env(safe-area-inset-left));
+  }
+
+  .guide-hero h2,
+  .about-hero h2,
+  .home-hero-copy h2,
+  .pdf-word-intro h2 {
+    overflow-wrap: anywhere;
+    text-wrap: balance;
+  }
+
+  .guide-page p,
+  .about-page p,
+  .home-page p,
+  .product-page-card p {
+    text-wrap: pretty;
+  }
+
+  .admin-table,
+  .admin-analytics-table,
+  .bbt-v2-scroll,
+  .sim-bbt-scroll,
+  .math-table-wrap {
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+  }
+}
+
+@media (max-width: 640px) {
+  .global-header {
+    height: 54px;
+    gap: 6px;
+  }
+
+  .header-left {
+    gap: 8px;
+  }
+
+  .header-logo {
+    flex-basis: 26px;
+    width: 26px;
+    height: 26px;
+  }
+
+  .header-title {
+    max-width: min(42vw, 168px);
+    font-size: 0.88rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .header-nav .nav-item {
+    min-width: 44px;
+    padding: 0 10px;
+    justify-content: center;
+  }
+
+  .header-nav .nav-item-label,
+  .header-nav .nav-item > svg:last-child {
+    display: none;
+  }
+
+  .account-menu-trigger {
+    min-width: 44px;
+    padding: 0 6px;
+  }
+
+  .account-menu-trigger > svg {
+    display: none;
+  }
+
+  .tools-dropdown {
+    top: 62px;
+    left: max(10px, env(safe-area-inset-left));
+    right: max(10px, env(safe-area-inset-right));
+    max-height: calc(100dvh - 74px - env(safe-area-inset-bottom));
+  }
+
+  .app-shell {
+    padding-top: 10px;
+  }
+
+  .workspace-sidebar-tabs {
+    top: 54px;
+  }
+
+  .workspace-sidebar-tabs button {
+    padding-inline: 4px;
+    font-size: 0.8rem;
+  }
+
+  .problem-form {
+    gap: 12px;
+  }
+
+  .panel {
+    padding-top: 14px;
+  }
+
+  .ocr-action-row {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .ocr-empty-hint {
+    display: none;
+  }
+
+  textarea,
+  input,
+  select {
+    font-size: 16px;
+  }
+
+  .three-view,
+  .geogebra-view,
+  .gglab-workspace {
+    height: clamp(320px, 56dvh, 520px);
+    min-height: 320px;
+  }
+
+  .viewer-header {
+    padding-inline: 10px;
+  }
+
+  .viewer-controls,
+  .geogebra-status,
+  .geogebra-actions {
+    gap: 8px;
+  }
+
+  .viewer-controls > *,
+  .geogebra-actions > * {
+    max-width: 100%;
+  }
+
+  .scene-editor-drawer .tool-mode-grid,
+  .scene-editor-v3-placement,
+  .scene-inspector-v3-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .chat-bubble {
+    right: max(10px, env(safe-area-inset-right));
+  }
+
+  .chat-bubble.is-open {
+    right: 12px;
+    bottom: max(8px, env(safe-area-inset-bottom)) !important;
+    left: 12px;
+    align-items: stretch;
+  }
+
+  .chat-bubble.is-open .chat-panel {
+    width: 100%;
+  }
+
+  .chat-bubble.is-open .chat-bubble-button {
+    align-self: flex-end;
+  }
+
+  .pdf-word-modal-backdrop {
+    align-items: end;
+    padding: 0;
+  }
+
+  .pdf-word-modal {
+    width: 100%;
+    max-height: calc(100dvh - env(safe-area-inset-top));
+    overflow-y: auto;
+    border-radius: 18px 18px 0 0;
+    padding-bottom: max(20px, env(safe-area-inset-bottom));
+  }
+
+  .home-hero-copy,
+  .home-hero-copy h2,
+  .home-hero-copy p,
+  .home-actions,
+  .home-visual-card {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .guide-hero,
+  .about-hero {
+    padding-left: 14px;
+  }
+
+  .guide-hero h2,
+  .about-hero h2 {
+    font-size: clamp(1.75rem, 9vw, 2.2rem);
+  }
+
+  .account-stat-grid,
+  .footer-nav,
+  .admin-metric-grid,
+  .admin-grid,
+  .sim-card-grid,
+  .sim-pedagogy {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 900px) {
+  .algebra-workspace,
+  .algebra-result-grid,
+  .algebra-input-grid,
+  .algebra-advanced-grid,
+  .pdf-word-workspace,
+  .pdf-word-field-grid,
+  .pdf-word-option-toggles,
+  .pdf-word-result-summary,
+  .gglab-body,
+  .sim-workspace-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .algebra-solver-page,
+  .algebra-workspace,
+  .algebra-result-wrap,
+  .pdf-word-shell,
+  .gglab-body,
+  .gglab-main,
+  .sim-workspace-main,
+  .sim-template-host {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .algebra-answer-katex,
+  .algebra-formula-line,
+  .algebra-step-card,
+  .katex-display,
+  .pdf-word-terminal,
+  .pdf-word-artifact-list,
+  .gglab-tabs,
+  .sim-breadcrumb,
+  .csim-playbar-actions,
+  .csim-progress-dots {
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+  }
+
+  .gglab-sidebar {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .gglab-tabs,
+  .sim-breadcrumb,
+  .csim-playbar-actions {
+    flex-wrap: nowrap;
+    scrollbar-width: thin;
+  }
+
+  .gglab-tabs > *,
+  .sim-breadcrumb > *,
+  .csim-playbar-actions > * {
+    flex: 0 0 auto;
+  }
+
+  .pdf-word-shell {
+    width: 100%;
+    padding-inline: 0;
+  }
+
+  .pdf-word-dropzone {
+    min-height: 180px;
+  }
+
+  .pdf-word-preview-panel iframe,
+  .pdf-word-artifact-preview iframe {
+    min-height: min(58dvh, 520px);
+  }
+}
+
+@media (max-width: 640px) {
+  .algebra-input-panel,
+  .algebra-result-card,
+  .algebra-step-card,
+  .sim-template-host,
+  .pdf-word-dropzone,
+  .pdf-word-options-column {
+    padding-right: 10px;
+    padding-left: 10px;
+  }
+
+  .algebra-input-actions,
+  .algebra-result-actions,
+  .pdf-word-preview-actions,
+  .pdf-word-downloads,
+  .csim-playbar,
+  .csim-playbar-status {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .algebra-input-actions > *,
+  .algebra-result-actions > *,
+  .pdf-word-preview-actions > *,
+  .pdf-word-downloads > * {
+    width: 100%;
+  }
+
+  .sim-workspace-meta h1 {
+    overflow-wrap: anywhere;
+    text-wrap: balance;
+  }
+
+  .sim-template-host canvas,
+  .sim-template-host svg {
+    max-height: 58dvh;
+  }
+}
+
+@media (max-width: 900px) {
+  .home-page,
+  .guide-page,
+  .about-page,
+  .legal-page,
+  .feedback-page,
+  .login-page,
+  .account-page,
+  .settings-page,
+  .admin-console,
+  .admin-shell,
+  .admin-main,
+  .admin-content {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .home-hero,
+  .about-hero-row,
+  .guide-grid,
+  .guide-columns,
+  .guide-renderer-grid,
+  .about-grid,
+  .about-steps,
+  .about-capabilities,
+  .about-audience,
+  .login-card,
+  .account-hero,
+  .account-layout,
+  .account-form-grid,
+  .settings-hero,
+  .admin-dashboard,
+  .admin-chat-layout,
+  .admin-provider-config .admin-field-grid,
+  .admin-field-grid.admin-ocr-grid,
+  .admin-provider-config .admin-field-grid.admin-field-grid-router9 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-sidebar {
+    position: static;
+    width: 100%;
+    height: auto;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .admin-sidebar-nav,
+  .account-tabs,
+  .admin-tabs {
+    max-width: 100%;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    overscroll-behavior-inline: contain;
+  }
+
+  .admin-sidebar-nav > *,
+  .account-tabs > *,
+  .admin-tabs > * {
+    flex: 0 0 auto;
+  }
+
+  .admin-table,
+  .admin-analytics-table,
+  .admin-plan-grid,
+  .admin-chart,
+  .admin-horizontal-bars {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  .login-card,
+  .account-card,
+  .product-page-card,
+  .admin-console {
+    width: 100%;
+  }
+
+  .home-visual-card,
+  .home-tetrahedron-wrap,
+  .about-hero-row .home-visual-card {
+    min-height: clamp(260px, 48dvh, 420px);
+  }
+}
+
+@media (max-width: 640px) {
+  .home-actions,
+  .auth-actions,
+  .settings-action-row,
+  .feedback-actions,
+  .page-title-row,
+  .admin-topbar,
+  .admin-detail-header,
+  .admin-toolbar,
+  .admin-provider-card-head,
+  .admin-provider-card-head-actions,
+  .admin-row-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .home-actions > *,
+  .auth-actions > *,
+  .settings-action-row > *,
+  .feedback-actions > *,
+  .admin-toolbar > button,
+  .admin-row-actions > button {
+    width: 100%;
+  }
+
+  .login-form,
+  .account-card,
+  .admin-card,
+  .admin-provider-card {
+    padding-right: 14px;
+    padding-left: 14px;
+  }
+
+  .footer-top {
+    gap: 16px;
+  }
+
+  .footer-nav div {
+    gap: 10px;
+  }
+
+  .footer-nav .footer-nav-link {
+    min-height: 40px;
+  }
+
+  .footer-bottom {
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
+
+  .notification-card {
+    max-height: calc(100dvh - 84px);
+    overflow-y: auto;
+  }
+
+  .admin-chat-message,
+  .chat-message {
+    max-width: 92%;
+  }
+}

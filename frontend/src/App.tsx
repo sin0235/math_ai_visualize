@@ -994,33 +994,22 @@ export default function App() {
   return (
     <>
       <header className="global-header">
-        <div
-          className="header-left"
-          role="button"
-          tabIndex={0}
-          onClick={() => navigateTo('home')}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-              event.preventDefault();
-              navigateTo('home');
-            }
-          }}
-        >
-          <img src={logoUrl} alt="App Logo" className="header-logo" />
-          <div className="header-titles">
-            <h1 className="header-title">AI Math Renderer</h1>
+        <button type="button" className="header-left" onClick={() => navigateTo('home')} aria-label="Về trang chủ">
+          <img src={logoUrl} alt="" className="header-logo" />
+          <span className="header-titles">
+            <span className="header-title">AI Math Renderer</span>
             <span className="header-subtitle">Dựng hình toán học từ ngôn ngữ tự nhiên</span>
-          </div>
-        </div>
-        <nav className="header-nav">
+          </span>
+        </button>
+        <nav className="header-nav" aria-label="Điều hướng chính">
           <div className="tools-menu" ref={toolsMenuRef}>
-            <button type="button" className={`nav-item ${activeView === 'render' || activeView === 'analyzer' || activeView === 'algebra-solver' || activeView === 'analyzer-guide' || activeView === 'simulation' || activeView === 'geogebra-lab' || activeView === 'pdf-to-word' ? 'active' : ''}`} aria-haspopup="menu" aria-expanded={toolsMenuOpen ? 'true' : 'false'} onClick={() => setToolsMenuOpen((open) => !open)}>
+            <button type="button" className={`nav-item ${activeView === 'render' || activeView === 'analyzer' || activeView === 'algebra-solver' || activeView === 'analyzer-guide' || activeView === 'simulation' || activeView === 'geogebra-lab' || activeView === 'pdf-to-word' ? 'active' : ''}`} aria-haspopup="menu" aria-controls="tools-menu" aria-expanded={toolsMenuOpen ? 'true' : 'false'} onClick={() => setToolsMenuOpen((open) => !open)}>
               <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3v18"></path><path d="M3 12h18"></path><path d="M5 5l14 14"></path><path d="M19 5L5 19"></path></svg>
-              Công cụ
+              <span className="nav-item-label">Công cụ</span>
               <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
             </button>
             {toolsMenuOpen && (
-              <div className="tools-dropdown" role="menu">
+              <div id="tools-menu" className="tools-dropdown" role="menu">
                 <button type="button" role="menuitem" className={activeView === 'render' ? 'active' : ''} onClick={() => {
                   setToolsMenuOpen(false);
                   navigateTo('render');
@@ -1077,18 +1066,18 @@ export default function App() {
               navigateTo('admin');
             }}>
               <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
-              Admin
+              <span className="nav-item-label">Admin</span>
             </button>
           )}
           {user ? (
             <div className="account-menu" ref={accountMenuRef}>
-              <button type="button" className={`account-menu-trigger ${activeView === 'history' || activeView === 'account' || activeView === 'settings' || activeView === 'feedback' ? 'active' : ''}`} aria-haspopup="menu" aria-expanded={accountMenuOpen ? 'true' : 'false'} onClick={() => setAccountMenuOpen((open) => !open)}>
+              <button type="button" className={`account-menu-trigger ${activeView === 'history' || activeView === 'account' || activeView === 'settings' || activeView === 'feedback' ? 'active' : ''}`} aria-haspopup="menu" aria-controls="account-menu" aria-expanded={accountMenuOpen ? 'true' : 'false'} onClick={() => setAccountMenuOpen((open) => !open)}>
                 <span className="account-avatar" aria-hidden="true">{(user.display_name || user.email).slice(0, 1).toUpperCase()}</span>
                 <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
                 <span className="sr-only">Mở menu tài khoản</span>
               </button>
               {accountMenuOpen && (
-                <div className="account-dropdown" role="menu">
+                <div id="account-menu" className="account-dropdown" role="menu">
                   <div className="account-dropdown-email">{user.email}</div>
                   <div className="account-dropdown-group">
                     <button type="button" role="menuitem" onClick={() => {
@@ -1136,7 +1125,7 @@ export default function App() {
           ) : (
             <button type="button" className={`nav-item ${activeView === 'login' ? 'active' : ''}`} onClick={() => navigateTo('login')}>
               <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path><path d="M10 17l5-5-5-5"></path><path d="M15 12H3"></path></svg>
-              Đăng nhập
+              <span className="nav-item-label">Đăng nhập</span>
             </button>
           )}
         </nav>
