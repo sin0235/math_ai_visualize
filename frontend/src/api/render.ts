@@ -1,7 +1,8 @@
 import type { AdvancedRenderSettings, MathScene, QualityRiskAdvisory, RenderAiSource, RenderFallbackSource, RenderResponse, Renderer } from '../types/scene';
-import type { MathSceneV3, SceneCommand, SceneWorkspaceResponseV3 } from '../types/sceneV3';
+import type { CommittedSceneRefV3, MathSceneV3, SceneCommand, SceneWorkspaceResponseV3 } from '../types/sceneV3';
 import type { RuntimeSettings, ScannedModelInfo, SettingsDefaults } from '../types/settings';
 import { buildExportFilename, type ExportFormatKey } from '../utils/exportFilename';
+import { decodeRenderHistoryDetail } from '../utils/renderHistoryV3';
 import { ApiError, apiUrl, compactRuntimeSettings, fetchWithRetry, networkApiError, parseApiError, requestJson, requestVoid, timeoutSignal } from './core';
 
 export interface OcrResponse {
@@ -65,17 +66,33 @@ export interface SceneRevisionResponse {
   change_source: string;
   change_summary?: string | null;
   created_at: string;
+  schema_version: string;
+  scene_id?: string | null;
+  snapshot_revision?: number | null;
 }
 
-export interface RenderHistoryDetail extends RenderHistoryItem {
+interface RenderHistoryDetailBase extends RenderHistoryItem {
+  render_request?: Record<string, unknown> | null;
+  runtime_settings?: Record<string, unknown> | null;
+}
+
+export interface RenderHistoryDetailV2 extends RenderHistoryDetailBase {
+  kind: 'math_scene_v2';
   scene: MathScene;
   payload: RenderResponse['payload'];
   warnings: string[];
   response?: RenderResponse | null;
-  render_request?: Record<string, unknown> | null;
   advanced_settings?: Record<string, unknown> | null;
-  runtime_settings?: Record<string, unknown> | null;
 }
+
+export interface RenderHistoryDetailV3 extends RenderHistoryDetailBase {
+  kind: 'math_scene_v3';
+  workspace: SceneWorkspaceResponseV3;
+  snapshot_revision: number;
+  command_log: SceneCommand[];
+}
+
+export type RenderHistoryDetail = RenderHistoryDetailV2 | RenderHistoryDetailV3;
 
 export type ExportFormat = ExportFormatKey;
 
@@ -163,7 +180,17 @@ export async function getRenderHistoryRevisions(id: string): Promise<SceneRevisi
 }
 
 export async function getRenderHistoryDetail(id: string): Promise<RenderHistoryDetail> {
-  return requestJson(`/api/history/${encodeURIComponent(id)}`, { credentials: 'include' }, 'Không thể tải chi tiết lịch sử.');
+  const value = await requestJson<unknown>(`/api/history/${encodeURIComponent(id)}`, { credentials: 'include' }, 'Không thể tải chi tiết lịch sử.');
+  return decodeRenderHistoryDetail(value);
+}
+
+export async function restoreRenderHistoryV3(id: string, snapshotRevision?: number): Promise<SceneWorkspaceResponseV3> {
+  return requestJson(`/api/history/${encodeURIComponent(id)}/restore`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ snapshot_revision: snapshotRevision }),
+  }, 'Không thể khôi phục scene workspace v3.');
 }
 
 export async function deleteRenderHistory(id: string): Promise<void> {
@@ -366,6 +393,15 @@ export async function getSceneWorkspaceV3(sceneId: string): Promise<SceneWorkspa
   );
 }
 
+export async function confirmSceneWorkspaceV3(reference: CommittedSceneRefV3): Promise<SceneWorkspaceResponseV3> {
+  return requestJson(`/api/render/v3/workspaces/${encodeURIComponent(reference.scene_id)}/confirm`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ revision: reference.revision }),
+  }, 'Không thể xác nhận scene workspace.');
+}
+
 export async function applySceneCommandV3(command: SceneCommand): Promise<SceneWorkspaceResponseV3> {
   return requestJson('/api/render/v3/commands', {
     method: 'POST',
@@ -376,12 +412,11 @@ export async function applySceneCommandV3(command: SceneCommand): Promise<SceneW
 }
 
 export async function generateProblemVariants(
-  scene: MathScene,
+  sceneRef: CommittedSceneRefV3,
   count: number,
   originalProblem?: string,
   runtimeSettings?: RuntimeSettings,
   preferredAiModel?: string,
-  response?: RenderResponse | null,
 ): Promise<ProblemVariantsResponse> {
   return requestJson<ProblemVariantsResponse>(
     '/api/problem/variants',
@@ -390,8 +425,7 @@ export async function generateProblemVariants(
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
       body: JSON.stringify({
-        scene,
-        response,
+        scene_ref: sceneRef,
         count,
         original_problem: originalProblem,
         preferred_ai_model: preferredAiModel,
@@ -411,9 +445,8 @@ export interface ExportViewCapture {
 
 export async function exportScene(
   format: ExportFormat,
-  scene: MathScene,
-  advancedSettings: AdvancedRenderSettings,
-  renderResponse?: RenderResponse | null,
+  sceneRef: CommittedSceneRefV3,
+  scene: MathSceneV3,
   viewCapture?: ExportViewCapture | null,
 ): Promise<{ blob: Blob; filename: string }> {
   const meta = EXPORT_META[format];
@@ -422,7 +455,7 @@ export async function exportScene(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ scene, response: renderResponse, advanced_settings: advancedSettings, view_capture: viewCapture ?? undefined }),
+      body: JSON.stringify({ scene_ref: sceneRef, view_capture: viewCapture ?? undefined }),
     });
     if (!response.ok) throw await parseApiError(response, `${meta.errorMessage} HTTP ${response.status}`);
     const blob = await response.blob();
@@ -434,16 +467,15 @@ export async function exportScene(
 }
 
 export async function solveProblem(
-  scene: unknown,
+  sceneRef: CommittedSceneRefV3,
   question: string,
   geometryMethod: 'oxyz' | 'classical' = 'oxyz',
   runtimeSettings?: RuntimeSettings,
-  response?: RenderResponse | null,
 ): Promise<SolveResponse> {
   return requestJson('/api/solve', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ scene, response, question, geometry_method: geometryMethod, runtime_settings: compactRuntimeSettings(runtimeSettings) }),
+    body: JSON.stringify({ scene_ref: sceneRef, question, geometry_method: geometryMethod, runtime_settings: compactRuntimeSettings(runtimeSettings) }),
   }, 'Không thể giải toán từ scene này.');
 }

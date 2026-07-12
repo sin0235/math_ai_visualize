@@ -1,0 +1,93 @@
+{
+  "operation": "POST /api/algebra/solve",
+  "method": "POST",
+  "path_template": "/api/algebra/solve",
+  "fingerprint": "fd41f50b",
+  "case_id": "u2hake",
+  "code_sample": "curl -X POST -H 'Content-Type: application/json' -H 'Cookie: [Filtered]' -d '{\"input\": \"0\", \"options\": {\"use_ai_extraction\": true}}' http://127.0.0.1:18766/api/algebra/solve",
+  "sequence": [
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:18766/api/algebra/solve",
+      "url_template": "http://127.0.0.1:18766/api/algebra/solve",
+      "headers": {
+        "User-Agent": "schemathesis/4.22.4",
+        "Accept-Encoding": "gzip, deflate",
+        "Accept": "*/*",
+        "Connection": "keep-alive",
+        "X-Schemathesis-TestCaseId": "u2hake",
+        "Content-Type": "application/json",
+        "Cookie": "[Filtered]",
+        "Content-Length": "54"
+      },
+      "response": {
+        "status_code": 429,
+        "headers": {
+          "date": "Sun, 12 Jul 2026 13:56:54 GMT",
+          "server": "uvicorn",
+          "retry-after": "50",
+          "x-request-id": "7d879c63564e4cb6a6b8f0947ec27470",
+          "content-length": "62",
+          "content-type": "application/json"
+        },
+        "body": "{\"detail\":\"B\u1ea1n thao t\u00e1c qu\u00e1 nhanh. H\u00e3y th\u1eed l\u1ea1i sau.\"}"
+      },
+      "link": null,
+      "checks": [
+        {
+          "name": "positive_data_acceptance",
+          "status": "failure",
+          "message": "API rejected schema-compliant request\n\nValid data should have been accepted\nExpected: 2xx, 401, 403, 404, 409, 5xx"
+        }
+      ],
+      "meta": {
+        "generation": {
+          "time": 1.7018000107782427e-05,
+          "mode": "positive"
+        },
+        "components": {
+          "COOKIE": "positive",
+          "BODY": "positive"
+        },
+        "phase": {
+          "name": "coverage",
+          "data": {
+            "type": "CoveragePhaseData",
+            "description": "Object with valid 'options' value: Object with valid 'use_ai_extraction' value: Valid boolean value",
+            "location": null,
+            "parameter": "application/json",
+            "parameter_location": "BODY",
+            "scenario": "valid_object"
+          }
+        },
+        "pool_draws": [],
+        "pool_misses": [],
+        "semantic_draws": [],
+        "dictionary_draws": [],
+        "raw_containers": {
+          "COOKIE": {
+            "hinh_session": ""
+          }
+        }
+      },
+      "path": "/api/algebra/solve",
+      "path_parameters": {},
+      "query": {},
+      "case_headers": {},
+      "cookies": {
+        "hinh_session": "[Filtered]"
+      },
+      "case_body": {
+        "encoding": "json",
+        "value": {
+          "input": "0",
+          "options": {
+            "use_ai_extraction": true
+          }
+        }
+      },
+      "media_type": "application/json",
+      "parent_index": null
+    }
+  ]
+}

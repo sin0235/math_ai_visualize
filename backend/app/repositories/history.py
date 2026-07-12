@@ -4,11 +4,109 @@ from uuid import uuid4
 from app.db.models import DbRow, RenderJobRecord, SceneRevisionRecord
 from app.db.session import DatabaseClient
 from app.schemas.scene import RenderResponse
+from app.schemas.scene_v3 import SceneWorkspaceResponseV3
 
 
 class RenderHistoryRepository:
     def __init__(self, db: DatabaseClient) -> None:
         self.db = db
+
+    async def create_v3_workspace(
+        self,
+        user_id: str,
+        response: SceneWorkspaceResponseV3,
+        *,
+        render_request_json: str | None = None,
+    ) -> RenderJobRecord:
+        job_id = str(uuid4())
+        scene = response.scene
+        provider = scene.audit.generator_provider
+        model = scene.audit.generator_model
+        workspace_json = response.model_dump_json()
+        await self.db.execute_many([
+            (
+                """
+                INSERT INTO render_jobs (
+                  id, user_id, problem_text, provider, model, scene_json, payload_json, warnings_json,
+                  render_request_json, source_type, renderer, status, degraded, fallback_source,
+                  ai_source, response_json, schema_version
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', 0, 'none', 'none', ?, '3.0')
+                """,
+                [
+                    job_id,
+                    user_id,
+                    scene.problem_text,
+                    provider,
+                    model,
+                    scene.model_dump_json(),
+                    response.payload.model_dump_json(),
+                    json.dumps([issue.message for issue in response.issues], ensure_ascii=False),
+                    render_request_json,
+                    "problem",
+                    scene.renderer,
+                    workspace_json,
+                ],
+            ),
+            (
+                """
+                INSERT INTO history_items (
+                  id, user_id, render_job_id, problem_preview, topic, grade, tier, renderer,
+                  provider, model, source_type, status
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'problem', 'completed')
+                """,
+                [
+                    job_id,
+                    user_id,
+                    job_id,
+                    scene.problem_text[:240],
+                    scene.topic,
+                    str(scene.grade) if scene.grade is not None else None,
+                    request_tier(render_request_json),
+                    scene.renderer,
+                    provider,
+                    model,
+                ],
+            ),
+            (
+                """
+                INSERT INTO scene_revisions (
+                  id, history_item_id, render_job_id, revision_no, change_source, change_summary,
+                  scene_json, response_json, schema_version, command_log_json, scene_id, snapshot_revision
+                ) VALUES (?, ?, ?, ?, 'render_v3', 'Bản dựng v3 đầu tiên', ?, ?, '3.0', '[]', ?, ?)
+                """,
+                [
+                    f"{job_id}:r{scene.revision}",
+                    job_id,
+                    job_id,
+                    scene.revision,
+                    scene.model_dump_json(),
+                    workspace_json,
+                    scene.scene_id,
+                    scene.revision,
+                ],
+            ),
+            (
+                """
+                INSERT INTO scene_workspaces (
+                  scene_id, user_id, history_item_id, revision, scene_json, status, verification_json, issues_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    scene.scene_id,
+                    user_id,
+                    job_id,
+                    scene.revision,
+                    scene.model_dump_json(),
+                    response.status,
+                    json.dumps([item.model_dump(mode="json") for item in response.verification], ensure_ascii=False),
+                    json.dumps([item.model_dump(mode="json") for item in response.issues], ensure_ascii=False),
+                ],
+            ),
+        ])
+        row = await self.db.fetch_one("SELECT * FROM render_jobs WHERE id = ?", [job_id])
+        if row is None:
+            raise RuntimeError("Không thể lưu lịch sử dựng hình v3.")
+        return render_job_from_row(row)
 
     async def create(
         self,
@@ -367,6 +465,30 @@ class RenderHistoryRepository:
         )
         return [scene_revision_from_row(row) for row in rows]
 
+    async def find_v3_snapshot_for_user(
+        self,
+        user_id: str,
+        job_id: str,
+        snapshot_revision: int | None = None,
+    ) -> SceneRevisionRecord | None:
+        revision_clause = "AND sr.snapshot_revision = ?" if snapshot_revision is not None else ""
+        params: list[object] = [user_id, job_id]
+        if snapshot_revision is not None:
+            params.append(snapshot_revision)
+        row = await self.db.fetch_one(
+            f"""
+            SELECT sr.*
+            FROM scene_revisions sr
+            JOIN history_items h ON h.id = sr.history_item_id
+            WHERE h.user_id = ? AND h.render_job_id = ? AND sr.schema_version = '3.0'
+              {revision_clause}
+            ORDER BY sr.snapshot_revision DESC
+            LIMIT 1
+            """,
+            params,
+        )
+        return scene_revision_from_row(row) if row else None
+
 
 def request_tier(render_request_json: str | None) -> str | None:
     if not render_request_json:
@@ -390,6 +512,10 @@ def scene_revision_from_row(row: DbRow) -> SceneRevisionRecord:
         scene_json=str(row["scene_json"]),
         response_json=str(row["response_json"]) if row.get("response_json") is not None else None,
         created_at=str(row["created_at"]),
+        schema_version=str(row.get("schema_version") or "2.0"),
+        command_log_json=str(row.get("command_log_json") or "[]"),
+        scene_id=str(row["scene_id"]) if row.get("scene_id") is not None else None,
+        snapshot_revision=int(row["snapshot_revision"]) if row.get("snapshot_revision") is not None else None,
     )
 
 

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ApiError, changePassword, consumeAnalyzerLinkFromLocation, deleteRenderHistory, forgotPassword, getCurrentUser, getHealth, getLearningProfile, getRenderHistory, getRenderHistoryDetail, getSessions, getSettingsDefaults, login, loginWithGoogle, logout, ocrImageByUploadId, patchRenderHistory, register, renderEditedScene, renderProblemV3, resendVerification, resetPassword, revokeOtherSessions, revokeSession, updateLearningProfile, updateProfile, uploadOcrImage, verifyEmail, type AdminRenderHistoryDetail, type PracticeHandoffPayload, type RenderHandoffPayload, type RenderHistoryItem, type SessionResponse, type UserLearningProfileResponse, type UserLearningProfileUpdateRequest, type UserResponse } from './api/client';
+import { ApiError, changePassword, consumeAnalyzerLinkFromLocation, deleteRenderHistory, forgotPassword, getCurrentUser, getHealth, getLearningProfile, getRenderHistory, getRenderHistoryDetail, getSessions, getSettingsDefaults, login, loginWithGoogle, logout, ocrImageByUploadId, patchRenderHistory, register, renderEditedScene, renderProblemV3, resendVerification, resetPassword, restoreRenderHistoryV3, revokeOtherSessions, revokeSession, updateLearningProfile, updateProfile, uploadOcrImage, verifyEmail, type AdminRenderHistoryDetail, type PracticeHandoffPayload, type RenderHandoffPayload, type RenderHistoryDetailV2, type RenderHistoryItem, type SessionResponse, type UserLearningProfileResponse, type UserLearningProfileUpdateRequest, type UserResponse } from './api/client';
 import { defaultAdvancedSettings, ProblemInput, type TierKey } from './components/ProblemInput';
 import { AccountPage } from './components/AccountPage';
 import { SettingsPage } from './components/SettingsPage';
@@ -757,8 +757,16 @@ export default function App() {
     try {
       const detail = await getRenderHistoryDetail(id);
       setProblemText(detail.problem_text);
-      applyRenderResponse(detail.response ?? buildLegacyHistoryResponse(detail));
-      setLastAdvancedSettings(advancedSettingsFromHistory(detail.advanced_settings));
+      if (detail.kind === 'math_scene_v3') {
+        const restored = await restoreRenderHistoryV3(id, detail.snapshot_revision);
+        setWorkspaceResultV3(restored);
+        setResult(null);
+        setActiveScene(null);
+        setActiveRevision(restored.scene.revision);
+      } else {
+        applyRenderResponse(detail.response ?? buildLegacyHistoryResponse(detail));
+        setLastAdvancedSettings(advancedSettingsFromHistory(detail.advanced_settings));
+      }
       setRuntimeSettings((current) => runtimeSettingsFromHistory(detail.runtime_settings, current));
       navigateTo('render');
       scrollToResultOnMobile();
@@ -1157,13 +1165,13 @@ export default function App() {
                   type="button"
                   className={sidebarTool === 'solver' ? 'active' : ''}
                   onClick={() => {
-                    if (!result?.scene) return;
+                    if (!workspaceResultV3?.scene) return;
                     setSidebarTool('solver');
                   }}
                   role="tab"
                   aria-selected={sidebarTool === 'solver' ? 'true' : 'false'}
-                  aria-disabled={result?.scene ? undefined : 'true'}
-                  title={!result?.scene ? 'Dựng hình trước để giải từng bước các câu hỏi' : undefined}
+                  aria-disabled={workspaceResultV3?.scene ? undefined : 'true'}
+                  title={!workspaceResultV3?.scene ? 'Dựng hình trước để giải từng bước các câu hỏi' : undefined}
                 >
                   Giải từng bước
                 </button>
@@ -1191,8 +1199,8 @@ export default function App() {
                     </div>
                   )}
                 </>
-              ) : effectiveResult?.scene && user ? (
-                <SolverPanel scene={effectiveResult.scene} response={effectiveResult} runtimeSettings={runtimeSettings} onHighlight={setHighlightedObjects} />
+              ) : workspaceResultV3 && user ? (
+                <SolverPanel workspace={workspaceResultV3} runtimeSettings={runtimeSettings} onHighlight={setHighlightedObjects} />
               ) : (
                 <div className="solver-disabled-state">
                   <strong>Chưa thể giải từng bước</strong>
@@ -1204,7 +1212,27 @@ export default function App() {
             <div className="result-area" ref={resultAnchorRef}>
               <div className="render-stage">
                 {workspaceResultV3 ? (
-                  <SceneWorkspaceEditorV3 initialResponse={workspaceResultV3} onCommitted={setWorkspaceResultV3} />
+                  <>
+                    <SceneWorkspaceEditorV3
+                      initialResponse={workspaceResultV3}
+                      onCommitted={setWorkspaceResultV3}
+                      onImageCaptureReady={handleThreeImageCaptureReady}
+                    />
+                    <div className="panel diagram-tools">
+                      <ExportMenuItems
+                        workspace={workspaceResultV3}
+                        captureCurrentView={threeImageCapture}
+                        preferCurrentViewCapture={workspaceResultV3.projection.dimension === '3d'}
+                        onError={(message) => showNotification('Xuất hình thất bại', message, [], 'error')}
+                      />
+                      <ProblemVariantTool
+                        workspace={workspaceResultV3}
+                        originalProblem={problemText}
+                        runtimeSettings={runtimeSettings}
+                        onError={(message) => showNotification('Công cụ hình', message, [], 'info')}
+                      />
+                    </div>
+                  </>
                 ) : (
                   <>
                 <RendererPanel result={effectiveResult} threeInteraction={threeInteraction} onGeoGebraPointChange={handlePointDragEnd} highlightedObjects={highlightedObjects} saving={editorSaving || Boolean(openingHistoryId)} savingLabel={openingHistoryId ? 'Đang mở lịch sử...' : undefined} onThreeImageCaptureReady={handleThreeImageCaptureReady} />
@@ -1217,93 +1245,6 @@ export default function App() {
                     </span>
                     <button type="button" className="secondary-button" onClick={confirmCurrentScene}>Đã kiểm tra</button>
                   </aside>
-                )}
-                {effectiveResult?.scene && (
-                  <div ref={renderToolsMenuRef} className="render-tools-floating">
-                    <button
-                      type="button"
-                      className="render-editor-trigger"
-                      onPointerDown={handleEditorButtonPointerDown}
-                      onPointerMove={handleEditorButtonPointerMove}
-                      onPointerUp={handleEditorButtonPointerUp}
-                      onPointerCancel={handleEditorButtonPointerUp}
-                      onClick={() => {
-                        if (editorButtonDragRef.current?.moved) return;
-                        setRenderToolsOpen((open) => {
-                          const nextOpen = !open;
-                          if (!nextOpen) setRenderToolsPanel(null);
-                          return nextOpen;
-                        });
-                      }}
-                      aria-label="Mở công cụ hình"
-                      aria-haspopup="menu"
-                      aria-expanded={renderToolsOpen ? 'true' : 'false'}
-                      title="Công cụ hình"
-                    >
-                      <ToolboxIcon />
-                    </button>
-                    {renderToolsOpen && (
-                      <div
-                        className="render-tools-menu"
-                        role="menu"
-                      >
-                        <button
-                          type="button"
-                          role="menuitem"
-                          className="render-tools-menu-item"
-                          onClick={() => {
-                            setRenderToolsOpen(false);
-                            setSceneEditorOpen(true);
-                          }}
-                        >
-                          <GeometryEditIcon />
-                          <span><strong>Sửa hình học</strong><small>Kéo điểm, thêm quan hệ, chỉnh tham số.</small></span>
-                        </button>
-                        <button
-                          type="button"
-                          role="menuitem"
-                          className="render-tools-menu-item"
-                          onClick={() => setRenderToolsPanel((panel) => panel === 'export' ? null : 'export')}
-                          aria-expanded={renderToolsPanel === 'export' ? 'true' : 'false'}
-                        >
-                          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h7l4 4v14H7z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /><path d="M14 3v5h5M9 15h6M9 18h4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
-                          <span><strong>Xuất hình</strong><small>PNG, JPG, SVG, HTML KaTeX, TikZ, PDF, GGB.</small></span>
-                        </button>
-                        {renderToolsPanel === 'export' && (
-                          <div className="render-tools-submenu render-tools-export-submenu">
-                            <ExportMenuItems
-                              scene={effectiveResult.scene}
-                              advancedSettings={lastAdvancedSettings}
-                              captureCurrentView={threeImageCapture}
-                              preferCurrentViewCapture={Boolean(effectiveResult.payload.three_scene)}
-                              response={effectiveResult}
-                              onError={(msg) => showNotification('Xuất hình thất bại', msg, [], 'error')}
-                              onAfterDownload={() => {
-                                setRenderToolsOpen(false);
-                                setRenderToolsPanel(null);
-                              }}
-                              itemClassName="render-tools-menu-item render-tools-submenu-item"
-                            />
-                          </div>
-                        )}
-                        <button
-                          type="button"
-                          role="menuitem"
-                          className="render-tools-menu-item"
-                          onClick={() => setRenderToolsPanel((panel) => panel === 'variants' ? null : 'variants')}
-                          aria-expanded={renderToolsPanel === 'variants' ? 'true' : 'false'}
-                        >
-                          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 7h12M6 12h12M6 17h8" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /><path d="M16 15l2 2 3-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                          <span><strong>Sinh đề</strong><small>Chọn số lượng đề biến thể.</small></span>
-                        </button>
-                        {renderToolsPanel === 'variants' && (
-                          <div className="render-tools-submenu">
-                            <ProblemVariantTool scene={effectiveResult.scene} response={effectiveResult} originalProblem={problemText} runtimeSettings={runtimeSettings} onError={(msg) => showNotification('Công cụ hình', msg, [], 'info')} />
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
                 )}
                 {sceneEditorOpen && effectiveResult?.scene && (
                   <div className="scene-editor-layer" role="presentation" onMouseDown={() => setSceneEditorOpen(false)}>
@@ -1631,7 +1572,7 @@ function shouldShowConfirmationPrompt(response: RenderResponse) {
   );
 }
 
-function buildLegacyHistoryResponse(detail: AdminRenderHistoryDetail): RenderResponse {
+function buildLegacyHistoryResponse(detail: AdminRenderHistoryDetail | RenderHistoryDetailV2): RenderResponse {
   return {
     status: detail.fallback_source && detail.fallback_source !== 'none' ? 'fallback' : 'partially_verified',
     source: {

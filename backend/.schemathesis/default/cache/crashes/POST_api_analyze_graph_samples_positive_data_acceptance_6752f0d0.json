@@ -1,0 +1,95 @@
+{
+  "operation": "POST /api/analyze/graph-samples",
+  "method": "POST",
+  "path_template": "/api/analyze/graph-samples",
+  "fingerprint": "6752f0d0",
+  "case_id": "9wJEzW",
+  "code_sample": "curl -X POST -H 'Content-Type: application/json' -H 'Cookie: [Filtered]' -d '{\"expression\": \"0\", \"max_points\": 500, \"parameters\": {}, \"window\": {\"x_max\": 0.0, \"x_min\": 0.0}}' http://127.0.0.1:18766/api/analyze/graph-samples",
+  "sequence": [
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:18766/api/analyze/graph-samples",
+      "url_template": "http://127.0.0.1:18766/api/analyze/graph-samples",
+      "headers": {
+        "User-Agent": "schemathesis/4.22.4",
+        "Accept-Encoding": "gzip, deflate",
+        "Accept": "*/*",
+        "Connection": "keep-alive",
+        "X-Schemathesis-TestCaseId": "9wJEzW",
+        "Content-Type": "application/json",
+        "Cookie": "[Filtered]",
+        "Content-Length": "96"
+      },
+      "response": {
+        "status_code": 422,
+        "headers": {
+          "date": "Sun, 12 Jul 2026 13:56:56 GMT",
+          "server": "uvicorn",
+          "x-request-id": "b47a9ba09bbe4782b86c1bedf5266a47",
+          "content-length": "198",
+          "content-type": "application/json"
+        },
+        "body": "{\"detail\":{\"code\":\"ANALYZER_INPUT_INVALID\",\"message\":\"D\u1eef li\u1ec7u y\u00eau c\u1ea7u ph\u00e2n t\u00edch kh\u00f4ng h\u1ee3p l\u1ec7.\",\"correlation_id\":\"b47a9ba09bbe4782b86c1bedf5266a47\",\"stage\":\"request\",\"retryable\":false}}"
+      },
+      "link": null,
+      "checks": [
+        {
+          "name": "positive_data_acceptance",
+          "status": "failure",
+          "message": "API rejected schema-compliant request\n\nValid data should have been accepted\nExpected: 2xx, 401, 403, 404, 409, 5xx"
+        }
+      ],
+      "meta": {
+        "generation": {
+          "time": 3.592099983507069e-05,
+          "mode": "positive"
+        },
+        "components": {
+          "COOKIE": "positive",
+          "BODY": "positive"
+        },
+        "phase": {
+          "name": "coverage",
+          "data": {
+            "type": "CoveragePhaseData",
+            "description": "Valid string",
+            "location": null,
+            "parameter": "hinh_session",
+            "parameter_location": "COOKIE",
+            "scenario": "valid_string"
+          }
+        },
+        "pool_draws": [],
+        "pool_misses": [],
+        "semantic_draws": [],
+        "dictionary_draws": [],
+        "raw_containers": {
+          "COOKIE": {
+            "hinh_session": ""
+          }
+        }
+      },
+      "path": "/api/analyze/graph-samples",
+      "path_parameters": {},
+      "query": {},
+      "case_headers": {},
+      "cookies": {
+        "hinh_session": "[Filtered]"
+      },
+      "case_body": {
+        "encoding": "json",
+        "value": {
+          "expression": "0",
+          "max_points": 500,
+          "parameters": {},
+          "window": {
+            "x_max": 0.0,
+            "x_min": 0.0
+          }
+        }
+      },
+      "media_type": "application/json",
+      "parent_index": null
+    }
+  ]
+}

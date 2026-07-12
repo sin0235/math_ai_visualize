@@ -131,6 +131,25 @@ def test_analyzer_openapi_uses_strict_typed_components():
         "AnalyzerIntervalToolRequest",
     ]:
         assert components[name]["additionalProperties"] is False
+    assert components["AnalyzerValidationError"]["properties"]["detail"]["properties"]["code"]["example"] == "ANALYZER_INPUT_INVALID"
+    assert schema["paths"]["/api/analyze"]["post"]["responses"]["422"]["content"]["application/json"]["schema"]["$ref"].endswith("/AnalyzerValidationError")
+    assert "401" in schema["paths"]["/api/analyzer/history"]["get"]["responses"]
+
+
+def test_openapi_derives_auth_and_origin_responses_from_dependencies():
+    schema = app.openapi()
+
+    protected = schema["paths"]["/api/render/v3"]["post"]["responses"]
+    telemetry = schema["paths"]["/api/telemetry/client-error"]["post"]["responses"]
+    analyzer = schema["paths"]["/api/analyze"]["post"]["responses"]
+    algebra = schema["paths"]["/api/algebra/solve"]["post"]["responses"]
+    public = schema["paths"]["/api/health"]["get"]["responses"]
+
+    assert {"401", "403"} <= set(protected)
+    assert "403" in telemetry
+    assert {"404", "429"} <= set(analyzer)
+    assert {"400", "401", "429", "503", "504"} <= set(algebra)
+    assert "401" not in public
 
 
 def test_analyzer_validation_error_has_safe_typed_envelope():

@@ -1287,25 +1287,26 @@ def test_render_scene_route_rebuilds_payload_from_edited_scene(monkeypatch):
     monkeypatch.setattr("app.api.routes_render.enforce_rate_limit", noop)
     monkeypatch.setattr("app.api.routes_render.enforce_render_access", noop)
     try:
-        response = TestClient(app).post(
-            "/api/render/scene",
-            json={
-                "scene": {
-                    "problem_text": "edited",
-                    "grade": 10,
-                    "topic": "coordinate_2d",
-                    "renderer": "geogebra_2d",
-                    "objects": [
-                        {"type": "point_2d", "name": "A", "x": 0, "y": 0},
-                        {"type": "point_2d", "name": "B", "x": 1, "y": 1},
-                        {"type": "line_2d", "name": "d1", "through": ["A", "B"]},
-                    ],
-                    "relations": [],
-                    "annotations": [],
-                    "view": {"dimension": "2d", "show_axes": True, "show_grid": True, "show_coordinates": False},
-                }
-            },
-        )
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/render/scene",
+                json={
+                    "scene": {
+                        "problem_text": "edited",
+                        "grade": 10,
+                        "topic": "coordinate_2d",
+                        "renderer": "geogebra_2d",
+                        "objects": [
+                            {"type": "point_2d", "name": "A", "x": 0, "y": 0},
+                            {"type": "point_2d", "name": "B", "x": 1, "y": 1},
+                            {"type": "line_2d", "name": "d1", "through": ["A", "B"]},
+                        ],
+                        "relations": [],
+                        "annotations": [],
+                        "view": {"dimension": "2d", "show_axes": True, "show_grid": True, "show_coordinates": False},
+                    }
+                },
+            )
     finally:
         app.dependency_overrides.clear()
 

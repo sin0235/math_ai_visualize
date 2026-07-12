@@ -5,7 +5,7 @@ import { useSceneWorkspaceV3 } from '../hooks/useSceneWorkspaceV3';
 import type { MathSceneV3, SceneCommand, SceneWorkspaceResponseV3 } from '../types/sceneV3';
 import { RendererPanelV3 } from './RendererPanelV3';
 import { SceneInspectorV3 } from './SceneInspectorV3';
-import type { ThreeSceneInteraction } from './ThreeGeometryView';
+import type { ThreeSceneImageCapture, ThreeSceneInteraction } from './ThreeGeometryView';
 
 type EditToolV3 = ThreeSceneInteraction['mode'];
 type Vec3 = { x: number; y: number; z: number };
@@ -13,9 +13,10 @@ type Vec3 = { x: number; y: number; z: number };
 interface SceneWorkspaceEditorV3Props {
   initialResponse: SceneWorkspaceResponseV3;
   onCommitted?: (response: SceneWorkspaceResponseV3) => void;
+  onImageCaptureReady?: (capture: ThreeSceneImageCapture | null) => void;
 }
 
-export function SceneWorkspaceEditorV3({ initialResponse, onCommitted }: SceneWorkspaceEditorV3Props) {
+export function SceneWorkspaceEditorV3({ initialResponse, onCommitted, onImageCaptureReady }: SceneWorkspaceEditorV3Props) {
   const workspace = useSceneWorkspaceV3();
   const [tool, setTool] = useState<EditToolV3>('move');
   const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
@@ -171,6 +172,7 @@ export function SceneWorkspaceEditorV3({ initialResponse, onCommitted }: SceneWo
         highlightedObjectIds={highlightedObjectIds}
         saving={saving}
         onPointChange={movePoint}
+        onImageCaptureReady={onImageCaptureReady}
       />
 
       <div className="panel scene-editor scene-editor-v3">
@@ -220,7 +222,7 @@ export function SceneWorkspaceEditorV3({ initialResponse, onCommitted }: SceneWo
           onUndo={undoLatest}
         />}
 
-        {response.requires_user_confirmation && !workspace.trusted && <button type="button" className="secondary-button" disabled={saving} onClick={workspace.confirm}>Xác nhận revision này</button>}
+        {response.requires_user_confirmation && !workspace.trusted && <button type="button" className="secondary-button" disabled={saving} onClick={() => void workspace.confirm().catch(() => undefined)}>Xác nhận revision này</button>}
         {saving && <div className="warning-box">Đang kiểm chứng chỉnh sửa...</div>}
         {(localError || workspace.state.error) && <div className="error-box">{localError || workspace.state.error}</div>}
       </div>

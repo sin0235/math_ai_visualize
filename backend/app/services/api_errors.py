@@ -56,6 +56,11 @@ ERROR_SUGGESTIONS: dict[str, list[str]] = {
         "Tải lại phiên bản scene mới nhất hoặc dựng lại hình trước khi chỉnh tiếp.",
         "Không chỉnh sửa trên response cũ hoặc scene đã thay đổi cục bộ chưa đồng bộ.",
     ],
+    "SCENE_WORKSPACE_NOT_FOUND": ["Tải lại lịch sử hoặc dựng lại scene."],
+    "SCENE_TRUST_REQUIRED": ["Kiểm tra scene và xác nhận đúng revision trước khi tiếp tục."],
+    "CONSTRAINT_FAILED": ["Hoàn tác chỉnh sửa gần nhất hoặc sửa ràng buộc chưa đạt."],
+    "RENDERER_UNSUPPORTED": ["Đổi renderer hoặc loại bỏ đối tượng chưa được hỗ trợ."],
+    "SCENE_SCHEMA_INVALID": ["Kiểm tra cấu trúc và reference của scene."],
 }
 
 

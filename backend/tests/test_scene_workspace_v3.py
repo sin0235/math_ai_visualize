@@ -174,3 +174,53 @@ def test_problem_render_v3_creates_committed_workspace(tmp_path, monkeypatch):
     finally:
         app.dependency_overrides.clear()
         asyncio.run(db.close())
+
+
+def test_workspace_confirmation_is_persisted_for_exact_revision(tmp_path, monkeypatch):
+    db = asyncio.run(initialized_db(tmp_path / "workspace-confirm.db"))
+    payload = scene().model_dump(mode="json")
+    payload["scene_id"] = "workspace-confirm"
+    next(obj for obj in payload["objects"] if obj["id"] == "b")["x"] = 0
+    payload["relations"] = [{
+        "id": "on-line:degenerate",
+        "type": "on_line",
+        "operands": [
+            {"role": "point", "ref_id": "p", "ref_kind": "point"},
+            {"role": "target", "ref_id": "ab", "ref_kind": "segment"},
+        ],
+    }]
+
+    async def active_user():
+        return USER
+
+    async def database():
+        return db
+
+    async def trusted_origin():
+        return None
+
+    async def no_op(*_args, **_kwargs):
+        return None
+
+    app.dependency_overrides[require_active_user] = active_user
+    app.dependency_overrides[get_database] = database
+    app.dependency_overrides[require_trusted_origin] = trusted_origin
+    monkeypatch.setattr("app.api.routes_render.enforce_rate_limit", no_op)
+    try:
+        client = TestClient(app)
+        created = client.post("/api/render/v3/workspaces", json={"scene": payload})
+        assert created.status_code == 201
+        assert created.json()["status"] == "needs_confirmation"
+        assert created.json()["trusted_for_downstream"] is False
+
+        confirmed = client.post("/api/render/v3/workspaces/workspace-confirm/confirm", json={"revision": 1})
+        assert confirmed.status_code == 200
+        assert confirmed.json()["confirmed_revision"] == 1
+        assert confirmed.json()["trusted_for_downstream"] is True
+
+        stale = client.post("/api/render/v3/workspaces/workspace-confirm/confirm", json={"revision": 2})
+        assert stale.status_code == 409
+        assert stale.json()["detail"]["code"] == "SCENE_EDIT_STALE"
+    finally:
+        app.dependency_overrides.clear()
+        asyncio.run(db.close())

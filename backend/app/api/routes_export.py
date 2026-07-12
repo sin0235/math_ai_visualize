@@ -1,8 +1,4 @@
-"""API xuất scene sang TikZ / GGB / PDF.
-
-Body chung: ``SceneRenderRequest`` (đã có) → endpoint trả về file binary/text
-tương ứng. Frontend sẽ tải về cho user.
-"""
+"""API xuất committed MathScene v3 sang TikZ, GGB, PDF và ảnh."""
 
 from __future__ import annotations
 
@@ -11,194 +7,175 @@ import asyncio
 from fastapi import APIRouter, Depends, Request, Response
 
 from app.api.deps import enforce_rate_limit, require_active_user, require_trusted_origin
+from app.api.routes_render import enforce_render_access
 from app.db.models import UserRecord
 from app.db.session import DatabaseClient, get_database
+from app.renderers.projection_export_v3 import (
+    build_ggb_v3,
+    build_image_v3,
+    build_katex_html_v3,
+    build_pdf_v3,
+    build_tikz_document_v3,
+)
 from app.repositories.activity import try_log_user_activity
-from app.schemas.scene import MathScene, SceneRenderRequest
-from app.api.routes_render import enforce_render_access
+from app.schemas.scene_v3 import SceneExportRequestV3
+from app.services.api_errors import api_error
+from app.services.committed_scene_v3 import CommittedSceneError, load_committed_scene_v3
 
 router = APIRouter(prefix="/api/export", tags=["export"])
 
 
-async def _log_export(db: DatabaseClient, user: UserRecord, fmt: str) -> None:
-    await try_log_user_activity(db, user.id, "export.completed", target_type="export", metadata={"format": fmt})
-
-
-def _safe_export_scene(request: SceneRenderRequest) -> MathScene:
-    from fastapi import status
-
-    from app.services.api_errors import api_error
-    from app.services.geometry_engine import normalize_scene
-    from app.services.render_quality_gate import assert_render_response_safe_for_downstream, assert_scene_safe_for_downstream
-
+async def _load_export(
+    request: SceneExportRequestV3,
+    user: UserRecord,
+    db: DatabaseClient,
+):
     try:
-        if request.response is not None:
-            assert_render_response_safe_for_downstream(
-                request.response,
-                request.scene,
-                operation="xuất file",
-                allow_partial=True,
-            )
-            return normalize_scene(request.scene, request.advanced_settings)
-        assert_scene_safe_for_downstream(request.scene, operation="xuất file", allow_partial=True)
-        return normalize_scene(request.scene, request.advanced_settings)
-    except ValueError as error:
-        code = "RENDER_FALLBACK_REQUIRES_CONFIRMATION" if "fallback" in str(error).lower() or "xác nhận" in str(error).lower() else "RENDER_VERIFICATION_FAILED"
-        raise api_error(status.HTTP_400_BAD_REQUEST, str(error), code) from error
+        return await load_committed_scene_v3(db, user.id, request.scene_ref)
+    except CommittedSceneError as error:
+        raise api_error(error.status_code, str(error), error.code) from error
+
+
+async def _prepare_export(
+    request: SceneExportRequestV3,
+    http_request: Request,
+    user: UserRecord,
+    db: DatabaseClient,
+    fmt: str,
+):
+    await enforce_rate_limit(db, http_request, user, f"export_{fmt}", 30 if user else 8, 60)
+    await enforce_render_access(db, user)
+    return await _load_export(request, user, db)
+
+
+async def _finish_export(db: DatabaseClient, user: UserRecord, fmt: str) -> None:
+    await try_log_user_activity(db, user.id, "export.completed", target_type="export", metadata={"format": fmt})
 
 
 @router.post("/tikz", dependencies=[Depends(require_trusted_origin)])
 async def export_tikz(
-    request: SceneRenderRequest,
+    request: SceneExportRequestV3,
     http_request: Request,
     user: UserRecord = Depends(require_active_user),
     db: DatabaseClient = Depends(get_database),
 ) -> Response:
-    await enforce_rate_limit(db, http_request, user, "export_tikz", 30 if user else 8, 60)
-    await enforce_render_access(db, user)
-    from app.renderers.tikz_export import build_tikz_document
-
-    scene = await asyncio.to_thread(_safe_export_scene, request)
-    body = await asyncio.to_thread(build_tikz_document, scene, None, request.response)
-    await _log_export(db, user, "tikz")
-    return Response(
-        content=body,
-        media_type="application/x-tex",
-        headers={"Content-Disposition": 'attachment; filename="math-renderer.tex"'},
+    committed = await _prepare_export(request, http_request, user, db, "tikz")
+    body = await asyncio.to_thread(
+        build_tikz_document_v3,
+        committed.result.projection,
+        committed.result.scene.problem_text,
     )
+    await _finish_export(db, user, "tikz")
+    return _file_response(body, "application/x-tex", "math-renderer.tex")
 
 
 @router.post("/ggb", dependencies=[Depends(require_trusted_origin)])
 async def export_ggb(
-    request: SceneRenderRequest,
+    request: SceneExportRequestV3,
     http_request: Request,
     user: UserRecord = Depends(require_active_user),
     db: DatabaseClient = Depends(get_database),
 ) -> Response:
-    await enforce_rate_limit(db, http_request, user, "export_ggb", 30 if user else 8, 60)
-    await enforce_render_access(db, user)
-    from app.renderers.ggb_export import build_ggb
-
-    scene = await asyncio.to_thread(_safe_export_scene, request)
-    body = await asyncio.to_thread(build_ggb, scene, request.advanced_settings, request.response)
-    await _log_export(db, user, "ggb")
-    return Response(
-        content=body,
-        media_type="application/vnd.geogebra.file",
-        headers={"Content-Disposition": 'attachment; filename="math-renderer.ggb"'},
+    committed = await _prepare_export(request, http_request, user, db, "ggb")
+    body = await asyncio.to_thread(
+        build_ggb_v3,
+        committed.result.projection,
+        committed.result.scene.problem_text,
     )
+    await _finish_export(db, user, "ggb")
+    return _file_response(body, "application/vnd.geogebra.file", "math-renderer.ggb")
 
 
 @router.post("/pdf", dependencies=[Depends(require_trusted_origin)])
 async def export_pdf(
-    request: SceneRenderRequest,
+    request: SceneExportRequestV3,
     http_request: Request,
     user: UserRecord = Depends(require_active_user),
     db: DatabaseClient = Depends(get_database),
 ) -> Response:
-    await enforce_rate_limit(db, http_request, user, "export_pdf", 30 if user else 8, 60)
-    await enforce_render_access(db, user)
-    from app.renderers.pdf_export import build_pdf, build_pdf_from_capture
-
-    scene = await asyncio.to_thread(_safe_export_scene, request)
+    committed = await _prepare_export(request, http_request, user, db, "pdf")
     try:
-        if request.view_capture:
-            body = await asyncio.to_thread(build_pdf_from_capture, scene, request.view_capture, request.response)
-        else:
-            body = await asyncio.to_thread(build_pdf, scene, None, request.response)
+        body = await asyncio.to_thread(
+            build_pdf_v3,
+            committed.result.projection,
+            committed.result.scene.problem_text,
+            request.view_capture,
+        )
     except ValueError as error:
-        from fastapi import status
+        raise api_error(400, str(error), "EXPORT_VIEW_CAPTURE_INVALID") from error
+    await _finish_export(db, user, "pdf")
+    return _file_response(body, "application/pdf", "math-renderer.pdf")
 
-        from app.services.api_errors import api_error
 
-        raise api_error(status.HTTP_400_BAD_REQUEST, str(error), "EXPORT_VIEW_CAPTURE_INVALID") from error
-    await _log_export(db, user, "pdf")
-    return Response(
-        content=body,
-        media_type="application/pdf",
-        headers={"Content-Disposition": 'attachment; filename="math-renderer.pdf"'},
+async def _export_image(
+    request: SceneExportRequestV3,
+    http_request: Request,
+    user: UserRecord,
+    db: DatabaseClient,
+    fmt: str,
+) -> Response:
+    committed = await _prepare_export(request, http_request, user, db, fmt)
+    body = await asyncio.to_thread(
+        build_image_v3,
+        committed.result.projection,
+        committed.result.scene.problem_text,
+        fmt,
     )
+    await _finish_export(db, user, fmt)
+    media_type = {"png": "image/png", "jpg": "image/jpeg", "svg": "image/svg+xml; charset=utf-8"}[fmt]
+    return _file_response(body, media_type, f"math-renderer.{fmt}")
 
 
 @router.post("/png", dependencies=[Depends(require_trusted_origin)])
 async def export_png(
-    request: SceneRenderRequest,
+    request: SceneExportRequestV3,
     http_request: Request,
     user: UserRecord = Depends(require_active_user),
     db: DatabaseClient = Depends(get_database),
 ) -> Response:
-    await enforce_rate_limit(db, http_request, user, "export_png", 30 if user else 8, 60)
-    await enforce_render_access(db, user)
-    from app.renderers.pdf_export import build_png
-
-    scene = await asyncio.to_thread(_safe_export_scene, request)
-    body = await asyncio.to_thread(build_png, scene, None, request.response)
-    await _log_export(db, user, "png")
-    return Response(
-        content=body,
-        media_type="image/png",
-        headers={"Content-Disposition": 'attachment; filename="math-renderer.png"'},
-    )
+    return await _export_image(request, http_request, user, db, "png")
 
 
 @router.post("/jpg", dependencies=[Depends(require_trusted_origin)])
 async def export_jpg(
-    request: SceneRenderRequest,
+    request: SceneExportRequestV3,
     http_request: Request,
     user: UserRecord = Depends(require_active_user),
     db: DatabaseClient = Depends(get_database),
 ) -> Response:
-    await enforce_rate_limit(db, http_request, user, "export_jpg", 30 if user else 8, 60)
-    await enforce_render_access(db, user)
-    from app.renderers.pdf_export import build_jpg
-
-    scene = await asyncio.to_thread(_safe_export_scene, request)
-    body = await asyncio.to_thread(build_jpg, scene, None, request.response)
-    await _log_export(db, user, "jpg")
-    return Response(
-        content=body,
-        media_type="image/jpeg",
-        headers={"Content-Disposition": 'attachment; filename="math-renderer.jpg"'},
-    )
+    return await _export_image(request, http_request, user, db, "jpg")
 
 
 @router.post("/svg", dependencies=[Depends(require_trusted_origin)])
 async def export_svg(
-    request: SceneRenderRequest,
+    request: SceneExportRequestV3,
     http_request: Request,
     user: UserRecord = Depends(require_active_user),
     db: DatabaseClient = Depends(get_database),
 ) -> Response:
-    await enforce_rate_limit(db, http_request, user, "export_svg", 30 if user else 8, 60)
-    await enforce_render_access(db, user)
-    from app.renderers.pdf_export import build_svg
-
-    scene = _safe_export_scene(request)
-    body = build_svg(scene, response=request.response)
-    await _log_export(db, user, "svg")
-    return Response(
-        content=body,
-        media_type="image/svg+xml; charset=utf-8",
-        headers={"Content-Disposition": 'attachment; filename="math-renderer.svg"'},
-    )
+    return await _export_image(request, http_request, user, db, "svg")
 
 
 @router.post("/katex-html", dependencies=[Depends(require_trusted_origin)])
 async def export_katex_html(
-    request: SceneRenderRequest,
+    request: SceneExportRequestV3,
     http_request: Request,
     user: UserRecord = Depends(require_active_user),
     db: DatabaseClient = Depends(get_database),
 ) -> Response:
-    await enforce_rate_limit(db, http_request, user, "export_katex_html", 30 if user else 8, 60)
-    await enforce_render_access(db, user)
-    from app.renderers.katex_html_export import build_katex_html
+    committed = await _prepare_export(request, http_request, user, db, "katex-html")
+    body = await asyncio.to_thread(
+        build_katex_html_v3,
+        committed.result.projection,
+        committed.result.scene.problem_text,
+    )
+    await _finish_export(db, user, "katex-html")
+    return _file_response(body, "text/html; charset=utf-8", "math-renderer-katex.html")
 
-    scene = _safe_export_scene(request)
-    body = build_katex_html(scene, request.response)
-    await _log_export(db, user, "katex-html")
+
+def _file_response(content: bytes | str, media_type: str, filename: str) -> Response:
     return Response(
-        content=body,
-        media_type="text/html; charset=utf-8",
-        headers={"Content-Disposition": 'attachment; filename="math-renderer-katex.html"'},
+        content=content,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

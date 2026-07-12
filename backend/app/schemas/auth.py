@@ -1,9 +1,10 @@
 import re
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 from app.schemas.scene import MAX_BASE_URL_CHARS, MAX_MODEL_ID_CHARS, MathScene, RenderPayload, RenderResponse
+from app.schemas.scene_v3 import SceneCommand, SceneWorkspaceResponseV3
 
 MAX_STORED_MODELS = 1000
 PLAN_ID_PATTERN = re.compile(r"^[a-z][a-z0-9_+-]{0,63}$")
@@ -322,9 +323,13 @@ class SceneRevisionResponse(BaseModel):
     change_source: str
     change_summary: str | None = None
     created_at: str
+    schema_version: str = "2.0"
+    scene_id: str | None = None
+    snapshot_revision: int | None = None
 
 
-class RenderHistoryDetail(RenderHistoryItem):
+class RenderHistoryDetailV2(RenderHistoryItem):
+    kind: Literal["math_scene_v2"] = "math_scene_v2"
     scene: MathScene
     payload: RenderPayload
     warnings: list[str]
@@ -332,6 +337,22 @@ class RenderHistoryDetail(RenderHistoryItem):
     render_request: dict | None = None
     advanced_settings: dict | None = None
     runtime_settings: dict | None = None
+
+
+class RenderHistoryDetailV3(RenderHistoryItem):
+    kind: Literal["math_scene_v3"] = "math_scene_v3"
+    workspace: SceneWorkspaceResponseV3
+    snapshot_revision: int = Field(ge=1)
+    command_log: list[SceneCommand] = Field(default_factory=list)
+    render_request: dict | None = None
+    runtime_settings: dict | None = None
+
+
+RenderHistoryDetail = Annotated[RenderHistoryDetailV2 | RenderHistoryDetailV3, Field(discriminator="kind")]
+
+
+class RestoreHistoryV3Request(BaseModel):
+    snapshot_revision: int | None = Field(default=None, ge=1)
 
 
 class UserSettingsResponse(BaseModel):
@@ -638,7 +659,7 @@ class AdminRenderHistoryItem(RenderHistoryItem):
     user_id: str | None = None
 
 
-class AdminRenderHistoryDetail(RenderHistoryDetail):
+class AdminRenderHistoryDetail(RenderHistoryDetailV2):
     user_id: str | None = None
 
 

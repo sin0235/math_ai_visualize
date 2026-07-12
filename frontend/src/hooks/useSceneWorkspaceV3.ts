@@ -1,6 +1,6 @@
 import { useCallback, useReducer, useRef } from 'react';
 
-import { ApiError, applySceneCommandV3, createSceneWorkspaceV3, getSceneWorkspaceV3 } from '../api/client';
+import { ApiError, applySceneCommandV3, confirmSceneWorkspaceV3, createSceneWorkspaceV3, getSceneWorkspaceV3 } from '../api/client';
 import type { MathSceneV3, SceneCommand, SceneWorkspaceResponseV3 } from '../types/sceneV3';
 import {
   emptySceneWorkspaceStateV3,
@@ -63,6 +63,22 @@ export function useSceneWorkspaceV3() {
     return command ? commit(command, 'redo') : Promise.resolve(null);
   }, [commit, state.redoStack]);
 
+  const confirm = useCallback(async () => {
+    if (!state.committed || requestInFlight.current) return null;
+    const scene = state.committed.scene;
+    requestInFlight.current = true;
+    try {
+      const response = await confirmSceneWorkspaceV3({ scene_id: scene.scene_id, revision: scene.revision });
+      dispatch({ type: 'confirm', response });
+      return response;
+    } catch (caught) {
+      dispatch({ type: 'reject', message: caught instanceof Error ? caught.message : 'Không thể xác nhận scene.' });
+      throw caught;
+    } finally {
+      requestInFlight.current = false;
+    }
+  }, [state.committed]);
+
   return {
     state,
     scene: workspaceDisplayScene(state),
@@ -75,6 +91,6 @@ export function useSceneWorkspaceV3() {
     commit,
     undo,
     redo,
-    confirm: () => dispatch({ type: 'confirm' }),
+    confirm,
   };
 }

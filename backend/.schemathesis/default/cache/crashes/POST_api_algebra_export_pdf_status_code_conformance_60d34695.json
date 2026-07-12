@@ -1,0 +1,87 @@
+{
+  "operation": "POST /api/algebra/export/pdf",
+  "method": "POST",
+  "path_template": "/api/algebra/export/pdf",
+  "fingerprint": "60d34695",
+  "case_id": "quvqVf",
+  "code_sample": "curl -X POST -H 'Content-Type: application/json' -H 'Cookie: [Filtered]' -d '{}' http://127.0.0.1:18766/api/algebra/export/pdf",
+  "sequence": [
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:18766/api/algebra/export/pdf",
+      "url_template": "http://127.0.0.1:18766/api/algebra/export/pdf",
+      "headers": {
+        "User-Agent": "schemathesis/4.22.4",
+        "Accept-Encoding": "gzip, deflate",
+        "Accept": "*/*",
+        "Connection": "keep-alive",
+        "X-Schemathesis-TestCaseId": "quvqVf",
+        "Content-Type": "application/json",
+        "Cookie": "[Filtered]",
+        "Content-Length": "2"
+      },
+      "response": {
+        "status_code": 400,
+        "headers": {
+          "date": "Sun, 12 Jul 2026 13:58:08 GMT",
+          "server": "uvicorn",
+          "x-request-id": "ee43902d3d25421382b89ba3a7a5d424",
+          "content-length": "240",
+          "content-type": "application/json"
+        },
+        "body": "{\"detail\":{\"code\":\"ALGEBRA_EXPORT_INVALID\",\"message\":\"C\u1ea7n response ho\u1eb7c history_id.\",\"suggestions\":[\"Ki\u1ec3m tra d\u1eef li\u1ec7u \u0111\u1ea7u v\u00e0o, c\u1ea5u h\u00ecnh provider/model v\u00e0 th\u1eed l\u1ea1i.\"],\"debug_message\":\"C\u1ea7n response ho\u1eb7c history_id.\"}}"
+      },
+      "link": null,
+      "checks": [
+        {
+          "name": "status_code_conformance",
+          "status": "failure",
+          "message": "Undocumented HTTP status code\n\nReceived: 400\nDocumented: 200, 422, 403"
+        }
+      ],
+      "meta": {
+        "generation": {
+          "time": 1.091900003302726e-05,
+          "mode": "negative"
+        },
+        "components": {
+          "COOKIE": "negative",
+          "BODY": "positive"
+        },
+        "phase": {
+          "name": "coverage",
+          "data": {
+            "type": "CoveragePhaseData",
+            "description": "Incorrect type",
+            "location": "/anyOf/1/type",
+            "parameter": "hinh_session",
+            "parameter_location": "COOKIE",
+            "scenario": "incorrect_type"
+          }
+        },
+        "pool_draws": [],
+        "pool_misses": [],
+        "semantic_draws": [],
+        "dictionary_draws": [],
+        "raw_containers": {
+          "COOKIE": {
+            "hinh_session": {}
+          }
+        }
+      },
+      "path": "/api/algebra/export/pdf",
+      "path_parameters": {},
+      "query": {},
+      "case_headers": {},
+      "cookies": {
+        "hinh_session": "[Filtered]"
+      },
+      "case_body": {
+        "encoding": "json",
+        "value": {}
+      },
+      "media_type": "application/json",
+      "parent_index": null
+    }
+  ]
+}

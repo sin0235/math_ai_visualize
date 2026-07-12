@@ -1,4 +1,4 @@
-import type { MathSceneV3, SceneCommand, SceneWorkspaceResponseV3 } from '../types/sceneV3';
+import type { CommittedSceneRefV3, MathSceneV3, SceneCommand, SceneWorkspaceResponseV3 } from '../types/sceneV3';
 
 export type CommandCommitMode = 'normal' | 'undo' | 'redo';
 
@@ -31,12 +31,16 @@ export type SceneWorkspaceActionV3 =
   | { type: 'begin'; command: SceneCommand; mode: CommandCommitMode }
   | { type: 'commit'; response: SceneWorkspaceResponseV3 }
   | { type: 'reject'; message: string }
-  | { type: 'confirm' };
+  | { type: 'confirm'; response: SceneWorkspaceResponseV3 };
 
 export function sceneWorkspaceReducerV3(state: SceneWorkspaceStateV3, action: SceneWorkspaceActionV3): SceneWorkspaceStateV3 {
   switch (action.type) {
     case 'load':
-      return { ...emptySceneWorkspaceStateV3, committed: action.response };
+      return {
+        ...emptySceneWorkspaceStateV3,
+        committed: action.response,
+        confirmedRevision: action.response.confirmed_revision ?? null,
+      };
     case 'preview':
       return { ...state, previewScene: action.scene, error: null };
     case 'clear_preview':
@@ -48,9 +52,12 @@ export function sceneWorkspaceReducerV3(state: SceneWorkspaceStateV3, action: Sc
     case 'reject':
       return { ...state, previewScene: null, pendingCommand: null, pendingMode: null, error: action.message };
     case 'confirm':
-      return state.committed
-        ? { ...state, confirmedRevision: state.committed.scene.revision }
-        : state;
+      return {
+        ...state,
+        committed: action.response,
+        confirmedRevision: action.response.confirmed_revision ?? null,
+        error: null,
+      };
   }
 }
 
@@ -73,10 +80,15 @@ export function workspaceDisplayScene(state: SceneWorkspaceStateV3): MathSceneV3
 }
 
 export function workspaceIsTrusted(state: SceneWorkspaceStateV3): boolean {
-  const response = state.committed;
-  if (!response || response.status === 'failed' || response.status === 'partially_verified') return false;
-  return response.status === 'verified'
-    || (response.status === 'needs_confirmation' && state.confirmedRevision === response.scene.revision);
+  return state.committed?.trusted_for_downstream === true;
+}
+
+export function committedSceneRefV3(workspace: SceneWorkspaceResponseV3): CommittedSceneRefV3 {
+  return { scene_id: workspace.scene.scene_id, revision: workspace.scene.revision };
+}
+
+export function downstreamGateMessageV3(workspace: SceneWorkspaceResponseV3, action: string): string | null {
+  return workspace.trusted_for_downstream ? null : `Scene chưa được backend xác nhận cho ${action}.`;
 }
 
 function commitResponse(state: SceneWorkspaceStateV3, response: SceneWorkspaceResponseV3): SceneWorkspaceStateV3 {

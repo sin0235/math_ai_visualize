@@ -1,13 +1,12 @@
 import { useMemo, useRef, useState } from 'react';
 import { solveProblem, type SolveResponse, type SolveStep } from '../api/client';
+import { committedSceneRefV3, downstreamGateMessageV3 } from '../hooks/sceneWorkspaceV3State';
 import type { RuntimeSettings } from '../types/settings';
-import type { MathScene, RenderResponse } from '../types/scene';
-import { downstreamGateMessage } from '../utils/renderQualityGate';
+import type { MathSceneV3, SceneWorkspaceResponseV3 } from '../types/sceneV3';
 import { KatexSpan, normalizeLatexForKatex, sympyToLatex } from './KatexSpan';
 
 interface SolverPanelProps {
-  scene: MathScene;
-  response?: RenderResponse | null;
+  workspace: SceneWorkspaceResponseV3;
   runtimeSettings?: RuntimeSettings;
   onHighlight: (names: string[]) => void;
 }
@@ -122,13 +121,18 @@ function normalizeExplanationText(
   return text;
 }
 
-function buildExamples(scene: MathScene) {
-  const pointNames = scene.objects
-    .filter((obj): obj is Extract<MathScene['objects'][number], { type: 'point_3d' | 'point_2d' }> => obj.type === 'point_3d' || obj.type === 'point_2d')
-    .map((point) => point.name);
-  const face = scene.objects.find((obj): obj is Extract<MathScene['objects'][number], { type: 'face' }> => obj.type === 'face' && obj.points.length >= 3);
-  const base = face?.points ?? pointNames.slice(0, 4);
-  const distanceBase = face?.points ?? (pointNames.length >= 4 ? pointNames.slice(0, 3) : base);
+function buildExamples(scene: MathSceneV3) {
+  const pointLabels = new Map(
+    scene.objects
+      .filter((object) => object.type === 'point_2d' || object.type === 'point_3d')
+      .map((point) => [point.id, point.label || point.id]),
+  );
+  const pointNames = [...pointLabels.values()];
+  const face = scene.objects.find(
+    (object): object is Extract<MathSceneV3['objects'][number], { type: 'face' }> => object.type === 'face' && object.point_ids.length >= 3,
+  );
+  const base = face?.point_ids.map((id) => pointLabels.get(id) || id) ?? pointNames.slice(0, 4);
+  const distanceBase = base.length >= 3 ? base.slice(0, 3) : pointNames.slice(0, 3);
   const distancePoint = pointNames.find((name) => !distanceBase.includes(name));
   const apex = pointNames.find((name) => !base.includes(name)) ?? pointNames[0];
   const edge = base.length >= 2 ? `${base[0]}${base[1]}` : '';
@@ -151,7 +155,8 @@ function buildExamples(scene: MathScene) {
   return Array.from(new Set(examples));
 }
 
-export function SolverPanel({ scene, response, runtimeSettings, onHighlight }: SolverPanelProps) {
+export function SolverPanel({ workspace, runtimeSettings, onHighlight }: SolverPanelProps) {
+  const scene = workspace.scene;
   const [question, setQuestion] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<SolveResponse | null>(null);
@@ -164,7 +169,7 @@ export function SolverPanel({ scene, response, runtimeSettings, onHighlight }: S
   const sceneCacheKey = useMemo(() => JSON.stringify(scene), [scene]);
   const normalizedQuestion = normalizeSolverQuestionInput(question);
   const showNormalizedQuestion = Boolean(question.trim()) && normalizedQuestion !== question.trim();
-  const gateMessage = response ? downstreamGateMessage(response, 'giải bài') : null;
+  const gateMessage = downstreamGateMessageV3(workspace, 'giải bài');
 
   async function handleSolve() {
     const trimmedQuestion = normalizedQuestion;
@@ -181,7 +186,12 @@ export function SolverPanel({ scene, response, runtimeSettings, onHighlight }: S
         setResult(cached);
         return;
       }
-      const res = await solveProblem(scene, trimmedQuestion, geometryMethod, runtimeSettings, response);
+      const res = await solveProblem(
+        committedSceneRefV3(workspace),
+        trimmedQuestion,
+        geometryMethod,
+        runtimeSettings,
+      );
       cacheRef.current.set(cacheKey, res);
       setResult(res);
     } catch (e: unknown) {

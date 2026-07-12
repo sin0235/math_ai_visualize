@@ -138,6 +138,10 @@ def _validate_expression(expr: str, variables: Mapping[str, object] | None = Non
                 raise UnsafeExpressionError("Chỉ cho phép gọi hàm theo tên đơn")
             if node.func.id not in _ALLOWED_FUNCS:
                 raise UnsafeExpressionError(f"Hàm không cho phép: {node.func.id}")
+            if node.func.id == "pow":
+                _validate_power_arguments(node.args)
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Pow):
+            _validate_power_arguments([node.right])
         if isinstance(node, ast.Name):
             if node.id in _ALLOWED_FUNCS:
                 continue
@@ -149,6 +153,77 @@ def _validate_expression(expr: str, variables: Mapping[str, object] | None = Non
         if isinstance(node, ast.Constant) and not isinstance(node.value, (int, float)):
             raise UnsafeExpressionError(f"Hằng không cho phép: {type(node.value).__name__}")
     return tree
+
+
+def _validate_power_arguments(arguments: list[ast.AST]) -> None:
+    exponent = arguments[-1] if arguments else None
+    if not isinstance(exponent, ast.Constant) or isinstance(exponent.value, bool) or not isinstance(exponent.value, (int, float)):
+        raise UnsafeExpressionError("Số mũ phải là hằng số hữu hạn")
+    if not math.isfinite(float(exponent.value)) or abs(float(exponent.value)) > 64:
+        raise UnsafeExpressionError("Số mũ vượt giới hạn an toàn")
+
+
+def _evaluate_node(node: ast.AST, namespace: Mapping[str, object]) -> object:
+    if isinstance(node, ast.Constant):
+        return node.value
+    if isinstance(node, ast.Name):
+        return namespace[node.id]
+    if isinstance(node, ast.UnaryOp):
+        operand = _evaluate_node(node.operand, namespace)
+        if isinstance(node.op, ast.USub):
+            return -operand
+        if isinstance(node.op, ast.UAdd):
+            return +operand
+    if isinstance(node, ast.BinOp):
+        left = _evaluate_node(node.left, namespace)
+        right = _evaluate_node(node.right, namespace)
+        if isinstance(node.op, ast.Add):
+            return left + right
+        if isinstance(node.op, ast.Sub):
+            return left - right
+        if isinstance(node.op, ast.Mult):
+            return left * right
+        if isinstance(node.op, ast.Div):
+            return left / right
+        if isinstance(node.op, ast.Mod):
+            return left % right
+        if isinstance(node.op, ast.Pow):
+            return left**right
+        if isinstance(node.op, ast.FloorDiv):
+            return left // right
+    if isinstance(node, ast.Call):
+        function = namespace[node.func.id]  # _validate_expression chỉ cho phép ast.Name trong whitelist.
+        return function(*(_evaluate_node(argument, namespace) for argument in node.args))
+    if isinstance(node, ast.IfExp):
+        branch = node.body if _evaluate_node(node.test, namespace) else node.orelse
+        return _evaluate_node(branch, namespace)
+    if isinstance(node, ast.Compare):
+        left = _evaluate_node(node.left, namespace)
+        for operator, comparator in zip(node.ops, node.comparators):
+            right = _evaluate_node(comparator, namespace)
+            matches = (
+                left == right if isinstance(operator, ast.Eq) else
+                left != right if isinstance(operator, ast.NotEq) else
+                left < right if isinstance(operator, ast.Lt) else
+                left <= right if isinstance(operator, ast.LtE) else
+                left > right if isinstance(operator, ast.Gt) else
+                left >= right
+            )
+            if not matches:
+                return False
+            left = right
+        return True
+    if isinstance(node, ast.BoolOp):
+        values = iter(node.values)
+        result = _evaluate_node(next(values), namespace)
+        for value in values:
+            if isinstance(node.op, ast.And) and not result:
+                return result
+            if isinstance(node.op, ast.Or) and result:
+                return result
+            result = _evaluate_node(value, namespace)
+        return result
+    raise UnsafeExpressionError(f"Cú pháp không hỗ trợ: {type(node).__name__}")
 
 
 def safe_eval(expr: str, variables: Mapping[str, float] | None = None) -> float:
@@ -167,18 +242,17 @@ def safe_eval(expr: str, variables: Mapping[str, float] | None = None) -> float:
     namespace.update(_ALLOWED_CONSTS)
     namespace.update(dict(variables or {}))
     try:
-        result = eval(  # noqa: S307 - đã sandbox AST + namespace
-            compile(tree, "<expr>", "eval"),
-            {"__builtins__": {}},
-            namespace,
-        )
+        result = _evaluate_node(tree.body, namespace)
     except (ValueError, ArithmeticError, TypeError) as exc:
         raise UnsafeExpressionError(f"Eval lỗi: {exc}") from exc
 
     if isinstance(result, bool):
         return 1.0 if result else 0.0
     if isinstance(result, (int, float)):
-        return float(result)
+        numeric = float(result)
+        if not math.isfinite(numeric):
+            raise UnsafeExpressionError("Kết quả eval không hữu hạn")
+        return numeric
     raise UnsafeExpressionError("Kết quả eval không phải số")
 
 

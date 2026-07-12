@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictBool
 
 MAX_ALGEBRA_INPUT_CHARS = 2_000
 
@@ -79,7 +79,7 @@ class AlgebraSolveRequest(BaseModel):
     interval: AlgebraInterval | None = None
     options: AlgebraSolveOptions = Field(default_factory=AlgebraSolveOptions)
     # When true and user is logged in, server persists a history row after solve.
-    save_history: bool = True
+    save_history: StrictBool = True
 
 
 class AlgebraSolveStep(BaseModel):

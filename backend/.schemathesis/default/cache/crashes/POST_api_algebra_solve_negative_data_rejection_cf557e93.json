@@ -1,0 +1,90 @@
+{
+  "operation": "POST /api/algebra/solve",
+  "method": "POST",
+  "path_template": "/api/algebra/solve",
+  "fingerprint": "cf557e93",
+  "case_id": "12YaTq",
+  "code_sample": "curl -X POST -H 'Content-Type: application/json' -H 'Cookie: [Filtered]' -d '{\"input\": \"0\", \"save_history\": 0}' http://127.0.0.1:18766/api/algebra/solve",
+  "sequence": [
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:18766/api/algebra/solve",
+      "url_template": "http://127.0.0.1:18766/api/algebra/solve",
+      "headers": {
+        "User-Agent": "schemathesis/4.22.4",
+        "Accept-Encoding": "gzip, deflate",
+        "Accept": "*/*",
+        "Connection": "keep-alive",
+        "X-Schemathesis-TestCaseId": "12YaTq",
+        "Content-Type": "application/json",
+        "Cookie": "[Filtered]",
+        "Content-Length": "33"
+      },
+      "response": {
+        "status_code": 200,
+        "headers": {
+          "date": "Sun, 12 Jul 2026 13:56:47 GMT",
+          "server": "uvicorn",
+          "content-length": "2493",
+          "content-type": "application/json",
+          "x-request-id": "0290e1d7b3354f6a8b23fef6cee443ff"
+        },
+        "body": "{\"input\":\"0\",\"normalized_input\":\"0\",\"input_interpretation\":{\"detected_format\":\"plain\",\"source\":\"raw\",\"canonical_input\":\"0\",\"topic_hint\":\"auto\",\"variables\":[\"x\"],\"domain\":\"R\",\"chips\":[{\"kind\":\"format\",\"label\":\"D\u1ea1ng nh\u1eadp\",\"value\":\"c\u00f4ng th\u1ee9c\"},{\"kind\":\"topic\",\"label\":\"Nh\u1eadn d\u1ea1ng\",\"value\":\"auto\"},{\"kind\":\"domain\",\"label\":\"Mi\u1ec1n\",\"value\":\"R\"},{\"kind\":\"variable\",\"label\":\"Bi\u1ebfn\",\"value\":\"x\"}],\"warnings\":[]},\"topic\":\"expression\",\"problem_type\":\"transform_simplify\",\"status\":\"solved\",\"answer\":\"K\u1ebft qu\u1ea3: 0\",\"answer_latex\":\"0\",\"solution_set\":{\"kind\":\"expression\",\"text\":\"0\",\"latex\":\"0\",\"values\":[]},\"steps\":[{\"index\":1,\"title\":\"Bi\u1ebfn \u0111\u1ed5i bi\u1ec3u th\u1ee9c\",\"explanation\":\"Th\u1ef1c hi\u1ec7n r\u00fat g\u1ecdn bi\u1ec3u th\u1ee9c.\",\"short_explanation\":null,\"detail_level\":\"standard\",\"method\":null,\"goal\":\"\u0110\u01b0a bi\u1ec3u th\u1ee9c v\u1ec1 d\u1ea1ng r\u00fat g\u1ecdn t\u1ed1i \u01b0u.\",\"why\":\"D\u1ea1ng r\u00fat g\u1ecdn gi\u00fap bi\u1ec3u th\u1ee9c d\u1ec5 t\u00ednh to\u00e1n ho\u1eb7c ph\u00e2n t\u00edch h\u01a1n.\",\"rule\":\"R\u00fat g\u1ecdn\",\"operation\":\"S\u1eed d\u1ee5ng c\u00e1c quy t\u1eafc \u0111\u1ea1i s\u1ed1 \u0111\u1ec3 r\u00fat g\u1ecdn.\",\"before_latex\":\"0\",\"after_latex\":\"0\",\"pitfall\":null,\"check\":null,\"expression\":\"0\",\"expression_latex\":\"0\",\"result\":\"0\",\"result_latex\":\"0\",\"kind\":\"transform\",\"confidence\":\"symbolic\",\"sub_steps\":[]},{\"index\":2,\"title\":\"K\u1ebft lu\u1eadn\",\"explanation\":\"K\u1ebft qu\u1ea3: 0\",\"short_explanation\":null,\"detail_level\":\"standard\",\"method\":null,\"goal\":\"Vi\u1ebft t\u1eadp nghi\u1ec7m cu\u1ed1i c\u00f9ng sau khi \u0111\u00e3 gi\u1ea3i v\u00e0 ki\u1ec3m tra.\",\"why\":\"K\u1ebft lu\u1eadn ph\u1ea3i t\u1ed5ng h\u1ee3p \u0111\u00fang nghi\u1ec7m h\u1ee3p l\u1ec7, kh\u00f4ng ch\u1ec9 l\u00e0 k\u1ebft qu\u1ea3 trung gian.\",\"rule\":\"K\u1ebft lu\u1eadn t\u1eadp nghi\u1ec7m\",\"operation\":\"Ghi nghi\u1ec7m ho\u1eb7c kho\u1ea3ng nghi\u1ec7m theo k\u00fd hi\u1ec7u t\u1eadp nghi\u1ec7m.\",\"before_latex\":null,\"after_latex\":\"0\",\"pitfall\":null,\"check\":\"So s\u00e1nh k\u1ebft lu\u1eadn v\u1edbi \u0111i\u1ec1u ki\u1ec7n x\u00e1c \u0111\u1ecbnh v\u00e0 b\u00e1o c\u00e1o ki\u1ec3m ch\u1ee9ng.\",\"expression\":null,\"expression_latex\":null,\"result\":\"K\u1ebft qu\u1ea3: 0\",\"result_latex\":\"0\",\"kind\":\"conclusion\",\"confidence\":\"verified\",\"sub_steps\":[]}],\"milestones\":[\"Bi\u1ec3u th\u1ee9c g\u1ed1c: 0\",\"K\u1ebft qu\u1ea3 r\u00fat g\u1ecdn: 0\"],\"verification\":{\"status\":\"verified\",\"checks\":[{\"name\":\"expression_transform\",\"status\":\"pass\",\"detail\":\"Bi\u1ebfn \u0111\u1ed5i symbolic simplify th\u00e0nh c\u00f4ng.\",\"latex\":\"0\"}],\"method\":[\"sympy.simplify\"]},\"assumptions\":[],\"warnings\":[\"Mi\u1ec1n R \u0111ang l\u00e0 m\u1eb7c \u0111\u1ecbnh; \u0111\u1ed5i sang C n\u1ebfu b\u00e0i s\u1ed1 ph\u1ee9c.\"],\"errors\":[],\"request_id\":\"alg_1a6e75e409ae\",\"timings_ms\":{\"interpret_ms\":4,\"solve_ms\":0,\"parse_ms\":19,\"options_ms\":0,\"total_ms\":24},\"history_id\":null,\"cost_score\":1}"
+      },
+      "link": null,
+      "checks": [
+        {
+          "name": "negative_data_rejection",
+          "status": "failure",
+          "message": "API accepted schema-violating request\n\nInvalid data should have been rejected\nExpected: 400, 401, 403, 404, 405, 406, 409, 422, 428, 5xx\nInvalid component: in body - save_history: Incorrect type"
+        }
+      ],
+      "meta": {
+        "generation": {
+          "time": 0.00014736399998582783,
+          "mode": "negative"
+        },
+        "components": {
+          "COOKIE": "positive",
+          "BODY": "negative"
+        },
+        "phase": {
+          "name": "coverage",
+          "data": {
+            "type": "CoveragePhaseData",
+            "description": "save_history: Incorrect type",
+            "location": "/properties/save_history/type",
+            "parameter": "application/json",
+            "parameter_location": "BODY",
+            "scenario": "incorrect_type"
+          }
+        },
+        "pool_draws": [],
+        "pool_misses": [],
+        "semantic_draws": [],
+        "dictionary_draws": [],
+        "raw_containers": {
+          "COOKIE": {
+            "hinh_session": ""
+          }
+        }
+      },
+      "path": "/api/algebra/solve",
+      "path_parameters": {},
+      "query": {},
+      "case_headers": {},
+      "cookies": {
+        "hinh_session": "[Filtered]"
+      },
+      "case_body": {
+        "encoding": "json",
+        "value": {
+          "input": "0",
+          "save_history": 0
+        }
+      },
+      "media_type": "application/json",
+      "parent_index": null
+    }
+  ]
+}

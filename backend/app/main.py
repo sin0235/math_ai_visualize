@@ -5,7 +5,9 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
+from fastapi.routing import APIRoute
 
 from app.api.routes_admin import router as admin_router
 from app.api.routes_ai_models import router as ai_models_router
@@ -70,6 +72,109 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
+
+
+def _route_dependencies() -> dict[tuple[str, str], set[str]]:
+    def iter_routes(routes):
+        for route in routes:
+            if getattr(route, "path", None) is not None:
+                yield route
+                continue
+            original = getattr(route, "original_router", None)
+            if original is not None:
+                yield from iter_routes(original.routes)
+                continue
+            nested = getattr(route, "routes", None)
+            if nested is not None:
+                yield from iter_routes(nested)
+
+    def names(dependant) -> set[str]:
+        call = getattr(dependant, "call", None)
+        return {getattr(call, "__name__", "")} | {
+            name
+            for child in getattr(dependant, "dependencies", [])
+            for name in names(child)
+        }
+
+    return {
+        (route.path, method.lower()): names(route.dependant)
+        for route in iter_routes(app.routes)
+        if isinstance(route, APIRoute)
+        for method in route.methods or set()
+    }
+
+
+def custom_openapi() -> dict[str, object]:
+    if app.openapi_schema:
+        return app.openapi_schema
+
+    schema = get_openapi(title=app.title, version=app.version, routes=app.routes)
+    components = schema.setdefault("components", {}).setdefault("schemas", {})
+    components["ApiErrorDetail"] = {
+        "type": "object",
+        "required": ["detail"],
+        "properties": {"detail": {"oneOf": [{"type": "string"}, {"type": "object"}, {"type": "array"}]}},
+    }
+    components["AnalyzerValidationError"] = {
+        "type": "object",
+        "required": ["detail"],
+        "properties": {
+            "detail": {
+                "type": "object",
+                "required": ["code", "message", "correlation_id", "stage", "retryable"],
+                "properties": {
+                    "code": {"type": "string", "example": "ANALYZER_INPUT_INVALID"},
+                    "message": {"type": "string"},
+                    "correlation_id": {"type": "string"},
+                    "stage": {"type": "string", "example": "request"},
+                    "retryable": {"type": "boolean"},
+                },
+            }
+        },
+    }
+    standard_auth_errors = {
+        "401": {"description": "Chưa xác thực.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ApiErrorDetail"}}}},
+        "403": {"description": "Không có quyền truy cập.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ApiErrorDetail"}}}},
+    }
+    standard_error_responses = {
+        status_code: {"description": description, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ApiErrorDetail"}}}}
+        for status_code, description in {
+            "400": "Yêu cầu không hợp lệ.",
+            "401": "Chưa xác thực.",
+            "403": "Không có quyền truy cập.",
+            "404": "Không tìm thấy tài nguyên.",
+            "429": "Vượt hạn mức yêu cầu.",
+            "503": "Dịch vụ tạm thời không sẵn sàng.",
+            "504": "Xử lý vượt thời gian.",
+        }.items()
+    }
+    route_dependencies = _route_dependencies()
+    for path, operations in schema["paths"].items():
+        for method, operation in operations.items():
+            if not isinstance(operation, dict):
+                continue
+            responses = operation.setdefault("responses", {})
+            dependencies = route_dependencies.get((path, method), set())
+            if path.startswith(("/api/analyze", "/api/analyzer")):
+                responses["422"] = {
+                    "description": "Dữ liệu Analyzer không hợp lệ.",
+                    "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AnalyzerValidationError"}}},
+                }
+                for status_code in {"404", "429"}:
+                    responses.setdefault(status_code, standard_error_responses[status_code])
+            if path.startswith("/api/algebra/"):
+                for status_code in {"400", "401", "429", "503", "504"}:
+                    responses.setdefault(status_code, standard_error_responses[status_code])
+            if dependencies & {"get_current_user", "require_active_user", "require_admin_user"}:
+                for status_code, response in standard_auth_errors.items():
+                    responses.setdefault(status_code, response)
+            elif "require_trusted_origin" in dependencies:
+                responses.setdefault("403", standard_auth_errors["403"])
+    app.openapi_schema = schema
+    return schema
+
+
+app.openapi = custom_openapi
 
 app.add_middleware(
     CORSMiddleware,

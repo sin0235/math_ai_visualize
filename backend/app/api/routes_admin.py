@@ -464,7 +464,7 @@ async def admin_feedback(
     db: DatabaseClient = Depends(get_database),
 ) -> list[AdminFeedbackResponse]:
     if status_filter and status_filter not in {"pending", "received", "accepted"}:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Trạng thái góp ý không hợp lệ.")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Trạng thái góp ý không hợp lệ.")
     items = await FeedbackRepository(db).list_admin(status_filter, user_id, q)
     return [
         AdminFeedbackResponse(
@@ -751,11 +751,11 @@ def validate_system_setting(key: str, value: dict) -> dict:
     }
     schema = schemas.get(key)
     if schema is None:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Cài đặt hệ thống không hợp lệ.")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Cài đặt hệ thống không hợp lệ.")
     try:
         validated = schema.model_validate(value).model_dump(mode="json")
     except ValidationError as error:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=json.loads(error.json())) from error
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=json.loads(error.json())) from error
     if key == "ai_settings":
         validate_ai_settings_rules(SystemAiSettings.model_validate(validated))
     if key == "ai_profiles":
@@ -767,24 +767,24 @@ def validate_system_setting(key: str, value: dict) -> dict:
 
 def validate_ai_settings_rules(settings: SystemAiSettings) -> None:
     if settings.default_provider not in ADMIN_DEFAULT_PROVIDERS:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Nhà cung cấp mặc định không hợp lệ.")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Nhà cung cấp mặc định không hợp lệ.")
     for provider_id in ["openrouter", "nvidia", "ollama", "openai_compat", "router9"]:
         provider_settings = getattr(settings, provider_id)
         for model_id in provider_settings.allowed_model_ids:
             validate_provider_model_pair(provider_id, model_id)
     if settings.ocr.provider not in ADMIN_OCR_PROVIDERS:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Nhà cung cấp OCR không hợp lệ.")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Nhà cung cấp OCR không hợp lệ.")
     validate_provider_model_pair(settings.ocr.provider, settings.ocr.model)
     if settings.router9.only_mode and not settings.router9.allowed_model_ids:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Router9 only mode cần ít nhất một model Router9 trong allowlist.")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Router9 only mode cần ít nhất một model Router9 trong allowlist.")
 
 
 def validate_ai_profiles_rules(profiles: SystemAiProfiles) -> None:
     for profile in [profiles.geometry_reasoning, profiles.solver_explanation, profiles.ocr]:
         if profile.provider not in ADMIN_DEFAULT_PROVIDERS or profile.provider == "auto":
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Task profile phải chọn provider rõ ràng.")
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Task profile phải chọn provider rõ ràng.")
         if not profile.model:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Task profile phải chọn model.")
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Task profile phải chọn model.")
         validate_provider_model_pair(profile.provider, profile.model)
         validate_profile_fallbacks(profile.provider, profile.fallbacks)
 
@@ -795,22 +795,22 @@ def validate_ai_tier_profiles_rules(profiles: SystemAiTierProfiles) -> None:
     for tier_name in ["tier1", "tier2", "tier3"]:
         tier_profile = getattr(profiles, tier_name)
         if not tier_profile.models:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Tier {tier_name} phải chọn ít nhất một model.")
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=f"Tier {tier_name} phải chọn ít nhất một model.")
         for model_ref in tier_profile.models:
             try:
                 ref = parse_provider_model_ref(model_ref, allow_legacy_slash=False)
             except ValueError as error:
-                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)) from error
+                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)) from error
             if ref is None:
                 raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                     detail=f"Model tier phải có dạng provider::model: {model_ref}",
                 )
             canonical = f"{ref.provider_id}::{ref.model_id}"
             previous_tier = seen.get(canonical)
             if previous_tier and previous_tier != tier_name:
                 raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                     detail=f"Model {canonical} đã nằm trong {previous_tier}, không thể chọn lại ở {tier_name}.",
                 )
             seen[canonical] = tier_name
@@ -822,14 +822,14 @@ def validate_provider_model_pair(provider_id: str, model_id: str) -> None:
     try:
         canonicalize_explicit_provider_model(provider_id, model_id)
     except ValueError as error:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)) from error
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)) from error
 
 
 def validate_profile_fallbacks(provider_id: str, fallbacks: list[str]) -> None:
     try:
         canonicalize_fallback_models(provider_id, fallbacks, strict=True)
     except ValueError as error:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)) from error
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)) from error
 
 
 def build_user_update_audit_metadata(current: UserRecord, patch: dict) -> dict:
@@ -845,7 +845,7 @@ def build_user_update_audit_metadata(current: UserRecord, patch: dict) -> dict:
 async def validate_known_plan(repo: AdminRepository, plan: str) -> str:
     record = await repo.find_plan(plan)
     if record is None or not record.is_active:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Gói người dùng không hợp lệ.")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Gói người dùng không hợp lệ.")
     return plan
 
 

@@ -1,0 +1,92 @@
+{
+  "operation": "POST /api/auth/register",
+  "method": "POST",
+  "path_template": "/api/auth/register",
+  "fingerprint": "cc2c6ea8",
+  "case_id": "6vapzy",
+  "code_sample": "curl -X POST -H 'Content-Type: application/json' -H 'Cookie: [Filtered]' -d '{\"accept_privacy_policy\": false, \"accept_terms\": false, \"email\": \"0@a.com\", \"password\": \"0000000000\"}' http://127.0.0.1:18766/api/auth/register",
+  "sequence": [
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:18766/api/auth/register",
+      "url_template": "http://127.0.0.1:18766/api/auth/register",
+      "headers": {
+        "User-Agent": "schemathesis/4.22.4",
+        "Accept-Encoding": "gzip, deflate",
+        "Accept": "*/*",
+        "Connection": "keep-alive",
+        "X-Schemathesis-TestCaseId": "6vapzy",
+        "Content-Type": "application/json",
+        "Cookie": "[Filtered]",
+        "Content-Length": "101"
+      },
+      "response": {
+        "status_code": 422,
+        "headers": {
+          "date": "Sun, 12 Jul 2026 13:57:20 GMT",
+          "server": "uvicorn",
+          "content-length": "626",
+          "content-type": "application/json",
+          "x-request-id": "9d4e6ca1683a456fa23e823bce19c933"
+        },
+        "body": "{\"detail\":[{\"type\":\"value_error\",\"loc\":[\"body\",\"password\"],\"msg\":\"Value error, M\u1eadt kh\u1ea9u c\u1ea7n k\u1ebft h\u1ee3p ch\u1eef v\u00e0 s\u1ed1 ho\u1eb7c k\u00fd t\u1ef1 kh\u00e1c.\",\"input\":\"0000000000\",\"ctx\":{\"error\":{}}},{\"type\":\"value_error\",\"loc\":[\"body\",\"accept_privacy_policy\"],\"msg\":\"Value error, B\u1ea1n c\u1ea7n \u0111\u1ed3ng \u00fd Ch\u00ednh s\u00e1ch b\u1ea3o m\u1eadt v\u00e0 \u0110i\u1ec1u kho\u1ea3n s\u1eed d\u1ee5ng \u0111\u1ec3 t\u1ea1o t\u00e0i kho\u1ea3n.\",\"input\":false,\"ctx\":{\"error\":{}}},{\"type\":\"value_error\",\"loc\":[\"body\",\"accept_terms\"],\"msg\":\"Value error, B\u1ea1n c\u1ea7n \u0111\u1ed3ng \u00fd Ch\u00ednh s\u00e1ch b\u1ea3o m\u1eadt v\u00e0 \u0110i\u1ec1u kho\u1ea3n s\u1eed d\u1ee5ng \u0111\u1ec3 t\u1ea1o t\u00e0i kho\u1ea3n.\",\"input\":false,\"ctx\":{\"error\":{}}}]}"
+      },
+      "link": null,
+      "checks": [
+        {
+          "name": "positive_data_acceptance",
+          "status": "failure",
+          "message": "API rejected schema-compliant request\n\nValid data should have been accepted\nExpected: 2xx, 401, 403, 404, 409, 5xx"
+        }
+      ],
+      "meta": {
+        "generation": {
+          "time": 1.8351000107941218e-05,
+          "mode": "positive"
+        },
+        "components": {
+          "COOKIE": "positive",
+          "BODY": "positive"
+        },
+        "phase": {
+          "name": "coverage",
+          "data": {
+            "type": "CoveragePhaseData",
+            "description": "Valid string",
+            "location": null,
+            "parameter": "hinh_session",
+            "parameter_location": "COOKIE",
+            "scenario": "valid_string"
+          }
+        },
+        "pool_draws": [],
+        "pool_misses": [],
+        "semantic_draws": [],
+        "dictionary_draws": [],
+        "raw_containers": {
+          "COOKIE": {
+            "hinh_session": ""
+          }
+        }
+      },
+      "path": "/api/auth/register",
+      "path_parameters": {},
+      "query": {},
+      "case_headers": {},
+      "cookies": {
+        "hinh_session": "[Filtered]"
+      },
+      "case_body": {
+        "encoding": "json",
+        "value": {
+          "accept_privacy_policy": false,
+          "accept_terms": false,
+          "email": "0@a.com",
+          "password": "[Filtered]"
+        }
+      },
+      "media_type": "application/json",
+      "parent_index": null
+    }
+  ]
+}

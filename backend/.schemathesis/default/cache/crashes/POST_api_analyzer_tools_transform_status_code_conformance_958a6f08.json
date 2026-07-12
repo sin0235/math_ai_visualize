@@ -1,0 +1,99 @@
+{
+  "operation": "POST /api/analyzer/tools/transform",
+  "method": "POST",
+  "path_template": "/api/analyzer/tools/transform",
+  "fingerprint": "958a6f08",
+  "case_id": "Q0neqb",
+  "code_sample": "curl -X POST -H 'Content-Type: application/json' -H 'Cookie: [Filtered]' -d '{\"analysis_id\": \"0000000000000000\", \"transform\": {\"type\": \"vertical_shift\", \"value\": 1000000}}' http://127.0.0.1:18766/api/analyzer/tools/transform",
+  "sequence": [
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:18766/api/analyzer/tools/transform",
+      "url_template": "http://127.0.0.1:18766/api/analyzer/tools/transform",
+      "headers": {
+        "User-Agent": "schemathesis/4.22.4",
+        "Accept-Encoding": "gzip, deflate",
+        "Accept": "*/*",
+        "Connection": "keep-alive",
+        "X-Schemathesis-TestCaseId": "Q0neqb",
+        "Content-Type": "application/json",
+        "Cookie": "[Filtered]",
+        "Content-Length": "94"
+      },
+      "response": {
+        "status_code": 429,
+        "headers": {
+          "date": "Sun, 12 Jul 2026 13:57:19 GMT",
+          "server": "uvicorn",
+          "retry-after": "58",
+          "x-request-id": "ae2e8f5e70d742bfb032c273ae9fe25f",
+          "content-length": "194",
+          "content-type": "application/json"
+        },
+        "body": "{\"detail\":{\"code\":\"ANALYZER_RATE_LIMITED\",\"message\":\"Analyzer \u0111ang qu\u00e1 t\u1ea3i. H\u00e3y th\u1eed l\u1ea1i sau.\",\"correlation_id\":\"ae2e8f5e70d742bfb032c273ae9fe25f\",\"stage\":\"rate_limit\",\"retryable\":true}}"
+      },
+      "link": null,
+      "checks": [
+        {
+          "name": "status_code_conformance",
+          "status": "failure",
+          "message": "Undocumented HTTP status code\n\nReceived: 429\nDocumented: 200, 422, 403"
+        }
+      ],
+      "meta": {
+        "generation": {
+          "time": 2.309499996044906e-05,
+          "mode": "positive"
+        },
+        "components": {
+          "COOKIE": "positive",
+          "BODY": "positive"
+        },
+        "phase": {
+          "name": "coverage",
+          "data": {
+            "type": "CoveragePhaseData",
+            "description": "Object with valid 'transform' value: Object with valid 'value' value: Maximum value",
+            "location": null,
+            "parameter": "application/json",
+            "parameter_location": "BODY",
+            "scenario": "valid_object"
+          }
+        },
+        "pool_draws": [],
+        "pool_misses": [
+          [
+            "body",
+            "analysis_id"
+          ]
+        ],
+        "semantic_draws": [],
+        "dictionary_draws": [],
+        "raw_containers": {
+          "COOKIE": {
+            "hinh_session": ""
+          }
+        }
+      },
+      "path": "/api/analyzer/tools/transform",
+      "path_parameters": {},
+      "query": {},
+      "case_headers": {},
+      "cookies": {
+        "hinh_session": "[Filtered]"
+      },
+      "case_body": {
+        "encoding": "json",
+        "value": {
+          "analysis_id": "0000000000000000",
+          "transform": {
+            "type": "vertical_shift",
+            "value": 1000000
+          }
+        }
+      },
+      "media_type": "application/json",
+      "parent_index": null
+    }
+  ]
+}
