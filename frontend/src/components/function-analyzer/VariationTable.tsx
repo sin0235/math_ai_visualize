@@ -29,6 +29,8 @@ export function VariationTable({
   useEffect(() => {
     if (!isExpanded) return;
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : zoomButtonRef.current;
+    const previousBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
     const modal = modalRef.current;
     modal?.querySelector<HTMLElement>('button')?.focus();
 
@@ -55,6 +57,7 @@ export function VariationTable({
     document.addEventListener('keydown', handleKeyDown);
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousBodyOverflow;
       previousFocus?.focus();
     };
   }, [isExpanded]);

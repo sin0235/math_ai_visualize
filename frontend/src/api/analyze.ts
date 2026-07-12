@@ -407,7 +407,14 @@ export interface AnalyzeResponse {
   second_derivative: string | null;
   second_derivative_latex: string | null;
   critical_points: CriticalPoint[];
-  inflection_points: Array<{ x: string; x_exact: string; y: string }>;
+  inflection_points: Array<{
+    x: string;
+    x_exact: string;
+    x_value?: ExactApproxValue | null;
+    y: string;
+    y_exact?: string | null;
+    y_value?: ExactApproxValue | null;
+  }>;
   intervals_increasing: string[];
   intervals_decreasing: string[];
   concave_up_intervals: string[];

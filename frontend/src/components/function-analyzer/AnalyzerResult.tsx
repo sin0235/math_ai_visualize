@@ -170,14 +170,21 @@ function ToolAnalysisResults({ result }: { result: AnalyzeResponse }) {
                   : result.line_analysis.equation}
               </span>
             </div>
-            <span className="fa2-interval-note">Trạng thái: {result.line_analysis.status ?? 'unknown'}{result.line_analysis.kind ? `; loại: ${result.line_analysis.kind}` : ''}.</span>
+            {(result.line_analysis.status || result.line_analysis.kind || result.line_analysis.condition_exact) && (
+              <details className="fa2-result-disclosure">
+                <summary>Chi tiết kiểm chứng</summary>
+                <div className="fa2-interval-note">
+                  Trạng thái: {result.line_analysis.status ?? 'unknown'}{result.line_analysis.kind ? `; loại: ${result.line_analysis.kind}` : ''}.
+                  {result.line_analysis.condition_exact ? ` Điều kiện: ${result.line_analysis.condition_exact}.` : ''}
+                </div>
+              </details>
+            )}
             {isTangentTool ? (
               <div className="fa2-transform-formula" style={{ marginTop: 12 }}>
-                {result.line_analysis.condition_exact && <div className="fa2-interval-note">Điều kiện backend: {result.line_analysis.condition_exact}.</div>}
                 {result.line_analysis.tangents?.map((tangent, index) => (
                   <div key={`${tangent.x0_exact}-${index}`} className="fa2-interval-note">
                     <KatexSpan tex={tangent.equation_latex || sympyToLatex(tangent.equation_exact)} />
-                    <span> Tiếp điểm ({tangent.x0_exact}; {tangent.y0_exact}), {tangent.verification}.</span>
+                    <span> Tiếp điểm ({tangent.x0_exact}; {tangent.y0_exact}).</span>
                   </div>
                 ))}
                 {result.line_analysis.conclusion && <><strong>Kết luận:</strong> {result.line_analysis.conclusion}</>}
@@ -189,7 +196,10 @@ function ToolAnalysisResults({ result }: { result: AnalyzeResponse }) {
                 {(result.line_analysis.intersections ?? []).map((pt, index) => (
                   <div key={`line-${index}`}>
                     <PointBadge label="Giao điểm exact" tex={`(${pt.x_latex || sympyToLatex(pt.x_exact || pt.x)},\\; ${pt.y_latex || sympyToLatex(pt.y_exact || pt.y)})`} kind="axis" />
-                    <span className="fa2-interval-note">Xấp xỉ: ({pt.x}; {pt.y}). Residual: {pt.residual ?? 'unknown'}; sai số: {pt.error_bound ?? 'unknown'}; {pt.verification ?? 'unknown'}; loại: {pt.contact_kind ?? 'unknown'}{pt.multiplicity != null ? `; bội ${pt.multiplicity}` : ''}.</span>
+                    <details className="fa2-result-disclosure fa2-point-evidence">
+                      <summary>Kiểm chứng giao điểm {index + 1}</summary>
+                      <span className="fa2-interval-note">Xấp xỉ: ({pt.x}; {pt.y}). Residual: {pt.residual ?? 'unknown'}; sai số: {pt.error_bound ?? 'unknown'}; {pt.verification ?? 'unknown'}; loại: {pt.contact_kind ?? 'unknown'}{pt.multiplicity != null ? `; bội ${pt.multiplicity}` : ''}.</span>
+                    </details>
                   </div>
                 ))}
                 {(result.line_analysis.relative_intervals?.above.length ?? 0) > 0 && <IntervalLine label="f(x) > d" value={result.line_analysis.relative_intervals!.above.join(', ')} className="fa2-mono-inc" />}

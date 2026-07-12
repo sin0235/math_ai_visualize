@@ -37,7 +37,8 @@ export function AnalyzerPersistenceControls({
   onProfileChange,
   onOpenHistory,
 }: AnalyzerPersistenceControlsProps) {
-  const [historyOpen, setHistoryOpen] = useState(false);
+  const [openMenu, setOpenMenu] = useState<'history' | 'export' | 'handoff' | 'options' | null>(null);
+  const historyOpen = openMenu === 'history';
   const [history, setHistory] = useState<AnalyzerHistoryItem[]>([]);
   const [query, setQuery] = useState('');
   const [tags, setTags] = useState('');
@@ -45,14 +46,29 @@ export function AnalyzerPersistenceControls({
   const [handoffTarget, setHandoffTarget] = useState<AnalyzerHandoffTarget>('algebra_solver');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const exportMenuRef = useRef<HTMLDetailsElement | null>(null);
-  const handoffMenuRef = useRef<HTMLDetailsElement | null>(null);
+  const sectionRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (!historyOpen) return;
     const timeout = window.setTimeout(() => void refreshHistory(), 250);
     return () => window.clearTimeout(timeout);
   }, [historyOpen, query]);
+
+  useEffect(() => {
+    if (!openMenu) return;
+    function closeOnOutsideClick(event: PointerEvent) {
+      if (!sectionRef.current?.contains(event.target as Node)) setOpenMenu(null);
+    }
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') setOpenMenu(null);
+    }
+    document.addEventListener('pointerdown', closeOnOutsideClick);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsideClick);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [openMenu]);
 
   async function refreshHistory() {
     try {
@@ -86,7 +102,7 @@ export function AnalyzerPersistenceControls({
     try {
       await exportAnalyzer({ analysis_id: result.analysis_id }, format, template, profile);
       setMessage('Đã tạo file xuất.');
-      if (exportMenuRef.current) exportMenuRef.current.open = false;
+      setOpenMenu(null);
     } catch (caught) {
       setMessage(caught instanceof Error ? caught.message : 'Không xuất được kết quả.');
     } finally {
@@ -98,7 +114,7 @@ export function AnalyzerPersistenceControls({
     setBusy(true);
     try {
       const link = await createAnalyzerHandoff(result.analysis_id, handoffTarget);
-      if (handoffMenuRef.current) handoffMenuRef.current.open = false;
+      setOpenMenu(null);
       window.location.assign(link.url);
     } catch (caught) {
       setMessage(caught instanceof Error ? caught.message : 'Không mở được công cụ đích.');
@@ -111,7 +127,7 @@ export function AnalyzerPersistenceControls({
     try {
       const detail = await reanalyzeAnalyzerHistory(item.id, profile);
       await onOpenHistory(detail.id);
-      setHistoryOpen(false);
+      setOpenMenu(null);
       setMessage('Đã phân tích lại bằng engine hiện tại.');
     } catch (caught) {
       setMessage(caught instanceof Error ? caught.message : 'Không phân tích lại được lịch sử.');
@@ -124,12 +140,16 @@ export function AnalyzerPersistenceControls({
     onProfileChange({ ...profile, grade, chapter: CHAPTERS[grade] });
   }
 
+  function syncMenu(key: NonNullable<typeof openMenu>, open: boolean) {
+    setOpenMenu((current) => open ? key : current === key ? null : current);
+  }
+
   return (
-    <section className="fa2-actions" aria-label="Thao tác với kết quả">
+    <section ref={sectionRef} className="fa2-actions" aria-label="Thao tác với kết quả">
       <div className="fa2-action-bar">
         <button type="button" className="sp-btn-secondary" onClick={() => void saveCurrent()} disabled={disabled || busy}>Lưu</button>
 
-        <details className="fa2-action-menu" onToggle={(event) => setHistoryOpen(event.currentTarget.open)}>
+        <details className="fa2-action-menu" open={openMenu === 'history'} onToggle={(event) => syncMenu('history', event.currentTarget.open)}>
           <summary>Lịch sử</summary>
           <div className="fa2-action-popover fa2-history-popover">
             <label>
@@ -152,7 +172,7 @@ export function AnalyzerPersistenceControls({
           </div>
         </details>
 
-        <details ref={exportMenuRef} className="fa2-action-menu">
+        <details className="fa2-action-menu" open={openMenu === 'export'} onToggle={(event) => syncMenu('export', event.currentTarget.open)}>
           <summary>Xuất</summary>
           <div className="fa2-action-popover fa2-action-list">
             <button type="button" onClick={() => void runExport('pdf', 'teacher_report')} disabled={busy}>PDF giáo viên</button>
@@ -162,7 +182,7 @@ export function AnalyzerPersistenceControls({
           </div>
         </details>
 
-        <details ref={handoffMenuRef} className="fa2-action-menu">
+        <details className="fa2-action-menu" open={openMenu === 'handoff'} onToggle={(event) => syncMenu('handoff', event.currentTarget.open)}>
           <summary>Mở bằng</summary>
           <div className="fa2-action-popover fa2-action-form">
             <label>
@@ -179,7 +199,7 @@ export function AnalyzerPersistenceControls({
           </div>
         </details>
 
-        <details className="fa2-action-menu fa2-action-menu-end">
+        <details className="fa2-action-menu fa2-action-menu-end" open={openMenu === 'options'} onToggle={(event) => syncMenu('options', event.currentTarget.open)}>
           <summary>Tùy chọn bài giải</summary>
           <div className="fa2-action-popover fa2-action-form">
             <label>

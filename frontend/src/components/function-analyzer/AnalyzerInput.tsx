@@ -157,7 +157,8 @@ export function AnalyzerInput({
             </button>
           </div>
           <input ref={fileInputRef} type="file" accept="image/*" capture="environment" hidden onChange={(e) => void handleFileChange(e.target.files?.[0])} />
-          <div className="fa2-formula-row-control">
+          <div className="fa2-formula-workspace-row">
+            <div className="fa2-formula-row-control">
             <div className="fa2-input-wrap">
               <span className="fa2-prefix">y =</span>
               <input
@@ -202,9 +203,10 @@ export function AnalyzerInput({
               {loading ? <span className="sp-spinner" aria-hidden="true" /> : ocrCandidate ? 'Xác nhận bên dưới' : 'Phân tích'}
             </button>
           </div>
-          <div id="fa-expression-preview" className="fa2-expression-preview" aria-live="polite">
-            <span>Xem trước</span>
-            {expression.trim() ? <KatexSpan tex={previewTex} /> : <span>Nhập biểu thức để xem công thức.</span>}
+            <div id="fa-expression-preview" className="fa2-expression-preview" aria-live="polite">
+              <span>Xem trước</span>
+              {expression.trim() ? <KatexSpan tex={previewTex} /> : <span>Nhập biểu thức để xem công thức.</span>}
+            </div>
           </div>
           <small id="fa-expression-syntax" className="fa2-expression-syntax">
             Dùng biến <code>x</code>{registry?.parameters.supported.includes('m') ? <> và tham số <code>m</code></> : null}. Xem hướng dẫn để biết cú pháp hỗ trợ.

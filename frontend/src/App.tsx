@@ -26,6 +26,7 @@ import type { AdvancedRenderSettings, MathScene, RenderResponse, Renderer } from
 import { defaultRuntimeSettings, type RuntimeSettings, type SettingsDefaults } from './types/settings';
 import logoUrl from '../img.svg';
 import './styles.css';
+import './components/function-analyzer/function-analyzer.css';
 
 const AdminConsole = lazy(() => import('./components/admin/AdminConsole').then((module) => ({ default: module.AdminConsole })));
 const FunctionAnalyzerPanel = lazy(() => import('./components/FunctionAnalyzerPanel').then((module) => ({ default: module.FunctionAnalyzerPanel })));

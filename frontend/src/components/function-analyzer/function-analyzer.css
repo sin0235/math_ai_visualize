@@ -1,0 +1,253 @@
+/* Analyzer owns its layout here. Global styles only provide shared tokens. */
+.fa2-panel {
+  --fa-grid: rgba(17, 17, 17, 0.045);
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: clamp(12px, 2vw, 22px);
+  background:
+    linear-gradient(90deg, var(--fa-grid) 1px, transparent 1px),
+    linear-gradient(180deg, var(--fa-grid) 1px, transparent 1px),
+    var(--paper);
+  background-size: 28px 28px;
+}
+
+.fa2-control-panel {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  border: 0;
+  border-bottom: 1px solid var(--line-2);
+  padding: 0 0 14px;
+  background: transparent;
+}
+
+.fa2-sticky-controls {
+  display: grid;
+  grid-template-columns: minmax(190px, 0.24fr) minmax(0, 1fr);
+  align-items: center;
+  gap: clamp(14px, 2vw, 26px);
+  border: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.fa2-formula-card {
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.fa2-formula-workspace-row {
+  display: grid;
+  grid-template-columns: minmax(360px, 1.35fr) minmax(240px, 0.65fr);
+  align-items: stretch;
+  gap: 8px;
+}
+
+.fa2-formula-row-control {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.fa2-expression-preview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 40px;
+  overflow-x: auto;
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.94);
+  white-space: nowrap;
+}
+
+.fa2-expression-syntax {
+  display: none;
+}
+
+.fa2-results-panel {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  min-height: 420px;
+  max-height: none;
+  overflow: visible;
+  padding: 0;
+}
+
+.fa2-result-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(310px, 0.55fr);
+  align-items: start;
+  gap: clamp(14px, 2vw, 24px);
+}
+
+.fa2-graph-column,
+.fa2-analysis-column {
+  min-width: 0;
+}
+
+.fa2-graph-column {
+  position: sticky;
+  top: 72px;
+  align-self: start;
+}
+
+.fa2-section,
+.fa2-quick-card,
+.fa2-result-tabs,
+.fa2-graph-card {
+  border-color: var(--line-2);
+  border-radius: 6px;
+  box-shadow: none;
+}
+
+.fa2-graph-card {
+  background:
+    linear-gradient(90deg, var(--fa-grid) 1px, transparent 1px),
+    linear-gradient(180deg, var(--fa-grid) 1px, transparent 1px),
+    var(--paper);
+  background-size: 28px 28px;
+}
+
+.fa2-graph-card .geogebra-view,
+.fa2-svg-graph {
+  border: 1px solid var(--line-2);
+  border-radius: 4px;
+  background: var(--paper);
+}
+
+.fa2-svg-graph {
+  touch-action: pan-y;
+}
+
+.fa2-graph-primary-toolbar,
+.fa2-action-bar {
+  gap: 4px;
+}
+
+.fa2-graph-settings-panel {
+  position: static;
+  width: 100%;
+  margin-top: 8px;
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: none;
+}
+
+.fa2-action-popover {
+  z-index: 40;
+  border-radius: 6px;
+  box-shadow: 0 12px 28px rgba(17, 17, 17, 0.12);
+}
+
+.fa2-interval-tool-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.fa2-interval-tool-row > .fa2-tool-label {
+  width: 100px;
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+.fa2-interval-bound,
+.fa2-inline-check {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.fa2-interval-bound {
+  flex: 1 1 120px;
+  min-width: 120px;
+}
+
+.fa2-inline-check,
+.fa2-interval-separator {
+  margin: 0;
+  white-space: nowrap;
+  font-size: 0.85rem;
+}
+
+.fa2-inline-check {
+  cursor: pointer;
+}
+
+.fa2-inline-check input {
+  margin: 0;
+}
+
+.fa2-quick-rows,
+.fa2-compact-list {
+  gap: 8px;
+}
+
+.fa2-interval-note,
+.fa2-action-message,
+.fa2-tool-status {
+  line-height: 1.45;
+}
+
+@media (max-width: 1180px) {
+  .fa2-sticky-controls {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .fa2-header-sub {
+    display: none;
+  }
+
+  .fa2-result-shell {
+    grid-template-columns: minmax(0, 1.2fr) minmax(300px, 0.8fr);
+  }
+}
+
+@media (max-width: 900px) {
+  .fa2-formula-workspace-row,
+  .fa2-result-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .fa2-graph-column {
+    position: static;
+  }
+}
+
+@media (max-width: 620px) {
+  .fa2-panel {
+    padding: 10px;
+  }
+
+  .fa2-formula-row-control {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .fa2-formula-row-control .sp-btn-primary {
+    grid-column: 1 / -1;
+  }
+
+  .fa2-expression-preview > span:first-child,
+  .fa2-header-sub {
+    display: none;
+  }
+
+  .fa2-action-bar {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    padding-bottom: 3px;
+  }
+}

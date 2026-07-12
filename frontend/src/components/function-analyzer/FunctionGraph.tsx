@@ -4,8 +4,8 @@ import type { AnalyzeResponse, GraphAnalysisV2, GraphSegmentV2 } from '../../api
 import { sampleFunctionGraph } from '../../api/client';
 import type { MathScene } from '../../types/scene';
 import { reportClientError } from '../../utils/telemetry';
+import { decimalGraphNumber, featureCoordinate, isFiniteGraphNumber } from './graphValues';
 
-type RendererMode = 'auto' | 'geogebra' | 'svg';
 type GeoGebraStatus = 'loading' | 'ready' | 'error';
 type GraphTracePoint = { graphX: number; graphY: number; x: number; y: number };
 
@@ -35,7 +35,6 @@ export function FunctionGraph({ result }: { result: AnalyzeResponse }) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const dragRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
   const [view, setView] = useState({ scale: 1, tx: 0, ty: 0 });
-  const [rendererMode, setRendererMode] = useState<RendererMode>('geogebra');
   const [geogebraStatus, setGeogebraStatus] = useState<GeoGebraStatus>('loading');
   const [rendererAttempt, setRendererAttempt] = useState(0);
   const [selectedPointKey, setSelectedPointKey] = useState<string | null>(null);
@@ -53,7 +52,7 @@ export function FunctionGraph({ result }: { result: AnalyzeResponse }) {
   const verticalToolLine = useMemo(() => plotVerticalToolLine(result.line_analysis, graph.project), [graph, result.line_analysis]);
   const hasGeoGebra = result.geogebra_commands.length > 0;
   const commandSignature = result.geogebra_commands.join('\n');
-  const activeRenderer = rendererMode === 'svg' || !hasGeoGebra || (rendererMode === 'auto' && geogebraStatus === 'error') ? 'svg' : 'geogebra';
+  const activeRenderer = !hasGeoGebra || geogebraStatus === 'error' ? 'svg' : 'geogebra';
   const derivativeExpression = result.derivative?.trim() || null;
   const secondDerivativeExpression = result.second_derivative?.trim() || null;
   const geogebraCommands = useMemo(() => [
@@ -69,7 +68,6 @@ export function FunctionGraph({ result }: { result: AnalyzeResponse }) {
   }, [result.line_analysis?.graph_expression, result.line_analysis?.graph_expressions]);
 
   useEffect(() => {
-    setRendererMode('geogebra');
     setGeogebraStatus('loading');
     setSampledGraph(null);
     setFitMode('auto');
@@ -195,16 +193,6 @@ export function FunctionGraph({ result }: { result: AnalyzeResponse }) {
     const scene = result.graph_scene ?? createFallbackGraphScene(result.expression);
     return (
       <div className="fa2-graph-card fa2-geogebra-graph-card">
-        <GraphRendererToolbar
-          active="geogebra"
-          status={geogebraStatus}
-          onSelect={setRendererMode}
-          commands={geogebraCommands}
-          onRetry={() => {
-            setGeogebraStatus('loading');
-            setRendererAttempt((attempt) => attempt + 1);
-          }}
-        />
         <div className="fa2-graph-toggle-list" role="group" aria-label="Lớp hiển thị GeoGebra">
           <GraphToggle label="f′" checked={showDerivative} onChange={setShowDerivative} disabled={!derivativeExpression} />
           <GraphToggle label="f″" checked={showSecondDerivative} onChange={setShowSecondDerivative} disabled={!secondDerivativeExpression} />
@@ -260,11 +248,13 @@ export function FunctionGraph({ result }: { result: AnalyzeResponse }) {
   }
 
   function handleWheel(event: React.WheelEvent<SVGSVGElement>) {
+    if (!event.ctrlKey && !event.metaKey) return;
     event.preventDefault();
     zoomAt(event.deltaY < 0 ? 1.14 : 1 / 1.14, event.clientX, event.clientY);
   }
 
   function handlePointerDown(event: React.PointerEvent<SVGSVGElement>) {
+    if (event.pointerType === 'touch') return;
     event.currentTarget.setPointerCapture(event.pointerId);
     dragRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
   }
@@ -366,17 +356,14 @@ export function FunctionGraph({ result }: { result: AnalyzeResponse }) {
         <details className="fa2-graph-settings">
           <summary>Tùy chỉnh đồ thị</summary>
           <div className="fa2-graph-settings-panel">
-            <GraphRendererToolbar
-              active="svg"
-              status={geogebraStatus}
-              onSelect={setRendererMode}
-              commands={result.geogebra_commands}
-              onRetry={() => {
-                setGeogebraStatus('loading');
-                setRendererMode('geogebra');
-                setRendererAttempt((attempt) => attempt + 1);
-              }}
-            />
+            {hasGeoGebra && (
+              <div className="fa2-graph-toolbar-actions">
+                <button type="button" className="sp-btn-secondary" onClick={() => {
+                  setGeogebraStatus('loading');
+                  setRendererAttempt((attempt) => attempt + 1);
+                }}>Thử lại GeoGebra</button>
+              </div>
+            )}
             <div className="fa2-graph-toolbar-actions" role="group" aria-label="Chế độ căn khung">
               <button type="button" className="sp-btn-secondary" aria-pressed={fitMode === 'domain'} onClick={() => selectFitMode('domain')}>Theo miền</button>
             </div>
@@ -702,47 +689,9 @@ class RendererErrorBoundary extends Component<{
   }
 
   render() {
-    if (this.state.failed) return <div className="info-box">GeoGebra không thể hiển thị đồ thị này. Chọn SVG để tiếp tục.</div>;
+    if (this.state.failed) return <div className="info-box">GeoGebra gặp lỗi. Đang chuyển sang đồ thị dự phòng.</div>;
     return this.props.children;
   }
-}
-
-function GraphRendererToolbar({
-  active,
-  status,
-  onSelect,
-  commands,
-  onRetry,
-}: {
-  active: 'geogebra' | 'svg';
-  status: GeoGebraStatus;
-  onSelect: (mode: RendererMode) => void;
-  commands: string[];
-  onRetry: () => void;
-}) {
-  const [copyStatus, setCopyStatus] = useState<string | null>(null);
-
-  async function copyCommands() {
-    try {
-      await navigator.clipboard.writeText(commands.join('\n'));
-      setCopyStatus('Đã sao chép lệnh GeoGebra.');
-    } catch {
-      setCopyStatus('Không thể sao chép lệnh GeoGebra.');
-    }
-  }
-
-  return (
-    <div className="fa2-graph-toolbar" aria-label="Chọn renderer đồ thị">
-      <span>Renderer: <strong>{active === 'geogebra' ? 'GeoGebra' : 'SVG'}</strong></span>
-      <div className="fa2-graph-toolbar-actions">
-        <button type="button" className="sp-btn-secondary" aria-pressed={active === 'geogebra'} onClick={() => onSelect('geogebra')}>GeoGebra</button>
-        <button type="button" className="sp-btn-secondary" aria-pressed={active === 'svg'} onClick={() => onSelect('svg')}>SVG</button>
-        <button type="button" className="sp-btn-secondary" onClick={() => void copyCommands()} disabled={!commands.length}>Sao chép lệnh</button>
-        {status === 'error' && <button type="button" className="sp-btn-secondary" onClick={onRetry}>Thử lại GeoGebra</button>}
-      </div>
-      {copyStatus && <span className="sr-only" role="status">{copyStatus}</span>}
-    </div>
-  );
 }
 
 function legacySegment(points: Array<{ x: number; y: number }>): GraphSegmentV2 {
@@ -819,10 +768,10 @@ function buildSvgGraph(segments: GraphSegmentV2[], result: AnalyzeResponse, fitD
     };
   }
   const featureXs = [
-    ...result.critical_points.map((p) => Number(p.x)),
-    ...result.inflection_points.map((p) => Number(p.x)),
-    ...result.x_intercepts.map(Number),
-  ].filter(Number.isFinite);
+    ...result.critical_points.map((point, index) => featureCoordinate(point.x_value, point.x, result.critical_points_v2?.[index], 'x_value')),
+    ...result.inflection_points.map((point, index) => featureCoordinate(point.x_value, point.x, result.inflection_points_v2?.[index], 'x_value')),
+    ...(result.x_intercepts_v2?.roots.map((root) => root.value?.approx ?? decimalGraphNumber(root.x_approx)) ?? result.x_intercepts.map(decimalGraphNumber)),
+  ].filter(isFiniteGraphNumber);
   const specialXs = [
     ...featureXs,
     0,
@@ -846,11 +795,11 @@ function buildSvgGraph(segments: GraphSegmentV2[], result: AnalyzeResponse, fitD
   const focused = finitePoints.filter((p) => p.x >= x0 && p.x <= x1);
   const usable = focused.length >= 16 ? focused : finitePoints;
   const specialYs = [
-    ...result.critical_points.map((p) => Number(p.y)),
-    ...result.inflection_points.map((p) => Number(p.y)),
-    Number(result.y_intercept),
+    ...result.critical_points.map((point, index) => featureCoordinate(point.y_value, point.y, result.critical_points_v2?.[index], 'y_value')),
+    ...result.inflection_points.map((point, index) => featureCoordinate(point.y_value, point.y, result.inflection_points_v2?.[index], 'y_value')),
+    decimalGraphNumber(result.y_intercept),
     0,
-  ].filter(Number.isFinite);
+  ].filter(isFiniteGraphNumber);
   const usableYs = usable.map((p) => p.y);
   const lo = quantile(usableYs, 0.08);
   const hi = quantile(usableYs, 0.92);
@@ -951,12 +900,41 @@ function plotSpecialPoints(
   height: number,
   pad: number,
 ) {
+  const criticalPoints = result.critical_points.flatMap((point, index) => {
+    const x = featureCoordinate(point.x_value, point.x, result.critical_points_v2?.[index], 'x_value');
+    const y = featureCoordinate(point.y_value, point.y, result.critical_points_v2?.[index], 'y_value');
+    if (x === null || y === null) return [];
+    return [{
+      key: `cp-${index}`,
+      kind: point.kind,
+      label: point.kind === 'max' ? 'CĐ' : point.kind === 'min' ? 'CT' : 'T',
+      raw: { x, y },
+      coordsText: `(${point.x_exact || point.x}; ${point.y_exact || point.y || '?'})`,
+    }];
+  });
+  const inflectionPoints = result.inflection_points.flatMap((point, index) => {
+    const x = featureCoordinate(point.x_value, point.x, result.inflection_points_v2?.[index], 'x_value');
+    const y = featureCoordinate(point.y_value, point.y, result.inflection_points_v2?.[index], 'y_value');
+    if (x === null || y === null) return [];
+    return [{ key: `ip-${index}`, kind: 'inflection', label: 'U', raw: { x, y }, coordsText: `(${point.x_exact || point.x}; ${point.y_exact || point.y})` }];
+  });
+  const xIntercepts = (result.x_intercepts_v2?.roots ?? []).flatMap((root, index) => {
+    const x = root.value?.approx ?? decimalGraphNumber(root.x_approx);
+    if (x === null) return [];
+    return [{ key: `ox-${index}`, kind: 'axis-x', label: 'Ox', raw: { x, y: 0 }, coordsText: `(${root.x_exact || root.x}; 0)` }];
+  });
+  const legacyXIntercepts = result.x_intercepts_v2 ? [] : result.x_intercepts.flatMap((value, index) => {
+    const x = decimalGraphNumber(value);
+    return x === null ? [] : [{ key: `ox-${index}`, kind: 'axis-x', label: 'Ox', raw: { x, y: 0 }, coordsText: `(${value}; 0)` }];
+  });
+  const yIntercept = decimalGraphNumber(result.y_intercept);
   const points = [
-    ...result.critical_points.map((cp, i) => ({ key: `cp-${i}`, kind: cp.kind, label: cp.kind === 'max' ? 'CĐ' : cp.kind === 'min' ? 'CT' : 'T', raw: { x: Number(cp.x), y: Number(cp.y) }, coordsText: `(${cp.x_exact || cp.x}; ${cp.y})` })),
-    ...result.inflection_points.map((pt, i) => ({ key: `ip-${i}`, kind: 'inflection', label: 'U', raw: { x: Number(pt.x), y: Number(pt.y) }, coordsText: `(${pt.x_exact || pt.x}; ${pt.y})` })),
-    ...(result.y_intercept !== null ? [{ key: 'oy', kind: 'axis-y', label: 'Oy', raw: { x: 0, y: Number(result.y_intercept) }, coordsText: `(0; ${result.y_intercept})` }] : []),
-    ...result.x_intercepts.map((xv, i) => ({ key: `ox-${i}`, kind: 'axis-x', label: 'Ox', raw: { x: Number(xv), y: 0 }, coordsText: `(${xv}; 0)` })),
-  ].filter((p) => Number.isFinite(p.raw.x) && Number.isFinite(p.raw.y)).map((p) => ({ ...p, ...project(p.raw) }));
+    ...criticalPoints,
+    ...inflectionPoints,
+    ...(yIntercept === null ? [] : [{ key: 'oy', kind: 'axis-y', label: 'Oy', raw: { x: 0, y: yIntercept }, coordsText: `(0; ${result.y_intercept})` }]),
+    ...xIntercepts,
+    ...legacyXIntercepts,
+  ].map((point) => ({ ...point, ...project(point.raw) }));
   const minSepPx = 20;
   const uniqueScreen: typeof points = [];
   for (const p of points) {
