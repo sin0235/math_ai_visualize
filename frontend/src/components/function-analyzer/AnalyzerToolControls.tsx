@@ -163,11 +163,11 @@ export function AnalyzerToolControls({
         <div className="fa2-tool-panel">
           {enableInterval && (
             <div className="fa2-tool-stack">
-              <div className="fa2-tool-row" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
-                <span className="fa2-tool-label" style={{ width: 100, flexShrink: 0, margin: 0 }}>Vùng khảo sát</span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 1, minWidth: 120 }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', margin: 0, cursor: 'pointer', fontSize: '0.85rem' }} title="Khoảng mở (không lấy dấu bằng)">
-                    <input type="checkbox" checked={intervalOpenA} onChange={(e) => onIntervalOpenAChange(e.target.checked)} disabled={disabled} style={{ margin: 0 }} /> Mở
+              <div className="fa2-tool-row fa2-interval-tool-row">
+                <span className="fa2-tool-label">Vùng khảo sát</span>
+                <div className="fa2-interval-bound">
+                  <label className="fa2-inline-check" title="Khoảng mở (không lấy dấu bằng)">
+                    <input type="checkbox" checked={intervalOpenA} onChange={(e) => onIntervalOpenAChange(e.target.checked)} disabled={disabled} /> Mở
                   </label>
                   <DraftNumber
                     label="Cận trái khoảng khảo sát"
@@ -178,8 +178,8 @@ export function AnalyzerToolControls({
                     onCommit={onIntervalAChange}
                   />
                 </div>
-                <span style={{ whiteSpace: 'nowrap', fontSize: '0.85rem' }}>đến</span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 1, minWidth: 120 }}>
+                <span className="fa2-interval-separator">đến</span>
+                <div className="fa2-interval-bound">
                   <DraftNumber
                     label="Cận phải khoảng khảo sát"
                     value={intervalB}
@@ -188,8 +188,8 @@ export function AnalyzerToolControls({
                     errorMessage="Cận phải phải lớn hơn cận trái."
                     onCommit={onIntervalBChange}
                   />
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', margin: 0, cursor: 'pointer', fontSize: '0.85rem' }} title="Khoảng mở (không lấy dấu bằng)">
-                    <input type="checkbox" checked={intervalOpenB} onChange={(e) => onIntervalOpenBChange(e.target.checked)} disabled={disabled} style={{ margin: 0 }} /> Mở
+                  <label className="fa2-inline-check" title="Khoảng mở (không lấy dấu bằng)">
+                    <input type="checkbox" checked={intervalOpenB} onChange={(e) => onIntervalOpenBChange(e.target.checked)} disabled={disabled} /> Mở
                   </label>
                 </div>
               </div>

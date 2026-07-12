@@ -1,4 +1,4 @@
-import { Edges, OrbitControls, Float, Grid, GizmoHelper, GizmoViewport } from '@react-three/drei';
+import { Edges, OrbitControls, Float, Grid, GizmoHelper, GizmoViewport, Sparkles } from '@react-three/drei';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Suspense, useMemo, useRef } from 'react';
 import * as THREE from 'three';
@@ -166,7 +166,7 @@ function BackgroundParticles() {
           ) : (
             <boxGeometry args={[0.06, 0.06, 0.06]} />
           )}
-          <meshBasicMaterial color={p.color} transparent opacity={0.22} />
+          <meshBasicMaterial color={p.color} transparent opacity={0.3} />
         </mesh>
       ))}
     </group>
@@ -206,6 +206,7 @@ function Scene({ hideHelpers = false }: { hideHelpers?: boolean }) {
       <pointLight position={[-12, 8, -10]} intensity={2.8} color={MONO.mist} />
       <directionalLight position={[4, 10, 2]} intensity={0.7} color={MONO.white} />
 
+      <Sparkles count={80} scale={12} size={1.6} speed={0.45} opacity={0.34} color={MONO.silver} />
       <BackgroundParticles />
       <OrbitingElements />
 
@@ -217,11 +218,11 @@ function Scene({ hideHelpers = false }: { hideHelpers?: boolean }) {
       <group>
         <mesh position={[-10, 8, -15]} rotation={[0.5, 0.5, 0.5]}>
           <boxGeometry args={[5, 5, 5]} />
-          <meshBasicMaterial color={MONO.silver} wireframe transparent opacity={0.07} />
+          <meshBasicMaterial color={MONO.silver} wireframe transparent opacity={0.12} />
         </mesh>
         <mesh position={[12, -5, -18]} rotation={[-0.2, 0.8, 0.3]}>
           <dodecahedronGeometry args={[4]} />
-          <meshBasicMaterial color={MONO.steel} wireframe transparent opacity={0.06} />
+          <meshBasicMaterial color={MONO.steel} wireframe transparent opacity={0.1} />
         </mesh>
       </group>
 
