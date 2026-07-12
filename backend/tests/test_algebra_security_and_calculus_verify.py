@@ -27,6 +27,11 @@ def test_parser_rejects_oversized_input_chars():
         parse_algebra_problem("x" * 2500 + "=0")
 
 
+def test_solve_request_rejects_coerced_boolean():
+    with pytest.raises(ValueError):
+        AlgebraSolveRequest(input="x=1", save_history=0)
+
+
 def test_calculus_derivative_has_independent_checks():
     result = solve_algebra(AlgebraSolveRequest(input="derivative(expr=x^2,var=x)"))
     assert result.status == "solved"

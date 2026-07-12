@@ -61,6 +61,20 @@ def test_division_by_zero_returns_unsafe():
         safe_eval("1/0")
 
 
+def test_power_requires_small_literal_exponent():
+    assert safe_eval("2 ** 10") == 1024.0
+    assert safe_eval("pow(2, 10)") == 1024.0
+    for expression in ["2 ** 65", "pow(2, 65)", "2 ** a", "pow(2, a)"]:
+        with pytest.raises(UnsafeExpressionError):
+            safe_eval(expression, {"a": 2})
+
+
+def test_safe_eval_interprets_allowed_ast_without_python_eval():
+    assert safe_eval("max(a, 3) if a > 0 else abs(a)", {"a": 4}) == 4.0
+    assert safe_eval("min(2, 3) and 7") == 7.0
+    assert safe_eval("1 < 2 < 3") == 1.0
+
+
 def test_try_safe_eval_returns_none_on_error():
     assert try_safe_eval("a + 1", {}) is None
     assert try_safe_eval("a + 1", {"a": 4}) == 5.0

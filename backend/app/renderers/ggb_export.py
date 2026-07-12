@@ -16,7 +16,7 @@ from __future__ import annotations
 import io
 import re
 import zipfile
-from xml.sax.saxutils import escape as xml_escape
+from html import escape
 
 from app.renderers.geogebra_commands import build_geogebra_commands
 from app.schemas.scene import AdvancedRenderSettings, MathScene, RenderResponse
@@ -54,13 +54,13 @@ def _build_xml(scene: MathScene, commands: list[str]) -> str:
     for kind, label, value in rows:
         if kind == "def":
             # Dùng <command> + <output> để GeoGebra tự đặt label
-            label_attr = xml_escape(label or "")
-            value_attr = xml_escape(value)
+            label_attr = escape(label or "")
+            value_attr = escape(value)
             construction_parts.append(
                 f'    <expression label="{label_attr}" exp="{value_attr}"/>'
             )
         else:
-            construction_parts.append(f'    <expression exp="{xml_escape(value)}"/>')
+            construction_parts.append(f'    <expression exp="{escape(value)}"/>')
 
     construction = "\n".join(construction_parts)
 
@@ -105,7 +105,7 @@ def _build_xml(scene: MathScene, commands: list[str]) -> str:
     <algebraStyle val="3" spreadsheet="0"/>
     <coordStyle val="0"/>
   </kernel>
-  <construction title="{xml_escape(scene.problem_text[:120])}" author="" date="">
+  <construction title="{escape(scene.problem_text[:120])}" author="" date="">
 {construction}
   </construction>
 </geogebra>

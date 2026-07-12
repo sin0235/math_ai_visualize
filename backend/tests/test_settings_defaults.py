@@ -1,4 +1,3 @@
-import asyncio
 import json
 
 import pytest
@@ -13,10 +12,16 @@ from app.schemas.auth import SystemAiSettings, SystemFeatureFlags
 from app.services.model_registry import registry_from_settings
 
 
+def run_on_client_loop(client: TestClient, awaitable):
+    async def execute():
+        return await awaitable
+
+    return client.portal.call(execute)
+
+
 @pytest.fixture()
 def settings_defaults_client(tmp_path):
     db = SQLiteClient(str(tmp_path / "settings.db"))
-    asyncio.run(apply_sqlite_migrations(db))
     settings = Settings(
         _env_file=None,
         database_backend="sqlite",
@@ -52,8 +57,10 @@ def settings_defaults_client(tmp_path):
     model_registry.get_settings = lambda: settings
     try:
         with TestClient(app) as test_client:
+            test_client.portal.call(apply_sqlite_migrations, db)
             test_client.db = db
             yield test_client
+            test_client.portal.call(db.close)
     finally:
         routes_settings.get_settings = original_routes_get_settings
         main.get_settings = original_main_get_settings
@@ -124,7 +131,8 @@ def test_settings_defaults_route_hides_api_keys(monkeypatch):
     monkeypatch.setattr("app.api.routes_settings.load_feature_flags", fake_load_feature_flags)
 
     try:
-        response = TestClient(app).get("/api/settings/defaults")
+        with TestClient(app) as client:
+            response = client.get("/api/settings/defaults")
     finally:
         app.dependency_overrides.clear()
 
@@ -145,7 +153,7 @@ def test_settings_defaults_route_hides_api_keys(monkeypatch):
 def test_settings_defaults_exposes_public_feature_flags(settings_defaults_client):
     from app.services.system_settings import invalidate_system_settings_cache
 
-    asyncio.run(settings_defaults_client.db.execute(
+    run_on_client_loop(settings_defaults_client, settings_defaults_client.db.execute(
         "INSERT INTO system_settings (key, value_json) VALUES (?, ?)",
         ["feature_flags", json.dumps({"version": 1, "maintenance_mode": True, "maintenance_message": "Đang nâng cấp hệ thống.", "render_enabled": False, "ocr_enabled": True, "google_oauth_enabled": False})],
     ))
@@ -169,7 +177,7 @@ def test_settings_defaults_exposes_public_feature_flags(settings_defaults_client
 def test_settings_defaults_loads_ollama_base_url_from_database(settings_defaults_client):
     from app.services.model_registry import save_provider_config
 
-    asyncio.run(save_provider_config(
+    run_on_client_loop(settings_defaults_client, save_provider_config(
         settings_defaults_client.db,
         "ollama",
         "http://db-ollama.local",
@@ -194,7 +202,7 @@ def test_settings_defaults_falls_back_to_env_when_database_lacks_ollama(settings
 
 
 def test_settings_defaults_reports_legacy_key_present_without_activating_it(settings_defaults_client):
-    asyncio.run(settings_defaults_client.db.execute(
+    run_on_client_loop(settings_defaults_client, settings_defaults_client.db.execute(
         "INSERT INTO system_settings (key, value_json) VALUES (?, ?)",
         ["ai_settings", json.dumps({"version": 1, "ollama": {"api_key": "db-ollama-secret"}})],
     ))
@@ -209,7 +217,7 @@ def test_settings_defaults_reports_legacy_key_present_without_activating_it(sett
 
 
 def test_settings_defaults_reports_allowed_openrouter_default(settings_defaults_client):
-    asyncio.run(settings_defaults_client.db.execute(
+    run_on_client_loop(settings_defaults_client, settings_defaults_client.db.execute(
         """
         INSERT INTO ai_providers (id, label)
         VALUES (?, ?)
@@ -217,7 +225,7 @@ def test_settings_defaults_reports_allowed_openrouter_default(settings_defaults_
         """,
         ["openrouter", "OpenRouter"],
     ))
-    asyncio.run(settings_defaults_client.db.execute(
+    run_on_client_loop(settings_defaults_client, settings_defaults_client.db.execute(
         "INSERT INTO ai_models (provider_id, id, label, enabled, allowed, source) VALUES (?, ?, ?, 1, 1, 'manual')",
         ["openrouter", "allowed/model", "Allowed model"],
     ))
@@ -235,7 +243,7 @@ def test_settings_defaults_exposes_model_capabilities(settings_defaults_client):
     from app.schemas.scene import AiModelInfo
     from app.services.model_registry import upsert_scanned_models
 
-    asyncio.run(upsert_scanned_models(settings_defaults_client.db, "openrouter", [
+    run_on_client_loop(settings_defaults_client, upsert_scanned_models(settings_defaults_client.db, "openrouter", [
         AiModelInfo(
             id="vision/model",
             label="Vision model",
@@ -266,8 +274,8 @@ def test_settings_defaults_exposes_model_capabilities(settings_defaults_client):
 def test_settings_defaults_reports_nvidia_ocr_profile(settings_defaults_client):
     from app.services.model_registry import save_provider_config, save_task_profile
 
-    asyncio.run(save_provider_config(settings_defaults_client.db, "nvidia", "https://integrate.api.nvidia.com/v1", api_key_configured=True))
-    asyncio.run(save_task_profile(settings_defaults_client.db, "ocr", "nvidia", "nvidia/vision", []))
+    run_on_client_loop(settings_defaults_client, save_provider_config(settings_defaults_client.db, "nvidia", "https://integrate.api.nvidia.com/v1", api_key_configured=True))
+    run_on_client_loop(settings_defaults_client, save_task_profile(settings_defaults_client.db, "ocr", "nvidia", "nvidia/vision", []))
 
     response = settings_defaults_client.get("/api/settings/defaults")
 
@@ -281,8 +289,8 @@ def test_settings_defaults_uses_provider_default_for_empty_ocr_profile(settings_
     """Stale empty OCR profile must not 500; defaults degrade to env/local OCR."""
     from app.services.model_registry import save_provider_config
 
-    asyncio.run(save_provider_config(settings_defaults_client.db, "nvidia", "https://integrate.api.nvidia.com/v1", api_key_configured=True))
-    asyncio.run(settings_defaults_client.db.execute(
+    run_on_client_loop(settings_defaults_client, save_provider_config(settings_defaults_client.db, "nvidia", "https://integrate.api.nvidia.com/v1", api_key_configured=True))
+    run_on_client_loop(settings_defaults_client, settings_defaults_client.db.execute(
         """
         INSERT INTO ai_task_profiles (task, provider_id, model_id, fallbacks_json, tier, updated_at)
         VALUES ('ocr', 'auto', '', '[]', NULL, CURRENT_TIMESTAMP)
@@ -299,7 +307,7 @@ def test_settings_defaults_uses_provider_default_for_empty_ocr_profile(settings_
 
 
 def test_settings_defaults_normalizes_raw_openrouter_model_to_allowlist(settings_defaults_client):
-    asyncio.run(settings_defaults_client.db.execute(
+    run_on_client_loop(settings_defaults_client, settings_defaults_client.db.execute(
         """
         INSERT INTO ai_providers (id, label)
         VALUES (?, ?)
@@ -307,11 +315,11 @@ def test_settings_defaults_normalizes_raw_openrouter_model_to_allowlist(settings
         """,
         ["openrouter", "OpenRouter"],
     ))
-    asyncio.run(settings_defaults_client.db.execute(
+    run_on_client_loop(settings_defaults_client, settings_defaults_client.db.execute(
         "INSERT INTO ai_models (provider_id, id, label, enabled, allowed, source) VALUES (?, ?, ?, 1, 1, 'manual')",
         ["openrouter", "allowed/model", "Allowed model"],
     ))
-    asyncio.run(settings_defaults_client.db.execute(
+    run_on_client_loop(settings_defaults_client, settings_defaults_client.db.execute(
         "INSERT INTO system_settings (key, value_json) VALUES (?, ?)",
         ["ai_settings", json.dumps({"version": 1, "openrouter": {"model": "stale/model", "allowed_model_ids": ["allowed/model"]}})],
     ))

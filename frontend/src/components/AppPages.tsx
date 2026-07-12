@@ -438,12 +438,13 @@ function historyMetadataLabel(item: RenderHistoryItem) {
 export function MobileRendererWarning({ dismissed, onDismiss }: { dismissed: boolean; onDismiss: () => void }) {
   if (dismissed) return null;
   return (
-    <aside className="mobile-renderer-warning" role="dialog" aria-modal="true" aria-labelledby="mobile-renderer-warning-title">
+    <aside className="mobile-renderer-warning" role="status" aria-labelledby="mobile-renderer-warning-title">
       <section className="mobile-renderer-warning-card">
-        <h2 id="mobile-renderer-warning-title">Xoay ngang để thao tác dễ hơn</h2>
-        <p>Trên điện thoại, các công cụ dựng hình và vùng vẽ cần nhiều chiều ngang để chạm chính xác hơn.</p>
-        <p>Bạn vẫn có thể tiếp tục dùng màn hình dọc nếu chỉ muốn xem nhanh kết quả.</p>
-        <button type="button" className="primary-button" onClick={onDismiss}>Tiếp tục dùng dọc</button>
+        <div>
+          <h2 id="mobile-renderer-warning-title">Mẹo thao tác trên điện thoại</h2>
+          <p>Xoay ngang khi cần thêm không gian cho canvas; màn hình dọc vẫn hỗ trợ đầy đủ luồng dựng hình.</p>
+        </div>
+        <button type="button" className="secondary-button" onClick={onDismiss}>Đã hiểu</button>
       </section>
     </aside>
   );

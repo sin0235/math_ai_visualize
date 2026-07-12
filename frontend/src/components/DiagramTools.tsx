@@ -1,30 +1,34 @@
 import React, { useState } from 'react';
 import { generateProblemVariants } from '../api/client';
-import type { MathScene, RenderResponse } from '../types/scene';
+import { committedSceneRefV3, downstreamGateMessageV3 } from '../hooks/sceneWorkspaceV3State';
+import type { SceneWorkspaceResponseV3 } from '../types/sceneV3';
 import type { RuntimeSettings } from '../types/settings';
-import { downstreamGateMessage } from '../utils/renderQualityGate';
 
 export interface DiagramToolsProps {
-  scene: MathScene | null;
+  workspace: SceneWorkspaceResponseV3 | null;
   originalProblem: string;
   runtimeSettings: RuntimeSettings;
-  response?: RenderResponse | null;
   onError?: (message: string) => void;
 }
 
 const VARIANT_OPTIONS = [2, 3, 5];
 
-export function ProblemVariantTool({ scene, originalProblem, runtimeSettings, response, onError }: Pick<DiagramToolsProps, 'scene' | 'originalProblem' | 'runtimeSettings' | 'response' | 'onError'>): JSX.Element {
+export function ProblemVariantTool({ workspace, originalProblem, runtimeSettings, onError }: DiagramToolsProps): JSX.Element {
   const [busyVariants, setBusyVariants] = useState<number | null>(null);
   const [variants, setVariants] = useState<string[]>([]);
   const [variantsModel, setVariantsModel] = useState<string | null>(null);
-  const gateMessage = response ? downstreamGateMessage(response, 'sinh đề biến thể') : null;
+  const gateMessage = workspace ? downstreamGateMessageV3(workspace, 'sinh đề biến thể') : null;
 
   async function handleGenerateVariants(count: number) {
-    if (!scene || gateMessage) return;
+    if (!workspace || gateMessage) return;
     setBusyVariants(count);
     try {
-      const res = await generateProblemVariants(scene, count, originalProblem || undefined, runtimeSettings, undefined, response);
+      const res = await generateProblemVariants(
+        committedSceneRefV3(workspace),
+        count,
+        originalProblem || undefined,
+        runtimeSettings,
+      );
       setVariants(res.variants);
       setVariantsModel(`${res.provider}/${res.model}`);
     } catch (err) {
@@ -49,7 +53,7 @@ export function ProblemVariantTool({ scene, originalProblem, runtimeSettings, re
       {gateMessage && <p className="diagram-tools-hint warning">{gateMessage}</p>}
       <div className="diagram-tools-button-row">
         {VARIANT_OPTIONS.map((count) => (
-          <button key={count} type="button" className="diagram-tools-button" disabled={!scene || Boolean(gateMessage) || busyVariants !== null} onClick={() => handleGenerateVariants(count)} title={!scene ? 'Cần có hình đã dựng trước' : gateMessage ?? `Sinh ${count} đề biến thể`}>
+          <button key={count} type="button" className="diagram-tools-button" disabled={!workspace || Boolean(gateMessage) || busyVariants !== null} onClick={() => handleGenerateVariants(count)} title={!workspace ? 'Cần có hình đã dựng trước' : gateMessage ?? `Sinh ${count} đề biến thể`}>
             {busyVariants === count ? `Đang sinh ${count}…` : `Sinh ${count} đề`}
           </button>
         ))}
@@ -78,7 +82,7 @@ export function DiagramTools(props: DiagramToolsProps): JSX.Element {
   return (
     <div className="diagram-tools">
       <div className="diagram-tools-row">
-        <ProblemVariantTool scene={props.scene} originalProblem={props.originalProblem} runtimeSettings={props.runtimeSettings} response={props.response} onError={props.onError} />
+        <ProblemVariantTool workspace={props.workspace} originalProblem={props.originalProblem} runtimeSettings={props.runtimeSettings} onError={props.onError} />
       </div>
     </div>
   );

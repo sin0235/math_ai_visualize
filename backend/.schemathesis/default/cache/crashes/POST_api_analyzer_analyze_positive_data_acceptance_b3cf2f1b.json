@@ -1,0 +1,101 @@
+{
+  "operation": "POST /api/analyzer/analyze",
+  "method": "POST",
+  "path_template": "/api/analyzer/analyze",
+  "fingerprint": "b3cf2f1b",
+  "case_id": "QCKukP",
+  "code_sample": "curl -X POST -H 'Content-Type: application/json' -H 'Cookie: [Filtered]' -d '{\"curriculum_profile\": {\"chapter\": \"Kh\\u1ea3o s\\u00e1t h\\u00e0m s\\u1ed1\", \"explanation_level\": \"standard\", \"grade\": 12}, \"expression\": \"0\", \"parameter_mode\": \"substitute\", \"parameters\": {}, \"provenance\": {\"model\": \"0\", \"provider\": \"0\", \"source\": \"ocr\"}}' http://127.0.0.1:18766/api/analyzer/analyze",
+  "sequence": [
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:18766/api/analyzer/analyze",
+      "url_template": "http://127.0.0.1:18766/api/analyzer/analyze",
+      "headers": {
+        "User-Agent": "schemathesis/4.22.4",
+        "Accept-Encoding": "gzip, deflate",
+        "Accept": "*/*",
+        "Connection": "keep-alive",
+        "X-Schemathesis-TestCaseId": "QCKukP",
+        "Content-Type": "application/json",
+        "Cookie": "[Filtered]",
+        "Content-Length": "253"
+      },
+      "response": {
+        "status_code": 422,
+        "headers": {
+          "date": "Sun, 12 Jul 2026 13:56:58 GMT",
+          "server": "uvicorn",
+          "x-request-id": "fa5e89dd3dce45acb297ec721d49593a",
+          "content-length": "198",
+          "content-type": "application/json"
+        },
+        "body": "{\"detail\":{\"code\":\"ANALYZER_INPUT_INVALID\",\"message\":\"D\u1eef li\u1ec7u y\u00eau c\u1ea7u ph\u00e2n t\u00edch kh\u00f4ng h\u1ee3p l\u1ec7.\",\"correlation_id\":\"fa5e89dd3dce45acb297ec721d49593a\",\"stage\":\"request\",\"retryable\":false}}"
+      },
+      "link": null,
+      "checks": [
+        {
+          "name": "positive_data_acceptance",
+          "status": "failure",
+          "message": "API rejected schema-compliant request\n\nValid data should have been accepted\nExpected: 2xx, 401, 403, 404, 409, 5xx"
+        }
+      ],
+      "meta": {
+        "generation": {
+          "time": 1.738699984343839e-05,
+          "mode": "positive"
+        },
+        "components": {
+          "COOKIE": "positive",
+          "BODY": "positive"
+        },
+        "phase": {
+          "name": "coverage",
+          "data": {
+            "type": "CoveragePhaseData",
+            "description": "Object with valid 'parameter_mode' value: Enum value",
+            "location": null,
+            "parameter": "application/json",
+            "parameter_location": "BODY",
+            "scenario": "valid_object"
+          }
+        },
+        "pool_draws": [],
+        "pool_misses": [],
+        "semantic_draws": [],
+        "dictionary_draws": [],
+        "raw_containers": {
+          "COOKIE": {
+            "hinh_session": ""
+          }
+        }
+      },
+      "path": "/api/analyzer/analyze",
+      "path_parameters": {},
+      "query": {},
+      "case_headers": {},
+      "cookies": {
+        "hinh_session": "[Filtered]"
+      },
+      "case_body": {
+        "encoding": "json",
+        "value": {
+          "curriculum_profile": {
+            "chapter": "Kh\u1ea3o s\u00e1t h\u00e0m s\u1ed1",
+            "explanation_level": "standard",
+            "grade": 12
+          },
+          "expression": "0",
+          "parameter_mode": "substitute",
+          "parameters": {},
+          "provenance": {
+            "model": "0",
+            "provider": "0",
+            "source": "ocr"
+          }
+        }
+      },
+      "media_type": "application/json",
+      "parent_index": null
+    }
+  ]
+}

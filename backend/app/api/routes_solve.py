@@ -3,7 +3,6 @@ API routes for:
   POST /api/solve            — Step-by-step geometry solver (Lựa chọn 2)
 """
 import asyncio
-from typing import Any
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
@@ -15,9 +14,12 @@ from app.db.models import UserRecord
 from app.db.session import DatabaseClient, get_database
 from app.repositories.admin import AdminRepository
 from app.schemas.advisory import QualityRiskAdvisory
-from app.schemas.scene import MAX_PROBLEM_TEXT_CHARS, MathScene, RenderResponse, RuntimeSettings
+from app.schemas.scene import MAX_PROBLEM_TEXT_CHARS, RuntimeSettings
+from app.schemas.scene_v3 import CommittedSceneRefV3
 from app.services.ai_resolution import resolve_byok_ai_config, settings_with_byok_connection
-from app.services.api_errors import bad_request_from_error
+from app.services.api_errors import api_error, bad_request_from_error
+from app.services.committed_scene_v3 import CommittedSceneError, load_committed_scene_v3
+from app.services.downstream_scene_v3 import scene_v3_to_solver_input
 from app.services.model_registry import load_model_registry, resolve_effective_settings, resolve_task_profile
 from app.services.user_ai_settings import UserAiSettingsError
 
@@ -25,8 +27,7 @@ router = APIRouter(prefix="/api", tags=["solver"])
 
 
 class SolveRequest(BaseModel):
-    scene: dict[str, Any]
-    response: RenderResponse | None = None
+    scene_ref: CommittedSceneRefV3
     question: str = Field(min_length=1, max_length=MAX_PROBLEM_TEXT_CHARS)
     geometry_method: str = "oxyz"
     runtime_settings: RuntimeSettings | None = None
@@ -77,14 +78,15 @@ async def solve_problem(
     await enforce_render_access(db, user)
     used_ai = False
     try:
+        committed = await load_committed_scene_v3(db, user.id, request.scene_ref)
+        scene_input = scene_v3_to_solver_input(committed.result.scene, committed.result.verification)
         geometry_method = request.geometry_method if request.geometry_method in {"oxyz", "classical"} else "oxyz"
-        _assert_solve_quality_gate(request)
-        result = await asyncio.to_thread(solve, request.scene, request.question, geometry_method)
+        result = await asyncio.to_thread(solve, scene_input, request.question, geometry_method)
         advisory = None
         if get_settings().advisory_enabled:
             from app.services.quality_advisory import build_solve_advisory
 
-            advisory = await asyncio.to_thread(build_solve_advisory, request.question, request.scene, result)
+            advisory = await asyncio.to_thread(build_solve_advisory, request.question, scene_input, result)
         settings = await resolve_effective_settings(db, request.runtime_settings)
         byok_used = False
         byok = None
@@ -103,8 +105,10 @@ async def solve_problem(
         if geometry_method != "classical" and (settings.router9_api_key or settings.openrouter_api_key or settings.openai_compat_api_key):
             from app.services.solver_explainer import explain_solver_result
 
-            result = await explain_solver_result(result, request.scene, settings, solver_profile, method=geometry_method)
+            result = await explain_solver_result(result, scene_input, settings, solver_profile, method=geometry_method)
             used_ai = True
+    except CommittedSceneError as error:
+        raise api_error(error.status_code, str(error), error.code) from error
     except Exception as e:
         from app.repositories.activity import try_log_user_activity
 
@@ -158,24 +162,3 @@ async def solve_problem(
         data_issues=getattr(result, "data_issues", []),
         advisory=advisory,
     )
-
-
-def _assert_solve_quality_gate(request: SolveRequest) -> None:
-    from app.services.render_quality_gate import assert_render_response_safe_for_downstream, assert_scene_safe_for_downstream
-
-    if request.response is not None:
-        scene = MathScene.model_validate(request.scene)
-        assert_render_response_safe_for_downstream(
-            request.response,
-            scene,
-            operation="giải bài",
-            allow_partial=False,
-        )
-        return
-    try:
-        scene = MathScene.model_validate(request.scene)
-    except Exception:
-        # Caller cũ có thể gửi scene solver dạng dict không phải MathScene render v2.
-        # Chỉ áp quality gate đầy đủ khi có response v2 hoặc scene khớp MathScene.
-        return
-    assert_scene_safe_for_downstream(scene, operation="giải bài", allow_partial=False)

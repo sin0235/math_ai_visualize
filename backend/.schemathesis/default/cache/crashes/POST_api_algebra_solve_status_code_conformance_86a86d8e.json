@@ -1,0 +1,92 @@
+{
+  "operation": "POST /api/algebra/solve",
+  "method": "POST",
+  "path_template": "/api/algebra/solve",
+  "fingerprint": "86a86d8e",
+  "case_id": "GYscB4",
+  "code_sample": "curl -X POST -H 'Content-Type: application/json' -H 'Cookie: [Filtered]' -d '{\"input\": \"0\", \"options\": {\"ai_explanation\": true}}' http://127.0.0.1:18766/api/algebra/solve",
+  "sequence": [
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:18766/api/algebra/solve",
+      "url_template": "http://127.0.0.1:18766/api/algebra/solve",
+      "headers": {
+        "User-Agent": "schemathesis/4.22.4",
+        "Accept-Encoding": "gzip, deflate",
+        "Accept": "*/*",
+        "Connection": "keep-alive",
+        "X-Schemathesis-TestCaseId": "GYscB4",
+        "Content-Type": "application/json",
+        "Cookie": "[Filtered]",
+        "Content-Length": "51"
+      },
+      "response": {
+        "status_code": 401,
+        "headers": {
+          "date": "Sun, 12 Jul 2026 13:56:53 GMT",
+          "server": "uvicorn",
+          "x-request-id": "26f8b7158415415d87a4f8adbdf22c2a",
+          "content-length": "86",
+          "content-type": "application/json"
+        },
+        "body": "{\"detail\":\"B\u1ea1n c\u1ea7n \u0111\u0103ng nh\u1eadp \u0111\u1ec3 d\u00f9ng AI nh\u1eadn d\u1ea1ng \u0111\u1ec1 \u0111\u1ea1i s\u1ed1.\"}"
+      },
+      "link": null,
+      "checks": [
+        {
+          "name": "status_code_conformance",
+          "status": "failure",
+          "message": "Undocumented HTTP status code\n\nReceived: 401\nDocumented: 200, 422, 403"
+        }
+      ],
+      "meta": {
+        "generation": {
+          "time": 1.5766000160510885e-05,
+          "mode": "positive"
+        },
+        "components": {
+          "COOKIE": "positive",
+          "BODY": "positive"
+        },
+        "phase": {
+          "name": "coverage",
+          "data": {
+            "type": "CoveragePhaseData",
+            "description": "Object with valid 'options' value: Object with valid 'ai_explanation' value: Valid boolean value",
+            "location": null,
+            "parameter": "application/json",
+            "parameter_location": "BODY",
+            "scenario": "valid_object"
+          }
+        },
+        "pool_draws": [],
+        "pool_misses": [],
+        "semantic_draws": [],
+        "dictionary_draws": [],
+        "raw_containers": {
+          "COOKIE": {
+            "hinh_session": ""
+          }
+        }
+      },
+      "path": "/api/algebra/solve",
+      "path_parameters": {},
+      "query": {},
+      "case_headers": {},
+      "cookies": {
+        "hinh_session": "[Filtered]"
+      },
+      "case_body": {
+        "encoding": "json",
+        "value": {
+          "input": "0",
+          "options": {
+            "ai_explanation": true
+          }
+        }
+      },
+      "media_type": "application/json",
+      "parent_index": null
+    }
+  ]
+}

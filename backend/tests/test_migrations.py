@@ -247,14 +247,16 @@ def test_scene_v3_migrations_add_command_log_and_metadata(tmp_path):
     command_indexes = asyncio.run(db.fetch_all("PRAGMA index_list(scene_commands)"))
     migration_names = {migration.name for migration in list_postgres_migration_files()}
 
-    assert {"scene_workspaces", "scene_commands"}.issubset({str(row["name"]) for row in tables})
-    assert {"schema_version", "migration_report_json", "command_log_json"}.issubset(
+    assert {"scene_workspaces", "scene_commands", "scene_confirmations"}.issubset({str(row["name"]) for row in tables})
+    assert {"schema_version", "migration_report_json", "command_log_json", "scene_id", "snapshot_revision"}.issubset(
         {str(row["name"]) for row in revision_columns}
     )
     assert {"idx_scene_commands_scene_revision", "idx_scene_commands_user_created"}.issubset(
         {str(row["name"]) for row in command_indexes}
     )
     assert "0011_scene_v3.sql" in migration_names
+    assert "0012_scene_v3_confirmations.sql" in migration_names
+    assert "0013_scene_v3_history.sql" in migration_names
 
 
 def test_postgres_sql_translates_placeholders_outside_literals():

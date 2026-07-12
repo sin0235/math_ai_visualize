@@ -21,7 +21,6 @@ import time
 from dataclasses import dataclass
 
 from app.core.config import Settings
-from app.schemas.scene import MathScene
 from app.services.ai_fallback import Attempt, format_attempts, provider_configured, text_model_candidates, text_provider_order
 from app.services.model_provider import normalize_model_for_provider
 from app.services.openai_compat_client import OpenAICompatClient
@@ -62,12 +61,11 @@ class VariantsResult:
     model: str
 
 
-def _build_user_prompt(scene: MathScene, original_problem: str | None, count: int) -> str:
-    scene_brief = scene.model_dump(mode="json", exclude_none=True, exclude_defaults=False)
+def _build_user_prompt(scene: dict, original_problem: str | None, count: int) -> str:
     parts = [
         f"Số đề cần sinh: {count}.",
-        "MathScene gốc (JSON):",
-        json.dumps(scene_brief, ensure_ascii=False, indent=2),
+        "MathScene v3 gốc (JSON):",
+        json.dumps(scene, ensure_ascii=False, indent=2),
     ]
     if original_problem:
         parts.extend(["", "Đề bài gốc (tham khảo phong cách):", original_problem.strip()])
@@ -198,7 +196,7 @@ def _parse_variants(content: str, count: int) -> list[str]:
 
 
 async def generate_variants(
-    scene: MathScene,
+    scene: dict,
     settings: Settings,
     count: int = 3,
     original_problem: str | None = None,

@@ -8,10 +8,11 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "test:simulation": "node scripts/run-simulation-baseline.mjs",
-    "test:analyzer-values": "node --experimental-strip-types src/components/function-analyzer/graphValues.test.mjs",
-    "test:scene-workspace": "node --experimental-strip-types src/hooks/sceneWorkspaceV3State.test.mjs",
-    "test:scene-inspector": "node --experimental-strip-types src/components/sceneInspectorV3State.test.mjs",
-    "test:render-projection": "node --experimental-strip-types src/utils/renderProjectionV3.test.mjs"
+    "test:analyzer-values": "node scripts/run-typescript-test.mjs src/components/function-analyzer/graphValues.test.mjs",
+    "test:scene-workspace": "node scripts/run-typescript-test.mjs src/hooks/sceneWorkspaceV3State.test.mjs",
+    "test:scene-inspector": "node scripts/run-typescript-test.mjs src/components/sceneInspectorV3State.test.mjs",
+    "test:render-projection": "node scripts/run-typescript-test.mjs src/utils/renderProjectionV3.test.mjs",
+    "test:render-history": "node scripts/run-typescript-test.mjs src/utils/renderHistoryV3.test.mjs"
   },
   "dependencies": {
     "@react-three/drei": "^9.114.0",

@@ -1,4 +1,5 @@
 import type { MathScene } from '../types/scene';
+import type { MathSceneV3 } from '../types/sceneV3';
 
 export type ExportFormatKey = 'png' | 'jpg' | 'svg' | 'katex-html' | 'tikz' | 'pdf' | 'ggb';
 
@@ -43,7 +44,7 @@ function problemSnippet(problemText: string): string {
 /**
  * Tên file tải xuống: math-renderer-<topic>-<đoạn đề>-<YYYYMMDD-HHmmss>.<ext>
  */
-export function buildExportFilename(scene: MathScene, format: ExportFormatKey): string {
+export function buildExportFilename(scene: MathScene | MathSceneV3, format: ExportFormatKey): string {
   const ext = FORMAT_EXT[format];
   const topic = topicSegment(scene.topic || '');
   const snippet = problemSnippet(scene.problem_text || '');

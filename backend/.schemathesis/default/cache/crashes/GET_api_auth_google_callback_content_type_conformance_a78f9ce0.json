@@ -1,0 +1,93 @@
+{
+  "operation": "GET /api/auth/google/callback",
+  "method": "GET",
+  "path_template": "/api/auth/google/callback",
+  "fingerprint": "a78f9ce0",
+  "case_id": "9NZjnE",
+  "code_sample": "curl -X GET 'http://127.0.0.1:18766/api/auth/google/callback?code=&error='",
+  "sequence": [
+    {
+      "method": "GET",
+      "url": "https://math-renderer.sin-studio.tech?auth_error=%5BFiltered%5D",
+      "url_template": "http://127.0.0.1:18766/api/auth/google/callback",
+      "headers": {
+        "User-Agent": "schemathesis/4.22.4",
+        "Accept-Encoding": "gzip, deflate",
+        "Accept": "*/*",
+        "Connection": "keep-alive",
+        "X-Schemathesis-TestCaseId": "9NZjnE"
+      },
+      "response": {
+        "status_code": 200,
+        "headers": {
+          "date": "Sun, 12 Jul 2026 13:57:54 GMT",
+          "content-type": "text/html",
+          "transfer-encoding": "chunked",
+          "connection": "keep-alive",
+          "server": "cloudflare",
+          "last-modified": "Sun, 12 Jul 2026 05:44:51 GMT",
+          "set-cookie": "[Filtered]",
+          "x-do-orig-status": "200",
+          "x-do-app-origin": "a6d2e280-2670-469b-94d9-c44646eb7888",
+          "cache-control": "private",
+          "cf-cache-status": "BYPASS",
+          "content-encoding": "gzip",
+          "cf-ray": "a1a08f489f549b85-HKG",
+          "alt-svc": "h3=\":443\"; ma=86400"
+        },
+        "body": "<!doctype html>\n<html lang=\"vi\">\n  <head>\n    <meta charset=\"UTF-8\" />\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n    <title>AI Math Renderer</title>\n    <link rel=\"icon\" type=\"image/svg+xml\" href=\"/assets/img-D6eIluTk.svg\" />\n    <script type=\"module\" crossorigin src=\"/assets/index-CYEHlnvu.js\"></script>\n    <link rel=\"modulepreload\" crossorigin href=\"/assets/three-BKXIAZqd.js\">\n    <link rel=\"modulepreload\" crossorigin href=\"/assets/katex-CorxK3TE.js\">\n    <link rel=\"stylesheet\" crossorigin href=\"/assets/index-CsBOLdVf.css\">\n  </head>\n  <body>\n    <div id=\"root\"></div>\n    <script>\n      window.global = window.globalThis || window;\n    </script>\n  </body>\n</html>\n"
+      },
+      "link": null,
+      "checks": [
+        {
+          "name": "content_type_conformance",
+          "status": "failure",
+          "message": "Undocumented Content-Type\n\nReceived: text/html\nDocumented: application/json"
+        }
+      ],
+      "meta": {
+        "generation": {
+          "time": 3.860000106215011e-06,
+          "mode": "positive"
+        },
+        "components": {
+          "QUERY": "positive"
+        },
+        "phase": {
+          "name": "coverage",
+          "data": {
+            "type": "CoveragePhaseData",
+            "description": "All required and 2 optional properties",
+            "location": null,
+            "parameter": null,
+            "parameter_location": "QUERY",
+            "scenario": "object_required_and_optional"
+          }
+        },
+        "pool_draws": [],
+        "pool_misses": [],
+        "semantic_draws": [],
+        "dictionary_draws": [],
+        "raw_containers": {
+          "QUERY": {
+            "code": "",
+            "error": ""
+          }
+        }
+      },
+      "path": "/api/auth/google/callback",
+      "path_parameters": {},
+      "query": {
+        "code": "",
+        "error": ""
+      },
+      "case_headers": {},
+      "cookies": {},
+      "case_body": {
+        "encoding": "none"
+      },
+      "media_type": null,
+      "parent_index": null
+    }
+  ]
+}

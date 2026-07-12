@@ -1,9 +1,13 @@
+from types import SimpleNamespace
+
 import pytest
 
 from app.api.routes_solve import SolveRequest, router, solve_problem
 from app.core.config import Settings
 from app.db.models import UserRecord
+from app.schemas.scene_v3 import MathSceneV3
 from app.services.model_registry import registry_from_settings
+from app.services.scene_pipeline_v3 import run_scene_pipeline_v3
 
 
 def _user() -> UserRecord:
@@ -18,33 +22,29 @@ def _user() -> UserRecord:
     )
 
 
-def _scene() -> dict:
-    return {
+def _scene() -> MathSceneV3:
+    return MathSceneV3.model_validate({
+        "scene_id": "solve-scene",
+        "revision": 3,
         "problem_text": "Cho hình chóp S.ABCD có SA = 3 và SA vuông góc với đáy.",
         "topic": "solid_geometry",
+        "renderer": "threejs_3d",
+        "view": {"dimension": "3d"},
         "objects": [
-            {"type": "point_3d", "name": "A", "x": 0, "y": 0, "z": 3},
-            {"type": "point_3d", "name": "B", "x": 0, "y": 0, "z": 0},
-            {"type": "point_3d", "name": "C", "x": 4, "y": 0, "z": 0},
-            {"type": "point_3d", "name": "D", "x": 0, "y": 4, "z": 0},
+            {"id": "point-a", "type": "point_3d", "label": "A", "x": 0, "y": 0, "z": 3},
+            {"id": "point-b", "type": "point_3d", "label": "B", "x": 0, "y": 0, "z": 0},
+            {"id": "point-c", "type": "point_3d", "label": "C", "x": 4, "y": 0, "z": 0},
+            {"id": "point-d", "type": "point_3d", "label": "D", "x": 0, "y": 4, "z": 0},
         ],
-        "annotations": [
-            {
-                "type": "length",
-                "target": "A-B",
-                "label": "3",
-                "metadata": {"source": "given", "confidence": "partial", "evidence": "SA = 3"},
-            }
-        ],
-        "relations": [
-            {
-                "type": "perpendicular",
-                "object_1": "AB",
-                "object_2": "plane(BCD)",
-                "metadata": {"source": "given", "confidence": "verified", "evidence": "SA vuông góc với đáy"},
-            }
-        ],
-    }
+        "annotations": [{
+            "id": "length-ab",
+            "type": "length",
+            "target_ids": ["point-a", "point-b"],
+            "label": "3",
+            "provenance": "given",
+        }],
+        "audit": {"created_by": "manual"},
+    })
 
 
 def test_solve_route_registered():
@@ -65,13 +65,21 @@ async def test_solve_endpoint_returns_trust_metadata(monkeypatch):
     async def mock_registry(*args, **kwargs):
         return registry_from_settings(settings)
 
+    async def mock_committed(*args, **kwargs):
+        return SimpleNamespace(result=run_scene_pipeline_v3(_scene()))
+
     monkeypatch.setattr("app.api.routes_solve.enforce_rate_limit", mock_noop)
     monkeypatch.setattr("app.api.routes_solve.enforce_render_access", mock_noop)
     monkeypatch.setattr("app.api.routes_solve.resolve_effective_settings", mock_settings)
     monkeypatch.setattr("app.api.routes_solve.load_model_registry", mock_registry)
+    monkeypatch.setattr("app.api.routes_solve.load_committed_scene_v3", mock_committed)
 
     payload = await solve_problem(
-        SolveRequest(scene=_scene(), question="d(A,(BCD))", geometry_method="classical"),
+        SolveRequest(
+            scene_ref={"scene_id": "solve-scene", "revision": 3},
+            question="d(A,(BCD))",
+            geometry_method="classical",
+        ),
         http_request=object(),
         user=_user(),
         db=object(),

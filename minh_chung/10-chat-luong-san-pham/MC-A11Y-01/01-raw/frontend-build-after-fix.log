@@ -1,8 +1,0 @@
-npm run build
-exit_code=0
-modules_transformed=735
-vite_build_seconds=7.44
-css_asset=index-CsBOLdVf.css 299.94 kB gzip 57.16 kB
-largest_asset=three-BKXIAZqd.js 1135.12 kB gzip 326.43 kB
-warnings=telemetry dynamic/static import overlap; chunks larger than 500 kB
-result=passed_with_warnings

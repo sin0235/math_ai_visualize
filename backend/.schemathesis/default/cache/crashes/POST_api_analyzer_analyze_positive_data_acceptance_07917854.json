@@ -1,0 +1,103 @@
+{
+  "operation": "POST /api/analyzer/analyze",
+  "method": "POST",
+  "path_template": "/api/analyzer/analyze",
+  "fingerprint": "07917854",
+  "case_id": "TPVw7v",
+  "code_sample": "curl -X POST -H 'Content-Type: application/json' -H 'Cookie: [Filtered]' -d '{\"curriculum_profile\": {\"chapter\": \"Kh\\u1ea3o s\\u00e1t h\\u00e0m s\\u1ed1\", \"explanation_level\": \"standard\", \"grade\": 12}, \"expression\": \"0\", \"parameter_mode\": null, \"parameters\": {}, \"provenance\": {\"extraction_version\": \"function-ocr-v2\", \"model\": \"0\", \"provider\": \"0\", \"source\": \"ocr\"}}' http://127.0.0.1:18766/api/analyzer/analyze",
+  "sequence": [
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:18766/api/analyzer/analyze",
+      "url_template": "http://127.0.0.1:18766/api/analyzer/analyze",
+      "headers": {
+        "User-Agent": "schemathesis/4.22.4",
+        "Accept-Encoding": "gzip, deflate",
+        "Accept": "*/*",
+        "Connection": "keep-alive",
+        "X-Schemathesis-TestCaseId": "TPVw7v",
+        "Content-Type": "application/json",
+        "Cookie": "[Filtered]",
+        "Content-Length": "286"
+      },
+      "response": {
+        "status_code": 429,
+        "headers": {
+          "date": "Sun, 12 Jul 2026 13:56:58 GMT",
+          "server": "uvicorn",
+          "retry-after": "59",
+          "x-request-id": "82396b265abd496cb9ebd24a571fba23",
+          "content-length": "194",
+          "content-type": "application/json"
+        },
+        "body": "{\"detail\":{\"code\":\"ANALYZER_RATE_LIMITED\",\"message\":\"Analyzer \u0111ang qu\u00e1 t\u1ea3i. H\u00e3y th\u1eed l\u1ea1i sau.\",\"correlation_id\":\"82396b265abd496cb9ebd24a571fba23\",\"stage\":\"rate_limit\",\"retryable\":true}}"
+      },
+      "link": null,
+      "checks": [
+        {
+          "name": "positive_data_acceptance",
+          "status": "failure",
+          "message": "API rejected schema-compliant request\n\nValid data should have been accepted\nExpected: 2xx, 401, 403, 404, 409, 5xx"
+        }
+      ],
+      "meta": {
+        "generation": {
+          "time": 0.0004196700001557474,
+          "mode": "positive"
+        },
+        "components": {
+          "COOKIE": "positive",
+          "BODY": "positive"
+        },
+        "phase": {
+          "name": "coverage",
+          "data": {
+            "type": "CoveragePhaseData",
+            "description": "Object with valid 'provenance' value: Valid object",
+            "location": null,
+            "parameter": "application/json",
+            "parameter_location": "BODY",
+            "scenario": "valid_object"
+          }
+        },
+        "pool_draws": [],
+        "pool_misses": [],
+        "semantic_draws": [],
+        "dictionary_draws": [],
+        "raw_containers": {
+          "COOKIE": {
+            "hinh_session": ""
+          }
+        }
+      },
+      "path": "/api/analyzer/analyze",
+      "path_parameters": {},
+      "query": {},
+      "case_headers": {},
+      "cookies": {
+        "hinh_session": "[Filtered]"
+      },
+      "case_body": {
+        "encoding": "json",
+        "value": {
+          "curriculum_profile": {
+            "chapter": "Kh\u1ea3o s\u00e1t h\u00e0m s\u1ed1",
+            "explanation_level": "standard",
+            "grade": 12
+          },
+          "expression": "0",
+          "parameter_mode": null,
+          "parameters": {},
+          "provenance": {
+            "extraction_version": "function-ocr-v2",
+            "model": "0",
+            "provider": "0",
+            "source": "ocr"
+          }
+        }
+      },
+      "media_type": "application/json",
+      "parent_index": null
+    }
+  ]
+}

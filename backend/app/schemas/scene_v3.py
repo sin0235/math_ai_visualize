@@ -5,7 +5,7 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.schemas.render_projection_v3 import RenderPayloadV3, RenderProjectionV3
-from app.schemas.scene import ObjectSource, RelationSource, Renderer, SceneView, Topic
+from app.schemas.scene import ExportViewCapture, ObjectSource, RelationSource, Renderer, SceneView, Topic
 
 
 SchemaVersion = Literal["3.0"]
@@ -397,6 +397,20 @@ class SceneWorkspaceCreateRequest(V3Model):
     scene: MathSceneV3
 
 
+class CommittedSceneRefV3(V3Model):
+    scene_id: str = Field(min_length=1, max_length=128)
+    revision: int = Field(ge=1)
+
+
+class SceneConfirmationRequestV3(V3Model):
+    revision: int = Field(ge=1)
+
+
+class SceneExportRequestV3(V3Model):
+    scene_ref: CommittedSceneRefV3
+    view_capture: ExportViewCapture | None = None
+
+
 class PipelineIssueResponseV3(V3Model):
     stage: Literal["structure", "topology", "derive", "verify", "repair", "project"]
     code: str
@@ -413,6 +427,8 @@ class SceneWorkspaceResponseV3(V3Model):
     verification: list[ConstraintResultV3] = Field(default_factory=list)
     issues: list[PipelineIssueResponseV3] = Field(default_factory=list)
     requires_user_confirmation: bool = False
+    confirmed_revision: int | None = None
+    trusted_for_downstream: bool = False
     inverse_command: SceneCommand | None = None
     changed_object_ids: list[str] = Field(default_factory=list)
     affected_relation_ids: list[str] = Field(default_factory=list)

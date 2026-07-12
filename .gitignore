@@ -9,6 +9,9 @@ backend/.env.*
 # Claude local state
 .claude/
 
+# certification evidence tooling (Python venv)
+.evidence-tools/
+
 # Python
 __pycache__/
 *.py[cod]
@@ -34,9 +37,18 @@ backend/.data/
 backend/backend/.data/
 .wrangler/
 
+# schemathesis test runner cache
+.schemathesis/
+
 # OS / editor
 .DS_Store
 Thumbs.db
 .vscode/
 .idea/
 .gstack/
+
+data/
+
+danh_gia/
+
+docs/

@@ -1,0 +1,90 @@
+{
+  "operation": "POST /api/auth/verify-email",
+  "method": "POST",
+  "path_template": "/api/auth/verify-email",
+  "fingerprint": "8c42c95f",
+  "case_id": "HdFyY9",
+  "code_sample": "curl -X POST -H 'Content-Type: application/json' -H 'Cookie: [Filtered]' -d '{\"otp\": \"000000000000000\", \"token\": \"00000000000000000000\"}' http://127.0.0.1:18766/api/auth/verify-email",
+  "sequence": [
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:18766/api/auth/verify-email",
+      "url_template": "http://127.0.0.1:18766/api/auth/verify-email",
+      "headers": {
+        "User-Agent": "schemathesis/4.22.4",
+        "Accept-Encoding": "gzip, deflate",
+        "Accept": "*/*",
+        "Connection": "keep-alive",
+        "X-Schemathesis-TestCaseId": "HdFyY9",
+        "Content-Type": "application/json",
+        "Cookie": "[Filtered]",
+        "Content-Length": "59"
+      },
+      "response": {
+        "status_code": 422,
+        "headers": {
+          "date": "Sun, 12 Jul 2026 13:57:20 GMT",
+          "server": "uvicorn",
+          "content-length": "157",
+          "content-type": "application/json",
+          "x-request-id": "286b73f527a64fe19df78ff16125a073"
+        },
+        "body": "{\"detail\":[{\"type\":\"value_error\",\"loc\":[\"body\",\"otp\"],\"msg\":\"Value error, M\u00e3 OTP ph\u1ea3i g\u1ed3m 6 ch\u1eef s\u1ed1.\",\"input\":\"000000000000000\",\"ctx\":{\"error\":{}}}]}"
+      },
+      "link": null,
+      "checks": [
+        {
+          "name": "positive_data_acceptance",
+          "status": "failure",
+          "message": "API rejected schema-compliant request\n\nValid data should have been accepted\nExpected: 2xx, 401, 403, 404, 409, 5xx"
+        }
+      ],
+      "meta": {
+        "generation": {
+          "time": 0.001087612999981502,
+          "mode": "positive"
+        },
+        "components": {
+          "COOKIE": "positive",
+          "BODY": "positive"
+        },
+        "phase": {
+          "name": "coverage",
+          "data": {
+            "type": "CoveragePhaseData",
+            "description": "Object with valid 'otp' value: Near-boundary length string",
+            "location": null,
+            "parameter": "application/json",
+            "parameter_location": "BODY",
+            "scenario": "valid_object"
+          }
+        },
+        "pool_draws": [],
+        "pool_misses": [],
+        "semantic_draws": [],
+        "dictionary_draws": [],
+        "raw_containers": {
+          "COOKIE": {
+            "hinh_session": ""
+          }
+        }
+      },
+      "path": "/api/auth/verify-email",
+      "path_parameters": {},
+      "query": {},
+      "case_headers": {},
+      "cookies": {
+        "hinh_session": "[Filtered]"
+      },
+      "case_body": {
+        "encoding": "json",
+        "value": {
+          "otp": "000000000000000",
+          "token": "[Filtered]"
+        }
+      },
+      "media_type": "application/json",
+      "parent_index": null
+    }
+  ]
+}

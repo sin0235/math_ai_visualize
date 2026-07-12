@@ -1,0 +1,107 @@
+{
+  "operation": "POST /api/analyze",
+  "method": "POST",
+  "path_template": "/api/analyze",
+  "fingerprint": "e4673c0b",
+  "case_id": "eTuzo2",
+  "code_sample": "curl -X POST -H 'Content-Type: application/json' -H 'Cookie: [Filtered]' -d '{\"expression\": \"0\", \"interval\": {\"a\": 0.0, \"b\": 0.0}, \"line\": {}, \"parameter_conditions\": {\"targets\": [\"decreasing_r\"]}, \"parameter_mode\": null, \"parameters\": {}, \"provenance\": {\"model\": \"0\", \"provider\": \"0\", \"source\": \"ocr\"}, \"transform\": null}' http://127.0.0.1:18766/api/analyze",
+  "sequence": [
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:18766/api/analyze",
+      "url_template": "http://127.0.0.1:18766/api/analyze",
+      "headers": {
+        "User-Agent": "schemathesis/4.22.4",
+        "Accept-Encoding": "gzip, deflate",
+        "Accept": "*/*",
+        "Connection": "keep-alive",
+        "X-Schemathesis-TestCaseId": "eTuzo2",
+        "Content-Type": "application/json",
+        "Cookie": "[Filtered]",
+        "Content-Length": "245"
+      },
+      "response": {
+        "status_code": 422,
+        "headers": {
+          "date": "Sun, 12 Jul 2026 13:56:54 GMT",
+          "server": "uvicorn",
+          "x-request-id": "3bafcafeac384adb8c77b38fa7d074ec",
+          "content-length": "198",
+          "content-type": "application/json"
+        },
+        "body": "{\"detail\":{\"code\":\"ANALYZER_INPUT_INVALID\",\"message\":\"D\u1eef li\u1ec7u y\u00eau c\u1ea7u ph\u00e2n t\u00edch kh\u00f4ng h\u1ee3p l\u1ec7.\",\"correlation_id\":\"3bafcafeac384adb8c77b38fa7d074ec\",\"stage\":\"request\",\"retryable\":false}}"
+      },
+      "link": null,
+      "checks": [
+        {
+          "name": "positive_data_acceptance",
+          "status": "failure",
+          "message": "API rejected schema-compliant request\n\nValid data should have been accepted\nExpected: 2xx, 401, 403, 404, 409, 5xx"
+        }
+      ],
+      "meta": {
+        "generation": {
+          "time": 2.7753999802371254e-05,
+          "mode": "positive"
+        },
+        "components": {
+          "COOKIE": "positive",
+          "BODY": "positive"
+        },
+        "phase": {
+          "name": "coverage",
+          "data": {
+            "type": "CoveragePhaseData",
+            "description": "Valid string",
+            "location": null,
+            "parameter": "hinh_session",
+            "parameter_location": "COOKIE",
+            "scenario": "valid_string"
+          }
+        },
+        "pool_draws": [],
+        "pool_misses": [],
+        "semantic_draws": [],
+        "dictionary_draws": [],
+        "raw_containers": {
+          "COOKIE": {
+            "hinh_session": ""
+          }
+        }
+      },
+      "path": "/api/analyze",
+      "path_parameters": {},
+      "query": {},
+      "case_headers": {},
+      "cookies": {
+        "hinh_session": "[Filtered]"
+      },
+      "case_body": {
+        "encoding": "json",
+        "value": {
+          "expression": "0",
+          "interval": {
+            "a": 0.0,
+            "b": 0.0
+          },
+          "line": {},
+          "parameter_conditions": {
+            "targets": [
+              "decreasing_r"
+            ]
+          },
+          "parameter_mode": null,
+          "parameters": {},
+          "provenance": {
+            "model": "0",
+            "provider": "0",
+            "source": "ocr"
+          },
+          "transform": null
+        }
+      },
+      "media_type": "application/json",
+      "parent_index": null
+    }
+  ]
+}

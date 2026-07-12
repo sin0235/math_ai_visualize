@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 
 import {
+  committedSceneRefV3,
+  downstreamGateMessageV3,
   emptySceneWorkspaceStateV3,
   previewPointMove,
   rebaseSceneCommand,
@@ -34,6 +36,8 @@ const response = (revision, inverseCommand = null, status = 'verified') => ({
   verification: [],
   issues: [],
   requires_user_confirmation: status !== 'verified',
+  confirmed_revision: status === 'verified' ? revision : null,
+  trusted_for_downstream: status === 'verified',
   inverse_command: inverseCommand,
   changed_object_ids: [],
   affected_relation_ids: [],
@@ -77,8 +81,19 @@ assert.equal(state.committed.scene.revision, 4);
 
 state = sceneWorkspaceReducerV3(state, { type: 'load', response: response(5, null, 'needs_confirmation') });
 assert.equal(workspaceIsTrusted(state), false);
-state = sceneWorkspaceReducerV3(state, { type: 'confirm' });
+assert.deepEqual(committedSceneRefV3(state.committed), { scene_id: 'scene-state', revision: 5 });
+assert.equal(downstreamGateMessageV3(state.committed, 'giải bài'), 'Scene chưa được backend xác nhận cho giải bài.');
+state = sceneWorkspaceReducerV3(state, {
+  type: 'confirm',
+  response: {
+    ...response(5, null, 'needs_confirmation'),
+    confirmed_revision: 5,
+    trusted_for_downstream: true,
+  },
+});
 assert.equal(workspaceIsTrusted(state), true);
+assert.equal(downstreamGateMessageV3(state.committed, 'xuất file'), null);
+assert.equal(state.confirmedRevision, 5);
 assert.equal(rebaseSceneCommand(command('rebased', 1), scene(9)).base_revision, 9);
 
 const pointScene = {

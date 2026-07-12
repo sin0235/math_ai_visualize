@@ -1,0 +1,90 @@
+{
+  "operation": "POST /api/auth/verify-email",
+  "method": "POST",
+  "path_template": "/api/auth/verify-email",
+  "fingerprint": "5a60aa36",
+  "case_id": "zHFUPb",
+  "code_sample": "curl -X POST -H 'Content-Type: application/json' -H 'Cookie: [Filtered]' -d '{\"otp\": \"000000\", \"token\": \"00000000000000000000\"}' http://127.0.0.1:18766/api/auth/verify-email",
+  "sequence": [
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:18766/api/auth/verify-email",
+      "url_template": "http://127.0.0.1:18766/api/auth/verify-email",
+      "headers": {
+        "User-Agent": "schemathesis/4.22.4",
+        "Accept-Encoding": "gzip, deflate",
+        "Accept": "*/*",
+        "Connection": "keep-alive",
+        "X-Schemathesis-TestCaseId": "zHFUPb",
+        "Content-Type": "application/json",
+        "Cookie": "[Filtered]",
+        "Content-Length": "50"
+      },
+      "response": {
+        "status_code": 400,
+        "headers": {
+          "date": "Sun, 12 Jul 2026 13:57:20 GMT",
+          "server": "uvicorn",
+          "x-request-id": "743c10bb6a1f4a83ac86ab148650d4cf",
+          "content-length": "98",
+          "content-type": "application/json"
+        },
+        "body": "{\"detail\":\"Li\u00ean k\u1ebft ho\u1eb7c m\u00e3 OTP x\u00e1c minh email kh\u00f4ng h\u1ee3p l\u1ec7 ho\u1eb7c \u0111\u00e3 h\u1ebft h\u1ea1n.\"}"
+      },
+      "link": null,
+      "checks": [
+        {
+          "name": "positive_data_acceptance",
+          "status": "failure",
+          "message": "API rejected schema-compliant request\n\nValid data should have been accepted\nExpected: 2xx, 401, 403, 404, 409, 5xx"
+        }
+      ],
+      "meta": {
+        "generation": {
+          "time": 2.641400033098762e-05,
+          "mode": "positive"
+        },
+        "components": {
+          "COOKIE": "positive",
+          "BODY": "positive"
+        },
+        "phase": {
+          "name": "coverage",
+          "data": {
+            "type": "CoveragePhaseData",
+            "description": "Valid string",
+            "location": null,
+            "parameter": "hinh_session",
+            "parameter_location": "COOKIE",
+            "scenario": "valid_string"
+          }
+        },
+        "pool_draws": [],
+        "pool_misses": [],
+        "semantic_draws": [],
+        "dictionary_draws": [],
+        "raw_containers": {
+          "COOKIE": {
+            "hinh_session": ""
+          }
+        }
+      },
+      "path": "/api/auth/verify-email",
+      "path_parameters": {},
+      "query": {},
+      "case_headers": {},
+      "cookies": {
+        "hinh_session": "[Filtered]"
+      },
+      "case_body": {
+        "encoding": "json",
+        "value": {
+          "otp": "000000",
+          "token": "[Filtered]"
+        }
+      },
+      "media_type": "application/json",
+      "parent_index": null
+    }
+  ]
+}

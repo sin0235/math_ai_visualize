@@ -204,7 +204,7 @@ export function ProblemInput({
             onPaste={handlePaste}
             onDoubleClick={handleTextAreaDoubleClick}
             onContextMenu={handleContextMenu}
-            rows={10}
+            rows={7}
             maxLength={2000}
             placeholder="Ví dụ: Cho tam giác ABC vuông tại A, AB = 3, AC = 4. Vẽ đường trung tuyến AM."
           />

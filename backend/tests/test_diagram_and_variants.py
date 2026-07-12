@@ -13,7 +13,9 @@ from app.api.deps import require_active_user
 from app.db.session import SQLiteClient, get_database
 from app.main import app
 from app.repositories.auth import UserRepository
-from app.schemas.scene import MathScene
+from app.repositories.scene_workspaces import SceneWorkspaceRepository
+from app.services.scene_pipeline_v3 import run_scene_pipeline_v3
+from app.services.scene_v3_adapter import migrate_scene_v2_dict
 from app.services import problem_variants as variants_module
 
 _IMAGE_DATA_URL = "data:image/png;base64,aGVsbG8="
@@ -58,22 +60,32 @@ def isolated_database(tmp_path, monkeypatch):
     monkeypatch.setattr("app.core.config.get_settings", lambda: settings)
     monkeypatch.setattr("app.services.model_registry.get_settings", lambda: settings)
     try:
-        yield db
+        yield db, user
     finally:
         app.dependency_overrides.clear()
+        asyncio.run(db.close())
+
+
+def _create_committed_workspace(db, user) -> dict[str, object]:
+    scene, _ = migrate_scene_v2_dict({**_SCENE_JSON, "scene_id": "variants-scene", "revision": 1})
+    asyncio.run(SceneWorkspaceRepository(db).create(user.id, run_scene_pipeline_v3(scene)))
+    return {"scene_id": scene.scene_id, "revision": scene.revision}
 
 
 def test_diagram_ocr_endpoint_removed():
-    response = TestClient(app).post(
-        "/api/diagram/ocr",
-        json={"image_data_url": _IMAGE_DATA_URL},
-    )
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/diagram/ocr",
+            json={"image_data_url": _IMAGE_DATA_URL},
+        )
 
     assert response.status_code == 404
 
 
-def test_generate_variants_returns_list(monkeypatch):
+def test_generate_variants_returns_list(monkeypatch, isolated_database):
     captured: dict[str, object] = {}
+    db, user = isolated_database
+    scene_ref = _create_committed_workspace(db, user)
 
     class FakeResponse:
         status_code = 200
@@ -112,14 +124,15 @@ def test_generate_variants_returns_list(monkeypatch):
 
     monkeypatch.setattr("app.services.http_pool.get_client", lambda *args, **kwargs: FakeAsyncClient())
 
-    response = TestClient(app).post(
-        "/api/problem/variants",
-        json={
-            "scene": _SCENE_JSON,
-            "count": 2,
-            "original_problem": "Cho tam giác ABC vuông tại A có AB = 3, AC = 4.",
-        },
-    )
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/problem/variants",
+            json={
+                "scene_ref": scene_ref,
+                "count": 2,
+                "original_problem": "Cho tam giác ABC vuông tại A có AB = 3, AC = 4.",
+            },
+        )
 
     assert response.status_code == 200, response.text
     body = response.json()
@@ -132,14 +145,18 @@ def test_generate_variants_returns_list(monkeypatch):
 
 def test_generate_variants_validates_count(monkeypatch):
     """Pydantic chặn count > 10 ở tầng schema (HTTP 422)."""
-    response = TestClient(app).post(
-        "/api/problem/variants",
-        json={"scene": _SCENE_JSON, "count": 999},
-    )
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/problem/variants",
+            json={"scene_ref": {"scene_id": "variants-scene", "revision": 1}, "count": 999},
+        )
     assert response.status_code == 422
 
 
-def test_generate_variants_handles_empty_response(monkeypatch):
+def test_generate_variants_handles_empty_response(monkeypatch, isolated_database):
+    db, user = isolated_database
+    scene_ref = _create_committed_workspace(db, user)
+
     class FakeResponse:
         status_code = 200
         text = "ok"
@@ -162,16 +179,19 @@ def test_generate_variants_handles_empty_response(monkeypatch):
 
     monkeypatch.setattr("app.services.http_pool.get_client", lambda *args, **kwargs: FakeAsyncClient())
 
-    response = TestClient(app).post(
-        "/api/problem/variants",
-        json={"scene": _SCENE_JSON, "count": 2},
-    )
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/problem/variants",
+            json={"scene_ref": scene_ref, "count": 2},
+        )
     # Service raise RuntimeError -> route trả 400
     assert response.status_code == 400
 
 
-def test_math_scene_serialises_for_variants_prompt():
-    """Đảm bảo MathScene từ _SCENE_JSON validate được."""
-    scene = MathScene.model_validate(_SCENE_JSON)
+def test_math_scene_v3_serialises_for_variants_prompt():
+    scene, _ = migrate_scene_v2_dict({**_SCENE_JSON, "scene_id": "variants-prompt"})
+    payload = scene.model_dump(mode="json")
+    prompt = variants_module._build_user_prompt(payload, None, 2)
     assert scene.problem_text.startswith("Cho tam giác")
     assert len(scene.objects) == 6
+    assert '"schema_version": "3.0"' in prompt

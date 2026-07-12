@@ -69,4 +69,4 @@ def _finite_bound(value: Any, fallback: float) -> float:
 
 
 def _unsupported(message: str) -> HTTPException:
-    return HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=message)
+    return HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=message)

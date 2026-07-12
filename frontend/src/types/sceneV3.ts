@@ -212,6 +212,11 @@ export type SceneCommand =
   | (SceneCommandBase & { type: 'set_parameter'; parameter_id: string; value: number })
   | (SceneCommandBase & { type: 'set_visibility'; object_id: string; visible: boolean });
 
+export interface CommittedSceneRefV3 {
+  scene_id: string;
+  revision: number;
+}
+
 export interface SceneRevisionV3 {
   scene_id: string;
   revision: number;
@@ -327,6 +332,8 @@ export interface SceneWorkspaceResponseV3 {
   verification: ConstraintResultV3[];
   issues: PipelineIssueV3[];
   requires_user_confirmation: boolean;
+  confirmed_revision?: number | null;
+  trusted_for_downstream: boolean;
   inverse_command?: SceneCommand | null;
   changed_object_ids: string[];
   affected_relation_ids: string[];

@@ -1,0 +1,100 @@
+{
+  "operation": "POST /api/analyzer/tools/interval-extrema",
+  "method": "POST",
+  "path_template": "/api/analyzer/tools/interval-extrema",
+  "fingerprint": "bf2f319f",
+  "case_id": "lvOcCr",
+  "code_sample": "curl -X POST -H 'Content-Type: application/json' -H 'Cookie: [Filtered]' -d '{\"analysis_id\": \"0000000000000000\", \"interval\": {\"a\": 0.0, \"b\": 0.0, \"open_a\": false, \"open_b\": false}}' http://127.0.0.1:18766/api/analyzer/tools/interval-extrema",
+  "sequence": [
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:18766/api/analyzer/tools/interval-extrema",
+      "url_template": "http://127.0.0.1:18766/api/analyzer/tools/interval-extrema",
+      "headers": {
+        "User-Agent": "schemathesis/4.22.4",
+        "Accept-Encoding": "gzip, deflate",
+        "Accept": "*/*",
+        "Connection": "keep-alive",
+        "X-Schemathesis-TestCaseId": "lvOcCr",
+        "Content-Type": "application/json",
+        "Cookie": "[Filtered]",
+        "Content-Length": "103"
+      },
+      "response": {
+        "status_code": 422,
+        "headers": {
+          "date": "Sun, 12 Jul 2026 13:57:17 GMT",
+          "server": "uvicorn",
+          "x-request-id": "0e397b23d59e4ea2a996c6c45fb2ac9e",
+          "content-length": "198",
+          "content-type": "application/json"
+        },
+        "body": "{\"detail\":{\"code\":\"ANALYZER_INPUT_INVALID\",\"message\":\"D\u1eef li\u1ec7u y\u00eau c\u1ea7u ph\u00e2n t\u00edch kh\u00f4ng h\u1ee3p l\u1ec7.\",\"correlation_id\":\"0e397b23d59e4ea2a996c6c45fb2ac9e\",\"stage\":\"request\",\"retryable\":false}}"
+      },
+      "link": null,
+      "checks": [
+        {
+          "name": "positive_data_acceptance",
+          "status": "failure",
+          "message": "API rejected schema-compliant request\n\nValid data should have been accepted\nExpected: 2xx, 401, 403, 404, 409, 5xx"
+        }
+      ],
+      "meta": {
+        "generation": {
+          "time": 2.1904999812250026e-05,
+          "mode": "positive"
+        },
+        "components": {
+          "COOKIE": "positive",
+          "BODY": "positive"
+        },
+        "phase": {
+          "name": "coverage",
+          "data": {
+            "type": "CoveragePhaseData",
+            "description": "Valid string",
+            "location": null,
+            "parameter": "hinh_session",
+            "parameter_location": "COOKIE",
+            "scenario": "valid_string"
+          }
+        },
+        "pool_draws": [],
+        "pool_misses": [
+          [
+            "body",
+            "analysis_id"
+          ]
+        ],
+        "semantic_draws": [],
+        "dictionary_draws": [],
+        "raw_containers": {
+          "COOKIE": {
+            "hinh_session": ""
+          }
+        }
+      },
+      "path": "/api/analyzer/tools/interval-extrema",
+      "path_parameters": {},
+      "query": {},
+      "case_headers": {},
+      "cookies": {
+        "hinh_session": "[Filtered]"
+      },
+      "case_body": {
+        "encoding": "json",
+        "value": {
+          "analysis_id": "0000000000000000",
+          "interval": {
+            "a": 0.0,
+            "b": 0.0,
+            "open_a": false,
+            "open_b": false
+          }
+        }
+      },
+      "media_type": "application/json",
+      "parent_index": null
+    }
+  ]
+}

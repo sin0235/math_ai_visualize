@@ -7,8 +7,18 @@ from app.db.models import UserRecord
 from app.db.session import DatabaseClient, get_database
 from app.repositories.activity import try_log_user_activity
 from app.repositories.history import RenderHistoryRepository
-from app.schemas.auth import RenderHistoryDetail, RenderHistoryItem, RenderHistoryPatchRequest, SceneRevisionResponse
+from app.repositories.scene_workspaces import SceneWorkspaceRepository
+from app.schemas.auth import (
+    RenderHistoryDetail,
+    RenderHistoryDetailV2,
+    RenderHistoryDetailV3,
+    RenderHistoryItem,
+    RenderHistoryPatchRequest,
+    RestoreHistoryV3Request,
+    SceneRevisionResponse,
+)
 from app.schemas.scene import MathScene, RenderPayload, RenderResponse
+from app.schemas.scene_v3 import CommittedSceneRefV3, SceneWorkspaceResponseV3
 
 router = APIRouter(prefix="/api/history", tags=["history"])
 
@@ -31,18 +41,36 @@ async def list_history(
 
 @router.get("/{job_id}", response_model=RenderHistoryDetail)
 async def get_history(job_id: str, user: UserRecord = Depends(get_current_user), db: DatabaseClient = Depends(get_database)) -> RenderHistoryDetail:
-    job = await RenderHistoryRepository(db).find_for_user(user.id, job_id)
+    repo = RenderHistoryRepository(db)
+    job = await repo.find_for_user(user.id, job_id)
     if job is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy lịch sử dựng hình.")
+    item = await render_history_item(repo, job)
+    if job.schema_version == "3.0":
+        snapshot = await repo.find_v3_snapshot_for_user(user.id, job_id)
+        if snapshot is None or snapshot.response_json is None:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Lịch sử v3 không có snapshot hợp lệ.")
+        try:
+            workspace = SceneWorkspaceResponseV3.model_validate_json(snapshot.response_json)
+            command_log = json.loads(snapshot.command_log_json)
+        except Exception as error:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Snapshot lịch sử v3 không hợp lệ.") from error
+        return RenderHistoryDetailV3(
+            **item.model_dump(),
+            workspace=workspace,
+            snapshot_revision=snapshot.snapshot_revision or workspace.scene.revision,
+            command_log=command_log,
+            render_request=parse_json_object(job.render_request_json),
+            runtime_settings=parse_json_object(job.runtime_settings_json),
+        )
     try:
         response = RenderResponse.model_validate_json(job.response_json) if job.response_json else None
         scene = response.scene if response else MathScene.model_validate_json(job.scene_json)
         payload = response.payload if response else RenderPayload.model_validate_json(job.payload_json)
         warnings = response.warnings if response else json.loads(job.warnings_json)
     except Exception as error:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Lịch sử này dùng định dạng cũ hoặc không còn tương thích với render v2.") from error
-    item = await render_history_item(RenderHistoryRepository(db), job)
-    return RenderHistoryDetail(
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Lịch sử này dùng định dạng cũ hoặc không còn tương thích với render v2.") from error
+    return RenderHistoryDetailV2(
         **item.model_dump(),
         scene=scene,
         payload=payload,
@@ -89,9 +117,57 @@ async def list_history_revisions(job_id: str, user: UserRecord = Depends(get_cur
             change_source=item.change_source,
             change_summary=item.change_summary,
             created_at=item.created_at,
+            schema_version=item.schema_version,
+            scene_id=item.scene_id,
+            snapshot_revision=item.snapshot_revision,
         )
         for item in revisions
     ]
+
+
+@router.post(
+    "/{job_id}/restore",
+    response_model=SceneWorkspaceResponseV3,
+    dependencies=[Depends(require_trusted_origin)],
+)
+async def restore_history_v3(
+    job_id: str,
+    request: RestoreHistoryV3Request,
+    user: UserRecord = Depends(get_current_user),
+    db: DatabaseClient = Depends(get_database),
+) -> SceneWorkspaceResponseV3:
+    repo = RenderHistoryRepository(db)
+    snapshot = await repo.find_v3_snapshot_for_user(user.id, job_id, request.snapshot_revision)
+    if snapshot is None or snapshot.response_json is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy snapshot lịch sử v3.")
+    try:
+        workspace = SceneWorkspaceResponseV3.model_validate_json(snapshot.response_json)
+    except Exception as error:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Snapshot lịch sử v3 không hợp lệ.") from error
+    await SceneWorkspaceRepository(db).restore_snapshot(user.id, snapshot.history_item_id, workspace)
+    from app.api.routes_render import workspace_response_v3
+    from app.services.committed_scene_v3 import load_committed_scene_v3
+
+    committed = await load_committed_scene_v3(
+        db,
+        user.id,
+        CommittedSceneRefV3(scene_id=workspace.scene.scene_id, revision=workspace.scene.revision),
+        require_trusted=False,
+    )
+    response = workspace_response_v3(
+        committed.result,
+        confirmed_revision=committed.workspace.confirmed_revision,
+        trusted_for_downstream=committed.trusted_for_downstream,
+    )
+    await try_log_user_activity(
+        db,
+        user.id,
+        "history_item.restored",
+        target_type="render_job",
+        target_id=job_id,
+        metadata={"scene_id": workspace.scene.scene_id, "revision": workspace.scene.revision},
+    )
+    return response
 
 
 @router.delete("/{job_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_trusted_origin)])

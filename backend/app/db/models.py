@@ -158,6 +158,10 @@ class SceneRevisionRecord:
     scene_json: str
     response_json: str | None
     created_at: str
+    schema_version: str = "2.0"
+    command_log_json: str = "[]"
+    scene_id: str | None = None
+    snapshot_revision: int | None = None
 
 
 @dataclass(frozen=True)

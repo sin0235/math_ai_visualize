@@ -1,0 +1,88 @@
+{
+  "operation": "POST /api/algebra/export/pdf",
+  "method": "POST",
+  "path_template": "/api/algebra/export/pdf",
+  "fingerprint": "a001111d",
+  "case_id": "RMjr0o",
+  "code_sample": "curl -X POST -H 'Content-Type: application/json' -H 'Cookie: [Filtered]' -d '{}' http://127.0.0.1:18766/api/algebra/export/pdf",
+  "sequence": [
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:18766/api/algebra/export/pdf",
+      "url_template": "http://127.0.0.1:18766/api/algebra/export/pdf",
+      "headers": {
+        "User-Agent": "schemathesis/4.22.4",
+        "Accept-Encoding": "gzip, deflate",
+        "Accept": "*/*",
+        "Connection": "keep-alive",
+        "X-Schemathesis-TestCaseId": "RMjr0o",
+        "Content-Type": "application/json",
+        "Cookie": "[Filtered]",
+        "Content-Length": "2"
+      },
+      "response": {
+        "status_code": 429,
+        "headers": {
+          "date": "Sun, 12 Jul 2026 13:58:08 GMT",
+          "server": "uvicorn",
+          "retry-after": "59",
+          "x-request-id": "571b8d6253cf48c2ae977f314106b92a",
+          "content-length": "62",
+          "content-type": "application/json"
+        },
+        "body": "{\"detail\":\"B\u1ea1n thao t\u00e1c qu\u00e1 nhanh. H\u00e3y th\u1eed l\u1ea1i sau.\"}"
+      },
+      "link": null,
+      "checks": [
+        {
+          "name": "status_code_conformance",
+          "status": "failure",
+          "message": "Undocumented HTTP status code\n\nReceived: 429\nDocumented: 200, 422, 403"
+        }
+      ],
+      "meta": {
+        "generation": {
+          "time": 2.9258999802550534e-05,
+          "mode": "positive"
+        },
+        "components": {
+          "COOKIE": "positive",
+          "BODY": "positive"
+        },
+        "phase": {
+          "name": "coverage",
+          "data": {
+            "type": "CoveragePhaseData",
+            "description": "Value null value",
+            "location": null,
+            "parameter": "hinh_session",
+            "parameter_location": "COOKIE",
+            "scenario": "null_value"
+          }
+        },
+        "pool_draws": [],
+        "pool_misses": [],
+        "semantic_draws": [],
+        "dictionary_draws": [],
+        "raw_containers": {
+          "COOKIE": {
+            "hinh_session": null
+          }
+        }
+      },
+      "path": "/api/algebra/export/pdf",
+      "path_parameters": {},
+      "query": {},
+      "case_headers": {},
+      "cookies": {
+        "hinh_session": "[Filtered]"
+      },
+      "case_body": {
+        "encoding": "json",
+        "value": {}
+      },
+      "media_type": "application/json",
+      "parent_index": null
+    }
+  ]
+}

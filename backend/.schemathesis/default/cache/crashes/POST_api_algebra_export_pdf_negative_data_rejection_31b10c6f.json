@@ -1,0 +1,98 @@
+{
+  "operation": "POST /api/algebra/export/pdf",
+  "method": "POST",
+  "path_template": "/api/algebra/export/pdf",
+  "fingerprint": "31b10c6f",
+  "case_id": "H4sJIN",
+  "code_sample": "curl -X POST -H 'Content-Type: application/json' -H 'Cookie: [Filtered]' -d '{\"response\": {\"answer\": \"\", \"input\": \"\", \"normalized_input\": \"\", \"problem_type\": \"\", \"status\": \"error\", \"topic\": \"\", \"cost_score\": false}}' http://127.0.0.1:18766/api/algebra/export/pdf",
+  "sequence": [
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:18766/api/algebra/export/pdf",
+      "url_template": "http://127.0.0.1:18766/api/algebra/export/pdf",
+      "headers": {
+        "User-Agent": "schemathesis/4.22.4",
+        "Accept-Encoding": "gzip, deflate",
+        "Accept": "*/*",
+        "Connection": "keep-alive",
+        "X-Schemathesis-TestCaseId": "H4sJIN",
+        "Content-Type": "application/json",
+        "Cookie": "[Filtered]",
+        "Content-Length": "138"
+      },
+      "response": {
+        "status_code": 429,
+        "headers": {
+          "date": "Sun, 12 Jul 2026 13:58:08 GMT",
+          "server": "uvicorn",
+          "retry-after": "59",
+          "x-request-id": "8e8cfd5fbd49466ca6b35fa556a9faa3",
+          "content-length": "62",
+          "content-type": "application/json"
+        },
+        "body": "{\"detail\":\"B\u1ea1n thao t\u00e1c qu\u00e1 nhanh. H\u00e3y th\u1eed l\u1ea1i sau.\"}"
+      },
+      "link": null,
+      "checks": [
+        {
+          "name": "negative_data_rejection",
+          "status": "failure",
+          "message": "API accepted schema-violating request\n\nInvalid data should have been rejected\nExpected: 400, 401, 403, 404, 405, 406, 409, 422, 428, 5xx\nInvalid component: in body - response -> cost_score: Incorrect type"
+        }
+      ],
+      "meta": {
+        "generation": {
+          "time": 1.1524999990797369e-05,
+          "mode": "negative"
+        },
+        "components": {
+          "COOKIE": "positive",
+          "BODY": "negative"
+        },
+        "phase": {
+          "name": "coverage",
+          "data": {
+            "type": "CoveragePhaseData",
+            "description": "response -> cost_score: Incorrect type",
+            "location": "/properties/response/anyOf/0/properties/cost_score/anyOf/0/type",
+            "parameter": "application/json",
+            "parameter_location": "BODY",
+            "scenario": "incorrect_type"
+          }
+        },
+        "pool_draws": [],
+        "pool_misses": [],
+        "semantic_draws": [],
+        "dictionary_draws": [],
+        "raw_containers": {
+          "COOKIE": {
+            "hinh_session": ""
+          }
+        }
+      },
+      "path": "/api/algebra/export/pdf",
+      "path_parameters": {},
+      "query": {},
+      "case_headers": {},
+      "cookies": {
+        "hinh_session": "[Filtered]"
+      },
+      "case_body": {
+        "encoding": "json",
+        "value": {
+          "response": {
+            "answer": "",
+            "input": "",
+            "normalized_input": "",
+            "problem_type": "",
+            "status": "error",
+            "topic": "",
+            "cost_score": false
+          }
+        }
+      },
+      "media_type": "application/json",
+      "parent_index": null
+    }
+  ]
+}

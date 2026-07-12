@@ -250,4 +250,49 @@
     flex-wrap: nowrap;
     padding-bottom: 3px;
   }
+
+  .fa2-header,
+  .fa2-sticky-controls,
+  .fa2-results-panel,
+  .fa2-result-shell,
+  .fa2-graph-column,
+  .fa2-analysis-column,
+  .fa2-section,
+  .fa2-graph-card {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .fa2-header {
+    align-items: flex-start;
+  }
+
+  .fa2-formula-row-control > button,
+  .fa2-action-bar button,
+  .fa2-action-bar summary,
+  .fa2-mini-input {
+    min-height: 44px;
+  }
+
+  .fa2-expression-preview,
+  .fa2-table-scroll,
+  .bbt-v2-scroll,
+  .fa2-katex-scroll {
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+  }
+
+  .fa2-graph-card .geogebra-view,
+  .fa2-svg-graph {
+    min-height: 320px;
+    height: min(54dvh, 480px);
+  }
+
+  .fa2-action-popover,
+  .fa2-graph-settings-panel {
+    width: min(100%, calc(100vw - 28px));
+    max-height: calc(100dvh - 84px);
+    overflow-y: auto;
+  }
 }
