@@ -1,0 +1,17 @@
+evidence_id: MC-QA-02
+claim: Frontend build được và các kiểm tra baseline mô phỏng, giá trị đồ thị đều vượt qua.
+commit_sha: 5cac5199def7fd960fcf2ab27a02a9fa3cc1f07a
+workspace_clean: false
+environment: local
+collected_at_utc: 2026-07-12T02:14:35Z
+collector: automated-session
+runtime: Node 24.18.0, npm 11.16.0
+actual:
+  - Simulation baseline passed, count 15, grade-12 count 9.
+  - Function graph value checks passed.
+result: passed
+raw_files:
+  - 01-raw/simulation.log
+  - 01-raw/analyzer-values.log
+  - 01-raw/exit-code.txt
+  - 01-raw/ci-frontend-product.log

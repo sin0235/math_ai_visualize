@@ -1,0 +1,155 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/sin235/Projects/math_ai_visualize/backend
+configfile: pyproject.toml
+testpaths: tests
+plugins: anyio-4.14.1, cov-7.1.0
+collected 1660 items
+
+tests/test_admin_packages.py ......                                      [  0%]
+tests/test_ai_prompt.py ..............................                   [  2%]
+tests/test_ai_provider_fallbacks.py .................................... [  4%]
+..........................                                               [  5%]
+tests/test_ai_providers.py .........                                     [  6%]
+tests/test_alerts_and_metrics.py ...                                     [  6%]
+tests/test_algebra_ai_explainer.py ..                                    [  6%]
+tests/test_algebra_ai_extraction_merge.py ...                            [  6%]
+tests/test_algebra_calculus_solver.py .............                      [  7%]
+tests/test_algebra_combinatorics_solver.py .........                     [  8%]
+tests/test_algebra_complex_solver.py ..                                  [  8%]
+tests/test_algebra_core_matrix.py ...................................... [ 10%]
+.................                                                        [ 11%]
+tests/test_algebra_cost_circuit_pdf.py ....                              [ 11%]
+tests/test_algebra_domain.py ........                                    [ 12%]
+tests/test_algebra_equation_solver.py ............                       [ 13%]
+tests/test_algebra_exp_log_solver.py ..............                      [ 13%]
+tests/test_algebra_inequality_solver.py ......                           [ 14%]
+tests/test_algebra_interpreter.py ........                               [ 14%]
+tests/test_algebra_parameter_solver.py ........                          [ 15%]
+tests/test_algebra_parser.py .........................                   [ 16%]
+tests/test_algebra_security_and_calculus_verify.py ..................... [ 18%]
+...                                                                      [ 18%]
+tests/test_algebra_sequence_solver.py .......                            [ 18%]
+tests/test_algebra_statistics.py ....                                    [ 18%]
+tests/test_algebra_system_solver.py ...                                  [ 19%]
+tests/test_algebra_trig_solver.py ............                           [ 19%]
+tests/test_algebra_verifier.py ..                                        [ 19%]
+tests/test_algebra_wave3_correctness.py ...............                  [ 20%]
+tests/test_analytics_monitoring.py ............                          [ 21%]
+tests/test_analyzer_history.py ........                                  [ 22%]
+tests/test_analyzer_links.py ....                                        [ 22%]
+tests/test_auth_guards.py ........                                       [ 22%]
+tests/test_auth_product.py .....................                         [ 24%]
+tests/test_byok_hardening_csv_matrix.py ................................ [ 25%]
+........................................................................ [ 30%]
+........................................................................ [ 34%]
+........................................................................ [ 38%]
+........................................................................ [ 43%]
+........................................................................ [ 47%]
+........................................................................ [ 51%]
+.....................................                                    [ 54%]
+tests/test_cas_repair.py .......                                         [ 54%]
+tests/test_cas_verifier.py ............................................. [ 57%]
+.........                                                                [ 57%]
+tests/test_chat_stream.py ....                                           [ 58%]
+tests/test_cross_check.py .........                                      [ 58%]
+tests/test_database_cleanup.py ...........                               [ 59%]
+tests/test_db_session.py ...                                             [ 59%]
+tests/test_diagram_and_variants.py .....                                 [ 59%]
+tests/test_exports.py ............                                       [ 60%]
+tests/test_expression_eval.py ................                           [ 61%]
+tests/test_extractor_pipeline.py .........                               [ 62%]
+tests/test_feedback.py ...                                               [ 62%]
+tests/test_function_analyzer.py ........................................ [ 64%]
+.........................................................                [ 68%]
+tests/test_geometry_engine.py ....................................       [ 70%]
+tests/test_geometry_facts.py ....                                        [ 70%]
+tests/test_geometry_kernel_v3.py ......                                  [ 70%]
+tests/test_geometry_nsimplify.py ...........                             [ 71%]
+tests/test_geometry_scenes_large_scale.py .............................. [ 73%]
+.......................................................................  [ 77%]
+tests/test_geometry_solver_phase5_regression.py ...                      [ 77%]
+tests/test_health_security.py ..                                         [ 77%]
+tests/test_history_repository.py ..                                      [ 78%]
+tests/test_linalg.py .....                                               [ 78%]
+tests/test_math_core_large_scale.py .................................... [ 80%]
+................................................                         [ 83%]
+tests/test_migrations.py ..................                              [ 84%]
+tests/test_model_provider.py ......................                      [ 85%]
+tests/test_model_registry.py ........................................... [ 88%]
+...                                                                      [ 88%]
+tests/test_ocr.py .....................................                  [ 90%]
+tests/test_ocr_local_provider.py ....                                    [ 91%]
+tests/test_ocr_pipeline.py ...                                           [ 91%]
+tests/test_problem_classifier.py .....                                   [ 91%]
+tests/test_quality_advisory.py ......                                    [ 91%]
+tests/test_refactor_boundaries.py .......                                [ 92%]
+tests/test_render_projection_v3.py ....                                  [ 92%]
+tests/test_routes_algebra_solve.py ...                                   [ 92%]
+tests/test_routes_render.py .                                            [ 92%]
+tests/test_routes_solve.py ..                                            [ 92%]
+tests/test_scene_commands_v3.py .....                                    [ 93%]
+tests/test_scene_output_normalization.py ........                        [ 93%]
+tests/test_scene_pipeline_v3.py ....                                     [ 93%]
+tests/test_scene_trust.py ....                                           [ 94%]
+tests/test_scene_v3.py .....                                             [ 94%]
+tests/test_scene_validator.py .....................                      [ 95%]
+tests/test_scene_workspace_v3.py ..                                      [ 95%]
+tests/test_settings_defaults.py ............                             [ 96%]
+tests/test_solver_service.py ...................................         [ 98%]
+tests/test_upload_storage.py ...............                             [ 99%]
+tests/test_user_settings_api.py .......                                  [100%]
+
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/fastapi/testclient.py:1
+  /home/sin235/Projects/math_ai_visualize/backend/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+.venv/lib/python3.12/site-packages/passlib/utils/__init__.py:854
+  /home/sin235/Projects/math_ai_visualize/backend/.venv/lib/python3.12/site-packages/passlib/utils/__init__.py:854: DeprecationWarning: 'crypt' is deprecated and slated for removal in Python 3.13
+    from crypt import crypt as _crypt
+
+tests/test_admin_packages.py::test_admin_rejects_unknown_or_inactive_user_plan
+tests/test_admin_packages.py::test_admin_rejects_unknown_or_inactive_user_plan
+  /home/sin235/Projects/math_ai_visualize/backend/app/api/routes_admin.py:348: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    patch["plan"] = await validate_known_plan(repo, str(patch["plan"]))
+
+tests/test_admin_packages.py::test_admin_rejects_unknown_or_inactive_user_plan
+  /home/sin235/Projects/math_ai_visualize/backend/app/api/routes_admin.py:288: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    await validate_known_plan(repo, plan)
+
+tests/test_admin_packages.py::test_legacy_plan_settings_is_rejected
+  /home/sin235/Projects/math_ai_visualize/backend/app/api/routes_admin.py:625: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    value = validate_system_setting(request.key, raw_value)
+
+tests/test_function_analyzer.py::test_analyzer_api_worker_returns_clean_payload
+tests/test_function_analyzer.py::test_analyzer_session_and_tool_use_serialized_evidence
+tests/test_function_analyzer.py::test_analyzer_session_and_tool_use_serialized_evidence
+tests/test_function_analyzer.py::test_analyzer_cache_is_scoped_and_reuses_completed_result
+tests/test_function_analyzer.py::test_analyzer_cache_is_scoped_and_reuses_completed_result
+tests/test_function_analyzer.py::test_analyzer_shared_job_survives_one_waiter_disconnect
+tests/test_function_analyzer.py::test_analyzer_last_waiter_disconnect_terminates_process
+tests/test_function_analyzer.py::test_analyzer_timeout_cleans_process_and_inflight
+  /usr/lib/python3.12/multiprocessing/popen_fork.py:66: DeprecationWarning: This process (pid=40211) is multi-threaded, use of fork() may lead to deadlocks in the child.
+    self.pid = os.fork()
+
+tests/test_model_registry.py::test_validate_system_setting_rejects_mismatched_provider_model
+  /home/sin235/Projects/math_ai_visualize/backend/app/api/routes_admin.py:762: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    validate_ai_profiles_rules(SystemAiProfiles.model_validate(validated))
+
+tests/test_model_registry.py::test_validate_tier_profiles_rejects_model_only_refs
+  /home/sin235/Projects/math_ai_visualize/backend/tests/test_model_registry.py:546: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    validate_system_setting("ai_tier_profiles", {
+
+tests/test_ocr.py::test_ocr_enforces_daily_plan_limit
+  /home/sin235/Projects/math_ai_visualize/backend/.venv/lib/python3.12/site-packages/starlette/testclient.py:454: DeprecationWarning: Setting per-request cookies=<...> is being deprecated, because the expected behaviour on cookie persistence is ambiguous. Set cookies directly on the client instance instead.
+    return super().request(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: /home/sin235/Projects/math_ai_visualize/minh_chung/10-chat-luong-san-pham/MC-QA-03/01-raw/pytest.xml -
+================================ tests coverage ================================
+_______________ coverage: platform linux, python 3.12.3-final-0 ________________
+
+Coverage XML written to file /home/sin235/Projects/math_ai_visualize/minh_chung/10-chat-luong-san-pham/MC-QA-03/01-raw/coverage.xml
+Coverage JSON written to file /home/sin235/Projects/math_ai_visualize/minh_chung/10-chat-luong-san-pham/MC-QA-03/01-raw/coverage.json
+================ 1660 passed, 17 warnings in 440.29s (0:07:20) =================

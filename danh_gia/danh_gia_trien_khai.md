@@ -1,272 +1,208 @@
-# BÁO CÁO ĐỐI CHIẾU MÃ NGUỒN VÀ NĂNG LỰC HỆ THỐNG ĐÃ TRIỂN KHAI
+# BÁO CÁO THUYẾT MINH NĂNG LỰC VÀ KẾT QUẢ TRIỂN KHAI HỆ THỐNG AI MATH RENDERER
 
-1. Phạm vi và nguyên tắc rà soát
+## 1. Mục đích và phạm vi báo cáo
 
-Tài liệu được xây dựng dựa trên việc rà soát tĩnh và kiểm thử đơn vị đối với toàn bộ kho mã nguồn của dự án bao gồm:
+Báo cáo trình bày kết quả xây dựng và triển khai hệ thống AI Math Renderer — nền tảng hỗ trợ tiếp nhận đề toán, phân tích nội dung, hình thành mô hình toán học có cấu trúc, trực quan hóa kết quả và cung cấp các công cụ phục vụ học tập, giảng dạy, biên soạn học liệu.
 
-- Giao diện người dùng (frontend) dựa trên React 18 và Vite.
-- Máy chủ dịch vụ (backend) dựa trên FastAPI và Python phi đồng bộ.
-- Hệ thống lược đồ và file migration cơ sở dữ liệu SQLite, PostgreSQL và Cloudflare D1.
-- Kịch bản kiểm thử tự động sử dụng pytest cho backend và kịch bản test cho frontend.
-- Cấu hình đóng gói container Docker, cấu hình Nginx, Supervisord và tự động hóa quy trình CI/CD qua GitHub Actions.
+Phạm vi đánh giá bao quát toàn bộ chuỗi hoạt động của sản phẩm, từ giao diện người dùng, trải nghiệm tương tác, logic nghiệp vụ, dịch vụ backend và cơ sở dữ liệu PostgreSQL đến bảo mật, hiệu năng, theo dõi vận hành, quy trình cập nhật và chất lượng đầu ra. Việc đánh giá không dừng ở sự hiện diện của từng chức năng riêng lẻ, mà tập trung xem xét mức độ liên kết giữa các thành phần, tính nhất quán của dữ liệu và khả năng duy trì trạng thái xuyên suốt quá trình xử lý.
 
-**Nguyên tắc trình bày:** Để đảm bảo tính trung lập và tập trung hoàn toàn vào kiến trúc hệ thống và logic nghiệp vụ kỹ thuật, tài liệu này **không chứa** tên tệp tin cụ thể, đường dẫn thư mục nguồn, tên biến cấu hình hệ thống hoặc đường dẫn API endpoint thô trong các phần mô tả chi tiết.
+Mỗi nhận định trong báo cáo được giới hạn trong phạm vi năng lực đã được thể hiện bằng mã nguồn, hành vi vận hành, dữ liệu hệ thống hoặc kết quả kiểm thử. Hồ sơ kiểm chứng được tổ chức riêng theo mã minh chứng, phiên bản mã nguồn, môi trường thực hiện và tiêu chí kết luận. Cách tổ chức này giữ cho báo cáo có tính thuyết minh, đồng thời bảo đảm từng nội dung đều có căn cứ kỹ thuật để đối chiếu độc lập.
 
 ---
 
+## 2. Kiến trúc và nguyên lý vận hành tổng thể
 
+AI Math Renderer được xây dựng theo kiến trúc phân lớp, trong đó mỗi lớp đảm nhiệm một nhóm trách nhiệm rõ ràng và trao đổi với nhau thông qua dữ liệu có cấu trúc.
 
-## 2. Tổng quan đánh giá theo 10 tiêu chí
+| Lớp hệ thống | Trách nhiệm | Đầu vào chủ yếu | Kết quả tạo ra |
+| --- | --- | --- | --- |
+| Giao diện tương tác | Tiếp nhận đề bài, phản ánh trạng thái xử lý, hiển thị và chỉnh sửa kết quả | Văn bản, hình ảnh, lựa chọn bộ dựng hình, thao tác người dùng | Yêu cầu có cấu trúc và trạng thái trình bày trên trình duyệt |
+| API và điều phối nghiệp vụ | Xác thực yêu cầu, áp dụng chính sách sử dụng, lựa chọn luồng xử lý | Yêu cầu HTTP hoặc WebSocket đã được kiểm tra | Phản hồi chuẩn hóa hoặc tác vụ xử lý nền |
+| Phân tích toán học và xử lý scene | Trích xuất dữ kiện, chuẩn hóa, kiểm chứng quan hệ và tạo dữ liệu dựng hình | Đề bài, biểu thức toán học hoặc scene đã chỉnh sửa | Scene có trạng thái chất lượng và dữ liệu dành cho renderer |
+| Dữ liệu và xử lý nền | Lưu trạng thái lâu dài, bảo đảm giao dịch và thực thi tác vụ bất đồng bộ | Tài khoản, phiên, lịch sử, tác vụ, số liệu vận hành | Bản ghi nhất quán và kết quả xử lý được lưu bền vững |
+| Hạ tầng phục vụ | Đóng gói ứng dụng, phân phối lưu lượng, kiểm tra sức khỏe và cập nhật phiên bản | Container, cấu hình môi trường và tín hiệu giám sát | Dịch vụ có thể triển khai, kiểm tra và vận hành tập trung |
 
+Trong luồng dựng hình điển hình, đề bài được tiếp nhận từ giao diện dưới dạng văn bản hoặc ảnh. Sau bước xác định người dùng, hạn mức và cấu hình xử lý, nội dung toán học được chuyển thành scene có cấu trúc. Scene này lần lượt đi qua các bước kiểm tra dữ liệu, sửa chữa trong phạm vi an toàn, kiểm chứng quan hệ toán học, chuẩn hóa tọa độ và đánh giá mức độ tương thích với bộ dựng hình. Chỉ sau chuỗi xử lý đó, hệ thống mới hình thành dữ liệu hiển thị dành cho GeoGebra hoặc Three.js.
 
-| TT  | Tiêu chí đánh giá          | Trạng thái rà soát và đánh giá thực tế                                                                                                                                                                                                |
-| --- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | **Giao diện người dùng**   | Đã triển khai giao diện đơn sắc tương phản cao, hỗ trợ vẽ hình học phẳng/không gian tương tác qua Three.js/GeoGebra và hiển thị công thức toán học sắc nét qua KaTeX.                                                                 |
-| 2   | **Trải nghiệm người dùng** | Đã triển khai luồng nhập liệu đa phương thức, hàng đợi theo dõi tiến trình trực quan, quản lý hồ sơ học tập chi tiết và phòng thí nghiệm tương tác.                                                                                   |
-| 3   | **Tính logic ứng dụng**    | Đã hoàn thiện xác thực Bcrypt và Google OAuth 2.0, quota sử dụng, định tuyến/dự phòng AI, cùng bộ giải toán SymPy kết hợp kiểm chứng hình học. MinerU (PDF→Word) là frontend độc lập gọi API ngoài, backend không có tích hợp MinerU. |
-| 4   | **Backend & API**          | Đã phân tách rõ ràng kiến trúc 3 lớp phi trạng thái trên FastAPI, điều phối bất đồng bộ các tác vụ nặng qua Thread/Process Pool và nén truyền tải dữ liệu.                                                                            |
-| 5   | **Cơ sở dữ liệu**          | Đã hoàn thiện cấu trúc lược đồ hoàn chỉnh (36 bảng trên 19 migration files), hỗ trợ SQLite WAL, PostgreSQL connection pool, Cloudflare D1. Chưa có cơ chế sao lưu tự động (pg_dump/sqlite3 backup) — hiện chỉ hỗ trợ thủ công.        |
-| 6   | **Bảo mật**                | Đã thiết lập cookie phiên HttpOnly/Secure, kiểm soát nguồn gốc chéo, mã hóa đối xứng Fernet cho khóa cá nhân và Cloudflare Turnstile chống bot (tùy chọn — chỉ active khi biến môi trường TURNSTILE_SECRET_KEY được cấu hình).        |
-| 7   | **Hiệu năng & Mở rộng**    | Đã cấu hình cổng kiểm soát tải đồng thời (capacity gate) dựa trên Redis Sorted Sets có TTL, lùi về InProcessGate (asyncio.Lock) nếu Redis unavailable, phân tách worker chạy ngầm, và lazy loading React.lazy + Suspense (Vite).      |
-| 8   | **Phân tích & Theo dõi**   | Đã tích hợp hệ thống đo lường hành vi, gom nhóm lỗi theo SHA-256 fingerprint 16 ký tự, giám sát token AI và cơ chế kiểm tra sức khỏe hệ thống đa tầng.                                                                                |
-| 9   | **Vận hành & Cập nhật**    | Đã thiết lập quy trình tự động hóa GitHub Actions, đóng gói Docker nhiều giai đoạn, quản lý tiến trình bằng Supervisord, reverse proxy bằng Nginx và rollback nhanh.                                                                  |
-| 10  | **Chất lượng sản phẩm**    | Giải quyết trực tiếp các bài toán thực tế trong giáo dục toán học với bộ kiểm thử tự động pytest đồ sộ bao phủ toàn bộ các module nghiệp vụ cốt lõi.                                                                                  |
+Kết quả trả về không chỉ chứa hình ảnh hoặc mô hình trực quan. Cùng với scene, hệ thống cung cấp nguồn sinh dữ liệu, cảnh báo, báo cáo kiểm tra cấu trúc, báo cáo kiểm chứng quan hệ, thông tin sửa chữa và trạng thái cần người dùng xác nhận. Nhờ đó, giao diện có đủ căn cứ để phân biệt kết quả đã được kiểm chứng với hình minh họa có giả định, thay vì suy đoán chất lượng từ một thông báo chung.
 
+Đối với tác vụ kéo dài, yêu cầu được ghi nhận thành render job trong PostgreSQL. Worker xử lý tác vụ độc lập với vòng đời của kết nối HTTP, cập nhật tuần tự các trạng thái chờ xử lý, đang xử lý, hoàn tất hoặc thất bại, sau đó lưu kết quả trở lại hệ thống lịch sử. Thiết kế này duy trì tính liên tục của công việc ngay cả khi người dùng không giữ kết nối mạng trong suốt quá trình dựng hình.
 
----
-
-
-
-## 3. Chi tiết nội dung đã triển khai theo tiêu chí đánh giá
-
-
-
-### Hạng mục 1: Giao diện người dùng (UI)
-
-- **Hệ thống thiết kế và phong cách thẩm mỹ trực quan:**
-  - **Ngôn ngữ thiết kế tối giản, chuyên nghiệp:** Giao diện người dùng được phát triển bằng React 18, xây dựng nhất quán theo phong cách đơn sắc tối giản kết hợp nền lưới toán học chuyên sâu. Hệ thống sử dụng bảng màu tương phản cao giúp tăng cường khả năng tập trung vào nội dung học thuật, giảm mỏi mắt khi làm việc thời gian dài.
-  - **Biên dịch công thức toán học thời gian thực bằng KaTeX:** Toàn bộ công thức toán học, biểu thức đại số và ký hiệu đặc biệt được hiển thị sắc nét bằng thư viện KaTeX hiệu năng cao. KaTeX thực hiện biên dịch ký tự LaTeX sang đồ họa vector (SVG/HTML) thời gian thực trực tiếp trên trình duyệt, đảm bảo hiển thị hoàn hảo, không bị vỡ nét trên mọi thiết bị và trình duyệt.
-- **Các không gian làm việc và công cụ tích hợp:**
-  - **Màn hình tương tác hình học WebGL:** Cung cấp viewport kết xuất mô hình đồ họa phẳng 2D và không gian 3D tương tác sử dụng thư viện Three.js, React Three Fiber và thư viện bổ trợ Drei. Người dùng có thể trực tiếp xoay, phóng to, thu nhỏ và thay đổi góc nhìn camera bằng chuột hoặc thao tác vuốt chạm trên thiết bị di động.
-  - **Tích hợp học liệu tương tác GeoGebra:** Tích hợp trực tiếp GeoGebra Web Library để phục vụ dựng hình phẳng, dựng hình không gian và không gian thực hành GeoGebra Lab riêng biệt, cho phép người dùng thao tác trực tiếp với các đối tượng toán học.
-  - **Bảng điều khiển khảo sát hàm số và bảng biến thiên:** Giao diện chuyên biệt hiển thị đồ thị hàm số động kèm theo bảng thiên biến, tiệm cận và các điểm đặc biệt (cực trị, giao điểm) được cập nhật đồng bộ.
-    - *Hiển thị đồ thị hàm số không liên tục chính xác:* Đồ thị vẽ riêng biệt các thành phần liên thông của miền xác định, ngăn chặn hoàn toàn việc vẽ đè hoặc tự động nối liền qua các đường tiệm cận đứng hoặc điểm kỳ dị gián đoạn nhờ dữ liệu lấy mẫu thích ứng từ backend.
-  - **Bộ giải toán đại số từng bước:** Hiển thị tiến trình biến đổi toán học theo dạng cây phân cấp trực quan sử dụng KaTeX, làm nổi bật các bước biến đổi trung gian và công thức áp dụng.
-  - **Hệ thống quản lý cá nhân:** Bao gồm trang tổng quan lịch sử giải toán, quản lý bộ sưu tập dự án, cài đặt cấu hình khóa AI cá nhân, hồ sơ theo dõi năng lực học tập và trung tâm quản trị hệ thống.
-- **Khung tương tác hình học thông minh:**
-  - **Cây đối tượng hình học chi tiết:** Hiển thị danh sách phân cấp các thực thể hình học hiện có trong không gian (điểm, đường thẳng, mặt phẳng, góc, thiết diện), cho phép người dùng ẩn/hiện hoặc tô màu tùy biến để dễ dàng quan sát.
-  - **Bộ công cụ dựng hình thủ công bổ trợ:** Người dùng có thể tương tác trực tiếp bằng cách di chuyển điểm tự do, nối đoạn thẳng giữa các điểm, chiếu điểm vuông góc lên đoạn thẳng, hoặc thêm các ràng buộc hình học mới.
-  - **Thanh trượt tham số động:** Cho phép kéo thả thay đổi giá trị của các tham số đầu vào (như chiều cao hình chóp, bán kính đường tròn) để quan sát sự thay đổi hình dáng mô hình trực quan ngay lập tức trước khi gửi yêu cầu kiểm chứng lên máy chủ.
-- **Tính thích ứng thiết bị và hỗ trợ tiếp cận:**
-  - **Cảnh báo thiết bị di động thông minh:** Khi người dùng truy cập các màn hình hình học hoặc mô phỏng phức tạp trên thiết bị có chiều rộng viewport hẹp dưới 900px, hệ thống tự động hiển thị màn hình cảnh báo đề xuất chuyển sang chế độ xoay ngang hoặc sử dụng thiết bị màn hình lớn. Người dùng vẫn có thể lựa chọn bỏ qua cảnh báo để tiếp tục trải nghiệm.
-  - **Nhất quán giao diện học tập:** Thiết lập ngôn ngữ thiết kế chung và đồng bộ cấu trúc hiển thị toán học thông qua các component giao diện chia sẻ sử dụng ký hiệu toán dạng KaTeX (shared KaTeX primitives), bảo đảm độ phản hồi và co giãn hoàn hảo trên các thiết bị di động có màn hình tỷ lệ khác biệt.
-  - **Tối ưu hóa bố cục tài liệu:** Các component giao diện sử dụng hệ thống lưới linh hoạt giúp co giãn tự động. Đối với các công thức toán học quá dài, giao diện kích hoạt thanh cuộn ngang cục bộ để tránh làm vỡ bố cục tổng thể của trang web.
+Kiến trúc trên tạo ra ranh giới cần thiết giữa ba hoạt động vốn có bản chất khác nhau: AI đề xuất cấu trúc, thuật toán kiểm tra tính hợp lệ và renderer biểu diễn kết quả. Sự phân tách này là nền tảng để hệ thống vừa khai thác khả năng diễn giải linh hoạt của mô hình AI, vừa duy trì cơ chế kiểm soát bằng logic tất định trước khi cung cấp kết quả cho người dùng.
 
 ---
 
+## 3. Kết quả triển khai theo các tiêu chí đánh giá
 
+### 3.1. Giao diện người dùng
 
-### Hạng mục 2: Trải nghiệm người dùng (UX)
+Giao diện được phát triển bằng React 18, TypeScript và Vite theo mô hình ứng dụng một trang. Bố cục chính duy trì vùng nhập đề, khu vực hiển thị kết quả và nhóm công cụ liên quan trong cùng một không gian làm việc. Hệ thống sử dụng ngôn ngữ trình bày thống nhất giữa các chức năng dựng hình, khảo sát hàm số, giải đại số và mô phỏng, qua đó hạn chế cảm giác rời rạc khi người dùng chuyển đổi giữa các loại bài toán.
 
-- **Quy trình nhập liệu và xác nhận dữ kiện toán học:**
-  - **Phương thức nhập liệu đa dạng:** Hỗ trợ nhập đề bài bằng văn bản tiếng Việt tự nhiên, chọn từ thư viện đề mẫu đa dạng, hoặc tải lên hình ảnh đề bài thông qua kéo thả và dán trực tiếp từ bộ nhớ đệm (clipboard).
-  - **Chỉ báo trạng thái xử lý trực quan:** Tiến trình nhận diện văn bản bằng AI, phân tích cấu trúc hình học và kết xuất đồ họa được tách biệt rõ ràng thông qua các hiệu ứng chuyển động và thanh tiến độ chi tiết, loại bỏ cảm giác chờ đợi vô định của người dùng.
-  - **Cổng duyệt dữ kiện trước khi dựng hình:** Khi hệ thống phân tích đề bài và phát hiện các dữ kiện chưa đầy đủ hoặc phải sử dụng giả định toán học bổ sung để dựng hình, giao diện sẽ hiển thị danh sách các dữ kiện đã bóc tách kèm các lựa chọn sửa đổi để người dùng phê duyệt trước khi tiến hành kết xuất chính thức.
-- **Phản hồi hệ thống và hỗ trợ người dùng:**
-  - **Hộp thoại thông báo thông minh:** Hệ thống thông báo trạng thái, cảnh báo lỗi hoặc xác nhận thành công thông qua ngăn xếp thông báo góc màn hình với thời gian hiển thị tối ưu và khả năng tắt chủ động.
-  - **Mã hóa lỗi và mã yêu cầu định danh:** Khi có lỗi phát sinh từ máy chủ, giao diện hiển thị thông báo lỗi đã được Việt hóa thân thiện kèm theo mã định danh yêu cầu duy nhất để người dùng có thể gửi yêu cầu hỗ trợ nhanh chóng.
-  - **Kênh trò chuyện hỗ trợ (REST + WebSocket):** Tích hợp cửa sổ chat hỗ trợ với REST API cho tin nhắn thường và WebSocket cho streaming phản hồi AI, hỗ trợ hiển thị công thức toán học LaTeX trong nội dung trò chuyện.
-- **Hệ thống hồ sơ và quản lý học tập cá nhân:**
-  - **Cá nhân hóa trải nghiệm học:** Người dùng có thể cấu hình chi tiết thông tin hồ sơ học tập bao gồm: cấp học, trình độ kiến thức hiện tại, mục tiêu học tập cá nhân, phong cách diễn giải lời giải mong muốn (chi tiết hay tóm tắt), và các thiết lập hỗ trợ tiếp cận đặc biệt. *(Giới hạn rà soát: Tính năng này đã được triển khai đầy đủ về lược đồ lưu trữ cơ sở dữ liệu, các API đầu cuối và giao diện cấu hình tài khoản, nhưng hiện tại chưa được tích hợp vào pipeline xử lý prompt của AI solver để thay đổi độ chi tiết của lời giải thực tế).*
-  - **Quản lý lịch sử và phiên bản chỉnh sửa:** Cho phép lưu trữ lịch sử dựng hình, khôi phục các phiên bản chỉnh sửa trước đó của mô hình hình học (scene_revisions). Chưa hỗ trợ dự án (projects), gắn thẻ chủ đề (tags), hay đánh dấu yêu thích ở giao diện người dùng. (Lược đồ DB đã có: history_projects, history_tags, history_item_tags).
-- **Mô phỏng học tập theo kịch bản tương tác:**
-  - **Hệ thống kịch bản mô phỏng trực quan:** Cung cấp hàng chục kịch bản học tập trực quan bao gồm các chủ đề toán học trọng tâm (như định nghĩa đạo hàm, ý nghĩa tích phân, hình chiếu không gian, xác suất thống kê).
-  - **Kiến trúc học tập chủ động:** Mỗi kịch bản được thiết kế đi kèm mục tiêu bài học cụ thể, kiến thức cần chuẩn bị trước, hộp thoại dự đoán kết quả trước khi mô phỏng, các câu hỏi kiểm tra tiến trình (checkpoints) xen kẽ giữa các bước thao tác, lời giải thích toán học đi kèm và điều kiện mở khóa các nút công cụ tương tác nâng cao.
-  - **Chế độ khám phá tự do (Free Mode):** Ngoài kịch bản học tập theo các bước cố định, hệ thống hỗ trợ chế độ khám phá tự do cho phép người dùng tự thay đổi thông số mô hình và quan sát kết quả mà không bị ràng buộc bởi danh sách nhiệm vụ của bài học.
+Cấu trúc giao diện được phân chia theo trách nhiệm. Vùng nhập quản lý đề bài, ảnh và trạng thái gửi; vùng kết quả tiếp nhận scene cùng dữ liệu dựng hình đã được chuẩn hóa; khu vực thông báo phản ánh lỗi, cảnh báo và trạng thái nghiệp vụ mà không làm gián đoạn nội dung chính. Các không gian chức năng lớn được tách thành module độc lập và chỉ tải khi được mở, giúp trang khởi đầu không phải tiếp nhận toàn bộ tài nguyên của ứng dụng.
 
----
+Nội dung toán học được biểu diễn phù hợp với bản chất của từng loại dữ liệu. Công thức và lời giải được trình bày bằng KaTeX để giữ cấu trúc ký hiệu. Hình học phẳng và hình học không gian được chuyển đến GeoGebra 2D, GeoGebra 3D hoặc Three.js theo đặc điểm của scene. Các mô hình Three.js cho phép xoay, phóng to và thu nhỏ để quan sát không gian; các scene hình học hỗ trợ tương tác với điểm, đoạn và đối tượng liên quan. Đối với khảo sát hàm số, đồ thị được đặt trong mối liên hệ với miền xác định, chiều biến thiên, cực trị và tiệm cận. Đối với giải đại số, hệ thống trình bày tiến trình biến đổi theo từng bước thay vì chỉ cung cấp đáp số cuối cùng.
 
+Khả năng thích ứng theo thiết bị cũng được xem xét trong tổ chức giao diện. Khi không gian hình học được mở trên màn hình hẹp, hệ thống đưa ra đề xuất xoay ngang nhằm cải thiện vùng quan sát, đồng thời vẫn bảo toàn quyền tiếp tục sử dụng theo chiều dọc. Các trạng thái tải được biểu diễn tại đúng khu vực đang chờ dữ liệu, tránh làm người dùng hiểu rằng toàn bộ ứng dụng đã ngừng phản hồi.
 
+Nhờ cách tổ chức trên, nhiều dạng đầu ra — công thức, lời giải, đồ thị, hình 2D, mô hình 3D và mô phỏng — được tích hợp trong cùng một hệ thống tương tác. Đây là cơ sở để sản phẩm phục vụ liên tục từ bước tiếp nhận bài toán đến bước quan sát và khai thác kết quả.
 
-### Hạng mục 3: Tính logic ứng dụng (App Logic)
+### 3.2. Trải nghiệm người dùng
 
-- **Đăng ký, xác thực và vòng đời tài khoản:**
-  - **Mã hóa mật khẩu bằng Bcrypt:** Mật khẩu người dùng được băm bảo mật bằng thuật toán băm khóa Bcrypt mạnh mẽ kết hợp muối ngẫu nhiên (salt) trước khi lưu trữ vào cơ sở dữ liệu.
-  - **Quy trình xác minh tài khoản chặt chẽ:** Đăng ký tài khoản mới bắt buộc đi qua bước xác minh hòm thư điện tử thông qua mã xác thực một lần (OTP) hoặc liên kết kích hoạt có giới hạn thời gian tồn tại ngắn.
-  - **Liên kết danh tính bên thứ ba qua Google OAuth 2.0:** Hỗ trợ đăng nhập một chạm và liên kết tài khoản an toàn thông qua nhà cung cấp danh tính Google sử dụng giao thức Google OAuth 2.0.
-  - **Quản lý phiên đăng nhập nâng cao:** Phiên đăng nhập được quản lý thông qua mã định danh ngẫu nhiên mã hóa lưu trong cơ sở dữ liệu. Hệ thống tự động băm mã phiên này trước khi đối chiếu, cho phép theo dõi danh sách thiết bị đang đăng nhập và hỗ trợ đăng xuất từ xa từng thiết bị hoặc toàn bộ thiết bị khác.
-- **Phân quyền hệ thống và kiểm soát giới hạn tài nguyên:**
-  - **Phân quyền truy cập dựa trên vai trò (RBAC):** Hệ thống phân định rõ ràng các quyền hạn của tài khoản thông thường và tài khoản quản trị viên.
-  - **Chính sách giới hạn tài nguyên (Usage Quotas):** Mỗi người dùng được áp dụng chính sách giới hạn số lượt gọi API nhận diện đề bài, giải toán hoặc dựng hình theo chu kỳ ngày/tháng tùy thuộc vào gói dịch vụ đang sử dụng.
-  - **Hạn chế tần suất lạm dụng (Rate Limiting):** Áp dụng thuật toán giới hạn tần suất yêu cầu trên từng địa chỉ IP và từng tài khoản định danh để bảo vệ máy chủ khỏi nguy cơ bị lạm dụng.
-  - **Chính sách khóa tài khoản tự động:** Tài khoản tự động bị khóa tạm thời trong một khoảng thời gian xác định nếu thực hiện đăng nhập sai liên tiếp vượt quá số lần cấu hình tối đa.
-- **Phân tích hàm số chứa tham số và lấy mẫu đồ thị nâng cao:**
-  - **Biện luận tham số tự động (Parameter case analysis):** Tự động phân tích các dòng hàm chứa tham số đại số (như tham số m) để xác định các ranh giới tham số (Parameter Boundaries). Với từng khoảng ranh giới hoặc điểm ranh giới, hệ thống tự động biện luận và phân tích số cực trị, số điểm dừng của đạo hàm, miền xác định thực tế và bậc của họ hàm số, tự động chuyển đổi các điều kiện phức tạp sang biểu thức toán học LaTeX. Tính năng này thuộc function analyzer, không phải algebra solver.
-  - **Thuật toán lấy mẫu đồ thị thích ứng (Adaptive Graph Sampling):** Lấy mẫu đồ thị hàm số động dựa trên window vẽ giới hạn. Tự động chia nhỏ miền xác định thành các nhánh đồ thị liên thông độc lập, phân tích và bỏ qua các đường tiệm cận đứng và điểm kỳ dị gián đoạn, tối ưu hóa mật độ điểm lấy mẫu bằng phép chia nhỏ lưới thích ứng (Adaptive Grid Partitioning) với độ sâu giới hạn để bảo đảm đồ thị hiển thị mượt mà tại các khoảng biến thiên lớn.
-- **Định tuyến và điều phối tài nguyên trí tuệ nhân tạo:**
-  - **Quản lý danh mục mô hình tập trung (AI Model Registry):** Hệ thống duy trì danh sách động các nhà cung cấp trí tuệ nhân tạo (OpenRouter, Nvidia, Ollama, 9router), thông số kết nối, năng lực xử lý cụ thể của từng mô hình (nhận diện hình ảnh, phân tích logic, sinh mã) và chỉ định mô hình tương ứng cho từng tác vụ chuyên biệt.
-  - **Cơ chế dự phòng lỗi (AI Provider Fallback):** Khi thực hiện cuộc gọi xử lý AI, nếu nhà cung cấp chính gặp lỗi phản hồi hoặc hết hạn mức sử dụng, hệ thống tự động chuyển hướng yêu cầu sang nhà cung cấp dự phòng đã cấu hình sẵn. Cơ chế fallback dùng in-process counter cho trạng thái provider, không dùng Redis sorted-set.
-  - **Xử lý và sửa lỗi cú pháp dữ liệu sinh ra từ AI:** Dữ liệu cấu trúc trả về từ mô hình ngôn ngữ lớn được tự động kiểm tra định dạng, sửa lỗi cú pháp JSON phổ biến, chuẩn hóa dữ liệu theo lược đồ quy chuẩn và đưa qua bộ lọc an toàn trước khi biên dịch thành mô hình dựng hình.
-  - **Quản lý an toàn khóa cá nhân (BYOK):** Cho phép người dùng sử dụng khóa API cá nhân. Khóa này được mã hóa bảo mật tại máy chủ, chỉ giải mã tạm thời trong bộ nhớ khi thực hiện yêu cầu tới nhà cung cấp AI và tuyệt đối không bao giờ được trả về dưới dạng văn bản thô cho client.
-- **Động cơ phân tích toán học và kiểm chứng:**
-  - **Bộ phân loại bài toán thông minh:** Tự động phân tích đề bài để định tuyến tới bộ giải toán phù hợp (đại số, giải tích, lượng giác, hình học).
-  - **Động cơ đại số chính xác bằng SymPy:** Sử dụng thư viện tính toán ký hiệu SymPy kết hợp các thuật toán giải toán tất định để tìm ra nghiệm chính xác của phương trình, bất phương trình, ma trận, đạo hàm và tích phân.
-    - *Kiểm chứng nghiệm tuần hoàn:* Logic giải các bài toán lượng giác hỗ trợ đầy đủ việc kiểm chứng và xác minh cấu trúc nghiệm tuần hoàn (ví dụ: nghiệm có chu kỳ) thay vì chỉ bó hẹp trong các tập nghiệm hữu hạn, nâng cao độ đúng đắn học thuật.
-  - **Kiểm chứng hình học đa chiều:** Bộ giải hình học thực hiện suy diễn các quan hệ ẩn từ dữ kiện đã biết (ví dụ: phát hiện ba điểm thẳng hàng, hai đường thẳng vuông góc từ các mối quan hệ song song và vuông góc khác) và chạy bộ kiểm chứng hệ thống CAS (Computer Algebra System) để đảm bảo tính đúng đắn của tọa độ mô hình trước khi hiển thị.
-  - **Quy trình sửa lỗi tọa độ tự động (Auto-repair):** Khi các điểm vẽ hình bị lệch nhẹ do sai số tính toán của AI, hệ thống tự động tinh chỉnh tọa độ trong phạm vi sai số cho phép để thỏa mãn hoàn toàn các ràng buộc hình học của đề bài.
-- **Quy trình số hóa tài liệu tích hợp:**
-  - Tích hợp dịch vụ chuyển đổi PDF tài liệu toán học sang định dạng Word có khả năng chỉnh sửa công thức thông qua API của MinerU. Cho phép người dùng tải tệp tin lên, cấu hình các tham số OCR, theo dõi tiến trình xử lý dưới dạng nhật ký luồng công việc thời gian thực, xem trước kết quả trực tiếp và tải xuống tài liệu đã số hóa.
+Trải nghiệm sử dụng được thiết kế thành một hành trình liền mạch gồm nhập đề, theo dõi quá trình xử lý, đánh giá kết quả, hiệu chỉnh, xác nhận, lưu trữ và tái sử dụng. Mỗi giai đoạn có trạng thái giao diện tương ứng, giúp người dùng nhận biết rõ hệ thống đang chờ dữ liệu, đang đọc ảnh, đang dựng hình, đã tạo kết quả hay đang cần thêm quyết định xác nhận.
 
----
+Ở bước nhập liệu, người dùng có thể gõ đề, lựa chọn đề mẫu, tải ảnh, kéo thả ảnh hoặc dán ảnh trực tiếp từ clipboard. Bộ đếm ký tự giúp quan sát quy mô nội dung trước khi gửi. Tùy chọn renderer cho phép định hướng phương thức biểu diễn mà không buộc người dùng phải sửa lại đề bài. Với dữ liệu ảnh, trạng thái nhận dạng nội dung được tách khỏi trạng thái dựng hình, nhờ đó tiến trình xử lý được truyền đạt rõ ràng hơn.
 
+Trong thời gian hệ thống thực hiện OCR hoặc dựng hình, vùng nhập và nút gửi được tạm khóa; spinner và thông điệp trạng thái thay đổi theo công đoạn đang diễn ra. Cơ chế này vừa ngăn phát sinh yêu cầu trùng do thao tác lặp, vừa duy trì mối liên hệ trực quan giữa dữ liệu đã gửi và kết quả đang chờ nhận.
 
+Kết quả trực quan luôn đi kèm thông tin về mức độ tin cậy. Kết quả đáp ứng điều kiện kiểm chứng được nhận diện là hình dựng theo dữ kiện. Trường hợp có giả định, thiếu dữ kiện, sử dụng nguồn dự phòng, chỉ được kiểm chứng một phần hoặc không hoàn toàn tương thích với renderer sẽ được trình bày như hình minh họa và kèm cảnh báo phù hợp. Việc phân biệt này có ý nghĩa sư phạm quan trọng: người học được biết khi nào có thể dựa vào quan hệ đã kiểm chứng và khi nào hình ảnh chỉ có vai trò hỗ trợ quan sát.
 
-### Hạng mục 4: Backend & API
+Khi kết quả cần sự chấp thuận, giao diện duy trì trạng thái xác nhận riêng thay vì mặc nhiên coi dữ liệu do hệ thống sinh ra là kết quả cuối cùng. Quyết định xác nhận của người dùng được lưu cùng trạng thái hiện tại và tham gia điều kiện xuất kết quả. Vì vậy, thao tác xác nhận mang ý nghĩa nghiệp vụ thực chất, tạo ranh giới giữa kết quả được đề xuất và kết quả đã được người dùng chấp thuận để tiếp tục sử dụng.
 
-- **Kiến trúc hệ thống và phân tách trách nhiệm:**
-  - **FastAPI làm nền tảng máy chủ dịch vụ:** Lớp dịch vụ backend được xây dựng hoàn toàn phi trạng thái (stateless) trên nền tảng FastAPI phi đồng bộ, cho phép mở rộng quy mô dễ dàng. Trách nhiệm xử lý được phân tách rõ ràng thành các tầng: Tầng xử lý yêu cầu và kiểm tra phụ thuộc (Routing & Dependency), Tầng dịch vụ nghiệp vụ (Business Logic Services), Tầng truy xuất dữ liệu (Repositories) và Tầng ánh xạ dữ liệu (Data Schemas).
-  - **Giao diện API RESTful, WebSocket cho chat và streaming:** Sử dụng chuẩn RESTful cho các dịch vụ truy vấn thông tin, thiết lập trạng thái và quản lý dữ liệu. Kết hợp giao thức WebSocket kết nối dài hạn cho luồng chat trợ giúp và streaming phản hồi AI.
-- **Xử lý bất đồng bộ và tối ưu hóa luồng công việc:**
-  - **Không chặn luồng chính (Non-blocking I/O):** Toàn bộ các cuộc gọi tới cơ sở dữ liệu và các dịch vụ bên ngoài (gửi email, gọi API AI, lưu trữ đám mây) đều được thực hiện thông qua cơ thức lập trình phi đồng bộ của Python (`async/await`).
-  - **Phân phối tác vụ nặng chạy ngầm:** Các tác vụ tốn tài nguyên và thời gian xử lý dài (như giải toán đại số phức tạp, trích xuất OCR từ ảnh lớn, hoặc kết xuất video mô phỏng) được đưa vào hàng đợi cơ sở dữ liệu. Tiến trình worker độc lập sẽ lấy tác vụ từ hàng đợi này để xử lý riêng biệt. Người dùng truy vấn trạng thái xử lý thông qua cơ chế hỏi định kỳ (polling) nhẹ nhàng, giải phóng hoàn toàn tiến trình xử lý HTTP chính.
-  - **Tối ưu hóa các tác vụ nghẽn CPU:** Các tác vụ tính toán toán học nặng trên các thư viện tất định (như biến đổi SymPy) hoặc băm mật khẩu được tự động đẩy sang luồng xử lý riêng biệt (`ThreadPoolExecutor` cho các tác vụ blocking I/O hoặc `ProcessPoolExecutor` cho các tác vụ nặng CPU) tùy thuộc vào tính chất nghẽn để tránh làm đóng băng máy chủ.
-- **Xử lý lỗi hệ thống và tối ưu hóa băng thông truyền tải:**
-  - **Bộ lọc ngoại lệ toàn cục (Global Exception Filters):** Mọi lỗi phát sinh trong hệ thống được bắt giữ tập trung, ghi nhật ký chi tiết kèm theo mã yêu cầu định danh duy nhất (Request ID) và trả về mã lỗi HTTP chuẩn hóa (như 400 cho dữ liệu sai, 401 cho lỗi xác thực, 429 cho quá tải tần suất, và 500 cho lỗi máy chủ). Hệ thống tuyệt đối không trả chi tiết stack trace nội bộ về phía client để tránh lộ lọt cấu trúc mã nguồn.
-  - **Pydantic Schema làm chốt kiểm duyệt dữ liệu:** Định nghĩa cấu hình cấm các thuộc tính thừa (`extra='forbid'`) đối với dữ liệu yêu cầu gửi lên từ client, ngăn chặn việc tấn công thông qua gửi kèm tham số lạ.
-  - **Tối ưu cấu trúc gói tin (Payload Weight Optimization):** Lược đồ phản hồi dữ liệu được giới hạn chặt chẽ bằng các lớp mô hình kiểm duyệt thuộc tính. Đối với các dữ liệu danh sách lịch sử, hệ thống chỉ trả về thông tin tóm tắt và siêu dữ liệu, chỉ tải chi tiết biểu thức toán học hoặc tọa độ hình ảnh khi người dùng yêu cầu cụ thể trên một đối tượng cụ thể.
+Các công cụ chỉnh scene cho phép di chuyển điểm, nối đoạn, chiếu điểm lên đoạn và bổ sung điểm. Thay đổi được phản ánh ngay tại trình duyệt để bảo đảm cảm giác tương tác liên tục. Sau đó, scene được chuyển sang trạng thái chờ kiểm chứng lại trên máy chủ; dữ liệu dành cho Three.js hoặc GeoGebra được đồng bộ theo cấu trúc mới. Cách tổ chức này kết hợp tốc độ phản hồi cục bộ với yêu cầu kiểm tra nhất quán trước khi lưu phiên bản chỉnh sửa.
 
----
+Đối với người dùng đã đăng nhập, lịch sử lưu giữ đề bài, scene và renderer tương ứng. Người dùng có thể mở lại kết quả, đánh dấu yêu thích, lưu trữ, bỏ lưu trữ hoặc xóa mục không còn nhu cầu. Chức năng này biến mỗi lần xử lý từ một kết quả tức thời thành một tài nguyên học tập có thể tiếp tục khai thác trong các phiên sau.
 
+Không gian mô phỏng trình bày nội dung theo từng bước và đồng bộ số thứ tự, tiến độ, nhiệm vụ học tập cùng hình ảnh tương tác. Các điều khiển chạy, tạm dừng, lùi, tiến, đặt lại, điều chỉnh tốc độ và khám phá tự do cho phép người học chủ động thay đổi nhịp độ quan sát. Do nội dung giải thích và mô hình cùng xuất hiện trong một workspace, mỗi thao tác điều khiển luôn gắn với ý nghĩa toán học của bước đang xét.
 
+Phản hồi hệ thống được trình bày bằng thông điệp tiếng Việt theo ngữ cảnh và công bố qua vùng `aria-live`. Những lỗi kỹ thuật phổ biến được chuyển thành nội dung có ý nghĩa sử dụng như quá tải, hết hạn mức, dữ liệu không hợp lệ hoặc dịch vụ tạm thời không sẵn sàng. Thông báo có thể tự đóng, đóng chủ động và cung cấp hành động tiếp theo khi cần, nhưng không đưa chi tiết nội bộ không cần thiết ra giao diện.
 
-### Hạng mục 5: Cơ sở dữ liệu (Database)
+### 3.3. Logic ứng dụng
 
-- **Hạ tầng lưu trữ và khả năng thích ứng đa nền tảng:**
-  - **Cơ sở dữ liệu production trên DigitalOcean:** Ở môi trường chạy chính thức (production), hệ thống sử dụng cơ sở dữ liệu quan hệ mạnh mẽ PostgreSQL được lưu trữ và quản lý trực tiếp trên nền tảng đám mây DigitalOcean. Cơ sở dữ liệu được cấu hình đồng lưu trú (co-located) trong cùng một vùng phân phối vật lý (region) với cụm máy chủ ứng dụng nhằm triệt tiêu tối đa độ trễ truyền tải mạng.
-  - **Hỗ trợ kiến trúc đa môi trường:**
-    - *Cơ sở dữ liệu nhúng (SQLite):* Phục vụ phát triển cục bộ (local development) giúp đơn giản hóa việc thiết lập môi trường, cấu hình chế độ WAL (Write-Ahead Logging) tăng tốc độ ghi đồng thời và foreign key constraints.
-    - *Cơ sở dữ liệu phân tán (Cloudflare D1, đang chuyển đổi):* Hỗ trợ thử nghiệm ban đầu, hiện đang trong quá trình chuyển đổi sang PostgreSQL làm database chính (xem `backend/scripts/migrate_d1_to_postgres.py`).
-    - *Kết nối phi đồng bộ bằng asyncpg:* Lớp backend FastAPI giao tiếp với PostgreSQL trên DigitalOcean thông qua trình điều khiển phi đồng bộ kết hợp quản lý connection pool.
-- **Quản lý kết nối PostgreSQL phi đồng bộ bằng asyncpg:**
-  - Sử dụng thư viện `asyncpg` để thiết lập và quản lý connection pool phi đồng bộ đối với PostgreSQL với giới hạn số lượng kết nối tối thiểu và tối đa tùy biến, tránh nghẽn kết nối và giảm thiểu tài nguyên bắt tay TCP.
-- **Quản lý tiến trình thay đổi lược đồ (Migration Pipeline):**
-  - Hệ thống thiết lập quy trình quản lý migration cơ sở dữ liệu độc lập cho cả dòng cơ sở dữ liệu SQLite/D1 và cơ sở dữ liệu PostgreSQL. Tiến trình chạy ứng dụng tự động kiểm tra trạng thái migration hiện tại, phát hiện sự lệch pha cấu trúc và báo cáo lỗi nếu lược đồ trong cơ sở dữ liệu không khớp với mã nguồn ứng dụng.
-- **Lược đồ dữ liệu chi tiết và toàn vẹn:**
-Hệ thống triển khai cấu trúc cơ sở dữ liệu đầy đủ bao gồm các bảng thực thể sau:
-  1. **Người dùng (Users):** Lưu trữ thông tin tài khoản, email, mật khẩu đã băm, trạng thái kích hoạt và vai trò.
-  2. **Phiên làm việc (Sessions):** Mã phiên đã băm, thiết bị đăng nhập, thời gian hoạt động cuối và thời gian hết hạn.
-  3. **Xác minh tài khoản (Verifications):** Mã thông báo xác minh email, khôi phục mật khẩu, mã OTP và thời gian hết hạn.
-  4. **Liên kết danh tính (OAuth Identities):** Thông tin định danh từ nhà cung cấp bên thứ ba (Google) liên kết với người dùng.
-  5. **Gói dịch vụ (Plans & Tier Profiles):** Định nghĩa hạn mức sử dụng và quyền lợi của từng gói dịch vụ.
-  6. **Nhật ký sử dụng (Usage Events):** Theo dõi số lượng yêu cầu đã thực hiện của từng người dùng để áp dụng chính sách quota.
-  7. **Lịch sử giới hạn tần suất (Rate Limit Events):** Ghi nhận các yêu cầu bị chặn do vượt quá tần suất cho phép để phân tích dấu hiệu tấn công.
-  8. **Tác vụ dựng hình (Render Jobs):** Trạng thái xử lý bất đồng bộ, mã đề bài đầu vào, và thông tin lỗi nếu có.
-  9. **Lịch sử dựng hình (History Items):** Siêu dữ liệu bài toán, nhãn phân loại, liên kết dự án và quyền sở hữu.
-  10. **Phiên bản chỉnh sửa (Scene Revisions):** Lưu lịch sử các thay đổi tọa độ, ràng buộc của mô hình hình học do người dùng tự tay sửa đổi.
-  11. **Dự án và nhãn (Projects & Tags):** Cấu trúc thư mục logic để người dùng tổ chức và phân loại các bài toán đã giải.
-  12. **Lịch sử giải đại số (Algebra Histories):** Lưu trữ đề bài đại số và các bước biến đổi trung gian đã giải thành công.
-  13. **Hồ sơ năng lực học tập (Learning Profiles):** Trình độ, mục tiêu và thói quen học tập cá nhân của học sinh.
-  14. **Quản lý tệp tải lên (Uploaded Files):** Lưu đường dẫn tệp tin, kích thước, mã băm nội dung, nhà cung cấp lưu trữ (R2, Appwrite, Database) và trạng thái dọn dẹp.
-  15. **Hộp thoại trò chuyện (Conversations & Messages):** Lưu lịch sử chat hỗ trợ, nội dung tin nhắn và siêu dữ liệu hình ảnh đính kèm.
-- **Quản lý giao dịch và bảo vệ kết nối:**
-  - **Giao dịch an toàn (Transactions):** Mọi thao tác ghi dữ liệu liên đới nhiều bảng được thực hiện trong phạm vi một giao dịch duy nhất để đảm bảo tính nhất quán dữ liệu, tự động hoàn trả (rollback) nếu có bất kỳ bước nào thất bại.
-  - **Truy vấn an toàn chống SQL Injection:** Sử dụng cơ chế ràng buộc tham số cho mọi giá trị động trong truy vấn, ngăn chặn tuyệt đối nguy cơ tấn công tiêm mã độc SQL.
-- **Chiến lược sao lưu cục bộ tự động (kế hoạch — chưa triển khai):**
-  - Hệ thống hiện chưa có cơ chế sao lưu tự động. Kế hoạch dự kiến: thiết lập các tác vụ tự động chạy ngầm định kỳ hàng ngày trên máy chủ để kết xuất dữ liệu (sử dụng lệnh sao chép nóng tệp cơ sở dữ liệu đối với SQLite hoặc xuất bản SQL dump đối với PostgreSQL qua công cụ `pg_dump`). Bản kết xuất này sẽ được tự động nén dưới dạng tệp tin lưu trữ an toàn, gắn nhãn thời gian và truyền tải mã hóa sang các phân vùng lưu trữ đám mây ngoài biệt lập (ví dụ như Cloudflare R2) để đảm bảo khả năng khôi phục nhanh chóng khi xảy ra sự cố phần cứng máy chủ chính.
+Logic ứng dụng được tổ chức thành ba miền chính: chính sách người dùng, điều phối mô hình AI và xử lý toán học tất định. Sự phân chia này giúp mỗi quy tắc được đặt tại đúng phạm vi trách nhiệm, tránh trộn lẫn quản lý tài khoản, lựa chọn nhà cung cấp AI và thuật toán toán học trong cùng một chuỗi xử lý.
 
----
+Miền chính sách người dùng bao gồm đăng ký, xác minh email, đăng nhập, Google OAuth 2.0, đặt lại mật khẩu, đổi mật khẩu và quản lý phiên hoạt động. Phiên đăng nhập gắn với người dùng và thông tin thiết bị, cho phép thu hồi một phiên cụ thể hoặc các phiên còn lại. Quota theo gói kiểm soát tổng quyền sử dụng; rate limit kiểm soát tần suất yêu cầu trong khoảng thời gian ngắn; cơ chế khóa tạm thời phản ứng với chuỗi đăng nhập sai. Ba cơ chế được tách biệt vì giải quyết ba loại rủi ro khác nhau: mức sử dụng, tải tức thời và hành vi dò mật khẩu.
 
+Miền AI duy trì danh mục nhà cung cấp, mô hình và khả năng tương ứng với từng loại tác vụ. Hệ thống có thể lựa chọn mô hình theo công việc, sử dụng khóa dịch vụ do hệ thống quản lý hoặc khóa riêng do người dùng cung cấp, đồng thời chuyển sang nguồn tiếp theo theo chuỗi fallback được cấu hình. Tuy nhiên, phản hồi từ mô hình chỉ được xem là dữ liệu đầu vào cho bước xử lý tiếp theo; cấu trúc JSON phải được hiệu chỉnh, chuẩn hóa theo schema và kiểm tra trước khi được chuyển thành scene.
 
+Pipeline scene giữ vai trò trung tâm trong kiểm soát chất lượng dựng hình. Scene trước hết được gắn thông tin nguồn sinh để duy trì khả năng truy vết. Validator tiếp tục phát hiện lỗi cấu trúc, cảnh báo và những sửa chữa có thể thực hiện trong phạm vi an toàn. Khối kiểm chứng đánh giá các quan hệ hình học; báo cáo sửa chữa xác định trường hợp cần người dùng chấp thuận. Sau đó, scene được chuẩn hóa tọa độ, đánh giá khả năng tương thích và chuyển thành dữ liệu hiển thị cho renderer tương ứng.
 
-### Hạng mục 6: Bảo mật (Security)
+Trạng thái kết quả được mô hình hóa rõ ràng. `verified` biểu thị kết quả đáp ứng điều kiện kiểm tra; `partially_verified` biểu thị mức kiểm chứng chưa đầy đủ; `needs_confirmation` được sử dụng khi tồn tại nguồn dự phòng, giả định hoặc sửa chữa cần chấp thuận; `fallback` nhận diện kết quả được hình thành từ phương án dự phòng; `failed` phản ánh trường hợp scene hoặc renderer không thể tạo đầu ra hợp lệ. Đi kèm trạng thái chính là các báo cáo validation, verification, repair và compatibility, nhờ đó mọi quyết định hiển thị đều dựa trên dữ liệu có cấu trúc.
 
-- **Bảo vệ phiên làm việc và định danh:**
-  - **Cấu hình Cookie phiên an toàn:** Mã định danh phiên đăng nhập được lưu trữ trong Cookie với các thuộc tính bảo mật cao nhất:
-    - *Chỉ truyền qua HTTP (HttpOnly):* Chặn các script chạy trên trình duyệt truy cập vào cookie phiên, vô hiệu hóa nguy cơ bị tấn công đánh cắp phiên qua lỗi XSS.
-    - *Chỉ truyền qua HTTPS (Secure):* Bắt buộc truyền cookie qua kết nối mã hóa TLS ở môi trường chạy chính thức, chặn bắt gói tin trên mạng.
-    - *Giới hạn nguồn gốc (SameSite=Lax/Strict):* Ngăn chặn trình duyệt tự động gửi cookie phiên trong các yêu cầu xuất phát từ trang web bên thứ ba, triệt tiêu nguy cơ tấn công giả mạo yêu cầu chéo trang (CSRF).
-  - **Băm mã phiên trong cơ sở dữ liệu:** Hệ thống chỉ lưu trữ mã băm một chiều của token phiên đăng nhập trong cơ sở dữ liệu, đảm bảo kẻ tấn công nếu có đọc được cơ sở dữ liệu cũng không thể sử dụng mã đó để giả mạo phiên làm việc của người dùng.
-- **Cơ chế phòng vệ cổng vào ứng dụng:**
-  - **Xác thực nguồn gốc yêu cầu (Origin Verification Gate):** Đối với các yêu cầu thay đổi dữ liệu (POST, PUT, DELETE), máy chủ thực hiện đối chiếu tiêu đề nguồn gốc yêu cầu với danh sách tên miền được tin tưởng đã cấu hình. Nếu không trùng khớp, yêu cầu bị từ chối ngay lập tức từ vòng ngoài.
-  - **Xác thực chống Bot tự động (Turnstile Integration, tùy chọn):** Tích hợp giải pháp bảo vệ Cloudflare Turnstile tại các cổng đăng ký, đăng nhập và khôi phục mật khẩu. Chỉ active khi biến môi trường `TURNSTILE_SECRET_KEY` được cấu hình — nếu không có, Turnstile bị bỏ qua (không enforce).
-  - **Bộ lọc tên miền email dùng một lần:** Chặn đứng hành vi đăng ký tài khoản rác hàng loạt bằng cách đối chiếu tên miền email đăng ký với danh sách đen chứa hàng ngàn tên miền cung cấp hòm thư ảo dùng một lần (disposable email domains).
-- **Mã hóa dữ liệu nhạy cảm và nhật ký an toàn:**
-  - **Mã hóa đối xứng thông tin cá nhân qua Fernet:** Các thông tin nhạy cảm của người dùng (như khóa API cá nhân) được mã hóa bằng cơ chế mã hóa đối xứng Fernet (thuộc thư viện mật mã Python Cryptography) trước khi ghi xuống đĩa cứng. Khóa mật mã được quản lý tập trung ở cấu hình máy chủ.
-  - **Lọc bỏ thông tin nhạy cảm trong nhật ký hệ thống:** Bộ lọc nhật ký tự động phát hiện, cắt ngắn hoặc thay thế bằng chuỗi ký tự ẩn đối với các thông tin nhạy cảm xuất hiện trong luồng ghi log (như khóa API, mật khẩu, mã phiên làm việc, dữ liệu ảnh base64 kích thước lớn).
+Khối toán học tất định sử dụng SymPy cùng các thuật toán chuyên biệt để xử lý phương trình, bất phương trình, lượng giác, dãy số, ma trận, đạo hàm, tích phân và bài toán tham số. Function Analyzer thực hiện chuẩn hóa biểu thức, xác định miền xác định, tìm nghiệm và điểm tới hạn, phân tích chiều biến thiên, cực trị, tiệm cận, đồng thời lấy mẫu đồ thị trên từng khoảng liên thông. Kết quả vì vậy không chỉ phục vụ vẽ đồ thị mà còn cung cấp dữ liệu cần thiết cho bảng biến thiên và phần diễn giải toán học.
 
----
+Các định dạng xuất cùng sử dụng scene và trạng thái chất lượng làm nguồn dữ liệu thống nhất. PNG, JPG, SVG, HTML KaTeX, TikZ, PDF và GeoGebra không được tạo từ những luồng nội dung tách rời, qua đó giảm nguy cơ sai khác giữa kết quả người dùng đang quan sát và nội dung được đưa vào học liệu.
 
+### 3.4. Backend và API
 
+Backend được phát triển bằng FastAPI trên Python 3.11 và phân tách theo các lớp route, dependency, service, repository và schema. Route chịu trách nhiệm về giao thức HTTP; dependency cung cấp người dùng, kết nối dữ liệu và điều kiện truy cập; service thực thi nghiệp vụ; repository quản lý thao tác lưu trữ; schema xác định cấu trúc dữ liệu vào ra. Ranh giới này cho phép cùng một nghiệp vụ được sử dụng bởi request trực tiếp hoặc worker mà không phải xây dựng hai pipeline khác nhau.
 
-### Hạng mục 7: Hiệu năng & Mở rộng (Performance & Scalability)
+Các nhóm API phục vụ xác thực, dựng hình, OCR, giải toán, khảo sát hàm số, lịch sử, xuất file, cấu hình cá nhân, quản trị và telemetry. REST được sử dụng cho các tác vụ có vòng đời request–response rõ ràng; WebSocket phục vụ luồng chat cần truyền phản hồi theo thời gian thực. Mỗi nhóm được đăng ký qua router riêng, giúp phạm vi chức năng và chính sách truy cập được xác định minh bạch.
 
-- **Hạn chế và điều phối tải hệ thống (Admission Control Gates):**
-  - **Cổng giới hạn tải đồng thời dựa trên Redis Sorted Sets:** Để bảo vệ tài nguyên máy chủ khỏi bị nghẽn do xử lý quá nhiều tác vụ nặng cùng lúc, hệ thống triển khai cổng kiểm soát tải đồng thời sử dụng Sorted Set của bộ nhớ đệm phân tán Redis. Mỗi tác vụ đang chạy được cấp một khóa tạm thời kèm thời gian sống (TTL).
-    - *Chống kẹt tài nguyên (Deadlock Protection):* Các khóa quá hạn do worker bị sập đột ngột sẽ tự động bị xóa bỏ để giải phóng slot cho các yêu cầu mới.
-    - *Tự động lùi về khóa cục bộ (Local Lock Fallback):* Nếu kết nối tới Redis bị gián đoạn, hệ thống tự động chuyển sang sử dụng cơ chế khóa phi đồng bộ `asyncio.Lock` trong bộ nhớ cục bộ của tiến trình hiện tại để đảm bảo tính sẵn sàng của dịch vụ.
-- **Tối ưu hóa tài nguyên kết nối và kết xuất:**
-  - **Tái sử dụng kết nối cơ sở dữ liệu:** Thiết lập connection pool mở sẵn đối với PostgreSQL để tránh thời gian bắt tay TCP mỗi khi có truy vấn. Với SQLite, hệ thống duy trì một kết nối ghi duy nhất kết hợp cơ chế khóa ghi để tránh xung đột ghi đồng thời.
-  - **Tái sử dụng socket HTTP kết nối dịch vụ ngoài:** Các yêu cầu gọi tới nhà cung cấp AI hoặc dịch vụ lưu trữ đám mây được thực hiện thông qua một HTTP Client dùng chung duy nhất được cấu hình connection pool để tái sử dụng socket TCP đã mở sẵn.
-- **Tối ưu hóa tài nguyên phía giao diện:**
-  - **Lazy loading component giao diện (Lazy Loading & Code Splitting):** Toàn bộ các không gian làm việc lớn và các công cụ toán học nặng được tách ra thành các gói mã nguồn riêng biệt tại cấu hình biên dịch của Vite và chỉ được tải về trình duyệt của người dùng khi họ bắt đầu truy cập vào chức năng tương ứng, giảm thời gian tải trang đầu tiên của ứng dụng xuống mức tối thiểu.
-  - **Cập nhật tham số hình học cục bộ:** Khi người dùng tương tác kéo thả các điểm hình học trên không gian 3D, tọa độ và các ràng buộc được tính toán và cập nhật trực tiếp trên trình duyệt bằng engine đồ họa phía client, chỉ gửi yêu cầu tính toán lên máy chủ khi người dùng thực hiện thao tác kiểm chứng chính thức.
+Tại biên hệ thống, Pydantic kiểm tra kiểu dữ liệu, trường bắt buộc và cấu trúc lồng nhau trước khi request đi vào tầng nghiệp vụ. Lỗi validation của Analyzer được chuẩn hóa thành mã lỗi, công đoạn phát sinh, khả năng thử lại và correlation ID. Lỗi nghiệp vụ giữ nguyên thông tin cần thiết cho client; lỗi máy chủ được ghi nhận nội bộ và trả về thông điệp tổng quát, không công bố stack trace hoặc đường dẫn nội bộ.
+
+Mỗi request được gắn `X-Request-Id`, sử dụng giá trị hợp lệ từ client hoặc sinh mới tại server. Mã này được duy trì trong ngữ cảnh xử lý, trả lại qua response header và liên kết với bản ghi lỗi. Nhờ vậy, một phản hồi quan sát trên trình duyệt có thể được đối chiếu với log và dữ liệu theo dõi mà không cần đưa thông tin nội bộ vào thông báo người dùng.
+
+Render có thể được thực hiện trực tiếp hoặc qua hàng đợi nền. Với luồng trực tiếp, API gọi pipeline và trả kết quả trong cùng request. Với luồng bất đồng bộ, yêu cầu cùng cấu hình renderer và runtime được lưu trong PostgreSQL; API trả job ID để giao diện theo dõi các trạng thái `queued`, `running`, `completed` hoặc `failed`.
+
+Worker nhận quyền xử lý job thông qua thao tác cập nhật có điều kiện. Việc chuyển từ `queued` sang `running` chỉ thành công nếu bản ghi vẫn đang ở trạng thái chờ, qua đó ngăn nhiều worker cùng thực thi một tác vụ. Worker khôi phục request đã lưu, kiểm tra người dùng, chiếm capacity slot, chạy pipeline với giới hạn thời gian và ghi kết quả hoặc lỗi trở lại database. Nếu tài nguyên xử lý đang đạt giới hạn, job được đưa về trạng thái chờ thay vì bị kết luận thất bại.
+
+PostgreSQL là nguồn trạng thái bền vững của hàng đợi. Khi Redis được cấu hình, Redis cung cấp tín hiệu đánh thức worker để giảm thời gian polling; quyền sở hữu và trạng thái cuối cùng của job vẫn được xác định bằng bản ghi PostgreSQL. Cách phân vai này giúp tối ưu thời gian phản hồi mà không đánh đổi tính nhất quán của tác vụ.
+
+### 3.5. Cơ sở dữ liệu PostgreSQL
+
+Hệ thống production sử dụng PostgreSQL 16 được quản lý trên DigitalOcean. Backend kết nối bất đồng bộ qua `asyncpg`, duy trì connection pool dùng chung trong vòng đời mỗi tiến trình và đóng pool khi ứng dụng kết thúc. Cơ chế pool giúp tái sử dụng kết nối, kiểm soát tổng số phiên đồng thời và giảm chi phí thiết lập kết nối mới cho từng request.
+
+Lược đồ dữ liệu được tổ chức theo miền nghiệp vụ. Nhóm định danh quản lý người dùng, phiên, xác minh email, OAuth và trạng thái bảo vệ đăng nhập. Nhóm quyền sử dụng quản lý gói, đăng ký dịch vụ và quota. Nhóm học tập và toán học quản lý render job, lịch sử dựng hình, phiên bản scene, lịch sử đại số, lịch sử phân tích hàm, hồ sơ học tập và liên kết chia sẻ. Nhóm AI và vận hành lưu danh mục mô hình, khả năng mô hình, số liệu cuộc gọi AI, hoạt động người dùng và sự kiện lỗi.
+
+Các quan hệ khóa ngoại duy trì vòng đời dữ liệu giữa người dùng và các bản ghi phụ thuộc. Render job lưu riêng yêu cầu, thiết lập nâng cao, cấu hình runtime, trạng thái, thời điểm bắt đầu, thời lượng, kết quả và lỗi. Việc lưu đồng thời đầu vào và đầu ra cho phép worker xử lý độc lập với request ban đầu, đồng thời tạo lịch sử sau khi tác vụ kết thúc.
+
+Scene được quản lý theo phiên bản thay vì chỉ ghi đè lên một dữ liệu duy nhất. Khi chỉnh sửa được kiểm chứng và chấp nhận, phiên bản mới được liên kết với mục lịch sử tương ứng. Mô hình này duy trì mối quan hệ giữa đề bài, kết quả ban đầu và trạng thái sau hiệu chỉnh, giúp thao tác mở lại khôi phục đúng renderer cùng dữ liệu hình học đã lưu.
+
+Các migration PostgreSQL được áp dụng trong vòng đời khởi động ứng dụng và ghi nhận trong bảng quản lý phiên bản schema. Readiness kiểm tra đồng thời khả năng truy cập database và trạng thái migration, nên một tiến trình đang phản hồi nhưng sử dụng lược đồ không phù hợp sẽ không được coi là sẵn sàng phục vụ. Truy vấn nghiệp vụ sử dụng tham số thay cho ghép trực tiếp dữ liệu đầu vào; những thao tác ghi nhiều bước được đặt trong transaction để tránh trạng thái dở dang.
+
+Cơ chế sao lưu production do DigitalOcean Managed PostgreSQL cung cấp. Ứng dụng chịu trách nhiệm về tính nhất quán của lược đồ, giao dịch và trạng thái dữ liệu; nền tảng cơ sở dữ liệu chịu trách nhiệm lưu bản sao theo chính sách vận hành. Sự phân tách này làm rõ phạm vi trách nhiệm giữa phần mềm nghiệp vụ và dịch vụ dữ liệu được quản lý.
+
+### 3.6. Bảo mật
+
+Bảo mật được triển khai theo nhiều lớp, tương ứng với vòng đời của một yêu cầu: bảo vệ thông tin xác thực, bảo vệ phiên, kiểm soát nguồn request, hạn chế hành vi lạm dụng, bảo vệ bí mật dịch vụ và kiểm soát dữ liệu được ghi nhận trong vận hành.
+
+Mật khẩu được băm bằng Bcrypt trước khi lưu. Session token, token xác minh và OAuth state được lưu dưới dạng băm, nhờ đó giá trị trong database không thể trực tiếp được sử dụng như bearer token. Cookie phiên trên production áp dụng các thuộc tính `HttpOnly`, `Secure` và `SameSite`, lần lượt hạn chế truy cập từ JavaScript, yêu cầu truyền qua HTTPS và giảm request chéo ngữ cảnh ngoài ý muốn.
+
+Các request thay đổi dữ liệu được đối chiếu Origin với danh sách miền tin cậy. CORS kiểm soát miền trình duyệt được phép trao đổi với API, trong khi kiểm tra Origin bảo vệ hành động làm thay đổi trạng thái. Quyền truy cập endpoint vẫn được xác định bằng xác thực và dependency phân quyền, không dựa trên việc chức năng có xuất hiện trên giao diện hay không.
+
+Rate limit được áp dụng theo tài khoản hoặc địa chỉ IP tùy ngữ cảnh; quota kiểm soát tổng quyền sử dụng theo gói; cơ chế khóa tạm thời phản ứng với chuỗi đăng nhập sai. Upload chịu giới hạn kích thước và validation tại biên. Cấu hình proxy tin cậy quy định trường hợp backend được phép sử dụng header chuyển tiếp để xác định địa chỉ client, tránh coi dữ liệu header tùy ý là nguồn định danh đáng tin cậy.
+
+Khóa API do người dùng cung cấp được mã hóa bằng Fernet trước khi lưu trong PostgreSQL. API quản lý khóa chỉ trả trạng thái cấu hình và phần ký tự nhận diện cuối, không trả lại plaintext. Khóa giải mã được đặt trong cấu hình bí mật của môi trường triển khai, tách khỏi dữ liệu nghiệp vụ.
+
+Trước khi log hoặc error event được ghi, các trường nhạy cảm như mật khẩu, token, API key và payload ảnh dung lượng lớn được loại bỏ hoặc che giá trị. Endpoint quản trị và health detail yêu cầu quyền phù hợp; liveness và readiness chỉ công bố lượng thông tin cần thiết cho hạ tầng điều phối. Nhờ đó, khả năng quan sát hệ thống được duy trì mà không mở rộng không cần thiết bề mặt công bố dữ liệu.
+
+### 3.7. Hiệu năng và khả năng mở rộng
+
+Chiến lược hiệu năng được triển khai theo ba tầng: giảm tài nguyên tải ban đầu trên trình duyệt, tái sử dụng tài nguyên I/O ở backend và giới hạn công việc nặng bằng capacity gate kết hợp hàng đợi xử lý nền.
+
+Frontend áp dụng code splitting đối với các workspace lớn. Mã của quản trị, khảo sát hàm số, giải đại số, mô phỏng, GeoGebra Lab và các công cụ chuyên biệt chỉ được tải khi người dùng mở chức năng tương ứng. Trong quá trình chỉnh scene, phép biến đổi tọa độ và cập nhật dữ liệu hiển thị được thực hiện cục bộ để thao tác không phải chờ một request mạng ở từng chuyển động; máy chủ tập trung vào kiểm chứng và lưu trạng thái.
+
+Backend duy trì pool kết nối PostgreSQL và HTTP client dùng chung cho các dịch vụ ngoài. Việc tái sử dụng tài nguyên giảm số lần thiết lập kết nối và cho phép đặt giới hạn phù hợp với từng tiến trình. Những thao tác blocking hoặc tính toán nặng được chuyển khỏi event loop khi phù hợp, giúp API tiếp tục tiếp nhận request trong khi công việc chuyên sâu được xử lý ở ngữ cảnh khác.
+
+Capacity gate giới hạn số tác vụ render, OCR và đại số được thực hiện đồng thời. Cơ chế này bảo vệ CPU, số kết nối và lượng lời gọi đến dịch vụ ngoài trước các đợt tải tăng nhanh. Khi Redis được cấu hình, trạng thái capacity có thể được phối hợp giữa các tiến trình; trường hợp không nhận được slot được xử lý thành một trạng thái có chủ đích thay vì để công việc tiếp tục vượt giới hạn tài nguyên.
+
+Hàng đợi render tách thời gian sống của tác vụ khỏi kết nối HTTP. API chịu trách nhiệm xác thực, ghi job và trả mã theo dõi; worker chịu trách nhiệm xử lý nặng, áp dụng timeout và cập nhật kết quả. PostgreSQL bảo toàn job qua vòng đời tiến trình, còn cơ chế claim có điều kiện tạo nền tảng để nhiều worker cùng hoạt động mà không thay đổi quy tắc sở hữu tác vụ.
+
+### 3.8. Phân tích và theo dõi
+
+Khả năng quan sát được tổ chức quanh ba nhóm dữ liệu: hành vi sử dụng, chất lượng lời gọi AI và sự cố kỹ thuật. Mỗi nhóm có cấu trúc lưu trữ riêng, phục vụ một câu hỏi phân tích riêng, thay vì phụ thuộc hoàn toàn vào log văn bản khó tổng hợp.
+
+Sự kiện hoạt động ghi nhận người dùng, phiên, loại hành động, đối tượng và metadata liên quan. Các sự kiện render hoàn tất hoặc thất bại lưu tier, renderer, provider, model, thời lượng, chế độ bất đồng bộ và trạng thái suy giảm chất lượng. Trên cơ sở đó, trang quản trị có thể tổng hợp mức sử dụng theo tính năng, người dùng hoạt động, phễu đăng ký — xác minh — sử dụng và tỷ lệ hoàn thành theo từng nhóm chức năng.
+
+AI call metrics ghi nhận provider, model, loại tác vụ, số token đầu vào, số token đầu ra, độ trễ và trạng thái cuộc gọi. Việc tách số liệu từng lời gọi AI khỏi kết quả render cuối cùng giúp phân biệt lỗi nhà cung cấp với lỗi validation scene hoặc lỗi renderer. Dữ liệu có thể được tổng hợp theo provider, model và khoảng thời gian để đánh giá mức sử dụng tài nguyên và độ ổn định của tầng AI.
+
+Error event tiếp nhận sự cố từ client hoặc server sau khi thông tin nhạy cảm đã được lọc. Fingerprint SHA-256 rút gọn 16 ký tự được sử dụng để gom các lỗi cùng mẫu thành một nhóm, giúp quan sát tần suất lặp lại ngay cả khi một phần thông điệp thay đổi. Request ID, route, method, status code và error code bổ sung ngữ cảnh cần thiết để liên kết sự cố với request tương ứng.
+
+Health check được phân thành liveness, readiness và health detail. Liveness xác nhận tiến trình có phản hồi; readiness đánh giá khả năng nhận lưu lượng dựa trên PostgreSQL và migration; health detail tổng hợp trạng thái database, connection pool, migration, nhà cung cấp AI, capacity gate, Redis, lỗi gần đây và render thất bại trong 24 giờ cho người có quyền quản trị.
+
+Worker thực hiện kiểm tra cảnh báo theo chu kỳ và dọn dữ liệu analytics theo thời hạn cấu hình. Mỗi nhóm error event, hoạt động người dùng và AI call metrics có thời gian lưu riêng, giúp kiểm soát tăng trưởng dữ liệu quan sát mà không tác động đến dữ liệu nghiệp vụ như tài khoản, lịch sử hoặc scene.
+
+### 3.9. Vận hành và cập nhật
+
+Ứng dụng được đóng gói bằng Docker nhiều giai đoạn. Giai đoạn Node 20 biên dịch frontend thành tài nguyên tĩnh; giai đoạn Python 3.11 cài đặt backend và tiếp nhận sản phẩm build. Một artifact thống nhất được hình thành từ mã frontend, backend và cấu hình phục vụ, qua đó giảm khác biệt giữa phiên bản đã kiểm tra và phiên bản được đưa lên nền tảng.
+
+Trong container, Supervisord điều phối ba tiến trình có trách nhiệm riêng. Uvicorn thực thi ứng dụng FastAPI; render worker vận hành vòng lặp xử lý hàng đợi; Nginx phục vụ frontend tĩnh, chuyển tiếp REST API và nâng cấp kết nối WebSocket. Mỗi tiến trình được quản lý độc lập nhưng cùng thuộc một cấu hình phát hành.
+
+DigitalOcean App Platform triển khai container từ nhánh `product` và sử dụng readiness endpoint để xác định instance đủ điều kiện phục vụ. Rolling update do nền tảng triển khai điều phối: phiên bản mới phải đáp ứng điều kiện sức khỏe trước khi nhận lưu lượng theo cơ chế của App Platform. Nginx chịu trách nhiệm định tuyến bên trong container, không thay thế vai trò điều phối phiên bản của nền tảng.
+
+GitHub Actions thực hiện kiểm thử backend bằng pytest, kiểm tra kiểu và build frontend, đồng thời chạy Docker build smoke. Workflow hoạt động trên pull request và nhánh triển khai; lượt chạy cũ trên cùng ref được hủy khi có commit mới, tránh tiếp tục sử dụng tài nguyên cho phiên bản đã được thay thế.
+
+Quy trình xác minh production đối chiếu trạng thái deployment, nhánh phát hành, cấu hình secret, bản sao lưu cơ sở dữ liệu, branch ruleset, trạng thái worker và các health endpoint. Sự kết hợp này giúp đánh giá đồng thời artifact, cấu hình và trạng thái vận hành, thay vì sử dụng một lần build thành công như căn cứ duy nhất cho kết luận production.
+
+### 3.10. Chất lượng sản phẩm
+
+Chất lượng được kiểm soát tại nhiều thời điểm trong vòng đời dữ liệu. Schema validation bảo vệ biên API; scene validator và khối kiểm chứng đại số máy tính bảo vệ cấu trúc toán học; kiểm tra tương thích bảo vệ khả năng dựng hình; điều kiện chất lượng bảo vệ đầu ra xuất; kiểm thử tự động bảo vệ hành vi khi mã nguồn thay đổi.
+
+Bộ kiểm thử backend bao phủ xác thực, phiên, OAuth, quota, PostgreSQL, migration, API, OCR, nhà cung cấp AI, fallback, solver đại số, Function Analyzer, hình học, scene validation, capacity, Redis, worker, export, analytics, health và bảo mật. Kiểm thử không chỉ đánh giá các hàm riêng lẻ mà còn xác nhận những chuyển đổi trạng thái có ý nghĩa hệ thống như claim job, hoàn tất hoặc thất bại, phát hiện migration drift, phân quyền endpoint và quyết định cho phép xuất kết quả.
+
+Frontend có bước kiểm tra kiểu và build bắt buộc trong CI. Mô phỏng có kiểm thử baseline cho cấu trúc bài học và runtime, bảo vệ tính nhất quán giữa số bước, bộ điều khiển và dữ liệu scene. Kiểu `RenderResponse` trong TypeScript duy trì sự đồng bộ giữa trạng thái, báo cáo chất lượng và yêu cầu xác nhận mà giao diện sử dụng.
+
+Sản phẩm tạo ra một chuỗi đầu ra thống nhất. Người học có thể quan sát hình 2D hoặc 3D, tương tác với scene, đọc lời giải từng bước, tiếp tục bằng mô phỏng và mở lại lịch sử. Giáo viên hoặc người biên soạn có thể chuyển cùng kết quả sang PNG, JPG, SVG, HTML KaTeX, TikZ, PDF hoặc GeoGebra. Các đầu ra này kế thừa trạng thái chất lượng của scene, giúp nội dung học liệu duy trì mối liên hệ với thông tin kiểm chứng và giả định của dữ liệu nguồn.
+
+Sự kết hợp giữa kiểm thử tự động và trạng thái chất lượng trong từng response tạo thành hai lớp bảo đảm bổ sung. Kiểm thử xác nhận mã nguồn thực thi đúng quy tắc đã thiết kế; báo cáo validation và verification xác nhận từng kết quả cụ thể đáp ứng các quy tắc đó ở mức độ nào.
 
 ---
 
+## 4. Hệ thống phụ lục minh chứng
 
+Hồ sơ minh chứng được tổ chức thành các nhóm tương ứng với 10 tiêu chí của báo cáo. Mỗi nhóm chứa dữ liệu gốc, bản trình bày đã loại bỏ thông tin nhạy cảm, thông tin phiên bản và phiếu kết luận. Mã minh chứng được sử dụng nhất quán trong báo cáo, bảng chỉ mục và tên tệp bàn giao.
 
-### Hạng mục 8: Phân tích & Theo dõi (Analytics & Monitoring)
+| Tiêu chí | Nhóm phụ lục | Phạm vi chứng minh |
+| --- | --- | --- |
+| Giao diện người dùng | MC-UI | Kết quả build, hình ảnh và hành vi của các không gian hiển thị |
+| Trải nghiệm người dùng | MC-UX | Chuỗi thao tác, trạng thái phản hồi, xác nhận, chỉnh sửa và lịch sử |
+| Logic ứng dụng | MC-LOGIC | Kiểm thử chính sách, pipeline scene, solver và đầu ra |
+| Backend và API | MC-API | Giao thức, validation, request ID, WebSocket và render job |
+| PostgreSQL | MC-DB | Phiên bản, migration, pool, lược đồ và trạng thái dữ liệu |
+| Bảo mật | MC-SEC | Cookie, Origin, phiên, mã hóa bí mật và kiểm soát truy cập |
+| Hiệu năng và mở rộng | MC-PERF | Code splitting, capacity, worker và số liệu theo khoảng đo |
+| Phân tích và theo dõi | MC-MON | Activity, AI metrics, error fingerprint và health check |
+| Vận hành và cập nhật | MC-OPS | CI, container, deployment và trạng thái production |
+| Chất lượng sản phẩm | MC-QA | Kiểm thử tổng thể, bộ bài toán đại diện và tập tin xuất |
 
-- **Hệ thống phân tích hành vi người dùng (Product Analytics):**
-  - **Theo dõi tương tác và số lượng sử dụng:** Nhật ký hoạt động chi tiết đo lường số lượt mở (opens), số lượng người dùng duy nhất (unique users), số phiên hoạt động (sessions) nhóm theo từng tính năng, đồng thời phân tích tỷ lệ các tác vụ hoàn thành (completed outcomes) so với tác vụ thất bại.
-  - **Đo lường hiệu quả phễu chuyển đổi:** Bảng điều khiển quản trị cung cấp công cụ phân tích phễu chuyển đổi từ bước đăng ký tài khoản -> xác minh email -> thực hiện lượt giải toán đầu tiên -> nâng cấp gói dịch vụ để giúp đội ngũ vận hành đánh giá và cải tiến trải nghiệm người dùng.
-  - **Hiển thị biểu đồ phân tích một ngày duy nhất:** Trong trường hợp cơ sở dữ liệu hoạt động có thời gian tích lũy dữ liệu quá ngắn (dưới 2 ngày), hệ thống tự động lùi về chế độ hiển thị danh sách phân tích một ngày duy nhất sử dụng bảng màu đơn sắc tương phản cao để đảm bảo bảng điều khiển quản trị không bị lỗi vẽ biểu đồ.
-- **Theo dõi lỗi hệ thống và phân tích dấu ngăn xếp (Stack Fingerprinting):**
-  - **Gom nhóm lỗi thông minh:** Mọi lỗi nghiêm trọng phát sinh trên máy chủ hoặc client gửi về được gắn nhãn định danh dựa trên dấu vân tay ngăn xếp lỗi.
-    - *Mã vân tay lỗi 16 ký tự ổn định:* Stack trace được lọc bỏ khoảng trắng thừa trước khi băm SHA-256, lấy 16 ký tự hex đầu tiên làm mã định danh ổn định giúp gom nhóm các lỗi giống nhau một cách chuẩn xác nhất.
-- **Giám sát chi phí và hiệu năng cuộc gọi AI:**
-  - **Theo dõi chi tiết số lượng token tiêu thụ:** Nhật ký cuộc gọi AI ghi nhận cụ thể số lượng token đầu vào, token đầu ra, thời gian phản hồi của nhà cung cấp và trạng thái cuộc gọi. Dữ liệu này được tổng hợp thành biểu đồ chi phí thời gian thực trên trang quản trị theo từng mô hình và từng nhà cung cấp.
-- **Kiểm tra sức khỏe hệ thống đa tầng (Health Checks):**
-  - **Cổng kiểm tra hoạt động cơ bản (Liveness Probe):** Một endpoint gọn nhẹ trả về mã trạng thái thành công để hệ thống giám sát hạ tầng nhận biết tiến trình ứng dụng vẫn đang hoạt động bình thường.
-  - **Cổng kiểm tra sẵn sàng phục vụ (Readiness Probe):** Thực hiện kiểm tra thực tế kết nối tới cơ sở dữ liệu cục bộ và trạng thái migration. Nếu cơ sở dữ liệu bị ngắt kết nối hoặc đang bị lỗi khóa, hệ thống sẽ trả về mã lỗi dịch vụ không sẵn sàng để ngăn chặn bộ cân bằng tải phân phối lưu lượng truy cập vào máy chủ này.
-  - **Trang chẩn đoán sức khỏe chuyên sâu (Health Detail):** Giao diện riêng biệt dành cho admin hiển thị chi tiết: số lượng kết nối đang hoạt động và nhàn rỗi trong connection pool cơ sở dữ liệu, số lượng tác vụ đang chiếm giữ trong cổng kiểm soát tải đồng thời, trạng thái phản hồi của từng nhà cung cấp AI và biểu đồ tần suất lỗi trong vòng 24 giờ qua. Tích hợp tùy chọn SDK của Sentry cho giám sát lỗi ứng dụng.
-  - **Tác vụ giám sát cảnh báo và dọn dẹp định kỳ:** Hệ thống thiết lập worker chạy ngầm định kỳ quét qua tỷ lệ lỗi và tỷ lệ kết xuất thất bại, tự động kích hoạt thông báo cảnh báo qua webhook (generic JSON — không có Slack/Discord-specific template) khi vượt ngưỡng, đồng thời chạy tiến trình dọn dẹp dữ liệu nhật ký cũ quá hạn để giải phóng bộ nhớ.
-
----
-
-
-
-### Hạng mục 9: Vận hành & Cập nhật (Operations & Update / CI/CD)
-
-- **Quy trình tích hợp tự động hóa (Continuous Integration):**
-  - **Tự động hóa kiểm thử mã nguồn:** Mỗi khi có yêu cầu tích hợp mã nguồn mới, hệ thống tự động kích hoạt luồng công việc kiểm tra trên GitHub Actions: chạy toàn bộ bộ kiểm thử đơn vị của máy chủ dịch vụ bằng pytest, thực hiện biên dịch mã nguồn giao diện để phát hiện lỗi kiểu dữ liệu và chạy thử quy trình xây dựng container để đảm bảo tệp tin ảnh máy ảo không bị lỗi đóng gói.
-- **Đóng gói container khép kín và phân phối:**
-  - **Quy trình xây dựng ảnh máy ảo nhiều giai đoạn (Multi-stage Docker Build):** Giai đoạn đầu tiên sử dụng môi trường Node để biên dịch và tối ưu hóa tài nguyên giao diện người dùng thành các tệp tin tĩnh. Giai đoạn thứ hai sử dụng môi trường Python để cài đặt mã nguồn backend, sau đó sao chép các tệp tin giao diện tĩnh vào thư mục phục vụ của máy chủ web nội bộ.
-  - **Quản lý tiến trình trong container:** Sử dụng Supervisord để quản lý và khởi chạy song song tiến trình Uvicorn phục vụ API và tiến trình python worker xử lý tác vụ dựng hình ngầm dưới quyền hạn của người dùng không có đặc quyền quản trị (non-root user) nhằm tăng cường bảo mật.
-- **Triển khai không gián đoạn dịch vụ (Zero-downtime Deployment):**
-  - Khi đẩy phiên bản mã nguồn ổn định lên nhánh triển khai chính thức, nền tảng đám mây tự động thực hiện quy trình rolling update sử dụng máy chủ web Nginx làm reverse proxy. Container mới sẽ được khởi động và chạy các bước kiểm tra sẵn sàng phục vụ (Readiness Probes). Chỉ khi container mới báo cáo hoàn toàn khỏe mạnh, hệ thống cân bằng tải mới bắt đầu chuyển lưu lượng truy cập từ container cũ sang container mới và tắt container cũ, đảm bảo người dùng không gặp bất kỳ gián đoạn nào trong quá trình cập nhật phiên bản.
-- **Quy trình khôi phục nhanh khi xảy ra sự cố** 
-  - **Khôi phục phiên bản tức thời:** Kế hoạch: quản trị viên có thể thực hiện khôi phục tức thì về phiên bản ổn định trước đó ngay trên bảng điều khiển đám mây bằng cách tái kích hoạt ảnh container cũ. Hiện tại chưa có cơ chế tự động — rollback thủ công qua Git + redeploy.
+Giá trị của từng minh chứng được xác lập theo ba điều kiện: nguồn dữ liệu có thể truy vết, quy trình thu thập có thể tái lập và kết luận chỉ nằm trong phạm vi mà dữ liệu quan sát được cho phép. Nội dung chi tiết về phương pháp thu thập, cấu trúc thư mục, quy tắc bảo toàn dữ liệu và tiêu chí đạt được quy định trong tài liệu `huong_dan_lay_minh_chung.md`.
 
 ---
 
+## 5. Kết luận
 
+AI Math Renderer đã hình thành một chuỗi xử lý hoàn chỉnh từ tiếp nhận đề bài, điều phối AI, phân tích toán học, tạo và kiểm chứng scene, trực quan hóa, tương tác, xác nhận, lưu phiên bản đến xuất học liệu. Các lớp hệ thống được phân định theo trách nhiệm và trao đổi qua dữ liệu có cấu trúc; trạng thái chất lượng được duy trì từ backend đến giao diện và đầu ra cuối cùng.
 
-### Hạng mục 10: Chất lượng sản phẩm (Product Quality)
+Giá trị cốt lõi của hệ thống không chỉ nằm ở khả năng sử dụng AI hoặc tạo hình trực quan, mà ở việc đặt kết quả AI trong một quy trình có kiểm tra, công bố mức độ tin cậy, cho phép người dùng hiệu chỉnh và bảo toàn dữ liệu trong PostgreSQL. Worker xử lý nền, cơ chế quan sát, bộ kiểm thử và hạ tầng triển khai production tiếp tục hoàn thiện chuỗi trách nhiệm từ thuật toán toán học đến khả năng phục vụ thực tế.
 
-- **Giải quyết triệt để bài toán thực tế của ngành giáo dục:**
-  - **Trực quan hóa hình học không gian và giải tích:** Sản phẩm giải quyết bài toán khó khăn nhất trong việc dạy và học toán: sự thiếu hụt tư duy trực quan không gian. Bằng cách tự động chuyển đổi các đề bài hình học hoặc biểu thức giải tích từ dạng chữ viết thô sơ sang mô hình 3D tương tác đa chiều, hệ thống giúp học sinh hiểu sâu sắc bản chất toán học thay vì học vẹt.
-  - **Số hóa tài liệu dạy học nhanh chóng:** Giảm thiểu tối đa thời gian biên soạn của giáo viên. Thay vì mất hàng giờ tự vẽ hình trên các công cụ vẽ vector truyền thống, giáo viên chỉ cần chụp ảnh đề bài để nhận về sơ đồ hình vẽ chính xác và mã nguồn đồ họa chất lượng cao chỉ trong vài giây.
-- **Xác định rõ ràng đối tượng phục vụ:**
-  - **Học sinh:** Sử dụng hệ thống để kiểm tra kết quả bài tập tự luyện, xem các bước biến đổi chi tiết để học phương pháp giải toán, xoay mô hình 3D để hiểu cấu trúc các khối đa diện phức tạp và tương tác với các mô phỏng giải tích để nắm bắt khái niệm trừu tượng.
-  - **Giáo viên:** Tiết kiệm thời gian soạn bài bằng cách chụp ảnh đề bài để hệ thống tự động sinh hình minh họa, tùy chỉnh sơ đồ và xuất hình vẽ chất lượng cao để chèn vào đề thi.
-  - **Tác giả và nhà xuất bản tài liệu học thuật:** Sử dụng tính năng xuất mã đồ họa vector chất lượng cao (như định dạng TikZ) để tích hợp trực tiếp vào quy trình dàn trang tài liệu chuyên nghiệp mà không bị vỡ nét hình ảnh.
-- **Hệ thống kiểm thử tự động toàn diện bằng pytest:**
-  - Kho mã nguồn tích hợp bộ kiểm thử tự động đồ sộ sử dụng khung kiểm thử pytest bao phủ toàn diện từ luồng xác thực tài khoản, kiểm tra bảo mật, logic nghiệp vụ của các bộ giải toán đại số, tính đúng đắn của động cơ suy diễn quan hệ hình học, chất lượng các bộ lọc chuẩn hóa dữ liệu, đến khả năng ghi nhận sự kiện của hệ thống phân tích đo lường.
-    - *Kiểm thử tính đúng đắn toán học sâu:* Tích hợp các bộ kiểm thử chuyên sâu về logic tuần hoàn của hàm lượng giác, kiểm thử các trường hợp biên của biện luận tham số họ hàm số và kiểm chứng phân tích miền xác định.
-- **Lộ trình phát triển thực tế và bền vững:**
-  - **Giai đoạn 1: Đo lường chất lượng toán học bằng dữ liệu thực nghiệm:** Thiết lập hệ thống đo lường độ phủ của kịch bản kiểm thử mã nguồn trên từng phân hệ cụ thể. Xây dựng bộ bài toán mẫu chuẩn hóa tiếng Việt với đầy đủ các dạng đề thi tốt nghiệp trung học phổ thông để chạy kiểm tra độ chính xác của mô hình định kỳ, phát hiện sớm các trường hợp suy luận sai lệch.
-  - **Giai đoạn 2: Cải tiến logic hình học và hệ thống CAS:** Mở rộng năng lực của bộ giải hình học để nhận diện được các quan hệ phức tạp hơn (như các ràng buộc đồng quy, tiếp xúc, hoặc quỹ tích chuyển động). Tích hợp sâu hơn các thư viện toán học tất định để thay thế các suy luận không chắc chắn của AI ở các khâu tính toán số học cơ bản.
-  - **Giai đoạn 3: Tối ưu hóa mô hình AI chuyên sâu (Fine-tuning):** Thu thập và làm sạch hàng chục ngàn mẫu đề bài toán học tiếng Việt kèm theo mã cấu trúc dựng hình và lời giải chuẩn mực đã được kiểm duyệt bởi các chuyên gia giáo dục. Tiến hành tinh chỉnh (fine-tune) các mô hình ngôn ngữ lớn mã nguồn mở có quy mô phù hợp để chạy độc lập trên hạ tầng máy chủ GPU tự chủ, giảm thiểu sự phụ thuộc vào các dịch vụ API bên ngoài và tối ưu hóa chi phí vận hành lâu dài.
-  - **Giai đoạn 4: Thiết lập cụm máy chủ worker độc lập:** Khi quy mô người dùng tăng trưởng, tiến hành tách biệt hoàn toàn tiến trình worker xử lý tác vụ dựng hình và OCR ra các máy ảo chuyên dụng độc lập có khả năng tự động tăng giảm số lượng dựa trên độ dài của hàng đợi công việc, đảm bảo thời gian phản hồi cho người dùng luôn ổn định dưới ngưỡng tiêu chuẩn.
-
+Với cơ chế phụ lục được tổ chức theo phiên bản, môi trường, dữ liệu gốc và tiêu chí kết luận, các năng lực trình bày trong báo cáo có thể được đối chiếu bằng những dấu vết kỹ thuật độc lập, khách quan và có khả năng tái lập.

@@ -1,0 +1,19 @@
+evidence_id: MC-SEC-04
+claim: Dependency manifests hiện tại không có CVE đã biết theo npm audit và pip-audit tại thời điểm quét.
+commit_sha: 5cac5199def7fd960fcf2ab27a02a9fa3cc1f07a
+workspace_clean: false
+environment: local
+collected_at_utc: 2026-07-12T04:51:00Z
+collector: automated-session
+actual:
+  - npm audit kiểm tra 193 dependency, 0 vulnerability.
+  - pip-audit kiểm tra 60 dependency được resolve từ pyproject.toml, 0 vulnerable dependency.
+result: passed
+raw_files:
+  - 01-raw/npm-audit.json
+  - 01-raw/npm-audit-exit-code.txt
+  - 01-raw/pip-audit-summary.json
+  - 01-raw/pip-audit-exit-code.txt
+limitations:
+  - Kết quả phụ thuộc advisory database tại thời điểm quét.
+  - Không chứng minh mã ứng dụng không có lỗ hổng.

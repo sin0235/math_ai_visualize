@@ -1,0 +1,94 @@
+{
+  "operation": "POST /api/analyzer/tools/tangent",
+  "method": "POST",
+  "path_template": "/api/analyzer/tools/tangent",
+  "fingerprint": "4c90d79e",
+  "case_id": "O7w2pw",
+  "code_sample": "curl -X POST -H 'Content-Type: application/json' -H 'Cookie: [Filtered]' -d '{\"analysis_id\": \"0000000000000000\"}' http://127.0.0.1:18765/api/analyzer/tools/tangent",
+  "sequence": [
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:18765/api/analyzer/tools/tangent",
+      "url_template": "http://127.0.0.1:18765/api/analyzer/tools/tangent",
+      "headers": {
+        "User-Agent": "schemathesis/4.22.4",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Accept": "*/*",
+        "Connection": "keep-alive",
+        "X-Schemathesis-TestCaseId": "O7w2pw",
+        "Content-Type": "application/json",
+        "Cookie": "[Filtered]",
+        "Content-Length": "35"
+      },
+      "response": {
+        "status_code": 422,
+        "headers": {
+          "date": "Sun, 12 Jul 2026 03:07:28 GMT",
+          "server": "uvicorn",
+          "x-request-id": "5c41d5cac22d486c83701385f6d17768",
+          "content-length": "198",
+          "content-type": "application/json"
+        },
+        "body": "{\"detail\":{\"code\":\"ANALYZER_INPUT_INVALID\",\"message\":\"D\u1eef li\u1ec7u y\u00eau c\u1ea7u ph\u00e2n t\u00edch kh\u00f4ng h\u1ee3p l\u1ec7.\",\"correlation_id\":\"5c41d5cac22d486c83701385f6d17768\",\"stage\":\"request\",\"retryable\":false}}"
+      },
+      "link": null,
+      "checks": [
+        {
+          "name": "response_schema_conformance",
+          "status": "failure",
+          "message": "Response violates schema\n\n{\"code\":\"ANALYZER_INPUT_INVALID\",\"correlation_id\":\"5c41d5cac22d486c83701385f6d17768\",\"message\":\"D\u1eef li\u1ec7u y\u00eau c\u1ea7u ph\u00e2n t\u00edch kh\u00f4ng h\u1ee3p l\u1ec7.\",\"retryable\":false,\"stage\":\"request\"} is not of type \"array\"\n\nValidated against the response schema for status code 422.\n\nSchema at /components/schemas/HTTPValidationError/properties/detail:\n\n    {\n        \"type\": \"array\",\n        \"items\": {\n            \"$ref\": \"#/components/schemas/ValidationError\"\n        },\n        \"title\": \"Detail\"\n    }\n\nValue:\n\n    {\n        \"code\": \"ANALYZER_INPUT_INVALID\",\n        \"correlation_id\": \"5c41d5cac22d486c83701385f6d17768\",\n        \"message\": \"D\\u1eef li\\u1ec7u y\\u00eau c\\u1ea7u ph\\u00e2n t\\u00edch kh\\u0...\n        \"retryable\": false,\n        \"stage\": \"request\"\n    }"
+        }
+      ],
+      "meta": {
+        "generation": {
+          "time": 6.035000296833459e-06,
+          "mode": "negative"
+        },
+        "components": {
+          "COOKIE": "positive",
+          "BODY": "negative"
+        },
+        "phase": {
+          "name": "coverage",
+          "data": {
+            "type": "CoveragePhaseData",
+            "description": "Missing required property: x0",
+            "location": "/required",
+            "parameter": "application/json",
+            "parameter_location": "BODY",
+            "scenario": "object_missing_required_property"
+          }
+        },
+        "pool_draws": [],
+        "pool_misses": [
+          [
+            "body",
+            "analysis_id"
+          ]
+        ],
+        "semantic_draws": [],
+        "dictionary_draws": [],
+        "raw_containers": {
+          "COOKIE": {
+            "hinh_session": ""
+          }
+        }
+      },
+      "path": "/api/analyzer/tools/tangent",
+      "path_parameters": {},
+      "query": {},
+      "case_headers": {},
+      "cookies": {
+        "hinh_session": "[Filtered]"
+      },
+      "case_body": {
+        "encoding": "json",
+        "value": {
+          "analysis_id": "0000000000000000"
+        }
+      },
+      "media_type": "application/json",
+      "parent_index": null
+    }
+  ]
+}

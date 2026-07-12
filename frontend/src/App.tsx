@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ApiError, changePassword, consumeAnalyzerLinkFromLocation, deleteRenderHistory, forgotPassword, getCurrentUser, getHealth, getLearningProfile, getRenderHistory, getRenderHistoryDetail, getSessions, getSettingsDefaults, login, loginWithGoogle, logout, ocrImageByUploadId, patchRenderHistory, register, renderEditedScene, renderProblem, resendVerification, resetPassword, revokeOtherSessions, revokeSession, updateLearningProfile, updateProfile, uploadOcrImage, verifyEmail, type AdminRenderHistoryDetail, type PracticeHandoffPayload, type RenderHandoffPayload, type RenderHistoryItem, type SessionResponse, type UserLearningProfileResponse, type UserLearningProfileUpdateRequest, type UserResponse } from './api/client';
+import { ApiError, changePassword, consumeAnalyzerLinkFromLocation, deleteRenderHistory, forgotPassword, getCurrentUser, getHealth, getLearningProfile, getRenderHistory, getRenderHistoryDetail, getSessions, getSettingsDefaults, login, loginWithGoogle, logout, ocrImageByUploadId, patchRenderHistory, register, renderEditedScene, renderProblemV3, resendVerification, resetPassword, revokeOtherSessions, revokeSession, updateLearningProfile, updateProfile, uploadOcrImage, verifyEmail, type AdminRenderHistoryDetail, type PracticeHandoffPayload, type RenderHandoffPayload, type RenderHistoryItem, type SessionResponse, type UserLearningProfileResponse, type UserLearningProfileUpdateRequest, type UserResponse } from './api/client';
 import { defaultAdvancedSettings, ProblemInput, type TierKey } from './components/ProblemInput';
 import { AccountPage } from './components/AccountPage';
 import { SettingsPage } from './components/SettingsPage';
@@ -12,6 +12,7 @@ import { VerifyEmailPage } from './components/VerifyEmailPage';
 import { RendererPanel } from './components/RendererPanel';
 import type { ThreeSceneImageCapture } from './components/ThreeGeometryView';
 import { SceneEditorPanel, type PointPlacementPlane } from './components/SceneEditorPanel';
+import { SceneWorkspaceEditorV3 } from './components/SceneWorkspaceEditorV3';
 import { PrivacyPolicyPage, TermsPage } from './components/LegalPages';
 import { SolverPanel } from './components/SolverPanel';
 import { AboutPage, AccessDeniedPage, AnalyzerGuidePage, GuidePage, HistoryPage, HistoryPanel, MobileRendererWarning, isGeometryMobileWarningView } from './components/AppPages';
@@ -23,6 +24,7 @@ import { normalizeMineruBaseUrl } from './api/mineru';
 import { getDefaultParamValues, patchGeogebraCommandsForScene, recomputeSceneWithParameters, recomputeThreeScene } from './utils/sceneParameters';
 import { clamp, findPoint, hasSegment, nextPointName, projectPointToLine, round, type Vec3 } from './utils/sceneEditing';
 import type { AdvancedRenderSettings, MathScene, RenderResponse, Renderer } from './types/scene';
+import type { SceneWorkspaceResponseV3 } from './types/sceneV3';
 import { defaultRuntimeSettings, type RuntimeSettings, type SettingsDefaults } from './types/settings';
 import logoUrl from '../img.svg';
 import './styles.css';
@@ -166,6 +168,7 @@ function FooterNavLink({
 export default function App() {
   const [activeView, setActiveView] = useState<AppView>(() => pathToView(window.location.pathname));
   const [result, setResult] = useState<RenderResponse | null>(null);
+  const [workspaceResultV3, setWorkspaceResultV3] = useState<SceneWorkspaceResponseV3 | null>(null);
   const [activeScene, setActiveScene] = useState<MathScene | null>(null);
   const [activeRevision, setActiveRevision] = useState(0);
   const [confirmation, setConfirmation] = useState<ConfirmationState>(defaultConfirmation);
@@ -214,6 +217,7 @@ export default function App() {
   const renderToolsMenuTop = Math.min(Math.max(editorButtonTop - 8, 72), Math.max(72, window.innerHeight - 430));
 
   function applyRenderResponse(response: RenderResponse, nextConfirmation: ConfirmationState = defaultConfirmation) {
+    setWorkspaceResultV3(null);
     setResult(response);
     setActiveScene(response.scene);
     setActiveRevision(response.scene.revision ?? 1);
@@ -560,13 +564,14 @@ export default function App() {
     setEditTool('move');
     setLastAdvancedSettings(advancedSettings ?? defaultAdvancedSettings);
     try {
-      const response = await renderProblem(problemText, tier, advancedSettings, preferredRenderer, runtimeSettings, undefined, {
-        async: Boolean(settingsDefaults?.render_async_enabled),
-      });
-      applyRenderResponse(response);
+      const response = await renderProblemV3(problemText, tier, advancedSettings, preferredRenderer, runtimeSettings);
+      setWorkspaceResultV3(response);
+      setResult(null);
+      setActiveScene(null);
+      setActiveRevision(response.scene.revision);
+      setConfirmation(defaultConfirmation);
       if (user) void refreshHistory();
       scrollToResultOnMobile();
-      if (!shouldShowConfirmationPrompt(response)) showWarnings(response.warnings);
     } catch (caught) {
       const apiError = toApiError(caught, 'Không thể dựng hình từ đề bài này.');
       await reportWorkspaceError('Dựng hình thất bại', apiError, 'Hãy thử mức độ chất lượng khác hoặc viết đề bài rõ hơn.');
@@ -1195,9 +1200,13 @@ export default function App() {
                 </div>
               )}
             </div>
-            {result && <button type="button" className="mobile-scroll-notice" onClick={scrollToResult}>↓ Xem hình vừa dựng</button>}
+            {(result || workspaceResultV3) && <button type="button" className="mobile-scroll-notice" onClick={scrollToResult}>↓ Xem hình vừa dựng</button>}
             <div className="result-area" ref={resultAnchorRef}>
               <div className="render-stage">
+                {workspaceResultV3 ? (
+                  <SceneWorkspaceEditorV3 initialResponse={workspaceResultV3} onCommitted={setWorkspaceResultV3} />
+                ) : (
+                  <>
                 <RendererPanel result={effectiveResult} threeInteraction={threeInteraction} onGeoGebraPointChange={handlePointDragEnd} highlightedObjects={highlightedObjects} saving={editorSaving || Boolean(openingHistoryId)} savingLabel={openingHistoryId ? 'Đang mở lịch sử...' : undefined} onThreeImageCaptureReady={handleThreeImageCaptureReady} />
                 {effectiveResult && shouldShowConfirmationPrompt(effectiveResult) && (
                   <aside className="render-review-chip" role="status" aria-live="polite">
@@ -1328,6 +1337,8 @@ export default function App() {
                       />
                     </aside>
                   </div>
+                )}
+                  </>
                 )}
               </div>
             </div>

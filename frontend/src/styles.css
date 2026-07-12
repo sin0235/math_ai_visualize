@@ -87,6 +87,10 @@ select {
   display: grid;
 }
 
+.app-shell:has(.gglab-page) {
+  padding-top: 8px;
+}
+
 .app-footer {
   margin: 18px 0 0;
   border-top: 1px solid #dedede;
@@ -137,7 +141,7 @@ select {
 
 .footer-brand-block p {
   margin: 0;
-  color: #64748b;
+  color: #475569;
   line-height: 1.45;
   font-size: 0.86rem;
 }
@@ -165,7 +169,7 @@ select {
   width: fit-content;
   border: 0;
   padding: 0;
-  color: #64748b;
+  color: #475569;
   background: transparent;
   font: inherit;
   font-weight: 650;
@@ -225,7 +229,7 @@ select {
   border-top: 1px solid #dedede;
   padding-top: 8px;
   padding-bottom: 10px;
-  color: #64748b;
+  color: #475569;
   font-size: 0.8rem;
   font-weight: 600;
   text-align: center;
@@ -6480,6 +6484,57 @@ button:disabled {
   padding: 10px 0 16px;
 }
 
+.account-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+.account-tabs > button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 210px;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  padding: 10px 12px 9px;
+  background: transparent;
+  color: var(--ink-4);
+  text-align: left;
+  cursor: pointer;
+}
+
+.account-tabs > button:hover {
+  color: var(--ink);
+  background: var(--surface);
+}
+
+.account-tabs > button.active {
+  border-bottom-color: var(--ink);
+  color: var(--ink);
+}
+
+.account-tabs > button > span {
+  display: grid;
+  gap: 2px;
+}
+
+.account-tabs strong {
+  font-size: 0.86rem;
+}
+
+.account-tabs small {
+  color: var(--ink-4);
+  font-size: 0.7rem;
+}
+
+.account-tabs .account-icon {
+  width: 28px;
+  height: 28px;
+  background: transparent;
+}
+
 .account-page .account-avatar {
   width: 44px;
   height: 44px;
@@ -6585,6 +6640,15 @@ button:disabled {
 
   .app-shell:has(.account-page) {
     padding: 12px 14px 0;
+  }
+
+  .account-tabs > button {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .account-tabs small {
+    display: none;
   }
 }
 
@@ -14233,11 +14297,11 @@ button.analyzer-guide-label:hover {
 .algebra-result-wrap {
   min-width: 0;
   min-height: 100%;
-  background-color: var(--paper);
+  background-color: #fbfbfa;
   background-image:
-    linear-gradient(color-mix(in srgb, var(--line) 18%, transparent) 1px, transparent 1px),
-    linear-gradient(90deg, color-mix(in srgb, var(--line) 18%, transparent) 1px, transparent 1px);
-  background-size: 40px 40px;
+    linear-gradient(color-mix(in srgb, var(--line-2) 22%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--line-2) 22%, transparent) 1px, transparent 1px);
+  background-size: 32px 32px;
   background-position: -1px -1px;
 }
 
@@ -14246,10 +14310,32 @@ button.analyzer-guide-label:hover {
   display: grid;
   place-items: center;
   align-content: center;
-  gap: 10px;
-  padding: 28px;
+  padding: clamp(32px, 7vh, 72px) 28px;
   text-align: center;
   font-family: inherit;
+}
+
+.algebra-empty-card {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  width: min(560px, 100%);
+  padding: clamp(26px, 4vw, 42px);
+  border: 1px solid var(--line-2);
+  border-top: 3px solid var(--ink);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--paper) 95%, transparent);
+  box-shadow: 0 18px 50px rgba(15, 23, 42, 0.08);
+}
+
+.algebra-empty-eyebrow {
+  margin: 0 0 2px;
+  color: var(--ink-4);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
 }
 
 .algebra-empty-result strong,
@@ -14267,6 +14353,26 @@ button.analyzer-guide-label:hover {
   text-align: center;
   color: var(--ink-4);
   font-size: 0.8rem;
+}
+
+.algebra-empty-features {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 7px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.algebra-empty-features li {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: var(--surface);
+  color: var(--ink-3);
+  font-size: 0.72rem;
+  font-weight: 600;
 }
 
 .algebra-result-panel {
@@ -17997,5 +18103,132 @@ button.analyzer-guide-label:hover {
   .fa2-actions,
   .fa2-graph-primary-toolbar {
     display: none !important;
+  }
+}
+
+.scene-workspace-v3 {
+  display: grid;
+  gap: 18px;
+}
+
+.scene-editor-v3 {
+  display: grid;
+  gap: 16px;
+}
+
+.scene-editor-v3-header,
+.scene-editor-v3-history {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.scene-editor-v3-header {
+  justify-content: space-between;
+}
+
+.scene-editor-v3-header > div:first-child,
+.scene-editor-v3-parameters {
+  display: grid;
+  gap: 8px;
+}
+
+.scene-editor-v3-placement {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.scene-inspector-v3,
+.scene-inspector-v3-list {
+  display: grid;
+  gap: 10px;
+}
+
+.scene-inspector-v3-object,
+.scene-inspector-v3-verification,
+.scene-inspector-v3-issue {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.scene-inspector-v3-object.selected {
+  border-color: var(--ink);
+  box-shadow: 0 0 0 1px var(--ink);
+}
+
+.scene-inspector-v3-object-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  border: 0;
+  padding: 0;
+  color: var(--ink);
+  background: transparent;
+  text-align: left;
+}
+
+.scene-inspector-v3-object-main span,
+.scene-inspector-v3-issue {
+  display: grid;
+  gap: 3px;
+}
+
+.scene-inspector-v3-object-main small,
+.scene-inspector-v3-issue small {
+  color: var(--ink-4);
+}
+
+.scene-inspector-v3-object-main code {
+  overflow: hidden;
+  max-width: 48%;
+  color: var(--ink-4);
+  text-overflow: ellipsis;
+}
+
+.scene-inspector-v3 dl,
+.scene-inspector-v3 dl div,
+.scene-inspector-v3-actions,
+.scene-inspector-v3-proposal div {
+  display: flex;
+  gap: 8px;
+}
+
+.scene-inspector-v3 dl {
+  flex-wrap: wrap;
+  margin: 0;
+}
+
+.scene-inspector-v3 dt {
+  color: var(--ink-4);
+}
+
+.scene-inspector-v3 dd {
+  margin: 0;
+}
+
+.scene-inspector-v3 pre {
+  overflow: auto;
+  max-height: 220px;
+  margin: 8px 0 0;
+  font-size: 0.78rem;
+}
+
+.scene-inspector-v3-verification.status-failed,
+.scene-inspector-v3-issue.severity-error {
+  border-color: #dc2626;
+}
+
+@media (max-width: 640px) {
+  .scene-editor-v3-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .scene-editor-v3-placement {
+    grid-template-columns: 1fr;
   }
 }

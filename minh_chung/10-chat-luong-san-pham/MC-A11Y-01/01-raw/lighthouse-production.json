@@ -1,0 +1,8 @@
+{
+  "lighthouseVersion": "13.4.0",
+  "fetchTime": "2026-07-12T04:56:08.387Z",
+  "url": "https://starfish-app-e3i2c.ondigitalocean.app/",
+  "scores": {"performance":0.72,"accessibility":0.93,"best_practices":0.96,"seo":0.82},
+  "metrics": {"fcp_ms":4297.03125,"lcp_ms":4756.2375,"speed_index_ms":4297.03125,"tbt_ms":17,"cls":0},
+  "result": "partial"
+}

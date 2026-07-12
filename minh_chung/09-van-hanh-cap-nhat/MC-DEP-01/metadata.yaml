@@ -1,0 +1,26 @@
+evidence_id: MC-DEP-01
+claim: Có thể liên kết CI product, deployment DigitalOcean và runtime production cùng artifact.
+commit_sha: 26b21f0d5ef69cb4c87c2f28bd30569f09d1a4b4
+workspace_clean: not_applicable
+environment: production
+base_url: https://starfish-app-e3i2c.ondigitalocean.app
+collected_at_utc: 2026-07-12T04:46:49Z
+collector: automated-session
+expected:
+  - GitHub CI product thành công tại source commit của active deployment.
+  - DigitalOcean deployment ở phase ACTIVE.
+  - Runtime production health và readiness đạt.
+actual:
+  - GitHub CI product thành công tại commit 26b21f0d5ef69cb4c87c2f28bd30569f09d1a4b4.
+  - Ba job Backend tests, Frontend build và Docker build smoke đều success.
+  - DigitalOcean active deployment phase ACTIVE và cause liên kết commit 26b21f0 trên nhánh product.
+  - Production health, readiness PostgreSQL và analyzer capabilities trả HTTP 200.
+result: passed
+raw_files:
+  - 01-raw/github-product-runs.json
+  - 01-raw/github-latest-success.json
+  - 01-raw/product-ruleset.json
+  - 01-raw/runtime-production.json
+  - ../MC-OPS-03/01-raw/app-sanitized.json
+redactions:
+  - Chỉ lưu env key và type; không lưu giá trị secret.

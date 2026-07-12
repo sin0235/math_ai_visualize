@@ -1,0 +1,7 @@
+collected_at_utc=2026-07-12T04:46:49Z
+command=./deploy/verify-production.sh
+exit_code=1
+result=failed
+reason=render worker RUNNING evidence not found in latest 200 runtime log lines
+verified_before_failure=deployment ACTIVE; branch product; deploy_on_push true; readiness path configured; secret env types; backup freshness; GitHub ruleset and required checks
+note=Failure retained. Deployment and database facts are assessed separately; worker runtime is not claimed as verified.

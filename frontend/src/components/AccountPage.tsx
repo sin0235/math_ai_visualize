@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import type { SessionResponse, UserLearningProfileResponse, UserLearningProfileUpdateRequest, UserResponse } from '../api/client';
 
 type AccountIconName = 'profile' | 'lock' | 'sessions' | 'shield' | 'workspace' | 'logout';
+type AccountTab = 'profile' | 'security';
 type ToastKind = 'error' | 'warning' | 'info';
 
 interface AccountPageProps {
@@ -50,6 +51,8 @@ export function AccountPage({
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [sessions, setSessions] = useState<SessionResponse[]>([]);
+  const [activeTab, setActiveTab] = useState<AccountTab>('profile');
+  const [sessionsLoaded, setSessionsLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -67,11 +70,14 @@ export function AccountPage({
   }, [learningProfile]);
 
   useEffect(() => {
-    refreshSessions().catch((error) =>
-      onToast('Phiên đăng nhập', error instanceof Error ? error.message : 'Không thể tải phiên đăng nhập.', 'error'),
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- chỉ tải danh sách phiên khi vào trang
-  }, []);
+    if (activeTab !== 'security' || sessionsLoaded) return;
+    refreshSessions()
+      .then(() => setSessionsLoaded(true))
+      .catch((error) =>
+        onToast('Phiên đăng nhập', error instanceof Error ? error.message : 'Không thể tải phiên đăng nhập.', 'error'),
+      );
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- tải một lần khi mở tab bảo mật
+  }, [activeTab, sessionsLoaded]);
 
   async function refreshSessions() {
     setSessions(await onLoadSessions());
@@ -204,8 +210,40 @@ export function AccountPage({
           </div>
         </div>
 
-        <div className="account-layout">
+        <div className="account-tabs" role="tablist" aria-label="Khu vực tài khoản">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'profile'}
+            aria-controls="account-profile-panel"
+            className={activeTab === 'profile' ? 'active' : ''}
+            onClick={() => setActiveTab('profile')}
+          >
+            <AccountIcon name="profile" />
+            <span><strong>Profile</strong><small>Thông tin và hồ sơ học tập</small></span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'security'}
+            aria-controls="account-security-panel"
+            className={activeTab === 'security' ? 'active' : ''}
+            onClick={() => setActiveTab('security')}
+          >
+            <AccountIcon name="shield" />
+            <span><strong>Security</strong><small>Mật khẩu và phiên đăng nhập</small></span>
+          </button>
+        </div>
+
+        <div
+          id={`account-${activeTab}-panel`}
+          className="account-layout"
+          role="tabpanel"
+          aria-label={activeTab === 'profile' ? 'Profile' : 'Security'}
+        >
           <main className="account-main">
+            {activeTab === 'profile' && (
+              <>
             <form className="account-panel account-panel-card" onSubmit={submitProfile}>
               <div className="account-section-title">
                 <div className="account-panel-title"><AccountIcon name="profile" /><h3>Hồ sơ</h3></div>
@@ -260,7 +298,10 @@ export function AccountPage({
               </div>
               <p className="field-hint">Các mục nhiều giá trị cách nhau bằng dấu phẩy.</p>
             </form>
+              </>
+            )}
 
+            {activeTab === 'security' && (
             <div className="account-panel account-panel-card account-sessions-panel">
               <div className="account-section-title">
                 <div className="account-panel-title"><AccountIcon name="sessions" /><h3>Phiên đăng nhập</h3></div>
@@ -277,12 +318,16 @@ export function AccountPage({
                     {!session.current && <button type="button" className="secondary-button" onClick={() => handleRevokeSession(session.id)} disabled={loading}>Thu hồi</button>}
                   </div>
                 ))}
-                {sessions.length === 0 && <p className="field-hint">Chưa có phiên đăng nhập nào.</p>}
+                {!sessionsLoaded && <p className="field-hint">Đang tải phiên đăng nhập...</p>}
+                {sessionsLoaded && sessions.length === 0 && <p className="field-hint">Chưa có phiên đăng nhập nào.</p>}
               </div>
             </div>
+            )}
           </main>
 
           <aside className="account-side">
+            {activeTab === 'security' && (
+              <>
             <div className="account-panel account-panel-card">
               <div className="account-panel-title"><AccountIcon name="shield" /><h3>Bảo mật</h3></div>
               <div className="account-info-grid">
@@ -315,6 +360,8 @@ export function AccountPage({
               <p className="field-hint">Tối thiểu 10 ký tự, nên có chữ và số hoặc ký tự khác.</p>
               <button type="submit" disabled={loading}>Đổi mật khẩu</button>
             </form>
+              </>
+            )}
 
             <div className="account-panel account-panel-card account-quick-actions">
               <button type="button" className="icon-button-content" onClick={onBackWorkspace}><AccountIcon name="workspace" />Vào workspace</button>

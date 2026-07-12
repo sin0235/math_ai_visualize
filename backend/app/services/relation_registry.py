@@ -70,3 +70,67 @@ def cas_supported_relation_types() -> set[str]:
         if spec.verify == "supported"
         for alias in spec.aliases
     }
+
+
+@dataclass(frozen=True)
+class RelationContractV3:
+    required_kinds: tuple[tuple[str, int], ...]
+    minimum_kinds: tuple[tuple[str, int], ...] = ()
+    dimensions: tuple[str, ...] = ("2d", "3d")
+    verifier: str = "geometry-kernel-v3"
+
+
+RELATION_CONTRACTS_V3: dict[str, RelationContractV3] = {
+    "perpendicular": RelationContractV3((("linear", 2),)),
+    "parallel": RelationContractV3((("linear", 2),)),
+    "equal_length": RelationContractV3((("linear", 2),)),
+    "midpoint": RelationContractV3((("point", 1), ("linear", 1))),
+    "intersection": RelationContractV3((("point", 1), ("linear", 2))),
+    "tangent": RelationContractV3((), minimum_kinds=(("object", 2),)),
+    "collinear": RelationContractV3((), minimum_kinds=(("point", 3),)),
+    "coplanar": RelationContractV3((), minimum_kinds=(("point", 4),), dimensions=("3d",)),
+    "on_line": RelationContractV3((("point", 1), ("linear", 1))),
+    "on_plane": RelationContractV3((("point", 1), ("planar", 1)), dimensions=("3d",)),
+    "on_sphere": RelationContractV3((("point", 1), ("sphere", 1)), dimensions=("3d",)),
+    "on_circle": RelationContractV3((("point", 1), ("circle", 1)), dimensions=("2d",)),
+    "distance": RelationContractV3((("point", 2),)),
+    "angle": RelationContractV3((("linear", 2),)),
+    "point_on_segment": RelationContractV3((("point", 1), ("segment", 1))),
+    "line_in_plane": RelationContractV3((("linear", 1), ("planar", 1)), dimensions=("3d",)),
+    "parallel_planes": RelationContractV3((("planar", 2),), dimensions=("3d",)),
+    "perpendicular_planes": RelationContractV3((("planar", 2),), dimensions=("3d",)),
+    "ratio": RelationContractV3((("linear", 2),)),
+}
+
+_KIND_GROUPS = {
+    "linear": {"line", "segment", "vector"},
+    "planar": {"plane", "face"},
+    "object": {"point", "segment", "line", "vector", "circle", "face", "sphere", "plane", "object"},
+}
+
+
+def validate_v3_relation_operands(relation_type: str, operand_kinds: list[str], dimension: str) -> list[str]:
+    contract = RELATION_CONTRACTS_V3.get(normalize_relation_type(relation_type))
+    if contract is None:
+        return [f"Relation {relation_type} chưa được đăng ký trong contract v3."]
+    errors: list[str] = []
+    if dimension not in contract.dimensions:
+        errors.append(f"Relation {relation_type} không hỗ trợ dimension={dimension}.")
+    for kind, count in contract.required_kinds:
+        actual = _kind_count(operand_kinds, kind)
+        if actual != count:
+            errors.append(f"Relation {relation_type} cần đúng {count} operand kind={kind}, nhận {actual}.")
+    for kind, minimum in contract.minimum_kinds:
+        actual = _kind_count(operand_kinds, kind)
+        if actual < minimum:
+            errors.append(f"Relation {relation_type} cần ít nhất {minimum} operand kind={kind}, nhận {actual}.")
+    return errors
+
+
+def relation_v3_dependency_ids(relation) -> frozenset[str]:
+    return frozenset(operand.ref_id for operand in relation.operands)
+
+
+def _kind_count(operand_kinds: list[str], expected: str) -> int:
+    accepted = _KIND_GROUPS.get(expected, {expected})
+    return sum(kind in accepted for kind in operand_kinds)

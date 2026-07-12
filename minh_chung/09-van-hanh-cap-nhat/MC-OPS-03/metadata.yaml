@@ -1,0 +1,20 @@
+evidence_id: MC-OPS-03
+claim: DigitalOcean deployment, backup, worker và readiness cùng đạt trong một lần xác minh.
+commit_sha: 26b21f0d5ef69cb4c87c2f28bd30569f09d1a4b4
+workspace_clean: not_applicable
+environment: production
+collected_at_utc: 2026-07-12T04:46:49Z
+collector: automated-session
+actual:
+  - Active deployment phase ACTIVE, 6/6 build/deploy steps thành công.
+  - Deployment source là commit 26b21f0 trên nhánh product; deploy_on_push bật.
+  - PostgreSQL 18 online; backup gần nhất 2026-07-12T02:32:12Z.
+  - Health path là /api/health/ready; các biến bí mật bắt buộc có type SECRET.
+  - Script tổng hợp exit 1 vì không tìm thấy log worker RUNNING trong cửa sổ 200 dòng gần nhất.
+result: inconclusive
+blocker: Worker runtime chưa được xác nhận; deployment, database và backup được xác nhận độc lập.
+raw_files:
+  - 01-raw/app-sanitized.json
+  - 01-raw/deployments-sanitized.json
+  - 01-raw/verify-production.log
+  - 01-raw/exit-code.txt

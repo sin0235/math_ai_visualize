@@ -2,6 +2,7 @@ import re
 from dataclasses import dataclass
 from itertools import combinations
 
+from app.schemas.render_projection_v3 import RenderProjectionV3
 from app.schemas.scene import (
     AdvancedRenderSettings,
     Circle2D,
@@ -29,6 +30,92 @@ _LINE_STYLE_CODES = {"solid": 0, "dashed": 1, "dotted": 2}
 class LabelPosition:
     name: str
     commands: list[str]
+
+
+def build_geogebra_commands_v3(projection: RenderProjectionV3) -> list[str]:
+    commands: list[str] = []
+    for point in projection.points:
+        x, y, z = point.position
+        coordinates = f"{_format_number(x)}, {_format_number(y)}"
+        if projection.dimension == "3d":
+            coordinates += f", {_format_number(z)}"
+        commands.append(f"{point.name} = ({coordinates})")
+        if point.label:
+            commands.extend(_coordinate_label_commands(point.name, point.label))
+        if not point.visible:
+            commands.extend(_visibility_commands(point.name, False))
+
+    for item in projection.linear:
+        first, second = (projection.object_names[point_id] for point_id in item.point_ids)
+        constructor = {"segment": "Segment", "line": "Line", "vector": "Vector"}[item.kind]
+        commands.append(f"{item.name} = {constructor}({first}, {second})")
+        commands.extend(_style_commands(item.name, item.color, item.line_width))
+        if item.style:
+            commands.append(f"SetLineStyle({item.name}, {_LINE_STYLE_CODES[item.style]})")
+        if not item.visible:
+            commands.extend(_visibility_commands(item.name, False))
+
+    for circle in projection.circles:
+        center = projection.object_names[circle.center_point_id]
+        commands.append(f"{circle.name} = Circle({center}, {_format_number(circle.radius)})")
+        if not circle.visible:
+            commands.extend(_visibility_commands(circle.name, False))
+
+    for function in projection.functions:
+        expression = function.expression.replace(" ", "")
+        if not _SAFE_EXPRESSION_RE.fullmatch(expression):
+            continue
+        if function.domain:
+            commands.append(f"{function.name} = Function({expression}, {function.domain[0]}, {function.domain[1]})")
+        else:
+            commands.append(f"{function.name}(x) = {expression}")
+        if not function.visible:
+            commands.extend(_visibility_commands(function.name, False))
+
+    for surface in projection.surfaces:
+        point_ids = surface.point_ids[:3] if surface.kind == "plane" else surface.point_ids
+        points = ", ".join(projection.object_names[point_id] for point_id in point_ids)
+        constructor = "Plane" if surface.kind == "plane" else "Polygon"
+        commands.append(f"{surface.name} = {constructor}({points})")
+        commands.extend(_style_commands(surface.name, surface.color, opacity=surface.opacity))
+        if not surface.visible:
+            commands.extend(_visibility_commands(surface.name, False))
+
+    for sphere in projection.spheres:
+        center = projection.object_names[sphere.center_point_id]
+        commands.append(f"{sphere.name} = Sphere({center}, {_format_number(sphere.radius)})")
+        commands.extend(_style_commands(sphere.name, sphere.color, opacity=sphere.opacity))
+        if not sphere.visible:
+            commands.extend(_visibility_commands(sphere.name, False))
+
+    commands.extend(_projection_annotation_commands(projection))
+    return commands
+
+
+def _projection_annotation_commands(projection: RenderProjectionV3) -> list[str]:
+    commands: list[str] = []
+    linear = {item.object_id: item for item in projection.linear}
+    for index, annotation in enumerate(projection.annotations, start=1):
+        names = [projection.object_names[target_id] for target_id in annotation.target_ids]
+        if annotation.type == "coordinate_label" and len(names) == 1:
+            commands.extend(_coordinate_label_commands(names[0], annotation.label or names[0]))
+        elif annotation.type == "equal_marks" and len(names) == 1 and annotation.target_ids[0] in linear:
+            commands.append(f"SetDecoration({names[0]}, 1)")
+        elif annotation.type in {"angle", "right_angle"} and len(names) == 3:
+            angle_name = f"annAngle{index}"
+            commands.append(f"{angle_name} = Angle({names[0]}, {names[1]}, {names[2]})")
+            if annotation.label:
+                commands.append(f'SetCaption({angle_name}, "{_escape_text(annotation.label)}")')
+        elif annotation.type in {"length", "measurement"} and len(names) == 1:
+            commands.append(f"ShowLabel({names[0]}, true)")
+            if annotation.label:
+                commands.append(f'SetCaption({names[0]}, "{_escape_text(annotation.label)}")')
+    return commands
+
+
+def _visibility_commands(name: str, visible: bool) -> list[str]:
+    value = "true" if visible else "false"
+    return [f"SetVisibleInView({name}, 1, {value})", f"SetVisibleInView({name}, 2, {value})"]
 
 
 def build_geogebra_commands(scene: MathScene, settings: AdvancedRenderSettings | None = None) -> list[str]:

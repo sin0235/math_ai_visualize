@@ -1,0 +1,21 @@
+evidence_id: MC-API-01
+claim: Production công bố liveness và readiness PostgreSQL.
+commit_sha: unknown-production-artifact
+workspace_clean: not_applicable
+environment: production
+base_url: https://starfish-app-e3i2c.ondigitalocean.app
+collected_at_utc: 2026-07-12T02:12:28Z
+collector: automated-session
+actual:
+  - /api/health trả HTTP 200, status ok.
+  - /api/health/ready trả HTTP 200, status ready, database postgres và ok true.
+  - /openapi.json trả frontend HTML do Nginx fallback, không phải OpenAPI JSON.
+result: passed
+raw_files:
+  - 01-raw/health.headers
+  - 01-raw/health.json
+  - 01-raw/ready.headers
+  - 01-raw/ready.json
+  - 01-raw/openapi.html
+redactions:
+  - Đã loại cookie Cloudflare và DigitalOcean instance ID khỏi header lưu.

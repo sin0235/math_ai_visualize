@@ -357,13 +357,13 @@ export interface SceneAudit {
 }
 
 export interface ThreeScene {
-  points: Record<string, { x: number; y: number; z: number; hidden?: boolean }>;
-  segments: Array<{ points: [string, string]; hidden: boolean; name?: string | null; color?: string | null; line_width?: number | null; style?: 'solid' | 'dashed' | 'dotted' | null }>;
+  points: Record<string, { x: number; y: number; z: number; hidden?: boolean; object_id?: string; label?: string | null }>;
+  segments: Array<{ object_id?: string; points: [string, string]; hidden: boolean; name?: string | null; color?: string | null; line_width?: number | null; style?: 'solid' | 'dashed' | 'dotted' | null }>;
   faces: Array<{ points: string[]; name?: string | null; color: string; opacity: number }>;
   spheres?: Array<{ center: string; radius: number; name?: string | null; color: string; opacity: number }>;
-  lines?: Array<{ through: [string, string]; name?: string | null; color: string }>;
+  lines?: Array<{ through: [string, string]; name?: string | null; color: string; extent?: number | null }>;
   vectors?: Array<{ from_point: string; to_point: string; name?: string | null; color: string }>;
-  planes?: Array<{ points: string[]; name?: string | null; color: string; opacity: number; show_normal: boolean }>;
+  planes?: Array<{ points: string[]; name?: string | null; color: string; opacity: number; show_normal: boolean; extent?: number | null }>;
   computed?: {
     intersections?: ComputedIntersection[];
     vectors?: ComputedVector[];
@@ -372,6 +372,7 @@ export interface ThreeScene {
   };
   annotations: Annotation[];
   relations: Relation[];
+  bounds?: { minimum: [number, number, number]; maximum: [number, number, number]; center: [number, number, number]; radius: number };
   view: SceneView;
 }
 

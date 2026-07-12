@@ -1,0 +1,43 @@
+{
+  "collected_at_utc": "2026-07-12T04:46:49Z",
+  "app_id": "f94827d0-9d28-4047-9a06-68129dc99199",
+  "active_deployment": {
+    "id": "126d138c-8fc4-4608-9886-be5f9765e672",
+    "phase": "ACTIVE",
+    "created_at": "2026-07-12T00:31:22Z",
+    "updated_at": "2026-07-12T00:37:17Z",
+    "cause": "commit 26b21f0 pushed to github.com/sin0235/math_ai_visualize/tree/product",
+    "success_steps": 6,
+    "total_steps": 6
+  },
+  "spec": {
+    "region": "sgp",
+    "service": "math-ai-visualize",
+    "github": {
+      "repo": "sin0235/math_ai_visualize",
+      "branch": "product",
+      "deploy_on_push": true
+    },
+    "instance_count": 1,
+    "instance_size_slug": "apps-s-1vcpu-2gb",
+    "health_check": {
+      "http_path": "/api/health/ready"
+    },
+    "secret_env_keys": [
+      "APPWRITE_API_KEY",
+      "D1_API_TOKEN",
+      "FIREBASE_CREDENTIALS_JSON",
+      "GOOGLE_OAUTH_CLIENT_SECRET",
+      "NVIDIA_API_KEY",
+      "OLLAMA_API_KEY",
+      "OPENROUTER_API_KEY",
+      "RESEND_API_KEY",
+      "ROUTER9_API_KEY",
+      "DATABASE_URL",
+      "OPENAI_COMPAT_API_KEY",
+      "CLOUDINARY_API_KEY",
+      "CLOUDINARY_API_SECRET",
+      "TURNSTILE_SECRET_KEY"
+    ]
+  }
+}

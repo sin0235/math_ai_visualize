@@ -1,0 +1,41 @@
+collected_at_utc=2026-07-12T03:01:27Z
+Python 3.12.3
+v24.18.0
+11.16.0
+psql (PostgreSQL) 16.14 (Ubuntu 16.14-0ubuntu0.24.04.1)
+Redis server v=7.0.15 sha=00000000:0 malloc=jemalloc-5.3.0 bits=64 build=e53ff17674aa6190
+schemathesis, version 4.22.4
+locust 2.45.0 from /home/sin235/.cache/math-ai-evidence/core-venv/lib/python3.12/site-packages/locust (Python 3.12.3)
+Exception ignored in: <function _removeHandlerRef at 0x754064193420>
+Traceback (most recent call last):
+  File "/usr/lib/python3.12/logging/__init__.py", line 884, in _removeHandlerRef
+  File "/usr/lib/python3.12/logging/__init__.py", line 241, in _acquireLock
+  File "/usr/lib/python3.12/threading.py", line 198, in acquire
+  File "/home/sin235/.cache/math-ai-evidence/core-venv/lib/python3.12/site-packages/gevent/thread.py", line 81, in get_ident
+RuntimeError: greenlet is being finalized
+pip-audit 2.10.1
+bandit 1.9.4
+  python version = 3.12.3 (main, Jun 19 2026, 12:46:00) [GCC 13.3.0]
+usage: sslyze [-h] [--update_trust_stores] [--cert CERTIFICATE_FILE]
+              [--key KEY_FILE] [--keyform KEY_FORMAT] [--pass PASSPHRASE]
+              [--json_out JSON_FILE] [--targets_in TARGET_FILE] [--quiet]
+              [--slow_connection] [--https_tunnel PROXY_SETTINGS]
+              [--starttls PROTOCOL] [--xmpp_to HOSTNAME]
+              [--sni SERVER_NAME_INDICATION] [--tlsv1_1] [--elliptic_curves]
+              [--compression] [--sslv3] [--tlsv1_3] [--reneg] [--resum]
+              [--resum_attempts RESUM_ATTEMPTS] [--early_data] [--fallback]
+              [--heartbleed] [--certinfo]
+              [--certinfo_ca_file CERTINFO_CA_FILE] [--sslv2] [--robot]
+              [--tlsv1] [--ems] [--tlsv1_2] [--openssl_ccs] [--http_headers]
+              [--custom_tls_config CUSTOM_TLS_CONFIG]
+              [--mozilla_config {modern,intermediate,old,disable}]
+              [target ...]
+sslyze: error: unrecognized arguments: --version
+1.169.0
+Version 1.61.1
+13.4.0
+node-tools@ /home/sin235/.cache/math-ai-evidence/node-tools
+├── @axe-core/playwright@4.12.1
+├── lighthouse@13.4.0
+└── playwright@1.61.1
+

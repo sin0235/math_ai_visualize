@@ -1,0 +1,9 @@
+{
+  "collected_at_utc": "2026-07-12T04:51:00Z",
+  "tool": "pip-audit 2.10.1",
+  "source": "backend/pyproject.toml project.dependencies",
+  "dependency_count": 60,
+  "vulnerable_dependencies": [],
+  "fixes": [],
+  "exit_code": 0
+}

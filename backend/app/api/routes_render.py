@@ -1,7 +1,9 @@
 import asyncio
 import json
 import logging
+from dataclasses import replace
 from datetime import UTC, datetime
+from sqlite3 import IntegrityError
 
 from fastapi import APIRouter, Depends, Request, status
 
@@ -11,8 +13,14 @@ from app.db.session import DatabaseClient, create_database_client, get_database
 from app.repositories.activity import try_log_user_activity
 from app.repositories.admin import AdminRepository
 from app.repositories.history import RenderHistoryRepository
+from app.repositories.scene_workspaces import SceneWorkspaceRepository
 from app.core.config import get_settings
 from app.schemas.auth import SystemFeatureFlags
+from app.schemas.scene_v3 import (
+    SceneCommandRequest,
+    SceneWorkspaceCreateRequest,
+    SceneWorkspaceResponseV3,
+)
 from app.schemas.scene import (
     RenderJobCreateResponse,
     RenderJobStatusResponse,
@@ -306,6 +314,73 @@ async def build_problem_render_response(request: RenderRequest, db: DatabaseClie
     return response
 
 
+async def build_problem_render_result_v3(request: RenderRequest, db: DatabaseClient, user: UserRecord | None = None, byok=None):
+    from app.services.scene_pipeline_v3 import PipelineIssueV3, run_scene_pipeline_v3
+    from app.services.scene_v3_adapter import migrate_scene_v2_dict
+
+    # ponytail: extractor vẫn sinh v2; xóa bridge này khi prompt/parser phát MathSceneV3 trực tiếp.
+    legacy_response = await build_problem_render_response(request, db, user, byok=byok)
+    scene, report = migrate_scene_v2_dict(legacy_response.scene.model_dump(mode="json"))
+    result = run_scene_pipeline_v3(scene)
+    confirmation_reasons = [*report.warnings, *report.unresolved_references]
+    if legacy_response.degraded or legacy_response.requires_user_confirmation:
+        confirmation_reasons.append("Nguồn render fallback hoặc chưa được xác nhận.")
+    if not confirmation_reasons:
+        return result
+    issues = (*result.issues, *(
+        PipelineIssueV3(
+            stage="repair",
+            code="REPAIR_CONFIRMATION_REQUIRED",
+            message=message,
+            severity="warning",
+        )
+        for message in dict.fromkeys(confirmation_reasons)
+    ))
+    return replace(result, status="needs_confirmation", issues=issues, requires_user_confirmation=True)
+
+
+@router.post(
+    "/render/v3",
+    response_model=SceneWorkspaceResponseV3,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_trusted_origin)],
+)
+async def render_problem_v3(
+    request: RenderRequest,
+    http_request: Request,
+    user: UserRecord = Depends(require_active_user),
+    db: DatabaseClient = Depends(get_database),
+) -> SceneWorkspaceResponseV3:
+    from app.services.load_gates import render_load_gate
+
+    await enforce_rate_limit(db, http_request, user, "render", 20 if user else 8, 60)
+    settings = get_settings()
+    try:
+        byok = await resolve_byok_ai_config(db, user, "render", settings)
+    except UserAiSettingsError as error:
+        raise api_error(status.HTTP_400_BAD_REQUEST, f"Cấu hình BYOK không hợp lệ: {error}", "RENDER_FAILED") from error
+    if byok is None:
+        await enforce_render_access(db, user)
+    slot = await render_load_gate.try_acquire(settings.render_max_concurrent)
+    if slot is None:
+        raise api_error(status.HTTP_429_TOO_MANY_REQUESTS, "Hệ thống đang xử lý quá nhiều yêu cầu dựng hình.", "RENDER_CONCURRENT_LIMIT")
+    try:
+        try:
+            result = await asyncio.wait_for(build_problem_render_result_v3(request, db, user, byok=byok), timeout=RENDER_TIMEOUT_SECONDS)
+        except TimeoutError as error:
+            raise api_error(status.HTTP_504_GATEWAY_TIMEOUT, f"Render vượt quá {RENDER_TIMEOUT_SECONDS}s.", "TIMEOUT") from error
+        if not result.can_project:
+            code = next((issue.code for issue in result.issues if issue.severity == "error"), "SCENE_SCHEMA_INVALID")
+            raise api_error(status.HTTP_422_UNPROCESSABLE_ENTITY, "Scene v3 không vượt qua pipeline.", code)
+        try:
+            await SceneWorkspaceRepository(db).create(user.id, result)
+        except IntegrityError as error:
+            raise api_error(status.HTTP_409_CONFLICT, "Scene workspace đã tồn tại.", "SCENE_WORKSPACE_EXISTS") from error
+        return workspace_response_v3(result)
+    finally:
+        slot.release()
+
+
 @router.post("/render/scene", response_model=RenderResponse, dependencies=[Depends(require_trusted_origin)])
 async def render_scene(
     request: SceneRenderRequest,
@@ -327,6 +402,134 @@ async def render_scene(
         build_problem_advisory=False,
     ).response
     return response
+
+
+@router.post(
+    "/render/v3/workspaces",
+    response_model=SceneWorkspaceResponseV3,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_trusted_origin)],
+)
+async def create_scene_workspace_v3(
+    request: SceneWorkspaceCreateRequest,
+    http_request: Request,
+    user: UserRecord = Depends(require_active_user),
+    db: DatabaseClient = Depends(get_database),
+) -> SceneWorkspaceResponseV3:
+    from app.services.scene_pipeline_v3 import run_scene_pipeline_v3
+
+    await enforce_rate_limit(db, http_request, user, "scene_command", 120, 60)
+    result = run_scene_pipeline_v3(request.scene)
+    if not result.can_project:
+        raise api_error(status.HTTP_422_UNPROCESSABLE_ENTITY, "Scene không đạt topology validation.", "SCENE_SCHEMA_INVALID")
+    try:
+        await SceneWorkspaceRepository(db).create(user.id, result)
+    except IntegrityError as error:
+        raise api_error(status.HTTP_409_CONFLICT, "Scene workspace đã tồn tại.", "SCENE_WORKSPACE_EXISTS") from error
+    return workspace_response_v3(result)
+
+
+@router.get("/render/v3/workspaces/{scene_id}", response_model=SceneWorkspaceResponseV3)
+async def get_scene_workspace_v3(
+    scene_id: str,
+    user: UserRecord = Depends(require_active_user),
+    db: DatabaseClient = Depends(get_database),
+) -> SceneWorkspaceResponseV3:
+    from app.services.scene_pipeline_v3 import run_scene_pipeline_v3
+
+    workspace = await SceneWorkspaceRepository(db).find_for_user(user.id, scene_id)
+    if workspace is None:
+        raise api_error(status.HTTP_404_NOT_FOUND, "Không tìm thấy scene workspace.", "SCENE_WORKSPACE_NOT_FOUND")
+    return workspace_response_v3(run_scene_pipeline_v3(workspace.scene))
+
+
+@router.post(
+    "/render/v3/commands",
+    response_model=SceneWorkspaceResponseV3,
+    dependencies=[Depends(require_trusted_origin)],
+)
+async def apply_scene_command_v3(
+    request: SceneCommandRequest,
+    http_request: Request,
+    user: UserRecord = Depends(require_active_user),
+    db: DatabaseClient = Depends(get_database),
+) -> SceneWorkspaceResponseV3:
+    from app.services.scene_commands_v3 import SceneCommandError, apply_scene_command
+    from app.services.scene_pipeline_v3 import run_scene_pipeline_v3
+
+    await enforce_rate_limit(db, http_request, user, "scene_command", 120, 60)
+    repository = SceneWorkspaceRepository(db)
+    workspace = await repository.find_for_user(user.id, request.command.scene_id)
+    if workspace is None:
+        raise api_error(status.HTTP_404_NOT_FOUND, "Không tìm thấy scene workspace.", "SCENE_WORKSPACE_NOT_FOUND")
+    try:
+        applied = apply_scene_command(workspace.scene, request.command)
+    except SceneCommandError as error:
+        status_code = status.HTTP_409_CONFLICT if error.code == "SCENE_EDIT_STALE" else status.HTTP_422_UNPROCESSABLE_ENTITY
+        raise api_error(status_code, str(error), error.code) from error
+
+    result = run_scene_pipeline_v3(applied.scene)
+    if not result.can_project:
+        raise api_error(status.HTTP_422_UNPROCESSABLE_ENTITY, "Command tạo scene không hợp lệ.", "SCENE_SCHEMA_INVALID")
+    failed_impacted = {
+        item.relation_id
+        for item in result.verification
+        if item.status in {"failed", "error"} and item.relation_id in applied.affected_relation_ids
+    }
+    if failed_impacted:
+        raise api_error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"Command làm hỏng ràng buộc: {sorted(failed_impacted)}.",
+            "CONSTRAINT_FAILED",
+        )
+    try:
+        await repository.commit_command(user.id, request.command, applied, result, workspace.history_item_id)
+    except IntegrityError as error:
+        raise api_error(
+            status.HTTP_409_CONFLICT,
+            "Scene đã có revision mới; tải lại trước khi chỉnh tiếp.",
+            "SCENE_EDIT_STALE",
+        ) from error
+    return workspace_response_v3(
+        result,
+        inverse_command=applied.inverse,
+        changed_object_ids=sorted(applied.changed_object_ids),
+        affected_relation_ids=sorted(applied.affected_relation_ids),
+    )
+
+
+def workspace_response_v3(
+    result,
+    *,
+    inverse_command=None,
+    changed_object_ids: list[str] | None = None,
+    affected_relation_ids: list[str] | None = None,
+) -> SceneWorkspaceResponseV3:
+    from app.services.renderer_router import build_render_payload_v3
+
+    if result.projection is None:
+        raise api_error(status.HTTP_422_UNPROCESSABLE_ENTITY, "Scene không tạo được render projection.", "RENDERER_UNSUPPORTED")
+    return SceneWorkspaceResponseV3.model_validate({
+        "status": result.status,
+        "scene": result.scene,
+        "projection": result.projection,
+        "payload": build_render_payload_v3(result.projection),
+        "verification": list(result.verification),
+        "issues": [
+            {
+                "stage": issue.stage,
+                "code": issue.code,
+                "message": issue.message,
+                "severity": issue.severity,
+                "target_id": issue.target_id,
+            }
+            for issue in result.issues
+        ],
+        "requires_user_confirmation": result.requires_user_confirmation,
+        "inverse_command": inverse_command,
+        "changed_object_ids": changed_object_ids or [],
+        "affected_relation_ids": affected_relation_ids or [],
+    })
 
 
 def assert_scene_edit_revision(request: SceneRenderRequest) -> None:

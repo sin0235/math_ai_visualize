@@ -1,0 +1,373 @@
+from __future__ import annotations
+
+from collections.abc import Iterator, Mapping
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, TypeAlias
+
+from schemathesis.config import ApiKeyAuthConfig, DynamicTokenAuthConfig, HttpBasicAuthConfig, HttpBearerAuthConfig
+from schemathesis.config._error import ConfigError
+from schemathesis.core.jsonschema.resolver import Resolver, resolve_reference
+from schemathesis.core.parameters import ParameterLocation
+from schemathesis.generation.meta import CoveragePhaseData, FuzzingPhaseData, StatefulPhaseData
+from schemathesis.specs.openapi.auths import (
+    ApiKeyAuthProvider,
+    DynamicTokenAuthProvider,
+    HttpBasicAuthProvider,
+    HttpBearerAuthProvider,
+)
+
+if TYPE_CHECKING:
+    from schemathesis.auths import AuthContext, AuthProvider
+    from schemathesis.generation.case import Case
+    from schemathesis.schemas import APIOperation
+    from schemathesis.specs.openapi.adapter.protocol import SpecificationAdapter
+
+ORIGINAL_SECURITY_TYPE_KEY = "x-original-security-type"
+
+# OpenAPI `security` array: each entry maps scheme name to required scopes.
+SecurityRequirements: TypeAlias = list[Mapping[str, list[str]]]
+
+
+def _matches_security_parameter(
+    definition: Mapping[str, Any],
+    param_name: str,
+    param_location: ParameterLocation,
+) -> bool:
+    """Check if security definition would set the given parameter."""
+    ty = definition.get("type")
+
+    if ty == "http":
+        return param_name == "Authorization" and param_location == ParameterLocation.HEADER
+
+    if ty == "apiKey":
+        location_map = {
+            "header": ParameterLocation.HEADER,
+            "query": ParameterLocation.QUERY,
+            "cookie": ParameterLocation.COOKIE,
+        }
+        loc = definition.get("in")
+        return isinstance(loc, str) and param_name == definition.get("name") and param_location == location_map.get(loc)
+
+    return False
+
+
+class OpenApiSecurity:
+    """OpenAPI security scheme definitions and authentication logic."""
+
+    raw_schema: Mapping[str, Any]
+    adapter: SpecificationAdapter
+    resolver: Resolver
+    _auth_provider_cache: dict[str, AuthProvider]
+    _resolved_definitions: Mapping[str, Mapping[str, Any]] | None
+
+    __slots__ = ("raw_schema", "adapter", "resolver", "_auth_provider_cache", "_resolved_definitions")
+
+    def __init__(self, raw_schema: Mapping[str, Any], adapter: SpecificationAdapter, resolver: Resolver) -> None:
+        self.raw_schema = raw_schema
+        self.adapter = adapter
+        self.resolver = resolver
+        self._auth_provider_cache = {}
+        self._resolved_definitions = None
+
+    @property
+    def security_definitions(self) -> Mapping[str, Mapping[str, Any]]:
+        """Get security scheme definitions from the schema."""
+        if self._resolved_definitions is None:
+            self._resolved_definitions = self.adapter.extract_security_definitions(self.raw_schema, self.resolver)
+        return self._resolved_definitions
+
+    def auth_provider_for(
+        self,
+        scheme: str,
+        config: ApiKeyAuthConfig | HttpBasicAuthConfig | HttpBearerAuthConfig | DynamicTokenAuthConfig,
+    ) -> AuthProvider:
+        """Get or build an auth provider for the given scheme (cached per scheme).
+
+        Args:
+            scheme: Name of the security scheme
+            config: Auth configuration
+
+        """
+        if scheme not in self._auth_provider_cache:
+            definition = self.security_definitions[scheme]
+            self._auth_provider_cache[scheme] = build_auth_provider(config, definition)
+        return self._auth_provider_cache[scheme]
+
+    def is_security_param_negated(self, case: Case) -> bool:
+        """Return True if this case is in negative mode targeting one of the schema's security parameters."""
+        meta = case.meta
+        if not meta or not meta.generation.mode.is_negative:
+            return False
+        phase_data = meta.phase.data
+        if not isinstance(phase_data, (FuzzingPhaseData, CoveragePhaseData, StatefulPhaseData)):
+            return False
+        mutated_param = phase_data.parameter
+        mutated_location = phase_data.parameter_location
+        if not mutated_param or not mutated_location:
+            return False
+        for definition in self.security_definitions.values():
+            if _matches_security_parameter(definition, mutated_param, mutated_location):
+                return True
+        return False
+
+    def apply_auth(
+        self,
+        case: Case,
+        context: AuthContext,
+        configured_schemes: Mapping[
+            str, ApiKeyAuthConfig | HttpBasicAuthConfig | HttpBearerAuthConfig | DynamicTokenAuthConfig
+        ],
+    ) -> bool:
+        """Apply OpenAPI-aware authentication to a test case.
+
+        Args:
+            case: Test case to authenticate
+            context: Auth context
+            configured_schemes: Dict of configured auth schemes from config
+
+        """
+        # Check if a security parameter was intentionally removed during negative testing
+        if self.is_security_param_negated(case):
+            return False
+
+        # Security requirements: OR semantics (first match wins), AND semantics (all in requirement).
+        # Auth-inference may attach a runtime overlay; that takes precedence over the raw spec.
+        security_requirements = effective_security_requirements(case.operation, self.raw_schema)
+
+        if not security_requirements:
+            return False
+
+        security_definitions = self.security_definitions
+
+        # Try each security requirement (OR semantics)
+        for requirement in security_requirements:
+            if not isinstance(requirement, dict):
+                continue
+            # Check if all schemes in this requirement can be satisfied (AND semantics)
+            providers_to_apply = []
+            can_satisfy = True
+
+            for scheme_name in requirement:
+                if scheme_name not in configured_schemes or scheme_name not in security_definitions:
+                    can_satisfy = False
+                    break
+
+                config = configured_schemes[scheme_name]
+                provider = self.auth_provider_for(scheme_name, config)
+                providers_to_apply.append(provider)
+
+            # If we can satisfy this requirement, apply all providers
+            if can_satisfy and providers_to_apply:
+                for provider in providers_to_apply:
+                    data = provider.get(case, context)
+                    assert data is not None
+                    provider.set(case, data, context)
+                case._has_explicit_auth = True
+                return True
+
+        return False
+
+
+@dataclass(slots=True)
+class OpenApiSecurityParameters:
+    """Security parameters for an API operation."""
+
+    _parameters: list[Mapping[str, Any]]
+
+    @classmethod
+    def from_definition(
+        cls,
+        schema: Mapping[str, Any],
+        operation: Mapping[str, Any],
+        resolver: Resolver,
+        adapter: SpecificationAdapter,
+    ) -> OpenApiSecurityParameters:
+        return cls(list(adapter.extract_security_parameters(schema, operation, resolver)))
+
+    def iter_parameters(self) -> Iterator[Mapping[str, Any]]:
+        return iter(self._parameters)
+
+
+def extract_security_parameters_v2(
+    schema: Mapping[str, Any], operation: Mapping[str, Any], resolver: Resolver
+) -> Iterator[Mapping[str, Any]]:
+    """Extract all required security parameters for this operation."""
+    defined = extract_security_definitions_v2(schema, resolver)
+    required = get_security_requirements(schema, operation)
+    optional = has_optional_auth(schema, operation)
+
+    for key in required:
+        if key not in defined:
+            continue
+        definition = defined[key]
+        ty = definition["type"]
+
+        if ty == "apiKey":
+            param = make_api_key_schema(definition, type="string")
+        elif ty == "basic":
+            parameter_schema = make_auth_header_schema(definition)
+            param = make_auth_header(**parameter_schema)
+        else:
+            continue
+
+        param[ORIGINAL_SECURITY_TYPE_KEY] = ty
+
+        if optional:
+            param = {**param, "required": False}
+
+        yield param
+
+
+def extract_security_parameters_v3(
+    schema: Mapping[str, Any],
+    operation: Mapping[str, Any],
+    resolver: Resolver,
+) -> Iterator[Mapping[str, Any]]:
+    """Extract all required security parameters for this operation."""
+    defined = extract_security_definitions_v3(schema, resolver)
+    required = get_security_requirements(schema, operation)
+    optional = has_optional_auth(schema, operation)
+
+    for key in required:
+        if key not in defined:
+            continue
+        definition = defined[key]
+        ty = definition["type"]
+
+        if ty == "apiKey":
+            param = make_api_key_schema(definition, schema={"type": "string"})
+        elif ty == "http":
+            parameter_schema = make_auth_header_schema(definition)
+            param = make_auth_header(schema=parameter_schema)
+        else:
+            continue
+
+        param[ORIGINAL_SECURITY_TYPE_KEY] = ty
+
+        if optional:
+            param = {**param, "required": False}
+
+        yield param
+
+
+def make_auth_header_schema(definition: dict[str, Any]) -> dict[str, str]:
+    """Build schema dict for Authorization header based on auth scheme."""
+    schema = definition.get("scheme", "basic").lower()
+    return {"type": "string", "format": f"_{schema}_auth"}
+
+
+def make_auth_header(**kwargs: Any) -> dict[str, Any]:
+    """Build Authorization header security parameter."""
+    return {"name": "Authorization", "in": "header", "required": True, **kwargs}
+
+
+def make_api_key_schema(definition: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
+    """Build API key security parameter from security definition."""
+    return {"name": definition["name"], "required": True, "in": definition["in"], **kwargs}
+
+
+def get_security_requirements(schema: Mapping[str, Any], operation: Mapping[str, Any]) -> list[str]:
+    requirements = operation.get("security", schema.get("security", []))
+    return [key for requirement in requirements if isinstance(requirement, dict) for key in requirement]
+
+
+def has_optional_auth(schema: Mapping[str, Any], operation: Mapping[str, Any]) -> bool:
+    return {} in operation.get("security", schema.get("security", []))
+
+
+def effective_security_requirements(operation: APIOperation, raw_schema: Mapping[str, Any]) -> SecurityRequirements:
+    """Return the operation's security requirements, including any runtime auth-inference overlay."""
+    overlay = operation.schema._inferred_security.get(operation.label)
+    if overlay is not None:
+        return list(overlay)
+    return operation.definition.raw.get("security", raw_schema.get("security", []))
+
+
+def get_effective_security_scheme_names(operation: APIOperation, raw_schema: Mapping[str, Any]) -> list[str]:
+    """Return the scheme names that govern an operation, including auth-inference overlays."""
+    return [
+        key
+        for requirement in effective_security_requirements(operation, raw_schema)
+        if isinstance(requirement, dict)
+        for key in requirement
+    ]
+
+
+def has_effective_optional_auth(operation: APIOperation, raw_schema: Mapping[str, Any]) -> bool:
+    """Return True iff an empty `{}` requirement appears in the effective security list."""
+    return {} in effective_security_requirements(operation, raw_schema)
+
+
+def extract_security_definitions_v2(schema: Mapping[str, Any], resolver: Resolver) -> Mapping[str, Any]:
+    return schema.get("securityDefinitions", {})
+
+
+def extract_security_definitions_v3(schema: Mapping[str, Any], resolver: Resolver) -> Mapping[str, Any]:
+    """In Open API 3 security definitions are located in ``components`` and may have references inside."""
+    components = schema.get("components", {})
+    security_schemes = components.get("securitySchemes", {})
+    if "$ref" in security_schemes:
+        return resolve_reference(resolver, security_schemes["$ref"])[1]
+    return {
+        key: resolve_reference(resolver, value["$ref"])[1] if "$ref" in value else value
+        for key, value in security_schemes.items()
+    }
+
+
+def build_auth_provider(
+    config: ApiKeyAuthConfig | HttpBasicAuthConfig | HttpBearerAuthConfig | DynamicTokenAuthConfig,
+    scheme: Mapping[str, Any],
+) -> AuthProvider:
+    """Build an auth provider from config and OpenAPI scheme definition.
+
+    This function is used by both v2 and v3 adapters as the logic is the same.
+
+    Args:
+        config: Auth configuration
+        scheme: Security scheme definition
+
+    Returns:
+        AuthProvider instance for the given scheme
+
+    """
+    if isinstance(config, ApiKeyAuthConfig):
+        return ApiKeyAuthProvider(value=config.api_key, name=scheme["name"], location=scheme["in"])
+
+    elif isinstance(config, HttpBasicAuthConfig):
+        return HttpBasicAuthProvider(username=config.username, password=config.password)
+
+    elif isinstance(config, HttpBearerAuthConfig):
+        return HttpBearerAuthProvider(bearer=config.bearer)
+
+    elif isinstance(config, DynamicTokenAuthConfig):
+        scheme_type = scheme.get("type")
+        applier: HttpBearerAuthProvider | ApiKeyAuthProvider
+        if scheme_type == "http":
+            if scheme.get("scheme", "").lower() == "bearer":
+                applier = HttpBearerAuthProvider(bearer="")
+            else:
+                raise ConfigError(
+                    f"Dynamic token fetch is not supported for http/{scheme.get('scheme')} schemes. "
+                    "Use bearer or apiKey schemes, or the programmatic AuthProvider API."
+                )
+        elif scheme_type == "apiKey":
+            applier = ApiKeyAuthProvider(value="", name=scheme["name"], location=scheme["in"])
+        else:
+            raise ConfigError(f"Dynamic token fetch is not supported for scheme type {scheme_type!r}.")
+        # Deferred to avoid circular import: schemathesis.auths imports from openapi internals
+        from schemathesis.auths import CachingAuthProvider
+
+        return CachingAuthProvider(
+            DynamicTokenAuthProvider(
+                path=config.path,
+                method=config.method,
+                payload=config.payload,
+                payload_content_type=config.payload_content_type,
+                extract_from=config.extract_from,
+                extract_selector=config.extract_selector,
+                _applier=applier,
+            )
+        )
+
+    # Should never reach here due to JSON Schema validation
+    raise TypeError(f"Unknown auth config type: {type(config)}")  # pragma: no cover

@@ -1,0 +1,753 @@
+from __future__ import annotations
+
+import inspect
+import sys
+import unittest
+from collections.abc import Callable, Generator
+from functools import partial
+from typing import TYPE_CHECKING, Any, cast
+
+import pytest
+from _pytest import nodes
+from _pytest.config import hookimpl
+from _pytest.python import Class, Function, FunctionDefinition, Metafunc, Module, PyCollector
+from _pytest.subtests import SubtestReport
+from hypothesis.errors import FailedHealthCheck, InvalidArgument, Unsatisfiable
+from pluggy import Result as PluggyResult
+
+from schemathesis.checks import collect_after_run_failures, run_checks_for
+from schemathesis.core.compat import BaseExceptionGroup
+from schemathesis.core.control import SkipTest
+from schemathesis.core.errors import (
+    SERIALIZERS_SUGGESTION_MESSAGE,
+    IncorrectUsage,
+    InvalidHeadersExample,
+    InvalidRegexPattern,
+    InvalidSchema,
+    SchemathesisError,
+    SerializationNotPossible,
+    format_exception,
+)
+from schemathesis.core.failures import RUN_CHECKS_LABEL, FailureGroup, format_failures, get_origin
+from schemathesis.core.marks import Mark
+from schemathesis.core.result import Ok, Result
+from schemathesis.generation import overrides
+from schemathesis.generation.hypothesis.given import (
+    GivenArgsMark,
+    GivenKwargsMark,
+    is_given_applied,
+    merge_given_args,
+    validate_given_args,
+)
+from schemathesis.generation.hypothesis.reporting import (
+    HealthCheckTipStyle,
+    build_health_check_error,
+    build_unsatisfiable_error,
+    ignore_hypothesis_output,
+)
+from schemathesis.generation.stateful.state_machine import StatefulCallbackMark, StatefulSchemaMark
+from schemathesis.pytest._keys import _PYTEST_SCHEMAS_KEY, track_schema
+from schemathesis.pytest.control_flow import fail_on_no_matches
+from schemathesis.pytest.warnings import emit_openapi_auth_warnings
+from schemathesis.schemas import APIOperation
+
+if TYPE_CHECKING:
+    from _pytest.fixtures import FuncFixtureInfo
+
+    from schemathesis.config import OutputConfig
+    from schemathesis.core.spec import SchemaMetadata
+    from schemathesis.engine.recorder import ScenarioRecorder
+    from schemathesis.pytest.reporting import PytestReportDispatcher
+    from schemathesis.reporting.allure import AllureWriter, _AllureCallBuffer, _AllureHookForwarder
+    from schemathesis.reporting.har import HarWriter
+    from schemathesis.reporting.junitxml import JunitXmlWriter
+    from schemathesis.reporting.vcr import VcrWriter
+    from schemathesis.schemas import BaseSchema
+
+_CASSETTE_KEY: pytest.StashKey[
+    dict[int, tuple[PytestReportDispatcher, list[VcrWriter | HarWriter | JunitXmlWriter | AllureWriter]]]
+] = pytest.StashKey()
+_STATEFUL_WRITERS_KEY: pytest.StashKey[list[VcrWriter | HarWriter | JunitXmlWriter | AllureWriter]] = pytest.StashKey()
+_ALLURE_FORWARDER_KEY: pytest.StashKey[_AllureHookForwarder] = pytest.StashKey()
+_ALLURE_BUFFER_KEY: pytest.StashKey[_AllureCallBuffer] = pytest.StashKey()
+
+
+def _is_schema(value: object) -> bool:
+    from schemathesis.schemas import BaseSchema
+
+    return isinstance(value, BaseSchema)
+
+
+def _is_schema_dict(value: object) -> bool:
+    from schemathesis.schemas import BaseSchema
+
+    return isinstance(value, dict) and all(isinstance(v, BaseSchema) for v in value.values())
+
+
+SchemaHandleMark = Mark["BaseSchema"](attr_name="schema", check=_is_schema)
+MultiSchemaHandleMark = Mark["dict[str, BaseSchema]"](attr_name="multi_schema", check=_is_schema_dict)
+
+
+class SchemathesisFunction(Function):
+    def __init__(
+        self,
+        *args: Any,
+        test_func: Callable,
+        test_name: str | None = None,
+        operation_label: str | None = None,
+        operation_tags: list[str] | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        self.test_function = test_func
+        self.test_name = test_name
+        self.operation_label = operation_label
+        self.operation_tags = operation_tags
+
+
+class SchemathesisCase(PyCollector):
+    def __init__(self, test_function: Callable, schema: BaseSchema, *args: Any, **kwargs: Any) -> None:
+        self.given_kwargs: dict[str, Any]
+        given_args = GivenArgsMark.get(test_function)
+        given_kwargs = GivenKwargsMark.get(test_function)
+
+        assert given_args is not None
+        assert given_kwargs is not None
+
+        def _init_with_valid_test(_test_function: Callable, _args: tuple, _kwargs: dict[str, Any]) -> None:
+            self.test_function = _test_function
+            self.is_invalid_test = False
+            self.given_kwargs = merge_given_args(test_function, _args, _kwargs)
+
+        if is_given_applied(test_function):
+            failing_test = validate_given_args(test_function, given_args, given_kwargs)
+            if failing_test is not None:
+                self.test_function = failing_test
+                self.is_invalid_test = True
+                self.given_kwargs = {}
+            else:
+                _init_with_valid_test(test_function, given_args, given_kwargs)
+        else:
+            _init_with_valid_test(test_function, given_args, given_kwargs)
+        self.schema = schema
+        super().__init__(*args, **kwargs)
+
+    def _get_test_name(self, operation: APIOperation) -> str:
+        return f"{self.name}[{operation.label}]"
+
+    def _gen_items(self, result: Result[APIOperation, InvalidSchema]) -> Generator[SchemathesisFunction, None, None]:
+        """Generate all tests for the given API operation.
+
+        Could produce more than one test item if
+        parametrization is applied via ``pytest.mark.parametrize`` or ``pytest_generate_tests``.
+
+        This implementation is based on the original one in pytest, but with slight adjustments
+        to produce tests out of hypothesis ones.
+        """
+        from schemathesis.checks import load_all_checks
+        from schemathesis.generation.hypothesis.builder import (
+            HypothesisTestConfig,
+            HypothesisTestMode,
+            create_test,
+            make_async_test,
+        )
+
+        load_all_checks()
+
+        is_trio_test = False
+        for mark in getattr(self.test_function, "pytestmark", []):
+            if mark.name == "trio":
+                is_trio_test = True
+                break
+
+        if isinstance(result, Ok):
+            operation = result.ok()
+            if self.is_invalid_test:
+                funcobj = self.test_function
+            else:
+                as_strategy_kwargs = {}
+
+                auth = self.schema.config.auth_for(operation=operation)
+                if auth is not None:
+                    from requests.auth import _basic_auth_str
+
+                    as_strategy_kwargs["headers"] = {"Authorization": _basic_auth_str(*auth)}
+                headers = self.schema.config.headers_for(operation=operation)
+                if headers:
+                    as_strategy_kwargs["headers"] = headers
+
+                override = overrides.for_operation(operation=operation, config=self.schema.config)
+                if override is not None:
+                    for location, entry in override.items():
+                        if entry:
+                            as_strategy_kwargs[location.container_name] = entry
+                modes = []
+                phases = self.schema.config.phases_for(operation=operation)
+                if phases.examples.enabled:
+                    modes.append(HypothesisTestMode.EXAMPLES)
+                if phases.fuzzing.enabled:
+                    modes.append(HypothesisTestMode.FUZZING)
+                if phases.coverage.enabled:
+                    modes.append(HypothesisTestMode.COVERAGE)
+
+                # Use fuzzing phase settings if fuzzing is enabled, since only fuzzing uses max_examples
+                phase = "fuzzing" if HypothesisTestMode.FUZZING in modes else None
+                funcobj = create_test(
+                    operation=operation,
+                    test_func=self.test_function,
+                    config=HypothesisTestConfig(
+                        modes=modes,
+                        settings=self.schema.config.get_hypothesis_settings(operation=operation, phase=phase),
+                        given_kwargs=self.given_kwargs,
+                        project=self.schema.config,
+                        as_strategy_kwargs=as_strategy_kwargs,
+                        seed=self.schema.config.seed,
+                    ),
+                )
+                if inspect.iscoroutinefunction(self.test_function):
+                    # `pytest-trio` expects a coroutine function
+                    if is_trio_test:
+                        funcobj.hypothesis.inner_test = self.test_function  # type: ignore[attr-defined]
+                    else:
+                        funcobj.hypothesis.inner_test = make_async_test(self.test_function)  # type: ignore[attr-defined]
+            name = self._get_test_name(operation)
+        else:
+            error = result.err()
+            funcobj = error.as_failing_test_function()
+            name = self.name
+            if error.method:
+                name += f"[{error.method.upper()} {error.path}]"
+            else:
+                name += f"[{error.path}]"
+
+        cls = self._get_class_parent()
+        definition: FunctionDefinition = FunctionDefinition.from_parent(
+            name=self.name, parent=self.parent, callobj=funcobj
+        )
+        fixturemanager = self.session._fixturemanager
+        fixtureinfo = fixturemanager.getfixtureinfo(definition, funcobj, cls)
+
+        metafunc = self._parametrize(cls, definition, fixtureinfo)
+
+        if isinstance(self.parent, Class):
+            # On pytest 7, Class collects the test methods directly, therefore
+            funcobj = partial(funcobj, self.parent.obj)
+
+        operation_label = operation.label if isinstance(result, Ok) else None
+        operation_tags = operation.tags if isinstance(result, Ok) else None
+
+        if not metafunc._calls:
+            yield SchemathesisFunction.from_parent(
+                name=name,
+                parent=self.parent,
+                callobj=funcobj,
+                fixtureinfo=fixtureinfo,
+                test_func=self.test_function,
+                originalname=self.name,
+                operation_label=operation_label,
+                operation_tags=operation_tags,
+            )
+        else:
+            fixtureinfo.prune_dependency_tree()
+            for callspec in metafunc._calls:
+                subname = f"{name}[{callspec.id}]"
+                yield SchemathesisFunction.from_parent(
+                    self.parent,
+                    name=subname,
+                    callspec=callspec,
+                    callobj=funcobj,
+                    fixtureinfo=fixtureinfo,
+                    keywords={callspec.id: True},
+                    originalname=name,
+                    test_func=self.test_function,
+                    operation_label=operation_label,
+                    operation_tags=operation_tags,
+                )
+
+    def _get_class_parent(self) -> type | None:
+        clscol = self.getparent(Class)
+        return clscol.obj if clscol else None
+
+    def _parametrize(self, cls: type | None, definition: FunctionDefinition, fixtureinfo: FuncFixtureInfo) -> Metafunc:
+        parent = self.getparent(Module)
+        module = parent.obj if parent is not None else parent
+        # Avoiding `Metafunc` is quite problematic for now, as there are quite a lot of internals we rely on
+        metafunc = Metafunc(definition, fixtureinfo, self.config, cls=cls, module=module, _ispytest=True)
+        methods = []
+        if module is not None and hasattr(module, "pytest_generate_tests"):
+            methods.append(module.pytest_generate_tests)
+        if hasattr(cls, "pytest_generate_tests"):
+            cls = cast(type, cls)
+            methods.append(cls().pytest_generate_tests)
+        self.ihook.pytest_generate_tests.call_extra(methods, {"metafunc": metafunc})
+        return metafunc
+
+    def collect(self) -> list[Function]:  # type: ignore[return]
+        """Generate different test items for all API operations available in the given schema."""
+        try:
+            track_schema(self.config, self.schema)
+            emit_openapi_auth_warnings(self.schema)
+            items = [item for operation in self.schema.get_all_operations() for item in self._gen_items(operation)]
+            if not items:
+                fail_on_no_matches(self.nodeid)
+            return items
+        except Exception:
+            pytest.fail("Error during collection")
+
+
+class SchemathesisPrefixedCase(SchemathesisCase):
+    """A collector that prefixes each test name with a schema label."""
+
+    def __init__(
+        self, test_function: Callable, schema: BaseSchema, schema_name: str, *args: Any, **kwargs: Any
+    ) -> None:
+        self._schema_name = schema_name
+        super().__init__(test_function, schema, *args, **kwargs)
+
+    def _get_test_name(self, operation: APIOperation) -> str:
+        return f"{self.name}[{self._schema_name}][{operation.label}]"
+
+
+class SchemathesisMultiCase(PyCollector):
+    """A collector that produces test items from multiple named schemas."""
+
+    def __init__(self, test_function: Callable, schemas: dict[str, BaseSchema], *args: Any, **kwargs: Any) -> None:
+        self.test_function = test_function
+        self.schemas = schemas
+        super().__init__(*args, **kwargs)
+
+    def collect(self) -> list[Function]:  # type: ignore[return]
+        try:
+            items = []
+            for schema_name, schema in self.schemas.items():
+                case = SchemathesisPrefixedCase.from_parent(
+                    self.parent,
+                    test_function=self.test_function,
+                    name=self.name,
+                    schema=schema,
+                    schema_name=schema_name,
+                )
+                items.extend(case.collect())
+            if not items:
+                fail_on_no_matches(self.nodeid)
+            return items
+        except Exception:
+            pytest.fail("Error during collection")
+
+
+@hookimpl(hookwrapper=True)  # type: ignore[untyped-decorator]
+def pytest_pycollect_makeitem(collector: nodes.Collector, name: str, obj: Any) -> Generator[None, Any, None]:
+    """Switch to a different collector if the test is parametrized marked by schemathesis."""
+    outcome = yield
+    try:
+        schemas = MultiSchemaHandleMark.get(obj)
+        if schemas is not None:
+            outcome.force_result(
+                SchemathesisMultiCase.from_parent(collector, test_function=obj, name=name, schemas=schemas)
+            )
+            return
+        schema = SchemaHandleMark.get(obj)
+        assert schema is not None
+        outcome.force_result(SchemathesisCase.from_parent(collector, test_function=obj, name=name, schema=schema))
+    except Exception:
+        outcome.get_result()
+
+
+@hookimpl(hookwrapper=True, trylast=True)  # type: ignore[untyped-decorator]
+def pytest_report_teststatus(
+    report: pytest.TestReport,
+    config: pytest.Config,
+) -> Generator[None, None, None]:
+    outcome = yield
+    result = cast(PluggyResult[tuple[str, str, str] | None], outcome)
+    if not isinstance(report, SubtestReport):
+        return
+    r = result.get_result()
+    if r is not None:
+        category, short, verbose = r
+        if isinstance(verbose, str):
+            for prefix in ("SUBPASSED", "SUBFAILED", "SUBSKIPPED", "SUBXFAIL"):
+                if verbose.startswith(prefix):
+                    result.force_result((category, short, prefix))
+                    break
+
+
+@pytest.hookimpl(tryfirst=True)  # type: ignore[untyped-decorator]
+def pytest_exception_interact(node: Function, call: pytest.CallInfo, report: pytest.TestReport) -> None:
+    if call.excinfo:
+        if issubclass(call.excinfo.type, SchemathesisError) and hasattr(call.excinfo.value, "__notes__"):
+            # Hypothesis adds quite a lot of additional debug information which is not that helpful in Schemathesis
+            call.excinfo.value.__notes__.clear()
+            report.longrepr = "".join(format_exception(call.excinfo.value))
+        # Deduplicate identical exceptions in exception groups
+        if isinstance(call.excinfo.value, BaseExceptionGroup):
+            # Use exception origin (type + traceback + context) as deduplication key
+            origins: dict[tuple, BaseException] = {}
+            for exc in call.excinfo.value.exceptions:
+                origin = get_origin(exc)
+                if origin not in origins:
+                    origins[origin] = exc
+
+            if len(origins) < len(call.excinfo.value.exceptions):
+                deduplicated = list(origins.values())
+                message = call.excinfo.value.message.replace(
+                    f"{len(call.excinfo.value.exceptions)} distinct failures",
+                    f"{len(deduplicated)} distinct failures",
+                )
+                group = BaseExceptionGroup(message, deduplicated)
+                report.longrepr = "".join(format_exception(group, with_traceback=True))
+
+        if call.excinfo.type is FailureGroup:
+            tb_entries = list(call.excinfo.traceback)
+            total_frames = len(tb_entries)
+
+            # Keep internal Schemathesis frames + one extra one from the caller
+            skip_frames = 0
+            for i in range(total_frames - 1, -1, -1):
+                entry = tb_entries[i]
+
+                if not str(entry.path).endswith("schemathesis/generation/case.py"):
+                    skip_frames = i
+                    break
+
+            report.longrepr = "".join(
+                format_exception(call.excinfo.value, with_traceback=True, skip_frames=skip_frames)
+            )
+
+
+@hookimpl(wrapper=True)
+def pytest_pyfunc_call(pyfuncitem):  # type: ignore[no-untyped-def]
+    """It is possible to have a Hypothesis exception in runtime.
+
+    For example - kwargs validation is failed for some strategy.
+    """
+    from schemathesis.generation.hypothesis.builder import (
+        ApiOperationMark,
+        InvalidHeadersExampleMark,
+        InvalidRegexMark,
+        MissingPathParameters,
+        NonSerializableMark,
+        UnsatisfiableExampleMark,
+    )
+
+    __tracebackhide__ = True
+    if isinstance(pyfuncitem, SchemathesisFunction):
+        try:
+            with ignore_hypothesis_output():
+                yield
+        except InvalidArgument as exc:
+            if "Inconsistent args" in str(exc) and "@example()" in str(exc):
+                from schemathesis.generation.hypothesis.given import GIVEN_AND_EXPLICIT_EXAMPLE_ERROR_MESSAGE
+
+                raise IncorrectUsage(GIVEN_AND_EXPLICIT_EXAMPLE_ERROR_MESSAGE) from None
+            raise InvalidSchema(exc.args[0]) from None
+        except (SkipTest, unittest.SkipTest) as exc:
+            if UnsatisfiableExampleMark.is_set(pyfuncitem.obj):
+                raise Unsatisfiable("Failed to generate test cases from examples for this API operation") from None
+            non_serializable = NonSerializableMark.get(pyfuncitem.obj)
+            if non_serializable is not None:
+                media_types = ", ".join(non_serializable.media_types)
+                raise SerializationNotPossible(
+                    "Failed to generate test cases from examples for this API operation because of"
+                    f" unsupported payload media types: {media_types}\n{SERIALIZERS_SUGGESTION_MESSAGE}",
+                    media_types=non_serializable.media_types,
+                ) from None
+            invalid_regex = InvalidRegexMark.get(pyfuncitem.obj)
+            if invalid_regex is not None:
+                raise InvalidRegexPattern.from_jsonschema_rs_error(invalid_regex) from None
+            invalid_headers = InvalidHeadersExampleMark.get(pyfuncitem.obj)
+            if invalid_headers is not None:
+                raise InvalidHeadersExample.from_headers(invalid_headers) from None
+            pytest.skip(exc.args[0])
+        except FailedHealthCheck as exc:
+            operation = ApiOperationMark.get(pyfuncitem.obj)
+            assert operation is not None
+            raise build_health_check_error(
+                operation, exc, with_tip=True, tip_style=HealthCheckTipStyle.PYTEST
+            ) from None
+        except Unsatisfiable:
+            operation = ApiOperationMark.get(pyfuncitem.obj)
+            assert operation is not None
+            raise build_unsatisfiable_error(
+                operation, with_tip=True, filter_tracker=operation.filter_case_tracker
+            ) from None
+
+        invalid_headers = InvalidHeadersExampleMark.get(pyfuncitem.obj)
+        if invalid_headers is not None:
+            raise InvalidHeadersExample.from_headers(invalid_headers) from None
+
+        missing_path_parameters = MissingPathParameters.get(pyfuncitem.obj)
+        if missing_path_parameters:
+            raise missing_path_parameters from None
+    else:
+        yield
+
+
+def _is_xdist_worker(config: pytest.Config) -> bool:
+    return hasattr(config, "workerinput")
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    config.stash[_CASSETTE_KEY] = {}
+    if config.pluginmanager.hasplugin("xdist"):
+        from schemathesis.pytest.xdist import XdistReportingPlugin
+
+        config.pluginmanager.register(XdistReportingPlugin(), "schemathesis-xdist")
+
+
+def _open_writers(schema: SchemaMetadata) -> list[VcrWriter | HarWriter | JunitXmlWriter | AllureWriter]:
+    from schemathesis.config._report import ReportFormat
+    from schemathesis.reporting.har import HarWriter
+    from schemathesis.reporting.junitxml import JunitXmlWriter
+    from schemathesis.reporting.vcr import VcrWriter
+
+    writers: list[VcrWriter | HarWriter | JunitXmlWriter | AllureWriter] = []
+    reports = schema.config.reports
+    seed = schema.config.seed
+    command = " ".join(sys.argv)
+    if reports.vcr.enabled:
+        path = reports.get_path(ReportFormat.VCR)
+        vcr_writer = VcrWriter(output=path, config=schema.config.output, preserve_bytes=reports.preserve_bytes)
+        vcr_writer.open(seed=seed, command=command)
+        writers.append(vcr_writer)
+    if reports.har.enabled:
+        path = reports.get_path(ReportFormat.HAR)
+        har_writer = HarWriter(output=path, config=schema.config.output, preserve_bytes=reports.preserve_bytes)
+        har_writer.open(seed=seed)
+        writers.append(har_writer)
+    if reports.junit.enabled:
+        path = reports.get_path(ReportFormat.JUNIT)
+        writers.append(JunitXmlWriter(output=path, config=schema.config.output))
+    if reports.allure.enabled:
+        try:
+            from schemathesis.reporting.allure import AllureWriter
+        except ImportError as exc:
+            raise pytest.UsageError(str(exc)) from exc
+
+        path = reports.get_path(ReportFormat.ALLURE)
+        api_title = schema.raw_schema.get("info", {}).get("title")
+        writers.append(AllureWriter(output_dir=path, config=schema.config.output, api_title=api_title))
+    return writers
+
+
+def _write_to_writers(
+    writers: list[VcrWriter | HarWriter | JunitXmlWriter | AllureWriter],
+    recorder: ScenarioRecorder,
+    elapsed_sec: float,
+    tags: list[str] | None = None,
+) -> None:
+    from schemathesis.reporting.junitxml import JunitXmlWriter
+
+    _AllureWriter: type[AllureWriter] | None = None
+    try:
+        from schemathesis.reporting.allure import AllureWriter as _AllureWriter
+    except ImportError:
+        pass
+
+    for writer in writers:
+        if isinstance(writer, JunitXmlWriter):
+            writer.write(recorder, elapsed_sec)
+        elif _AllureWriter is not None and isinstance(writer, _AllureWriter):
+            writer.write(recorder, elapsed_sec, tags=tags)
+        else:
+            writer.write(recorder)
+
+
+def _register_allure_forwarder(item: pytest.Item, schema: SchemaMetadata) -> None:
+    """Register a per-item hook forwarder for dynamic allure API calls."""
+    entry = item.config.stash[_CASSETTE_KEY].get(id(schema))
+    if entry is None:
+        return
+    _, writers = entry
+    import allure_commons
+
+    from schemathesis.reporting.allure import AllureWriter, _AllureHookForwarder
+
+    allure_writers = [w for w in writers if isinstance(w, AllureWriter)]
+    if not allure_writers:
+        return
+
+    label = item.operation_label
+    if label is None:
+        return
+    forwarder = _AllureHookForwarder(label=label, writers=allure_writers)
+    allure_commons.plugin_manager.register(forwarder)
+    item.stash[_ALLURE_FORWARDER_KEY] = forwarder
+
+
+def _push_to_xdist_workeroutput(
+    workeroutput: dict,
+    schema: SchemaMetadata,
+    recorder: ScenarioRecorder,
+    elapsed_sec: float,
+    tags: list[str] | None = None,
+    allure_calls: list[dict] | None = None,
+) -> None:
+    from schemathesis.pytest.xdist import (
+        SCHEMATHESIS_RECORDERS_KEY,
+        _schema_id,
+        _serialize_writer_config,
+        serialize_recorder,
+    )
+
+    sid = _schema_id(schema)
+    recorders = workeroutput.setdefault(SCHEMATHESIS_RECORDERS_KEY, {})
+    if sid not in recorders:
+        recorders[sid] = {"writer_config": _serialize_writer_config(schema), "records": []}
+    recorders[sid]["records"].append(serialize_recorder(recorder, elapsed_sec, tags=tags, allure_calls=allure_calls))
+
+
+def pytest_runtest_setup(item: pytest.Item) -> None:
+    item_cls = getattr(item, "cls", None)
+    schema = StatefulSchemaMark.get(item_cls) if item_cls is not None else None
+    if schema is not None:
+        # Attach a callback to the TestCase class so the state machine can hand off
+        # its recorder to the report writers once the scenario finishes.
+        _schema = schema
+        if _is_xdist_worker(item.config):
+            reports = _schema.config.reports
+            if reports.vcr.enabled or reports.har.enabled or reports.junit.enabled or reports.allure.enabled:
+
+                def _xdist_stateful_callback(recorder: Any, elapsed_sec: float) -> None:
+                    _push_to_xdist_workeroutput(item.config.workeroutput, _schema, recorder, elapsed_sec)
+
+                item.stash[_STATEFUL_WRITERS_KEY] = []
+                StatefulCallbackMark.set(item.cls, _xdist_stateful_callback)
+        else:
+            writers = _open_writers(_schema)
+            item.stash[_STATEFUL_WRITERS_KEY] = writers
+            if writers:
+
+                def _stateful_callback(recorder: Any, elapsed_sec: float) -> None:
+                    # Tags are not available for stateful tests — operations are discovered dynamically
+                    _write_to_writers(writers, recorder, elapsed_sec)
+
+                StatefulCallbackMark.set(item.cls, _stateful_callback)
+        return
+
+    if not isinstance(item, SchemathesisFunction):
+        return
+    if item.operation_label is None:
+        return
+    schema = SchemaHandleMark.get(item.test_function)
+
+    from schemathesis.pytest.reporting import PytestReportDispatcher
+
+    if schema is None:
+        return
+
+    if _is_xdist_worker(item.config):
+        reports = schema.config.reports
+        if not (reports.vcr.enabled or reports.har.enabled or reports.junit.enabled or reports.allure.enabled):
+            return
+
+        dispatcher = PytestReportDispatcher(schema)
+        item.config.stash[_CASSETTE_KEY][id(schema)] = (dispatcher, [])
+
+        if reports.allure.enabled:
+            import allure_commons
+
+            from schemathesis.reporting.allure import _AllureCallBuffer, _AllureHookForwarder
+
+            buffer = _AllureCallBuffer()
+            forwarder = _AllureHookForwarder(label=item.operation_label, writers=[buffer])
+            allure_commons.plugin_manager.register(forwarder)
+            item.stash[_ALLURE_BUFFER_KEY] = buffer
+            item.stash[_ALLURE_FORWARDER_KEY] = forwarder
+        return
+
+    if id(schema) in item.config.stash[_CASSETTE_KEY]:
+        _register_allure_forwarder(item, schema)
+        return
+
+    writers = _open_writers(schema)
+    if not writers:
+        return
+
+    dispatcher = PytestReportDispatcher(schema)
+    item.config.stash[_CASSETTE_KEY][id(schema)] = (dispatcher, writers)
+    _register_allure_forwarder(item, schema)
+
+
+def pytest_runtest_teardown(item: pytest.Item, nextitem: pytest.Item | None) -> None:
+    item_cls = getattr(item, "cls", None)
+    if item_cls is not None and StatefulSchemaMark.is_set(item_cls):
+        StatefulCallbackMark.set(item_cls, None)
+        for writer in item.stash.get(_STATEFUL_WRITERS_KEY, []):
+            writer.close()
+        return
+
+    if not isinstance(item, SchemathesisFunction):
+        return
+    if item.operation_label is None:
+        return
+    forwarder = item.stash.get(_ALLURE_FORWARDER_KEY, None)
+    if forwarder is not None:
+        del item.stash[_ALLURE_FORWARDER_KEY]
+        import allure_commons
+
+        allure_commons.plugin_manager.unregister(forwarder)
+    allure_buffer = item.stash.get(_ALLURE_BUFFER_KEY, None)
+    if allure_buffer is not None:
+        del item.stash[_ALLURE_BUFFER_KEY]
+    schema = SchemaHandleMark.get(item.test_function)
+    if schema is None:
+        return
+    entry = item.config.stash[_CASSETTE_KEY].get(id(schema))
+    if entry is None:
+        return
+    dispatcher, writers = entry
+    result = dispatcher.pop_recorder(item.operation_label)
+    if result is not None:
+        recorder, elapsed_sec = result
+        if _is_xdist_worker(item.config):
+            _push_to_xdist_workeroutput(
+                item.config.workeroutput,
+                schema,
+                recorder,
+                elapsed_sec,
+                tags=item.operation_tags,
+                allure_calls=allure_buffer.to_list() if allure_buffer is not None else None,
+            )
+        else:
+            _write_to_writers(writers, recorder, elapsed_sec, tags=item.operation_tags)
+
+
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    for dispatcher, writers in session.config.stash.get(_CASSETTE_KEY, {}).values():
+        dispatcher.unregister()
+        for writer in writers:
+            writer.close()
+    _run_after_run_checks(session)
+
+
+def _run_after_run_checks(session: pytest.Session) -> None:
+    # No after_run when nothing ran (`--collect-only` or all items deselected).
+    if session.config.getoption("collectonly", False) or not session.testscollected:
+        return
+    schemas = session.config.stash.get(_PYTEST_SCHEMAS_KEY, {})
+    for schema in schemas.values():
+        failures = _fire_after_run(schema)
+        if failures:
+            _report_after_run_failures(session, failures, schema.config.output)
+            if session.exitstatus == pytest.ExitCode.OK:
+                session.exitstatus = pytest.ExitCode.TESTS_FAILED
+
+
+def _fire_after_run(schema: BaseSchema) -> list:
+    checks = run_checks_for(schema).for_run()
+    if not checks:
+        return []
+    return collect_after_run_failures(schema.config, checks)
+
+
+def _report_after_run_failures(session: pytest.Session, failures: list, output_config: OutputConfig) -> None:
+    output = format_failures(case_id=None, response=None, failures=failures, curl=None, config=output_config)
+    reporter = session.config.pluginmanager.get_plugin("terminalreporter")
+    if reporter is not None:
+        reporter.write_sep("=", RUN_CHECKS_LABEL, red=True)
+        reporter.write_line(output, red=True)
+    else:
+        # No terminal reporter (`-p no:terminal`): surface on stderr so the exit code is explainable.
+        print(RUN_CHECKS_LABEL, file=sys.stderr)  # noqa: T201
+        print(output, file=sys.stderr)  # noqa: T201

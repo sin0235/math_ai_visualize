@@ -1,0 +1,19 @@
+evidence_id: MC-SEC-05
+claim: Mã Python được quét bằng hai SAST độc lập và mọi phát hiện được giữ để phân loại.
+commit_sha: 5cac5199def7fd960fcf2ab27a02a9fa3cc1f07a
+workspace_clean: false
+environment: local
+collected_at_utc: 2026-07-12T04:53:00Z
+collector: automated-session
+actual:
+  - Bandit quét 46069 LOC, 0 high, 37 medium, 60 low.
+  - Semgrep chạy 200 rules trên 202 target, có 4 finding và 0 scanner error.
+  - Ba finding Semgrep được phân loại false positive theo data flow; eval được giảm thiểu bằng AST và namespace allowlist nhưng cần review resource exhaustion.
+result: failed
+raw_files:
+  - 01-raw/bandit-summary.json
+  - 01-raw/bandit-exit-code.txt
+  - 01-raw/semgrep-summary.json
+limitations:
+  - 37 Bandit medium chưa được review từng finding.
+  - Không tuyên bố SAST sạch.

@@ -29,7 +29,7 @@ export interface ThreeSceneInteraction {
   pointPlacementPlane: 'xy' | 'xz' | 'yz';
   pointPlacementDepth: number;
   onPointClick: (name: string) => void;
-  onSegmentClick: (points: [string, string]) => void;
+  onSegmentClick: (points: [string, string], objectId?: string) => void;
   onPointDragEnd: (name: string, point: Vec3) => void;
   onConnectPoints: (start: string, end: string) => void;
   onCanvasClick: (point: Vec3) => void;
@@ -49,6 +49,7 @@ export function ThreeGeometryView({ scene, interaction, embedded = false, highli
   const [connectPreview, setConnectPreview] = useState<Vec3 | null>(null);
   const [showAxes, setShowAxes] = useState(scene.view.show_axes);
   const [dragViewEnabled, setDragViewEnabled] = useState(true);
+  const [cameraResetKey, setCameraResetKey] = useState(0);
   const frame = getSceneFrame(scene);
   const editingEnabled = Boolean(interaction);
   const controlsEnabled = !connectStart;
@@ -64,6 +65,7 @@ export function ThreeGeometryView({ scene, interaction, embedded = false, highli
     setConnectHover(null);
     setConnectPreview(null);
     setShowAxes(scene.view.show_axes);
+    setCameraResetKey((current) => current + 1);
   }, [scene]);
 
   function updatePoint(name: string, point: Vec3) {
@@ -101,6 +103,7 @@ export function ThreeGeometryView({ scene, interaction, embedded = false, highli
     <div className="three-view">
       <Canvas gl={{ preserveDrawingBuffer: true }} camera={{ position: [5, 4, 6], fov: 48 }} className="three-canvas" style={{ display: 'block' }}>
         <SceneImageCaptureBridge onReady={onImageCaptureReady} />
+        <CameraFit resetKey={cameraResetKey} />
         <color attach="background" args={["#f6f6f4"]} />
         <ambientLight intensity={0.7} />
         <directionalLight position={[6, 10, 6]} intensity={0.85} />
@@ -177,6 +180,9 @@ export function ThreeGeometryView({ scene, interaction, embedded = false, highli
           <button type="button" className="viewer-toggle" onClick={() => setDragViewEnabled((current) => !current)}>
             {dragViewEnabled ? 'Tắt kéo góc nhìn' : 'Bật kéo góc nhìn'}
           </button>
+          <button type="button" className="viewer-toggle" onClick={() => setCameraResetKey((current) => current + 1)}>
+            Vừa khung
+          </button>
           <button type="button" className="viewer-toggle" onClick={() => setShowAxes((current) => !current)}>
             {showAxes ? 'Tắt hệ trục' : 'Bật hệ trục'}
           </button>
@@ -225,6 +231,22 @@ function LabelText({ position, children, ...props }: LabelTextProps) {
       </Text>
     </Billboard>
   );
+}
+
+function CameraFit({ resetKey }: { resetKey: number }) {
+  const camera = useThree((state) => state.camera);
+  const controls = useThree((state) => (state as { controls?: { target?: THREE.Vector3; update?: () => void } }).controls);
+
+  useEffect(() => {
+    camera.position.set(5, 4, 6);
+    camera.near = 0.05;
+    camera.far = 100;
+    camera.lookAt(0, 0, 0);
+    camera.updateProjectionMatrix();
+    controls?.target?.set(0, 0, 0);
+    controls?.update?.();
+  }, [camera, controls, resetKey]);
+  return null;
 }
 
 function SceneImageCaptureBridge({ onReady }: { onReady?: (capture: ThreeSceneImageCapture | null) => void }) {
@@ -331,6 +353,13 @@ function OxyzAxes({ hideOriginLabel = false }: { hideOriginLabel?: boolean }) {
 }
 
 function getSceneFrame(scene: ThreeScene) {
+  if (scene.bounds) {
+    const [x, y, z] = scene.bounds.center;
+    return {
+      center: { x, y, z },
+      scale: 4.2 / Math.max(scene.bounds.radius * 2, 1),
+    };
+  }
   const min = { x: Infinity, y: Infinity, z: Infinity };
   const max = { x: -Infinity, y: -Infinity, z: -Infinity };
 
@@ -390,7 +419,7 @@ function Planes({ scene }: ThreeGeometryViewProps) {
     <>
       {(scene.planes ?? []).map((plane) => {
         const anchors = plane.points.map((name) => scene.points[name]).filter(Boolean);
-        const vertices = expandedPlaneVertices(anchors, allPoints);
+        const vertices = expandedPlaneVertices(anchors, allPoints, plane.extent);
         const geometry = polygonGeometry(vertices);
         if (!geometry) return null;
         const center = centroid(vertices);
@@ -464,7 +493,7 @@ function Lines3D({ scene }: ThreeGeometryViewProps) {
         const direction = normalize(sub(end, start));
         if (length(direction) < 1e-9) return null;
         const mid = midpoint(start, end);
-        const extent = 5;
+        const extent = line.extent ?? 5;
         const p1 = add(mid, scale(direction, -extent));
         const p2 = add(mid, scale(direction, extent));
         return (
@@ -630,7 +659,7 @@ function Segments({ scene, frame, interaction }: ThreeGeometryViewProps & { fram
             onClick={(event) => {
               if (interaction?.mode !== 'project_to_segment') return;
               event.stopPropagation();
-              interaction.onSegmentClick(segment.points);
+              interaction.onSegmentClick(segment.points, segment.object_id);
             }}
             onPointerOver={(event) => {
               if (interaction?.mode !== 'project_to_segment') return;
@@ -821,7 +850,7 @@ function Points({
       {sortedPoints.map(([name, point], index) => {
         if (point.hidden) return null;
         const coordLabel = scene.annotations?.find(ann => ann.type === 'coordinate_label' && ann.target === name);
-        const displayName = coordLabel?.label || name;
+        const displayName = coordLabel?.label || point.label || name;
         const coordText = `(${fmtN(point.x)}; ${fmtN(point.y)}; ${fmtN(point.z)})`;
         const labelOffset = pointLabelOffset(name, scene);
         return (
@@ -1329,7 +1358,7 @@ function metadataNumber(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
 
-function expandedPlaneVertices(anchors: Vec3[], allPoints: Vec3[]): Vec3[] {
+function expandedPlaneVertices(anchors: Vec3[], allPoints: Vec3[], extent?: number | null): Vec3[] {
   if (anchors.length < 3) return anchors;
   const origin = centroid(anchors);
   const normal = planeNormal(anchors);
@@ -1339,6 +1368,14 @@ function expandedPlaneVertices(anchors: Vec3[], allPoints: Vec3[]): Vec3[] {
   if (length(u) < 1e-9) u = perpendicularAxis(normal);
   let v = normalize(cross(normal, u));
   if (length(v) < 1e-9) return anchors;
+  if (extent && Number.isFinite(extent) && extent > 0) {
+    return [
+      add(origin, add(scale(u, -extent), scale(v, -extent))),
+      add(origin, add(scale(u, extent), scale(v, -extent))),
+      add(origin, add(scale(u, extent), scale(v, extent))),
+      add(origin, add(scale(u, -extent), scale(v, extent))),
+    ];
+  }
 
   const projected = allPoints.map((point) => {
     const relative = sub(point, origin);

@@ -1,0 +1,5 @@
+
+> hinh-frontend@0.1.0 test:simulation
+> node scripts/run-simulation-baseline.mjs
+
+Simulation baseline tests OK { passed: true, count: 15, g12: 9 }

@@ -1,0 +1,229 @@
+from __future__ import annotations
+
+import threading
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+from schemathesis import auths
+from schemathesis.config import ConfigError, FuzzConfig
+from schemathesis.core import SpecificationFeature
+from schemathesis.core.errors import HookExecutionError
+from schemathesis.engine import Status, StopReason, events, fuzz, run
+from schemathesis.engine._check_context import run_after_run_checks
+from schemathesis.engine.context import EngineContext
+from schemathesis.engine.events import EventGenerator, StatefulPhasePayload
+from schemathesis.engine.observations import Observations
+from schemathesis.engine.run import Phase, PhaseName, PhaseSkipReason
+
+if TYPE_CHECKING:
+    from schemathesis.core.spec import ApiSchema
+
+
+@dataclass(slots=True)
+class Engine:
+    schema: ApiSchema
+
+    def execute(self) -> EventStream:
+        """Execute all test phases."""
+        # Unregister auth if explicitly provided
+        if self.schema.config.auth.is_defined:
+            auths.unregister()
+
+        plan = self._create_execution_plan()
+
+        observations = None
+        for phase in plan.phases:
+            if (
+                phase.name == PhaseName.STATEFUL_TESTING
+                and phase.skip_reason in (None, PhaseSkipReason.NOT_APPLICABLE)
+                and self.schema.config.phases.stateful.inference.is_enabled
+            ):
+                observations = Observations()
+
+        ctx = EngineContext(schema=self.schema, stop_event=threading.Event(), observations=observations)
+        return EventStream(plan.execute(ctx), ctx.control.stop_event)
+
+    def fuzz(self, config: FuzzConfig | None = None) -> EventStream:
+        """Execute in fuzz mode."""
+        if self.schema.config.auth.is_defined:
+            auths.unregister()
+
+        resolved_config = config or self.schema.config.fuzz
+        ctx = EngineContext(schema=self.schema, stop_event=threading.Event(), max_time=resolved_config.max_time)
+        return EventStream(fuzz.execute(ctx, resolved_config), ctx.control.stop_event)
+
+    def _create_execution_plan(self) -> ExecutionPlan:
+        """Create execution plan based on configuration."""
+        phases = [
+            self.get_phase_config(PhaseName.PROBING, is_supported=True, requires_transitions=False),
+            self.get_phase_config(
+                PhaseName.SCHEMA_ANALYSIS,
+                is_supported=self.schema.specification.supports_feature(SpecificationFeature.SCHEMA_ANALYSIS),
+                requires_transitions=False,
+            ),
+            self.get_phase_config(
+                PhaseName.EXAMPLES,
+                is_supported=self.schema.specification.supports_feature(SpecificationFeature.EXAMPLES),
+                requires_transitions=False,
+            ),
+            self.get_phase_config(
+                PhaseName.COVERAGE,
+                is_supported=self.schema.specification.supports_feature(SpecificationFeature.COVERAGE),
+                requires_transitions=False,
+            ),
+            self.get_phase_config(PhaseName.FUZZING, is_supported=True, requires_transitions=False),
+            self.get_phase_config(
+                PhaseName.STATEFUL_TESTING,
+                is_supported=self.schema.specification.supports_feature(SpecificationFeature.STATEFUL_TESTING),
+                requires_transitions=True,
+            ),
+        ]
+        return ExecutionPlan(phases)
+
+    def get_phase_config(
+        self,
+        phase_name: PhaseName,
+        *,
+        is_supported: bool = True,
+        requires_transitions: bool = False,
+    ) -> Phase:
+        """Helper to determine phase configuration with proper skip reasons."""
+        # Check if feature is supported by the schema
+        if not is_supported:
+            return Phase(
+                name=phase_name,
+                is_enabled=False,
+                skip_reason=PhaseSkipReason.NOT_SUPPORTED,
+            )
+
+        phase = phase_name.value.lower()
+        if (
+            phase in ("examples", "coverage", "fuzzing", "stateful")
+            and not self.schema.config.phases.get_by_name(name=phase).enabled
+        ):
+            return Phase(
+                name=phase_name,
+                is_enabled=False,
+                skip_reason=PhaseSkipReason.DISABLED,
+            )
+
+        if requires_transitions and self.schema.statistic.transitions.total == 0:
+            return Phase(
+                name=phase_name,
+                is_enabled=False,
+                skip_reason=PhaseSkipReason.NOT_APPLICABLE,
+            )
+
+        return Phase(
+            name=phase_name,
+            is_enabled=True,
+            skip_reason=None,
+        )
+
+
+@dataclass(slots=True)
+class ExecutionPlan:
+    """Manages test execution phases."""
+
+    phases: list[Phase]
+
+    def execute(self, engine: EngineContext) -> EventGenerator:
+        """Execute all phases in sequence."""
+        yield events.EngineStarted()
+        try:
+            # Build checks up front: config errors surface here, not in a worker thread mid-run.
+            _ = engine.checks
+        except ConfigError as exc:
+            yield events.NonFatalError(error=exc, phase=PhaseName.PROBING, label="checks", related_to_operation=False)
+            yield events.EngineFinished(running_time=engine.running_time, stop_reason=engine.stop_reason)
+            return
+        try:
+            if engine.is_interrupted:
+                yield from self._finish(engine)
+                return
+
+            # Run main phases
+            for phase in self.phases:
+                try:
+                    payload = self._adapt_execution(engine, phase)
+                except HookExecutionError as exc:
+                    yield events.NonFatalError(
+                        error=exc, phase=phase.name, label=f"`{exc.hook_name}` hook", related_to_operation=False
+                    )
+                    yield events.PhaseFinished(phase=phase, status=Status.ERROR, payload=None)
+                    continue
+                yield events.PhaseStarted(phase=phase, payload=payload)
+                if phase.should_execute(engine):
+                    yield from run.execute(engine, phase)
+                else:
+                    if engine.has_reached_the_failure_limit:
+                        phase.skip_reason = PhaseSkipReason.FAILURE_LIMIT_REACHED
+                    yield events.PhaseFinished(phase=phase, status=Status.SKIP, payload=None)
+                if engine.is_interrupted:
+                    break  # type: ignore[unreachable]
+
+        except KeyboardInterrupt:
+            engine.stop()
+            yield events.Interrupted(phase=None)
+
+        # Always finish
+        yield from self._finish(engine)
+
+    def _finish(self, ctx: EngineContext) -> EventGenerator:
+        """Finish the test run."""
+        ctx.cache.flush()
+        store = ctx.error_feedback
+        summary = events.RunSummary(
+            cache=events.CacheRunMetrics(
+                observations_total=store.distinct_observations() if store is not None else 0,
+            ),
+        )
+        # Skip after_run on a partial run (interrupt/abort); the fuzz path runs them on stop.
+        failures = run_after_run_checks(ctx) if ctx.stop_reason == StopReason.COMPLETED else []
+        yield events.EngineFinished(
+            running_time=ctx.running_time,
+            stop_reason=ctx.stop_reason,
+            payload=summary,
+            failures=failures,
+        )
+
+    def _adapt_execution(self, engine: EngineContext, phase: Phase) -> StatefulPhasePayload | None:
+        if engine.has_reached_the_failure_limit:
+            phase.skip_reason = PhaseSkipReason.FAILURE_LIMIT_REACHED
+        # Phase can be enabled if certain conditions are met
+        if phase.name == PhaseName.STATEFUL_TESTING:
+            inferred = engine.apply_stateful_inference()
+            # Enable stateful testing if we successfully inferred any transitions
+            if inferred:
+                phase.enable()
+            return StatefulPhasePayload(inferred_transitions=inferred)
+        return None
+
+
+@dataclass(slots=True)
+class EventStream:
+    """Schemathesis event stream.
+
+    Provides an API to control the execution flow.
+    """
+
+    generator: EventGenerator
+    stop_event: threading.Event
+
+    def __next__(self) -> events.EngineEvent:
+        return next(self.generator)
+
+    def __iter__(self) -> EventGenerator:
+        return self.generator
+
+    def stop(self) -> None:
+        """Stop the event stream.
+
+        Its next value will be the last one (Finished).
+        """
+        self.stop_event.set()
+
+    def finish(self) -> events.EngineEvent:
+        """Stop the event stream & return the last event."""
+        self.stop()
+        return next(self)

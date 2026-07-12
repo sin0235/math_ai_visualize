@@ -1,0 +1,68 @@
+from app.schemas.scene_v3 import MathSceneV3
+from app.services.scene_pipeline_v3 import affected_relation_ids, run_scene_pipeline_v3
+
+
+def make_scene(*, perpendicular=True, declared_kind="segment"):
+    return MathSceneV3.model_validate({
+        "scene_id": "scene_pipeline",
+        "schema_version": "3.0",
+        "revision": 1,
+        "problem_text": "Hai đoạn vuông góc",
+        "topic": "coordinate_2d",
+        "renderer": "geogebra_2d",
+        "view": {"dimension": "2d"},
+        "objects": [
+            {"id": "a", "type": "point_2d", "x": 0, "y": 0},
+            {"id": "b", "type": "point_2d", "x": 1, "y": 0},
+            {"id": "c", "type": "point_2d", "x": 0, "y": 0},
+            {"id": "d", "type": "point_2d", "x": 0 if perpendicular else 1, "y": 1},
+            {"id": "ab", "type": "segment", "point_ids": ["a", "b"]},
+            {"id": "cd", "type": "segment", "point_ids": ["c", "d"]},
+        ],
+        "relations": [{
+            "id": "r_perp",
+            "type": "perpendicular",
+            "operands": [
+                {"role": "first", "ref_id": "ab", "ref_kind": declared_kind},
+                {"role": "second", "ref_id": "cd", "ref_kind": "segment"},
+            ],
+        }],
+        "audit": {"created_by": "manual"},
+    })
+
+
+def test_pipeline_attaches_verification_without_mutating_input():
+    scene = make_scene()
+
+    result = run_scene_pipeline_v3(scene)
+
+    assert result.status == "verified"
+    assert result.scene is not scene
+    assert scene.relations[0].verification is None
+    assert result.scene.relations[0].verification.status == "verified"
+    assert result.issues == ()
+
+
+def test_pipeline_reports_failed_constraint_with_stage_code():
+    result = run_scene_pipeline_v3(make_scene(perpendicular=False))
+
+    assert result.status == "partially_verified"
+    assert result.requires_user_confirmation
+    assert result.issues[0].stage == "verify"
+    assert result.issues[0].code == "CONSTRAINT_FAILED"
+
+
+def test_pipeline_stops_before_verification_on_kind_mismatch():
+    result = run_scene_pipeline_v3(make_scene(declared_kind="line"))
+
+    assert result.status == "failed"
+    assert not result.can_project
+    assert result.verification == ()
+    assert any(issue.code == "REFERENCE_KIND_MISMATCH" for issue in result.issues)
+
+
+def test_pipeline_dependency_query_uses_typed_ids():
+    scene = make_scene()
+
+    assert affected_relation_ids(scene, {"ab"}) == frozenset({"r_perp"})
+    assert affected_relation_ids(scene, {"a"}) == frozenset({"r_perp"})
