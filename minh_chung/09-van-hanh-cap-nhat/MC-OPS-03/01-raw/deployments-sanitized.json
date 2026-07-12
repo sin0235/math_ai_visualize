@@ -1,0 +1,5 @@
+[
+  {"id":"126d138c-8fc4-4608-9886-be5f9765e672","phase":"ACTIVE","cause":"commit 26b21f0 pushed to github.com/sin0235/math_ai_visualize/tree/product","created_at":"2026-07-12T00:31:22Z","updated_at":"2026-07-12T00:37:17Z"},
+  {"id":"b3fa55f7-2f92-4148-810c-fce2fa9ff816","phase":"SUPERSEDED","cause":"commit a1f96b8 pushed to github.com/sin0235/math_ai_visualize/tree/product","created_at":"2026-07-11T18:52:57Z","updated_at":"2026-07-12T00:37:23Z"},
+  {"id":"94fd344c-2aea-437e-a422-1cc72654bfa3","phase":"SUPERSEDED","cause":"commit 25fe2e2 pushed to github.com/sin0235/math_ai_visualize/tree/product","created_at":"2026-07-11T17:59:20Z","updated_at":"2026-07-11T18:58:34Z"}
+]

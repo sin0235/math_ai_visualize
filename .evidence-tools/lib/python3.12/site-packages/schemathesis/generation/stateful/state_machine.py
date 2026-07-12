@@ -1,0 +1,359 @@
+from __future__ import annotations
+
+import re
+from collections.abc import Callable
+from dataclasses import dataclass
+from functools import lru_cache
+from typing import TYPE_CHECKING, Any, ClassVar, Final
+
+import hypothesis
+from hypothesis.errors import InvalidDefinition
+from hypothesis.stateful import RuleBasedStateMachine
+
+from schemathesis.checks import CheckFunction
+from schemathesis.core import DEFAULT_MAX_SCENARIO_STEPS
+from schemathesis.core.errors import STATEFUL_TESTING_GUIDE_URL, NoLinksFound
+from schemathesis.core.marks import Mark
+from schemathesis.core.parameters import ParameterLocation
+from schemathesis.core.result import Result
+from schemathesis.core.timing import Instant
+from schemathesis.core.transport import Response
+from schemathesis.generation.case import Case
+
+StatefulSchemaMark = Mark["BaseSchema"](attr_name="stateful_schema")
+StatefulCallbackMark = Mark[Callable | None](attr_name="stateful_callback")
+
+if TYPE_CHECKING:
+    import hypothesis
+    from requests.structures import CaseInsensitiveDict
+
+    from schemathesis.checks import CheckResult
+    from schemathesis.core.parameters import ContainerName
+    from schemathesis.hooks import HookContext
+    from schemathesis.schemas import BaseSchema
+
+
+DEFAULT_STATE_MACHINE_SETTINGS = hypothesis.settings(
+    phases=[hypothesis.Phase.generate],
+    deadline=None,
+    stateful_step_count=DEFAULT_MAX_SCENARIO_STEPS,
+    suppress_health_check=list(hypothesis.HealthCheck),
+)
+
+# Probability that a stateful rule generates a fresh value for an id-typed argument
+# instead of drawing from the bundle. Forces discovery of bugs that need unknown ids.
+BASE_EXPLORATION_RATE: Final = 0.15
+
+
+@dataclass
+class StepInput:
+    """Input for a single state machine step."""
+
+    case: Case
+    transition: Transition | None  # None for initial steps
+    # Provenance of each value the link successfully substituted: (location, parameter name).
+    # `name=None` means the whole body was replaced. Empty list = extraction failed or the
+    # transition was deliberately skipped to widen coverage of non-stateful inputs.
+    applied_parameters: list[tuple[ParameterLocation, str | None]]
+
+    __slots__ = ("case", "transition", "applied_parameters")
+
+    @classmethod
+    def initial(cls, case: Case) -> StepInput:
+        return cls(case=case, transition=None, applied_parameters=[])
+
+    @property
+    def is_applied(self) -> bool:
+        # If the transition has no parameters or body, count it as applied
+        if self.transition is not None and not self.transition.parameters and self.transition.request_body is None:
+            return True
+        return bool(self.applied_parameters)
+
+
+@dataclass
+class Transition:
+    """Data about transition execution."""
+
+    # ID of the transition (e.g. link name)
+    id: str
+    parent_id: str
+    is_inferred: bool
+    parameters: dict[ContainerName, dict[str, ExtractedParam]]
+    request_body: ExtractedParam | None
+
+    __slots__ = ("id", "parent_id", "is_inferred", "parameters", "request_body")
+
+
+@dataclass
+class ExtractedParam:
+    """Result of parameter extraction."""
+
+    definition: Any
+    value: Result[Any, Exception]
+    is_required: bool
+
+    __slots__ = ("definition", "value", "is_required")
+
+
+@dataclass
+class ExtractionFailure:
+    """Represents a failure to extract data from a transition."""
+
+    # e.g., "GetUser"
+    id: str
+    case_id: str
+    # e.g., "POST /users"
+    source: str
+    # e.g., "GET /users/{userId}"
+    target: str
+    # e.g., "userId"
+    parameter_name: str
+    # e.g., "$response.body#/id"
+    expression: str
+    # Previous test cases in the chain, from newest to oldest
+    # Stored as a case + response pair
+    history: list[tuple[Case, Response]]
+    # The actual response that caused the failure
+    response: Response
+    error: Exception | None
+
+    __slots__ = ("id", "case_id", "source", "target", "parameter_name", "expression", "history", "response", "error")
+
+    def __eq__(self, other: object) -> bool:
+        assert isinstance(other, ExtractionFailure)
+        return (
+            self.source == other.source
+            and self.target == other.target
+            and self.id == other.id
+            and self.parameter_name == other.parameter_name
+            and self.expression == other.expression
+        )
+
+    def __hash__(self) -> int:
+        return hash(
+            (
+                self.source,
+                self.target,
+                self.id,
+                self.parameter_name,
+                self.expression,
+            )
+        )
+
+
+@dataclass
+class StepOutput:
+    """Output from a single transition of a state machine."""
+
+    response: Response
+    case: Case
+
+    __slots__ = ("response", "case")
+
+
+def _normalize_name(name: str) -> str:
+    return re.sub(r"\W|^(?=\d)", "_", name).replace("__", "_")
+
+
+class APIStateMachine(RuleBasedStateMachine):
+    """State machine for executing API operation sequences based on inferred transitions.
+
+    Automatically generates test scenarios by chaining API operations according
+    to spec-specific relationships (OpenAPI Links, GraphQL producer/consumer
+    inference, etc.).
+    """
+
+    # This is a convenience attribute, which happened to clash with `RuleBasedStateMachine` instance level attribute
+    # They don't interfere, since it is properly overridden on the Hypothesis side, but it is likely that this
+    # attribute will be renamed in the future
+    bundles: ClassVar[dict[str, CaseInsensitiveDict]]
+    schema: BaseSchema
+
+    def __init__(self) -> None:
+        try:
+            super().__init__()
+        except InvalidDefinition as exc:
+            if "defines no rules" in str(exc):
+                if not self.schema.statistic.transitions.total:
+                    message = "Schema contains no link definitions required for stateful testing"
+                else:
+                    message = "All link definitions required for stateful testing are excluded by filters"
+                message += f"\n\nLearn how to define links: {STATEFUL_TESTING_GUIDE_URL}"
+                raise NoLinksFound(message) from None
+            raise
+        self.setup()
+
+    @classmethod
+    @lru_cache
+    def _to_test_case(cls) -> type:
+        from schemathesis.generation.stateful import run_state_machine_as_test
+
+        class StateMachineTestCase(RuleBasedStateMachine.TestCase):
+            settings = DEFAULT_STATE_MACHINE_SETTINGS
+
+            def runTest(self) -> None:
+                # A callback is attached by the pytest plugin when report writers are configured.
+                # It connects this state machine class to the writers at the pytest level.
+                callback = StatefulCallbackMark.get(self.__class__)
+                if callback is not None:
+                    _callback = callback
+
+                    # Wraps the state machine to capture interactions into the recorder,
+                    # then hands the recorder off to the callback (i.e. the report writers)
+                    # via schema-scoped hooks.
+                    class _Capturing(cls):  # type: ignore[valid-type, misc]
+                        def __init__(self) -> None:
+                            self._started_at = Instant()
+                            super().__init__()
+                            _recorder = self.recorder
+
+                            # Capture check results via the after_validate hook
+                            def _on_after_validate(
+                                context: HookContext,
+                                case: Case,
+                                response: Response,
+                                results: list[CheckResult],
+                            ) -> None:
+                                for result in results:
+                                    if result.failure is not None:
+                                        code_sample = case.as_curl_command(
+                                            headers=dict(response.request.headers),
+                                            verify=getattr(response, "verify", True),
+                                        )
+                                        _recorder.record_check_failure(
+                                            name=result.name,
+                                            case_id=case.id,
+                                            code_sample=code_sample,
+                                            failure=result.failure,
+                                        )
+                                    else:
+                                        _recorder.record_check_success(name=result.name, case_id=case.id)
+
+                            self._on_after_validate = _on_after_validate
+                            self.schema.hooks.register_hook_with_name(_on_after_validate, "after_validate")
+
+                        def teardown(self) -> None:
+                            self.schema.hooks.unregister(self._on_after_validate)
+                            elapsed = self._started_at.elapsed
+                            # Hand the completed recorder to the pytest-level callback
+                            _callback(self.recorder, elapsed)
+                            super().teardown()
+
+                    run_state_machine_as_test(_Capturing, settings=self.settings)
+                else:
+                    run_state_machine_as_test(cls, settings=self.settings)
+
+            runTest.is_hypothesis_test = True  # type: ignore[attr-defined]
+
+        StateMachineTestCase.__name__ = cls.__name__ + ".TestCase"
+        StateMachineTestCase.__qualname__ = cls.__qualname__ + ".TestCase"
+        StatefulSchemaMark.set(StateMachineTestCase, cls.schema)
+        return StateMachineTestCase
+
+    def _new_name(self, target: str) -> str:
+        target = _normalize_name(target)
+        return super()._new_name(target)
+
+    def _get_target_for_result(self, result: StepOutput) -> str | None:
+        raise NotImplementedError
+
+    def _add_result_to_targets(self, targets: tuple[str, ...], result: StepOutput | None) -> None:
+        if result is None:
+            return
+        target = self._get_target_for_result(result)
+        if target is not None:
+            super()._add_result_to_targets((target,), result)
+
+    def _add_results_to_targets(self, targets: tuple[str, ...], results: list[StepOutput | None]) -> None:
+        # Hypothesis >6.131.15
+        for result in results:
+            if result is None:
+                continue
+            target = self._get_target_for_result(result)
+            if target is not None:
+                super()._add_results_to_targets((target,), [result])
+
+    @classmethod
+    def run(cls, *, settings: hypothesis.settings | None = None) -> None:
+        """Execute the state machine test scenarios.
+
+        Args:
+            settings: Hypothesis settings for test execution.
+
+        """
+        from . import run_state_machine_as_test
+
+        __tracebackhide__ = True
+        return run_state_machine_as_test(cls, settings=settings)
+
+    def setup(self) -> None:
+        """Called once at the beginning of each test scenario."""
+
+    def teardown(self) -> None:
+        """Called once at the end of each test scenario."""
+
+    # To provide the return type in the rendered documentation
+    teardown.__doc__ = RuleBasedStateMachine.teardown.__doc__
+
+    def _step(self, input: StepInput) -> StepOutput | None:
+        __tracebackhide__ = True
+        return self.step(input)
+
+    def step(self, input: StepInput) -> StepOutput:
+        __tracebackhide__ = True
+        self.before_call(input.case)
+        kwargs = self.get_call_kwargs(input.case)
+        response = self.call(input.case, **kwargs)
+        self.after_call(response, input.case)
+        self.validate_response(response, input.case, **kwargs)
+        return StepOutput(response, input.case)
+
+    def before_call(self, case: Case) -> None:
+        """Called before each API operation in the scenario.
+
+        Args:
+            case: Test case data for the operation.
+
+        """
+
+    def after_call(self, response: Response, case: Case) -> None:
+        """Called after each API operation in the scenario.
+
+        Args:
+            response: HTTP response from the operation.
+            case: Test case data that was executed.
+
+        """
+
+    def call(self, case: Case, **kwargs: Any) -> Response:
+        return case.call(**kwargs)
+
+    def get_call_kwargs(self, case: Case) -> dict[str, Any]:
+        """Returns keyword arguments for the API call.
+
+        Args:
+            case: Test case being executed.
+
+        Returns:
+            Dictionary passed to the `case.call()` method.
+
+        """
+        return {}
+
+    def validate_response(
+        self, response: Response, case: Case, additional_checks: list[CheckFunction] | None = None, **kwargs: Any
+    ) -> None:
+        """Validates the API response using configured checks.
+
+        Args:
+            response: HTTP response to validate.
+            case: Test case that generated the response.
+            additional_checks: Extra validation functions to run.
+            kwargs: Transport-level keyword arguments.
+
+        Raises:
+            FailureGroup: When validation checks fail.
+
+        """
+        __tracebackhide__ = True
+        case.validate_response(response, additional_checks=additional_checks, transport_kwargs=kwargs)

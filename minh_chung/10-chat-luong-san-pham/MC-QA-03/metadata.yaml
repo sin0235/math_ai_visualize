@@ -1,0 +1,20 @@
+evidence_id: MC-QA-03
+claim: Toàn bộ backend test suite hiện tại chạy thành công với báo cáo coverage máy đọc được.
+commit_sha: 5cac5199def7fd960fcf2ab27a02a9fa3cc1f07a
+workspace_clean: false
+environment: local
+collected_at_utc: 2026-07-12T03:15:31Z
+collector: automated-session
+actual:
+  - 1660 test passed, 17 warnings, exit code 0 trong 440.29s.
+  - JUnit XML, coverage XML và coverage JSON được tạo.
+result: passed
+raw_files:
+  - 01-raw/pytest.log
+  - 01-raw/pytest.xml
+  - 01-raw/coverage.xml
+  - 01-raw/coverage.json
+  - 01-raw/exit-code.txt
+limitations:
+  - Workspace dirty; commit SHA chỉ là nền và WORKSPACE.diff bắt buộc đi kèm.
+  - Không dùng số test để suy ra mọi requirement đã được cover.

@@ -1,4 +1,5 @@
 import type { AdvancedRenderSettings, MathScene, QualityRiskAdvisory, RenderAiSource, RenderFallbackSource, RenderResponse, Renderer } from '../types/scene';
+import type { MathSceneV3, SceneCommand, SceneWorkspaceResponseV3 } from '../types/sceneV3';
 import type { RuntimeSettings, ScannedModelInfo, SettingsDefaults } from '../types/settings';
 import { buildExportFilename, type ExportFormatKey } from '../utils/exportFilename';
 import { ApiError, apiUrl, compactRuntimeSettings, fetchWithRetry, networkApiError, parseApiError, requestJson, requestVoid, timeoutSignal } from './core';
@@ -215,6 +216,29 @@ export async function renderProblem(
   }, 'Không thể dựng hình.');
 }
 
+export async function renderProblemV3(
+  problemText: string,
+  tier: 'tier1' | 'tier2' | 'tier3' = 'tier1',
+  advancedSettings?: AdvancedRenderSettings,
+  preferredRenderer?: Renderer,
+  runtimeSettings?: RuntimeSettings,
+  preferredAiModel?: string,
+): Promise<SceneWorkspaceResponseV3> {
+  return requestJson('/api/render/v3', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({
+      problem_text: problemText,
+      tier,
+      preferred_renderer: preferredRenderer,
+      advanced_settings: advancedSettings,
+      ...preferredAiModelPayload(preferredAiModel),
+      runtime_settings: compactRuntimeSettings(runtimeSettings),
+    }),
+  }, 'Không thể dựng scene workspace v3.');
+}
+
 async function pollRenderJob(jobId: string, maxMs = 320_000): Promise<RenderResponse> {
   const started = Date.now();
   let delay = 600;
@@ -323,6 +347,32 @@ export async function renderEditedScene(scene: MathScene, advancedSettings: Adva
       advanced_settings: advancedSettings,
     }),
   }, 'Không thể dựng lại scene.');
+}
+
+export async function createSceneWorkspaceV3(scene: MathSceneV3): Promise<SceneWorkspaceResponseV3> {
+  return requestJson('/api/render/v3/workspaces', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ scene }),
+  }, 'Không thể tạo scene workspace.');
+}
+
+export async function getSceneWorkspaceV3(sceneId: string): Promise<SceneWorkspaceResponseV3> {
+  return requestJson(
+    `/api/render/v3/workspaces/${encodeURIComponent(sceneId)}`,
+    { credentials: 'include' },
+    'Không thể tải scene workspace.',
+  );
+}
+
+export async function applySceneCommandV3(command: SceneCommand): Promise<SceneWorkspaceResponseV3> {
+  return requestJson('/api/render/v3/commands', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ command }),
+  }, 'Không thể áp dụng chỉnh sửa scene.');
 }
 
 export async function generateProblemVariants(

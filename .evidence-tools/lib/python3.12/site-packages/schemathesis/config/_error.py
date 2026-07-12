@@ -1,0 +1,256 @@
+from __future__ import annotations
+
+import difflib
+from typing import TYPE_CHECKING
+
+from jsonschema_rs import ValidationErrorKind
+
+from schemathesis.config._validator import CONFIG_SCHEMA
+from schemathesis.core.errors import SchemathesisError
+from schemathesis.core.transforms import resolve_path
+
+if TYPE_CHECKING:
+    from jsonschema_rs import ValidationError
+
+
+class ConfigError(SchemathesisError):
+    """Invalid configuration."""
+
+    @classmethod
+    def from_validation_error(cls, error: ValidationError) -> ConfigError:
+        message = error.message
+        if error.kind.name == "enum":
+            message = _format_enum_error(error)
+        elif error.kind.name in _BOUND_PREDICATES:
+            message = _format_bound_error(error, _BOUND_PREDICATES[error.kind.name])
+        elif error.kind.name == "required":
+            message = _format_required_error(error)
+        elif error.kind.name == "type":
+            message = _format_type_error(error)
+        elif error.kind.name == "minProperties":
+            message = _format_min_properties_error(error)
+        elif error.kind.name == "additionalProperties":
+            message = _format_additional_properties_error(error)
+        elif error.kind.name == "anyOf":
+            message = _format_anyof_error(error)
+        elif error.kind.name == "oneOf":
+            message = _format_oneof_error(error)
+        return cls(message)
+
+
+_BOUND_PREDICATES = {
+    "minimum": "Must be at least",
+    "exclusiveMinimum": "Must be greater than",
+    "maximum": "Must be at most",
+}
+
+
+def _format_bound_error(error: ValidationError, predicate: str) -> str:
+    assert error.instance_path
+    section = path_to_section_name(error.instance_path[:-1])
+    prop_name = error.instance_path[-1]
+    return (
+        f"Error in {section} section:\n  Value out of range:\n\n"
+        f"  - '{prop_name}' -> {predicate} {error.kind.value}, but got {error.instance}."
+    )
+
+
+def _format_required_error(error: ValidationError) -> str:
+    variants = resolve_path(CONFIG_SCHEMA, error.schema_path)
+    assert isinstance(variants, list)
+    assert isinstance(error.instance, dict)
+    missing_keys = sorted(set(variants) - set(error.instance))
+
+    section = path_to_section_name(error.instance_path)
+
+    details = "\n".join(f"  - '{key}'" for key in missing_keys)
+    return f"Error in {section} section:\n  Missing required properties:\n\n{details}\n\n"
+
+
+def _format_enum_error(error: ValidationError) -> str:
+    variants = resolve_path(CONFIG_SCHEMA, error.schema_path)
+    assert isinstance(variants, list)
+    valid_values = sorted(variants)
+
+    path = error.instance_path
+
+    if path and isinstance(path[-1], int):
+        idx = path[-1]
+        prop_name = path[-2]
+        section_path = path[:-2]
+        description = f"Item #{idx} in the '{prop_name}' array"
+    else:
+        prop_name = path[-1] if path else "value"
+        section_path = path[:-1]
+        description = f"'{prop_name}'"
+
+    suggestion = ""
+    if isinstance(error.instance, str) and all(isinstance(v, str) for v in valid_values):
+        match = _find_closest_match(error.instance, valid_values)
+        if match:
+            suggestion = f" Did you mean '{match}'?"
+
+    section = path_to_section_name(section_path)
+    valid_values_str = ", ".join(repr(v) for v in valid_values)
+    return (
+        f"Error in {section} section:\n  Invalid value:\n\n"
+        f"  - {description} -> '{error.instance}' is not a valid value.{suggestion}\n\n"
+        f"Valid values are: {valid_values_str}."
+    )
+
+
+def _format_type_error(error: ValidationError) -> str:
+    expected = resolve_path(CONFIG_SCHEMA, error.schema_path)
+    assert isinstance(expected, str | list)
+    section = path_to_section_name(list(error.instance_path)[:-1] if error.instance_path else [])
+    assert error.instance_path
+
+    type_phrases = {
+        "object": "an object",
+        "array": "an array",
+        "number": "a number",
+        "boolean": "a boolean",
+        "string": "a string",
+        "integer": "an integer",
+        "null": "null",
+    }
+    message = f"Error in {section} section:\n  Type error:\n\n  - '{error.instance_path[-1]}' -> Must be "
+
+    if isinstance(expected, list):
+        message += f"one of: {' or '.join(expected)}"
+    else:
+        message += type_phrases[expected]
+    actual = type(error.instance).__name__
+    message += f", but got {actual}: {error.instance}"
+    return message
+
+
+def _format_additional_properties_error(error: ValidationError) -> str:
+    schema = resolve_path(CONFIG_SCHEMA, error.schema_path[:-1])
+    assert isinstance(schema, dict)
+    valid = list(schema.get("properties", {}))
+    assert isinstance(error.instance, dict)
+    unknown = sorted(set(error.instance) - set(valid))
+    valid_list = ", ".join(f"'{prop}'" for prop in valid)
+    section = path_to_section_name(list(error.instance_path))
+
+    details = []
+    for prop in unknown:
+        match = _find_closest_match(prop, valid)
+        if match:
+            details.append(f"- '{prop}' -> Did you mean '{match}'?")
+        else:
+            details.append(f"- '{prop}'")
+
+    return (
+        f"Error in {section} section:\n  Unknown properties:\n\n"
+        + "\n".join(f"  {detail}" for detail in details)
+        + f"\n\nValid properties for {section} are: {valid_list}."
+    )
+
+
+def _format_min_properties_error(error: ValidationError) -> str:
+    if list(error.schema_path) == ["$defs", "AuthConfig", "properties", "openapi", "minProperties"]:
+        section = path_to_section_name(error.instance_path)
+        return f"Error in {section} section:\n  At least one Open API auth definition is required."
+    return error.message  # pragma: no cover
+
+
+def _format_anyof_error(error: ValidationError) -> str:
+    if list(error.schema_path) == ["$defs", "OperationConfig", "anyOf"]:
+        section = path_to_section_name(error.instance_path)
+        return (
+            f"Error in {section} section:\n  At least one filter is required when defining [[operations]].\n\n"
+            "Please specify at least one include or exclude filter property (e.g., include-path, exclude-tag, etc.)."
+        )
+    elif list(error.schema_path) == ["properties", "workers", "anyOf"]:
+        return (
+            f"Invalid value for 'workers': {error.instance!r}\n\n"
+            f"Expected either:\n"
+            f"  - A positive integer (e.g., workers = 4)\n"
+            f'  - The string "auto" for automatic detection (workers = "auto")'
+        )
+    return error.message  # pragma: no cover
+
+
+def _format_oneof_error(error: ValidationError) -> str:
+    """Format oneOf validation errors, particularly for auth.openapi."""
+    schema_path = list(error.schema_path)
+    if schema_path[:2] == ["$defs", "DictionaryDefinition"]:
+        return _format_dictionary_definition_oneof(error)
+    if list(error.instance_path)[:2] == ["auth", "openapi"] and len(error.instance_path) == 3:
+        section = path_to_section_name(error.instance_path)
+
+        # Try to find the most relevant context error
+        if (
+            isinstance(error.kind, (ValidationErrorKind.OneOfMultipleValid, ValidationErrorKind.OneOfNotValid))
+            and error.kind.context
+            and isinstance(error.instance, dict)
+            and error.instance
+        ):
+            # Each subschema in `oneOf` may have multiple errors
+            for errors in error.kind.context:
+                for one_of_error in errors:
+                    if one_of_error.kind.name == "required":
+                        variants = resolve_path(CONFIG_SCHEMA, one_of_error.schema_path)
+                        assert isinstance(variants, list)
+                        required_fields = set(variants)
+                        # HTTP Basic auth is the only case where we can provide a helpful hint
+                        if ("username" in error.instance or "password" in error.instance) and required_fields == {
+                            "username",
+                            "password",
+                        }:
+                            missing = sorted(required_fields - set(error.instance.keys()))
+                            missing_list = "\n".join(f"  - '{field}'" for field in missing)
+                            return f"Error in {section} section:\n  Missing required property (HTTP Basic):\n\n{missing_list}\n"
+                    elif one_of_error.kind.name == "additionalProperties":
+                        # Find the invalid property
+                        valid = {"api_key", "username", "password", "bearer"}
+                        invalid = [k for k in error.instance.keys() if k not in valid]
+                        if invalid:
+                            return (
+                                f"Error in {section} section:\n  Invalid property:\n\n"
+                                f"  - '{invalid[0]}' is not allowed\n\n"
+                                "Valid properties: 'api_key', 'username', 'password', 'bearer'"
+                            )
+
+        return (
+            f"Error in {section} section:\n  Configuration does not match any valid auth scheme.\n\n"
+            "Valid schemes:\n"
+            "  - apiKey: requires 'api_key'\n"
+            "  - http+basic: requires 'username', 'password'\n"
+            "  - http+bearer: requires 'bearer'"
+        )
+
+    if list(error.instance_path)[-1:] == ["request-retries"]:
+        if isinstance(error.instance, int):
+            return "'request-retries' must be a non-negative integer"
+        if isinstance(error.instance, dict):
+            return "'request-retries' table requires 'max-attempts'"
+
+    return error.message  # pragma: no cover
+
+
+def _format_dictionary_definition_oneof(error: ValidationError) -> str:
+    section = path_to_section_name(error.instance_path)
+    instance = error.instance if isinstance(error.instance, dict) else {}
+    if "values" in instance and "from-file" in instance:
+        return f"Error in {section} section:\n  `values` and `from-file` are mutually exclusive - pick one."
+    return (
+        f"Error in {section} section:\n"
+        "  Must define either `values` (inline entries) "
+        "or `from-file` (path to a libFuzzer/AFL-format file)."
+    )
+
+
+def path_to_section_name(path: list[int | str]) -> str:
+    """Convert a JSON path to a TOML-like section name."""
+    if not path:
+        return "root"
+
+    return f"[{'.'.join(str(p) for p in path)}]"
+
+
+def _find_closest_match(value: str, variants: list[str]) -> str | None:
+    matches = difflib.get_close_matches(value, variants, n=1, cutoff=0.6)
+    return matches[0] if matches else None

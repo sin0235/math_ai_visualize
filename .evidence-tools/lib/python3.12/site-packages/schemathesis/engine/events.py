@@ -1,0 +1,370 @@
+from __future__ import annotations
+
+import time
+import uuid
+from collections.abc import Generator
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any
+
+from schemathesis.core.failures import Failure
+from schemathesis.core.result import Result
+from schemathesis.core.schema_analysis import SchemaWarning
+from schemathesis.core.warnings import SchemathesisWarning
+from schemathesis.engine.errors import EngineErrorInfo
+from schemathesis.engine.recorder import ScenarioRecorder
+from schemathesis.engine.run import Phase, PhaseName
+
+if TYPE_CHECKING:
+    from schemathesis.engine import Status, StopReason
+    from schemathesis.engine.run.probes import ProbePayload
+
+EventGenerator = Generator["EngineEvent", None, None]
+
+
+@dataclass
+class EngineEvent:
+    """An event within the engine's lifecycle."""
+
+    id: uuid.UUID
+    timestamp: float
+    # Indicates whether this event is the last in the event stream
+    is_terminal = False
+
+
+@dataclass
+class EngineStarted(EngineEvent):
+    """Start of an engine."""
+
+    payload: Any | None
+
+    __slots__ = ("id", "timestamp", "payload")
+
+    def __init__(self, *, payload: Any | None = None) -> None:
+        self.id = uuid.uuid4()
+        self.timestamp = time.time()
+        self.payload = payload
+
+
+@dataclass
+class PhaseEvent(EngineEvent):
+    """Event associated with a specific execution phase."""
+
+    phase: Phase
+
+
+@dataclass(slots=True)
+class StatefulPhasePayload:
+    inferred_transitions: int
+
+
+@dataclass
+class PhaseStarted(PhaseEvent):
+    """Start of an execution phase."""
+
+    payload: StatefulPhasePayload | None
+
+    __slots__ = ("id", "timestamp", "phase", "payload")
+
+    def __init__(self, *, phase: Phase, payload: StatefulPhasePayload | None) -> None:
+        self.id = uuid.uuid4()
+        self.timestamp = time.time()
+        self.phase = phase
+        self.payload = payload
+
+
+@dataclass
+class PhaseFinished(PhaseEvent):
+    """End of an execution phase."""
+
+    status: Status
+    payload: Result[ProbePayload, Exception] | None
+
+    __slots__ = ("id", "timestamp", "phase", "status", "payload")
+
+    def __init__(self, *, phase: Phase, status: Status, payload: Result[ProbePayload, Exception] | None) -> None:
+        self.id = uuid.uuid4()
+        self.timestamp = time.time()
+        self.phase = phase
+        self.status = status
+        self.payload = payload
+
+
+@dataclass
+class SchemaAnalysisWarnings(PhaseEvent):
+    """Schema analysis discovered warnings."""
+
+    warnings: list[SchemaWarning]
+
+    __slots__ = ("id", "timestamp", "phase", "warnings")
+
+    def __init__(self, *, phase: Phase, warnings: list[SchemaWarning]) -> None:
+        self.id = uuid.uuid4()
+        self.timestamp = time.time()
+        self.phase = phase
+        self.warnings = warnings
+
+
+@dataclass
+class TestEvent(EngineEvent):
+    pass
+
+
+@dataclass
+class SuiteStarted(TestEvent):
+    """Before executing a set of scenarios."""
+
+    phase: PhaseName
+
+    __slots__ = ("id", "timestamp", "phase")
+
+    def __init__(self, *, phase: PhaseName) -> None:
+        self.id = uuid.uuid4()
+        self.timestamp = time.time()
+        self.phase = phase
+
+
+@dataclass
+class SuiteFinished(TestEvent):
+    """After executing a set of test scenarios."""
+
+    phase: PhaseName
+    status: Status
+
+    __slots__ = ("id", "timestamp", "phase", "status")
+
+    def __init__(self, *, id: uuid.UUID, phase: PhaseName, status: Status) -> None:
+        self.id = id
+        self.timestamp = time.time()
+        self.phase = phase
+        self.status = status
+
+
+@dataclass
+class ScenarioEvent(TestEvent):
+    suite_id: uuid.UUID
+
+
+@dataclass
+class ScenarioStarted(ScenarioEvent):
+    """Before executing a grouped set of test steps."""
+
+    phase: PhaseName
+
+    __slots__ = ("id", "timestamp", "phase", "suite_id", "label")
+
+    def __init__(self, *, phase: PhaseName, suite_id: uuid.UUID, label: str | None) -> None:
+        self.id = uuid.uuid4()
+        self.timestamp = time.time()
+        self.phase = phase
+        self.suite_id = suite_id
+        self.label = label
+
+
+@dataclass
+class ScenarioFinished(ScenarioEvent):
+    """After executing a grouped set of test steps."""
+
+    phase: PhaseName
+    status: Status
+    recorder: ScenarioRecorder
+    elapsed_time: float
+    skip_reason: str | None
+    skip_warning: SchemathesisWarning | None
+    # Whether this is a scenario that tries to reproduce a failure
+    is_final: bool
+
+    __slots__ = (
+        "id",
+        "timestamp",
+        "phase",
+        "suite_id",
+        "label",
+        "status",
+        "recorder",
+        "elapsed_time",
+        "skip_reason",
+        "skip_warning",
+        "is_final",
+    )
+
+    def __init__(
+        self,
+        *,
+        id: uuid.UUID,
+        phase: PhaseName,
+        suite_id: uuid.UUID,
+        label: str | None,
+        status: Status,
+        recorder: ScenarioRecorder,
+        elapsed_time: float,
+        skip_reason: str | None,
+        is_final: bool,
+        skip_warning: SchemathesisWarning | None = None,
+    ) -> None:
+        self.id = id
+        self.timestamp = time.time()
+        self.phase = phase
+        self.suite_id = suite_id
+        self.label = label
+        self.status = status
+        self.recorder = recorder
+        self.elapsed_time = elapsed_time
+        self.skip_reason = skip_reason
+        self.skip_warning = skip_warning
+        self.is_final = is_final
+
+
+@dataclass
+class FuzzScenarioStarted(ScenarioEvent):
+    """Before executing a fuzz scenario (multi-operation sequence)."""
+
+    worker_id: int
+
+    __slots__ = ("id", "timestamp", "suite_id", "worker_id")
+
+    def __init__(self, *, suite_id: uuid.UUID, worker_id: int) -> None:
+        self.id = uuid.uuid4()
+        self.timestamp = time.time()
+        self.suite_id = suite_id
+        self.worker_id = worker_id
+
+
+@dataclass
+class FuzzScenarioFinished(ScenarioEvent):
+    """After executing a fuzz scenario."""
+
+    worker_id: int
+    recorder: ScenarioRecorder
+    status: Status
+    elapsed_time: float
+
+    __slots__ = ("id", "timestamp", "suite_id", "worker_id", "recorder", "status", "elapsed_time")
+
+    def __init__(
+        self,
+        *,
+        id: uuid.UUID,
+        suite_id: uuid.UUID,
+        worker_id: int,
+        recorder: ScenarioRecorder,
+        status: Status,
+        elapsed_time: float,
+    ) -> None:
+        self.id = id
+        self.timestamp = time.time()
+        self.suite_id = suite_id
+        self.worker_id = worker_id
+        self.recorder = recorder
+        self.status = status
+        self.elapsed_time = elapsed_time
+
+
+@dataclass
+class Interrupted(EngineEvent):
+    """If execution was interrupted by Ctrl-C, or a received SIGTERM."""
+
+    phase: PhaseName | None
+
+    __slots__ = ("id", "timestamp", "phase")
+
+    def __init__(self, *, phase: PhaseName | None) -> None:
+        self.id = uuid.uuid4()
+        self.timestamp = time.time()
+        self.phase = phase
+
+
+@dataclass
+class NonFatalError(EngineEvent):
+    """Error that doesn't halt execution but should be reported."""
+
+    info: EngineErrorInfo
+    value: Exception
+    phase: PhaseName | None
+    label: str
+    related_to_operation: bool
+
+    __slots__ = ("id", "timestamp", "info", "value", "phase", "label", "related_to_operation")
+
+    def __init__(
+        self,
+        *,
+        error: Exception,
+        phase: PhaseName | None,
+        label: str,
+        related_to_operation: bool,
+        code_sample: str | None = None,
+    ) -> None:
+        self.id = uuid.uuid4()
+        self.timestamp = time.time()
+        self.info = EngineErrorInfo(error=error, code_sample=code_sample)
+        self.value = error
+        self.phase = phase
+        self.label = label
+        self.related_to_operation = related_to_operation
+
+    def __eq__(self, other: object) -> bool:
+        assert isinstance(other, NonFatalError)
+        return self.label == other.label and type(self.value) is type(other.value)
+
+    def __hash__(self) -> int:
+        return hash((self.label, type(self.value)))
+
+
+@dataclass
+class FatalError(EngineEvent):
+    """Internal error in the engine."""
+
+    exception: Exception
+    is_terminal = True
+
+    __slots__ = ("id", "timestamp", "exception")
+
+    def __init__(self, *, exception: Exception) -> None:
+        self.id = uuid.uuid4()
+        self.timestamp = time.time()
+        self.exception = exception
+
+
+@dataclass(slots=True)
+class CacheRunMetrics:
+    """End-of-run cache-effectiveness metrics, surfaced for downstream analysis tooling."""
+
+    # Denominator for "share of signal recovered from cache": distinct error-feedback
+    # observations the store accumulated this run (live discovery + cache hydration).
+    observations_total: int = 0
+
+
+@dataclass(slots=True)
+class RunSummary:
+    """End-of-run summary carried on `EngineFinished.payload`."""
+
+    cache: CacheRunMetrics = field(default_factory=CacheRunMetrics)
+
+
+@dataclass
+class EngineFinished(EngineEvent):
+    """The final event of the run. No more events after this point."""
+
+    is_terminal = True
+    running_time: float
+    stop_reason: StopReason
+    payload: RunSummary | None
+    # Failures from class-based `after_run`.
+    failures: list[Failure]
+
+    __slots__ = ("id", "timestamp", "running_time", "stop_reason", "payload", "failures")
+
+    def __init__(
+        self,
+        *,
+        running_time: float,
+        stop_reason: StopReason,
+        payload: RunSummary | None = None,
+        failures: list[Failure] | None = None,
+    ) -> None:
+        self.id = uuid.uuid4()
+        self.timestamp = time.time()
+        self.running_time = running_time
+        self.stop_reason = stop_reason
+        self.payload = payload
+        self.failures = failures if failures is not None else []

@@ -1,0 +1,20 @@
+{
+  "name": "node-tools",
+  "dependencies": {
+    "@axe-core/playwright": {
+      "version": "4.12.1",
+      "resolved": "https://registry.npmjs.org/@axe-core/playwright/-/playwright-4.12.1.tgz",
+      "overridden": false
+    },
+    "lighthouse": {
+      "version": "13.4.0",
+      "resolved": "https://registry.npmjs.org/lighthouse/-/lighthouse-13.4.0.tgz",
+      "overridden": false
+    },
+    "playwright": {
+      "version": "1.61.1",
+      "resolved": "https://registry.npmjs.org/playwright/-/playwright-1.61.1.tgz",
+      "overridden": false
+    }
+  }
+}

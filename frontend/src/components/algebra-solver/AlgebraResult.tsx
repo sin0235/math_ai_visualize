@@ -8,9 +8,17 @@ const ANALYZER_PREFILL_KEY = 'math_ai_analyzer_prefill';
 export function EmptyAlgebraResult() {
   return (
     <div className="algebra-empty-result">
-      <EmptyResultIllustration />
-      <strong>Kết quả sẽ hiện ở đây</strong>
-      <span>Nhập bài toán ở cột trái để xem lời giải và báo cáo kiểm chứng.</span>
+      <div className="algebra-empty-card">
+        <p className="algebra-empty-eyebrow">Không gian lời giải</p>
+        <EmptyResultIllustration />
+        <strong>Kết quả sẽ hiện ở đây</strong>
+        <span>Nhập bài toán ở cột trái để nhận lời giải có cấu trúc và kiểm chứng.</span>
+        <ul className="algebra-empty-features" aria-label="Nội dung kết quả">
+          <li>Lời giải từng bước</li>
+          <li>Đáp án chính xác</li>
+          <li>Báo cáo kiểm chứng</li>
+        </ul>
+      </div>
     </div>
   );
 }

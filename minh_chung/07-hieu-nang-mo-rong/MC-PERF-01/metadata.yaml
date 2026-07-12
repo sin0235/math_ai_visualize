@@ -1,0 +1,23 @@
+evidence_id: MC-PERF-01
+claim: Capacity gate giữ đúng giới hạn dưới tranh chấp và các state transition đồng thời không phá vỡ tính nhất quán.
+commit_sha: 5cac5199def7fd960fcf2ab27a02a9fa3cc1f07a
+workspace_clean: false
+environment: local
+collected_at_utc: 2026-07-12T04:50:00Z
+collector: automated-session
+preconditions:
+  - Redis local trả PONG.
+  - Key kiểm thử tách biệt gate:evidence-atomicity.
+actual:
+  - Ca trước sửa nhận 1/40 với limit 4, chứng minh race ở chuỗi ZCARD/ZADD.
+  - Sau Lua atomic, nhận đúng 4/40; ZCARD trước release 4 và sau release 0.
+  - Sáu test concurrency, stale revision và capacity đạt; 2 warnings dependency.
+result: passed
+raw_files:
+  - 01-raw/capacity-atomicity.json
+  - 01-raw/capacity-atomicity-after-fix.json
+  - 01-raw/concurrency-tests.xml
+  - 01-raw/concurrency-tests-after-fix.log
+limitations:
+  - Không phải benchmark throughput hoặc latency production.
+  - Source sửa chưa được deploy vào production.

@@ -1,0 +1,685 @@
+<?xml version="1.0" encoding="utf-8"?>
+<testsuites errors="0" failures="22" skipped="0" tests="25" time="128.391920">
+  <testsuite name="schemathesis" hostname="DESKTOP-UPVP7BU" errors="0" failures="22" skipped="0" tests="25" time="128.391920">
+    <testcase name="POST /api/analyze" time="16.393847">
+      <failure type="failure">1. Test Case ID: LKkUL9
+
+- Response violates schema
+
+    {"code":"ANALYZER_INPUT_INVALID","correlation_id":"ee3ff744a7fc427087af61ae4478d083","message":"Dữ liệu yêu cầu phân tích không hợp lệ.","retryable":false,"stage":"request"} is not of type "array"
+
+    Validated against the response schema for status code 422.
+
+    Schema at /components/schemas/HTTPValidationError/properties/detail:
+
+        {
+            "type": "array",
+            "items": {
+                "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail"
+        }
+
+    Value:
+
+        {
+            "code": "ANALYZER_INPUT_INVALID",
+            "correlation_id": "ee3ff744a7fc427087af61ae4478d083",
+            "message": "D\u1eef li\u1ec7u y\u00eau c\u1ea7u ph\u00e2n t\u00edch kh\u0...
+            "retryable": false,
+            "stage": "request"
+        }
+
+[422] Unprocessable Content:
+
+    `{"detail":{"code":"ANALYZER_INPUT_INVALID","message":"Dữ liệu yêu cầu phân tích không hợp lệ.","correlation_id":"ee3ff744a7fc427087af61ae4478d083","stage":"request","retryable":false}}`
+
+Reproduce with:
+
+    curl -X POST -H 'Content-Type: application/json' -H 'Cookie: [Filtered]' -d '{"expression": "0", "interval": {"a": 0.0, "b": 0.0}, "line": {}, "parameter_conditions": {"targets": ["decreasing_r"]}, "parameter_mode": null, "parameters": {}, "provenance": {"model": "0", "provider": "0", "source": "ocr"}, "transform": null}' http://127.0.0.1:18765/api/analyze</failure>
+    </testcase>
+    <testcase name="POST /api/analyze/ocr" time="11.367455">
+      <failure type="failure">1. Test Case ID: XMeSF1
+
+- Undocumented HTTP status code
+
+    Received: 401
+    Documented: 200, 422
+
+[401] Unauthorized:
+
+    `{"detail":"Phiên đăng nhập đã hết hạn."}`
+
+Reproduce with:
+
+    curl -X POST -H 'Content-Type: application/json' -H 'Cookie: [Filtered]' -d '{"image_data_url": null, "runtime_settings": null, "upload_id": null}' http://127.0.0.1:18765/api/analyze/ocr</failure>
+    </testcase>
+    <testcase name="POST /api/analyzer/analyze" time="3.632772">
+      <failure type="failure">1. Test Case ID: P86GDi
+
+- Response violates schema
+
+    {"code":"ANALYZER_INPUT_INVALID","correlation_id":"f67682ec9a4d4217842686fd09775b72","message":"Dữ liệu yêu cầu phân tích không hợp lệ.","retryable":false,"stage":"request"} is not of type "array"
+
+    Validated against the response schema for status code 422.
+
+    Schema at /components/schemas/HTTPValidationError/properties/detail:
+
+        {
+            "type": "array",
+            "items": {
+                "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail"
+        }
+
+    Value:
+
+        {
+            "code": "ANALYZER_INPUT_INVALID",
+            "correlation_id": "f67682ec9a4d4217842686fd09775b72",
+            "message": "D\u1eef li\u1ec7u y\u00eau c\u1ea7u ph\u00e2n t\u00edch kh\u0...
+            "retryable": false,
+            "stage": "request"
+        }
+
+[422] Unprocessable Content:
+
+    `{"detail":{"code":"ANALYZER_INPUT_INVALID","message":"Dữ liệu yêu cầu phân tích không hợp lệ.","correlation_id":"f67682ec9a4d4217842686fd09775b72","stage":"request","retryable":false}}`
+
+Reproduce with:
+
+    curl -X POST -H 'Content-Type: application/json' -H 'Cookie: [Filtered]' -d '{"curriculum_profile": {"chapter": "Kh\u1ea3o s\u00e1t h\u00e0m s\u1ed1", "explanation_level": "standard", "grade": 12}, "parameter_mode": null, "parameters": {}, "provenance": {"model": "0", "provider": "0", "source": "ocr"}}' http://127.0.0.1:18765/api/analyzer/analyze
+
+2. Test Case ID: xyMd0l
+
+- API accepted schema-violating request
+
+    Invalid data should have been rejected
+    Expected: 400, 401, 403, 404, 405, 406, 409, 422, 428, 5xx
+    Invalid component: in body - parameters -&gt; m: Incorrect type
+
+[200] OK:
+
+    `{"expression":"0","expression_latex":"0","evaluated_expression":"0","evaluated_expression_latex":"0","parameters":{"detected":[],"active":{},"active_exact":{},"ranges":{}},"analysis_mode":"symbolic","parameter_mode":null,"requires_parameter_confirmation":false,"requires_substitution_for_graph":false,"parameter_analysis_v2":null,"derivative":"0","derivative_latex":"0","second_derivative":"0","second_derivative_latex":"0","critical_points":[],"inflection_points":[],"intervals_increasing":[],"intervals_decreas // Output truncated...`
+
+Reproduce with:
+
+    curl -X POST -H 'Content-Type: application/json' -H 'Cookie: [Filtered]' -d '{"curriculum_profile": {"chapter": "Kh\u1ea3o s\u00e1t h\u00e0m s\u1ed1", "explanation_level": "standard", "grade": 12}, "expression": "0", "parameter_mode": null, "parameters": {"m": false}, "provenance": {"model": "0", "provider": "0", "source": "ocr"}}' http://127.0.0.1:18765/api/analyzer/analyze
+
+3. Test Case ID: lRIueV
+
+- Undocumented HTTP status code
+
+    Received: 429
+    Documented: 200, 422
+
+[429] Too Many Requests:
+
+    `{"detail":{"code":"ANALYZER_RATE_LIMITED","message":"Analyzer đang quá tải. Hãy thử lại sau.","correlation_id":"90e6cb2bfcc944e6a870465164de7148","stage":"rate_limit","retryable":true}}`
+
+Reproduce with:
+
+    curl -X POST -H 'Content-Type: application/json' -H 'Cookie: [Filtered]' -d '{"curriculum_profile": {"chapter": "Kh\u1ea3o s\u00e1t h\u00e0m s\u1ed1", "explanation_level": "standard", "grade": 12}, "expression": "0", "parameter_mode": null, "parameters": {}, "provenance": {"extraction_version": "function-ocr-v2", "model": "0", "provider": "0", "source": "ocr"}}' http://127.0.0.1:18765/api/analyzer/analyze</failure>
+    </testcase>
+    <testcase name="POST /api/analyzer/export" time="3.041131">
+      <failure type="failure">1. Test Case ID: 11Q628
+
+- Undocumented HTTP status code
+
+    Received: 401
+    Documented: 200, 422
+
+[401] Unauthorized:
+
+    `{"detail":"Phiên đăng nhập đã hết hạn."}`
+
+Reproduce with:
+
+    curl -X POST -H 'Content-Type: application/json' -H 'Cookie: [Filtered]' -d '{"analysis_id": null, "curriculum_profile": {"chapter": "Kh\u1ea3o s\u00e1t h\u00e0m s\u1ed1", "explanation_level": "standard", "grade": 12}, "format": "pdf", "history_id": null, "template": "full"}' http://127.0.0.1:18765/api/analyzer/export</failure>
+    </testcase>
+    <testcase name="POST /api/analyzer/handoffs" time="1.552826">
+      <failure type="failure">1. Test Case ID: hrsmUi
+
+- Undocumented HTTP status code
+
+    Received: 401
+    Documented: 200, 422
+
+[401] Unauthorized:
+
+    `{"detail":"Phiên đăng nhập đã hết hạn."}`
+
+Reproduce with:
+
+    curl -X POST -H 'Content-Type: application/json' -H 'Cookie: [Filtered]' -d '{"analysis_id": "0000000000000000", "target": "render"}' http://127.0.0.1:18765/api/analyzer/handoffs</failure>
+    </testcase>
+    <testcase name="POST /api/analyzer/history" time="13.850685">
+      <failure type="failure">1. Test Case ID: YamoZU
+
+- Undocumented HTTP status code
+
+    Received: 401
+    Documented: 200, 422
+
+[401] Unauthorized:
+
+    `{"detail":"Phiên đăng nhập đã hết hạn."}`
+
+Reproduce with:
+
+    curl -X POST -H 'Content-Type: application/json' -H 'Cookie: [Filtered]' -d '{"analysis_id": "0000000000000000", "curriculum_profile": {"chapter": "Kh\u1ea3o s\u00e1t h\u00e0m s\u1ed1", "explanation_level": "standard", "grade": 12}, "pinned": false, "tags": [], "tools": {}, "window": {"x_max": 0.0, "x_min": 0.0}}' http://127.0.0.1:18765/api/analyzer/history</failure>
+    </testcase>
+    <testcase name="POST /api/analyzer/history/{item_id}/reanalyze" time="2.649868">
+      <failure type="failure">1. Test Case ID: mbyaxk
+
+- Undocumented HTTP status code
+
+    Received: 401
+    Documented: 200, 422
+
+[401] Unauthorized:
+
+    `{"detail":"Phiên đăng nhập đã hết hạn."}`
+
+Reproduce with:
+
+    curl -X POST -H 'Content-Type: application/json' -H 'Cookie: [Filtered]' -d '{"curriculum_profile": {}}' http://127.0.0.1:18765/api/analyzer/history/0/reanalyze</failure>
+    </testcase>
+    <testcase name="POST /api/analyzer/links/{short_id}/consume" time="1.307976">
+      <failure type="failure">1. Test Case ID: hwI9Qp
+
+- Undocumented HTTP status code
+
+    Received: 404
+    Documented: 200, 422
+
+[404] Not Found:
+
+    `{"detail":"Link analyzer không tồn tại hoặc không còn hiệu lực."}`
+
+Reproduce with:
+
+    curl -X POST -H 'Content-Type: application/json' -H 'Cookie: [Filtered]' -d '{"scope": "open", "target": "render"}' http://127.0.0.1:18765/api/analyzer/links/0/consume
+
+2. Test Case ID: bTXxcf
+
+- Response violates schema
+
+    {"code":"ANALYZER_INPUT_INVALID","correlation_id":"fc38c0525816423caecd6b7d82a72e73","message":"Dữ liệu yêu cầu phân tích không hợp lệ.","retryable":false,"stage":"request"} is not of type "array"
+
+    Validated against the response schema for status code 422.
+
+    Schema at /components/schemas/HTTPValidationError/properties/detail:
+
+        {
+            "type": "array",
+            "items": {
+                "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail"
+        }
+
+    Value:
+
+        {
+            "code": "ANALYZER_INPUT_INVALID",
+            "correlation_id": "fc38c0525816423caecd6b7d82a72e73",
+            "message": "D\u1eef li\u1ec7u y\u00eau c\u1ea7u ph\u00e2n t\u00edch kh\u0...
+            "retryable": false,
+            "stage": "request"
+        }
+
+[422] Unprocessable Content:
+
+    `{"detail":{"code":"ANALYZER_INPUT_INVALID","message":"Dữ liệu yêu cầu phân tích không hợp lệ.","correlation_id":"fc38c0525816423caecd6b7d82a72e73","stage":"request","retryable":false}}`
+
+Reproduce with:
+
+    curl -X POST -H 'Content-Type: application/json' -H 'Cookie: [Filtered]' -d '{"scope": "open"}' http://127.0.0.1:18765/api/analyzer/links/0/consume</failure>
+    </testcase>
+    <testcase name="POST /api/analyzer/shares" time="30.509550">
+      <failure type="failure">1. Test Case ID: nof9jL
+
+- Undocumented HTTP status code
+
+    Received: 401
+    Documented: 200, 422
+
+[401] Unauthorized:
+
+    `{"detail":"Phiên đăng nhập đã hết hạn."}`
+
+Reproduce with:
+
+    curl -X POST -H 'Content-Type: application/json' -H 'Cookie: [Filtered]' -d '{"allowed_origins": [], "analysis_id": "0000000000000000", "expires_in_minutes": 1440, "max_uses": 100, "scopes": ["api"], "target": "render", "visibility": "user"}' http://127.0.0.1:18765/api/analyzer/shares</failure>
+    </testcase>
+    <testcase name="POST /api/analyzer/tools/interval-extrema" time="2.904493">
+      <failure type="failure">1. Test Case ID: OJqyhD
+
+- Response violates schema
+
+    {"code":"ANALYZER_INPUT_INVALID","correlation_id":"04f1445b372444dca4e9a96e87a98b8e","message":"Dữ liệu yêu cầu phân tích không hợp lệ.","retryable":false,"stage":"request"} is not of type "array"
+
+    Validated against the response schema for status code 422.
+
+    Schema at /components/schemas/HTTPValidationError/properties/detail:
+
+        {
+            "type": "array",
+            "items": {
+                "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail"
+        }
+
+    Value:
+
+        {
+            "code": "ANALYZER_INPUT_INVALID",
+            "correlation_id": "04f1445b372444dca4e9a96e87a98b8e",
+            "message": "D\u1eef li\u1ec7u y\u00eau c\u1ea7u ph\u00e2n t\u00edch kh\u0...
+            "retryable": false,
+            "stage": "request"
+        }
+
+[422] Unprocessable Content:
+
+    `{"detail":{"code":"ANALYZER_INPUT_INVALID","message":"Dữ liệu yêu cầu phân tích không hợp lệ.","correlation_id":"04f1445b372444dca4e9a96e87a98b8e","stage":"request","retryable":false}}`
+
+Reproduce with:
+
+    curl -X POST -H 'Content-Type: application/json' -H 'Cookie: [Filtered]' -d '{"analysis_id": "0000000000000000", "interval": {"a": 0.0, "b": 0.0, "open_a": false, "open_b": false}}' http://127.0.0.1:18765/api/analyzer/tools/interval-extrema
+
+2. Test Case ID: SmRF8g
+
+- Undocumented HTTP status code
+
+    Received: 404
+    Documented: 200, 422
+
+[404] Not Found:
+
+    `{"detail":{"code":"MODEL_NOT_FOUND","message":"Model đã chọn không tồn tại hoặc không khả dụng.","suggestions":["Kiểm tra model ID có đúng provider/model không.","Quét lại danh sách model hoặc chọn model khác trong allowlist."],"debug_message":"Analysis session không tồn tại hoặc đã hết hạn."}}`
+
+Reproduce with:
+
+    curl -X POST -H 'Content-Type: application/json' -H 'Cookie: [Filtered]' -d '{"analysis_id": "0000000000000000", "interval": {"a": 0.0, "b": 999999.0, "open_a": false, "open_b": false}}' http://127.0.0.1:18765/api/analyzer/tools/interval-extrema</failure>
+    </testcase>
+    <testcase name="POST /api/analyzer/tools/line" time="3.779451">
+      <failure type="failure">1. Test Case ID: gTxuyj
+
+- Undocumented HTTP status code
+
+    Received: 404
+    Documented: 200, 422
+
+[404] Not Found:
+
+    `{"detail":{"code":"MODEL_NOT_FOUND","message":"Model đã chọn không tồn tại hoặc không khả dụng.","suggestions":["Kiểm tra model ID có đúng provider/model không.","Quét lại danh sách model hoặc chọn model khác trong allowlist."],"debug_message":"Analysis session không tồn tại hoặc đã hết hạn."}}`
+
+Reproduce with:
+
+    curl -X POST -H 'Content-Type: application/json' -H 'Cookie: [Filtered]' -d '{"analysis_id": "0000000000000000", "line": {"b": 0, "k": 0, "mode": "intersect", "x0": 0, "y0": 0}}' http://127.0.0.1:18765/api/analyzer/tools/line
+
+2. Test Case ID: ZaqvOj
+
+- Response violates schema
+
+    {"code":"ANALYZER_INPUT_INVALID","correlation_id":"db885cc8b4144efba692736d9b7a1906","message":"Dữ liệu yêu cầu phân tích không hợp lệ.","retryable":false,"stage":"request"} is not of type "array"
+
+    Validated against the response schema for status code 422.
+
+    Schema at /components/schemas/HTTPValidationError/properties/detail:
+
+        {
+            "type": "array",
+            "items": {
+                "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail"
+        }
+
+    Value:
+
+        {
+            "code": "ANALYZER_INPUT_INVALID",
+            "correlation_id": "db885cc8b4144efba692736d9b7a1906",
+            "message": "D\u1eef li\u1ec7u y\u00eau c\u1ea7u ph\u00e2n t\u00edch kh\u0...
+            "retryable": false,
+            "stage": "request"
+        }
+
+[422] Unprocessable Content:
+
+    `{"detail":{"code":"ANALYZER_INPUT_INVALID","message":"Dữ liệu yêu cầu phân tích không hợp lệ.","correlation_id":"db885cc8b4144efba692736d9b7a1906","stage":"request","retryable":false}}`
+
+Reproduce with:
+
+    curl -X POST -H 'Content-Type: application/json' -H 'Cookie: [Filtered]' -d '{"analysis_id": "0000000000000000"}' http://127.0.0.1:18765/api/analyzer/tools/line</failure>
+    </testcase>
+    <testcase name="POST /api/analyzer/tools/tangent" time="1.686677">
+      <failure type="failure">1. Test Case ID: 2ag7us
+
+- Undocumented HTTP status code
+
+    Received: 404
+    Documented: 200, 422
+
+[404] Not Found:
+
+    `{"detail":{"code":"MODEL_NOT_FOUND","message":"Model đã chọn không tồn tại hoặc không khả dụng.","suggestions":["Kiểm tra model ID có đúng provider/model không.","Quét lại danh sách model hoặc chọn model khác trong allowlist."],"debug_message":"Analysis session không tồn tại hoặc đã hết hạn."}}`
+
+Reproduce with:
+
+    curl -X POST -H 'Content-Type: application/json' -H 'Cookie: [Filtered]' -d '{"analysis_id": "0000000000000000", "x0": 0.0}' http://127.0.0.1:18765/api/analyzer/tools/tangent
+
+2. Test Case ID: O7w2pw
+
+- Response violates schema
+
+    {"code":"ANALYZER_INPUT_INVALID","correlation_id":"5c41d5cac22d486c83701385f6d17768","message":"Dữ liệu yêu cầu phân tích không hợp lệ.","retryable":false,"stage":"request"} is not of type "array"
+
+    Validated against the response schema for status code 422.
+
+    Schema at /components/schemas/HTTPValidationError/properties/detail:
+
+        {
+            "type": "array",
+            "items": {
+                "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail"
+        }
+
+    Value:
+
+        {
+            "code": "ANALYZER_INPUT_INVALID",
+            "correlation_id": "5c41d5cac22d486c83701385f6d17768",
+            "message": "D\u1eef li\u1ec7u y\u00eau c\u1ea7u ph\u00e2n t\u00edch kh\u0...
+            "retryable": false,
+            "stage": "request"
+        }
+
+[422] Unprocessable Content:
+
+    `{"detail":{"code":"ANALYZER_INPUT_INVALID","message":"Dữ liệu yêu cầu phân tích không hợp lệ.","correlation_id":"5c41d5cac22d486c83701385f6d17768","stage":"request","retryable":false}}`
+
+Reproduce with:
+
+    curl -X POST -H 'Content-Type: application/json' -H 'Cookie: [Filtered]' -d '{"analysis_id": "0000000000000000"}' http://127.0.0.1:18765/api/analyzer/tools/tangent</failure>
+    </testcase>
+    <testcase name="POST /api/analyzer/tools/transform" time="4.652970">
+      <failure type="failure">1. Test Case ID: GshPVH
+
+- Undocumented HTTP status code
+
+    Received: 404
+    Documented: 200, 422
+
+[404] Not Found:
+
+    `{"detail":{"code":"MODEL_NOT_FOUND","message":"Model đã chọn không tồn tại hoặc không khả dụng.","suggestions":["Kiểm tra model ID có đúng provider/model không.","Quét lại danh sách model hoặc chọn model khác trong allowlist."],"debug_message":"Analysis session không tồn tại hoặc đã hết hạn."}}`
+
+Reproduce with:
+
+    curl -X POST -H 'Content-Type: application/json' -H 'Cookie: [Filtered]' -d '{"analysis_id": "0000000000000000", "transform": {"type": "reflect_y"}}' http://127.0.0.1:18765/api/analyzer/tools/transform
+
+2. Test Case ID: YOgwTu
+
+- Response violates schema
+
+    {"code":"ANALYZER_INPUT_INVALID","correlation_id":"a849f33fc88b4d8a916a55c0ab8f200c","message":"Dữ liệu yêu cầu phân tích không hợp lệ.","retryable":false,"stage":"request"} is not of type "array"
+
+    Validated against the response schema for status code 422.
+
+    Schema at /components/schemas/HTTPValidationError/properties/detail:
+
+        {
+            "type": "array",
+            "items": {
+                "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail"
+        }
+
+    Value:
+
+        {
+            "code": "ANALYZER_INPUT_INVALID",
+            "correlation_id": "a849f33fc88b4d8a916a55c0ab8f200c",
+            "message": "D\u1eef li\u1ec7u y\u00eau c\u1ea7u ph\u00e2n t\u00edch kh\u0...
+            "retryable": false,
+            "stage": "request"
+        }
+
+[422] Unprocessable Content:
+
+    `{"detail":{"code":"ANALYZER_INPUT_INVALID","message":"Dữ liệu yêu cầu phân tích không hợp lệ.","correlation_id":"a849f33fc88b4d8a916a55c0ab8f200c","stage":"request","retryable":false}}`
+
+Reproduce with:
+
+    curl -X POST -H 'Content-Type: application/json' -H 'Cookie: [Filtered]' -d '{"analysis_id": "0000000000000000"}' http://127.0.0.1:18765/api/analyzer/tools/transform
+
+3. Test Case ID: zQp8Jr
+
+- Undocumented HTTP status code
+
+    Received: 429
+    Documented: 200, 422
+
+[429] Too Many Requests:
+
+    `{"detail":{"code":"ANALYZER_RATE_LIMITED","message":"Analyzer đang quá tải. Hãy thử lại sau.","correlation_id":"6ab7b26f4e9944258e24f684d7113255","stage":"rate_limit","retryable":true}}`
+
+Reproduce with:
+
+    curl -X POST -H 'Content-Type: application/json' -H 'Cookie: [Filtered]' -d '{"analysis_id": "0000000000000000", "transform": {"type": "vertical_shift", "value": 1000000}}' http://127.0.0.1:18765/api/analyzer/tools/transform</failure>
+    </testcase>
+    <testcase name="GET /api/analyze/capabilities" time="0.201893" />
+    <testcase name="GET /api/analyzer/history" time="4.035555">
+      <failure type="failure">1. Test Case ID: reKwvN
+
+- Undocumented HTTP status code
+
+    Received: 401
+    Documented: 200, 422
+
+[401] Unauthorized:
+
+    `{"detail":"Bạn chưa đăng nhập."}`
+
+Reproduce with:
+
+    curl -X GET -H 'Cookie: [Filtered]' 'http://127.0.0.1:18765/api/analyzer/history?limit=30&amp;q=0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000&amp;pinned=true&amp;chapter=000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000'</failure>
+    </testcase>
+    <testcase name="GET /api/health" time="0.132697" />
+    <testcase name="GET /api/health/detail" time="0.352676">
+      <failure type="failure">1. Test Case ID: XM5Uvg
+
+- Undocumented HTTP status code
+
+    Received: 401
+    Documented: 200, 422
+
+[401] Unauthorized:
+
+    `{"detail":"Phiên đăng nhập đã hết hạn."}`
+
+Reproduce with:
+
+    curl -X GET -H 'Cookie: [Filtered]' http://127.0.0.1:18765/api/health/detail</failure>
+    </testcase>
+    <testcase name="GET /api/health/ready" time="0.156581" />
+    <testcase name="DELETE /api/analyzer/links/{short_id}" time="0.370737">
+      <failure type="failure">1. Test Case ID: nvCyT6
+
+- Undocumented HTTP status code
+
+    Received: 401
+    Documented: 204, 422
+
+[401] Unauthorized:
+
+    `{"detail":"Phiên đăng nhập đã hết hạn."}`
+
+Reproduce with:
+
+    curl -X DELETE -H 'Cookie: [Filtered]' http://127.0.0.1:18765/api/analyzer/links/0</failure>
+    </testcase>
+    <testcase name="PATCH /api/analyzer/history/{item_id}" time="2.159608">
+      <failure type="failure">1. Test Case ID: CDYND0
+
+- Undocumented HTTP status code
+
+    Received: 401
+    Documented: 200, 422
+
+[401] Unauthorized:
+
+    `{"detail":"Phiên đăng nhập đã hết hạn."}`
+
+Reproduce with:
+
+    curl -X PATCH -H 'Content-Type: application/json' -H 'Cookie: [Filtered]' -d '{"chapter": null, "pinned": null, "tags": null}' http://127.0.0.1:18765/api/analyzer/history/0</failure>
+    </testcase>
+    <testcase name="GET /api/analyzer/history/{item_id}" time="0.345375">
+      <failure type="failure">1. Test Case ID: JZPO9H
+
+- Undocumented HTTP status code
+
+    Received: 401
+    Documented: 200, 422
+
+[401] Unauthorized:
+
+    `{"detail":"Phiên đăng nhập đã hết hạn."}`
+
+Reproduce with:
+
+    curl -X GET -H 'Cookie: [Filtered]' http://127.0.0.1:18765/api/analyzer/history/0</failure>
+    </testcase>
+    <testcase name="DELETE /api/analyzer/history/{item_id}" time="0.179886">
+      <failure type="failure">1. Test Case ID: p7H6AV
+
+- Undocumented HTTP status code
+
+    Received: 401
+    Documented: 204, 422
+
+[401] Unauthorized:
+
+    `{"detail":"Phiên đăng nhập đã hết hạn."}`
+
+Reproduce with:
+
+    curl -X DELETE -H 'Cookie: [Filtered]' http://127.0.0.1:18765/api/analyzer/history/0</failure>
+    </testcase>
+    <testcase name="POST /api/analyzer/tools/parameter" time="2.033897">
+      <failure type="failure">1. Test Case ID: fKNEks
+
+- Undocumented HTTP status code
+
+    Received: 404
+    Documented: 200, 422
+
+[404] Not Found:
+
+    `{"detail":{"code":"MODEL_NOT_FOUND","message":"Model đã chọn không tồn tại hoặc không khả dụng.","suggestions":["Kiểm tra model ID có đúng provider/model không.","Quét lại danh sách model hoặc chọn model khác trong allowlist."],"debug_message":"Analysis session không tồn tại hoặc đã hết hạn."}}`
+
+Reproduce with:
+
+    curl -X POST -H 'Content-Type: application/json' -H 'Cookie: [Filtered]' -d '{"analysis_id": "0000000000000000", "extrema_count": null, "targets": ["decreasing_r"]}' http://127.0.0.1:18765/api/analyzer/tools/parameter
+
+2. Test Case ID: SPqcGU
+
+- Response violates schema
+
+    {"code":"ANALYZER_INPUT_INVALID","correlation_id":"0fdf8ddd0eb64c7eb788c27b7875f7c2","message":"Dữ liệu yêu cầu phân tích không hợp lệ.","retryable":false,"stage":"request"} is not of type "array"
+
+    Validated against the response schema for status code 422.
+
+    Schema at /components/schemas/HTTPValidationError/properties/detail:
+
+        {
+            "type": "array",
+            "items": {
+                "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail"
+        }
+
+    Value:
+
+        {
+            "code": "ANALYZER_INPUT_INVALID",
+            "correlation_id": "0fdf8ddd0eb64c7eb788c27b7875f7c2",
+            "message": "D\u1eef li\u1ec7u y\u00eau c\u1ea7u ph\u00e2n t\u00edch kh\u0...
+            "retryable": false,
+            "stage": "request"
+        }
+
+[422] Unprocessable Content:
+
+    `{"detail":{"code":"ANALYZER_INPUT_INVALID","message":"Dữ liệu yêu cầu phân tích không hợp lệ.","correlation_id":"0fdf8ddd0eb64c7eb788c27b7875f7c2","stage":"request","retryable":false}}`
+
+Reproduce with:
+
+    curl -X POST -H 'Content-Type: application/json' -H 'Cookie: [Filtered]' -d '{"extrema_count": null, "targets": ["decreasing_r"]}' http://127.0.0.1:18765/api/analyzer/tools/parameter</failure>
+    </testcase>
+    <testcase name="POST /api/analyze/ocr/extract" time="11.410823">
+      <failure type="failure">1. Test Case ID: 3Fgerg
+
+- Undocumented HTTP status code
+
+    Received: 401
+    Documented: 200, 422
+
+[401] Unauthorized:
+
+    `{"detail":"Phiên đăng nhập đã hết hạn."}`
+
+Reproduce with:
+
+    curl -X POST -H 'Content-Type: application/json' -H 'Cookie: [Filtered]' -d '{"image_data_url": null, "runtime_settings": null, "upload_id": null}' http://127.0.0.1:18765/api/analyze/ocr/extract</failure>
+    </testcase>
+    <testcase name="POST /api/analyze/graph-samples" time="9.682493">
+      <failure type="failure">1. Test Case ID: uk3tYJ
+
+- Response violates schema
+
+    {"code":"ANALYZER_INPUT_INVALID","correlation_id":"fac71bd4b0814ce3a1d25bf68ff2de3d","message":"Dữ liệu yêu cầu phân tích không hợp lệ.","retryable":false,"stage":"request"} is not of type "array"
+
+    Validated against the response schema for status code 422.
+
+    Schema at /components/schemas/HTTPValidationError/properties/detail:
+
+        {
+            "type": "array",
+            "items": {
+                "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail"
+        }
+
+    Value:
+
+        {
+            "code": "ANALYZER_INPUT_INVALID",
+            "correlation_id": "fac71bd4b0814ce3a1d25bf68ff2de3d",
+            "message": "D\u1eef li\u1ec7u y\u00eau c\u1ea7u ph\u00e2n t\u00edch kh\u0...
+            "retryable": false,
+            "stage": "request"
+        }
+
+[422] Unprocessable Content:
+
+    `{"detail":{"code":"ANALYZER_INPUT_INVALID","message":"Dữ liệu yêu cầu phân tích không hợp lệ.","correlation_id":"fac71bd4b0814ce3a1d25bf68ff2de3d","stage":"request","retryable":false}}`
+
+Reproduce with:
+
+    curl -X POST -H 'Content-Type: application/json' -H 'Cookie: [Filtered]' -d '{"expression": "0", "max_points": 500, "parameters": {}, "window": {"x_max": 0.0, "x_min": 0.0}}' http://127.0.0.1:18765/api/analyze/graph-samples</failure>
+    </testcase>
+  </testsuite>
+</testsuites>

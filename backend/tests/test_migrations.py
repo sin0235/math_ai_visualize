@@ -1,9 +1,38 @@
 import asyncio
+import json
 import subprocess
 from pathlib import Path
 
+import httpx
+
 from app.db.migrations import apply_sqlite_migrations, build_migration_drift, duplicate_migration_prefixes, list_postgres_migration_files, warn_duplicate_migration_prefixes
-from app.db.session import SQLiteClient, postgres_sql
+from app.db.session import D1Client, SQLiteClient, postgres_sql
+
+
+def test_d1_execute_many_uses_one_atomic_batch_request():
+    requests: list[list[dict]] = []
+
+    async def run():
+        client = D1Client("account", "database", "token")
+        await client._client.aclose()
+
+        async def handler(request: httpx.Request):
+            requests.append(json.loads(request.content))
+            return httpx.Response(200, json={"success": True, "result": [{"success": True}, {"success": True}]})
+
+        client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        await client.execute_many([
+            ("INSERT INTO scene_commands (id) VALUES (?)", ["command-1"]),
+            ("UPDATE scene_workspaces SET revision = ? WHERE scene_id = ?", [2, "scene-1"]),
+        ])
+        await client.close()
+
+    asyncio.run(run())
+
+    assert requests == [[
+        {"sql": "INSERT INTO scene_commands (id) VALUES (?)", "params": ["command-1"]},
+        {"sql": "UPDATE scene_workspaces SET revision = ? WHERE scene_id = ?", "params": [2, "scene-1"]},
+    ]]
 
 
 def test_warn_duplicate_migration_prefixes_ignores_known_legacy_duplicate(caplog):
@@ -207,6 +236,25 @@ def test_analyzer_links_migrations_are_additive(tmp_path):
         {str(row["name"]) for row in indexes}
     )
     assert "0010_analyzer_links.sql" in migration_names
+
+
+def test_scene_v3_migrations_add_command_log_and_metadata(tmp_path):
+    db = SQLiteClient(str(tmp_path / "test.db"))
+
+    asyncio.run(apply_sqlite_migrations(db))
+    tables = asyncio.run(db.fetch_all("SELECT name FROM sqlite_master WHERE type = 'table'"))
+    revision_columns = asyncio.run(db.fetch_all("PRAGMA table_info(scene_revisions)"))
+    command_indexes = asyncio.run(db.fetch_all("PRAGMA index_list(scene_commands)"))
+    migration_names = {migration.name for migration in list_postgres_migration_files()}
+
+    assert {"scene_workspaces", "scene_commands"}.issubset({str(row["name"]) for row in tables})
+    assert {"schema_version", "migration_report_json", "command_log_json"}.issubset(
+        {str(row["name"]) for row in revision_columns}
+    )
+    assert {"idx_scene_commands_scene_revision", "idx_scene_commands_user_created"}.issubset(
+        {str(row["name"]) for row in command_indexes}
+    )
+    assert "0011_scene_v3.sql" in migration_names
 
 
 def test_postgres_sql_translates_placeholders_outside_literals():

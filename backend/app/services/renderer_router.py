@@ -1,5 +1,6 @@
-from app.renderers.geogebra_commands import build_geogebra_commands
-from app.renderers.three_scene import build_three_scene
+from app.renderers.geogebra_commands import build_geogebra_commands, build_geogebra_commands_v3
+from app.renderers.three_scene import build_three_scene, build_three_scene_v3
+from app.schemas.render_projection_v3 import RenderPayloadV3, RenderProjectionV3
 from app.schemas.scene import (
     AdvancedRenderSettings,
     Face,
@@ -49,6 +50,18 @@ def validate_renderer_compatibility(scene: MathScene, requested_renderer: Render
         dimension=scene.view.dimension,
         messages=messages,
         unsupported_objects=unsupported_objects,
+    )
+
+
+def build_render_payload_v3(projection: RenderProjectionV3) -> RenderPayloadV3:
+    if projection.renderer.startswith("geogebra"):
+        return RenderPayloadV3(
+            renderer=projection.renderer,
+            geogebra_commands=build_geogebra_commands_v3(projection),
+        )
+    return RenderPayloadV3(
+        renderer=projection.renderer,
+        three_scene=build_three_scene_v3(projection),
     )
 
 

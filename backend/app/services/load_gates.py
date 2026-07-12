@@ -94,6 +94,15 @@ class RedisSlot:
 class RedisGate:
     """Shared capacity via Redis sorted-set of tokens with TTL safety."""
 
+    _ACQUIRE_SCRIPT = """
+redis.call('ZREMRANGEBYSCORE', KEYS[1], 0, ARGV[1])
+if redis.call('ZCARD', KEYS[1]) >= tonumber(ARGV[2]) then
+    return 0
+end
+redis.call('ZADD', KEYS[1], ARGV[4], ARGV[3])
+return 1
+"""
+
     def __init__(self, name: str, ttl_seconds: int = 600) -> None:
         self.name = name
         self.ttl_seconds = ttl_seconds
@@ -114,18 +123,16 @@ class RedisGate:
         token = str(uuid4())
         now = time.time()
         try:
-            # Drop expired tokens then try to add if under limit.
-            await redis.zremrangebyscore(self._key, 0, now)
-            count = await redis.zcard(self._key)
-            if count >= limit:
-                return None
-            await redis.zadd(self._key, {token: now + self.ttl_seconds})
-            # Re-check race: if over limit after add, remove ourselves.
-            count = await redis.zcard(self._key)
-            if count > limit:
-                await redis.zrem(self._key, token)
-                return None
-            return RedisSlot(self, token)
+            accepted = await redis.eval(
+                self._ACQUIRE_SCRIPT,
+                1,
+                self._key,
+                now,
+                limit,
+                token,
+                now + self.ttl_seconds,
+            )
+            return RedisSlot(self, token) if accepted == 1 else None
         except Exception:
             logger.warning("Redis gate acquire failed; fail-closed for %s", self.name, exc_info=True)
             return None

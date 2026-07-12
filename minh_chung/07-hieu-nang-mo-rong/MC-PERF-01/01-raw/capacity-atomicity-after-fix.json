@@ -1,0 +1,11 @@
+{
+  "collected_at_utc": "2026-07-12T04:49:00Z",
+  "backend": "redis",
+  "key": "gate:evidence-atomicity",
+  "attempts": 40,
+  "limit": 4,
+  "accepted": 4,
+  "zcard_before_release": 4,
+  "zcard_after_release": 0,
+  "passed": true
+}

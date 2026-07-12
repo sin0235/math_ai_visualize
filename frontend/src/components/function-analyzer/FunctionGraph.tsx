@@ -57,9 +57,17 @@ export function FunctionGraph({ result }: { result: AnalyzeResponse }) {
   const secondDerivativeExpression = result.second_derivative?.trim() || null;
   const geogebraCommands = useMemo(() => [
     ...result.geogebra_commands,
-    ...(showDerivative && derivativeExpression ? graphOverlayCommands('fPrime', derivativeExpression, '#2563eb') : []),
-    ...(showSecondDerivative && secondDerivativeExpression ? graphOverlayCommands('fSecond', secondDerivativeExpression, '#7c3aed', 1) : []),
-  ], [derivativeExpression, result.geogebra_commands, secondDerivativeExpression, showDerivative, showSecondDerivative]);
+    ...(derivativeExpression ? graphOverlayCommands('fPrime', derivativeExpression, '#2563eb') : []),
+    ...(secondDerivativeExpression ? graphOverlayCommands('fSecond', secondDerivativeExpression, '#7c3aed', 1) : []),
+  ], [derivativeExpression, result.geogebra_commands, secondDerivativeExpression]);
+  const geogebraObjectVisibility = useMemo(() => ({
+    ...(derivativeExpression ? { fPrime: showDerivative } : {}),
+    ...(secondDerivativeExpression ? { fSecond: showSecondDerivative } : {}),
+  }), [derivativeExpression, secondDerivativeExpression, showDerivative, showSecondDerivative]);
+  const geogebraScene = useMemo(
+    () => result.graph_scene ?? createFallbackGraphScene(result.expression),
+    [result.expression, result.graph_scene],
+  );
   const lineExpressions = useMemo(() => {
     const expressions = result.line_analysis?.graph_expressions?.length
       ? result.line_analysis.graph_expressions
@@ -190,7 +198,6 @@ export function FunctionGraph({ result }: { result: AnalyzeResponse }) {
   }
 
   if (activeRenderer === 'geogebra') {
-    const scene = result.graph_scene ?? createFallbackGraphScene(result.expression);
     return (
       <div className="fa2-graph-card fa2-geogebra-graph-card">
         <div className="fa2-graph-toggle-list" role="group" aria-label="Lớp hiển thị GeoGebra">
@@ -205,9 +212,10 @@ export function FunctionGraph({ result }: { result: AnalyzeResponse }) {
             key={rendererAttempt}
             commands={geogebraCommands}
             renderer="geogebra_2d"
-            scene={scene}
-            view={scene.view}
+            scene={geogebraScene}
+            view={geogebraScene.view}
             viewBounds={graph.bounds}
+            objectVisibility={geogebraObjectVisibility}
             onStatusChange={handleGeoGebraStatus}
             embedded
           />

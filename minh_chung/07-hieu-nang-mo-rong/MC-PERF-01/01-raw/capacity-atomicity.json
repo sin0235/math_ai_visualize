@@ -1,0 +1,20 @@
+{
+  "attempts": 40,
+  "limit": 4,
+  "redis_health": {
+    "configured": true,
+    "ok": true,
+    "mode": "redis"
+  },
+  "in_process": {
+    "accepted": 4,
+    "reserved_before_release": 4,
+    "reserved_after_release": 0
+  },
+  "redis": {
+    "accepted": 1,
+    "zcard_before_release": 1,
+    "zcard_after_release": 0
+  },
+  "passed": false
+}

@@ -1,0 +1,95 @@
+{
+  "operation": "GET /api/analyzer/history",
+  "method": "GET",
+  "path_template": "/api/analyzer/history",
+  "fingerprint": "45309bd9",
+  "case_id": "reKwvN",
+  "code_sample": "curl -X GET -H 'Cookie: [Filtered]' 'http://127.0.0.1:18765/api/analyzer/history?limit=30&q=0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000&pinned=true&chapter=000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000'",
+  "sequence": [
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:18765/api/analyzer/history?limit=30&q=0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000&pinned=true&chapter=000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "url_template": "http://127.0.0.1:18765/api/analyzer/history",
+      "headers": {
+        "User-Agent": "schemathesis/4.22.4",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Accept": "*/*",
+        "Connection": "keep-alive",
+        "X-Schemathesis-TestCaseId": "reKwvN",
+        "Cookie": "[Filtered]"
+      },
+      "response": {
+        "status_code": 401,
+        "headers": {
+          "date": "Sun, 12 Jul 2026 03:07:32 GMT",
+          "server": "uvicorn",
+          "x-request-id": "c58616332a61467c882a4844cd305992",
+          "content-length": "39",
+          "content-type": "application/json"
+        },
+        "body": "{\"detail\":\"B\u1ea1n ch\u01b0a \u0111\u0103ng nh\u1eadp.\"}"
+      },
+      "link": null,
+      "checks": [
+        {
+          "name": "status_code_conformance",
+          "status": "failure",
+          "message": "Undocumented HTTP status code\n\nReceived: 401\nDocumented: 200, 422"
+        }
+      ],
+      "meta": {
+        "generation": {
+          "time": 6.645999746979214e-06,
+          "mode": "positive"
+        },
+        "components": {
+          "COOKIE": "positive",
+          "QUERY": "positive"
+        },
+        "phase": {
+          "name": "coverage",
+          "data": {
+            "type": "CoveragePhaseData",
+            "description": "All required and 4 optional properties",
+            "location": null,
+            "parameter": null,
+            "parameter_location": "QUERY",
+            "scenario": "object_required_and_optional"
+          }
+        },
+        "pool_draws": [],
+        "pool_misses": [],
+        "semantic_draws": [],
+        "dictionary_draws": [],
+        "raw_containers": {
+          "COOKIE": {
+            "hinh_session": ""
+          },
+          "QUERY": {
+            "limit": 30,
+            "q": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+            "pinned": true,
+            "chapter": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+          }
+        }
+      },
+      "path": "/api/analyzer/history",
+      "path_parameters": {},
+      "query": {
+        "limit": "30",
+        "q": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+        "pinned": "true",
+        "chapter": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "case_headers": {},
+      "cookies": {
+        "hinh_session": "[Filtered]"
+      },
+      "case_body": {
+        "encoding": "none"
+      },
+      "media_type": null,
+      "parent_index": null
+    }
+  ]
+}

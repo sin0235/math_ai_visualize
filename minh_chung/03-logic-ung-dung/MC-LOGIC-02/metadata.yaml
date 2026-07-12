@@ -1,0 +1,16 @@
+evidence_id: MC-LOGIC-02
+claim: Registry, lựa chọn provider và fallback AI vượt qua kiểm thử chuyên biệt.
+commit_sha: 5cac5199def7fd960fcf2ab27a02a9fa3cc1f07a
+workspace_clean: false
+environment: local
+collected_at_utc: 2026-07-12T02:21:10Z
+collector: automated-session
+runtime: Python 3.12.3
+actual:
+  - 130 passed.
+  - 4 warnings.
+result: passed
+raw_files:
+  - 01-raw/ai-routing.log
+  - 01-raw/ai-routing.xml
+  - 01-raw/exit-code.txt

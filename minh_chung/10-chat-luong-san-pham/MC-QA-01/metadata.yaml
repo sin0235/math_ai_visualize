@@ -1,0 +1,24 @@
+evidence_id: MC-QA-01
+claim: Bộ kiểm thử backend theo cấu hình CI vượt qua trên workspace hiện tại.
+commit_sha: 5cac5199def7fd960fcf2ab27a02a9fa3cc1f07a
+workspace_clean: false
+environment: local
+collected_at_utc: 2026-07-12T02:20:00Z
+collector: automated-session
+runtime: Python 3.12.3, pytest 9.1.1
+procedure: pytest theo cấu hình CI, bỏ hai bộ large-scale
+expected:
+  - Exit code bằng 0.
+actual:
+  - 1463 passed.
+  - 17 warnings.
+  - Thời gian 177.19 giây.
+result: passed
+raw_files:
+  - 01-raw/pytest.log
+  - 01-raw/pytest.xml
+  - 01-raw/exit-code.txt
+  - 01-raw/ci-backend-product.log
+notes:
+  - Hai file large-scale bị loại đúng như CI hiện hành.
+  - Workspace có thay đổi chưa commit.

@@ -1,0 +1,11 @@
+0001_current_schema.sql|2026-07-12 03:04:53.936145+00
+0002_ai_model_capabilities.sql|2026-07-12 03:04:54.491612+00
+0003_structured_user_history.sql|2026-07-12 03:04:54.498004+00
+0004_ai_task_profiles_tier_backfill.sql|2026-07-12 03:04:54.507434+00
+0005_user_activity_events.sql|2026-07-12 03:04:54.511791+00
+0006_algebra_history.sql|2026-07-12 03:04:54.514577+00
+0006_analytics_monitoring.sql|2026-07-12 03:04:54.538743+00
+0008_ai_call_metrics.sql|2026-07-12 03:04:54.563797+00
+0009_analyzer_history.sql|2026-07-12 03:04:54.59006+00
+0010_analyzer_links.sql|2026-07-12 03:04:54.61343+00
+0011_scene_v3.sql|2026-07-12 03:04:54.629656+00

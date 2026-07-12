@@ -1,0 +1,143 @@
+........................................................................ [ 14%]
+........................................................................ [ 28%]
+........................................................................ [ 42%]
+........................................................................ [ 56%]
+........................................................................ [ 70%]
+........................................................................ [ 84%]
+........................................................................ [ 98%]
+......                                                                   [100%]
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/fastapi/testclient.py:1
+  /home/sin235/Projects/math_ai_visualize/backend/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+.venv/lib/python3.12/site-packages/passlib/utils/__init__.py:854
+  /home/sin235/Projects/math_ai_visualize/backend/.venv/lib/python3.12/site-packages/passlib/utils/__init__.py:854: DeprecationWarning: 'crypt' is deprecated and slated for removal in Python 3.13
+    from crypt import crypt as _crypt
+
+tests/test_health_security.py::test_health_detail_requires_admin
+  /home/sin235/Projects/math_ai_visualize/backend/.venv/lib/python3.12/site-packages/_pytest/threadexception.py:58: PytestUnhandledThreadExceptionWarning: Exception in thread Thread-23 (_connection_worker_thread)
+  
+  Traceback (most recent call last):
+    File "/home/sin235/Projects/math_ai_visualize/backend/.venv/lib/python3.12/site-packages/aiosqlite/core.py", line 66, in _connection_worker_thread
+      future.get_loop().call_soon_threadsafe(set_result, future, result)
+    File "/usr/lib/python3.12/asyncio/base_events.py", line 840, in call_soon_threadsafe
+      self._check_closed()
+    File "/usr/lib/python3.12/asyncio/base_events.py", line 541, in _check_closed
+      raise RuntimeError('Event loop is closed')
+  RuntimeError: Event loop is closed
+  
+  During handling of the above exception, another exception occurred:
+  
+  Traceback (most recent call last):
+    File "/usr/lib/python3.12/threading.py", line 1073, in _bootstrap_inner
+      self.run()
+    File "/usr/lib/python3.12/threading.py", line 1010, in run
+      self._target(*self._args, **self._kwargs)
+    File "/home/sin235/Projects/math_ai_visualize/backend/.venv/lib/python3.12/site-packages/aiosqlite/core.py", line 75, in _connection_worker_thread
+      future.get_loop().call_soon_threadsafe(set_exception, future, e)
+    File "/usr/lib/python3.12/asyncio/base_events.py", line 840, in call_soon_threadsafe
+      self._check_closed()
+    File "/usr/lib/python3.12/asyncio/base_events.py", line 541, in _check_closed
+      raise RuntimeError('Event loop is closed')
+  RuntimeError: Event loop is closed
+  
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+    warnings.warn(pytest.PytestUnhandledThreadExceptionWarning(msg))
+
+tests/test_health_security.py::test_health_detail_requires_admin
+  /home/sin235/Projects/math_ai_visualize/backend/.venv/lib/python3.12/site-packages/_pytest/threadexception.py:58: PytestUnhandledThreadExceptionWarning: Exception in thread Thread-41 (_connection_worker_thread)
+  
+  Traceback (most recent call last):
+    File "/home/sin235/Projects/math_ai_visualize/backend/.venv/lib/python3.12/site-packages/aiosqlite/core.py", line 66, in _connection_worker_thread
+      future.get_loop().call_soon_threadsafe(set_result, future, result)
+    File "/usr/lib/python3.12/asyncio/base_events.py", line 840, in call_soon_threadsafe
+      self._check_closed()
+    File "/usr/lib/python3.12/asyncio/base_events.py", line 541, in _check_closed
+      raise RuntimeError('Event loop is closed')
+  RuntimeError: Event loop is closed
+  
+  During handling of the above exception, another exception occurred:
+  
+  Traceback (most recent call last):
+    File "/usr/lib/python3.12/threading.py", line 1073, in _bootstrap_inner
+      self.run()
+    File "/usr/lib/python3.12/threading.py", line 1010, in run
+      self._target(*self._args, **self._kwargs)
+    File "/home/sin235/Projects/math_ai_visualize/backend/.venv/lib/python3.12/site-packages/aiosqlite/core.py", line 75, in _connection_worker_thread
+      future.get_loop().call_soon_threadsafe(set_exception, future, e)
+    File "/usr/lib/python3.12/asyncio/base_events.py", line 840, in call_soon_threadsafe
+      self._check_closed()
+    File "/usr/lib/python3.12/asyncio/base_events.py", line 541, in _check_closed
+      raise RuntimeError('Event loop is closed')
+  RuntimeError: Event loop is closed
+  
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+    warnings.warn(pytest.PytestUnhandledThreadExceptionWarning(msg))
+
+tests/test_health_security.py::test_health_detail_requires_admin
+  /home/sin235/Projects/math_ai_visualize/backend/.venv/lib/python3.12/site-packages/_pytest/threadexception.py:58: PytestUnhandledThreadExceptionWarning: Exception in thread Thread-29 (_connection_worker_thread)
+  
+  Traceback (most recent call last):
+    File "/home/sin235/Projects/math_ai_visualize/backend/.venv/lib/python3.12/site-packages/aiosqlite/core.py", line 66, in _connection_worker_thread
+      future.get_loop().call_soon_threadsafe(set_result, future, result)
+    File "/usr/lib/python3.12/asyncio/base_events.py", line 840, in call_soon_threadsafe
+      self._check_closed()
+    File "/usr/lib/python3.12/asyncio/base_events.py", line 541, in _check_closed
+      raise RuntimeError('Event loop is closed')
+  RuntimeError: Event loop is closed
+  
+  During handling of the above exception, another exception occurred:
+  
+  Traceback (most recent call last):
+    File "/usr/lib/python3.12/threading.py", line 1073, in _bootstrap_inner
+      self.run()
+    File "/usr/lib/python3.12/threading.py", line 1010, in run
+      self._target(*self._args, **self._kwargs)
+    File "/home/sin235/Projects/math_ai_visualize/backend/.venv/lib/python3.12/site-packages/aiosqlite/core.py", line 75, in _connection_worker_thread
+      future.get_loop().call_soon_threadsafe(set_exception, future, e)
+    File "/usr/lib/python3.12/asyncio/base_events.py", line 840, in call_soon_threadsafe
+      self._check_closed()
+    File "/usr/lib/python3.12/asyncio/base_events.py", line 541, in _check_closed
+      raise RuntimeError('Event loop is closed')
+  RuntimeError: Event loop is closed
+  
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+    warnings.warn(pytest.PytestUnhandledThreadExceptionWarning(msg))
+
+tests/test_health_security.py::test_health_detail_requires_admin
+  /home/sin235/Projects/math_ai_visualize/backend/.venv/lib/python3.12/site-packages/_pytest/threadexception.py:58: PytestUnhandledThreadExceptionWarning: Exception in thread Thread-35 (_connection_worker_thread)
+  
+  Traceback (most recent call last):
+    File "/home/sin235/Projects/math_ai_visualize/backend/.venv/lib/python3.12/site-packages/aiosqlite/core.py", line 66, in _connection_worker_thread
+      future.get_loop().call_soon_threadsafe(set_result, future, result)
+    File "/usr/lib/python3.12/asyncio/base_events.py", line 840, in call_soon_threadsafe
+      self._check_closed()
+    File "/usr/lib/python3.12/asyncio/base_events.py", line 541, in _check_closed
+      raise RuntimeError('Event loop is closed')
+  RuntimeError: Event loop is closed
+  
+  During handling of the above exception, another exception occurred:
+  
+  Traceback (most recent call last):
+    File "/usr/lib/python3.12/threading.py", line 1073, in _bootstrap_inner
+      self.run()
+    File "/usr/lib/python3.12/threading.py", line 1010, in run
+      self._target(*self._args, **self._kwargs)
+    File "/home/sin235/Projects/math_ai_visualize/backend/.venv/lib/python3.12/site-packages/aiosqlite/core.py", line 75, in _connection_worker_thread
+      future.get_loop().call_soon_threadsafe(set_exception, future, e)
+    File "/usr/lib/python3.12/asyncio/base_events.py", line 840, in call_soon_threadsafe
+      self._check_closed()
+    File "/usr/lib/python3.12/asyncio/base_events.py", line 541, in _check_closed
+      raise RuntimeError('Event loop is closed')
+  RuntimeError: Event loop is closed
+  
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+    warnings.warn(pytest.PytestUnhandledThreadExceptionWarning(msg))
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+510 passed, 6 warnings in 18.46s

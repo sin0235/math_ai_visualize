@@ -1,8 +1,40 @@
 from typing import Any
 
+from app.schemas.render_projection_v3 import RenderProjectionV3
 from app.schemas.scene import Annotation, Face, Line3D, MathScene, Plane, Point3D, Relation, Segment, Sphere, Vector3D
 from app.services.geometry_engine import compute_three_geometry
 from app.services.scene_trust import trusted_display_annotations
+
+
+def build_three_scene_v3(projection: RenderProjectionV3) -> dict[str, Any]:
+    return {
+        "schema_version": "3.0",
+        "scene_id": projection.scene_id,
+        "revision": projection.revision,
+        "object_names": projection.object_names,
+        "points": {
+            point.object_id: {
+                "object_id": point.object_id,
+                "name": point.name,
+                "label": point.label,
+                "x": point.position[0],
+                "y": point.position[1],
+                "z": point.position[2],
+                "visible": point.visible,
+            }
+            for point in projection.points
+        },
+        "segments": [item.model_dump(mode="json") for item in projection.linear if item.kind == "segment"],
+        "lines": [item.model_dump(mode="json") for item in projection.linear if item.kind == "line"],
+        "vectors": [item.model_dump(mode="json") for item in projection.linear if item.kind == "vector"],
+        "circles": [item.model_dump(mode="json") for item in projection.circles],
+        "functions": [item.model_dump(mode="json") for item in projection.functions],
+        "surfaces": [item.model_dump(mode="json") for item in projection.surfaces],
+        "spheres": [item.model_dump(mode="json") for item in projection.spheres],
+        "annotations": [item.model_dump(mode="json") for item in projection.annotations],
+        "bounds": projection.bounds.model_dump(mode="json"),
+        "view": projection.view.model_dump(mode="json"),
+    }
 
 
 def build_three_scene(scene: MathScene) -> dict[str, Any]:

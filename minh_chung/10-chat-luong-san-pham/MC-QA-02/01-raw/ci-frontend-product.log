@@ -1,0 +1,273 @@
+Frontend build	UNKNOWN STEP	﻿2026-07-12T00:31:27.0564762Z Current runner version: '2.335.1'
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:27.0601170Z ##[group]Runner Image Provisioner
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:27.0602951Z Hosted Compute Agent
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:27.0603922Z Version: 20260624.560
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:27.0604890Z Commit: 925d229a51159bc391ae97e54a2dd1fe20af789d
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:27.0606198Z Build Date: 2026-06-24T18:26:47Z
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:27.0607323Z Worker ID: {bfb9219f-0955-46a4-b821-37fed44b8d6a}
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:27.0608564Z Azure Region: eastus
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:27.0609558Z ##[endgroup]
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:27.0611988Z ##[group]Operating System
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:27.0613165Z Ubuntu
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:27.0614017Z 24.04.4
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:27.0614869Z LTS
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:27.0615754Z ##[endgroup]
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:27.0617192Z ##[group]Runner Image
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:27.0618283Z Image: ubuntu-24.04
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:27.0619225Z Version: 20260705.232.1
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:27.0621693Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20260705.232/images/ubuntu/Ubuntu2404-Readme.md
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:27.0624364Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20260705.232
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:27.0626010Z ##[endgroup]
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:27.0628043Z ##[group]GITHUB_TOKEN Permissions
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:27.0631080Z Contents: read
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:27.0632345Z Metadata: read
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:27.0633323Z Packages: read
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:27.0634352Z ##[endgroup]
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:27.0637417Z Secret source: Actions
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:27.0638685Z Prepare workflow directory
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:27.1485733Z Prepare all required actions
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:27.1543361Z Getting action download info
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:27.3077186Z Download action repository 'actions/checkout@v4' (SHA:34e114876b0b11c390a56381ad16ebd13914f8d5)
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:27.4580665Z Download action repository 'actions/setup-node@v4' (SHA:49933ea5288caeca8642d1e84afbd3f7d6820020)
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:27.8350363Z Complete job name: Frontend build
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:27.9073356Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:27.9082668Z ##[group]Run actions/checkout@v4
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:27.9083417Z with:
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:27.9083873Z   repository: sin0235/math_ai_visualize
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:27.9087719Z   token: ***
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:27.9088152Z   ssh-strict: true
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:27.9088592Z   ssh-user: git
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:27.9089033Z   persist-credentials: true
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:27.9089526Z   clean: true
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:27.9089968Z   sparse-checkout-cone-mode: true
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:27.9090488Z   fetch-depth: 1
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:27.9090914Z   fetch-tags: false
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:27.9091353Z   show-progress: true
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:27.9091999Z   lfs: false
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:27.9092456Z   submodules: false
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:27.9092910Z   set-safe-directory: true
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:27.9093665Z ##[endgroup]
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.0341164Z Syncing repository: sin0235/math_ai_visualize
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.0344330Z ##[group]Getting Git version info
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.0345605Z Working directory is '/home/runner/work/math_ai_visualize/math_ai_visualize'
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.1382525Z [command]/usr/bin/git version
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.1428504Z git version 2.54.0
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.1491156Z ##[endgroup]
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.1536428Z Temporarily overriding HOME='/home/runner/work/_temp/6aa52197-cc8c-4a83-8038-a1c447e8afa9' before making global git config changes
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.1539470Z Adding repository directory to the temporary git global config as a safe directory
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.1541994Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/math_ai_visualize/math_ai_visualize
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.1549327Z Deleting the contents of '/home/runner/work/math_ai_visualize/math_ai_visualize'
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.1551288Z ##[group]Initializing the repository
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.1553498Z [command]/usr/bin/git init /home/runner/work/math_ai_visualize/math_ai_visualize
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.1556962Z hint: Using 'master' as the name for the initial branch. This default branch name
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.1558660Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.1562564Z hint: to use in all of your new repositories, which will suppress this warning,
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.1563934Z hint: call:
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.1587702Z hint:
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.1589416Z hint: 	git config --global init.defaultBranch <name>
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.1590520Z hint:
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.1591923Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.1594263Z hint: 'development'. The just-created branch can be renamed via this command:
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.1595592Z hint:
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.1596346Z hint: 	git branch -m <name>
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.1597210Z hint:
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.1598888Z hint: Disable this message with "git config set advice.defaultBranchName false"
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.1600877Z Initialized empty Git repository in /home/runner/work/math_ai_visualize/math_ai_visualize/.git/
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.1604957Z [command]/usr/bin/git remote add origin https://github.com/sin0235/math_ai_visualize
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.1609820Z ##[endgroup]
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.1611095Z ##[group]Disabling automatic garbage collection
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.1613238Z [command]/usr/bin/git config --local gc.auto 0
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.1615802Z ##[endgroup]
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.1617575Z ##[group]Setting up auth
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.1618810Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.1631042Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.2284248Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.2292602Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.2492470Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.2553276Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.2782618Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.2823456Z ##[endgroup]
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.2825833Z ##[group]Fetching the repository
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.2836073Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +26b21f0d5ef69cb4c87c2f28bd30569f09d1a4b4:refs/remotes/origin/product
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.6817377Z From https://github.com/sin0235/math_ai_visualize
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.6819342Z  * [new ref]         26b21f0d5ef69cb4c87c2f28bd30569f09d1a4b4 -> origin/product
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.6846738Z ##[endgroup]
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.6849174Z ##[group]Determining the checkout info
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.6852279Z ##[endgroup]
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.6856944Z [command]/usr/bin/git sparse-checkout disable
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.6909802Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.6945518Z ##[group]Checking out the ref
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.6950079Z [command]/usr/bin/git checkout --progress --force -B product refs/remotes/origin/product
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.7382456Z Switched to a new branch 'product'
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.7384833Z branch 'product' set up to track 'origin/product'.
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.7391042Z ##[endgroup]
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.7441938Z [command]/usr/bin/git log -1 --format=%H
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.7473065Z 26b21f0d5ef69cb4c87c2f28bd30569f09d1a4b4
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.7836100Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.7838974Z ##[group]Run actions/setup-node@v4
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.7839535Z with:
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.7839982Z   node-version: 20
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.7840445Z   cache: npm
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.7840992Z   cache-dependency-path: frontend/package-lock.json
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.7841867Z   always-auth: false
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.7842365Z   check-latest: false
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.7846459Z   token: ***
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.7846919Z ##[endgroup]
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.9356274Z Attempting to download 20...
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.9464752Z (node:2025) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:28.9468163Z (Use `node --trace-deprecation ...` to show where the warning was created)
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:29.3199884Z Acquiring 20.20.2 - x64 from https://github.com/actions/node-versions/releases/download/20.20.2-23521894959/node-20.20.2-linux-x64.tar.gz
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:29.7366049Z Extracting ...
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:29.7534531Z [command]/usr/bin/tar xz --strip 1 --warning=no-unknown-keyword --overwrite -C /home/runner/work/_temp/bcaedce4-6a74-4bc7-b9cd-ceab2d540c33 -f /home/runner/work/_temp/375ed085-1aca-427e-a26d-84c1d063771b
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:30.8926568Z Adding to the cache ...
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:33.9377532Z ##[group]Environment details
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:34.2303728Z node: v20.20.2
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:34.2304944Z npm: 10.8.2
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:34.2306017Z yarn: 1.22.22
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:34.2307344Z ##[endgroup]
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:34.2328294Z [command]/opt/hostedtoolcache/node/20.20.2/x64/bin/npm config get cache
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:34.3474479Z /home/runner/.npm
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:34.4654768Z (node:2025) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:34.4658223Z Cache hit for: node-cache-Linux-x64-npm-6f7f63d8f927d26261ff8a49f08b5d8fe8442d0b8550b2b302b3269c87b52a67
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:34.8868497Z Received 52904561 of 52904561 (100.0%), 134.5 MBs/sec
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:34.8869668Z Cache Size: ~50 MB (52904561 B)
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:34.8923432Z [command]/usr/bin/tar -xf /home/runner/work/_temp/9a3919ad-0d0d-4db9-8312-f2c53a7fa8c8/cache.tzst -P -C /home/runner/work/math_ai_visualize/math_ai_visualize --use-compress-program unzstd
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:35.0277008Z Cache restored successfully
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:35.0318163Z Cache restored from key: node-cache-Linux-x64-npm-6f7f63d8f927d26261ff8a49f08b5d8fe8442d0b8550b2b302b3269c87b52a67
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:35.0640668Z ##[group]Run npm ci
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:35.0641014Z ^[[36;1mnpm ci^[[0m
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:35.0894481Z shell: /usr/bin/bash -e {0}
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:35.0894868Z ##[endgroup]
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:37.8290683Z npm warn deprecated three-mesh-bvh@0.7.8: Deprecated due to three.js version incompatibility. Please use v0.8.0, instead.
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:39.0585354Z 
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:39.0586612Z added 147 packages, and audited 148 packages in 4s
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:39.0587590Z 
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:39.0596442Z 12 packages are looking for funding
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:39.0597433Z   run `npm fund` for details
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:39.0783018Z 
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:39.0802808Z 3 vulnerabilities (1 low, 1 moderate, 1 high)
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:39.0822131Z 
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:39.0825489Z To address issues that do not require attention, run:
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:39.0826670Z   npm audit fix
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:39.0842110Z 
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:39.0862762Z To address all issues (including breaking changes), run:
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:39.0869582Z   npm audit fix --force
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:39.0881974Z 
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:39.0887502Z Run `npm audit` for details.
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:39.1171841Z ##[group]Run npm run build
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:39.1172182Z ^[[36;1mnpm run build^[[0m
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:39.1206727Z shell: /usr/bin/bash -e {0}
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:39.1206992Z ##[endgroup]
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:39.2536061Z 
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:39.2537131Z > hinh-frontend@0.1.0 build
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:39.2538172Z > tsc -b && vite build
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:39.2538719Z 
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:56.2009339Z ^[[36mvite v5.4.21 ^[[32mbuilding for production...^[[36m^[[39m
+Frontend build	UNKNOWN STEP	2026-07-12T00:31:56.2992777Z transforming...
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:06.2908092Z ^[[32m✓^[[39m 735 modules transformed.
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.0302968Z rendering chunks...
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.2818163Z ^[[1m^[[33m[plugin:vite:reporter]^[[39m^[[22m ^[[33m[plugin vite:reporter] 
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.2839360Z (!) /home/runner/work/math_ai_visualize/math_ai_visualize/frontend/src/utils/telemetry.ts is dynamically imported by /home/runner/work/math_ai_visualize/math_ai_visualize/frontend/src/App.tsx but also statically imported by /home/runner/work/math_ai_visualize/math_ai_visualize/frontend/src/components/function-analyzer/FunctionGraph.tsx, /home/runner/work/math_ai_visualize/math_ai_visualize/frontend/src/main.tsx, dynamic import will not move module into another chunk.
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.2874400Z ^[[39m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.4948360Z computing gzip size...
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5489199Z ^[[2mdist/^[[22m^[[32mindex.html                                       ^[[39m^[[1m^[[2m    0.71 kB^[[22m^[[1m^[[22m^[[2m │ gzip:   0.38 kB^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5491335Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_Size3-Regular-CTq5MqoE.woff         ^[[39m^[[1m^[[2m    4.42 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5493840Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_Size4-Regular-Dl5lxZxV.woff2        ^[[39m^[[1m^[[2m    4.93 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5495888Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_Size2-Regular-Dy4dx90m.woff2        ^[[39m^[[1m^[[2m    5.21 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5497907Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_Size1-Regular-mCD8mA8B.woff2        ^[[39m^[[1m^[[2m    5.47 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5500022Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_Size4-Regular-BF-4gkZK.woff         ^[[39m^[[1m^[[2m    5.98 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5502398Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_Size2-Regular-oD1tc_U0.woff         ^[[39m^[[1m^[[2m    6.19 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5504544Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mimg-D6eIluTk.svg                          ^[[39m^[[1m^[[2m    6.34 kB^[[22m^[[1m^[[22m^[[2m │ gzip:   1.94 kB^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5506586Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_Size1-Regular-C195tn64.woff         ^[[39m^[[1m^[[2m    6.50 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5508639Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_Caligraphic-Regular-Di6jR-x-.woff2  ^[[39m^[[1m^[[2m    6.91 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5510689Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_Caligraphic-Bold-Dq_IR9rO.woff2     ^[[39m^[[1m^[[2m    6.91 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5512965Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_Size3-Regular-DgpXs0kz.ttf          ^[[39m^[[1m^[[2m    7.59 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5515032Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_Caligraphic-Regular-CTRA-rTL.woff   ^[[39m^[[1m^[[2m    7.66 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5518106Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_Caligraphic-Bold-BEiXGLvX.woff      ^[[39m^[[1m^[[2m    7.72 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5520059Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_Script-Regular-D3wIWfF6.woff2       ^[[39m^[[1m^[[2m    9.64 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5522391Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_SansSerif-Regular-DDBCnlJ7.woff2    ^[[39m^[[1m^[[2m   10.34 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5523486Z ^[[33m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5524904Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_Size4-Regular-DWFBv043.ttf          ^[[39m^[[1m^[[2m   10.36 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5526875Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_Script-Regular-D5yQViql.woff        ^[[39m^[[1m^[[2m   10.59 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5529278Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_Fraktur-Regular-CTYiF6lA.woff2      ^[[39m^[[1m^[[2m   11.32 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5531275Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_Fraktur-Bold-CL6g_b3V.woff2         ^[[39m^[[1m^[[2m   11.35 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5533641Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_Size2-Regular-B7gKUWhC.ttf          ^[[39m^[[1m^[[2m   11.51 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5535356Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_SansSerif-Italic-C3H0VqGB.woff2     ^[[39m^[[1m^[[2m   12.03 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5537126Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_SansSerif-Bold-D1sUS0GD.woff2       ^[[39m^[[1m^[[2m   12.22 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5538764Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_Size1-Regular-Dbsnue_I.ttf          ^[[39m^[[1m^[[2m   12.23 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5540442Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_SansSerif-Regular-CS6fqUqJ.woff     ^[[39m^[[1m^[[2m   12.32 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5542513Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_Caligraphic-Regular-wX97UBjC.ttf    ^[[39m^[[1m^[[2m   12.34 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5544268Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_Caligraphic-Bold-ATXxdsX0.ttf       ^[[39m^[[1m^[[2m   12.37 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5545964Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_Fraktur-Regular-Dxdc4cR9.woff       ^[[39m^[[1m^[[2m   13.21 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5547643Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_Fraktur-Bold-BsDP51OF.woff          ^[[39m^[[1m^[[2m   13.30 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5549403Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_Typewriter-Regular-CO6r4hn1.woff2   ^[[39m^[[1m^[[2m   13.57 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5551227Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_SansSerif-Italic-DN2j7dab.woff      ^[[39m^[[1m^[[2m   14.11 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5553307Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_SansSerif-Bold-DbIhKOiC.woff        ^[[39m^[[1m^[[2m   14.41 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5555008Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_Typewriter-Regular-C0xS9mPB.woff    ^[[39m^[[1m^[[2m   16.03 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5556900Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_Math-BoldItalic-CZnvNsCZ.woff2      ^[[39m^[[1m^[[2m   16.40 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5558762Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_Math-Italic-t53AETM-.woff2          ^[[39m^[[1m^[[2m   16.44 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5560568Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_Script-Regular-C5JkGWo-.ttf         ^[[39m^[[1m^[[2m   16.65 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5562746Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_Main-BoldItalic-DxDJ3AOS.woff2      ^[[39m^[[1m^[[2m   16.78 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5564040Z (!) Some chunks are larger than 500 kB after minification. Consider:
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5565701Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_Main-Italic-NWA7e6Wa.woff2          ^[[39m^[[1m^[[2m   16.99 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5567309Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_Math-BoldItalic-iY-2wyZ7.woff       ^[[39m^[[1m^[[2m   18.67 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5568968Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_Math-Italic-DA0__PXp.woff           ^[[39m^[[1m^[[2m   18.75 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5570684Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_Main-BoldItalic-SpSLRI95.woff       ^[[39m^[[1m^[[2m   19.41 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5572911Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_SansSerif-Regular-BNo7hRIc.ttf      ^[[39m^[[1m^[[2m   19.44 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5574579Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_Fraktur-Regular-CB_wures.ttf        ^[[39m^[[1m^[[2m   19.57 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5576120Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_Fraktur-Bold-BdnERNNW.ttf           ^[[39m^[[1m^[[2m   19.58 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5577023Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_Main-Italic-BMLOBm91.woff           ^[[39m^[[1m^[[2m   19.68 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5577914Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_SansSerif-Italic-YYjJ1zSn.ttf       ^[[39m^[[1m^[[2m   22.36 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5579035Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_SansSerif-Bold-CFMepnvq.ttf         ^[[39m^[[1m^[[2m   24.50 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5580098Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_Main-Bold-Cx986IdX.woff2            ^[[39m^[[1m^[[2m   25.32 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5580985Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_Main-Regular-B22Nviop.woff2         ^[[39m^[[1m^[[2m   26.27 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5582766Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_Typewriter-Regular-D3Ib7_Hf.ttf     ^[[39m^[[1m^[[2m   27.56 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5584406Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_AMS-Regular-BQhdFMY1.woff2          ^[[39m^[[1m^[[2m   28.08 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5585978Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_Main-Bold-Jm3AIy58.woff             ^[[39m^[[1m^[[2m   29.91 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5587542Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_Main-Regular-Dr94JaBh.woff          ^[[39m^[[1m^[[2m   30.77 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5589138Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_Math-BoldItalic-B3XSjfu4.ttf        ^[[39m^[[1m^[[2m   31.20 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5590714Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_Math-Italic-flOr_0UB.ttf            ^[[39m^[[1m^[[2m   31.31 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5612913Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_Main-BoldItalic-DzxPMmG6.ttf        ^[[39m^[[1m^[[2m   32.97 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5614682Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_AMS-Regular-DMm9YOAa.woff           ^[[39m^[[1m^[[2m   33.52 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5616420Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_Main-Italic-3WenGoN9.ttf            ^[[39m^[[1m^[[2m   33.58 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5618223Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_Main-Bold-waoOVXN0.ttf              ^[[39m^[[1m^[[2m   51.34 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5620034Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_Main-Regular-ypZvNtVU.ttf           ^[[39m^[[1m^[[2m   53.58 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5622412Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[32mKaTeX_AMS-Regular-DRggAlZN.ttf            ^[[39m^[[1m^[[2m   63.63 kB^[[22m^[[1m^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5624222Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[35mindex-ic3fzspR.css                        ^[[39m^[[1m^[[2m  296.62 kB^[[22m^[[1m^[[22m^[[2m │ gzip:  56.58 kB^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5625966Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[36mHomeTetrahedronShowcase-DffsTDOf.js       ^[[39m^[[1m^[[2m    5.18 kB^[[22m^[[1m^[[22m^[[2m │ gzip:   2.00 kB^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5627914Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[36mGeoGebraLabPage-B0ScvMVZ.js               ^[[39m^[[1m^[[2m   14.65 kB^[[22m^[[1m^[[22m^[[2m │ gzip:   4.97 kB^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5629831Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[36mPdfToWordPage-C_4zChzG.js                 ^[[39m^[[1m^[[2m   17.70 kB^[[22m^[[1m^[[22m^[[2m │ gzip:   6.40 kB^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5652117Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[36mThreeGeometryView-C88PpwCy.js             ^[[39m^[[1m^[[2m   24.51 kB^[[22m^[[1m^[[22m^[[2m │ gzip:   8.40 kB^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5654323Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[36mFunctionAnalyzerPanel-CGuPAaWX.js         ^[[39m^[[1m^[[2m   99.08 kB^[[22m^[[1m^[[22m^[[2m │ gzip:  29.09 kB^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5656452Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[36mAdminConsole-Sa8beEPn.js                  ^[[39m^[[1m^[[2m  116.66 kB^[[22m^[[1m^[[22m^[[2m │ gzip:  30.48 kB^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5658656Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[36mCalculusSimulationPage-D5OahnK2.js        ^[[39m^[[1m^[[2m  211.43 kB^[[22m^[[1m^[[22m^[[2m │ gzip:  64.63 kB^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5660800Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[36mAlgebraSolverPage-Bx8igPV0.js             ^[[39m^[[1m^[[2m  230.63 kB^[[22m^[[1m^[[22m^[[2m │ gzip:  74.46 kB^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5663008Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[36mkatex-CorxK3TE.js                         ^[[39m^[[1m^[[2m  255.97 kB^[[22m^[[1m^[[22m^[[2m │ gzip:  76.88 kB^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5664806Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[36mindex-0gwWzi0r.js                         ^[[39m^[[1m^[[2m  262.50 kB^[[22m^[[1m^[[22m^[[2m │ gzip:  79.02 kB^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5667007Z ^[[2mdist/^[[22m^[[2massets/^[[22m^[[36mthree-BKXIAZqd.js                         ^[[39m^[[1m^[[33m1,135.12 kB^[[39m^[[22m^[[2m │ gzip: 326.43 kB^[[22m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5672201Z ^[[32m✓ built in 11.31s^[[39m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5672668Z - Using dynamic import() to code-split the application
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5673517Z - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.5674454Z - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.^[[39m
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.6718808Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.6720099Z Post job cleanup.
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.8030225Z (node:2176) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.8032276Z (Use `node --trace-deprecation ...` to show where the warning was created)
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.8035044Z Cache hit occurred on the primary key node-cache-Linux-x64-npm-6f7f63d8f927d26261ff8a49f08b5d8fe8442d0b8550b2b302b3269c87b52a67, not saving cache.
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.8188265Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.8189519Z Post job cleanup.
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.9172502Z [command]/usr/bin/git version
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.9226419Z git version 2.54.0
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.9313162Z Temporarily overriding HOME='/home/runner/work/_temp/722375be-dc5d-4f72-b58c-b68018d3e715' before making global git config changes
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.9332594Z Adding repository directory to the temporary git global config as a safe directory
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.9339368Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/math_ai_visualize/math_ai_visualize
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.9383084Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.9454489Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.9868061Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.9920882Z http.https://github.com/.extraheader
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:07.9943611Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:08.0034324Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:08.0565549Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:08.0653075Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:08.1230538Z Cleaning up orphan processes
+Frontend build	UNKNOWN STEP	2026-07-12T00:32:08.1708314Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/setup-node@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/

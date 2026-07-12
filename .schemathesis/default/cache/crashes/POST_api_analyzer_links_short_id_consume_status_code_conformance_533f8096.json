@@ -1,0 +1,101 @@
+{
+  "operation": "POST /api/analyzer/links/{short_id}/consume",
+  "method": "POST",
+  "path_template": "/api/analyzer/links/{short_id}/consume",
+  "fingerprint": "533f8096",
+  "case_id": "hwI9Qp",
+  "code_sample": "curl -X POST -H 'Content-Type: application/json' -H 'Cookie: [Filtered]' -d '{\"scope\": \"open\", \"target\": \"render\"}' http://127.0.0.1:18765/api/analyzer/links/0/consume",
+  "sequence": [
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:18765/api/analyzer/links/0/consume",
+      "url_template": "http://127.0.0.1:18765/api/analyzer/links/{short_id}/consume",
+      "headers": {
+        "User-Agent": "schemathesis/4.22.4",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Accept": "*/*",
+        "Connection": "keep-alive",
+        "X-Schemathesis-TestCaseId": "hwI9Qp",
+        "Content-Type": "application/json",
+        "Cookie": "[Filtered]",
+        "Content-Length": "37"
+      },
+      "response": {
+        "status_code": 404,
+        "headers": {
+          "date": "Sun, 12 Jul 2026 03:07:22 GMT",
+          "server": "uvicorn",
+          "x-request-id": "c4efa71cfee343df97abe2fb87c8c9db",
+          "content-length": "78",
+          "content-type": "application/json"
+        },
+        "body": "{\"detail\":\"Link analyzer kh\u00f4ng t\u1ed3n t\u1ea1i ho\u1eb7c kh\u00f4ng c\u00f2n hi\u1ec7u l\u1ef1c.\"}"
+      },
+      "link": null,
+      "checks": [
+        {
+          "name": "status_code_conformance",
+          "status": "failure",
+          "message": "Undocumented HTTP status code\n\nReceived: 404\nDocumented: 200, 422"
+        }
+      ],
+      "meta": {
+        "generation": {
+          "time": 1.6957999832811765e-05,
+          "mode": "negative"
+        },
+        "components": {
+          "PATH": "positive",
+          "COOKIE": "negative",
+          "BODY": "positive"
+        },
+        "phase": {
+          "name": "coverage",
+          "data": {
+            "type": "CoveragePhaseData",
+            "description": "Incorrect type",
+            "location": "/anyOf/1/type",
+            "parameter": "hinh_session",
+            "parameter_location": "COOKIE",
+            "scenario": "incorrect_type"
+          }
+        },
+        "pool_draws": [],
+        "pool_misses": [
+          [
+            "path",
+            "short_id"
+          ]
+        ],
+        "semantic_draws": [],
+        "dictionary_draws": [],
+        "raw_containers": {
+          "PATH": {
+            "short_id": "0"
+          },
+          "COOKIE": {
+            "hinh_session": {}
+          }
+        }
+      },
+      "path": "/api/analyzer/links/{short_id}/consume",
+      "path_parameters": {
+        "short_id": "0"
+      },
+      "query": {},
+      "case_headers": {},
+      "cookies": {
+        "hinh_session": "[Filtered]"
+      },
+      "case_body": {
+        "encoding": "json",
+        "value": {
+          "scope": "open",
+          "target": "render"
+        }
+      },
+      "media_type": "application/json",
+      "parent_index": null
+    }
+  ]
+}

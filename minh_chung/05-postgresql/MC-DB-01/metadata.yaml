@@ -1,0 +1,17 @@
+evidence_id: MC-DB-01
+claim: Production dùng PostgreSQL managed, readiness đạt và có backup định kỳ.
+commit_sha: 26b21f0d5ef69cb4c87c2f28bd30569f09d1a4b4
+workspace_clean: not_applicable
+environment: production
+base_url: https://starfish-app-e3i2c.ondigitalocean.app
+collected_at_utc: 2026-07-12T04:46:49Z
+collector: automated-session
+actual:
+  - readiness status ready; database.ok true; database.backend postgres.
+  - DigitalOcean PostgreSQL version 18, status online, region sgp1, one node.
+  - Chín backup quan sát được; gần nhất 2026-07-12T02:32:12Z.
+result: passed
+raw_files:
+  - 01-raw/readiness.json
+  - 01-raw/cluster-sanitized.json
+  - 01-raw/backups-sanitized.json

@@ -109,8 +109,19 @@ class D1Client:
         await self._query(sql, params)
 
     async def execute_many(self, statements: list[tuple[str, list[Any] | tuple[Any, ...] | None]]) -> None:
-        for sql, params in statements:
-            await self.execute(sql, params)
+        if not statements:
+            return
+        payload = [{"sql": sql, "params": list(params or [])} for sql, params in statements]
+        response = await self._client.post(self.url, headers=self.headers, json=payload)
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as error:
+            raise RuntimeError(response.text) from error
+        body = response.json()
+        if not body.get("success", False):
+            errors = body.get("errors") or []
+            message = errors[0].get("message") if errors and isinstance(errors[0], dict) else "Cloudflare D1 batch query failed."
+            raise RuntimeError(message)
 
     async def fetch_one(self, sql: str, params: list[Any] | tuple[Any, ...] | None = None) -> DbRow | None:
         rows = await self._query(sql, params)

@@ -1,0 +1,16 @@
+{
+  "collected_at_utc": "2026-07-12T04:53:00Z",
+  "tool": "semgrep 1.169.0",
+  "configs": ["p/python", "p/security-audit"],
+  "rules_run": 200,
+  "targets_scanned": 202,
+  "result_count": 4,
+  "errors": [],
+  "results": [
+    {"severity":"WARNING","path":"app/api/routes_auth.py","line":277,"classification":"false_positive","reason":"Only one-way email_hash and internal user ID are logged; no email or credential value."},
+    {"severity":"WARNING","path":"app/api/routes_auth.py","line":281,"classification":"false_positive","reason":"Only one-way email_hash and fixed reason are logged; no email or credential value."},
+    {"severity":"ERROR","path":"app/renderers/ggb_export.py","line":19,"classification":"false_positive","reason":"xml.sax.saxutils.escape only serializes generated XML; code does not parse untrusted XML."},
+    {"severity":"WARNING","path":"app/services/expression_eval.py","line":170,"classification":"mitigated_requires_review","reason":"AST node, callable, constant and variable allowlists plus empty builtins block code execution; resource-exhaustion limits need separate review."}
+  ],
+  "result": "inconclusive"
+}

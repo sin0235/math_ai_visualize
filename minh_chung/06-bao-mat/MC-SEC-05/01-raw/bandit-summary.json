@@ -1,0 +1,15 @@
+{
+  "generated_at": "2026-07-12T04:52:00Z",
+  "tool": "bandit 1.9.4",
+  "target": "backend/app",
+  "files_loc": 46069,
+  "findings": {
+    "high": 0,
+    "medium": 37,
+    "low": 60
+  },
+  "dominant_medium_rule": "B608 possible SQL injection in dynamically assembled SQL",
+  "other_medium_rules": ["B307 eval", "B104 possible bind-all-interface string"],
+  "result": "failed",
+  "reason": "Static scan has unresolved medium findings; no claim of clean SAST."
+}

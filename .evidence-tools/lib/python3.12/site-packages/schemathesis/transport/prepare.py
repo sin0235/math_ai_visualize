@@ -1,0 +1,188 @@
+from __future__ import annotations
+
+import re
+from collections.abc import Mapping
+from functools import lru_cache
+from typing import TYPE_CHECKING, Any, cast
+from urllib.parse import urlencode, urlsplit, urlunsplit
+
+from schemathesis.config import SanitizationConfig
+from schemathesis.core import SCHEMATHESIS_TEST_CASE_HEADER, Body
+from schemathesis.core.errors import InvalidSchema
+from schemathesis.core.mutations import OperatorKind
+from schemathesis.core.output.sanitization import sanitize_url, sanitize_value
+from schemathesis.core.parameters import ParameterLocation
+from schemathesis.core.transport import USER_AGENT
+from schemathesis.generation.meta import CoveragePhaseData, CoverageScenario, FuzzingPhaseData, StatefulPhaseData
+
+if TYPE_CHECKING:
+    from requests import PreparedRequest
+    from requests.structures import CaseInsensitiveDict
+
+    from schemathesis.generation.case import Case
+
+
+@lru_cache
+def get_default_headers() -> CaseInsensitiveDict:
+    from requests.utils import default_headers
+
+    headers = default_headers()
+    headers["User-Agent"] = USER_AGENT
+    return headers
+
+
+def prepare_headers(case: Case, headers: dict[str, str] | None = None) -> CaseInsensitiveDict:
+    default_headers = get_default_headers().copy()
+    if case.headers:
+        default_headers.update(case.headers)
+    default_headers.setdefault(SCHEMATHESIS_TEST_CASE_HEADER, case.id)
+    if headers:
+        default_headers.update(headers)
+    return default_headers
+
+
+def get_exclude_headers(case: Case) -> list[str]:
+    if case.meta is None:
+        return []
+
+    phase_data = case.meta.phase.data
+
+    # Gate header exclusion on the current generation mode so that a `before_call`
+    # hook restoring the header (which flips the mode to positive via revalidation)
+    # stops the exclusion.
+    if not case.meta.generation.mode.is_negative or phase_data.parameter_location != ParameterLocation.HEADER:
+        return []
+
+    if isinstance(phase_data, CoveragePhaseData) and phase_data.scenario == CoverageScenario.MISSING_PARAMETER:
+        return [phase_data.parameter] if phase_data.parameter is not None else []
+
+    if isinstance(phase_data, (FuzzingPhaseData, StatefulPhaseData)):
+        # Only exclude when the mutation actually removed the parameter (or its
+        # required-list entry). Constraint-negation mutations leave the parameter
+        # present with a constraint-violating value — that value MUST reach the
+        # server for the negative case to be meaningful.
+        case_headers: Mapping[str, Any] = case.headers or {}
+        excluded: list[str] = []
+        for mutation in phase_data.mutations:
+            # Only top-level mutations on the HEADER parameter object map 1:1 to
+            # HTTP header names. A nested mutation's `parameter` is an inner
+            # property and may collide with an unrelated real header (e.g. a
+            # nested `Authorization` field inside a content-schema header).
+            if mutation.path:
+                continue
+            if mutation.operator == OperatorKind.REMOVE_REQUIRED_PROPERTY:
+                if mutation.parameter is not None:
+                    excluded.append(mutation.parameter)
+            elif mutation.operator == OperatorKind.NEGATE_CONSTRAINTS and "required" in mutation.keywords:
+                if mutation.parameter is not None:
+                    excluded.append(mutation.parameter)
+                elif isinstance(mutation.original_value, list):
+                    # Multi-required: the case may have omitted any subset of the
+                    # original list; exclude exactly those names so default/session
+                    # auth doesn't get re-applied for them.
+                    excluded.extend(
+                        name for name in mutation.original_value if isinstance(name, str) and name not in case_headers
+                    )
+        return excluded
+
+    return []
+
+
+def prepare_url(case: Case, base_url: str | None) -> str:
+    """Prepare URL via the schema's spec-aware override."""
+    base_url = base_url or case.operation.base_url
+    assert base_url is not None
+    return case.operation.schema.build_request_url(case, base_url)
+
+
+def prepare_body(case: Case) -> Body:
+    """Prepare body via the schema's spec-aware override."""
+    return case.operation.schema.prepare_request_body(case.body)
+
+
+@lru_cache(maxsize=128)
+def normalize_base_url(base_url: str | None) -> str | None:
+    """Normalize base URL by ensuring proper hostname for local URLs.
+
+    If URL has no hostname (typical for WSGI apps), adds "localhost" as default hostname.
+    """
+    if base_url is None:
+        return None
+    parts = urlsplit(base_url)
+    if not parts.hostname:
+        path = cast(str, parts.path or "")
+        return urlunsplit(("http", "localhost", path or "", "", ""))
+    return base_url
+
+
+_PATH_PLACEHOLDER = re.compile(r"\{([^{}]+)\}")
+
+
+def prepare_path(path: str, parameters: dict[str, Any] | None) -> str:
+    if "{" not in path and "}" not in path:
+        return path
+    params = parameters or {}
+    try:
+        return path.format(**params)
+    except KeyError as exc:
+        raise InvalidSchema(f"Path parameter {exc} is not defined") from exc
+    except (IndexError, ValueError):
+        # `str.format` rejects placeholders like `{.format}` (RFC 6570 label expansion).
+        pass
+    missing: list[str] = []
+
+    def _substitute(match: re.Match[str]) -> str:
+        name = match.group(1)
+        if name in params:
+            return str(params[name])
+        missing.append(name)
+        return match.group(0)
+
+    result = _PATH_PLACEHOLDER.sub(_substitute, path)
+    if missing:
+        raise InvalidSchema(f"Path parameter '{missing[0]}' is not defined")
+    if "{" in result or "}" in result:
+        raise InvalidSchema(f"Malformed path template: `{path}`")
+    return result
+
+
+def prepare_request(case: Case, headers: Mapping[str, Any] | None, *, config: SanitizationConfig) -> PreparedRequest:
+    import requests
+
+    from schemathesis.transport.requests import REQUESTS_TRANSPORT
+
+    base_url = normalize_base_url(case.operation.base_url)
+    kwargs = REQUESTS_TRANSPORT.serialize_case(case, base_url=base_url, headers=headers)
+    if config.enabled:
+        kwargs["url"] = sanitize_url(kwargs["url"], config=config)
+        kwargs["headers"] = dict(kwargs["headers"])
+        sanitize_value(kwargs["headers"], config=config)
+        if kwargs["cookies"]:
+            kwargs["cookies"] = dict(kwargs["cookies"])
+            sanitize_value(kwargs["cookies"], config=config)
+        if kwargs["params"]:
+            if isinstance(kwargs["params"], Mapping):
+                kwargs["params"] = dict(kwargs["params"])
+                sanitize_value(kwargs["params"], config=config)
+            elif isinstance(kwargs["params"], str):
+                kwargs["params"] = _sanitize_query_string(kwargs["params"], config=config)
+
+    return requests.Request(**kwargs).prepare()
+
+
+def _sanitize_query_string(query: str, *, config: SanitizationConfig) -> str:
+    parts = []
+    for chunk in query.split("&"):
+        if not chunk:
+            continue
+        if "=" not in chunk:
+            # Bare key with no value (e.g. raw query string flags); preserve as-is
+            parts.append(chunk)
+        else:
+            key, _, value = chunk.partition("=")
+            lower_key = key.lower()
+            if lower_key in config.keys_to_sanitize or any(marker in lower_key for marker in config.sensitive_markers):
+                parts.append(urlencode([(key, config.replacement)]))
+            else:
+                parts.append(chunk)
+    return "&".join(parts)

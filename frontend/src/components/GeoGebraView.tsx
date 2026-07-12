@@ -18,6 +18,7 @@ interface GeoGebraViewProps {
   scene: MathScene;
   view: SceneView;
   viewBounds?: GraphViewBounds;
+  objectVisibility?: Readonly<Record<string, boolean>>;
   onPointChange?: (name: string, point: Vec3) => void | Promise<void>;
   onStatusChange?: (status: LoadStatus, detail?: string) => void;
   embedded?: boolean;
@@ -28,6 +29,7 @@ interface GeoGebraApi {
   reset?: () => void;
   setAxesVisible?: (xAxis: boolean, yAxis: boolean, zAxis?: boolean) => void;
   setGridVisible?: (visible: boolean) => void;
+  setVisible?: (name: string, visible: boolean) => void;
   setErrorDialogsActive?: (active: boolean) => void;
   getBase64?: (callback: (base64: string) => void) => void;
   setBase64?: (base64: string) => void;
@@ -97,7 +99,7 @@ function resetGeoGebraLoader() {
   geogebraLoadPromise = null;
 }
 
-export function GeoGebraView({ commands, renderer, scene, view, viewBounds, onPointChange, onStatusChange, embedded = false }: GeoGebraViewProps) {
+export function GeoGebraView({ commands, renderer, scene, view, viewBounds, objectVisibility, onPointChange, onStatusChange, embedded = false }: GeoGebraViewProps) {
   const rawId = useId();
   const appletId = `ggb-${rawId.replace(/[^a-zA-Z0-9]/g, '')}`;
   const appName = renderer === 'geogebra_3d' ? '3d' : 'classic';
@@ -213,6 +215,12 @@ export function GeoGebraView({ commands, renderer, scene, view, viewBounds, onPo
     setCommandErrors(failures);
     setStatus(failures.length > 0 ? 'error' : 'ready');
   }, [apiReady, commandSignature, commands, renderer, scene, view.show_axes, view.show_grid, viewBounds?.bottom, viewBounds?.left, viewBounds?.right, viewBounds?.top]);
+
+  useEffect(() => {
+    const api = apiRef.current;
+    if (!apiReady || !api?.setVisible || !objectVisibility) return;
+    Object.entries(objectVisibility).forEach(([name, visible]) => api.setVisible?.(name, visible));
+  }, [apiReady, objectVisibility]);
 
   useEffect(() => {
     if (!apiReady || !apiRef.current || !containerRef.current || typeof ResizeObserver === 'undefined') return;
