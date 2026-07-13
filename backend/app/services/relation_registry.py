@@ -110,9 +110,18 @@ _KIND_GROUPS = {
 
 
 def validate_v3_relation_operands(relation_type: str, operand_kinds: list[str], dimension: str) -> list[str]:
-    contract = RELATION_CONTRACTS_V3.get(normalize_relation_type(relation_type))
+    normalized_type = normalize_relation_type(relation_type)
+    contract = RELATION_CONTRACTS_V3.get(normalized_type)
     if contract is None:
         return [f"Relation {relation_type} chưa được đăng ký trong contract v3."]
+    if (
+        normalized_type in {"perpendicular", "parallel"}
+        and dimension == "3d"
+        and _kind_count(operand_kinds, "linear") == 1
+        and _kind_count(operand_kinds, "planar") == 1
+        and len(operand_kinds) == 2
+    ):
+        return []
     errors: list[str] = []
     if dimension not in contract.dimensions:
         errors.append(f"Relation {relation_type} không hỗ trợ dimension={dimension}.")

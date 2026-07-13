@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { InterpretationPanel, useInterpretationPreflight } from './nlp/InterpretationPanel';
-import type { InterpretationCandidate, InterpretationResponse } from '../api/nlp';
+import { useInterpretationPreflight } from './nlp/InterpretationPanel';
 import {
   ApiError,
   consumeAnalyzerLinkFromLocation,
@@ -35,7 +34,7 @@ export function AlgebraSolverPage() {
   const [domain, setDomain] = useState<AlgebraDomain>('R');
   const [domainSource, setDomainSource] = useState<AlgebraDomainSource>('default');
   const [variables, setVariables] = useState('');
-  const [useAiExtraction, setUseAiExtraction] = useState(false);
+  const [useAiExtraction, setUseAiExtraction] = useState(true);
   const [angleUnit, setAngleUnit] = useState<AlgebraAngleUnit>('radian');
   const [intervalPreset, setIntervalPreset] = useState<IntervalPreset>('');
   const [intervalStart, setIntervalStart] = useState('0');
@@ -127,19 +126,17 @@ export function AlgebraSolverPage() {
 
   async function requestConfirmIfNeeded() {
     if (!payloadInput || loading || submitLockRef.current) return;
-    if ((inputMode === 'math' || !useAiExtraction) && !sequenceInput) {
-      await runSolve();
-      return;
+    if (!sequenceInput) {
+      setError('');
+      await preflight.check({
+        text: payloadInput,
+        target: 'algebra',
+        input_mode: 'natural',
+        input_format: 'auto',
+        context: { topic: payloadTopic, domain, variables: variableList },
+      });
     }
-    setError('');
-    const accepted = await preflight.check({
-      text: payloadInput,
-      target: 'algebra',
-      input_mode: inputMode,
-      input_format: sequenceInput ? 'structured' : inputFormat,
-      context: { topic: payloadTopic, domain, variables: variableList },
-    });
-    if (accepted) await runSolve();
+    await runSolve();
   }
 
   function cancelSolve() {
@@ -147,7 +144,7 @@ export function AlgebraSolverPage() {
     abortRef.current = null;
   }
 
-  async function runSolve(_confirmed?: { candidate: InterpretationCandidate; response: InterpretationResponse }) {
+  async function runSolve() {
     if (!payloadInput || loading || submitLockRef.current) return;
     submitLockRef.current = true;
     preflight.reset();
@@ -199,9 +196,9 @@ export function AlgebraSolverPage() {
 
   function handleApplyCanonical(canonical: string) {
     setInput(canonical);
-    setInputMode('math');
-    setInputFormat('plain');
-    setUseAiExtraction(false);
+    setInputMode('natural');
+    setInputFormat('auto');
+    setUseAiExtraction(true);
     preflight.reset();
   }
 
@@ -213,9 +210,9 @@ export function AlgebraSolverPage() {
 
   function restoreLocalHistoryItem(item: AlgebraHistoryItem) {
     setInput(item.input);
-    setInputMode('math');
-    setInputFormat('plain');
-    setUseAiExtraction(false);
+    setInputMode('natural');
+    setInputFormat('auto');
+    setUseAiExtraction(true);
     preflight.reset();
     setError('');
   }
@@ -228,8 +225,9 @@ export function AlgebraSolverPage() {
         setSolvedFingerprint('');
       }
       setInput(detail.problem_preview || item.problem_preview);
-      setInputMode('math');
-      setInputFormat('plain');
+      setInputMode('natural');
+      setInputFormat('auto');
+      setUseAiExtraction(true);
       preflight.reset();
       setError('');
     } catch (caught) {
@@ -242,12 +240,9 @@ export function AlgebraSolverPage() {
       <div className="algebra-workspace">
         <AlgebraInput
           input={input}
-          inputFormat={inputFormat}
-          inputMode={inputMode}
           topic={topic}
           domain={domain}
           variables={variables}
-          useAiExtraction={useAiExtraction}
           angleUnit={angleUnit}
           intervalPreset={intervalPreset}
           intervalStart={intervalStart}
@@ -258,12 +253,9 @@ export function AlgebraSolverPage() {
           expanded={inputExpanded}
           onExpandedChange={setInputExpanded}
           onInputChange={(value) => { setInput(value); preflight.reset(); }}
-          onInputFormatChange={setInputFormat}
-          onInputModeChange={(value) => { setInputMode(value); preflight.reset(); }}
           onTopicChange={(value) => { setTopic(value); preflight.reset(); }}
           onDomainChange={handleDomainChange}
           onVariablesChange={(value) => { setVariables(value); preflight.reset(); }}
-          onUseAiExtractionChange={(value) => { setUseAiExtraction(value); preflight.reset(); }}
           onAngleUnitChange={(value) => { setAngleUnit(value); preflight.reset(); }}
           onIntervalPresetChange={(value) => { setIntervalPreset(value); preflight.reset(); }}
           onIntervalStartChange={(value) => { setIntervalStart(value); preflight.reset(); }}
@@ -276,12 +268,6 @@ export function AlgebraSolverPage() {
         />
         <div className="algebra-result-wrap">
           {error && <div className="sp-error"><strong>Solver lỗi</strong><span>{error}</span></div>}
-          <InterpretationPanel
-            controller={preflight}
-            title="Cách hệ thống hiểu bài đại số"
-            confirmLabel="Xác nhận và giải"
-            onConfirm={(confirmed) => runSolve(confirmed)}
-          />
           {loading ? (
             <AlgebraLoadingResult elapsedSeconds={elapsedSeconds} onCancel={cancelSolve} />
           ) : result ? (

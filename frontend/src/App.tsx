@@ -1,8 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError, changePassword, consumeAnalyzerLinkFromLocation, deleteRenderHistory, forgotPassword, getCurrentUser, getHealth, getLearningProfile, getRenderHistory, getRenderHistoryDetail, getSessions, getSettingsDefaults, login, loginWithGoogle, logout, ocrImageByUploadId, patchRenderHistory, register, renderEditedScene, renderProblemV3, resendVerification, resetPassword, restoreRenderHistoryV3, revokeOtherSessions, revokeSession, updateLearningProfile, updateProfile, uploadOcrImage, verifyEmail, type AdminRenderHistoryDetail, type PracticeHandoffPayload, type RenderHandoffPayload, type RenderHistoryDetailV2, type RenderHistoryItem, type SessionResponse, type UserLearningProfileResponse, type UserLearningProfileUpdateRequest, type UserResponse } from './api/client';
 import type { ConstructionAction } from './api/render';
-import type { InterpretationCandidate, InterpretationResponse } from './api/nlp';
-import { InterpretationPanel, useInterpretationPreflight } from './components/nlp/InterpretationPanel';
+import { useInterpretationPreflight } from './components/nlp/InterpretationPanel';
 import { defaultAdvancedSettings, ProblemInput, type TierKey } from './components/ProblemInput';
 import { AccountPage } from './components/AccountPage';
 import { SettingsPage } from './components/SettingsPage';
@@ -576,23 +575,24 @@ export default function App() {
       target: 'render',
       context: { tier, preferred_renderer: preferredRenderer ?? null },
     });
-    if (accepted) await runConfirmedRender(accepted);
+    const renderText = accepted
+      ? accepted.candidate.canonical_text?.trim() || accepted.response.normalized_text.trim()
+      : nextProblemText.trim();
+    await runRenderFromText(renderText);
   }
 
-  async function runConfirmedRender(confirmed: { candidate: InterpretationCandidate; response: InterpretationResponse }) {
+  async function runRenderFromText(renderText: string) {
     const pending = pendingRenderRef.current;
-    if (!pending) return;
-    const canonicalText = confirmed.candidate.canonical_text?.trim() || confirmed.response.normalized_text.trim();
-    if (!canonicalText) return;
+    if (!pending || !renderText) return;
     renderPreflight.reset();
-    setProblemText(canonicalText);
+    setProblemText(renderText);
     setLoading(true);
     setPointToSegmentSource(null);
     setEditTool('move');
     setLastAdvancedSettings(pending.advancedSettings ?? defaultAdvancedSettings);
     try {
       const response = await renderProblemV3(
-        canonicalText,
+        renderText,
         pending.tier,
         pending.advancedSettings,
         pending.preferredRenderer,
@@ -1212,12 +1212,6 @@ export default function App() {
                     onOcrImage={handleOcrImage}
                     onOcrClipboardImage={handleOcrClipboardImage}
                     onSubmit={handleSubmit}
-                  />
-                  <InterpretationPanel
-                    controller={renderPreflight}
-                    title="Cách hệ thống hiểu đề dựng hình"
-                    confirmLabel="Xác nhận và dựng hình"
-                    onConfirm={(confirmed) => runConfirmedRender(confirmed)}
                   />
                   {user && (
                     <div className="history-drawer-wrap">

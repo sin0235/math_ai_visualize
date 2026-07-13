@@ -61,6 +61,55 @@ def test_pipeline_stops_before_verification_on_kind_mismatch():
     assert any(issue.code == "REFERENCE_KIND_MISMATCH" for issue in result.issues)
 
 
+def make_line_plane_scene(*, perpendicular=True):
+    return MathSceneV3.model_validate({
+        "scene_id": "scene_pipeline_line_plane",
+        "schema_version": "3.0",
+        "revision": 1,
+        "problem_text": "SA vuông góc với đáy ABCD",
+        "topic": "solid_geometry",
+        "renderer": "threejs_3d",
+        "view": {"dimension": "3d"},
+        "objects": [
+            {"id": "s", "type": "point_3d", "x": 1 if not perpendicular else 0, "y": 0, "z": 2 if perpendicular else 2},
+            {"id": "a", "type": "point_3d", "x": 0, "y": 0, "z": 0},
+            {"id": "b", "type": "point_3d", "x": 1, "y": 0, "z": 0},
+            {"id": "c", "type": "point_3d", "x": 1, "y": 1, "z": 0},
+            {"id": "d", "type": "point_3d", "x": 0, "y": 1, "z": 0},
+            {"id": "sa", "type": "segment", "point_ids": ["s", "a"]},
+            {"id": "abcd", "type": "face", "point_ids": ["a", "b", "c", "d"]},
+        ],
+        "relations": [{
+            "id": "r_line_plane_perp",
+            "type": "perpendicular",
+            "operands": [
+                {"role": "line", "ref_id": "sa", "ref_kind": "segment"},
+                {"role": "plane", "ref_id": "abcd", "ref_kind": "face"},
+            ],
+        }],
+        "audit": {"created_by": "manual"},
+    })
+
+
+def test_pipeline_accepts_3d_line_plane_perpendicular_relation():
+    result = run_scene_pipeline_v3(make_line_plane_scene())
+
+    assert result.status == "verified"
+    assert result.can_project
+    assert result.issues == ()
+    assert result.scene.relations[0].verification.status == "verified"
+
+
+
+
+def test_pipeline_verifies_failed_3d_line_plane_perpendicular_relation():
+    result = run_scene_pipeline_v3(make_line_plane_scene(perpendicular=False))
+
+    assert result.status == "partially_verified"
+    assert result.can_project
+    assert any(issue.code == "CONSTRAINT_FAILED" for issue in result.issues)
+
+
 def test_pipeline_dependency_query_uses_typed_ids():
     scene = make_scene()
 

@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
-import { getMathCapabilities, type AlgebraInputFormat, type AlgebraTopic, type MathCapabilityRegistry } from '../../api/client';
+import { getMathCapabilities, type AlgebraTopic, type MathCapabilityRegistry } from '../../api/client';
 import { KatexSpan } from '../KatexSpan';
-import { MathInputComposer } from '../math-input/MathInputComposer';
 
 type AlgebraDomain = 'R' | 'C' | 'N' | 'Z';
 const DOMAIN_TEX: Record<AlgebraDomain, string> = {
@@ -27,12 +26,9 @@ export type AlgebraAngleUnit = 'radian' | 'degree';
 
 export function AlgebraInput({
   input,
-  inputFormat,
-  inputMode,
   topic,
   domain,
   variables,
-  useAiExtraction,
   angleUnit,
   intervalPreset,
   intervalStart,
@@ -43,12 +39,9 @@ export function AlgebraInput({
   expanded,
   onExpandedChange,
   onInputChange,
-  onInputFormatChange,
-  onInputModeChange,
   onTopicChange,
   onDomainChange,
   onVariablesChange,
-  onUseAiExtractionChange,
   onAngleUnitChange,
   onIntervalPresetChange,
   onIntervalStartChange,
@@ -60,12 +53,9 @@ export function AlgebraInput({
   onSubmit,
 }: {
   input: string;
-  inputFormat: AlgebraInputFormat;
-  inputMode: AlgebraInputMode;
   topic: AlgebraTopic;
   domain: AlgebraDomain;
   variables: string;
-  useAiExtraction: boolean;
   angleUnit: AlgebraAngleUnit;
   intervalPreset: IntervalPreset;
   intervalStart: string;
@@ -76,12 +66,9 @@ export function AlgebraInput({
   expanded: boolean;
   onExpandedChange: (expanded: boolean) => void;
   onInputChange: (value: string) => void;
-  onInputFormatChange: (value: AlgebraInputFormat) => void;
-  onInputModeChange: (value: AlgebraInputMode) => void;
   onTopicChange: (value: AlgebraTopic) => void;
   onDomainChange: (value: AlgebraDomain) => void;
   onVariablesChange: (value: string) => void;
-  onUseAiExtractionChange: (value: boolean) => void;
   onAngleUnitChange: (value: AlgebraAngleUnit) => void;
   onIntervalPresetChange: (value: IntervalPreset) => void;
   onIntervalStartChange: (value: string) => void;
@@ -99,10 +86,6 @@ export function AlgebraInput({
   const topicLabels = useMemo(
     () => new Map(topicOptions.map((option) => [option.topic, option.label])),
     [topicOptions],
-  );
-  const supportedActions = useMemo(
-    () => capabilityRegistry ? new Set(capabilityRegistry.ui.keyboard_actions.algebra ?? []) : undefined,
-    [capabilityRegistry],
   );
 
   useEffect(() => {
@@ -138,21 +121,23 @@ export function AlgebraInput({
           <SequenceBuilder draft={sequenceDraft} loading={loading} onChange={onSequenceDraftChange} />
         )}
 
-        <MathInputComposer
-          value={input}
-          mode={inputMode}
-          onChange={onInputChange}
-          onModeChange={(mode) => {
-            onInputModeChange(mode);
-            onInputFormatChange(mode === 'math' ? 'latex' : 'auto');
-          }}
-          keyboard="algebra"
-          supportedActions={supportedActions}
-          disabled={loading}
-          label="Nhập bài toán"
-          naturalPlaceholder="Ví dụ: Giải phương trình x² - 5x + 6 = 0"
-          onSubmit={onSubmit}
-        />
+        <label className="field-label algebra-vietnamese-input">
+          Nhập đề bằng tiếng Việt
+          <textarea
+            value={input}
+            onChange={(event) => onInputChange(event.target.value)}
+            onKeyDown={(event) => {
+              if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') onSubmit();
+            }}
+            rows={5}
+            maxLength={2000}
+            disabled={loading}
+            placeholder="Ví dụ: Tìm tích phân của 2*x+1; giải phương trình x^2 - 5x + 6 = 0"
+          />
+          <span className="algebra-ai-option-hint">
+            Hệ thống dùng NLP và AI để hiểu đề tiếng Việt, sau đó solver kiểm chứng và dựng lời giải từng bước.
+          </span>
+        </label>
 
         {suggestedTopic && topic !== suggestedTopic && (
           <button type="button" className="algebra-topic-suggestion" onClick={() => onTopicChange(suggestedTopic)} disabled={loading}>
@@ -279,27 +264,10 @@ export function AlgebraInput({
         />
       </label>
 
-      {inputMode === 'natural' && (
-        <label className="field-label algebra-ai-option">
-          <span className="algebra-ai-option-row">
-            <input
-              type="checkbox"
-              checked={useAiExtraction}
-              onChange={(event) => onUseAiExtractionChange(event.target.checked)}
-              disabled={loading}
-            />
-            Dùng AI diễn giải đề
-          </span>
-          <span className="algebra-ai-option-hint">
-            Mặc định dùng bộ phân tích tiếng Việt. Bật AI khi đề mơ hồ; tính năng này cần đăng nhập.
-            Bạn luôn xác nhận dạng bài, miền và biến trước khi giải.
-          </span>
-        </label>
-      )}
       </div>
 
       <button type="button" className="auth-primary-button algebra-submit" onClick={onSubmit} disabled={loading || (!input.trim() && topic !== 'sequence')}>
-        {loading ? 'Đang giải...' : (inputMode === 'natural' || useAiExtraction ? 'Tiếp theo: xác nhận' : 'Giải bài')}
+        {loading ? 'Đang giải...' : 'Giải bài'}
       </button>
         </div>
       </div>

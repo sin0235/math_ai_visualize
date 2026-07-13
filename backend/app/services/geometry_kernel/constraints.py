@@ -92,7 +92,22 @@ def _line_directions(relation: RelationV3, geometry: GeometryIndex):
     return ids, directions
 
 
+def _line_and_plane(relation: RelationV3, geometry: GeometryIndex):
+    line_ids = _matching_ids(relation, "line", "segment", "vector")
+    plane_ids = _matching_ids(relation, "plane", "face")
+    if len(line_ids) == 1 and len(plane_ids) == 1:
+        start, end = geometry.line_points(line_ids[0])
+        return line_ids[0], sub(end, start), plane_ids[0], plane_normal(geometry.plane_points(plane_ids[0]), geometry.tolerance)
+    return None
+
+
 def _perpendicular(relation: RelationV3, geometry: GeometryIndex) -> Residual:
+    line_plane = _line_and_plane(relation, geometry)
+    if line_plane:
+        line_id, direction, plane_id, normal = line_plane
+        line_unit = normalized(direction, geometry.tolerance)
+        residual = norm(cross(line_unit, normal))
+        return Residual(residual, geometry.policy.angular_tolerance, {"line_id": line_id, "plane_id": plane_id, "normalized_cross": residual})
     ids, directions = _line_directions(relation, geometry)
     units = [normalized(direction, geometry.tolerance) for direction in directions]
     residual = abs(dot(units[0], units[1]))
@@ -100,6 +115,12 @@ def _perpendicular(relation: RelationV3, geometry: GeometryIndex) -> Residual:
 
 
 def _parallel(relation: RelationV3, geometry: GeometryIndex) -> Residual:
+    line_plane = _line_and_plane(relation, geometry)
+    if line_plane:
+        line_id, direction, plane_id, normal = line_plane
+        line_unit = normalized(direction, geometry.tolerance)
+        residual = abs(dot(line_unit, normal))
+        return Residual(residual, geometry.policy.angular_tolerance, {"line_id": line_id, "plane_id": plane_id, "normalized_dot": residual})
     ids, directions = _line_directions(relation, geometry)
     units = [normalized(direction, geometry.tolerance) for direction in directions]
     residual = norm(cross(units[0], units[1]))
