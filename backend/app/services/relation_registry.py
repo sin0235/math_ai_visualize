@@ -153,17 +153,21 @@ def validate_v3_relation_operands(relation_type: str, operand_kinds: list[str], 
     contract = RELATION_CONTRACTS_V3.get(normalized_type)
     if contract is None:
         return [f"Relation {relation_type} chưa được đăng ký trong contract v3."]
+    dimension_errors = []
     if dimension not in contract.dimensions:
-        return [f"Relation {relation_type} không hỗ trợ dimension={dimension}."]
+        dimension_errors.append(f"Relation {relation_type} không hỗ trợ dimension={dimension}.")
+
     # Kiểm tra contract chính.
     errors = _check_required_kinds(contract.required_kinds, contract.minimum_kinds, operand_kinds, relation_type)
     if not errors:
-        return []
+        return dimension_errors
+
     # Kiểm tra các alternative contracts.
     for alt_kinds in contract.alternative_kinds:
         if not _check_required_kinds(alt_kinds, (), operand_kinds, relation_type):
-            return []
-    return errors
+            return dimension_errors
+
+    return dimension_errors + errors
 
 
 def _check_required_kinds(

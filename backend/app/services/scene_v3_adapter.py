@@ -67,7 +67,7 @@ _3D_RENDERERS = {"threejs_3d"}
 
 def _coerce_objects_for_renderer(objects: list[dict[str, Any]], renderer: str, state: _MigrationState) -> list[dict[str, Any]]:
     """Khi renderer yêu cầu 3D, tự động nâng object 2D lên type 3D tương đương.
-    Điều này vá lỗi AI hay sinh scene threejs_3d nhưng lẫn point_2d/line_2d bên trong."""
+    Thực hiện ép kiểu tự động nhằm đảm bảo tính nhất quán khi AI sinh dữ liệu không đúng không gian 3D."""
     if renderer not in _3D_RENDERERS:
         return objects
     coerced: list[dict[str, Any]] = []
@@ -248,7 +248,7 @@ def _migrate_relations(raw_relations: Any, state: _MigrationState) -> list[dict[
         args = dict(raw.get("args")) if isinstance(raw.get("args"), dict) else {}
         if relation_type == "distance" and "value" not in args and isinstance(metadata.get("value"), (int, float)):
             args["value"] = metadata["value"]
-        # Repair: AI hay sinh midpoint với 3 point thay vì (linear + point).
+        # Sửa chữa: Khi mô hình sinh midpoint với 3 điểm (thay vì 1 điểm + 1 đoạn thẳng).
         if relation_type == "midpoint":
             operands, relation_type, repair_warning = _repair_midpoint_operands(operands, state, relation_id)
             if repair_warning:
@@ -272,10 +272,10 @@ def _repair_midpoint_operands(
     state: _MigrationState,
     relation_id: str,
 ) -> tuple[list[dict[str, str]], str, str | None]:
-    """Sửa relation midpoint khi AI truyền 3 points thay vì (linear + point).
+    """Hỗ trợ tự động sửa relation midpoint khi nhận được 3 điểm độc lập (thay vì 1 đoạn thẳng + 1 điểm).
 
     Contract đúng: midpoint cần đúng 1 point (điểm giữa) + 1 linear (đoạn thẳng).
-    AI hay truyền: 3 points [A, B, E] trong đó E là midpoint của AB.
+    Mô hình ngôn ngữ thường sinh 3 điểm: [A, B, E] (trong đó E là trung điểm AB).
 
     Chiến lược:
     1. Đúng contract (linear + point) → không làm gì.

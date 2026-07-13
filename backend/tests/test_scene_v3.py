@@ -43,9 +43,8 @@ def test_v2_adapter_creates_deterministic_typed_references():
     segment = by_label["AB"]
     assert segment.point_ids == (by_label["A"].id, by_label["B"].id)
     assert {operand.ref_id for operand in first.relations[0].operands} == {
-        by_label["A"].id,
         by_label["M"].id,
-        by_label["B"].id,
+        by_label["AB"].id,
     }
 
 
