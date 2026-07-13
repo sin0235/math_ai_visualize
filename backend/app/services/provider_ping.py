@@ -13,10 +13,7 @@ from app.services.provider_logging import format_provider_error, redact_sensitiv
 
 ADMIN_PING_PROVIDERS = ("openrouter", "nvidia", "ollama", "openai_compat", "router9")
 
-_PROVIDER_ALIASES = {
-    "ollama_gpt_oss": "ollama",
-    "9router": "router9",
-}
+
 
 _PROVIDER_LABELS = {
     "openrouter": "OpenRouter",
@@ -148,7 +145,7 @@ async def check_provider_connection(provider: str, settings: Settings, model: st
 
 
 def normalize_ping_provider(provider: str) -> str:
-    normalized = _PROVIDER_ALIASES.get(provider.strip(), provider.strip())
+    normalized = provider.strip()
     if normalized not in ADMIN_PING_PROVIDERS:
         raise RuntimeError(f"Provider không hỗ trợ ping: {provider}")
     return normalized

@@ -40,11 +40,11 @@ def test_http_pool_close_all_closes_async_clients():
 
 
 def test_render_request_accepts_new_ai_providers():
-    base = {"problem_text": "test", "preferred_ai_provider": "opencode_nemotron"}
-    assert RenderRequest.model_validate(base).preferred_ai_provider == "opencode_nemotron"
+    base = {"problem_text": "test", "preferred_ai_provider": "openrouter"}
+    assert RenderRequest.model_validate(base).preferred_ai_provider == "openrouter"
 
-    base["preferred_ai_provider"] = "ollama_gpt_oss"
-    assert RenderRequest.model_validate(base).preferred_ai_provider == "ollama_gpt_oss"
+    base["preferred_ai_provider"] = "ollama"
+    assert RenderRequest.model_validate(base).preferred_ai_provider == "ollama"
 
     base["preferred_ai_provider"] = "ollama"
     assert RenderRequest.model_validate(base).preferred_ai_provider == "ollama"
@@ -373,7 +373,7 @@ def test_provider_ping_uses_small_chat_payload(monkeypatch):
 def test_provider_order_auto_skips_remote_providers_without_api_keys():
     order = _provider_order(Settings(_env_file=None, ai_provider="auto"))
 
-    assert order == ["ollama_gpt_oss"]
+    assert order == ["ollama"]
 
 
 def test_provider_order_auto_skips_whitespace_api_keys():
@@ -389,7 +389,7 @@ def test_provider_order_auto_skips_whitespace_api_keys():
         )
     )
 
-    assert order == ["ollama_gpt_oss"]
+    assert order == ["ollama"]
 
 
 def test_provider_order_auto_includes_configured_remote_fallbacks():
@@ -398,7 +398,7 @@ def test_provider_order_auto_includes_configured_remote_fallbacks():
     assert order == [
         "nvidia",
         "openrouter",
-        "ollama_gpt_oss",
+        "ollama",
     ]
 
 
@@ -409,20 +409,17 @@ def test_provider_order_auto_prefers_router9_when_connected():
         "router9",
         "nvidia",
         "openrouter",
-        "ollama_gpt_oss",
+        "ollama",
     ]
 
 
-def test_provider_order_keeps_nemotron_fallbacks_together():
-    order = _provider_order(Settings(_env_file=None, openrouter_api_key="secret"), "opencode_nemotron")
 
-    assert order == ["opencode_nemotron", "openrouter", "ollama_gpt_oss"]
 
 
 def test_provider_order_prefers_local_gpt_oss_when_selected():
-    order = _provider_order(Settings(_env_file=None, openrouter_api_key="secret"), "ollama_gpt_oss")
+    order = _provider_order(Settings(_env_file=None, openrouter_api_key="secret"), "ollama")
 
-    assert order == ["ollama_gpt_oss", "openrouter"]
+    assert order == ["ollama", "openrouter"]
 
 
 def test_provider_order_mock_skips_ai_providers():
@@ -436,7 +433,7 @@ def test_provider_order_router9_direct_selection_can_fallback_when_not_only_mode
         "router9",
         "openrouter",
         "nvidia",
-        "ollama_gpt_oss",
+        "ollama",
     ]
 
 
@@ -465,10 +462,10 @@ def test_empty_runtime_settings_do_not_override_environment_settings():
 
 def test_partial_runtime_settings_override_only_provided_values():
     settings = Settings(ai_provider="openrouter", ollama_base_url="https://ollama.com/v1", ollama_api_key="secret")
-    runtime_settings = RuntimeSettings.model_validate({"default_provider": "ollama_gpt_oss", "ollama": {"model": "gpt-oss:20b"}})
+    runtime_settings = RuntimeSettings.model_validate({"default_provider": "ollama", "ollama": {"model": "gpt-oss:20b"}})
     merged = merge_runtime_settings(settings, runtime_settings)
 
-    assert merged.ai_provider == "ollama_gpt_oss"
+    assert merged.ai_provider == "ollama"
     assert merged.ollama_base_url == "https://ollama.com/v1"
     assert merged.ollama_api_key == "secret"
     assert merged.ollama_text_model == "gpt-oss:20b"
@@ -722,7 +719,7 @@ def test_extract_chat_response_content_accepts_responses_shapes():
 
 
 def test_render_fallback_success_returns_prior_failures_as_warnings(monkeypatch):
-    async def fake_extract(provider, settings, problem_text, grade, reasoning_layer, preferred_ai_model=None):
+    async def fake_extract(provider, settings, problem_text, grade, reasoning_layer, registry, preferred_ai_model=None):
         if provider == "nvidia":
             raise RuntimeError("quota exceeded")
         return {"problem_text": problem_text, "renderer": "geogebra_2d", "objects": [], "view": {"dimension": "2d"}}
@@ -739,7 +736,7 @@ def test_render_fallback_success_returns_prior_failures_as_warnings(monkeypatch)
 def test_render_continues_after_invalid_ai_response(monkeypatch):
     calls = []
 
-    async def fake_extract(provider, settings, problem_text, grade, reasoning_layer, preferred_ai_model=None, **kwargs):
+    async def fake_extract(provider, settings, problem_text, grade, reasoning_layer, registry, preferred_ai_model=None, **kwargs):
         calls.append((provider, preferred_ai_model))
         return {"problem_text": problem_text, "renderer": "geogebra_2d", "objects": [{"type": "point_2d"}], "view": {"dimension": "2d"}}
 
@@ -782,8 +779,8 @@ def test_render_profile_fallback_models_for_provider_alias_require_no_explicit_m
     profile = TaskProfile("render", "ollama", "gpt-oss:120b", ["gpt-oss:20b"])
     settings = Settings(_env_file=None, ollama_text_model="gpt-oss:120b")
 
-    assert _profile_model_candidates(profile, "ollama_gpt_oss", settings, None) == ["gpt-oss:120b", "gpt-oss:20b"]
-    assert _profile_model_candidates(profile, "ollama_gpt_oss", settings, "gpt-oss:120b") == ["gpt-oss:120b"]
+    assert _profile_model_candidates(profile, "ollama", settings, None) == ["gpt-oss:120b", "gpt-oss:20b"]
+    assert _profile_model_candidates(profile, "ollama", settings, "gpt-oss:120b") == ["gpt-oss:120b"]
 
 
 def test_openrouter_base_url_normalizes_missing_api_segment():
@@ -816,7 +813,7 @@ def test_ollama_cloud_scan_uses_openai_models_endpoint(monkeypatch):
 def test_render_router9_allowlist_uses_single_selected_model(monkeypatch):
     calls = []
 
-    async def fake_extract(provider, settings, problem_text, grade, reasoning_layer, preferred_ai_model=None):
+    async def fake_extract(provider, settings, problem_text, grade, reasoning_layer, registry, preferred_ai_model=None):
         calls.append((provider, preferred_ai_model))
         return {"problem_text": problem_text, "renderer": "geogebra_2d", "objects": [], "view": {"dimension": "2d"}}
 
@@ -837,7 +834,7 @@ def test_render_router9_allowlist_uses_single_selected_model(monkeypatch):
 def test_render_router9_accepts_explicit_vendor_prefixed_model(monkeypatch):
     calls = []
 
-    async def fake_extract(provider, settings, problem_text, grade, reasoning_layer, preferred_ai_model=None, **kwargs):
+    async def fake_extract(provider, settings, problem_text, grade, reasoning_layer, registry, preferred_ai_model=None, **kwargs):
         calls.append((provider, preferred_ai_model))
         return {"problem_text": problem_text, "renderer": "geogebra_2d", "objects": [], "view": {"dimension": "2d"}}
 
@@ -866,7 +863,7 @@ def test_render_explicit_model_bypasses_registry_task_profile(monkeypatch):
 
     calls = []
 
-    async def fake_extract(provider, settings, problem_text, grade, reasoning_layer, preferred_ai_model=None, **kwargs):
+    async def fake_extract(provider, settings, problem_text, grade, reasoning_layer, registry, preferred_ai_model=None, **kwargs):
         calls.append((provider, preferred_ai_model))
         return {"problem_text": problem_text, "renderer": "geogebra_2d", "objects": [], "view": {"dimension": "2d"}}
 
@@ -918,7 +915,7 @@ def test_render_explicit_model_bypasses_registry_task_profile(monkeypatch):
 def test_render_provider_selection_uses_runtime_model_when_payload_model_missing(monkeypatch):
     calls = []
 
-    async def fake_extract(provider, settings, problem_text, grade, reasoning_layer, preferred_ai_model=None, **kwargs):
+    async def fake_extract(provider, settings, problem_text, grade, reasoning_layer, registry, preferred_ai_model=None, **kwargs):
         calls.append((provider, preferred_ai_model))
         return {"problem_text": problem_text, "renderer": "geogebra_2d", "objects": [], "view": {"dimension": "2d"}}
 
@@ -945,7 +942,7 @@ def test_render_provider_selection_uses_runtime_model_when_payload_model_missing
 def test_render_explicit_openai_compat_is_tried_before_fallback_without_api_key(monkeypatch):
     calls = []
 
-    async def fake_extract(provider, settings, problem_text, grade, reasoning_layer, preferred_ai_model=None, **kwargs):
+    async def fake_extract(provider, settings, problem_text, grade, reasoning_layer, registry, preferred_ai_model=None, **kwargs):
         calls.append((provider, preferred_ai_model))
         return {"problem_text": problem_text, "renderer": "geogebra_2d", "objects": [], "view": {"dimension": "2d"}}
 
@@ -975,7 +972,7 @@ def test_render_explicit_openai_compat_is_tried_before_fallback_without_api_key(
 def test_render_explicit_model_does_not_fallback_to_other_providers(monkeypatch):
     calls = []
 
-    async def fail_extract(provider, settings, problem_text, grade, reasoning_layer, preferred_ai_model=None, **kwargs):
+    async def fail_extract(provider, settings, problem_text, grade, reasoning_layer, registry, preferred_ai_model=None, **kwargs):
         calls.append((provider, preferred_ai_model))
         raise RuntimeError(f"{provider} unavailable")
 
@@ -1013,7 +1010,7 @@ def test_render_explicit_model_ignores_configured_profile_fallbacks(monkeypatch)
 
     calls = []
 
-    async def fake_extract(provider, settings, problem_text, grade, reasoning_layer, preferred_ai_model=None, **kwargs):
+    async def fake_extract(provider, settings, problem_text, grade, reasoning_layer, registry, preferred_ai_model=None, **kwargs):
         calls.append((provider, preferred_ai_model))
         if preferred_ai_model == "deepseek-v4-flash":
             raise RuntimeError("primary failed")
@@ -1082,7 +1079,7 @@ def test_render_explicit_model_ignores_configured_profile_fallbacks(monkeypatch)
 def test_render_explicit_ollama_alias_uses_ollama_provider(monkeypatch):
     calls = []
 
-    async def fake_extract(provider, settings, problem_text, grade, reasoning_layer, preferred_ai_model=None, **kwargs):
+    async def fake_extract(provider, settings, problem_text, grade, reasoning_layer, registry, preferred_ai_model=None, **kwargs):
         calls.append((provider, preferred_ai_model))
         return {"problem_text": problem_text, "renderer": "geogebra_2d", "objects": [], "view": {"dimension": "2d"}}
 
@@ -1104,14 +1101,14 @@ def test_render_explicit_ollama_alias_uses_ollama_provider(monkeypatch):
     ))
 
     assert scene.topic == "unknown"
-    assert calls == [("ollama_gpt_oss", "gpt-oss:120b")]
+    assert calls == [("ollama", "gpt-oss:120b")]
     assert warnings == []
 
 
 def test_render_tries_full_provider_order_before_mock(monkeypatch):
     calls = []
 
-    async def fail_extract(provider, settings, problem_text, grade, reasoning_layer, preferred_ai_model=None, **kwargs):
+    async def fail_extract(provider, settings, problem_text, grade, reasoning_layer, registry, preferred_ai_model=None, **kwargs):
         calls.append((provider, preferred_ai_model))
         raise RuntimeError(f"{provider} unavailable")
 
@@ -1139,14 +1136,14 @@ def test_render_tries_full_provider_order_before_mock(monkeypatch):
     ))
 
     assert scene.topic == "unknown"
-    assert {provider for provider, _ in calls} >= {"openrouter", "nvidia", "ollama_gpt_oss"}
+    assert {provider for provider, _ in calls} >= {"openrouter", "nvidia", "ollama"}
     assert warnings[-1] == "Tất cả AI provider đều lỗi; đang dùng mock extractor."
 
 
 def test_render_skips_openrouter_family_without_api_key(monkeypatch):
     calls = []
 
-    async def fail_extract(provider, settings, problem_text, grade, reasoning_layer, preferred_ai_model=None, **kwargs):
+    async def fail_extract(provider, settings, problem_text, grade, reasoning_layer, registry, preferred_ai_model=None, **kwargs):
         calls.append((provider, preferred_ai_model))
         raise RuntimeError(f"{provider} unavailable")
 
@@ -1157,12 +1154,12 @@ def test_render_skips_openrouter_family_without_api_key(monkeypatch):
     scene, warnings = asyncio.run(extract_scene("x"))
 
     assert scene.topic == "unknown"
-    assert [provider for provider, _ in calls] == ["ollama_gpt_oss"]
+    assert [provider for provider, _ in calls] == ["ollama"]
     assert warnings[-1] == "Tất cả AI provider đều lỗi; đang dùng mock extractor."
 
 
 def test_render_all_ai_failures_warn_with_attempt_chain_before_mock(monkeypatch):
-    async def fail_extract(provider, settings, problem_text, grade, reasoning_layer, preferred_ai_model=None):
+    async def fail_extract(provider, settings, problem_text, grade, reasoning_layer, registry, preferred_ai_model=None, **kwargs):
         raise RuntimeError(f"{provider} unavailable")
 
     monkeypatch.setattr("app.services.extractor._extract_with_provider", fail_extract)
@@ -1176,7 +1173,7 @@ def test_render_all_ai_failures_warn_with_attempt_chain_before_mock(monkeypatch)
 
 
 def test_render_router9_only_failure_includes_attempted_model(monkeypatch):
-    async def fail_extract(provider, settings, problem_text, grade, reasoning_layer, preferred_ai_model=None):
+    async def fail_extract(provider, settings, problem_text, grade, reasoning_layer, registry, preferred_ai_model=None, **kwargs):
         raise RuntimeError("gateway down")
 
     monkeypatch.setattr("app.services.extractor._extract_with_provider", fail_extract)

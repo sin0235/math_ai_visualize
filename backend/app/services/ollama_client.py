@@ -11,9 +11,10 @@ from app.services.provider_logging import chat_message_input_chars, log_ocr_summ
 
 
 class OllamaClient:
-    def __init__(self, settings: Settings, model: str | None = None) -> None:
+    def __init__(self, settings: Settings, model: str | None = None, provider_id: str = "ollama") -> None:
         self.settings = settings
         self.model = model or settings.ollama_text_model
+        self.provider_id = provider_id
 
     async def extract_scene_json(
         self,
@@ -59,11 +60,11 @@ class OllamaClient:
             from app.services.http_pool import TIMEOUT_SCENE, get_client
 
             started_at = time.perf_counter()
-            log_provider_request("ollama", "scene", url, payload["model"], problem_chars=len(problem_text), input_chars=chat_message_input_chars(payload.get("messages")))
+            log_provider_request(self.provider_id, "scene", url, payload["model"], problem_chars=len(problem_text), input_chars=chat_message_input_chars(payload.get("messages")))
             client = get_client(base_url, TIMEOUT_SCENE)
             response = await client.post(url, headers=headers, json=payload, timeout=TIMEOUT_SCENE)
             elapsed_ms = int((time.perf_counter() - started_at) * 1000)
-            log_provider_response("ollama", "scene", response.status_code, elapsed_ms, len(response.text))
+            log_provider_response(self.provider_id, "scene", response.status_code, elapsed_ms, len(response.text))
             response.raise_for_status()
         except httpx.HTTPError as error:
             message = str(error) or error.__class__.__name__
@@ -76,7 +77,7 @@ class OllamaClient:
         if not content.strip():
             raise RuntimeError("Ollama response message.content không có nội dung")
         scene_json = json.loads(_strip_json_fences(content))
-        log_scene_summary("ollama", scene_json)
+        log_scene_summary(self.provider_id, scene_json)
         return scene_json
 
     async def _extract_scene_json_openai_compatible(
@@ -112,11 +113,11 @@ class OllamaClient:
             from app.services.http_pool import TIMEOUT_SCENE, get_client
 
             started_at = time.perf_counter()
-            log_provider_request("ollama_cloud", "scene", url, payload["model"], problem_chars=len(problem_text), input_chars=chat_message_input_chars(payload.get("messages")))
+            log_provider_request(self.provider_id, "scene", url, payload["model"], problem_chars=len(problem_text), input_chars=chat_message_input_chars(payload.get("messages")))
             client = get_client(base_url, TIMEOUT_SCENE)
             response = await client.post(url, headers=headers, json=payload, timeout=TIMEOUT_SCENE)
             elapsed_ms = int((time.perf_counter() - started_at) * 1000)
-            log_provider_response("ollama_cloud", "scene", response.status_code, elapsed_ms, len(response.text))
+            log_provider_response(self.provider_id, "scene", response.status_code, elapsed_ms, len(response.text))
             response.raise_for_status()
         except httpx.HTTPError as error:
             message = str(error) or error.__class__.__name__
@@ -129,7 +130,7 @@ class OllamaClient:
         if not content.strip():
             raise RuntimeError("Ollama cloud response message.content không có nội dung")
         scene_json = json.loads(_strip_json_fences(content))
-        log_scene_summary("ollama_cloud", scene_json)
+        log_scene_summary(self.provider_id, scene_json)
         return scene_json
 
     async def ocr_image(self, image_data_url: str, model: str | None = None, system_prompt: str | None = None, user_text: str = "Trích xuất nguyên văn đề toán trong ảnh.") -> str:
@@ -160,11 +161,11 @@ class OllamaClient:
             from app.services.http_pool import TIMEOUT_OCR, get_client
 
             started_at = time.perf_counter()
-            log_provider_request("ollama", "ocr", url, payload["model"], image_chars=len(image_data_url), input_chars=chat_message_input_chars(payload.get("messages")))
+            log_provider_request(self.provider_id, "ocr", url, payload["model"], image_chars=len(image_data_url), input_chars=chat_message_input_chars(payload.get("messages")))
             client = get_client(base_url, TIMEOUT_OCR)
             response = await client.post(url, headers=headers, json=payload, timeout=TIMEOUT_OCR)
             elapsed_ms = int((time.perf_counter() - started_at) * 1000)
-            log_provider_response("ollama", "ocr", response.status_code, elapsed_ms, len(response.text))
+            log_provider_response(self.provider_id, "ocr", response.status_code, elapsed_ms, len(response.text))
             response.raise_for_status()
         except httpx.HTTPError as error:
             message = str(error) or error.__class__.__name__
@@ -174,7 +175,7 @@ class OllamaClient:
         except (KeyError, TypeError, ValueError) as error:
             raise RuntimeError("Ollama OCR response không đúng định dạng message.content") from error
         text = _strip_text_fences(content)
-        log_ocr_summary("ollama", text)
+        log_ocr_summary(self.provider_id, text)
         return text
 
     async def _ocr_openai_compatible(self, base_url: str, image_data_url: str, model: str, system_prompt: str | None, user_text: str) -> str:
@@ -200,11 +201,11 @@ class OllamaClient:
             from app.services.http_pool import TIMEOUT_OCR, get_client
 
             started_at = time.perf_counter()
-            log_provider_request("ollama_cloud", "ocr", url, payload["model"], image_chars=len(image_data_url), input_chars=chat_message_input_chars(payload.get("messages")))
+            log_provider_request(self.provider_id, "ocr", url, payload["model"], image_chars=len(image_data_url), input_chars=chat_message_input_chars(payload.get("messages")))
             client = get_client(base_url, TIMEOUT_OCR)
             response = await client.post(url, headers=headers, json=payload, timeout=TIMEOUT_OCR)
             elapsed_ms = int((time.perf_counter() - started_at) * 1000)
-            log_provider_response("ollama_cloud", "ocr", response.status_code, elapsed_ms, len(response.text))
+            log_provider_response(self.provider_id, "ocr", response.status_code, elapsed_ms, len(response.text))
             response.raise_for_status()
         except httpx.HTTPError as error:
             message = str(error) or error.__class__.__name__
@@ -214,7 +215,7 @@ class OllamaClient:
         except (KeyError, IndexError, TypeError, ValueError) as error:
             raise RuntimeError("Ollama cloud OCR response không đúng định dạng choices[0].message.content") from error
         text = _strip_text_fences(content)
-        log_ocr_summary("ollama_cloud", text)
+        log_ocr_summary(self.provider_id, text)
         return text
 
     async def reason_about_problem(self, problem_text: str, grade: int | None = None, system_prompt: str | None = None) -> dict:
@@ -246,11 +247,11 @@ class OllamaClient:
             from app.services.http_pool import TIMEOUT_REASONING, get_client
 
             started_at = time.perf_counter()
-            log_provider_request("ollama", "reasoning", url, payload["model"], problem_chars=len(problem_text), input_chars=chat_message_input_chars(payload.get("messages")))
+            log_provider_request(self.provider_id, "reasoning", url, payload["model"], problem_chars=len(problem_text), input_chars=chat_message_input_chars(payload.get("messages")))
             client = get_client(base_url, TIMEOUT_REASONING)
             response = await client.post(url, headers=headers, json=payload, timeout=TIMEOUT_REASONING)
             elapsed_ms = int((time.perf_counter() - started_at) * 1000)
-            log_provider_response("ollama", "reasoning", response.status_code, elapsed_ms, len(response.text))
+            log_provider_response(self.provider_id, "reasoning", response.status_code, elapsed_ms, len(response.text))
             response.raise_for_status()
         except httpx.HTTPError as error:
             message = str(error) or error.__class__.__name__
@@ -286,11 +287,11 @@ class OllamaClient:
             from app.services.http_pool import TIMEOUT_REASONING, get_client
 
             started_at = time.perf_counter()
-            log_provider_request("ollama_cloud", "reasoning", url, payload["model"], problem_chars=len(problem_text), input_chars=chat_message_input_chars(payload.get("messages")))
+            log_provider_request(self.provider_id, "reasoning", url, payload["model"], problem_chars=len(problem_text), input_chars=chat_message_input_chars(payload.get("messages")))
             client = get_client(base_url, TIMEOUT_REASONING)
             response = await client.post(url, headers=headers, json=payload, timeout=TIMEOUT_REASONING)
             elapsed_ms = int((time.perf_counter() - started_at) * 1000)
-            log_provider_response("ollama_cloud", "reasoning", response.status_code, elapsed_ms, len(response.text))
+            log_provider_response(self.provider_id, "reasoning", response.status_code, elapsed_ms, len(response.text))
             response.raise_for_status()
         except httpx.HTTPError as error:
             message = str(error) or error.__class__.__name__

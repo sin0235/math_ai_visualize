@@ -37,7 +37,7 @@ def text_provider_order(settings: Settings, preferred_provider: str | None = Non
     openrouter = ["openrouter"] if provider_configured(settings.openrouter_api_key) else []
     nvidia = ["nvidia"] if provider_configured(settings.nvidia_api_key) else []
     custom = ["openai_compat"] if provider_configured(settings.openai_compat_api_key) and settings.openai_compat_text_model else []
-    ollama = ["ollama_gpt_oss"]
+    ollama = ["ollama"]
 
     if provider == "router9":
         return dedupe([*router9, *openrouter, *nvidia, *custom, *ollama])
@@ -47,7 +47,7 @@ def text_provider_order(settings: Settings, preferred_provider: str | None = Non
         return dedupe([*nvidia, *router9, *openrouter, *custom, *ollama])
     if provider == "openai_compat":
         return dedupe([*custom, *router9, *openrouter, *nvidia, *ollama])
-    if provider == "ollama_gpt_oss":
+    if provider == "ollama":
         return dedupe([*ollama, *router9, *openrouter, *nvidia, *custom])
     return dedupe([*router9, *nvidia, *openrouter, *custom, *ollama])
 
@@ -68,7 +68,7 @@ def text_model_candidates(provider: str, settings: Settings, explicit_model: str
         return [explicit_model or settings.nvidia_text_model]
     if provider == "openai_compat":
         return [explicit_model or settings.openai_compat_text_model or None]
-    if provider == "ollama_gpt_oss":
+    if provider == "ollama":
         return [explicit_model or settings.ollama_text_model]
     return [explicit_model]
 
