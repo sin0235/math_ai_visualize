@@ -104,6 +104,11 @@ def normalize_solver_question(question: str) -> str:
         flags=re.IGNORECASE,
     )
 
+    # Protect congruence phrase before stripping standalone "bằng" connectors
+    # ("bằng nhau" must survive for triangle_congruence goal detection).
+    _BANG_NHAU = "\u0000BANG_NHAU\u0000"
+    normalized = re.sub(r"\b(?:bang|bằng)\s+nhau\b", _BANG_NHAU, normalized, flags=re.IGNORECASE)
+
     # Strip light connecting words only when not already in d(...) form
     if not re.search(r"\bd\s*\(", normalized, flags=re.IGNORECASE):
         normalized = re.sub(
@@ -112,6 +117,7 @@ def normalize_solver_question(question: str) -> str:
             normalized,
             flags=re.IGNORECASE,
         )
+    normalized = normalized.replace(_BANG_NHAU, "bằng nhau")
 
     normalized = re.sub(
         r"\b(?:mp|mat\s+phang|mặt\s+phẳng)\s+([A-Za-z](?:\s*[A-Za-z0-9']\s*){2,})",
