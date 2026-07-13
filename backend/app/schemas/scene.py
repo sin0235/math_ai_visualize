@@ -528,11 +528,29 @@ class OcrUploadResponse(BaseModel):
     public_url: str | None = None
 
 
+class OcrLineResponse(BaseModel):
+    text: str
+    confidence: float = Field(ge=0.0, le=1.0)
+    bbox: tuple[int, int, int, int] | None = None
+
+
+class OcrFormulaCandidateResponse(BaseModel):
+    latex: str
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    bbox: tuple[int, int, int, int] | None = None
+    source: str = "formula_ocr"
+
+
 class OcrResponse(BaseModel):
     text: str
     provider: OcrProvider
     model: str
     warnings: list[str] = Field(default_factory=list)
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    raw_text: str | None = None
+    normalized_text: str | None = None
+    lines: list[OcrLineResponse] = Field(default_factory=list)
+    formula_candidates: list[OcrFormulaCandidateResponse] = Field(default_factory=list)
 
 
 class DiagramOcrRequest(BaseModel):
@@ -545,15 +563,6 @@ class DiagramOcrResponse(BaseModel):
     description: str
     provider: str
     model: str
-
-
-class ProblemVariantsRequest(BaseModel):
-    scene: MathScene
-    response: RenderResponse | None = None
-    count: int = Field(default=3, ge=1, le=10)
-    original_problem: str | None = Field(default=None, max_length=MAX_PROBLEM_TEXT_CHARS)
-    preferred_ai_model: str | None = Field(default=None, max_length=MAX_MODEL_ID_CHARS)
-    runtime_settings: RuntimeSettings | None = None
 
 
 class ProblemVariantsResponse(BaseModel):
@@ -678,13 +687,6 @@ class ExportViewCapture(BaseModel):
         return self
 
 
-class SceneRenderRequest(BaseModel):
-    scene: MathScene
-    advanced_settings: AdvancedRenderSettings = Field(default_factory=AdvancedRenderSettings)
-    response: RenderResponse | None = None
-    view_capture: ExportViewCapture | None = None
-
-
 class RenderPayload(BaseModel):
     renderer: Renderer
     geogebra_commands: list[str] = Field(default_factory=list)
@@ -722,8 +724,20 @@ class RenderResponse(BaseModel):
         return self
 
 
-SceneRenderRequest.model_rebuild()
-ProblemVariantsRequest.model_rebuild()
+class ProblemVariantsRequest(BaseModel):
+    scene: MathScene
+    response: RenderResponse | None = None
+    count: int = Field(default=3, ge=1, le=10)
+    original_problem: str | None = Field(default=None, max_length=MAX_PROBLEM_TEXT_CHARS)
+    preferred_ai_model: str | None = Field(default=None, max_length=MAX_MODEL_ID_CHARS)
+    runtime_settings: RuntimeSettings | None = None
+
+
+class SceneRenderRequest(BaseModel):
+    scene: MathScene
+    advanced_settings: AdvancedRenderSettings = Field(default_factory=AdvancedRenderSettings)
+    response: RenderResponse | None = None
+    view_capture: ExportViewCapture | None = None
 
 
 class RenderJobCreateResponse(BaseModel):

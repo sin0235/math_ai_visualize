@@ -5,6 +5,7 @@ from typing import Any
 
 import sympy as sp
 
+from app.math_curriculum import CAPABILITY_REGISTRY_VERSION
 from app.services.safe_math_parser import safe_math_parser_registry
 
 
@@ -28,6 +29,7 @@ def analyzer_capability_registry() -> dict[str, Any]:
     parser = safe_math_parser_registry()
     return {
         "version": REGISTRY_VERSION,
+        "math_registry_version": CAPABILITY_REGISTRY_VERSION,
         "parser": parser,
         "derivative": {
             "supported": True,

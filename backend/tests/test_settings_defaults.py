@@ -1,9 +1,10 @@
 import json
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.routes_settings import LoadedAiSettings
+from app.api.routes_settings import LoadedAiSettings, router as settings_router
 from app.core.config import Settings, get_settings
 from app.db.migrations import apply_sqlite_migrations
 from app.db.session import SQLiteClient, get_database
@@ -34,41 +35,26 @@ def settings_defaults_client(tmp_path):
     async def override_db():
         return db
 
-    async def noop_startup(*args, **kwargs):
-        return None
-
-    app.dependency_overrides[get_database] = override_db
-    app.dependency_overrides[get_settings] = lambda: settings
+    test_app = FastAPI()
+    test_app.include_router(settings_router)
+    test_app.dependency_overrides[get_database] = override_db
+    test_app.dependency_overrides[get_settings] = lambda: settings
     import app.api.routes_settings as routes_settings
-    import app.main as main
     import app.services.model_registry as model_registry
 
     original_routes_get_settings = routes_settings.get_settings
-    original_main_get_settings = main.get_settings
-    original_main_create_database_client = main.create_database_client
-    original_main_apply_migrations = main.apply_migrations
-    original_main_bootstrap_router9_models = main.bootstrap_router9_models
     original_registry_get_settings = model_registry.get_settings
     routes_settings.get_settings = lambda: settings
-    main.get_settings = lambda: settings
-    main.create_database_client = lambda current_settings: db
-    main.apply_migrations = noop_startup
-    main.bootstrap_router9_models = noop_startup
     model_registry.get_settings = lambda: settings
     try:
-        with TestClient(app) as test_client:
+        with TestClient(test_app) as test_client:
             test_client.portal.call(apply_sqlite_migrations, db)
             test_client.db = db
             yield test_client
             test_client.portal.call(db.close)
     finally:
         routes_settings.get_settings = original_routes_get_settings
-        main.get_settings = original_main_get_settings
-        main.create_database_client = original_main_create_database_client
-        main.apply_migrations = original_main_apply_migrations
-        main.bootstrap_router9_models = original_main_bootstrap_router9_models
         model_registry.get_settings = original_registry_get_settings
-        app.dependency_overrides.clear()
 
 
 
@@ -125,16 +111,15 @@ def test_settings_defaults_route_hides_api_keys(monkeypatch):
     async def fake_database():
         return None
 
-    app.dependency_overrides[get_database] = fake_database
+    test_app = FastAPI()
+    test_app.include_router(settings_router)
+    test_app.dependency_overrides[get_database] = fake_database
     monkeypatch.setattr("app.api.routes_settings.load_system_ai_settings", fake_load_system_ai_settings)
     monkeypatch.setattr("app.api.routes_settings.load_model_registry", fake_load_model_registry)
     monkeypatch.setattr("app.api.routes_settings.load_feature_flags", fake_load_feature_flags)
 
-    try:
-        with TestClient(app) as client:
-            response = client.get("/api/settings/defaults")
-    finally:
-        app.dependency_overrides.clear()
+    with TestClient(test_app) as client:
+        response = client.get("/api/settings/defaults")
 
     assert response.status_code == 200
     payload = response.json()

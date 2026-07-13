@@ -22,7 +22,9 @@ from app.api.routes_feedback import router as feedback_router
 from app.api.routes_function_analysis import router as function_analysis_router
 from app.api.routes_health import router as health_router
 from app.api.routes_history import router as history_router
+from app.api.routes_math_capabilities import router as math_capabilities_router
 from app.api.routes_ocr import router as ocr_router
+from app.api.routes_nlp import router as nlp_router
 from app.api.routes_render import router as render_router
 from app.api.routes_settings import router as settings_router
 from app.api.routes_solve import router as solve_router
@@ -298,6 +300,8 @@ app.include_router(auth_router)
 app.include_router(chat_router)
 app.include_router(health_router)
 app.include_router(history_router)
+app.include_router(math_capabilities_router)
+app.include_router(nlp_router)
 app.include_router(ocr_router)
 app.include_router(render_router)
 app.include_router(export_router)

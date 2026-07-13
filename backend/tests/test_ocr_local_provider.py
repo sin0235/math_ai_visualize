@@ -2,7 +2,7 @@ import pytest
 
 from app.core.config import Settings
 from app.services.ocr import extract_text_from_image
-from app.services.ocr_pipeline.types import LocalOcrResult
+from app.services.ocr_pipeline.types import LocalOcrResult, OcrFormulaCandidate, OcrTextLine
 
 _IMAGE_DATA_URL = "data:image/png;base64,aGVsbG8="
 
@@ -10,7 +10,15 @@ _IMAGE_DATA_URL = "data:image/png;base64,aGVsbG8="
 @pytest.mark.anyio
 async def test_local_ocr_provider_returns_local_result(monkeypatch):
     async def fake_local(*args, **kwargs):
-        return LocalOcrResult(text="Cho hàm số $$x^2+1$$", model="paddleocr+pix2tex", confidence=0.92)
+        return LocalOcrResult(
+            text="Cho hàm số $$x^2+1$$",
+            model="paddleocr+pix2tex",
+            confidence=0.92,
+            raw_text="Cho hàm số x²+1",
+            normalized_text="Cho hàm số x^2+1",
+            lines=[OcrTextLine("Cho hàm số x²+1", 0.92, (10, 20, 200, 50))],
+            formula_candidates=[OcrFormulaCandidate("x^2+1")],
+        )
 
     monkeypatch.setattr("app.services.ocr._run_local_ocr", fake_local)
 
@@ -19,6 +27,10 @@ async def test_local_ocr_provider_returns_local_result(monkeypatch):
     assert result.provider == "local"
     assert result.model == "paddleocr+pix2tex"
     assert "x^2" in result.text
+    assert result.raw_text == "Cho hàm số x²+1"
+    assert result.normalized_text == "Cho hàm số x^2+1"
+    assert result.lines == [OcrTextLine("Cho hàm số x²+1", 0.92, (10, 20, 200, 50))]
+    assert result.formula_candidates == [OcrFormulaCandidate("x^2+1")]
 
 
 @pytest.mark.anyio

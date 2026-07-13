@@ -3,6 +3,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, FiniteFloat, field_validator, model_validator
 
+from app.schemas.math_solution import Solution
 from app.schemas.scene import MAX_IMAGE_DATA_URL_CHARS, RuntimeSettings
 
 
@@ -397,6 +398,7 @@ class AnalyzerCapabilityExample(StrictModel):
 
 class AnalyzerCapabilityRegistry(StrictModel):
     version: str
+    math_registry_version: str
     parser: dict[str, Any]
     derivative: dict[str, Any]
     piecewise_conditions: dict[str, Any]
@@ -528,6 +530,7 @@ class AnalyzeResponse(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     error: str | None = None
     error_code: str | None = None
+    solution_ir: Solution | None = None
 
 
 class AnalyzerSessionResponse(AnalyzeResponse):

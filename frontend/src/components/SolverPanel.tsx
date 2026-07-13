@@ -1,14 +1,17 @@
 import { useMemo, useRef, useState } from 'react';
-import { solveProblem, type SolveResponse, type SolveStep } from '../api/client';
+import { solveProblem, type ConstructionAction, type SolveResponse, type SolveStep } from '../api/client';
+import type { InterpretationCandidate, InterpretationResponse } from '../api/nlp';
+import { InterpretationPanel, useInterpretationPreflight } from './nlp/InterpretationPanel';
 import { committedSceneRefV3, downstreamGateMessageV3 } from '../hooks/sceneWorkspaceV3State';
 import type { RuntimeSettings } from '../types/settings';
 import type { MathSceneV3, SceneWorkspaceResponseV3 } from '../types/sceneV3';
 import { KatexSpan, normalizeLatexForKatex, sympyToLatex } from './KatexSpan';
+import { MathInputComposer, type MathInputMode } from './math-input/MathInputComposer';
 
 interface SolverPanelProps {
   workspace: SceneWorkspaceResponseV3;
   runtimeSettings?: RuntimeSettings;
-  onHighlight: (names: string[]) => void;
+  onHighlight: (objectIds: string[], constructionActions?: ConstructionAction[]) => void;
 }
 
 function normalizeSolverLatex(input?: string | null): string {
@@ -155,26 +158,61 @@ function buildExamples(scene: MathSceneV3) {
   return Array.from(new Set(examples));
 }
 
+function resolveStepObjectIds(scene: MathSceneV3, step: SolveStep): string[] {
+  if (step.highlight_object_ids?.length) return step.highlight_object_ids;
+  const labels = new Set(step.highlight);
+  return scene.objects
+    .filter((object) => labels.has(object.label || object.id))
+    .map((object) => object.id);
+}
+
 export function SolverPanel({ workspace, runtimeSettings, onHighlight }: SolverPanelProps) {
   const scene = workspace.scene;
   const [question, setQuestion] = useState('');
+  const [inputMode, setInputMode] = useState<MathInputMode>('natural');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<SolveResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [geometryMethod, setGeometryMethod] = useState<'oxyz' | 'classical'>('oxyz');
   const [activeStep, setActiveStep] = useState<number | null>(null);
-  const [formulaHelpOpen, setFormulaHelpOpen] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const preflight = useInterpretationPreflight();
   const cacheRef = useRef<Map<string, SolveResponse>>(new Map());
   const sceneCacheKey = useMemo(() => JSON.stringify(scene), [scene]);
-  const normalizedQuestion = normalizeSolverQuestionInput(question);
-  const showNormalizedQuestion = Boolean(question.trim()) && normalizedQuestion !== question.trim();
   const gateMessage = downstreamGateMessageV3(workspace, 'giải bài');
 
-  async function handleSolve() {
-    const trimmedQuestion = normalizedQuestion;
+  async function requestSolve() {
+    const trimmedQuestion = question.trim();
+    if (!trimmedQuestion || gateMessage || loading) return;
+    setError(null);
+    const accepted = await preflight.check({
+      text: trimmedQuestion,
+      target: 'geometry_solve',
+      input_mode: inputMode,
+      input_format: inputMode === 'math' ? 'plain' : 'auto',
+      context: {
+        scene_id: scene.scene_id,
+        scene_topic: scene.topic,
+        method: geometryMethod,
+        scene_objects: scene.objects.map((object) => ({
+          id: object.id,
+          label: object.label,
+          type: object.type,
+          ...('point_ids' in object ? { point_ids: object.point_ids } : {}),
+          ...('from_point_id' in object ? { from_point_id: object.from_point_id, to_point_id: object.to_point_id } : {}),
+        })),
+      },
+    });
+    if (accepted) await handleSolve(accepted);
+  }
+
+  async function handleSolve(confirmed: { candidate: InterpretationCandidate; response: InterpretationResponse }) {
+    const payloadQuestion = confirmed.candidate.canonical_payload?.question;
+    const trimmedQuestion = typeof payloadQuestion === 'string'
+      ? payloadQuestion.trim()
+      : confirmed.candidate.canonical_text?.trim() || confirmed.response.normalized_text.trim();
     if (!trimmedQuestion || gateMessage) return;
     const cacheKey = `${sceneCacheKey}\n${geometryMethod}\n${trimmedQuestion}`;
+    preflight.reset();
     setLoading(true);
     setError(null);
     setResult(null);
@@ -207,7 +245,7 @@ export function SolverPanel({ workspace, runtimeSettings, onHighlight }: SolverP
       onHighlight([]);
     } else {
       setActiveStep(step.index);
-      onHighlight(step.highlight);
+      onHighlight(resolveStepObjectIds(scene, step), step.construction_actions ?? []);
     }
   }
 
@@ -243,67 +281,39 @@ export function SolverPanel({ workspace, runtimeSettings, onHighlight }: SolverP
 
       {gateMessage && <div className="sp-warning" role="note">{gateMessage}</div>}
 
-      {/* Input */}
-      <div className="sp-input-wrap">
-        <input
-          ref={inputRef}
-          id="solver-question-input"
-          className="sp-input"
-          type="text"
-          placeholder="Nhập câu hỏi, ví dụ: d(A,(BCD))"
+      <div className="sp-composer-wrap">
+        <MathInputComposer
           value={question}
-          onChange={(e) => setQuestion(e.target.value)}
-          onFocus={() => setFormulaHelpOpen(true)}
-          onClick={() => setFormulaHelpOpen(true)}
-          onKeyDown={(e) => { if (e.key === 'Enter') void handleSolve(); }}
-          disabled={loading}
-          autoComplete="off"
+          mode={inputMode}
+          onChange={(value) => { setQuestion(value); preflight.reset(); }}
+          onModeChange={(mode) => { setInputMode(mode); preflight.reset(); }}
+          keyboard="geometry"
+          mathOutputFormat="ascii-math"
+          disabled={loading || preflight.state.phase === 'loading'}
+          label="Câu hỏi hình học"
+          naturalPlaceholder="Ví dụ: Tính khoảng cách từ A đến mặt phẳng (BCD)"
+          onSubmit={() => void requestSolve()}
         />
         <button
           id="solver-submit-btn"
           type="button"
-          className="sp-btn-primary"
-          onClick={() => void handleSolve()}
-          disabled={loading || Boolean(gateMessage) || !question.trim()}
-          aria-label="Giải toán"
+          className="sp-btn-primary sp-composer-submit"
+          onClick={() => void requestSolve()}
+          disabled={loading || preflight.state.phase === 'loading' || Boolean(gateMessage) || !question.trim()}
         >
-          {loading
-            ? <span className="sp-spinner" aria-hidden="true" />
-            : <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg>
-          }
+          {loading ? <span className="sp-spinner" aria-hidden="true" /> : null}
+          {loading ? 'Đang giải…' : 'Giải bài'}
         </button>
       </div>
 
-      {showNormalizedQuestion && (
-        <div className="sp-normalized-hint">Sẽ hiểu là: <code>{normalizedQuestion}</code></div>
-      )}
+      <div className="sp-input-help">Hỗ trợ câu viết tự nhiên hoặc công thức: d(A,B), d(A,(BCD)), S(ABC), V(S.ABCD).</div>
 
-      <div className="sp-input-help">Ví dụ: d(A,B), d(A,BC), d(A,(BCD)), góc giữa AB và CD, S(ABC), V(S.ABCD)</div>
-
-      {formulaHelpOpen && (
-        <div className="sp-formula-help">
-          <div className="sp-formula-help-head">
-            <strong>Công thức mẫu</strong>
-            <button type="button" onClick={() => setFormulaHelpOpen(false)} aria-label="Đóng công thức mẫu">×</button>
-          </div>
-          <div className="sp-formula-grid">
-            {[
-              ['Khoảng cách điểm-điểm', 'd(A,B)'],
-              ['Khoảng cách điểm-đường', 'd(A,BC)'],
-              ['Khoảng cách điểm-mặt', 'd(A,(BCD))'],
-              ['Góc hai đường', 'góc giữa AB và CD'],
-              ['Diện tích đa giác', 'S(ABC)'],
-              ['Thể tích chóp', 'V(S.ABCD)'],
-              ['Thể tích lăng trụ', "V(A'B'C'D'.ABCD)"],
-            ].map(([label, sample]) => (
-              <button key={sample} type="button" onClick={() => { setQuestion(sample); inputRef.current?.focus(); }}>
-                <span>{label}</span>
-                <code>{sample}</code>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+      <InterpretationPanel
+        controller={preflight}
+        title="Cách hệ thống hiểu câu hỏi hình học"
+        confirmLabel="Xác nhận và giải"
+        onConfirm={(confirmed) => handleSolve(confirmed)}
+      />
 
       {/* Error */}
       {error && (
@@ -357,6 +367,7 @@ export function SolverPanel({ workspace, runtimeSettings, onHighlight }: SolverP
 function SolverTrustPanel({ result }: { result: SolveResponse }) {
   const confidence = result.confidence ?? 'verified';
   const usedFacts = result.used_facts ?? [];
+  const usedTheorems = result.used_theorems ?? [];
   const dataIssues = result.data_issues ?? [];
   const methodLabel = result.method === 'classical' ? 'Tương quan hình học' : 'Tọa độ hóa';
   return (
@@ -375,6 +386,14 @@ function SolverTrustPanel({ result }: { result: SolveResponse }) {
                 <p>{fact.text}</p>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+      {usedTheorems.length > 0 && (
+        <div className="sp-trust-section">
+          <div className="sp-trust-title">Định lý đã dùng</div>
+          <div className="sp-trust-issues">
+            {usedTheorems.map((item, index) => <p key={`${item.name}-${index}`}>{item.name}</p>)}
           </div>
         </div>
       )}
@@ -448,10 +467,12 @@ function SolverStepItem({
           )}
         </div>
         {explanationText && <p className="sp-step-text">{explanationText}</p>}
-        {(step.claim || step.theorem) && (
+        {(step.claim || step.theorem || step.depends_on?.length || step.relation_ids?.length) && (
           <div className="sp-step-proof-note">
             {step.claim && <p><strong>Luận điểm:</strong> {step.claim}</p>}
-            {step.theorem && <p><strong>Định lý dùng:</strong> {step.theorem}</p>}
+            {step.theorem && <p><strong>Định lý dùng:</strong> {step.theorem}{step.theorem_id ? ` (${step.theorem_id})` : ''}</p>}
+            {step.depends_on && step.depends_on.length > 0 && <p><strong>Phụ thuộc:</strong> {step.depends_on.join(', ')}</p>}
+            {step.relation_ids && step.relation_ids.length > 0 && <p><strong>Quan hệ nguồn:</strong> {step.relation_ids.join(', ')}</p>}
           </div>
         )}
         {showFormula && (

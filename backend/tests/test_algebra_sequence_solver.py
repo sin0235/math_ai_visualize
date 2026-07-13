@@ -35,11 +35,14 @@ def test_sequence_solver_calculates_geometric_sum():
 
 
 def test_sequence_solver_solves_natural_language_geometric_sum():
-    result = solve_algebra(AlgebraSolveRequest(input="dãy 3,6,12,... tính S5"))
+    request = AlgebraSolveRequest(input="dãy 3,6,12,... tính S5")
+    result = solve_algebra(request)
 
     assert result.status == "solved"
     assert result.solution_set.text == "93"
     assert result.steps[0].after_latex == r"S_{5}=\frac{3\left((2)^5-1\right)}{2-1}"
+    assert result.input_interpretation is not None
+    assert result.input_interpretation.variables == []
 
 
 def test_sequence_solver_rejects_fractional_n():

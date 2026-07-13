@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse, Response
 from app.api.deps import enforce_rate_limit, get_current_user, require_trusted_origin
 from app.api.routes_render import enforce_render_access
 from app.core.config import Settings, get_settings
+from app.core.logging import get_request_id
 from app.db.models import UserRecord
 from app.db.session import DatabaseClient, get_database
 from app.repositories.admin import AdminRepository
@@ -22,6 +23,7 @@ from app.schemas.algebra import (
     AlgebraSolveRequest,
     AlgebraSolveResponse,
 )
+from app.schemas.nlp import InputEnvelope
 from app.services.ai_resolution import resolve_byok_ai_config, settings_with_byok_connection
 from app.services.algebra import solve_algebra_with_optional_ai
 from app.services.algebra.circuit_breaker import algebra_circuit_breaker
@@ -29,6 +31,8 @@ from app.services.algebra.cost import algebra_request_cost, cost_exceeds_limit
 from app.services.algebra.load_gate import algebra_load_gate
 from app.services.algebra.pdf_export import build_algebra_pdf
 from app.services.api_errors import api_error
+from app.services.math_solution_projectors import project_algebra_solution
+from app.services.nlp_rollout import evaluate_configured_nlp_rollout, log_nlp_taxonomy
 from app.services.user_ai_settings import UserAiSettingsError
 
 router = APIRouter(prefix="/api/algebra", tags=["algebra"])
@@ -54,6 +58,22 @@ async def solve_algebra_endpoint(
             "ALGEBRA_CIRCUIT_OPEN",
         )
 
+    user = await _active_user_from_request(http_request, db)
+    rollout = await evaluate_configured_nlp_rollout(
+        db,
+        InputEnvelope(
+            text=request.input,
+            target="algebra",
+            context={"topic": request.topic, "domain": request.domain, "variables": request.variables},
+        ),
+        user_id=user.id if user else None,
+        request_id=get_request_id(),
+        legacy_status="accepted",
+        legacy_canonical=request.input,
+    )
+    if rollout and rollout.can_apply and rollout.candidate:
+        request = _apply_algebra_canonical(request, rollout.candidate.canonical_payload)
+
     cost = algebra_request_cost(request)
     if cost_exceeds_limit(cost, settings.algebra_max_cost_per_request):
         raise api_error(
@@ -63,7 +83,6 @@ async def solve_algebra_endpoint(
         )
 
     uses_ai = request.options.use_ai_extraction or request.options.ai_explanation
-    user = await _active_user_from_request(http_request, db)
     await enforce_rate_limit(db, http_request, user, "algebra_solve", 60 if user else 20, 60, settings)
     daily = max(1, int(settings.algebra_daily_limit or 200))
     await enforce_rate_limit(db, http_request, user, "algebra_solve_daily", daily, _DAY, settings)
@@ -116,6 +135,7 @@ async def solve_algebra_endpoint(
             raise api_error(500, "Lỗi nội bộ khi giải bài đại số.", "ALGEBRA_INTERNAL_ERROR") from error
 
         response.cost_score = cost
+        response.solution_ir = project_algebra_solution(request, response)
         if response.problem_type == "timeout" or any("ALGEBRA_TIMEOUT" in item for item in response.errors):
             algebra_circuit_breaker.record_timeout()
             if user is not None:
@@ -136,6 +156,25 @@ async def solve_algebra_endpoint(
                 "Miền R đang là mặc định; đổi sang C nếu bài số phức.",
                 *response.warnings,
             ]
+        response.solution_ir = project_algebra_solution(request, response)
+        if response.status == "unsupported":
+            await log_nlp_taxonomy(
+                db,
+                user_id=user.id if user else None,
+                taxonomy_code="solver_unsupported",
+                target="algebra",
+                status=response.status,
+                request_id=response.request_id,
+            )
+        if response.realization_status == "fallback":
+            await log_nlp_taxonomy(
+                db,
+                user_id=user.id if user else None,
+                taxonomy_code="explainer_fallback",
+                target="algebra",
+                status=response.status,
+                request_id=response.request_id,
+            )
 
         if user is not None:
             from app.repositories.activity import try_log_user_activity
@@ -307,6 +346,14 @@ async def delete_algebra_history(
     return {"ok": True}
 
 
+def _apply_algebra_canonical(request: AlgebraSolveRequest, payload: dict | None) -> AlgebraSolveRequest:
+    if not payload:
+        return request
+    allowed = {"input", "input_format", "topic", "variables", "domain"}
+    updates = {key: value for key, value in payload.items() if key in allowed}
+    return AlgebraSolveRequest.model_validate({**request.model_dump(mode="python"), **updates})
+
+
 def _history_item(row: dict) -> AlgebraHistoryItem:
     return AlgebraHistoryItem(
         id=str(row["id"]),
@@ -323,7 +370,7 @@ def _history_item(row: dict) -> AlgebraHistoryItem:
 
 
 def _timeout_payload(request: AlgebraSolveRequest, message: str, cost: int) -> dict:
-    return AlgebraSolveResponse(
+    response = AlgebraSolveResponse(
         input=request.input,
         normalized_input=request.input,
         topic=str(request.topic),
@@ -333,7 +380,9 @@ def _timeout_payload(request: AlgebraSolveRequest, message: str, cost: int) -> d
         errors=[f"ALGEBRA_TIMEOUT: {message}"],
         warnings=["Timeout; worker process có thể đã bị terminate khi isolation bật."],
         cost_score=cost,
-    ).model_dump(mode="json")
+    )
+    response.solution_ir = project_algebra_solution(request, response)
+    return response.model_dump(mode="json")
 
 
 async def _active_user_from_request(request: Request, db: DatabaseClient) -> UserRecord | None:

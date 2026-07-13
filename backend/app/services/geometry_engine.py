@@ -639,6 +639,33 @@ def calculate_plane_plane_angle(points: dict[str, Vec3], plane_1_points: list[st
     )
 
 
+def calculate_polygon_perimeter(points: dict[str, Vec3], polygon_points: list[str]) -> dict[str, Any]:
+    label = "".join(polygon_points)
+    result = _calculation_result("perimeter_polygon", f"P({label})", polygon_points)
+    missing = _missing_points(points, polygon_points)
+    if missing:
+        return _with_warning(result, f"Điểm {', '.join(missing)} không có trong scene.")
+    if len(polygon_points) < 3:
+        return _with_warning(result, "Cần ít nhất 3 điểm để tính chu vi.")
+
+    edges = list(zip(polygon_points, [*polygon_points[1:], polygon_points[0]]))
+    lengths = [_distance(points[start], points[end]) for start, end in edges]
+    if any(length <= EPS for length in lengths):
+        return _with_warning(result, "Đa giác có cạnh suy biến nên không tính được chu vi.")
+    result["parts"] = [_fmt(length) for length in lengths]
+    completed = _complete_result(
+        result,
+        sum(lengths),
+        f"P({label})=" + "+".join(f"{start}{end}" for start, end in edges),
+        " + ".join(_fmt(length) for length in lengths),
+        "length",
+    )
+    exact_terms = [_exact_distance_expression(_sub(points[end], points[start])) for start, end in edges]
+    if all(term is not None for term in exact_terms):
+        completed["result_latex"] = sp.latex(sp.simplify(sum(exact_terms, sp.Integer(0))))
+    return completed
+
+
 def calculate_polygon_area(points: dict[str, Vec3], polygon_points: list[str]) -> dict[str, Any]:
     label = "".join(polygon_points)
     result = _calculation_result("area_polygon", f"S({label})", polygon_points)
@@ -648,6 +675,12 @@ def calculate_polygon_area(points: dict[str, Vec3], polygon_points: list[str]) -
     resolved = [points[name] for name in polygon_points]
     if len(resolved) < 3:
         return _with_warning(result, "Cần ít nhất 3 điểm để tính diện tích.")
+    plane_data = _plane_data_from_names(points, polygon_points[:3])
+    if plane_data is None:
+        return _with_warning(result, "Đa giác suy biến nên không tính được diện tích.")
+    plane_point, normal = plane_data
+    if any(abs(_dot(normal, _sub(point, plane_point))) > DISPLAY_EPS for point in resolved[3:]):
+        return _with_warning(result, "Các đỉnh đa giác không đồng phẳng.")
     area = 0.0
     anchor = resolved[0]
     details: list[str] = []
@@ -656,6 +689,8 @@ def calculate_polygon_area(points: dict[str, Vec3], polygon_points: list[str]) -
         triangle_area = _norm(cross_value) / 2
         area += triangle_area
         details.append(_fmt(triangle_area))
+    if area <= EPS:
+        return _with_warning(result, "Đa giác suy biến nên không tính được diện tích.")
     result["parts"] = details
     completed = _complete_result(
         result,
@@ -1405,6 +1440,13 @@ def _fmt(value: float, digits: int = 4) -> str:
 
 def _exact_distance_latex(delta: Vec3) -> str | None:
     return _exact_norm_over_latex(delta, 1)
+
+
+def _exact_distance_expression(delta: Vec3) -> sp.Expr | None:
+    values = [float(component) for component in delta]
+    if not all(abs(value - round(value)) <= DISPLAY_EPS for value in values):
+        return None
+    return sp.sqrt(sum(int(round(value)) ** 2 for value in values))
 
 
 def _exact_norm_over_latex(vector: Vec3, divisor: int) -> str | None:

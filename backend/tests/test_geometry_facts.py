@@ -53,3 +53,97 @@ def test_classical_proof_returns_none_when_height_missing():
     proof = build_classical_proof({}, "d(S,(ABC))", "distance_point_plane", ["S", "A", "B", "C"], "d(S,(ABC)) = 3", "3")
 
     assert proof is None
+
+
+def test_classical_proof_uses_verified_perpendicular_lines_for_angle():
+    scene = {
+        "relations": [
+            {
+                "id": "ab-perp-ac",
+                "type": "perpendicular",
+                "object_1": "AB",
+                "object_2": "AC",
+                "source": "given",
+                "verification": {"status": "verified"},
+            }
+        ]
+    }
+
+    proof = build_classical_proof(scene, "Góc giữa AB và AC", "angle_line_line", ["A", "B", "C"], "90°", "90^\\circ")
+
+    assert proof is not None
+    assert proof.steps[1].claim == "Góc giữa AB và AC bằng 90°"
+    assert proof.used_theorems
+
+
+def test_classical_proof_derives_normal_section_for_plane_angle():
+    scene = {
+        "relations": [
+            {
+                "id": "sa-perp-base",
+                "type": "perpendicular",
+                "object_1": "SA",
+                "object_2": "plane(ABC)",
+                "source": "given",
+                "verification": {"status": "verified"},
+            },
+            {
+                "id": "ac-perp-ab",
+                "type": "perpendicular",
+                "object_1": "AC",
+                "object_2": "AB",
+                "source": "given",
+                "verification": {"status": "verified"},
+            },
+        ]
+    }
+
+    proof = build_classical_proof(scene, "Góc giữa (SAB) và (ABC)", "angle_plane_plane", ["S", "A", "B", "C"], "90°", "90^\\circ")
+
+    assert proof is not None
+    assert proof.steps[1].title == "Dựng góc phẳng nhị diện"
+    assert set(proof.steps[1].depends_on) == {"sa-perp-base", "ac-perp-ab"}
+
+
+def test_geometry_fact_graph_extracts_wave2_relations():
+    scene = {
+        "relations": [
+            {"id": "parallel", "type": "parallel", "object_1": "AB", "object_2": "CD", "source": "given"},
+            {"id": "collinear", "type": "collinear", "operand_names": ["A", "E", "B"], "source": "given"},
+            {"id": "coplanar", "type": "coplanar", "operand_names": ["A", "B", "C", "D"], "source": "given"},
+            {"id": "equal", "type": "equal_length", "object_1": "AB", "object_2": "AC", "source": "given"},
+        ],
+    }
+
+    graph = build_geometry_fact_graph(scene)
+
+    assert graph.by_type("parallel_lines")[0].args == {"first": ("A", "B"), "second": ("C", "D")}
+    assert graph.by_type("collinear")[0].args["points"] == ("A", "E", "B")
+    assert graph.by_type("coplanar")[0].args["points"] == ("A", "B", "C", "D")
+    assert graph.by_type("equal_length")[0].args == {"first": ("A", "B"), "second": ("A", "C")}
+
+
+def test_classical_proof_uses_verified_parallel_relation():
+    scene = {
+        "relations": [{
+            "id": "ab-parallel-cd",
+            "type": "parallel",
+            "object_1": "AB",
+            "object_2": "CD",
+            "source": "given",
+            "verification": {"status": "verified"},
+        }],
+    }
+
+    proof = build_classical_proof(
+        scene,
+        "Chứng minh AB song song CD",
+        "angle_line_line",
+        ["A", "B", "C", "D"],
+        "AB song song CD: ĐÚNG",
+        "0",
+    )
+
+    assert proof is not None
+    assert proof.steps[1].theorem_id == "relation.parallel.given"
+    assert proof.steps[1].depends_on == ["ab-parallel-cd"]

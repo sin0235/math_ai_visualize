@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.services.geometry_facts import GeometryFact, build_geometry_fact_graph, parse_plane_token, point_on_plane
+from app.services.geometry_theorems import theorem
 
 
 @dataclass(frozen=True)
@@ -17,6 +18,7 @@ class ClassicalProofStep:
     result_latex: str | None = None
     claim: str | None = None
     theorem: str | None = None
+    theorem_id: str | None = None
     depends_on: list[str] = field(default_factory=list)
 
 
@@ -35,13 +37,110 @@ def build_classical_proof(
     result_latex: str | None,
 ) -> ClassicalProof | None:
     graph = build_geometry_fact_graph(scene)
+    if kind == "intersection":
+        return _intersection_proof(graph, question, highlight, answer, result_latex)
+    if kind == "distance_point_line":
+        return _point_line_distance_proof(graph, highlight, answer, result_latex)
     if kind == "distance_point_plane":
         return _point_plane_distance_proof(graph, question, highlight, answer, result_latex)
+    if kind == "angle_line_line":
+        if re.search(r"song\s*song|parallel", question, re.IGNORECASE):
+            return _parallel_lines_proof(graph, question, highlight, answer, result_latex)
+        return _line_line_angle_proof(graph, question, highlight, answer, result_latex)
+    if kind == "proof_collinear":
+        return _incidence_proof(graph, "collinear", highlight, answer, result_latex)
+    if kind == "proof_coplanar":
+        return _incidence_proof(graph, "coplanar", highlight, answer, result_latex)
     if kind == "angle_line_plane":
         return _line_plane_angle_proof(graph, question, highlight, answer, result_latex)
+    if kind == "angle_plane_plane":
+        return _plane_plane_angle_proof(graph, question, highlight, answer, result_latex)
+    if kind == "area_polygon":
+        return _triangle_area_proof(graph, highlight, answer, result_latex)
     if kind == "volume_pyramid":
         return _pyramid_volume_proof(graph, highlight, answer, result_latex)
     return None
+
+
+def _intersection_proof(graph, question: str, highlight: list[str], answer: str, result_latex: str | None) -> ClassicalProof | None:
+    requested = {"".join(edge) for edge in _edge_refs(question)}
+    for fact in graph.by_type("intersection"):
+        objects = tuple(str(item) for item in fact.args.get("objects") or ())
+        point = str(fact.args.get("point") or "")
+        if len(objects) < 2 or (requested and not requested.issubset(set(objects))):
+            continue
+        spec = theorem("incidence.intersection.given")
+        active = list(dict.fromkeys([*highlight, point]))
+        setup = _setup_step(active, [fact], f"Xét {objects[0]} và {objects[1]}.")
+        method = ClassicalProofStep(
+            title="Xác định giao điểm",
+            explanation=f"Điểm {point} cùng thuộc {objects[0]} và {objects[1]}, nên {point} là giao điểm của hai đối tượng.",
+            highlight=active,
+            kind="intersection",
+            claim=f"{point} = {objects[0]} ∩ {objects[1]}",
+            theorem=spec.statement,
+            theorem_id=spec.theorem_id,
+            depends_on=[fact.id],
+        )
+        return ClassicalProof([setup, method, _conclusion(active, answer, result_latex, [fact.id])], [spec.statement])
+    return None
+
+
+def _point_line_distance_proof(graph, highlight: list[str], answer: str, result_latex: str | None) -> ClassicalProof | None:
+    if len(highlight) < 3:
+        return None
+    point = highlight[0]
+    target = tuple(highlight[1:3])
+    candidate: tuple[tuple[str, str], GeometryFact] | None = None
+    for fact in graph.by_type("perpendicular_lines"):
+        first = fact.args.get("first")
+        second = fact.args.get("second")
+        if not isinstance(first, tuple) or not isinstance(second, tuple):
+            continue
+        for height, line in ((first, second), (second, first)):
+            if point in height and set(line) == set(target) and set(height) & set(target):
+                candidate = height, fact
+                break
+        if candidate:
+            break
+    if candidate is None:
+        for fact in graph.by_type("perpendicular_line_plane"):
+            height = fact.args.get("line")
+            plane = set(fact.args.get("plane") or ())
+            if isinstance(height, tuple) and point in height and set(target).issubset(plane) and set(height) & set(target):
+                candidate = height, fact
+                break
+    if candidate is None:
+        return None
+    height, fact = candidate
+    foot = next(name for name in height if name != point)
+    segment = f"{point}{foot}"
+    line_name = "".join(target)
+    label = graph.length_label(point, foot)
+    theorem_text = theorem("distance.point_line.perpendicular_segment").statement
+    setup = _setup_step(highlight, [fact], f"Xét điểm {point} và đường thẳng {line_name}.")
+    method = ClassicalProofStep(
+        title="Nhận ra đoạn vuông góc",
+        explanation=f"Vì {segment} vuông góc với {line_name} tại {foot}, nên khoảng cách từ {point} đến {line_name} là độ dài {segment}.",
+        highlight=highlight,
+        kind="distance_point_line",
+        formula_latex=rf"{segment}\perp {line_name}\Rightarrow d({point},{line_name})={segment}",
+        claim=f"d({point},{line_name}) = {segment}",
+        theorem=theorem_text,
+        theorem_id="distance.point_line.perpendicular_segment",
+        depends_on=[fact.id],
+    )
+    conclusion_text = f"Mà {segment} = {label}, nên {answer}." if label else f"Suy ra {answer}."
+    conclusion = ClassicalProofStep(
+        title="Kết luận",
+        explanation=conclusion_text,
+        highlight=highlight,
+        kind="result",
+        result_latex=result_latex,
+        claim=answer,
+        depends_on=[fact.id],
+    )
+    return ClassicalProof([setup, method, conclusion], [theorem_text])
 
 
 def _point_plane_distance_proof(graph, question: str, highlight: list[str], answer: str, result_latex: str | None) -> ClassicalProof | None:
@@ -63,7 +162,8 @@ def _point_plane_distance_proof(graph, question: str, highlight: list[str], answ
         kind="distance_point_plane",
         formula_latex=rf"{segment}\perp({plane_name}),\ {foot}\in({plane_name})\Rightarrow d({point},({plane_name}))={segment}",
         claim=f"d({point},({plane_name})) = {segment}",
-        theorem="Khoảng cách từ điểm đến mặt phẳng là độ dài đoạn vuông góc kẻ từ điểm đó đến mặt phẳng.",
+        theorem=theorem("distance.point_plane.perpendicular_segment").statement,
+        theorem_id="distance.point_plane.perpendicular_segment",
         depends_on=[fact.id],
     )
     conclusion_text = f"Mà {segment} = {label}, nên d({point},({plane_name})) = {segment} = {result_latex or answer.split('=', 1)[-1].strip()}." if label else f"Suy ra {answer}."
@@ -77,6 +177,101 @@ def _point_plane_distance_proof(graph, question: str, highlight: list[str], answ
         depends_on=[fact.id],
     )
     return ClassicalProof([setup, method, conclusion], [method.theorem or ""])
+
+
+def _line_line_angle_proof(graph, question: str, highlight: list[str], answer: str, result_latex: str | None) -> ClassicalProof | None:
+    edges = _edge_refs(question)
+    if len(edges) < 2:
+        return None
+    first, second = edges[:2]
+    for fact in graph.by_type("perpendicular_lines"):
+        fact_first = fact.args.get("first")
+        fact_second = fact.args.get("second")
+        if not isinstance(fact_first, tuple) or not isinstance(fact_second, tuple):
+            continue
+        if {frozenset(fact_first), frozenset(fact_second)} != {frozenset(first), frozenset(second)}:
+            continue
+        first_name, second_name = "".join(first), "".join(second)
+        theorem_text = theorem("angle.line_line.perpendicular").statement
+        setup = _setup_step(highlight, [fact], f"Xét hai đường thẳng {first_name} và {second_name}.")
+        method = ClassicalProofStep(
+            title="Dùng quan hệ vuông góc",
+            explanation=f"Theo dữ kiện đã kiểm chứng, {first_name} vuông góc với {second_name}. Vì vậy góc giữa hai đường bằng 90°.",
+            highlight=highlight,
+            kind="angle_line_line",
+            formula_latex=rf"{first_name}\perp {second_name}\Rightarrow \widehat{{({first_name},{second_name})}}=90^\circ",
+            claim=f"Góc giữa {first_name} và {second_name} bằng 90°",
+            theorem=theorem_text,
+            theorem_id="angle.line_line.perpendicular",
+            depends_on=[fact.id],
+        )
+        return ClassicalProof(
+            [setup, method, _conclusion(highlight, answer, result_latex, [fact.id])],
+            [theorem_text],
+        )
+    return None
+
+
+def _parallel_lines_proof(graph, question: str, highlight: list[str], answer: str, result_latex: str | None) -> ClassicalProof | None:
+    edges = _edge_refs(question)
+    if len(edges) < 2:
+        return None
+    first, second = edges[:2]
+    for fact in graph.by_type("parallel_lines"):
+        fact_first = fact.args.get("first")
+        fact_second = fact.args.get("second")
+        if not isinstance(fact_first, tuple) or not isinstance(fact_second, tuple):
+            continue
+        if {frozenset(fact_first), frozenset(fact_second)} != {frozenset(first), frozenset(second)}:
+            continue
+        first_name, second_name = "".join(first), "".join(second)
+        spec = theorem("relation.parallel.given")
+        setup = _setup_step(highlight, [fact], f"Xét hai đường thẳng {first_name} và {second_name}.")
+        method = ClassicalProofStep(
+            title="Dùng quan hệ song song",
+            explanation=f"Quan hệ {first_name} song song {second_name} đã được kiểm chứng từ scene, nên có thể dùng trực tiếp để kết luận.",
+            highlight=highlight,
+            kind="parallel_lines",
+            formula_latex=rf"{first_name}\parallel {second_name}",
+            claim=f"{first_name} song song {second_name}",
+            theorem=spec.statement,
+            theorem_id=spec.theorem_id,
+            depends_on=[fact.id],
+        )
+        return ClassicalProof([setup, method, _conclusion(highlight, answer, result_latex, [fact.id])], [spec.statement])
+    return None
+
+
+def _incidence_proof(
+    graph,
+    fact_type: str,
+    highlight: list[str],
+    answer: str,
+    result_latex: str | None,
+) -> ClassicalProof | None:
+    target = set(highlight)
+    candidate_types = [fact_type, *( ["plane_points"] if fact_type == "coplanar" else [])]
+    for candidate_type in candidate_types:
+        for fact in graph.by_type(candidate_type):
+            points = set(fact.args.get("points") or fact.args.get("plane") or ())
+            if not target or not target.issubset(points):
+                continue
+            theorem_id = f"relation.{fact_type}.given"
+            spec = theorem(theorem_id)
+            relation_name = "thẳng hàng" if fact_type == "collinear" else "đồng phẳng"
+            setup = _setup_step(highlight, [fact], f"Xét các điểm {', '.join(highlight)}.")
+            method = ClassicalProofStep(
+                title=f"Kiểm tra quan hệ {relation_name}",
+                explanation=f"Dữ kiện đã kiểm chứng cho biết các điểm {', '.join(highlight)} {relation_name}.",
+                highlight=highlight,
+                kind=f"proof_{fact_type}",
+                claim=f"Các điểm {', '.join(highlight)} {relation_name}",
+                theorem=spec.statement,
+                theorem_id=spec.theorem_id,
+                depends_on=[fact.id],
+            )
+            return ClassicalProof([setup, method, _conclusion(highlight, answer, result_latex, [fact.id])], [spec.statement])
+    return None
 
 
 def _line_plane_angle_proof(graph, question: str, highlight: list[str], answer: str, result_latex: str | None) -> ClassicalProof | None:
@@ -97,7 +292,7 @@ def _line_plane_angle_proof(graph, question: str, highlight: list[str], answer: 
         if set(fact_plane) != set(plane_tuple) or not isinstance(segment, tuple):
             continue
         if set(segment) == set(line):
-            theorem = "Đường thẳng vuông góc với mặt phẳng thì góc giữa đường thẳng đó và mặt phẳng bằng 90°."
+            theorem_text = theorem("angle.line_plane.perpendicular").statement
             method = ClassicalProofStep(
                 title="Nhận ra đường vuông góc mặt phẳng",
                 explanation=f"Vì {line_name} vuông góc với mặt phẳng ({plane_name}), nên góc giữa {line_name} và ({plane_name}) bằng 90°.",
@@ -105,7 +300,8 @@ def _line_plane_angle_proof(graph, question: str, highlight: list[str], answer: 
                 kind="angle_line_plane",
                 formula_latex=rf"{line_name}\perp({plane_name})\Rightarrow \widehat{{({line_name},({plane_name}))}}=90^\circ",
                 claim=f"Góc giữa {line_name} và ({plane_name}) bằng 90°",
-                theorem=theorem,
+                theorem=theorem_text,
+                theorem_id="angle.line_plane.perpendicular",
                 depends_on=[fact.id],
             )
             conclusion = ClassicalProofStep(
@@ -117,14 +313,14 @@ def _line_plane_angle_proof(graph, question: str, highlight: list[str], answer: 
                 claim=answer,
                 depends_on=[fact.id],
             )
-            return ClassicalProof([setup, method, conclusion], [theorem])
+            return ClassicalProof([setup, method, conclusion], [theorem_text])
 
         projection = _projection_from_height(graph, line, plane_tuple, segment, fact)
         if projection:
             outside, foot, plane_point = projection
             projected_line = f"{foot}{plane_point}"
             angle_name = f"{outside}{plane_point}{foot}"
-            theorem = "Góc giữa đường thẳng và mặt phẳng là góc giữa đường thẳng đó và hình chiếu của nó trên mặt phẳng."
+            theorem_text = theorem("angle.line_plane.projection").statement
             method = ClassicalProofStep(
                 title="Dùng hình chiếu trên mặt phẳng",
                 explanation=f"Gọi {foot} là hình chiếu của {outside} lên ({plane_name}). Vì {plane_point} thuộc ({plane_name}), nên hình chiếu của {line_name} trên ({plane_name}) là {projected_line}. Do đó góc giữa {line_name} và ({plane_name}) là góc {angle_name}.",
@@ -132,10 +328,116 @@ def _line_plane_angle_proof(graph, question: str, highlight: list[str], answer: 
                 kind="angle_line_plane",
                 formula_latex=rf"\widehat{{({line_name},({plane_name}))}}=\widehat{{{angle_name}}}",
                 claim=f"Góc giữa {line_name} và ({plane_name}) là góc {angle_name}",
-                theorem=theorem,
+                theorem=theorem_text,
+                theorem_id="angle.line_plane.projection",
                 depends_on=[fact.id],
             )
-            return ClassicalProof([setup, method, _conclusion(highlight, answer, result_latex, [fact.id])], [theorem])
+            return ClassicalProof([setup, method, _conclusion(highlight, answer, result_latex, [fact.id])], [theorem_text])
+    return None
+
+
+def _plane_plane_angle_proof(graph, question: str, highlight: list[str], answer: str, result_latex: str | None) -> ClassicalProof | None:
+    planes = [tuple(plane) for raw in re.findall(r"\(([^()]+)\)", question) if (plane := parse_plane_token(f"({raw})"))]
+    if len(planes) < 2:
+        return None
+    first_plane, second_plane = planes[:2]
+    common = [point for point in first_plane if point in set(second_plane)]
+    if len(common) < 2:
+        return None
+    intersection = (common[0], common[1])
+    first = _line_perpendicular_to_intersection(graph, intersection, first_plane)
+    second = _line_perpendicular_to_intersection(graph, intersection, second_plane)
+    if first is None or second is None:
+        return None
+    first_line, first_fact = first
+    second_line, second_fact = second
+    shared_vertices = set(first_line) & set(second_line) & set(intersection)
+    if not shared_vertices:
+        return None
+    vertex = sorted(shared_vertices)[0]
+    first_other = first_line[1] if first_line[0] == vertex else first_line[0]
+    second_other = second_line[1] if second_line[0] == vertex else second_line[0]
+    first_name = "".join(first_plane)
+    second_name = "".join(second_plane)
+    intersection_name = "".join(intersection)
+    angle_name = f"{first_other}{vertex}{second_other}"
+    theorem_text = theorem("angle.plane_plane.normal_section").statement
+    facts = [first_fact, second_fact]
+    setup = _setup_step(highlight, facts, f"Hai mặt phẳng ({first_name}) và ({second_name}) cắt nhau theo {intersection_name}.")
+    method = ClassicalProofStep(
+        title="Dựng góc phẳng nhị diện",
+        explanation=f"Hai mặt phẳng cắt nhau theo {intersection_name}. Trong ({first_name}), {''.join(first_line)} vuông góc {intersection_name}; trong ({second_name}), {''.join(second_line)} vuông góc {intersection_name} tại {vertex}. Do đó góc giữa hai mặt phẳng là góc {angle_name}.",
+        highlight=highlight,
+        kind="angle_plane_plane",
+        formula_latex=rf"{''.join(first_line)}\perp {intersection_name},\ {''.join(second_line)}\perp {intersection_name}\Rightarrow \widehat{{(({first_name}),({second_name}))}}=\widehat{{{angle_name}}}",
+        claim=f"Góc giữa ({first_name}) và ({second_name}) là góc {angle_name}",
+        theorem=theorem_text,
+        theorem_id="angle.plane_plane.normal_section",
+        depends_on=[fact.id for fact in facts],
+    )
+    return ClassicalProof(
+        [setup, method, _conclusion(highlight, answer, result_latex, [fact.id for fact in facts])],
+        [theorem_text],
+    )
+
+
+def _line_perpendicular_to_intersection(graph, intersection: tuple[str, str], plane: tuple[str, ...]) -> tuple[tuple[str, str], GeometryFact] | None:
+    intersection_set = set(intersection)
+    plane_set = set(plane)
+    for fact in graph.by_type("perpendicular_lines"):
+        first = fact.args.get("first")
+        second = fact.args.get("second")
+        if not isinstance(first, tuple) or not isinstance(second, tuple):
+            continue
+        for candidate_intersection, candidate_line in ((first, second), (second, first)):
+            if set(candidate_intersection) == intersection_set and set(candidate_line).issubset(plane_set):
+                return candidate_line, fact
+    for fact in graph.by_type("perpendicular_line_plane"):
+        candidate_line = fact.args.get("line")
+        fact_plane = set(fact.args.get("plane") or ())
+        if not isinstance(candidate_line, tuple):
+            continue
+        if intersection_set.issubset(fact_plane) and set(candidate_line).issubset(plane_set) and set(candidate_line) & intersection_set:
+            return candidate_line, fact
+    return None
+
+
+def _triangle_area_proof(graph, highlight: list[str], answer: str, result_latex: str | None) -> ClassicalProof | None:
+    if len(highlight) != 3:
+        return None
+    triangle = set(highlight)
+    for fact in graph.by_type("perpendicular_lines"):
+        first = fact.args.get("first")
+        second = fact.args.get("second")
+        if not isinstance(first, tuple) or not isinstance(second, tuple):
+            continue
+        common = set(first) & set(second)
+        if len(common) != 1 or set(first) | set(second) != triangle:
+            continue
+        first_label = graph.length_label(*first)
+        second_label = graph.length_label(*second)
+        if first_label is None or second_label is None:
+            continue
+        triangle_name = "".join(highlight)
+        first_name, second_name = "".join(first), "".join(second)
+        theorem_text = theorem("area.triangle.perpendicular_sides").statement
+        setup_facts = [fact, *[item for item in graph.by_type("length") if item.args.get("points") in {first, second}]]
+        setup = _setup_step(highlight, setup_facts, f"Tam giác {triangle_name} có hai cạnh vuông góc.")
+        method = ClassicalProofStep(
+            title="Tính diện tích tam giác vuông",
+            explanation=f"Vì {first_name} vuông góc {second_name}, tam giác {triangle_name} vuông tại {next(iter(common))}. Dùng hai cạnh góc vuông {first_name} = {first_label} và {second_name} = {second_label}.",
+            highlight=highlight,
+            kind="area_polygon",
+            formula_latex=rf"S_{{{triangle_name}}}=\frac12\cdot {first_name}\cdot {second_name}",
+            claim=f"S({triangle_name}) = 1/2·{first_name}·{second_name}",
+            theorem=theorem_text,
+            theorem_id="area.triangle.perpendicular_sides",
+            depends_on=[item.id for item in setup_facts],
+        )
+        return ClassicalProof(
+            [setup, method, _conclusion(highlight, answer, result_latex, [item.id for item in setup_facts])],
+            [theorem_text],
+        )
     return None
 
 
@@ -150,7 +452,7 @@ def _pyramid_volume_proof(graph, highlight: list[str], answer: str, result_latex
     segment, foot, fact = height
     base_name = "".join(base)
     label = graph.length_label(apex, foot)
-    theorem = "Thể tích khối chóp bằng một phần ba diện tích đáy nhân với chiều cao."
+    theorem_text = theorem("volume.pyramid.base_height").statement
     setup = _setup_step(highlight, [fact], f"Xét khối chóp có đỉnh {apex}, đáy {base_name} và đường cao ứng viên {segment}.")
     method = ClassicalProofStep(
         title="Nhận ra đáy và chiều cao",
@@ -159,7 +461,8 @@ def _pyramid_volume_proof(graph, highlight: list[str], answer: str, result_latex
         kind="volume_pyramid",
         formula_latex=rf"V=\frac13 S_{{{base_name}}}\cdot {segment}",
         claim=f"{segment} là chiều cao của khối chóp",
-        theorem=theorem,
+        theorem=theorem_text,
+        theorem_id="volume.pyramid.base_height",
         depends_on=[fact.id],
     )
     if label:
@@ -167,7 +470,7 @@ def _pyramid_volume_proof(graph, highlight: list[str], answer: str, result_latex
     else:
         text = f"Với đáy {base_name} và chiều cao {segment}, áp dụng V = 1/3·S_đáy·h, suy ra {answer}."
     conclusion = ClassicalProofStep("Kết luận", text, highlight, "result", result_latex=result_latex, claim=answer, depends_on=[fact.id])
-    return ClassicalProof([setup, method, conclusion], [theorem])
+    return ClassicalProof([setup, method, conclusion], [theorem_text])
 
 
 def _setup_step(highlight: list[str], facts: list[GeometryFact], fallback: str) -> ClassicalProofStep:
@@ -205,6 +508,14 @@ def _projection_from_height(graph, line: tuple[str, str], plane: tuple[str, ...]
         if point_on_plane(graph, foot, plane) and point_on_plane(graph, plane_point, plane):
             return outside, foot, plane_point
     return None
+
+
+def _edge_refs(question: str) -> list[tuple[str, str]]:
+    point = r"[A-Z](?:[0-9]+|')?"
+    return [
+        (match.group(1), match.group(2))
+        for match in re.finditer(rf"\b({point})({point})\b", question)
+    ]
 
 
 def _first_plane_ref(question: str, highlight: list[str]) -> tuple[str, ...] | None:

@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { InterpretationPanel, useInterpretationPreflight } from './nlp/InterpretationPanel';
+import type { InterpretationCandidate, InterpretationResponse } from '../api/nlp';
 import {
   ApiError,
   consumeAnalyzerLinkFromLocation,
@@ -7,16 +9,17 @@ import {
   listAlgebraHistory,
   solveAlgebra,
   type AlgebraDomainSource,
+  type AlgebraExpressionAction,
   type AlgebraHistoryItem as ServerHistoryItem,
   type AlgebraInputFormat,
   type AlgebraHandoffPayload,
   type AlgebraInterval,
+  type AlgebraSolveRequest,
   type AlgebraSolveResponse,
   type AlgebraTopic,
 } from '../api/client';
 import { AlgebraInput, suggestTopic, type AlgebraAngleUnit, type AlgebraInputMode, type SequenceDraft } from './algebra-solver/AlgebraInput';
 import { AlgebraLoadingResult, AlgebraResult, EmptyAlgebraResult } from './algebra-solver/AlgebraResult';
-import { KatexSpan, MixedTextRenderer } from './KatexSpan';
 import {
   clearAlgebraHistory,
   loadAlgebraHistory,
@@ -25,12 +28,6 @@ import {
 } from './algebra-solver/algebraHistory';
 
 type AlgebraDomain = 'R' | 'C' | 'N' | 'Z';
-const DOMAIN_TEX: Record<AlgebraDomain, string> = {
-  R: String.raw`\mathbb{R}`,
-  C: String.raw`\mathbb{C}`,
-  N: String.raw`\mathbb{N}`,
-  Z: String.raw`\mathbb{Z}`,
-};
 export type IntervalPreset = '' | 'unit_circle' | 'custom';
 
 export function AlgebraSolverPage() {
@@ -53,7 +50,7 @@ export function AlgebraSolverPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const [pendingConfirm, setPendingConfirm] = useState(false);
+  const preflight = useInterpretationPreflight();
   const [localHistory, setLocalHistory] = useState<AlgebraHistoryItem[]>(() => loadAlgebraHistory());
   const [serverHistory, setServerHistory] = useState<ServerHistoryItem[]>([]);
   const [historySource, setHistorySource] = useState<'local' | 'server'>('local');
@@ -130,14 +127,17 @@ export function AlgebraSolverPage() {
     angleUnit,
   });
 
-  function requestConfirmIfNeeded() {
+  async function requestConfirmIfNeeded() {
     if (!payloadInput || loading || submitLockRef.current) return;
-    if (inputMode === 'math' && !useAiExtraction && !sequenceInput) {
-      void runSolve();
-      return;
-    }
-    setPendingConfirm(true);
     setError('');
+    const accepted = await preflight.check({
+      text: payloadInput,
+      target: 'algebra',
+      input_mode: inputMode,
+      input_format: sequenceInput ? 'structured' : inputFormat,
+      context: { topic: payloadTopic, domain, variables: variableList },
+    });
+    if (accepted) await runSolve(accepted);
   }
 
   function cancelSolve() {
@@ -145,22 +145,23 @@ export function AlgebraSolverPage() {
     abortRef.current = null;
   }
 
-  async function runSolve() {
+  async function runSolve(confirmed: { candidate: InterpretationCandidate; response: InterpretationResponse }) {
     if (!payloadInput || loading || submitLockRef.current) return;
+    const canonical = algebraCanonicalPayload(confirmed.candidate, confirmed.response);
     submitLockRef.current = true;
-    setPendingConfirm(false);
+    preflight.reset();
     setLoading(true);
     setError('');
     const controller = new AbortController();
     abortRef.current = controller;
     try {
       const response = await solveAlgebra({
-        input: payloadInput,
-        input_format: sequenceInput ? 'structured' : inputFormat,
-        topic: payloadTopic,
-        domain,
+        input: canonical.input,
+        input_format: canonical.input_format,
+        topic: canonical.topic,
+        domain: canonical.domain,
         domain_source: domainSource,
-        variables: variableList,
+        variables: canonical.variables,
         angle_unit: angleUnit,
         interval: intervalPayload,
         save_history: true,
@@ -199,13 +200,13 @@ export function AlgebraSolverPage() {
     setInputMode('math');
     setInputFormat('plain');
     setUseAiExtraction(false);
-    setPendingConfirm(false);
+    preflight.reset();
   }
 
   function handleDomainChange(value: AlgebraDomain) {
     setDomain(value);
     setDomainSource('user');
-    setPendingConfirm(false);
+    preflight.reset();
   }
 
   function restoreLocalHistoryItem(item: AlgebraHistoryItem) {
@@ -213,7 +214,7 @@ export function AlgebraSolverPage() {
     setInputMode('math');
     setInputFormat('plain');
     setUseAiExtraction(false);
-    setPendingConfirm(false);
+    preflight.reset();
     setError('');
   }
 
@@ -227,7 +228,7 @@ export function AlgebraSolverPage() {
       setInput(detail.problem_preview || item.problem_preview);
       setInputMode('math');
       setInputFormat('plain');
-      setPendingConfirm(false);
+      preflight.reset();
       setError('');
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Không tải được lịch sử.');
@@ -252,21 +253,21 @@ export function AlgebraSolverPage() {
           intervalClosedStart={intervalClosedStart}
           intervalClosedEnd={intervalClosedEnd}
           loading={loading}
-          onInputChange={(value) => { setInput(value); setPendingConfirm(false); }}
+          onInputChange={(value) => { setInput(value); preflight.reset(); }}
           onInputFormatChange={setInputFormat}
-          onInputModeChange={(value) => { setInputMode(value); setPendingConfirm(false); }}
-          onTopicChange={(value) => { setTopic(value); setPendingConfirm(false); }}
+          onInputModeChange={(value) => { setInputMode(value); preflight.reset(); }}
+          onTopicChange={(value) => { setTopic(value); preflight.reset(); }}
           onDomainChange={handleDomainChange}
-          onVariablesChange={(value) => { setVariables(value); setPendingConfirm(false); }}
-          onUseAiExtractionChange={(value) => { setUseAiExtraction(value); setPendingConfirm(false); }}
-          onAngleUnitChange={(value) => { setAngleUnit(value); setPendingConfirm(false); }}
-          onIntervalPresetChange={(value) => { setIntervalPreset(value); setPendingConfirm(false); }}
-          onIntervalStartChange={(value) => { setIntervalStart(value); setPendingConfirm(false); }}
-          onIntervalEndChange={(value) => { setIntervalEnd(value); setPendingConfirm(false); }}
-          onIntervalClosedStartChange={(value) => { setIntervalClosedStart(value); setPendingConfirm(false); }}
-          onIntervalClosedEndChange={(value) => { setIntervalClosedEnd(value); setPendingConfirm(false); }}
+          onVariablesChange={(value) => { setVariables(value); preflight.reset(); }}
+          onUseAiExtractionChange={(value) => { setUseAiExtraction(value); preflight.reset(); }}
+          onAngleUnitChange={(value) => { setAngleUnit(value); preflight.reset(); }}
+          onIntervalPresetChange={(value) => { setIntervalPreset(value); preflight.reset(); }}
+          onIntervalStartChange={(value) => { setIntervalStart(value); preflight.reset(); }}
+          onIntervalEndChange={(value) => { setIntervalEnd(value); preflight.reset(); }}
+          onIntervalClosedStartChange={(value) => { setIntervalClosedStart(value); preflight.reset(); }}
+          onIntervalClosedEndChange={(value) => { setIntervalClosedEnd(value); preflight.reset(); }}
           sequenceDraft={sequenceDraft}
-          onSequenceDraftChange={(value) => { setSequenceDraft(value); setPendingConfirm(false); }}
+          onSequenceDraftChange={(value) => { setSequenceDraft(value); preflight.reset(); }}
           onSubmit={requestConfirmIfNeeded}
         />
         <div className="algebra-result-wrap">
@@ -325,71 +326,68 @@ export function AlgebraSolverPage() {
             </section>
           )}
           {error && <div className="sp-error"><strong>Solver lỗi</strong><span>{error}</span></div>}
-          {pendingConfirm && !loading && (
-            <section className="algebra-confirm-panel" role="dialog" aria-labelledby="algebra-confirm-title">
-              <div className="algebra-panel-heading">
-                <span>Xác nhận trước khi giải</span>
-                <h2 id="algebra-confirm-title">Cách hệ thống sẽ hiểu đề</h2>
-              </div>
-              <p className="algebra-confirm-lead">
-                Kiểm tra topic, miền, biến, đơn vị góc và khoảng.
-                {domainSource === 'default' ? ' Miền R đang là mặc định — đổi nếu bài số phức.' : ' Miền do bạn chọn (sticky).'}
-              </p>
-              <dl className="algebra-interpretation-grid">
-                <div>
-                  <dt>Đề gửi</dt>
-                  <dd>
-                    {inputMode === 'math' || inputFormat === 'latex'
-                      ? <KatexSpan tex={payloadInput} />
-                      : <code>{payloadInput}</code>}
-                  </dd>
-                </div>
-                <div>
-                  <dt>Dạng bài</dt>
-                  <dd>{payloadTopic}</dd>
-                </div>
-                <div>
-                  <dt>Miền</dt>
-                  <dd><KatexSpan tex={DOMAIN_TEX[domain]} /> <span className="algebra-domain-source">{domainSource === 'user' ? 'do bạn chọn' : 'mặc định'}</span></dd>
-                </div>
-                <div>
-                  <dt>Biến</dt>
-                  <dd>{variableList.length ? variableList.join(', ') : 'tự nhận diện'}</dd>
-                </div>
-                <div>
-                  <dt>Đơn vị góc</dt>
-                  <dd>{angleUnit === 'degree' ? <KatexSpan tex="{}^\\circ" /> : 'radian'}</dd>
-                </div>
-                <div>
-                  <dt>Khoảng</dt>
-                  <dd><MixedTextRenderer text={intervalSummary(intervalPayload)} /></dd>
-                </div>
-              </dl>
-              <div className="algebra-confirm-actions">
-                <button type="button" className="algebra-action-btn" onClick={() => setPendingConfirm(false)}>
-                  Sửa lại
-                </button>
-                <button type="button" className="auth-primary-button" onClick={() => void runSolve()}>
-                  Xác nhận &amp; giải
-                </button>
-              </div>
-            </section>
-          )}
+          <InterpretationPanel
+            controller={preflight}
+            title="Cách hệ thống hiểu bài đại số"
+            confirmLabel="Xác nhận và giải"
+            onConfirm={(confirmed) => runSolve(confirmed)}
+          />
           {loading ? (
             <AlgebraLoadingResult elapsedSeconds={elapsedSeconds} onCancel={cancelSolve} />
-          ) : result && !pendingConfirm ? (
+          ) : result ? (
             <AlgebraResult
               result={result}
               stale={resultStale}
               onApplyCanonical={handleApplyCanonical}
             />
-          ) : !pendingConfirm ? (
+          ) : preflight.state.phase === 'idle' ? (
             <EmptyAlgebraResult />
           ) : null}
         </div>
       </div>
     </section>
   );
+}
+
+function algebraCanonicalPayload(
+  candidate: InterpretationCandidate,
+  response: InterpretationResponse,
+): Pick<AlgebraSolveRequest, 'input' | 'input_format' | 'topic' | 'expression_action' | 'variables' | 'domain'> {
+  const payload = candidate.canonical_payload ?? {};
+  const input = typeof payload.input === 'string'
+    ? payload.input
+    : candidate.canonical_text?.trim() || response.normalized_text;
+  const inputFormat = ['auto', 'plain', 'latex', 'structured'].includes(String(payload.input_format))
+    ? payload.input_format as AlgebraInputFormat
+    : 'plain';
+  const topic = isAlgebraTopic(payload.topic) ? payload.topic : 'auto';
+  const expressionAction = isAlgebraExpressionAction(payload.expression_action) ? payload.expression_action : null;
+  const canonicalDomain = ['R', 'C', 'N', 'Z'].includes(String(payload.domain))
+    ? payload.domain as AlgebraDomain
+    : 'R';
+  const canonicalVariables = Array.isArray(payload.variables)
+    ? payload.variables.filter((value): value is string => typeof value === 'string')
+    : [];
+  return {
+    input,
+    input_format: inputFormat,
+    topic,
+    expression_action: expressionAction,
+    variables: canonicalVariables,
+    domain: canonicalDomain,
+  };
+}
+
+function isAlgebraExpressionAction(value: unknown): value is AlgebraExpressionAction {
+  return ['simplify', 'expand', 'factor'].includes(String(value));
+}
+
+function isAlgebraTopic(value: unknown): value is AlgebraTopic {
+  return [
+    'auto', 'arithmetic', 'expression', 'equation', 'inequality', 'exponential_log', 'trigonometry', 'complex', 'sequence',
+    'combinatorics_probability', 'statistics', 'system', 'parameter', 'calculus_derivative',
+    'calculus_derivative_by_definition', 'calculus_limit', 'calculus_continuous_at', 'calculus_integral',
+  ].includes(String(value));
 }
 
 function sequenceInputFromDraft(draft: SequenceDraft) {
@@ -427,23 +425,6 @@ function buildIntervalPayload(state: {
     closed_start: state.intervalClosedStart,
     closed_end: state.intervalClosedEnd,
   };
-}
-
-function intervalSummary(interval: AlgebraInterval | null): string {
-  if (!interval) return 'không giới hạn (miền đầy đủ)';
-  const left = interval.closed_start === false ? '(' : '[';
-  const right = interval.closed_end === false ? ')' : ']';
-  const start = intervalBoundTex(interval.start, '-\\infty');
-  const end = intervalBoundTex(interval.end, '+\\infty');
-  return `$${left}${start},${end}${right}$`;
-}
-
-function intervalBoundTex(value: string | number | null | undefined, fallback: string) {
-  if (value === null || value === undefined || value === '') return fallback;
-  return String(value)
-    .replace(/\bpi\b/g, '\\pi')
-    .replace(/\boo\b/g, '\\infty')
-    .replace(/\*/g, '\\cdot ');
 }
 
 function fingerprintRequest(state: {

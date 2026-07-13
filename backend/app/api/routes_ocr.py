@@ -142,7 +142,28 @@ async def ocr_image(
                 target_type="ocr",
                 metadata={"provider": result.provider, "model": result.model},
             )
-        return OcrResponse(text=result.text, provider=result.provider, model=result.model, warnings=result.warnings)
+        return OcrResponse(
+            text=result.text,
+            provider=result.provider,
+            model=result.model,
+            warnings=result.warnings,
+            confidence=result.confidence,
+            raw_text=result.raw_text,
+            normalized_text=result.normalized_text,
+            lines=[
+                {"text": line.text, "confidence": line.confidence, "bbox": line.bbox}
+                for line in result.lines or []
+            ],
+            formula_candidates=[
+                {
+                    "latex": candidate.latex,
+                    "confidence": candidate.confidence,
+                    "bbox": candidate.bbox,
+                    "source": candidate.source,
+                }
+                for candidate in result.formula_candidates or []
+            ],
+        )
     finally:
         slot.release()
 

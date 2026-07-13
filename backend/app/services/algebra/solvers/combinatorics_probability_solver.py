@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import math
 import re
+from dataclasses import dataclass
+from fractions import Fraction
+from typing import Literal
 
 import sympy as sp
 
@@ -16,11 +19,39 @@ MAX_COEFFICIENT_DEGREE = 12
 MAX_COEFFICIENT_EXPR_CHARS = 200
 
 
+@dataclass(frozen=True)
+class ProbabilityProblem:
+    kind: Literal["classical", "complement", "intersection", "union", "conditional", "binomial", "combination"]
+    first: Fraction | None = None
+    second: Fraction | None = None
+    n: int | None = None
+    k: int | None = None
+    r: int | None = None
+
+
+@dataclass(frozen=True)
+class ProbabilityEvaluation:
+    value: sp.Rational
+    explanation: str
+    latex: str
+    verifier_name: str
+
+
 def solve_combinatorics_probability(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
     normalized = problem.normalized_input.strip()
     steps = [normalize_step(problem)]
+    probability_problem: ProbabilityProblem | None = None
+    probability_evaluation: ProbabilityEvaluation | None = None
     try:
-        result, explanation, latex, kind = _evaluate(normalized)
+        probability_problem = _parse_probability_problem(normalized)
+        if probability_problem is not None:
+            probability_evaluation = _evaluate_probability(probability_problem)
+            result = probability_evaluation.value
+            explanation = probability_evaluation.explanation
+            latex = probability_evaluation.latex
+            kind = "probability"
+        else:
+            result, explanation, latex, kind = _evaluate(normalized)
     except ValueError as exc:
         return _unsupported(problem, str(exc))
     title = "Tính xác suất" if kind == "probability" else "Tính toán tổ hợp"
@@ -43,21 +74,28 @@ def solve_combinatorics_probability(problem: ParsedAlgebraProblem) -> AlgebraSol
         f"Kết quả: {sp.latex(result)}"
     ]
     
-    verification = AlgebraVerificationReport(
-        status="verified" if kind != "probability" else "partially_verified",
-        checks=[
-            AlgebraVerificationCheck(
-                name="combinatorics_constraints_valid" if kind != "probability" else "probability_bounds_valid",
+    if probability_problem is not None and probability_evaluation is not None:
+        probability_ok, verification_detail = _verify_probability(probability_problem, result)
+        verification = AlgebraVerificationReport(
+            status="verified" if probability_ok else "failed",
+            checks=[AlgebraVerificationCheck(
+                name=probability_evaluation.verifier_name,
+                status="pass" if probability_ok else "fail",
+                detail=verification_detail,
+                latex=sp.latex(result),
+            )],
+            method=["stdlib_fraction_recompute"],
+        )
+    else:
+        verification = AlgebraVerificationReport(
+            status="verified",
+            checks=[AlgebraVerificationCheck(
+                name="combinatorics_constraints_valid",
                 status="pass",
-                detail=(
-                    "Các tham số tổ hợp thỏa điều kiện nguyên không âm trong phạm vi hỗ trợ."
-                    if kind != "probability"
-                    else "Xác suất cổ điển 0 ≤ k/n ≤ 1 với n > 0 (rule-based)."
-                ),
-            )
-        ],
-        method=["rule_based"],
-    )
+                detail="Các tham số tổ hợp thỏa điều kiện nguyên không âm trong phạm vi hỗ trợ.",
+            )],
+            method=["stdlib_integer_recompute"],
+        )
     return AlgebraSolveResponse(
         input=problem.raw_input,
         normalized_input=problem.normalized_input,
@@ -74,6 +112,131 @@ def solve_combinatorics_probability(problem: ParsedAlgebraProblem) -> AlgebraSol
         warnings=[],
         errors=[],
     )
+
+
+def _parse_probability_problem(text: str) -> ProbabilityProblem | None:
+    classical = re.fullmatch(
+        r"(?:P|probability)\(\s*(?:favorable\s*=\s*)?(\d+)\s*(?:/|,|\s+total\s*=\s*)\s*(\d+)\s*\)",
+        text,
+        re.IGNORECASE,
+    )
+    if classical:
+        favorable, total = map(int, classical.groups())
+        return ProbabilityProblem("classical", first=_probability_fraction(favorable, total))
+
+    unary = re.fullmatch(r"(?:P_not|Pcomplement|probability_not)\(\s*(\d+)\s*/\s*(\d+)\s*\)", text, re.IGNORECASE)
+    if unary:
+        favorable, total = map(int, unary.groups())
+        return ProbabilityProblem("complement", first=_probability_fraction(favorable, total))
+
+    binary = re.fullmatch(
+        r"(P_and|probability_and|Punion|probability_union|Pcond|probability_cond)"
+        r"\(\s*(\d+)\s*/\s*(\d+)\s*,\s*(\d+)\s*/\s*(\d+)\s*\)",
+        text,
+        re.IGNORECASE,
+    )
+    if binary:
+        operation, a, b, c, d = binary.groups()
+        operation_key = operation.lower()
+        kind: Literal["intersection", "union", "conditional"] = (
+            "intersection" if operation_key in {"p_and", "probability_and"}
+            else "union" if operation_key in {"punion", "probability_union"}
+            else "conditional"
+        )
+        return ProbabilityProblem(
+            kind,
+            first=_probability_fraction(int(a), int(b)),
+            second=_probability_fraction(int(c), int(d)),
+        )
+
+    binomial = re.fullmatch(r"(?:bernoulli|Pbinom)\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*/\s*(\d+)\s*\)", text, re.IGNORECASE)
+    if binomial:
+        n, k, a, b = map(int, binomial.groups())
+        _validate_n_k(n, k)
+        if n > MAX_COMBINATORICS_N:
+            raise ValueError(f"Bernoulli chỉ hỗ trợ n ≤ {MAX_COMBINATORICS_N}.")
+        return ProbabilityProblem("binomial", first=_probability_fraction(a, b), n=n, k=k)
+
+    combination = re.fullmatch(r"(?:Pcomb|probability_comb)\((\d+)\s*,\s*(\d+)\s*,\s*(\d+)\)", text)
+    if combination:
+        n, k, r = map(int, combination.groups())
+        _validate_n_k(n, k)
+        if r < 0 or r > n:
+            raise ValueError("Số phần tử được chọn r phải thỏa 0 ≤ r ≤ n.")
+        return ProbabilityProblem("combination", n=n, k=k, r=r)
+    return None
+
+
+def _evaluate_probability(problem: ProbabilityProblem) -> ProbabilityEvaluation:
+    first = problem.first
+    second = problem.second
+    if problem.kind == "classical" and first is not None:
+        value = _sympy_fraction(first)
+        return ProbabilityEvaluation(value, f"Xác suất cổ điển P = {first}.", rf"P={sp.latex(value)}", "probability_classical_recompute")
+    if problem.kind == "complement" and first is not None:
+        value = _sympy_fraction(1 - first)
+        return ProbabilityEvaluation(value, f"P(Ā)=1-P(A)=1-{first}.", rf"P(\bar{{A}})=1-{sp.latex(_sympy_fraction(first))}", "probability_complement_recompute")
+    if problem.kind == "intersection" and first is not None and second is not None:
+        value = _sympy_fraction(first * second)
+        return ProbabilityEvaluation(value, "Hai biến cố độc lập: P(A∩B)=P(A)P(B).", rf"P(A\cap B)={sp.latex(value)}", "probability_independent_product")
+    if problem.kind == "union" and first is not None and second is not None:
+        value = _sympy_fraction(first + second - first * second)
+        return ProbabilityEvaluation(value, "Hai biến cố độc lập: P(A∪B)=P(A)+P(B)-P(A)P(B).", rf"P(A\cup B)={sp.latex(value)}", "probability_independent_union")
+    if problem.kind == "conditional" and first is not None and second is not None:
+        if second == 0:
+            raise ValueError("P(B) phải khác 0 khi tính xác suất có điều kiện.")
+        value = _sympy_fraction(first)
+        return ProbabilityEvaluation(value, "Giả sử độc lập: P(A|B)=P(A).", rf"P(A\mid B)={sp.latex(value)}", "probability_independent_conditional")
+    if problem.kind == "binomial" and first is not None and problem.n is not None and problem.k is not None:
+        value_fraction = Fraction(math.comb(problem.n, problem.k)) * first ** problem.k * (1 - first) ** (problem.n - problem.k)
+        value = _sympy_fraction(value_fraction)
+        return ProbabilityEvaluation(value, f"P(X={problem.k})=C({problem.n},{problem.k})p^k(1-p)^(n-k).", sp.latex(value), "probability_binomial_recompute")
+    if problem.kind == "combination" and problem.n is not None and problem.k is not None and problem.r is not None:
+        favorable = math.comb(problem.k, problem.r) if problem.r <= problem.k else 0
+        total = math.comb(problem.n, problem.r)
+        value = _sympy_fraction(Fraction(favorable, total))
+        return ProbabilityEvaluation(value, f"P=C({problem.k},{problem.r})/C({problem.n},{problem.r}).", sp.latex(value), "probability_combination_recompute")
+    raise ValueError("Thiếu dữ kiện typed cho bài toán xác suất.")
+
+
+def _verify_probability(problem: ProbabilityProblem, result: sp.Expr) -> tuple[bool, str]:
+    expected = _evaluate_probability_fraction(problem)
+    numerator, denominator = sp.Rational(result).as_numer_denom()
+    actual = Fraction(int(numerator), int(denominator))
+    return actual == expected and 0 <= actual <= 1, f"Tính lại bằng Fraction được {expected}; kết quả nằm trong [0, 1]."
+
+
+def _evaluate_probability_fraction(problem: ProbabilityProblem) -> Fraction:
+    first = problem.first
+    second = problem.second
+    if problem.kind == "classical" and first is not None:
+        return first
+    if problem.kind == "complement" and first is not None:
+        return 1 - first
+    if problem.kind == "intersection" and first is not None and second is not None:
+        return first * second
+    if problem.kind == "union" and first is not None and second is not None:
+        return first + second - first * second
+    if problem.kind == "conditional" and first is not None and second:
+        return first
+    if problem.kind == "binomial" and first is not None and problem.n is not None and problem.k is not None:
+        return Fraction(math.comb(problem.n, problem.k)) * first ** problem.k * (1 - first) ** (problem.n - problem.k)
+    if problem.kind == "combination" and problem.n is not None and problem.k is not None and problem.r is not None:
+        favorable = math.comb(problem.k, problem.r) if problem.r <= problem.k else 0
+        return Fraction(favorable, math.comb(problem.n, problem.r))
+    raise ValueError("Không thể kiểm chứng bài toán xác suất thiếu dữ kiện.")
+
+
+def _probability_fraction(numerator: int, denominator: int) -> Fraction:
+    if denominator <= 0:
+        raise ValueError("Mẫu số xác suất phải là số nguyên dương.")
+    if numerator < 0 or numerator > denominator:
+        raise ValueError("Xác suất thành phần phải nằm trong [0, 1].")
+    return Fraction(numerator, denominator)
+
+
+def _sympy_fraction(value: Fraction) -> sp.Rational:
+    return sp.Rational(value.numerator, value.denominator)
 
 
 def _evaluate(text: str) -> tuple[sp.Expr, str, str, str]:

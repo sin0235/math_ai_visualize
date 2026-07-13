@@ -13,6 +13,7 @@ from app.services.openai_compat_client import OpenAICompatClient
 from app.services.openrouter_client import OpenRouterClient
 from app.services.router9_client import Router9Client
 from app.services.provider_logging import redact_sensitive
+from app.services.ocr_pipeline.types import OcrFormulaCandidate, OcrTextLine
 
 _IMAGE_DATA_URL_RE = re.compile(r"^data:image/(png|jpeg|jpg|webp|gif);base64,([A-Za-z0-9+/=\s]+)$", re.IGNORECASE)
 DIAGRAM_OCR_SYSTEM_PROMPT = """
@@ -38,6 +39,11 @@ class OcrResult:
     provider: OcrProvider
     model: str
     warnings: list[str]
+    confidence: float | None = None
+    raw_text: str | None = None
+    normalized_text: str | None = None
+    lines: list[OcrTextLine] | None = None
+    formula_candidates: list[OcrFormulaCandidate] | None = None
 
 
 @dataclass(frozen=True)
@@ -160,7 +166,17 @@ async def _try_local_ocr(
         attempts.append(OcrAttempt("local", result.model, f"confidence thấp ({result.confidence:.2f} < {settings.local_ocr_min_confidence:.2f})"))
         return None
     warnings = [*result.warnings, *_attempt_warnings(attempts)]
-    return OcrResult(text=result.text, provider="local", model=result.model, warnings=warnings)
+    return OcrResult(
+        text=result.text,
+        provider="local",
+        model=result.model,
+        warnings=warnings,
+        confidence=result.confidence,
+        raw_text=result.raw_text,
+        normalized_text=result.normalized_text,
+        lines=result.lines,
+        formula_candidates=result.formula_candidates,
+    )
 
 
 async def _run_local_ocr(image_data_url: str, mode: OcrMode, settings: Settings):

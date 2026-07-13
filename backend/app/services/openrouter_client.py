@@ -144,11 +144,11 @@ class OpenRouterClient:
             payload = _build_chat_payload(
                 selected_model,
                 [
-                    {"role": "system", "content": OCR_SYSTEM_PROMPT},
+                    {"role": "system", "content": system_prompt or OCR_SYSTEM_PROMPT},
                     {
                         "role": "user",
                         "content": [
-                            {"type": "text", "text": "Trích xuất nguyên văn đề toán trong ảnh."},
+                            {"type": "text", "text": user_text},
                             {"type": "image_url", "image_url": {"url": image_data_url}},
                         ],
                     },

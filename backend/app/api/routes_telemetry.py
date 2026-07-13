@@ -13,7 +13,17 @@ from app.db.models import UserRecord
 from app.db.session import DatabaseClient, get_database
 from app.repositories.activity import try_log_user_activity
 from app.repositories.errors import try_record_error_event
-from app.services.analytics_taxonomy import ALLOWED_CLIENT_EVENT_TYPES, FEATURE_KEYS, FEATURE_OPEN, PAGE_VIEW
+from app.services.analytics_taxonomy import (
+    ALLOWED_CLIENT_EVENT_TYPES,
+    FEATURE_KEYS,
+    FEATURE_OPEN,
+    NLP_CONFIDENCE_BUCKETS,
+    NLP_PREFLIGHT,
+    NLP_STATUSES,
+    NLP_TARGETS,
+    NLP_TAXONOMY_CODES,
+    PAGE_VIEW,
+)
 from app.services.provider_logging import redact_sensitive
 
 router = APIRouter(prefix="/api/telemetry", tags=["telemetry"])
@@ -27,6 +37,13 @@ _ALLOWED_METADATA_KEYS = frozenset({
     "feature",
     "path",
     "referrer_path",
+    "taxonomy_code",
+    "target",
+    "confidence_bucket",
+    "candidate_count",
+    "status",
+    "adapter_version",
+    "request_id",
 })
 
 
@@ -137,6 +154,28 @@ def _sanitize_client_metadata(metadata: dict | None) -> dict[str, object]:
     return out
 
 
+def _sanitize_nlp_metadata(metadata: dict[str, object]) -> dict[str, object] | None:
+    taxonomy_code = metadata.get("taxonomy_code")
+    target = metadata.get("target")
+    if taxonomy_code not in NLP_TAXONOMY_CODES or target not in NLP_TARGETS:
+        return None
+    safe: dict[str, object] = {"taxonomy_code": taxonomy_code, "target": target}
+    status_value = metadata.get("status")
+    if status_value in NLP_STATUSES:
+        safe["status"] = status_value
+    confidence_bucket = metadata.get("confidence_bucket")
+    if confidence_bucket in NLP_CONFIDENCE_BUCKETS:
+        safe["confidence_bucket"] = confidence_bucket
+    candidate_count = metadata.get("candidate_count")
+    if isinstance(candidate_count, int) and not isinstance(candidate_count, bool):
+        safe["candidate_count"] = min(max(candidate_count, 0), 8)
+    for key, limit in (("adapter_version", 80), ("request_id", 80)):
+        value = metadata.get(key)
+        if isinstance(value, str) and value:
+            safe[key] = value[:limit]
+    return safe
+
+
 def _strip_url_query(url: str) -> str:
     try:
         parts = urlsplit(url)
@@ -183,6 +222,11 @@ async def report_client_events(
         if event_type not in ALLOWED_CLIENT_EVENT_TYPES:
             continue
         meta = _sanitize_client_metadata(item.metadata)
+        if event_type == NLP_PREFLIGHT:
+            nlp_meta = _sanitize_nlp_metadata(meta)
+            if nlp_meta is None:
+                continue
+            meta = nlp_meta
         if body.client_session_id:
             meta["client_session_id"] = body.client_session_id[:80]
         if item.path:
@@ -200,8 +244,8 @@ async def report_client_events(
             db,
             user.id,
             event_type,
-            target_type="feature" if event_type == FEATURE_OPEN else "page",
-            target_id=str(meta.get("feature") or meta.get("path") or "")[:120] or None,
+            target_type="nlp" if event_type == NLP_PREFLIGHT else "feature" if event_type == FEATURE_OPEN else "page",
+            target_id=str(meta.get("taxonomy_code") or meta.get("feature") or meta.get("path") or "")[:120] or None,
             metadata=meta,
             session_id=body.client_session_id,
             source="client",

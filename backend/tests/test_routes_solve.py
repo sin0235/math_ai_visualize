@@ -54,7 +54,7 @@ def test_solve_route_registered():
 
 @pytest.mark.anyio
 async def test_solve_endpoint_returns_trust_metadata(monkeypatch):
-    settings = Settings(router9_api_key="", openrouter_api_key="")
+    settings = Settings(router9_api_key="", openrouter_api_key="", openai_compat_api_key="")
 
     async def mock_noop(*args, **kwargs):
         return None

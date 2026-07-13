@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.api.deps import require_admin_user, require_trusted_origin
 from app.db.session import DatabaseClient, get_database
 from app.schemas.scene import AiModelInfo, ModelScanRequest, ModelScanResponse, ProviderModelScanRequest, RuntimeSettings
-from app.services.model_registry import resolve_effective_settings
+from app.services.model_registry import load_model_registry, resolve_effective_settings, upsert_scanned_models
 from app.services.model_scan import list_provider_models_with_warnings
 from app.services.provider_logging import redact_sensitive, truncate_text
 
@@ -50,7 +50,10 @@ async def _scan_models(db: DatabaseClient, runtime_settings: RuntimeSettings | N
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail={"code": "model_scan_failed", "message": f"Không thể quét model {provider}: {message}"},
         ) from error
-    return ModelScanResponse(models=_unique_models(result.models, provider), warnings=result.warnings)
+    models = _unique_models(result.models, provider)
+    await upsert_scanned_models(db, provider, models)
+    registry = await load_model_registry(db)
+    return ModelScanResponse(models=registry.scanned_model_infos(provider), warnings=result.warnings)
 
 
 def _unique_models(models: list[AiModelInfo], provider: str) -> list[AiModelInfo]:

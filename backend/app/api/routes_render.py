@@ -15,6 +15,7 @@ from app.repositories.admin import AdminRepository
 from app.repositories.history import RenderHistoryRepository
 from app.repositories.scene_workspaces import SceneWorkspaceRepository
 from app.core.config import get_settings
+from app.core.logging import get_request_id
 from app.schemas.auth import SystemFeatureFlags
 from app.schemas.scene_v3 import (
     CommittedSceneRefV3,
@@ -24,6 +25,7 @@ from app.schemas.scene_v3 import (
     SceneWorkspaceResponseV3,
 )
 from app.schemas.scene import (
+    MathScene,
     RenderJobCreateResponse,
     RenderJobStatusResponse,
     RenderRequest,
@@ -31,7 +33,9 @@ from app.schemas.scene import (
     RenderSourceResponse,
     SceneRenderRequest,
 )
+from app.schemas.nlp import InputEnvelope
 from app.services.api_errors import api_error
+from app.services.nlp_rollout import evaluate_configured_nlp_rollout
 from app.services.ai_resolution import resolve_byok_ai_config
 from app.services.user_ai_settings import UserAiSettingsError
 from app.services.system_settings import load_feature_flags
@@ -41,6 +45,36 @@ logger = logging.getLogger("app.services.ai_providers")
 
 RENDER_TIMEOUT_SECONDS = 310
 RENDER_AI_USAGE_EVENT_TYPES = ["algebra_ai", "problem_variants", "solver_ai"]
+
+
+def _bind_scene_request_fields(scene: MathScene, request: RenderRequest) -> MathScene:
+    updates = {"problem_text": request.problem_text}
+    if request.grade is not None:
+        updates["grade"] = request.grade
+    return scene.model_copy(update=updates)
+
+
+async def _apply_render_nlp_rollout(
+    request: RenderRequest,
+    db: DatabaseClient,
+    user: UserRecord | None,
+) -> RenderRequest:
+    rollout = await evaluate_configured_nlp_rollout(
+        db,
+        InputEnvelope(
+            text=request.problem_text,
+            target="render",
+            context={"tier": request.tier, "preferred_renderer": request.preferred_renderer},
+        ),
+        user_id=user.id if user else None,
+        request_id=get_request_id(),
+        legacy_status="accepted",
+        legacy_canonical=request.problem_text,
+    )
+    if not rollout or not rollout.can_apply or not rollout.candidate:
+        return request
+    canonical_text = rollout.candidate.canonical_text or rollout.response.normalized_text
+    return request.model_copy(update={"problem_text": canonical_text})
 
 
 @router.post("/render/jobs", response_model=RenderJobCreateResponse, dependencies=[Depends(require_trusted_origin)])
@@ -54,6 +88,7 @@ async def create_render_job(
     from app.services.render_jobs import enqueue_render_job, spawn_inline_job
 
     await enforce_rate_limit(db, http_request, user, "render", 20 if user else 8, 60)
+    request = await _apply_render_nlp_rollout(request, db, user)
     settings = get_settings()
     try:
         byok = await resolve_byok_ai_config(db, user, "render", settings)
@@ -115,6 +150,7 @@ async def render_problem(
     from app.services.load_gates import render_load_gate
 
     await enforce_rate_limit(db, http_request, user, "render", 20 if user else 8, 60)
+    request = await _apply_render_nlp_rollout(request, db, user)
     settings = get_settings()
     try:
         byok = await resolve_byok_ai_config(db, user, "render", settings)
@@ -134,7 +170,6 @@ async def render_problem(
 
     import time
 
-    from app.core.logging import get_request_id
     from app.repositories.errors import try_record_error_event
 
     started = time.perf_counter()
@@ -294,6 +329,7 @@ async def build_problem_render_response(request: RenderRequest, db: DatabaseClie
                 for attempt in getattr(extraction, "attempts", [])
             ],
         )
+    scene = _bind_scene_request_fields(scene, request)
     if request.preferred_renderer is not None:
         scene.renderer = request.preferred_renderer
     scene_data = scene.model_dump()
@@ -356,6 +392,7 @@ async def render_problem_v3(
     from app.services.load_gates import render_load_gate
 
     await enforce_rate_limit(db, http_request, user, "render", 20 if user else 8, 60)
+    request = await _apply_render_nlp_rollout(request, db, user)
     settings = get_settings()
     try:
         byok = await resolve_byok_ai_config(db, user, "render", settings)

@@ -1,0 +1,70 @@
+{
+  "overall": {
+    "minimum": {
+      "intent_macro_f1": 0.626077,
+      "canonical_exact_match": 0.076923,
+      "canonical_semantic_match": 0.076923,
+      "entity_f1": 0.230769,
+      "constraint_f1": 0.0,
+      "unsupported_recall": 0.0,
+      "abstention_precision": 0.666667
+    },
+    "maximum": {
+      "brier_score": 0.175303,
+      "ece_10": 0.214857
+    }
+  },
+  "algebra": {
+    "minimum": {
+      "intent_macro_f1": 0.888889,
+      "entity_f1": 0.588235,
+      "abstention_precision": 1.0
+    },
+    "maximum": {
+      "brier_score": 0.145286,
+      "ece_10": 0.271429
+    }
+  },
+  "render": {
+    "minimum": {
+      "intent_macro_f1": 0.583333,
+      "abstention_precision": 0.666667
+    },
+    "maximum": {
+      "brier_score": 0.143014,
+      "ece_10": 0.195714
+    }
+  },
+  "geometry_solve": {
+    "minimum": {
+      "intent_macro_f1": 0.777778,
+      "abstention_precision": 0.5
+    },
+    "maximum": {
+      "brier_score": 0.176786,
+      "ece_10": 0.321429
+    }
+  },
+  "analyzer": {
+    "minimum": {
+      "intent_macro_f1": 0.157143,
+      "canonical_semantic_match": 0.25,
+      "entity_f1": 0.333333,
+      "abstention_precision": 1.0
+    },
+    "maximum": {
+      "brier_score": 0.125714,
+      "ece_10": 0.057143
+    }
+  },
+  "ocr": {
+    "minimum": {
+      "intent_macro_f1": 0.088889,
+      "abstention_precision": 1.0
+    },
+    "maximum": {
+      "brier_score": 0.285714,
+      "ece_10": 0.285714
+    }
+  }
+}

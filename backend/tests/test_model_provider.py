@@ -139,8 +139,22 @@ async def test_scan_models_keeps_router9_namespaces(monkeypatch):
             AiModelInfo(id="openrouter/google/gemma", label="Gemma", provider="openrouter"),
         ])
 
+    persisted: list[tuple[str, list[AiModelInfo]]] = []
+
+    async def upsert_models(db, provider, models):
+        persisted.append((provider, models))
+
+    class Registry:
+        def scanned_model_infos(self, provider):
+            return persisted[0][1]
+
+    async def load_registry(db):
+        return Registry()
+
     monkeypatch.setattr(routes_ai_models, "resolve_effective_settings", resolve_settings)
     monkeypatch.setattr(routes_ai_models, "list_provider_models_with_warnings", list_models)
+    monkeypatch.setattr(routes_ai_models, "upsert_scanned_models", upsert_models)
+    monkeypatch.setattr(routes_ai_models, "load_model_registry", load_registry)
 
     response = await routes_ai_models._scan_models(object(), None, "router9")
 
@@ -150,6 +164,7 @@ async def test_scan_models_keeps_router9_namespaces(monkeypatch):
         "openrouter/google/gemma",
     ]
     assert {model.provider for model in response.models} == {"router9"}
+    assert persisted[0][0] == "router9"
 
 
 @pytest.mark.anyio

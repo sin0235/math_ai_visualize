@@ -56,7 +56,20 @@ jobs:
           print("migration checks ok")
           PY
 
+      - name: NLP quality gates
+        env:
+          ENVIRONMENT: test
+          DATABASE_BACKEND: sqlite
+          AUTH_EMAIL_DEV_MODE: "true"
+        run: |
+          python -m tests.nlp.benchmark --predictor pipeline --output /tmp/nlp-pipeline-report.json
+          python -m pytest -q --tb=line \
+            tests/nlp/test_benchmark.py \
+            tests/test_nlp_grounding.py \
+            tests/test_nlp_rollout.py
+
       - name: Run pytest
+        timeout-minutes: 15
         env:
           ENVIRONMENT: test
           DATABASE_BACKEND: sqlite
@@ -80,12 +93,15 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
         run: npm ci
+
+      - name: NLP preflight state test
+        run: node scripts/run-typescript-test.mjs src/components/nlp/preflightState.test.mjs
 
       - name: Typecheck + build
         run: npm run build

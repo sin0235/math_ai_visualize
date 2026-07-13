@@ -197,7 +197,7 @@ def _verify_derivative(expression: sp.Expr, variable: sp.Symbol, derivative: sp.
     checks.append(AlgebraVerificationCheck(
         name="derivative_recompute",
         status="pass" if symbolic_ok else "fail",
-        detail="So khớp đạo hàm bằng cách tính lại sympy.diff và simplify(diff - result).",
+        detail="Tính lại bằng cùng CAS chỉ là consistency replay; finite-difference mới là cross-check độc lập.",
         latex=sp.latex(derivative),
     ))
     numeric_ok = _numeric_derivative_check(expression, variable, derivative, order)
@@ -212,11 +212,9 @@ def _verify_derivative(expression: sp.Expr, variable: sp.Symbol, derivative: sp.
     ))
     if any(check.status == "fail" for check in checks):
         status = "failed"
-    elif all(check.status == "pass" for check in checks):
-        status = "verified"
     else:
         status = "partially_verified"
-    return AlgebraVerificationReport(status=status, checks=checks, method=["sympy.diff", "finite_difference"])
+    return AlgebraVerificationReport(status=status, checks=checks, method=["solver_consistency_replay", "finite_difference"])
 
 
 def _verify_antiderivative(expression: sp.Expr, variable: sp.Symbol, antiderivative: sp.Expr) -> AlgebraVerificationReport:
@@ -285,7 +283,7 @@ def _verify_limit(expression: sp.Expr, variable: sp.Symbol, point: sp.Expr, dire
     checks.append(AlgebraVerificationCheck(
         name="limit_recompute",
         status="pass" if symbolic_ok else "fail",
-        detail="Tính lại giới hạn và so khớp kết quả.",
+        detail="Tính lại bằng cùng CAS chỉ là consistency replay; numeric approach mới là cross-check độc lập.",
         latex=sp.latex(result),
     ))
     numeric_ok = _numeric_limit_sample(expression, variable, point, direction, result)
@@ -296,11 +294,9 @@ def _verify_limit(expression: sp.Expr, variable: sp.Symbol, point: sp.Expr, dire
     ))
     if any(check.status == "fail" for check in checks):
         status = "failed"
-    elif all(check.status == "pass" for check in checks):
-        status = "verified"
     else:
         status = "partially_verified"
-    return AlgebraVerificationReport(status=status, checks=checks, method=["sympy.limit", "numeric_approach"])
+    return AlgebraVerificationReport(status=status, checks=checks, method=["solver_consistency_replay", "numeric_approach"])
 
 
 def _numeric_derivative_check(expression: sp.Expr, variable: sp.Symbol, derivative: sp.Expr, order: int) -> bool | None:

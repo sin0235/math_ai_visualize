@@ -193,6 +193,12 @@ class StoredModelInfo(BaseModel):
     created: int | None = None
     context_length: int | None = None
     capabilities: dict[str, Any] = Field(default_factory=dict)
+    is_free_endpoint: bool = False
+    supports_thinking: bool = False
+    supports_vision: bool = False
+    supported_parameters: list[str] = Field(default_factory=list)
+    pricing: dict[str, Any] = Field(default_factory=dict)
+    endpoint_metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class AdminProviderModelSettings(BaseModel):
@@ -393,13 +399,29 @@ class SystemPlanSettings(BaseModel):
 class SystemFeatureFlags(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    version: int = 1
+    version: int = 2
     maintenance_mode: bool = False
     maintenance_message: str = Field(default="Hệ thống đang bảo trì. Vui lòng thử lại sau.", max_length=500)
     google_oauth_enabled: bool = True
     ocr_enabled: bool = True
     render_enabled: bool = True
     turnstile_enabled: bool = False
+    nlp_shadow_rules: list[str] = Field(default_factory=list, max_length=64)
+    nlp_authoritative_rules: list[str] = Field(default_factory=list, max_length=64)
+
+    @field_validator("nlp_shadow_rules", "nlp_authoritative_rules")
+    @classmethod
+    def validate_nlp_rollout_rules(cls, values: list[str]) -> list[str]:
+        targets = {"render", "geometry_solve", "algebra", "analyzer", "ocr"}
+        cleaned: list[str] = []
+        for raw_value in values:
+            value = raw_value.strip().lower()
+            target, separator, intent = value.partition(":")
+            if target not in targets or (separator and (not intent or len(intent) > 96)):
+                raise ValueError("Rule NLP phải có dạng target hoặc target:intent.")
+            if value not in cleaned:
+                cleaned.append(value)
+        return cleaned
 
 
 class AiTaskProfile(BaseModel):
@@ -434,9 +456,21 @@ class AiTaskProfile(BaseModel):
 class SystemAiPrompts(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    version: int = 1
+    version: int = 2
     scene_extraction: str = Field(default="", max_length=50_000)
     reasoning: str = Field(default="", max_length=50_000)
+
+    @field_validator("scene_extraction", "reasoning")
+    @classmethod
+    def validate_prompt_override(cls, value: str) -> str:
+        prompt = value.strip()
+        if not prompt:
+            return ""
+        if len(prompt) < 100 or "json" not in prompt.lower():
+            raise ValueError("Prompt override phải dài ít nhất 100 ký tự và mô tả output JSON.")
+        if "\x00" in prompt:
+            raise ValueError("Prompt override chứa ký tự không hợp lệ.")
+        return prompt
 
 
 class SystemAiProfiles(BaseModel):

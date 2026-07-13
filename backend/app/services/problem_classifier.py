@@ -29,6 +29,15 @@ _COORDINATE_2D_KEYWORDS = ("oxy", "tọa độ phẳng", "toa do phang")
 _DISTANCE_RE = re.compile(r"kho[aả]ng\s*c[áa]ch|distance|\bd\s*\(", re.IGNORECASE)
 _ANGLE_RE = re.compile(r"g[oó]c|angle|cos\s*\(|sin\s*\(", re.IGNORECASE)
 _AREA_RE = re.compile(r"di[eệ]n\s*t[íi]ch|area|\bS\s*\(", re.IGNORECASE)
+_PERIMETER_RE = re.compile(r"chu\s*vi|perimeter|\bP\s*\(", re.IGNORECASE)
+_QUADRILATERAL_METRIC_RE = re.compile(r"h[iì]nh\s*(?:ch[uữ]\s*nh[aậ]t|vu[oô]ng|b[iì]nh\s*h[aà]nh|thang)|rectangle|square|parallelogram|trapezoid", re.IGNORECASE)
+_CIRCLE_METRIC_RE = re.compile(r"h[iì]nh\s*tr[oò]n|đường\s*tr[oò]n|duong\s*tron|circle", re.IGNORECASE)
+_TRIANGLE_CONGRUENCE_RE = re.compile(r"b[aằ]ng\s*nhau|congruent|≅|≡", re.IGNORECASE)
+_TRIANGLE_SIMILARITY_RE = re.compile(r"đ[oồ]ng\s*d[aạ]ng|similar|[∼~]", re.IGNORECASE)
+_PYTHAGORAS_RE = re.compile(
+    r"pythagor|pi-ta-go|(?:t[ií]nh|t[iì]m|calculate|find)(?:\s+đ[ộo]\s+d[aà]i)?\s+c[aạ]nh\s+[A-Z](?:[0-9]+|')?\s*-?\s*[A-Z](?:[0-9]+|')?",
+    re.IGNORECASE,
+)
 _VOLUME_RE = re.compile(r"th[eể]\s*t[íi]ch|volume|\bV\s*\(", re.IGNORECASE)
 _EQUATION_RE = re.compile(r"phương\s*trình|\bpt\b|equation", re.IGNORECASE)
 _PROJECTION_RE = re.compile(r"hình\s*chiếu|projection|project", re.IGNORECASE)
@@ -48,6 +57,12 @@ _KIND_MAP = {
     "angle_line_line": ("angle", "line_line"),
     "angle_plane_plane": ("angle", "plane_plane"),
     "area_polygon": ("area", "polygon"),
+    "perimeter_polygon": ("perimeter", "polygon"),
+    "pythagoras_length": ("pythagoras", "right_triangle_length"),
+    "triangle_congruence_sss": ("triangle_congruence", "sss"),
+    "triangle_similarity_aa": ("triangle_similarity", "aa"),
+    "quadrilateral_metric": ("quadrilateral_metric", "direct_formula"),
+    "circle_metric": ("circle_metric", "direct_formula"),
     "volume_pyramid": ("volume", "pyramid"),
     "volume_tetrahedron": ("volume", "tetrahedron"),
     "volume_prism": ("volume", "prism"),
@@ -139,7 +154,7 @@ def classify_solve_question(
     if task_type is None:
         task_type, sub_type, signal = _solve_task_from_question(question)
         if task_type is not None:
-            confidence = 0.65
+            confidence = 0.8
             signals.append(signal)
 
     answer = str(getattr(solver_result, "answer", "") or "") if solver_result is not None else ""
@@ -228,6 +243,8 @@ def _map_step_kind(kind: str) -> tuple[str, str | None] | None:
         return "angle", kind.removeprefix("angle_")
     if kind.startswith("volume_"):
         return "volume", kind.removeprefix("volume_")
+    if kind.startswith("perimeter_"):
+        return "perimeter", kind.removeprefix("perimeter_")
     if kind.startswith("equation_"):
         return "equation", kind.removeprefix("equation_")
     if kind.startswith("proof_"):
@@ -236,6 +253,15 @@ def _map_step_kind(kind: str) -> tuple[str, str | None] | None:
 
 
 def _solve_task_from_question(question: str) -> tuple[str | None, str | None, str]:
+    triangle_count = len(re.findall(r"(?:tam\s*gi[aá]c|triangle|[△∆])\s*[A-Z]{3}", question, re.IGNORECASE))
+    if triangle_count == 2 and _TRIANGLE_CONGRUENCE_RE.search(question):
+        return "triangle_congruence", "sss", "question_regex=triangle_congruence"
+    if triangle_count == 2 and _TRIANGLE_SIMILARITY_RE.search(question):
+        return "triangle_similarity", "aa", "question_regex=triangle_similarity"
+    if _CIRCLE_METRIC_RE.search(question) and (_AREA_RE.search(question) or _PERIMETER_RE.search(question)):
+        return "circle_metric", "direct_formula", "question_regex=circle_metric"
+    if _QUADRILATERAL_METRIC_RE.search(question) and (_AREA_RE.search(question) or _PERIMETER_RE.search(question)):
+        return "quadrilateral_metric", "direct_formula", "question_regex=quadrilateral_metric"
     if _DISTANCE_RE.search(question):
         return "distance", _distance_sub_type(question), "question_regex=distance"
     if _PROJECTION_RE.search(question):
@@ -256,6 +282,10 @@ def _solve_task_from_question(question: str) -> tuple[str | None, str | None, st
         return "angle", _angle_sub_type(question), "question_regex=angle"
     if _AREA_RE.search(question):
         return "area", "polygon", "question_regex=area"
+    if _PERIMETER_RE.search(question):
+        return "perimeter", "polygon", "question_regex=perimeter"
+    if _PYTHAGORAS_RE.search(question):
+        return "pythagoras", "right_triangle_length", "question_regex=pythagoras"
     if _VOLUME_RE.search(question):
         return "volume", "solid", "question_regex=volume"
     if _VECTOR_RE.search(question):

@@ -21,6 +21,15 @@ _REPLACEMENTS = {
 _SUPERSCRIPTS = str.maketrans("⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻", "0123456789+-")
 _SUBSCRIPTS = str.maketrans("₀₁₂₃₄₅₆₇₈₉", "0123456789")
 _STRUCTURED_PREFIXES = (
+    "gcd(",
+    "lcm(",
+    "power(",
+    "divisible(",
+    "percent(",
+    "ratio(",
+    "word_inventory(",
+    "word_product(",
+    "word_share(",
     "arithmetic(",
     "arithmetic_sum(",
     "geometric(",
@@ -32,6 +41,7 @@ _STRUCTURED_PREFIXES = (
     "A(",
     "stats(",
     "stats_freq(",
+    "stats_grouped(",
     "bernoulli(",
     "Pbinom(",
     "P(",

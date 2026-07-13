@@ -1,0 +1,79 @@
+{
+  "case_count": 35,
+  "corpus": "v1.jsonl",
+  "overall": {
+    "abstention_precision": 0.666667,
+    "brier_score": 0.175303,
+    "canonical_exact_match": 0.076923,
+    "canonical_semantic_match": 0.076923,
+    "case_count": 35,
+    "constraint_f1": 0.0,
+    "ece_10": 0.214857,
+    "entity_f1": 0.230769,
+    "intent_macro_f1": 0.626077,
+    "unsupported_recall": 0.0
+  },
+  "schema_version": 1,
+  "targets": {
+    "algebra": {
+      "abstention_precision": 1.0,
+      "brier_score": 0.145286,
+      "canonical_exact_match": 0.0,
+      "canonical_semantic_match": 0.0,
+      "case_count": 7,
+      "constraint_f1": 0.0,
+      "ece_10": 0.271429,
+      "entity_f1": 0.588235,
+      "intent_macro_f1": 0.888889,
+      "unsupported_recall": 0.0
+    },
+    "analyzer": {
+      "abstention_precision": 1.0,
+      "brier_score": 0.125714,
+      "canonical_exact_match": 0.25,
+      "canonical_semantic_match": 0.25,
+      "case_count": 7,
+      "constraint_f1": 1.0,
+      "ece_10": 0.057143,
+      "entity_f1": 0.333333,
+      "intent_macro_f1": 0.157143,
+      "unsupported_recall": 0.0
+    },
+    "geometry_solve": {
+      "abstention_precision": 0.5,
+      "brier_score": 0.176786,
+      "canonical_exact_match": 1.0,
+      "canonical_semantic_match": 1.0,
+      "case_count": 7,
+      "constraint_f1": 0.0,
+      "ece_10": 0.321429,
+      "entity_f1": 0.0,
+      "intent_macro_f1": 0.777778,
+      "unsupported_recall": 0.0
+    },
+    "ocr": {
+      "abstention_precision": 1.0,
+      "brier_score": 0.285714,
+      "canonical_exact_match": 0.0,
+      "canonical_semantic_match": 0.0,
+      "case_count": 7,
+      "constraint_f1": 0.0,
+      "ece_10": 0.285714,
+      "entity_f1": 0.0,
+      "intent_macro_f1": 0.088889,
+      "unsupported_recall": 0.0
+    },
+    "render": {
+      "abstention_precision": 0.666667,
+      "brier_score": 0.143014,
+      "canonical_exact_match": 0.0,
+      "canonical_semantic_match": 0.0,
+      "case_count": 7,
+      "constraint_f1": 0.0,
+      "ece_10": 0.195714,
+      "entity_f1": 0.0,
+      "intent_macro_f1": 0.583333,
+      "unsupported_recall": 0.0
+    }
+  }
+}

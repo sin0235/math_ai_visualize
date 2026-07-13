@@ -420,6 +420,7 @@ async def set_allowed_models(db: DatabaseClient, provider_id: str, model_ids: li
             canonical_ids.append(ref.model_id)
     for model_id in canonical_ids:
         await repo.allow_model(provider_id, model_id)
+    await repo.delete_unallowed_manual_models(provider_id)
     invalidate_model_registry_cache()
 
 

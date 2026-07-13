@@ -4,6 +4,8 @@ import re
 import unicodedata
 
 from app.schemas.algebra import AlgebraInputChip, AlgebraInputInterpretation, AlgebraSolveRequest
+from app.services.algebra.arithmetic_parser import parse_arithmetic_natural_language
+from app.services.algebra.expression_parser import parse_expression_instruction
 from app.services.algebra.normalizer import is_structured_algebra_input, normalize_algebra_input
 
 _RELATION_RE = re.compile(r"(<=|>=|!=|=|<|>|≤|≥|≠)")
@@ -14,7 +16,26 @@ _LATEX_HINT_RE = re.compile(r"\\(?:frac|sqrt|sin|cos|tan|log|ln)|\$\$?|\\\(|\\\[
 def interpret_algebra_input(request: AlgebraSolveRequest) -> AlgebraInputInterpretation:
     raw = request.input.strip()
     detected_format = _detect_format(raw, request.input_format)
-    canonical = _canonical_from_natural_language(raw) if detected_format in {"natural_vi", "mixed"} else raw
+    arithmetic_instruction = (
+        parse_arithmetic_natural_language(raw)
+        if detected_format in {"natural_vi", "mixed"}
+        else None
+    )
+    expression_instruction = (
+        parse_expression_instruction(raw)
+        if detected_format in {"natural_vi", "mixed"} and not arithmetic_instruction
+        else None
+    )
+    expression_action = request.expression_action or (expression_instruction[0] if expression_instruction else None)
+    canonical = (
+        arithmetic_instruction
+        if arithmetic_instruction
+        else expression_instruction[1]
+        if expression_instruction
+        else _canonical_from_natural_language(raw)
+        if detected_format in {"natural_vi", "mixed"}
+        else raw
+    )
     structured = None if is_structured_algebra_input(raw) else _structured_from_natural_language(raw)
     if structured:
         canonical = structured
@@ -24,7 +45,7 @@ def interpret_algebra_input(request: AlgebraSolveRequest) -> AlgebraInputInterpr
     if not is_structured and is_structured_algebra_input(normalized_preview):
         canonical = normalized_preview
         is_structured = True
-    topic_hint = _detect_topic(raw, normalized_preview)
+    topic_hint = "expression" if expression_action else _detect_topic(raw, normalized_preview)
     variables = request.variables or _detect_variables(raw, normalized_preview, topic_hint)
     domain = _detect_domain(raw, request.domain, topic_hint)
     chips = _build_chips(raw, canonical, topic_hint, variables, domain, detected_format)
@@ -38,6 +59,7 @@ def interpret_algebra_input(request: AlgebraSolveRequest) -> AlgebraInputInterpr
         source="structured_ui" if detected_format == "structured" else "rule_based_vi" if detected_format in {"natural_vi", "mixed"} else "latex_normalizer" if detected_format == "latex" else "raw",
         canonical_input=canonical,
         topic_hint=topic_hint,
+        expression_action=expression_action,
         variables=variables,
         domain=domain,
         chips=chips,
@@ -50,7 +72,7 @@ def _detect_format(raw: str, requested: str) -> str:
         return "structured"
     if requested == "latex" or _LATEX_HINT_RE.search(raw):
         return "latex"
-    has_vi = bool(re.search(r"[À-ỹ]", raw)) or bool(re.search(r"\b(giai|giải|tim|tìm|phuong|phương|bat|bất|he|hệ|nghiem|nghiệm|to hop|tổ hợp|chinh hop|chỉnh hợp|cap so|cấp số|day|dãy|so hang|số hạng|cong sai|công sai|cong boi|công bội|tham so|tham số|giai thua|giai thừa|dao ham|đạo hàm|gioi han|giới hạn|tich phan|tích phân)\b", raw, re.IGNORECASE))
+    has_vi = bool(re.search(r"[À-ỹ]", raw)) or bool(re.search(r"\b(giai|giải|tim|tìm|phuong|phương|bat|bất|he|hệ|nghiem|nghiệm|to hop|tổ hợp|chinh hop|chỉnh hợp|cap so|cấp số|day|dãy|so hang|số hạng|cong sai|công sai|cong boi|công bội|tham so|tham số|giai thua|giai thừa|dao ham|đạo hàm|gioi han|giới hạn|tich phan|tích phân|khai trien|khai triển|phan tich|phân tích|thu gon|thu gọn|rut gon|rút gọn)\b", raw, re.IGNORECASE))
     has_math = bool(_RELATION_RE.search(raw) or re.search(r"[\^*/()]|[a-zA-Z]\d|\d[a-zA-Z]", raw))
     if has_vi and has_math:
         return "mixed"
@@ -88,11 +110,14 @@ def _normalize_text(raw: str) -> str:
 def _structured_from_natural_language(raw: str) -> str | None:
     text = _normalize_text(raw)
     plain = _strip_accents(text.lower())
-    combination = re.search(r"(?:to hop|c)\s*(?:chap\s*)?(\d+)\s*(?:cua|trong|,)?\s*(\d+)", plain)
+    arithmetic = parse_arithmetic_natural_language(raw)
+    if arithmetic:
+        return arithmetic
+    combination = re.search(r"\b(?:to hop|c)\b\s*(?:chap\s*)?(\d+)\s*(?:cua|trong|,)?\s*(\d+)", plain)
     if combination:
         k, n = combination.groups()
         return f"C({n},{k})"
-    permutation = re.search(r"(?:chinh hop|a)\s*(?:chap\s*)?(\d+)\s*(?:cua|trong|,)?\s*(\d+)", plain)
+    permutation = re.search(r"\b(?:chinh hop|a)\b\s*(?:chap\s*)?(\d+)\s*(?:cua|trong|,)?\s*(\d+)", plain)
     if permutation:
         k, n = permutation.groups()
         return f"A({n},{k})"
@@ -162,6 +187,11 @@ def _calculus_template_from_text(text: str, plain: str) -> str | None:
         target = re.search(r"(?:x\s*(?:toi|tới|->|→)\s*)(-?\d+|oo|\+?∞|-∞)", plain)
         point = target.group(1).replace("∞", "oo") if target else "0"
         expression = re.sub(r"(?i)^\s*(gioi han|giới hạn|lim|tinh gioi han|tính giới hạn)\s*", "", cleaned).strip()
+        expression = re.sub(
+            r"(?i)^\s*(?:lim\s*)?x\s*(?:toi|tới|->|→)\s*(?:-?\d+|oo|\+?∞|-∞)\s*",
+            "",
+            expression,
+        )
         expression = re.split(r"(?i)\s+(?:khi|voi|với)\s+x\s*(?:toi|tới|->|→)\s*", expression)[0]
         expression = _clean_canonical(expression)
         if expression:
@@ -365,9 +395,13 @@ def _replace_vietnamese_math_words(text: str) -> str:
     result = text
     for pattern, repl in replacements:
         result = re.sub(pattern, repl, result, flags=re.IGNORECASE)
-    result = re.sub(r"\bsin\s+([a-zA-Z0-9(])", r"sin(\1", result)
-    result = re.sub(r"\bcos\s+([a-zA-Z0-9(])", r"cos(\1", result)
-    result = re.sub(r"\btan\s+([a-zA-Z0-9(])", r"tan(\1", result)
+    result = re.sub(
+        r"\b(sin|cos|tan)\s+([a-zA-Z0-9]+|\([^()]*\))",
+        lambda match: match.group(1).lower()
+        + (match.group(2) if match.group(2).startswith("(") else f"({match.group(2)})"),
+        result,
+        flags=re.IGNORECASE,
+    )
     return result
 
 
@@ -421,9 +455,11 @@ def _clean_canonical(value: str) -> str:
 
 def _detect_topic(raw: str, normalized: str) -> str:
     plain = _strip_accents(raw.lower())
+    if normalized.startswith(("gcd(", "lcm(", "power(", "divisible(", "percent(", "percent_ratio(", "percent_base(", "ratio(", "word_inventory(", "word_product(", "word_share(")):
+        return "arithmetic"
     if normalized.startswith(("arithmetic(", "arithmetic_sum(", "geometric(", "geometric_sum(")):
         return "sequence"
-    if normalized.lower().startswith(("stats(", "stats_freq(")):
+    if normalized.lower().startswith(("stats(", "stats_freq(", "stats_grouped(")):
         return "statistics"
     if any(key in plain for key in ("thong ke", "trung binh", "trung vi", "phuong sai", "do lech chuan", "mean", "median", "variance")):
         return "statistics"
@@ -473,12 +509,19 @@ def _detect_topic(raw: str, normalized: str) -> str:
         return "complex"
     if "=" in normalized:
         return "equation"
+    if re.fullmatch(r"[0-9\s+\-*/^().]+", normalized) and re.search(r"[+\-*/^]", normalized):
+        return "expression"
     return "auto"
 
 
 def _detect_variables(raw: str, normalized: str, topic_hint: str) -> list[str]:
+    if topic_hint in {"arithmetic", "sequence", "combinatorics_probability", "statistics"}:
+        return []
+    if topic_hint == "parameter":
+        structured_var = re.search(r"\bvar\s*=\s*([a-zA-Z])\b", normalized)
+        return [structured_var.group(1)] if structured_var else ["x"]
     plain = _strip_accents(raw.lower())
-    explicit = re.search(r"(?:theo|ẩn|an|biến|bien)\s+([a-zA-Z](?:\s*,\s*[a-zA-Z])*)", plain)
+    explicit = re.search(r"\b(?:theo|an|bien)\b\s+([a-zA-Z](?:\s*,\s*[a-zA-Z])*)", plain)
     if explicit:
         return [item.strip() for item in explicit.group(1).split(",") if item.strip()]
     if topic_hint in {"calculus_derivative", "calculus_limit", "calculus_integral"}:
@@ -491,7 +534,7 @@ def _detect_variables(raw: str, normalized: str, topic_hint: str) -> list[str]:
         return variables[:4]
     if variables:
         return [variables[0]]
-    return ["x"]
+    return []
 
 
 def _detect_domain(raw: str, requested_domain: str, topic_hint: str) -> str:

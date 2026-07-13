@@ -93,6 +93,49 @@ export function trackFeatureOpen(feature: string): void {
   enqueueEvent({ event_type: 'feature.open', feature: feature.slice(0, 64), path: window.location.pathname });
 }
 
+export type NlpTelemetryCode =
+  | 'unknown_intent'
+  | 'low_confidence'
+  | 'clarification_shown'
+  | 'clarification_accepted'
+  | 'clarification_edited'
+  | 'canonical_validation_failure'
+  | 'solver_unsupported'
+  | 'explainer_fallback'
+  | 'shadow_mismatch';
+
+export function trackNlpEvent(input: {
+  taxonomyCode: NlpTelemetryCode;
+  target: 'render' | 'geometry_solve' | 'algebra' | 'analyzer' | 'ocr';
+  status?: 'accepted' | 'needs_confirmation' | 'abstained' | 'unsupported';
+  confidence?: number;
+  candidateCount?: number;
+  adapterVersion?: string;
+  requestId?: string;
+}): void {
+  enqueueEvent({
+    event_type: 'nlp.preflight',
+    metadata: {
+      taxonomy_code: input.taxonomyCode,
+      target: input.target,
+      status: input.status,
+      confidence_bucket: confidenceBucket(input.confidence),
+      candidate_count: input.candidateCount,
+      adapter_version: input.adapterVersion?.slice(0, 80),
+      request_id: input.requestId?.slice(0, 80),
+    },
+  });
+}
+
+function confidenceBucket(confidence?: number) {
+  if (confidence === undefined || !Number.isFinite(confidence)) return undefined;
+  if (confidence < 0.2) return 'very_low';
+  if (confidence < 0.4) return 'low';
+  if (confidence < 0.65) return 'medium';
+  if (confidence < 0.85) return 'high';
+  return 'very_high';
+}
+
 function enqueueEvent(event: { event_type: string; path?: string; feature?: string; metadata?: Record<string, unknown> }): void {
   eventQueue.push(event);
   if (eventQueue.length >= 12) {

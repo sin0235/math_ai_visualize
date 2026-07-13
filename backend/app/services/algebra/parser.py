@@ -9,6 +9,7 @@ from typing import Literal
 import sympy as sp
 from sympy.parsing.sympy_parser import convert_xor, implicit_multiplication_application, parse_expr, standard_transformations
 
+from app.services.algebra.expression_parser import ExpressionAction
 from app.services.algebra.normalizer import normalize_algebra_input
 
 TRANSFORMATIONS = standard_transformations + (implicit_multiplication_application, convert_xor)
@@ -52,6 +53,7 @@ class ParsedAlgebraProblem:
     solve_interval: sp.Set | None = None
     # Angle measure for trig solvers: "radian" (default) or "degree".
     angle_unit: Literal["radian", "degree"] = "radian"
+    expression_action: ExpressionAction | None = None
 
     @property
     def sympy_domain(self) -> sp.Set:
@@ -68,7 +70,13 @@ class ParsedAlgebraProblem:
         return self.domain in {"R", "Z", "N"}
 
 
-def parse_algebra_problem(raw_input: str, topic: str = "auto", variables: list[str] | None = None, domain: str = "R") -> ParsedAlgebraProblem:
+def parse_algebra_problem(
+    raw_input: str,
+    topic: str = "auto",
+    variables: list[str] | None = None,
+    domain: str = "R",
+    expression_action: ExpressionAction | None = None,
+) -> ParsedAlgebraProblem:
     normalized = normalize_algebra_input(raw_input)
     if variables:
         variable_names = list(variables)
@@ -96,7 +104,16 @@ def parse_algebra_problem(raw_input: str, topic: str = "auto", variables: list[s
         raise
     except Exception as exc:
         raise AlgebraParseError(f"Không parse được biểu thức: {exc}") from exc
-    return ParsedAlgebraProblem(raw_input, normalized, topic if topic != "auto" else "expression", expression=expression, variable=variable, variables=symbols, domain=domain)
+    return ParsedAlgebraProblem(
+        raw_input,
+        normalized,
+        topic if topic != "auto" else "expression",
+        expression=expression,
+        variable=variable,
+        variables=symbols,
+        domain=domain,
+        expression_action=expression_action,
+    )
 
 
 def _parse_relations(text: str, local_dict: dict[str, object]) -> list[sp.Relational]:

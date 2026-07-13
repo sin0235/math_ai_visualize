@@ -190,6 +190,20 @@ async def sync_ai_tier_profiles_to_registry(db: DatabaseClient, value: dict, pat
         )
 
 
+def remove_legacy_model_inventory(value: dict) -> dict:
+    cleaned = normalize_provider_defaults(value) or {}
+    for provider_id in ("openrouter", "nvidia", "ollama", "openai_compat", "router9"):
+        provider = cleaned.get(provider_id)
+        if not isinstance(provider, dict):
+            continue
+        provider = dict(provider)
+        provider.pop("scanned_models", None)
+        provider.pop("allowed_model_ids", None)
+        provider.pop("last_scanned_at", None)
+        cleaned[provider_id] = provider
+    return cleaned
+
+
 async def sync_ai_settings_to_registry(db: DatabaseClient, value: dict, patch: dict | None = None) -> None:
     current_settings = get_settings()
     value = normalize_provider_defaults(value)
