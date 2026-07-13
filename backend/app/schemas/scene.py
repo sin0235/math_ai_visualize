@@ -740,8 +740,9 @@ class RenderResponse(BaseModel):
         return self
 
 
-SceneRenderRequest.model_rebuild()
-ProblemVariantsRequest.model_rebuild()
+_SCENE_SCHEMA_TYPES = globals()
+SceneRenderRequest.model_rebuild(_types_namespace=_SCENE_SCHEMA_TYPES)
+ProblemVariantsRequest.model_rebuild(_types_namespace=_SCENE_SCHEMA_TYPES)
 
 
 class RenderJobCreateResponse(BaseModel):

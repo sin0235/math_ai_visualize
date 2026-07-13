@@ -90,6 +90,9 @@ def test_coverage_report_uses_corpus_and_test_evidence():
     assert rows["statistics.descriptive_raw"]["evidence"] == "corpus_and_tests"
     assert rows["statistics.grouped_data"]["evidence"] == "corpus_and_tests"
     assert rows["calculus.integral"]["evidence"] == "corpus_and_tests"
+    assert rows["number.rational_arithmetic"]["evidence"] == "corpus_and_tests"
+    assert rows["algebra.linear_inequality"]["evidence"] == "corpus_and_tests"
+    assert rows["algebra.complex_numbers"]["evidence"] == "corpus_and_tests"
     assert rows["geometry.basic_measurement"]["evidence"] == "corpus_and_tests"
     assert rows["geometry.basic_measurement"]["corpus_case_count"] == 2
     assert "test_geometry_lower_secondary.py" in rows["geometry.basic_measurement"]["test_sources"]

@@ -65,8 +65,8 @@ _SKILLS = (
     _skill("geometry.similarity_pythagoras", (8, 9), MathStrand.GEOMETRY, "triangle_similarity", "Đồng dạng và định lý Pythagore", ("prove_similarity", "length", "ratio"), status="partial", engines=("triangle_proof_solver", "pythagoras_solver", "geometry_engine", "classical_proof"), policy=_policy("triangle_similarity_replay", "pythagoras_substitution")),
     _skill("geometry.quadrilateral", (8, 9), MathStrand.GEOMETRY, "quadrilaterals", "Tứ giác đặc biệt", ("classify", "prove_relation", "metric"), status="partial", engines=("plane_shape_solver",), policy=_policy("plane_metric_recompute")),
     _skill("geometry.circle_basic", (9,), MathStrand.GEOMETRY, "circle", "Đường tròn cơ bản", ("central_angle", "inscribed_angle", "tangent", "chord"), status="partial", engines=("plane_shape_solver", "geometry_kernel"), policy=_policy("circle_metric_recompute")),
-    _skill("statistics.descriptive_raw", (7, 8, 10), MathStrand.STATISTICS, "descriptive_statistics", "Thống kê mô tả dữ liệu thô", ("mean", "median", "mode", "variance", "standard_deviation"), status="partial", engines=("statistics_solver",)),
-    _skill("probability.classical", (8, 9, 10), MathStrand.PROBABILITY, "classical_probability", "Xác suất cổ điển", ("sample_space", "event", "compute"), status="partial", engines=("combinatorics_probability_solver",)),
+    _skill("statistics.descriptive_raw", (7, 8, 10), MathStrand.STATISTICS, "descriptive_statistics", "Thống kê mô tả dữ liệu thô", ("mean", "median", "mode", "variance", "standard_deviation"), status="partial", engines=("statistics_solver",), policy=_policy("exact_rational_mean", "stdlib_statistics_recompute")),
+    _skill("probability.classical", (8, 9, 10), MathStrand.PROBABILITY, "classical_probability", "Xác suất cổ điển", ("sample_space", "event", "compute"), status="partial", engines=("combinatorics_probability_solver",), policy=_policy("stdlib_fraction_recompute", exactness="exact")),
     _skill("algebra.quadratic_equation", (9, 10), MathStrand.ALGEBRA, "equation", "Phương trình bậc hai", ("solve", "viete", "parameter"), status="supported", engines=("equation_solver", "parameter_solver"), policy=_policy("substitution", "viete_recompute")),
     _skill("algebra.polynomial_rational_equation", (9, 10, 11), MathStrand.ALGEBRA, "equation", "Phương trình đa thức và hữu tỉ", ("solve", "domain", "extraneous_roots"), status="partial", engines=("equation_solver",)),
     _skill("algebra.nonlinear_system", (9, 10), MathStrand.ALGEBRA, "system", "Hệ phương trình phi tuyến", ("solve", "parameter"), status="partial", engines=("system_solver",)),
@@ -74,8 +74,8 @@ _SKILLS = (
     _skill("algebra.trigonometry", (10, 11), MathStrand.ALGEBRA, "trigonometry", "Công thức và phương trình lượng giác", ("transform", "solve_equation", "interval_solution"), status="supported", engines=("trig_solver",)),
     _skill("algebra.sequence", (11,), MathStrand.ALGEBRA, "sequence", "Dãy số, cấp số cộng và cấp số nhân", ("term", "sum", "identify"), status="supported", engines=("sequence_solver",)),
     _skill("geometry.coordinate_2d", (10,), MathStrand.GEOMETRY, "coordinate_2d", "Vector và tọa độ trong mặt phẳng", ("vector", "line", "circle", "distance", "angle"), status="partial", engines=("geometry_engine", "function_analyzer")),
-    _skill("combinatorics.counting", (10, 11), MathStrand.PROBABILITY, "combinatorics", "Quy tắc đếm, hoán vị, chỉnh hợp và tổ hợp", ("count", "permutation", "combination", "binomial"), status="partial", engines=("combinatorics_probability_solver",)),
-    _skill("probability.rules", (11, 12), MathStrand.PROBABILITY, "probability_rules", "Quy tắc xác suất và biến cố", ("union", "intersection", "conditional", "independence", "bayes"), status="partial", engines=("combinatorics_probability_solver",)),
+    _skill("combinatorics.counting", (10, 11), MathStrand.PROBABILITY, "combinatorics", "Quy tắc đếm, hoán vị, chỉnh hợp và tổ hợp", ("count", "permutation", "combination", "binomial"), status="partial", engines=("combinatorics_probability_solver",), policy=_policy("stdlib_integer_recompute", exactness="exact")),
+    _skill("probability.rules", (11, 12), MathStrand.PROBABILITY, "probability_rules", "Quy tắc xác suất và biến cố", ("union", "intersection", "conditional", "independence", "bayes"), status="partial", engines=("combinatorics_probability_solver",), policy=_policy("stdlib_fraction_recompute", exactness="exact")),
     _skill("algebra.exponential_logarithm", (11, 12), MathStrand.ALGEBRA, "exponential_log", "Mũ và logarit", ("transform", "equation", "inequality"), status="supported", engines=("exp_log_solver",)),
     _skill("calculus.limit_continuity", (11, 12), MathStrand.CALCULUS, "limit", "Giới hạn và liên tục", ("finite_limit", "one_sided", "infinite", "continuity"), status="partial", engines=("calculus_solver",), policy=_policy("numeric_approach", exactness="partial")),
     _skill("calculus.derivative", (11, 12), MathStrand.CALCULUS, "derivative", "Đạo hàm và ứng dụng", ("differentiate", "tangent", "monotonicity", "extrema", "optimization"), status="partial", engines=("calculus_solver", "function_analyzer"), policy=_policy("finite_difference", exactness="partial")),
@@ -164,11 +164,15 @@ def skills_for_algebra_problem(topic: str, problem_type: str, canonical: str = "
     if topic in {"expression", "equation", "inequality"} and re.search(r"\b(?:Abs|sqrt)\s*\(", canonical):
         return ("algebra.absolute_radical",)
     if topic == "expression":
+        if "/" in canonical and not re.search(r"[A-Za-z_]", canonical):
+            return ("number.rational_arithmetic",)
         if problem_type in {"factor", "expand", "transform_factor", "transform_expand"} and _looks_like_polynomial(canonical):
             return ("algebra.expression_transform", "algebra.polynomial_operations")
         return ("algebra.expression_transform",)
     if topic == "equation":
         return (_equation_skill(canonical),) if canonical else ALGEBRA_TOPIC_SKILLS["equation"]
+    if topic == "inequality":
+        return ("algebra.linear_inequality",)
     if topic == "system":
         if not canonical:
             return ALGEBRA_TOPIC_SKILLS["system"]

@@ -509,6 +509,8 @@ def _detect_topic(raw: str, normalized: str) -> str:
         return "complex"
     if "=" in normalized:
         return "equation"
+    if re.fullmatch(r"[0-9\s+\-*/^().]+", normalized) and re.search(r"[+\-*/^]", normalized):
+        return "expression"
     return "auto"
 
 

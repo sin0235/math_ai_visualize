@@ -62,12 +62,16 @@ def test_arithmetic_parser_and_solution_ir_stay_inside_ratio_percent_skill():
 
 
 def test_lower_secondary_fraction_expression_stays_exact():
-    result = solve_algebra(AlgebraSolveRequest(input="3/4 + 2/3"))
+    request = AlgebraSolveRequest(input="3/4 + 2/3")
+    result = solve_algebra(request)
 
     assert result.status == "solved"
     assert result.topic == "expression"
     assert result.solution_set.text == "17/12"
     assert result.verification.status == "verified"
+    assert project_algebra_solution(request, result).problem.curriculum.skill_ids == [
+        "number.rational_arithmetic"
+    ]
 
 
 @pytest.mark.parametrize(("text", "action", "expected", "problem_type"), [
