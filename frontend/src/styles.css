@@ -13776,7 +13776,7 @@ button.analyzer-guide-label:hover {
 
 .algebra-workspace {
   display: grid;
-  grid-template-columns: minmax(340px, 400px) minmax(0, 1fr);
+  grid-template-columns: minmax(420px, 560px) minmax(0, 1fr);
   min-height: calc(100dvh - 112px);
   align-items: stretch;
   overflow: clip;
@@ -14502,6 +14502,58 @@ button.analyzer-guide-label:hover {
 .algebra-action-primary {
   background: color-mix(in srgb, var(--accent, #2563eb) 12%, var(--paper));
   border-color: color-mix(in srgb, var(--accent, #2563eb) 40%, var(--line));
+}
+
+.algebra-export-more {
+  position: relative;
+}
+
+.algebra-export-more > summary {
+  list-style: none;
+}
+
+.algebra-export-more > summary::-webkit-details-marker {
+  display: none;
+}
+
+.algebra-export-dropdown {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 10;
+  display: grid;
+  gap: 2px;
+  min-width: 170px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--paper);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+
+.algebra-export-dropdown button {
+  display: block;
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.8rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.algebra-export-dropdown button:hover {
+  background: var(--bg-hover, #f4f4f5);
+}
+
+/* Hide internal debug elements from production UI */
+.algebra-step-confidence,
+.algebra-step-rule,
+.algebra-step-pedagogy {
+  display: none;
 }
 
 .algebra-copy-feedback {

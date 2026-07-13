@@ -17,14 +17,7 @@ function AlgebraStepCard({ step, isSubStep }: { step: AlgebraSolveStep, isSubSte
   const [isExpanded, setIsExpanded] = useState(false);
   const detailId = useId();
   const hasSubSteps = Boolean(step.sub_steps && step.sub_steps.length > 0);
-  const hasPedagogy = Boolean(
-    hasText(step.goal)
-    || hasText(step.why)
-    || hasText(step.operation)
-    || hasText(step.pitfall)
-    || hasText(step.check)
-    || (hasText(step.explanation) && hasText(step.short_explanation) && step.explanation !== step.short_explanation)
-  );
+  const hasPedagogy = false;
   const canExpand = hasSubSteps || hasPedagogy;
 
   return (
@@ -33,14 +26,7 @@ function AlgebraStepCard({ step, isSubStep }: { step: AlgebraSolveStep, isSubSte
         <span className="algebra-step-index">{step.index}</span>
         <div style={{ flex: 1 }}>
           <strong>{step.title}</strong>
-          {(step.method || step.rule) && (
-            <span className="algebra-step-rule">
-              <MixedTextRenderer text={step.rule || step.method || ''} />
-            </span>
-          )}
-          {step.confidence && (
-            <span className={`algebra-step-confidence conf-${step.confidence}`}>{step.confidence}</span>
-          )}
+
         </div>
         {canExpand && (
           <button
@@ -84,23 +70,11 @@ function AlgebraStepCard({ step, isSubStep }: { step: AlgebraSolveStep, isSubSte
           )
         )}
         {step.explanation && (
-          <p><MixedTextRenderer text={step.short_explanation || step.explanation} /></p>
+          <p><MixedTextRenderer text={step.explanation} /></p>
         )}
 
         {isExpanded && (
           <div id={detailId}>
-            {hasPedagogy && (
-              <dl className="algebra-step-pedagogy">
-                {hasText(step.goal) && <div><dt>Mục tiêu</dt><dd><MixedTextRenderer text={step.goal!} /></dd></div>}
-                {hasText(step.why) && <div><dt>Vì sao</dt><dd><MixedTextRenderer text={step.why!} /></dd></div>}
-                {hasText(step.operation) && <div><dt>Thao tác</dt><dd><MixedTextRenderer text={step.operation!} /></dd></div>}
-                {hasText(step.pitfall) && <div><dt>Sai lầm thường gặp</dt><dd><MixedTextRenderer text={step.pitfall!} /></dd></div>}
-                {hasText(step.check) && <div><dt>Cách kiểm tra</dt><dd><MixedTextRenderer text={step.check!} /></dd></div>}
-                {hasText(step.explanation) && hasText(step.short_explanation) && step.explanation !== step.short_explanation && (
-                  <div><dt>Giải thích đầy đủ</dt><dd><MixedTextRenderer text={step.explanation} /></dd></div>
-                )}
-              </dl>
-            )}
 
             {hasSubSteps && (
               <div className="algebra-nested-steps">

@@ -190,22 +190,22 @@ def _calculus_template_from_text(text: str, plain: str) -> str | None:
         if expression:
             return f"derivative(expr={expression},var=x)"
     if "gioi han" in plain or "giới hạn" in text.lower():
-        target = re.search(r"(?:x\s*(?:toi|tới|->|→)\s*)(-?\d+|oo|\+?∞|-∞)", plain)
+        target = re.search(r"(?:x\s*(?:tien\s+toi|tiến\s+tới|toi|tới|->|→)\s*)(-?\d+|oo|\+?∞|-∞)", plain)
         point = target.group(1).replace("∞", "oo") if target else "0"
-        expression = re.sub(r"(?i)^\s*(gioi han|giới hạn|lim|tinh gioi han|tính giới hạn)\s*", "", cleaned).strip()
+        expression = re.sub(r"(?i)^\s*(gioi han|giới hạn|lim|tinh gioi han|tính giới hạn|tim gioi han|tìm giới hạn)\s*", "", cleaned).strip()
         expression = re.sub(r"(?i)^\s*(?:cua|của|of)\s+", "", expression).strip()
         expression = re.sub(
-            r"(?i)^\s*(?:lim\s*)?x\s*(?:toi|tới|->|→)\s*(?:-?\d+|oo|\+?∞|-∞)\s*",
+            r"(?i)^\s*(?:lim\s*)?x\s*(?:tien\s+toi|tiến\s+tới|toi|tới|->|→)\s*(?:-?\d+|oo|\+?∞|-∞)\s*",
             "",
             expression,
         )
-        expression = re.split(r"(?i)\s+(?:khi|voi|với)\s+x\s*(?:toi|tới|->|→)\s*", expression)[0]
+        expression = re.split(r"(?i)\s+(?:khi|voi|với)\s+x\s*(?:tien\s+toi|tiến\s+tới|toi|tới|->|→)\s*", expression)[0]
         expression = _clean_canonical(expression)
         if expression:
             return f"limit(expr={expression},var=x,to={point})"
-    if "tich phan" in plain or "tích phân" in text.lower():
+    if "tich phan" in plain or "tích phân" in text.lower() or "nguyen ham" in plain or "nguyên hàm" in text.lower():
         bounds = re.search(r"(?:tu|từ)\s*(-?\d+)\s*(?:den|đến)\s*(-?\d+)", plain)
-        expression = re.sub(r"(?i)^\s*(tich phan|tích phân|tinh tich phan|tính tích phân|nguyen ham|nguyên hàm)\s*", "", cleaned).strip()
+        expression = re.sub(r"(?i)^\s*(tich phan|tích phân|tinh tich phan|tính tích phân|nguyen ham|nguyên hàm|tinh nguyen ham|tính nguyên hàm|tim nguyen ham|tìm nguyên hàm)\s*", "", cleaned).strip()
         expression = re.sub(r"(?i)^\s*(?:cua|của|of)\s+", "", expression).strip()
         expression = re.split(r"(?i)\s+(?:tu|từ)\s*-?\d+\s*(?:den|đến)\s*-?\d+", expression)[0]
         expression = _clean_canonical(expression)

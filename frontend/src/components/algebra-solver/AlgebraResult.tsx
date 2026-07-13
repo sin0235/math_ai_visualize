@@ -83,7 +83,6 @@ export function AlgebraResult({
       || hasText(step.check)
     )
   ));
-  const interpretation = result.input_interpretation;
   const analyzerExpression = expressionForAnalyzer(result);
 
   async function copyText(label: string, text: string) {
@@ -112,7 +111,7 @@ export function AlgebraResult({
     <section className={`algebra-result-panel ${stale ? 'is-stale' : ''}`}>
       <div className="algebra-result-header">
         <div>
-          <span className="algebra-eyebrow">{compactMeta(result.topic, result.problem_type)}</span>
+          <span className="algebra-eyebrow">Kết quả</span>
           <h2>{statusTitle(result.status)}</h2>
           {stale && (
             <span className="algebra-stale-badge" role="status">
@@ -122,43 +121,25 @@ export function AlgebraResult({
         </div>
         <div className="algebra-result-actions">
           {(hasText(result.answer_latex) || hasText(result.answer)) && (
-            <>
-              <button type="button" className="algebra-action-btn" onClick={() => copyText('đáp án', result.answer)}>
-                Copy đáp án
-              </button>
-              {hasText(result.answer_latex) && (
-                <button type="button" className="algebra-action-btn" onClick={() => copyText('LaTeX', result.answer_latex || '')}>
-                  Copy LaTeX
-                </button>
-              )}
-              <button type="button" className="algebra-action-btn" onClick={() => copyText('Markdown', buildMarkdown(result))}>
-                Copy Markdown
-              </button>
-              <button type="button" className="algebra-action-btn" onClick={() => downloadMarkdown(result)}>
-                Tải .md
-              </button>
-              <button type="button" className="algebra-action-btn" onClick={() => downloadPrintableHtml(result)}>
-                Tải HTML/in
-              </button>
-              <button
-                type="button"
-                className="algebra-action-btn"
-                onClick={() => {
-                  void downloadAlgebraPdf(result).catch(() => {
-                    setCopyFeedback('Không tải được PDF server');
-                    window.setTimeout(() => setCopyFeedback(''), 2500);
-                  });
-                }}
-              >
-                Tải PDF (server)
-              </button>
-            </>
-          )}
-          {analyzerExpression && (
-            <button type="button" className="algebra-action-btn algebra-action-primary" onClick={openAnalyzer}>
-              Mở Function Analyzer
+            <button type="button" className="algebra-action-btn algebra-action-primary" onClick={() => copyText('đáp án', result.answer)}>
+              Copy đáp án
             </button>
           )}
+          <details className="algebra-export-more">
+            <summary className="algebra-action-btn">Thêm ▾</summary>
+            <div className="algebra-export-dropdown">
+              {hasText(result.answer_latex) && (
+                <button type="button" onClick={() => copyText('LaTeX', result.answer_latex || '')}>Copy LaTeX</button>
+              )}
+              <button type="button" onClick={() => copyText('Markdown', buildMarkdown(result))}>Copy Markdown</button>
+              <button type="button" onClick={() => downloadMarkdown(result)}>Tải .md</button>
+              <button type="button" onClick={() => downloadPrintableHtml(result)}>Tải HTML/in</button>
+              <button type="button" onClick={() => { void downloadAlgebraPdf(result).catch(() => { setCopyFeedback('Không tải được PDF server'); window.setTimeout(() => setCopyFeedback(''), 2500); }); }}>Tải PDF</button>
+              {analyzerExpression && (
+                <button type="button" onClick={openAnalyzer}>Mở Function Analyzer</button>
+              )}
+            </div>
+          </details>
         </div>
       </div>
       {copyFeedback && <p className="algebra-copy-feedback" aria-live="polite">{copyFeedback}</p>}
@@ -188,67 +169,6 @@ export function AlgebraResult({
         </section>
       )}
 
-      {interpretation && (
-        <details className="algebra-result-card algebra-result-disclosure">
-          <summary>
-            <span>Hệ thống hiểu đề</span>
-            <small>Thông tin kỹ thuật</small>
-          </summary>
-          <div className="algebra-result-disclosure-content">
-          <dl className="algebra-interpretation-grid">
-            <div>
-              <dt>Đề gốc</dt>
-              <dd><code>{result.input}</code></dd>
-            </div>
-            <div>
-              <dt>Canonical</dt>
-              <dd><code>{interpretation.canonical_input}</code></dd>
-            </div>
-            <div>
-              <dt>Nguồn</dt>
-              <dd>{sourceLabel(interpretation.source)}</dd>
-            </div>
-            <div>
-              <dt>Định dạng</dt>
-              <dd>{interpretation.detected_format}</dd>
-            </div>
-            <div>
-              <dt>Topic gợi ý</dt>
-              <dd>{interpretation.topic_hint}</dd>
-            </div>
-            <div>
-              <dt>Miền</dt>
-              <dd>{interpretation.domain}</dd>
-            </div>
-            {interpretation.variables.length > 0 && (
-              <div>
-                <dt>Biến</dt>
-                <dd>{interpretation.variables.join(', ')}</dd>
-              </div>
-            )}
-          </dl>
-          {interpretation.chips.length > 0 && (
-            <div className="algebra-chip-row">
-              {interpretation.chips.map((chip) => (
-                <span className="algebra-chip" key={`${chip.kind}-${chip.value}`}>{chip.label}: {chip.value}</span>
-              ))}
-            </div>
-          )}
-          {interpretation.warnings.length > 0 && (
-            <InfoList items={interpretation.warnings} />
-          )}
-          {onApplyCanonical && interpretation.canonical_input && interpretation.canonical_input !== result.input && (
-            <button
-              type="button"
-              className="algebra-action-btn"
-              onClick={() => onApplyCanonical(interpretation.canonical_input)}
-            >
-              Đưa canonical vào ô nhập để sửa &amp; giải lại
-            </button>
-          )}
-          </div>
-        </details>
-      )}
 
       {(assumptions.length > 0 || notices.length > 0) && (
         <div className="algebra-result-grid">
@@ -494,12 +414,6 @@ function isRoutineInterpretationNotice(value: string) {
     || value.includes('Đầu vào gồm cả mô tả tự nhiên và ký hiệu toán; hệ thống ưu tiên phần biểu thức được trích xuất.');
 }
 
-function sourceLabel(source: string) {
-  if (source === 'rule_based_vi') return 'Rule-based tiếng Việt';
-  if (source === 'latex_normalizer') return 'LaTeX normalizer';
-  if (source === 'structured_ui') return 'Structured UI';
-  return source;
-}
 
 function verificationCheckLabel(name: string) {
   const labels: Record<string, string> = {

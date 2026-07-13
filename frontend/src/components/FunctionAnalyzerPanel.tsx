@@ -1,6 +1,4 @@
-import { useRef } from 'react';
-import type { InterpretationCandidate, InterpretationResponse } from '../api/nlp';
-import { InterpretationPanel, useInterpretationPreflight } from './nlp/InterpretationPanel';
+import { useInterpretationPreflight } from './nlp/InterpretationPanel';
 import { AnalyzerToolControls } from './function-analyzer/AnalyzerToolControls';
 import { AnalyzerInput } from './function-analyzer/AnalyzerInput';
 import { AnalyzerPersistenceControls } from './function-analyzer/AnalyzerPersistenceControls';
@@ -15,27 +13,26 @@ interface FunctionAnalyzerPanelProps {
 export function FunctionAnalyzerPanel({ initialExpression = '', onOpenGuide }: FunctionAnalyzerPanelProps) {
   const analyzer = useFunctionAnalysis(initialExpression);
   const preflight = useInterpretationPreflight();
-  const pendingOcrRef = useRef(false);
   const disabled = analyzer.analysisState !== 'current' || analyzer.loading || analyzer.ocrLoading;
   const toolDisabled = disabled || analyzer.toolCooldownSeconds > 0;
 
   async function requestAnalyze(fromOcr: boolean) {
     const text = analyzer.expression.trim();
     if (!text) return;
-    pendingOcrRef.current = fromOcr;
     const accepted = await preflight.check({ text, target: 'analyzer', context: {} });
-    if (accepted) await runConfirmedAnalysis(accepted);
+    const expression = accepted ? expressionFromInterpretation(accepted) : text;
+    preflight.reset();
+    if (!expression) return;
+    if (fromOcr) await analyzer.handleConfirmOcr(expression);
+    else await analyzer.handleAnalyze(expression);
   }
 
-  async function runConfirmedAnalysis(confirmed: { candidate: InterpretationCandidate; response: InterpretationResponse }) {
+  function expressionFromInterpretation(confirmed: Awaited<ReturnType<typeof preflight.check>>) {
+    if (!confirmed) return '';
     const payloadExpression = confirmed.candidate.canonical_payload?.expression;
-    const expression = typeof payloadExpression === 'string'
+    return typeof payloadExpression === 'string'
       ? payloadExpression
       : confirmed.candidate.canonical_text?.trim() || confirmed.response.normalized_text.trim();
-    if (!expression) return;
-    preflight.reset();
-    if (pendingOcrRef.current) await analyzer.handleConfirmOcr(expression);
-    else await analyzer.handleAnalyze(expression);
   }
 
   return (
@@ -58,13 +55,6 @@ export function FunctionAnalyzerPanel({ initialExpression = '', onOpenGuide }: F
         onDiscardOcr={analyzer.discardOcrCandidate}
         onImageChange={analyzer.handleImageChange}
         onOpenGuide={onOpenGuide}
-      />
-
-      <InterpretationPanel
-        controller={preflight}
-        title="Cách hệ thống hiểu yêu cầu khảo sát"
-        confirmLabel="Xác nhận và phân tích"
-        onConfirm={(confirmed) => runConfirmedAnalysis(confirmed)}
       />
 
       <section className="fa2-results-panel" aria-label="Kết quả khảo sát">

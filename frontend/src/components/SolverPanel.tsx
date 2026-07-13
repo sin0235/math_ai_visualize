@@ -1,12 +1,10 @@
 import { useMemo, useRef, useState } from 'react';
 import { solveProblem, type ConstructionAction, type SolveResponse, type SolveStep } from '../api/client';
-import type { InterpretationCandidate, InterpretationResponse } from '../api/nlp';
-import { InterpretationPanel, useInterpretationPreflight } from './nlp/InterpretationPanel';
+import { useInterpretationPreflight } from './nlp/InterpretationPanel';
 import { committedSceneRefV3, downstreamGateMessageV3 } from '../hooks/sceneWorkspaceV3State';
 import type { RuntimeSettings } from '../types/settings';
 import type { MathSceneV3, SceneWorkspaceResponseV3 } from '../types/sceneV3';
 import { KatexSpan, normalizeLatexForKatex, sympyToLatex } from './KatexSpan';
-import { MathInputComposer, type MathInputMode } from './math-input/MathInputComposer';
 import { MathCapabilitySummary } from './MathCapabilitySummary';
 
 interface SolverPanelProps {
@@ -170,7 +168,6 @@ function resolveStepObjectIds(scene: MathSceneV3, step: SolveStep): string[] {
 export function SolverPanel({ workspace, runtimeSettings, onHighlight }: SolverPanelProps) {
   const scene = workspace.scene;
   const [question, setQuestion] = useState('');
-  const [inputMode, setInputMode] = useState<MathInputMode>('natural');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<SolveResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -185,11 +182,11 @@ export function SolverPanel({ workspace, runtimeSettings, onHighlight }: SolverP
     const trimmedQuestion = question.trim();
     if (!trimmedQuestion || gateMessage || loading) return;
     setError(null);
-    const accepted = await preflight.check({
+    await preflight.check({
       text: trimmedQuestion,
       target: 'geometry_solve',
-      input_mode: inputMode,
-      input_format: inputMode === 'math' ? 'plain' : 'auto',
+      input_mode: 'natural',
+      input_format: 'auto',
       context: {
         scene_id: scene.scene_id,
         scene_topic: scene.topic,
@@ -203,14 +200,10 @@ export function SolverPanel({ workspace, runtimeSettings, onHighlight }: SolverP
         })),
       },
     });
-    if (accepted) await handleSolve(accepted);
+    await handleSolve(trimmedQuestion);
   }
 
-  async function handleSolve(confirmed: { candidate: InterpretationCandidate; response: InterpretationResponse }) {
-    const payloadQuestion = confirmed.candidate.canonical_payload?.question;
-    const trimmedQuestion = typeof payloadQuestion === 'string'
-      ? payloadQuestion.trim()
-      : confirmed.candidate.canonical_text?.trim() || confirmed.response.normalized_text.trim();
+  async function handleSolve(trimmedQuestion: string) {
     if (!trimmedQuestion || gateMessage) return;
     const cacheKey = `${sceneCacheKey}\n${geometryMethod}\n${trimmedQuestion}`;
     preflight.reset();
@@ -283,38 +276,33 @@ export function SolverPanel({ workspace, runtimeSettings, onHighlight }: SolverP
       {gateMessage && <div className="sp-warning" role="note">{gateMessage}</div>}
 
       <div className="sp-composer-wrap">
-        <MathInputComposer
-          value={question}
-          mode={inputMode}
-          onChange={(value) => { setQuestion(value); preflight.reset(); }}
-          onModeChange={(mode) => { setInputMode(mode); preflight.reset(); }}
-          keyboard="geometry"
-          mathOutputFormat="ascii-math"
-          disabled={loading || preflight.state.phase === 'loading'}
-          label="Câu hỏi hình học"
-          naturalPlaceholder="Ví dụ: Tính khoảng cách từ A đến mặt phẳng (BCD)"
-          onSubmit={() => void requestSolve()}
-        />
+        <label className="field-label solver-vietnamese-input">
+          Câu hỏi bằng tiếng Việt
+          <textarea
+            value={question}
+            onChange={(event) => { setQuestion(event.target.value); preflight.reset(); }}
+            onKeyDown={(event) => {
+              if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') void requestSolve();
+            }}
+            rows={4}
+            maxLength={2000}
+            disabled={loading}
+            placeholder="Ví dụ: Tính khoảng cách từ A đến mặt phẳng (BCD)"
+          />
+        </label>
         <button
           id="solver-submit-btn"
           type="button"
           className="sp-btn-primary sp-composer-submit"
           onClick={() => void requestSolve()}
-          disabled={loading || preflight.state.phase === 'loading' || Boolean(gateMessage) || !question.trim()}
+          disabled={loading || Boolean(gateMessage) || !question.trim()}
         >
           {loading ? <span className="sp-spinner" aria-hidden="true" /> : null}
           {loading ? 'Đang giải…' : 'Giải bài'}
         </button>
       </div>
 
-      <div className="sp-input-help">Hỗ trợ câu viết tự nhiên hoặc công thức: d(A,B), d(A,(BCD)), S(ABC), V(S.ABCD).</div>
-
-      <InterpretationPanel
-        controller={preflight}
-        title="Cách hệ thống hiểu câu hỏi hình học"
-        confirmLabel="Xác nhận và giải"
-        onConfirm={(confirmed) => handleSolve(confirmed)}
-      />
+      <div className="sp-input-help">Gõ tự nhiên bằng tiếng Việt. NLP đọc ý hỏi, solver dùng hình đã dựng để giải từng bước.</div>
 
       {/* Error */}
       {error && (
