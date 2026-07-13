@@ -32,6 +32,7 @@ from app.services.cross_check import (
     verify_triangle_area as _xc_triangle_area,
 )
 from app.services.linalg import Vec3, cross as _cross, dot as _dot, norm as _norm, sub as _sub, vec3
+from app.services.math_capabilities import infer_geometry_task, resolve_geometry_capability
 
 
 class SolverStep:
@@ -264,6 +265,24 @@ def solve(scene_dict: dict, question: str, geometry_method: str = "oxyz") -> Sol
     pts = _point_map(scene_dict)
     warnings: list[str] = _scene_reliability_warnings(scene_dict)
     q = normalize_solver_question(question)
+    method = geometry_method if geometry_method in {"oxyz", "classical"} else "oxyz"
+    capability = resolve_geometry_capability(
+        question=q,
+        task=infer_geometry_task(q),
+        scene_id=str(scene_dict.get("scene_id") or "legacy-scene"),
+        revision=max(1, int(scene_dict.get("revision") or 1)),
+        scene_topic=str(scene_dict.get("topic") or "solid_geometry"),
+        method=method,
+    )
+    if not capability.accepted:
+        return SolverResult(
+            q,
+            capability.reason or "Dạng bài hình học chưa được hỗ trợ.",
+            [],
+            [*warnings, capability.reason or "Không có capability phù hợp."],
+            confidence="insufficient",
+            method=method,
+        )
 
     guard = _metric_data_guard(scene_dict, q)
     if guard:

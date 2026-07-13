@@ -126,6 +126,7 @@ async def solve_algebra_with_optional_ai(
             return rule_based
         try:
             deterministic_request, extraction_warnings = await extract_algebra_request_with_ai(request.input, request, settings)
+            deterministic_request = _preserve_explicit_request_contract(request, deterministic_request)
         except Exception:
             extraction_warnings = ["Không gọi được AI extraction, đang dùng rule-based interpreter."]
             rule_based.warnings = [*extraction_warnings, *rule_based.warnings]
@@ -168,6 +169,19 @@ async def solve_algebra_with_optional_ai(
     if request.options.ai_explanation:
         response = await explain_algebra_response_with_ai(response, settings)
     return response
+
+
+def _preserve_explicit_request_contract(
+    original: AlgebraSolveRequest,
+    extracted: AlgebraSolveRequest,
+) -> AlgebraSolveRequest:
+    protected_fields = {
+        **({"topic": original.topic} if original.topic != "auto" else {}),
+        **({"domain": original.domain, "domain_source": original.domain_source} if original.domain_source == "user" else {}),
+        **({"variables": original.variables} if original.variables else {}),
+        **({"parameters": original.parameters} if original.parameters else {}),
+    }
+    return extracted.model_copy(update=protected_fields) if protected_fields else extracted
 
 
 def _timeout_response(

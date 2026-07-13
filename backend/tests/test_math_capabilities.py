@@ -1,11 +1,13 @@
 from app.main import app
 from app.math_curriculum import CAPABILITY_REGISTRY_VERSION, CURRICULUM_VERSION, SKILLS
+from app.schemas.algebra import AlgebraSolveRequest
 from app.schemas.math_problem import (
     CurriculumReference,
     ExpressionProblemInput,
     ProblemEnvelope,
     ProblemSource,
 )
+from app.services.algebra.service import _preserve_explicit_request_contract
 from app.services.function_analysis_capabilities import analyzer_capability_registry
 from app.services.math_capabilities import math_capability_registry, resolve_problem_capabilities
 
@@ -58,3 +60,28 @@ def test_capability_resolver_validates_problem_ir_kind_and_availability():
 def test_math_capability_route_and_function_adapter_share_registry_version():
     assert "/api/math/capabilities" in app.openapi()["paths"]
     assert analyzer_capability_registry()["math_registry_version"] == CAPABILITY_REGISTRY_VERSION
+
+
+def test_ai_extraction_cannot_override_explicit_problem_contract():
+    original = AlgebraSolveRequest(
+        input="Giải trong C phương trình z^2 + 1 = 0",
+        topic="complex",
+        variables=["z"],
+        parameters=["m"],
+        domain="C",
+        domain_source="user",
+    )
+    extracted = AlgebraSolveRequest(
+        input="z^2 + 1 = 0",
+        topic="equation",
+        variables=["x"],
+        domain="R",
+    )
+
+    protected = _preserve_explicit_request_contract(original, extracted)
+
+    assert protected.topic == "complex"
+    assert protected.domain == "C"
+    assert protected.domain_source == "user"
+    assert protected.variables == ["z"]
+    assert protected.parameters == ["m"]

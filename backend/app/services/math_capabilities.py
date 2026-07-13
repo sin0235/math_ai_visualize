@@ -205,6 +205,24 @@ def resolve_function_capability(expression: str, parameters: dict[str, str | flo
     return resolve_problem_capabilities(problem)
 
 
+def infer_geometry_task(question: str) -> str:
+    text = question.lower()
+    markers = {
+        "distance": ("khoảng cách", "distance", "d("),
+        "angle": ("góc", "angle"),
+        "area": ("diện tích", "area", "s("),
+        "volume": ("thể tích", "volume", "v("),
+        "equation": ("phương trình", "equation"),
+        "projection": ("hình chiếu", "projection"),
+        "reflection": ("đối xứng", "reflection"),
+        "intersection": ("giao điểm", "giao tuyến", "intersection"),
+        "vector": ("vector", "vectơ"),
+        "proof": ("chứng minh", "song song", "vuông góc", "parallel", "perpendicular"),
+        "relation": ("thẳng hàng", "đồng phẳng", "collinear", "coplanar"),
+    }
+    return next((task for task, terms in markers.items() if any(term in text for term in terms)), "unknown")
+
+
 def resolve_geometry_capability(
     *,
     question: str,
