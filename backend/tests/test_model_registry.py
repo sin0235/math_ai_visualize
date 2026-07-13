@@ -159,6 +159,47 @@ async def test_registry_persists_scanned_model_capabilities(db):
 
 
 @pytest.mark.anyio
+async def test_admin_ai_settings_preserve_scanned_capabilities_for_all_providers(db, monkeypatch):
+    from app.api.routes_admin import validate_system_setting
+
+    settings = Settings(_env_file=None)
+    monkeypatch.setattr("app.services.admin_settings.get_settings", lambda: settings)
+    await load_model_registry(db, settings)
+    providers = ("openrouter", "nvidia", "ollama", "openai_compat", "router9")
+    patch = {
+        provider: {
+            "scanned_models": [{
+                "id": f"{provider}-model",
+                "label": f"{provider} model",
+                "provider": provider,
+                "capabilities": {"input_modalities": ["text", "image"]},
+                "is_free_endpoint": True,
+                "supports_thinking": True,
+                "supports_vision": True,
+                "supported_parameters": ["reasoning_effort"],
+                "pricing": {"prompt": "0", "completion": "0"},
+                "endpoint_metadata": {"service_kind": "llm"},
+            }],
+        }
+        for provider in providers
+    }
+
+    validated = validate_system_setting("ai_settings", patch)
+    await sync_ai_settings_to_registry(db, validated, patch)
+    registry = await load_model_registry(db, settings)
+
+    for provider in providers:
+        model = next(item for item in registry.models[provider] if item.id == f"{provider}-model")
+        assert model.capabilities == {"input_modalities": ["text", "image"]}
+        assert model.is_free_endpoint is True
+        assert model.supports_thinking is True
+        assert model.supports_vision is True
+        assert model.supported_parameters == ["reasoning_effort"]
+        assert model.pricing == {"completion": "0", "prompt": "0"}
+        assert model.endpoint_metadata == {"service_kind": "llm"}
+
+
+@pytest.mark.anyio
 async def test_reasoning_profile_prefers_thinking_capable_fallback(db):
     settings = Settings(_env_file=None)
     await load_model_registry(db, settings)

@@ -193,6 +193,12 @@ class StoredModelInfo(BaseModel):
     created: int | None = None
     context_length: int | None = None
     capabilities: dict[str, Any] = Field(default_factory=dict)
+    is_free_endpoint: bool = False
+    supports_thinking: bool = False
+    supports_vision: bool = False
+    supported_parameters: list[str] = Field(default_factory=list)
+    pricing: dict[str, Any] = Field(default_factory=dict)
+    endpoint_metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class AdminProviderModelSettings(BaseModel):
