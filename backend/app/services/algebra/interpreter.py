@@ -179,6 +179,9 @@ def _structured_from_natural_language(raw: str) -> str | None:
 def _calculus_template_from_text(text: str, plain: str) -> str | None:
     cleaned = _replace_vietnamese_math_words(text)
     if "dao ham" in plain or "đạo hàm" in text.lower():
+        derivative_sum = _derivative_sum_template(text)
+        if derivative_sum:
+            return derivative_sum
         expression = re.sub(r"(?i)^\s*(dao ham|đạo hàm|tinh dao ham|tính đạo hàm|tim dao ham|tìm đạo hàm)\s*", "", plain if "dao ham" in plain else cleaned).strip()
         expression = _clean_canonical(expression or cleaned)
         if expression:
@@ -206,6 +209,32 @@ def _calculus_template_from_text(text: str, plain: str) -> str | None:
         if expression:
             return f"integral(expr={expression},var=x)"
     return None
+
+
+def _derivative_sum_template(text: str) -> str | None:
+    assignments = {
+        function: (variable, _clean_canonical(expression))
+        for function, variable, expression in re.findall(
+            r"\(\s*([A-Za-z])\s*'\s*\(\s*([A-Za-z])\s*\)\s*=\s*([^)]+?)\s*\)",
+            text,
+        )
+    }
+    target = re.search(
+        r"y\s*=\s*([A-Za-z])\s*\(\s*([A-Za-z])\s*\)\s*\+\s*([A-Za-z])\s*\(\s*\2\s*\)",
+        text,
+        re.IGNORECASE,
+    )
+    if not target:
+        return None
+    first, variable, second = target.groups()
+    first_given = assignments.get(first)
+    second_given = assignments.get(second)
+    if not first_given or not second_given or first_given[0] != variable or second_given[0] != variable:
+        return None
+    return (
+        f"derivative_sum(functions={first}|{second},"
+        f"values={first_given[1]}|{second_given[1]},var={variable})"
+    )
 
 
 def _parameter_template_from_text(text: str, plain: str) -> str | None:
@@ -483,7 +512,7 @@ def _detect_topic(raw: str, normalized: str) -> str:
         "quadratic_same_sign_roots(",
     )):
         return "parameter"
-    if normalized.startswith("derivative("):
+    if normalized.startswith(("derivative(", "derivative_sum(")):
         return "calculus_derivative"
     if normalized.startswith("limit("):
         return "calculus_limit"

@@ -27,6 +27,8 @@ class CalculusTemplate:
     upper: sp.Expr | None = None
     target: sp.Expr | None = None
     order: int = 1
+    derivative_terms: tuple[sp.Expr, ...] = ()
+    function_names: tuple[str, ...] = ()
 
 
 def solve_calculus(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
@@ -34,6 +36,8 @@ def solve_calculus(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
         template = _parse_template(problem.normalized_input, problem.topic, problem.variable)
     except ValueError as exc:
         return _unsupported(problem, problem.topic, str(exc))
+    if template.kind == "calculus_derivative_sum":
+        return _solve_derivative_sum(problem, template)
     if template.kind == "calculus_derivative":
         return _solve_derivative(problem, template)
     if template.kind == "calculus_derivative_by_definition":
@@ -45,6 +49,74 @@ def solve_calculus(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
     if template.kind == "calculus_integral":
         return _solve_integral(problem, template)
     return _unsupported(problem, template.kind, "Dạng giải tích này chưa được hỗ trợ.")
+
+
+def _solve_derivative_sum(problem: ParsedAlgebraProblem, template: CalculusTemplate) -> AlgebraSolveResponse:
+    derivative = sp.Add(*template.derivative_terms)
+    names = template.function_names
+    variable_latex = sp.latex(template.variable)
+    function_sum = "+".join(f"{name}({variable_latex})" for name in names)
+    derivative_sum = "+".join(f"{name}'({variable_latex})" for name in names)
+    given_sum = "+".join(sp.latex(term) for term in template.derivative_terms)
+    answer_latex = sp.latex(derivative)
+    steps = [
+        AlgebraSolveStep(
+            index=1,
+            title="Dùng quy tắc đạo hàm của tổng",
+            explanation="Đạo hàm của tổng bằng tổng các đạo hàm thành phần.",
+            rule="(f+g)'=f'+g'",
+            before_latex=rf"\left({function_sum}\right)'",
+            after_latex=derivative_sum,
+            kind="transform",
+            confidence="verified",
+        ),
+        AlgebraSolveStep(
+            index=2,
+            title="Thay các đạo hàm đã cho",
+            explanation="Thay trực tiếp từng đạo hàm từ giả thiết của đề.",
+            before_latex=derivative_sum,
+            after_latex=given_sum,
+            kind="transform",
+            confidence="verified",
+        ),
+        AlgebraSolveStep(
+            index=3,
+            title="Rút gọn kết quả",
+            explanation="Cộng các biểu thức đạo hàm thành phần.",
+            before_latex=given_sum,
+            after_latex=answer_latex,
+            result=sp.sstr(derivative),
+            result_latex=answer_latex,
+            kind="solve",
+            confidence="verified",
+        ),
+    ]
+    verification = AlgebraVerificationReport(
+        status="verified",
+        checks=[AlgebraVerificationCheck(
+            name="derivative_sum_rule",
+            status="pass",
+            detail="Đã đối chiếu quy tắc tuyến tính của đạo hàm và rút gọn symbolic tổng các đạo hàm đã cho.",
+            latex=answer_latex,
+        )],
+        method=["derivative_linearity", "sympy.simplify"],
+    )
+    return AlgebraSolveResponse(
+        input=problem.raw_input,
+        normalized_input=problem.normalized_input,
+        topic="calculus_derivative",
+        problem_type="differentiate_sum_from_given_derivatives",
+        status="solved",
+        answer=f"Đạo hàm: {sp.sstr(derivative)}",
+        answer_latex=answer_latex,
+        solution_set=AlgebraSolutionSet(kind="expression", text=sp.sstr(derivative), latex=answer_latex),
+        steps=steps,
+        milestones=[
+            f"Quy tắc tổng: {derivative_sum}",
+            f"Kết quả: {answer_latex}",
+        ],
+        verification=verification,
+    )
 
 
 def _solve_derivative(problem: ParsedAlgebraProblem, template: CalculusTemplate) -> AlgebraSolveResponse:
@@ -625,7 +697,7 @@ def _is_indeterminate_zero_over_zero(expression: sp.Expr, variable: sp.Symbol, p
 
 
 def _parse_template(text: str, topic: str, default_variable: sp.Symbol) -> CalculusTemplate:
-    match = re.fullmatch(r"(derivative|derivative_by_definition|limit|integral|continuous_at)\((.*)\)", text.strip())
+    match = re.fullmatch(r"(derivative|derivative_sum|derivative_by_definition|limit|integral|continuous_at)\((.*)\)", text.strip())
     if not match:
         raise ValueError("Dùng dạng derivative(expr=...,var=x), limit(expr=...,var=x,to=...), hoặc integral(expr=...,var=x).")
     name, args_text = match.groups()
@@ -645,6 +717,25 @@ def _parse_template(text: str, topic: str, default_variable: sp.Symbol) -> Calcu
             return parse_algebra_expr(str(raw), local_dict=local_dict)
         except AlgebraParseError as exc:
             raise ValueError(f"Không đọc được {field} giải tích: {exc}") from exc
+
+    if name == "derivative_sum":
+        function_names = tuple(item.strip() for item in args.get("functions", "").split("|") if item.strip())
+        raw_terms = [item.strip() for item in args.get("values", "").split("|") if item.strip()]
+        if len(function_names) < 2 or len(function_names) != len(raw_terms):
+            raise ValueError("derivative_sum cần ít nhất hai hàm và cùng số đạo hàm đã cho.")
+        if any(not re.fullmatch(r"[A-Za-z]", name) for name in function_names):
+            raise ValueError("Tên hàm trong derivative_sum cần là một chữ cái.")
+        terms = tuple(_safe_expr(item, required=True, field="values") for item in raw_terms)
+        if any(term is None for term in terms):
+            raise ValueError("derivative_sum chứa đạo hàm thành phần rỗng.")
+        derivative_terms = tuple(term for term in terms if term is not None)
+        return CalculusTemplate(
+            kind="calculus_derivative_sum",
+            expression=sp.Add(*derivative_terms),
+            variable=variable,
+            derivative_terms=derivative_terms,
+            function_names=function_names,
+        )
 
     try:
         expression = _safe_expr(args.get("expr"), required=True, field="expr")

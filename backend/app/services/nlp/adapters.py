@@ -629,7 +629,7 @@ def _asks_to_solve(text: str) -> bool:
 
 
 def _is_structured_operation(text: str) -> bool:
-    return bool(re.match(r"^(?:gcd|lcm|power|divisible|percent(?:_ratio|_base)?|ratio|word_(?:inventory|product|share)|C|A|P|P_not|P_and|Punion|stats|derivative|limit|integral|quadratic_)\b", text))
+    return bool(re.match(r"^(?:gcd|lcm|power|divisible|percent(?:_ratio|_base)?|ratio|word_(?:inventory|product|share)|C|A|P|P_not|P_and|Punion|stats|derivative(?:_sum)?|limit|integral|quadratic_)\b", text))
 
 
 def _algebra_task(topic: str) -> str:

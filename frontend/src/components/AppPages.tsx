@@ -363,8 +363,6 @@ export function HistoryPanel({ items, loading, openingId, onOpen, onDelete, onPa
                     <span>{preview}</span>
                     <small>{historyMetaLine(item)}</small>
                     <span className="history-badge-row">
-                      {item.is_favorite && <em>Yêu thích</em>}
-                      {item.archived_at && <em>Lưu trữ</em>}
                       {item.topic && <em>{item.topic}</em>}
                       {item.grade && <em>Lớp {item.grade}</em>}
                       {item.tier && <em>{item.tier}</em>}

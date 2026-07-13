@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import type { AlgebraSolveStep } from '../../api/client';
 import { KatexSpan, MixedTextRenderer } from '../KatexSpan';
 
@@ -15,6 +15,7 @@ export function AlgebraStepList({ steps, isSubStep = false }: { steps: AlgebraSo
 
 function AlgebraStepCard({ step, isSubStep }: { step: AlgebraSolveStep, isSubStep: boolean }) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const detailId = useId();
   const hasSubSteps = Boolean(step.sub_steps && step.sub_steps.length > 0);
   const hasPedagogy = Boolean(
     hasText(step.goal)
@@ -46,6 +47,7 @@ function AlgebraStepCard({ step, isSubStep }: { step: AlgebraSolveStep, isSubSte
             type="button"
             className="algebra-accordion-toggle"
             aria-expanded={isExpanded}
+            aria-controls={detailId}
             onClick={() => setIsExpanded((value) => !value)}
           >
             {isExpanded ? '▲ Thu gọn' : '▼ Chi tiết'}
@@ -85,22 +87,26 @@ function AlgebraStepCard({ step, isSubStep }: { step: AlgebraSolveStep, isSubSte
           <p><MixedTextRenderer text={step.short_explanation || step.explanation} /></p>
         )}
 
-        {isExpanded && hasPedagogy && (
-          <dl className="algebra-step-pedagogy">
-            {hasText(step.goal) && <div><dt>Mục tiêu</dt><dd><MixedTextRenderer text={step.goal!} /></dd></div>}
-            {hasText(step.why) && <div><dt>Vì sao</dt><dd><MixedTextRenderer text={step.why!} /></dd></div>}
-            {hasText(step.operation) && <div><dt>Thao tác</dt><dd><MixedTextRenderer text={step.operation!} /></dd></div>}
-            {hasText(step.pitfall) && <div><dt>Sai lầm thường gặp</dt><dd><MixedTextRenderer text={step.pitfall!} /></dd></div>}
-            {hasText(step.check) && <div><dt>Cách kiểm tra</dt><dd><MixedTextRenderer text={step.check!} /></dd></div>}
-            {hasText(step.explanation) && hasText(step.short_explanation) && step.explanation !== step.short_explanation && (
-              <div><dt>Giải thích đầy đủ</dt><dd><MixedTextRenderer text={step.explanation} /></dd></div>
+        {isExpanded && (
+          <div id={detailId}>
+            {hasPedagogy && (
+              <dl className="algebra-step-pedagogy">
+                {hasText(step.goal) && <div><dt>Mục tiêu</dt><dd><MixedTextRenderer text={step.goal!} /></dd></div>}
+                {hasText(step.why) && <div><dt>Vì sao</dt><dd><MixedTextRenderer text={step.why!} /></dd></div>}
+                {hasText(step.operation) && <div><dt>Thao tác</dt><dd><MixedTextRenderer text={step.operation!} /></dd></div>}
+                {hasText(step.pitfall) && <div><dt>Sai lầm thường gặp</dt><dd><MixedTextRenderer text={step.pitfall!} /></dd></div>}
+                {hasText(step.check) && <div><dt>Cách kiểm tra</dt><dd><MixedTextRenderer text={step.check!} /></dd></div>}
+                {hasText(step.explanation) && hasText(step.short_explanation) && step.explanation !== step.short_explanation && (
+                  <div><dt>Giải thích đầy đủ</dt><dd><MixedTextRenderer text={step.explanation} /></dd></div>
+                )}
+              </dl>
             )}
-          </dl>
-        )}
 
-        {hasSubSteps && isExpanded && (
-          <div className="algebra-nested-steps">
-            <AlgebraStepList steps={step.sub_steps!} isSubStep={true} />
+            {hasSubSteps && (
+              <div className="algebra-nested-steps">
+                <AlgebraStepList steps={step.sub_steps!} isSubStep={true} />
+              </div>
+            )}
           </div>
         )}
       </div>

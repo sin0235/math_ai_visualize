@@ -1838,13 +1838,47 @@ select {
 }
 
 .diagram-tools {
-  display: grid;
-  gap: 14px;
-  padding: 14px 16px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 16px;
   margin-top: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0;
+  background: var(--surface);
+}
+
+.diagram-tools-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 40px;
+  padding: 0 12px;
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.diagram-tools-toggle::marker {
+  content: '';
+}
+
+.diagram-tools-toggle::after {
+  content: '⌄';
+  color: var(--ink-4);
+  font-size: 1rem;
+}
+
+.diagram-tools[open] .diagram-tools-toggle::after {
+  content: '⌃';
+}
+
+.diagram-tools-content {
+  display: grid;
+  gap: 10px;
+  padding: 0 12px 12px;
+}
+
+.diagram-tools-content .export-menu-item {
+  padding: 7px 8px;
 }
 
 .input-diagram-tools {
@@ -3948,27 +3982,24 @@ select {
 .history-item {
   position: relative;
   display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) 96px;
+  gap: 14px;
   overflow: hidden;
   border: 1px solid #e5e7eb;
   border-radius: 12px;
-  padding: 10px;
+  padding: 12px;
   background: #ffffff;
-  transition: border-color 0.14s ease, background 0.14s ease, box-shadow 0.14s ease, transform 0.14s ease;
+  transition: border-color 0.14s ease, background 0.14s ease;
 }
 
 .history-item:hover {
   border-color: #cbd5e1;
   background: #f8fafc;
-  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.08);
-  transform: translateY(-1px);
 }
 
 .history-item:active {
   border-color: #93c5fd;
   background: var(--surface);
-  transform: translateY(0) scale(0.99);
 }
 
 .history-item::after {
@@ -4032,18 +4063,23 @@ select {
 .history-item-actions {
   position: relative;
   z-index: 1;
-  display: flex;
-  align-items: start;
+  display: grid;
+  grid-template-columns: 1fr;
+  align-content: start;
   gap: 6px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
 }
 
 .history-item-actions .secondary-button {
-  min-height: 30px;
-  padding: 6px 9px;
-  border-radius: 999px;
-  font-size: 0.75rem;
+  min-height: 28px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  font-size: 0.72rem;
+  font-weight: 500;
+}
+
+.history-item-actions .history-delete {
+  justify-self: end;
+  margin-top: 2px;
 }
 
 .history-badge-row {
@@ -4595,22 +4631,22 @@ button:disabled {
 
 
 .viewer-header {
-  padding: 14px 16px 0;
-  font-size: 1.05rem;
+  padding: 10px 14px 0;
+  font-size: 0.92rem;
 }
 
 .viewer-header-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   gap: 12px;
 }
 
 .viewer-controls {
   display: flex;
   align-items: center;
-  justify-content: flex-start;
-  gap: 10px;
+  justify-content: center;
+  gap: 6px;
   flex-wrap: wrap;
   width: 100%;
 }
@@ -4640,12 +4676,12 @@ button:disabled {
 
 .viewer-toggle {
   border-color: #d4d4d4;
-  border-radius: 10px;
-  padding: 7px 10px;
+  border-radius: 8px;
+  padding: 5px 8px;
   color: #111111;
   background: #ffffff;
-  font-size: 0.82rem;
-  font-weight: 700;
+  font-size: 0.76rem;
+  font-weight: 500;
 }
 
 .viewer-toggle:hover {
@@ -13796,6 +13832,10 @@ button.analyzer-guide-label:hover {
   font-family: inherit;
 }
 
+.algebra-workspace:has(.algebra-input-disclosure:not([open])) {
+  grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
+}
+
 .algebra-input-panel,
 .algebra-result-panel,
 .algebra-empty-result,
@@ -13813,6 +13853,65 @@ button.analyzer-guide-label:hover {
   padding: 20px;
   border-right: 1px solid var(--line);
   background: #fafafa;
+}
+
+.algebra-input-disclosure > summary,
+.algebra-result-disclosure > summary,
+.algebra-history-disclosure > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  list-style: none;
+  cursor: pointer;
+}
+
+.algebra-input-disclosure > summary::-webkit-details-marker,
+.algebra-result-disclosure > summary::-webkit-details-marker,
+.algebra-history-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.algebra-input-disclosure > summary:focus-visible,
+.algebra-result-disclosure > summary:focus-visible,
+.algebra-history-disclosure > summary:focus-visible {
+  border-radius: var(--radius-sm);
+  outline: 2px solid var(--ink);
+  outline-offset: 4px;
+}
+
+.algebra-input-disclosure-content {
+  display: grid;
+  gap: 16px;
+  padding-top: 16px;
+}
+
+.algebra-panel-heading {
+  display: grid;
+  gap: 3px;
+}
+
+.algebra-panel-heading strong {
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 620;
+  line-height: 1.2;
+  text-wrap: balance;
+}
+
+.algebra-disclosure-action {
+  color: var(--ink-3);
+  font-size: 0;
+  font-weight: 600;
+}
+
+.algebra-disclosure-action::after {
+  content: "Mở";
+  font-size: 0.76rem;
+}
+
+.algebra-input-disclosure[open] .algebra-disclosure-action::after {
+  content: "Đóng";
 }
 
 .algebra-input-panel .field-label {
@@ -14182,12 +14281,22 @@ button.analyzer-guide-label:hover {
 }
 
 .algebra-history-panel {
-  margin: 0;
-  padding: 14px 22px;
+  margin: 8px clamp(22px, 3vw, 48px) 24px;
+  padding: 16px 0 0;
   border: 0;
-  border-bottom: 1px solid var(--line);
+  border-top: 1px solid var(--line);
   border-radius: 0;
-  background: rgba(255, 255, 255, 0.9);
+  background: transparent;
+}
+
+.algebra-history-disclosure > summary {
+  color: var(--ink-3);
+  font-size: 0.78rem;
+}
+
+.algebra-history-disclosure > summary span {
+  color: var(--ink-4);
+  font-variant-numeric: tabular-nums;
 }
 
 .algebra-history-head {
@@ -14202,7 +14311,7 @@ button.analyzer-guide-label:hover {
 
 .algebra-history-list {
   list-style: none;
-  margin: 0;
+  margin: 12px 0 0;
   padding: 0;
   display: grid;
   gap: 6px;
@@ -14491,6 +14600,26 @@ button.analyzer-guide-label:hover {
 .algebra-verify-pill.status-skipped {
   background: var(--surface);
   color: var(--ink-3);
+}
+
+.algebra-result-disclosure > summary {
+  color: var(--ink-3);
+  font-size: 0.78rem;
+  font-weight: 680;
+  text-transform: uppercase;
+}
+
+.algebra-result-disclosure > summary small {
+  color: var(--ink-4);
+  font-size: 0.72rem;
+  font-weight: 500;
+  text-transform: none;
+}
+
+.algebra-result-disclosure-content {
+  display: grid;
+  gap: 12px;
+  padding-top: 12px;
 }
 
 .algebra-interpretation-grid {
@@ -14844,6 +14973,7 @@ button.analyzer-guide-label:hover {
 
 @media (max-width: 960px) {
   .algebra-workspace,
+  .algebra-workspace:has(.algebra-input-disclosure:not([open])),
   .algebra-result-grid,
   .algebra-sequence-grid,
   .algebra-quick-examples,

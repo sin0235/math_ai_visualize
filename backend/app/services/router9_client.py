@@ -8,7 +8,6 @@ from app.core.config import Settings
 from app.schemas.scene import AiModelInfo
 from app.services.ai_prompt import REASONING_SYSTEM_PROMPT, SCENE_EXTRACTION_SYSTEM_PROMPT, build_reasoning_prompt, build_scene_extraction_prompt
 from app.services.chat_response import extract_chat_message_content
-from app.services.chat_stream import collect_openai_chat_stream
 from app.services.openrouter_client import OCR_SYSTEM_PROMPT
 from app.services.model_scan import CAPABILITY_KEYS, _extract_capabilities
 from app.services.provider_logging import chat_message_input_chars, format_provider_error, log_ocr_summary, log_provider_http_error, log_provider_request, log_provider_response, log_scene_summary
@@ -177,33 +176,6 @@ class Router9Client:
             input_chars = chat_message_input_chars(payload.get("messages"))
             log_provider_request("9router", kind, url, payload.get("model"), input_chars=input_chars)
             client = get_client(base_url, timeout or TIMEOUT_SCENE)
-            if kind == "scene":
-                try:
-                    content, response_chars, usage = await collect_openai_chat_stream(client, url, headers=headers, payload=payload, timeout=timeout or TIMEOUT_SCENE)
-                except RuntimeError as error:
-                    response = await client.post(url, headers=headers, json=payload, timeout=timeout or TIMEOUT_SCENE)
-                    elapsed_ms = int((time.perf_counter() - started_at) * 1000)
-                    log_provider_response("9router", kind, response.status_code, elapsed_ms, len(response.text), payload.get("model"))
-                    if response.status_code >= 400:
-                        log_provider_http_error("9router", kind, response, payload.get("model"))
-                        raise RuntimeError(_format_router9_error(response)) from error
-                    return response
-                except httpx.HTTPStatusError as error:
-                    if error.response.status_code == 400:
-                        response = await client.post(url, headers=headers, json=payload, timeout=timeout or TIMEOUT_SCENE)
-                        elapsed_ms = int((time.perf_counter() - started_at) * 1000)
-                        log_provider_response("9router", kind, response.status_code, elapsed_ms, len(response.text), payload.get("model"))
-                        if response.status_code >= 400:
-                            log_provider_http_error("9router", kind, response, payload.get("model"))
-                            raise RuntimeError(_format_router9_error(response)) from error
-                        return response
-                    elapsed_ms = int((time.perf_counter() - started_at) * 1000)
-                    log_provider_response("9router", kind, error.response.status_code, elapsed_ms, len(error.response.text), payload.get("model"))
-                    log_provider_http_error("9router", kind, error.response, payload.get("model"))
-                    raise RuntimeError(_format_router9_error(error.response)) from error
-                elapsed_ms = int((time.perf_counter() - started_at) * 1000)
-                log_provider_response("9router", kind, 200, elapsed_ms, response_chars, payload.get("model"), usage=usage)
-                return _stream_response(content)
             response = await client.post(url, headers=headers, json=payload, timeout=timeout or TIMEOUT_SCENE)
             elapsed_ms = int((time.perf_counter() - started_at) * 1000)
             log_provider_response("9router", kind, response.status_code, elapsed_ms, len(response.text), payload.get("model"))
@@ -214,10 +186,6 @@ class Router9Client:
         except httpx.HTTPError as error:
             message = str(error) or error.__class__.__name__
             raise RuntimeError(f"9router request lỗi: {message}") from error
-
-
-def _stream_response(content: str) -> httpx.Response:
-    return httpx.Response(200, json={"choices": [{"message": {"content": content}}]})
 
 
 def _build_headers(settings: Settings) -> dict[str, str]:
