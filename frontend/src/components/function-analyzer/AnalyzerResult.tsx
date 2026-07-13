@@ -131,7 +131,7 @@ export function AnalyzerResult({
             )}
           </div>
 
-          <details className="fa2-tools-disclosure">
+          <details className="fa2-tools-disclosure" open>
             <summary>
               <span>Công cụ khảo sát</span>
               <small>GTLN, tương giao và biến đổi</small>

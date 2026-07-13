@@ -103,7 +103,11 @@ def _evaluate(text: str) -> SequenceCalculation:
     if kind.startswith("arithmetic"):
         d = args.get("d")
         if d is None:
-            raise ValueError("Cấp số cộng cần tham số d.")
+            u2 = args.get("u2")
+            if u2 is not None:
+                d = u2 - u1
+            else:
+                raise ValueError("Cấp số cộng cần tham số d hoặc u2.")
         if kind == "arithmetic":
             result = u1 + (n - 1) * d
             return SequenceCalculation(
@@ -129,7 +133,13 @@ def _evaluate(text: str) -> SequenceCalculation:
         )
     q = args.get("q")
     if q is None:
-        raise ValueError("Cấp số nhân cần tham số q.")
+        u2 = args.get("u2")
+        if u2 is not None:
+            if u1 == 0:
+                raise ValueError("Không thể tìm công bội q vì u1 = 0.")
+            q = u2 / u1
+        else:
+            raise ValueError("Cấp số nhân cần tham số q hoặc u2.")
     if kind == "geometric":
         result = u1 * (q ** (n - 1))
         return SequenceCalculation(

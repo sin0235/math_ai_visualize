@@ -106,15 +106,10 @@ export function AlgebraInput({
 
   return (
     <section className="algebra-input-panel">
-      <div className="algebra-input-disclosure">
-        <header className="algebra-input-header">
-          <span className="algebra-panel-heading">
-            <span>Thiết lập bài toán</span>
-            <strong>Nhập và cấu hình</strong>
-          </span>
-        </header>
-        <div className="algebra-input-disclosure-content">
-
+      <div className="algebra-panel-heading">
+        <span>Thiết lập bài toán</span>
+        <h2>Nhập và cấu hình</h2>
+      </div>
       <div className="algebra-input-section">
         <div className="algebra-input-section-head"><span>01</span><strong>Đề bài</strong></div>
         {topic === 'sequence' && (
@@ -269,8 +264,6 @@ export function AlgebraInput({
       <button type="button" className="auth-primary-button algebra-submit" onClick={onSubmit} disabled={loading || (!input.trim() && topic !== 'sequence')}>
         {loading ? 'Đang giải...' : 'Giải bài'}
       </button>
-        </div>
-      </div>
     </section>
   );
 }

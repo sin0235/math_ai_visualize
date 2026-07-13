@@ -35,7 +35,7 @@ Quy tắc:
    - phương trình: x^2 - 5*x + 6 = 0
    - hệ: x+y=3; x-y=1
    - tổ hợp: C(10,3), A(5,2), factorial(5), coefficient((1+x)^5,x,3)
-   - cấp số: arithmetic(u1=2,d=3,n=10), arithmetic_sum(...), geometric(...), geometric_sum(...)
+   - cấp số: arithmetic(u1=2,d=3,n=10) hoặc arithmetic(u1=2,u2=5,n=10), arithmetic_sum(...), geometric(u1=2,q=3,n=5) hoặc geometric(u1=2,u2=6,n=5), geometric_sum(...)
    - tham số: quadratic_double_root(a=1,b=-2*m,c=1,var=x,param=m), quadratic_has_two_roots(...), quadratic_has_real_root(...), quadratic_no_real_root(...), quadratic_positive_all(...)
    - giải tích: derivative(expr=x^2,var=x), derivative_by_definition(expr=x^2,var=x,at=2), limit(expr=(x^2-1)/(x-1),var=x,to=1), continuous_at(expr=Piecewise((x^2,x>=1),(2*x-1,x<1)),var=x,at=1), integral(expr=2*x,var=x,a=0,b=1)
 4. Nếu đề hỏi "tìm m để phương trình bậc hai có nghiệm kép", dùng quadratic_double_root.
