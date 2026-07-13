@@ -2,15 +2,15 @@
   "overall": {
     "minimum": {
       "case_count": 19521,
-      "intent_macro_f1": 0.204783,
+      "intent_macro_f1": 0.204688,
       "entity_f1": 0.316622,
       "constraint_f1": 0.045961,
-      "unsupported_recall": 0.309804,
-      "abstention_precision": 0.130416
+      "unsupported_recall": 0.203922,
+      "abstention_precision": 0.130045
     },
     "maximum": {
-      "brier_score": 0.252852,
-      "ece_10": 0.199191
+      "brier_score": 0.253726,
+      "ece_10": 0.201688
     }
   },
   "algebra": {
@@ -18,13 +18,13 @@
       "case_count": 10488,
       "intent_macro_f1": 0.187874,
       "entity_f1": 0.503261,
-      "unsupported_recall": 0.013158,
-      "abstention_precision": 0.070601,
+      "unsupported_recall": 0.342105,
+      "abstention_precision": 0.07108,
       "constraint_f1": 0.0
     },
     "maximum": {
-      "brier_score": 0.247895,
-      "ece_10": 0.223916
+      "brier_score": 0.246888,
+      "ece_10": 0.225465
     }
   },
   "analyzer": {
@@ -44,15 +44,15 @@
   "geometry_solve": {
     "minimum": {
       "case_count": 2971,
-      "intent_macro_f1": 0.225892,
+      "intent_macro_f1": 0.216707,
       "entity_f1": 0.218492,
-      "unsupported_recall": 0.509804,
-      "abstention_precision": 0.098342,
+      "unsupported_recall": 0.0,
+      "abstention_precision": 0.096901,
       "constraint_f1": 0.0625
     },
     "maximum": {
-      "brier_score": 0.329967,
-      "ece_10": 0.308465
+      "brier_score": 0.330514,
+      "ece_10": 0.310653
     }
   },
   "ocr": {
@@ -74,13 +74,13 @@
       "case_count": 1695,
       "intent_macro_f1": 0.162898,
       "entity_f1": 0.003675,
-      "unsupported_recall": 0.509804,
-      "abstention_precision": 0.070513,
+      "unsupported_recall": 0.0,
+      "abstention_precision": 0.069074,
       "constraint_f1": 0.013793
     },
     "maximum": {
-      "brier_score": 0.074592,
-      "ece_10": 0.12987
+      "brier_score": 0.089932,
+      "ece_10": 0.145209
     }
   },
   "geometry_subtypes": {
