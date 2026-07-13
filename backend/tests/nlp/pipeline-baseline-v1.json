@@ -1,0 +1,24 @@
+{
+  "case_count": 35,
+  "corpus": "v1.jsonl",
+  "overall": {
+    "abstention_precision": 0.818182,
+    "brier_score": 0.151151,
+    "canonical_exact_match": 0.0,
+    "canonical_semantic_match": 0.0,
+    "case_count": 35,
+    "constraint_f1": 0.105263,
+    "ece_10": 0.188857,
+    "entity_f1": 0.545455,
+    "intent_macro_f1": 0.78456,
+    "unsupported_recall": 0.8
+  },
+  "schema_version": 1,
+  "targets": {
+    "algebra": {"abstention_precision": 1.0, "brier_score": 0.046, "canonical_exact_match": 0.0, "canonical_semantic_match": 0.0, "case_count": 7, "constraint_f1": 0.0, "ece_10": 0.185714, "entity_f1": 0.625, "intent_macro_f1": 0.888889, "unsupported_recall": 1.0},
+    "analyzer": {"abstention_precision": 0.666667, "brier_score": 0.131429, "canonical_exact_match": 0.0, "canonical_semantic_match": 0.0, "case_count": 7, "constraint_f1": 1.0, "ece_10": 0.171429, "entity_f1": 0.888889, "intent_macro_f1": 0.771429, "unsupported_recall": 0.0},
+    "geometry_solve": {"abstention_precision": 1.0, "brier_score": 0.193571, "canonical_exact_match": 1.0, "canonical_semantic_match": 1.0, "case_count": 7, "constraint_f1": 0.0, "ece_10": 0.385714, "entity_f1": 0.823529, "intent_macro_f1": 1.0, "unsupported_recall": 1.0},
+    "ocr": {"abstention_precision": 0.666667, "brier_score": 0.322457, "canonical_exact_match": 0.0, "canonical_semantic_match": 0.0, "case_count": 7, "constraint_f1": 0.0, "ece_10": 0.237143, "entity_f1": 0.166667, "intent_macro_f1": 0.466667, "unsupported_recall": 1.0},
+    "render": {"abstention_precision": 1.0, "brier_score": 0.0623, "canonical_exact_match": 0.0, "canonical_semantic_match": 0.0, "case_count": 7, "constraint_f1": 0.4, "ece_10": 0.21, "entity_f1": 0.347826, "intent_macro_f1": 0.611111, "unsupported_recall": 1.0}
+  }
+}

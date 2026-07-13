@@ -8,6 +8,7 @@ import httpx
 
 from app.core.config import Settings
 from app.services.model_registry import TaskProfile
+from app.services.nlp.grounding import LanguageRewrite, build_geometry_explanation_plan, validate_language_rewrites
 from app.services.ai_fallback import Attempt, dedupe, format_attempts, provider_configured, text_model_candidates, text_provider_order
 from app.services.openai_compat_client import OpenAICompatClient
 from app.services.openrouter_client import _build_chat_payload as _build_openrouter_chat_payload, _build_headers as _build_openrouter_headers, _extract_message as _extract_openrouter_message, openrouter_api_base_url
@@ -50,22 +51,78 @@ Trả về JSON thuần theo cấu trúc:
 
 
 async def explain_solver_result(result: SolverResult, scene: dict[str, Any], settings: Settings, selection: TaskProfile | None = None, method: str = "oxyz") -> SolverResult:
+    plan = build_geometry_explanation_plan(result)
+    result.grounding = plan.model_dump(mode="json")
     if result.answer == "Không xác định" or not result.steps:
         return result
     try:
         payload = _payload(result, scene)
-        
         system_prompt = SOLVER_EXPLAINER_SYSTEM_PROMPT_CLASSICAL if method == "classical" else SOLVER_EXPLAINER_SYSTEM_PROMPT_OXYZ
-        
         data = await _call_explainer(payload, settings, selection, system_prompt=system_prompt, method=method)
         steps_by_index = _parse_steps(data)
         if not steps_by_index:
             return result
-        result.steps = [
+        rewrites = validate_language_rewrites(plan, _geometry_language_rewrites(steps_by_index))
+        result.steps = _merge_geometry_steps(result.steps, steps_by_index, rewrites)
+        result.realization_status = "ai_validated"
+        result.realization_fallback_reason = None
+    except Exception as error:
+        reason = _short_error(str(error))
+        warning = f"Không gọi được LLM diễn giải, đang dùng lời giải deterministic: {reason}"
+        result.warnings.append(warning)
+        if warning not in getattr(result, "data_issues", []):
+            result.data_issues.append(warning)
+        result.realization_status = "fallback"
+        result.realization_fallback_reason = reason
+    return result
+
+
+def _geometry_language_rewrites(
+    steps_by_index: dict[int, dict[str, Any]],
+    *,
+    prefix: str = "step",
+) -> list[LanguageRewrite]:
+    rewrites: list[LanguageRewrite] = []
+    for index, row in steps_by_index.items():
+        claim_id = f"{prefix}-{index}"
+        rewrites.append(
+            LanguageRewrite(
+                claim_id=claim_id,
+                title=row.get("title"),
+                explanation=row.get("explanation"),
+            )
+        )
+        nested = {
+            int(sub["index"]): sub
+            for sub in row.get("sub_steps", [])
+            if isinstance(sub, dict) and isinstance(sub.get("index"), int)
+        }
+        rewrites.extend(_geometry_language_rewrites(nested, prefix=claim_id))
+    return rewrites
+
+
+def _merge_geometry_steps(
+    original_steps: list[SolverStep],
+    steps_by_index: dict[int, dict[str, Any]],
+    rewrites: dict[str, LanguageRewrite],
+    *,
+    prefix: str = "step",
+) -> list[SolverStep]:
+    merged: list[SolverStep] = []
+    for step in original_steps:
+        claim_id = f"{prefix}-{step.index}"
+        row = steps_by_index.get(step.index, {})
+        rewrite = rewrites.get(claim_id)
+        nested_rows = {
+            int(sub["index"]): sub
+            for sub in row.get("sub_steps", [])
+            if isinstance(sub, dict) and isinstance(sub.get("index"), int)
+        }
+        merged.append(
             SolverStep(
                 index=step.index,
-                title=steps_by_index.get(step.index, {}).get("title") or step.title,
-                explanation=steps_by_index.get(step.index, {}).get("explanation") or step.explanation,
+                title=(rewrite.title if rewrite and rewrite.title else step.title),
+                explanation=(rewrite.explanation if rewrite and rewrite.explanation else step.explanation),
                 expression=step.expression,
                 result=step.result,
                 highlight=step.highlight,
@@ -73,33 +130,13 @@ async def explain_solver_result(result: SolverResult, scene: dict[str, Any], set
                 formula_latex=step.formula_latex,
                 substitution_latex=step.substitution_latex,
                 result_latex=step.result_latex,
-                sub_steps=[
-                    SolverStep(
-                        index=sub.get("index", 1),
-                        title=sub.get("title", ""),
-                        explanation=sub.get("explanation", ""),
-                        expression=None,
-                        result=None,
-                        highlight=[],
-                        formula_latex=None,
-                        substitution_latex=None,
-                        result_latex=None,
-                    ) for sub in steps_by_index.get(step.index, {}).get("sub_steps", [])
-                ],
+                sub_steps=_merge_geometry_steps(step.sub_steps, nested_rows, rewrites, prefix=claim_id),
                 theorem=step.theorem,
                 claim=step.claim,
                 depends_on=step.depends_on,
             )
-            for step in result.steps
-        ]
-    except Exception as error:
-        warning = f"Không gọi được LLM diễn giải, đang dùng lời giải deterministic: {error}"
-        result.warnings.append(warning)
-        if warning not in getattr(result, "data_issues", []):
-            result.data_issues.append(warning)
-        if getattr(result, "confidence", "verified") == "verified":
-            result.confidence = "partial"
-    return result
+        )
+    return merged
 
 def _payload(result: SolverResult, scene: dict[str, Any]) -> dict[str, Any]:
     objects = []
@@ -263,6 +300,11 @@ async def _call_openrouter_model(prompt: str, settings: Settings, model: str, re
     if not content.strip():
         raise RuntimeError("OpenRouter không trả về nội dung diễn giải.")
     return content
+
+
+def _short_error(message: str) -> str:
+    clean = re.sub(r"\s+", " ", message).strip()
+    return clean[:240] + ("..." if len(clean) > 240 else "")
 
 
 def _sanitize_latex(text: str | None) -> str | None:

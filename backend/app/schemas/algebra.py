@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, StrictBool
 
+from app.schemas.nlp import ExplanationPlan
+
 MAX_ALGEBRA_INPUT_CHARS = 2_000
 
 AlgebraTopic = Literal[
@@ -152,6 +154,9 @@ class AlgebraSolveResponse(BaseModel):
     timings_ms: dict[str, int] = Field(default_factory=dict)
     history_id: str | None = None
     cost_score: int | None = None
+    grounding: ExplanationPlan | None = None
+    realization_status: Literal["deterministic", "ai_validated", "fallback"] = "deterministic"
+    realization_fallback_reason: str | None = None
 
 
 class AlgebraHistoryItem(BaseModel):

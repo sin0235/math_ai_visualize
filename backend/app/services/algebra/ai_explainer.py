@@ -12,6 +12,7 @@ from app.services.ai_fallback import Attempt, format_attempts, provider_configur
 from app.services.chat_response import extract_chat_message_content
 from app.services.openai_compat_client import OpenAICompatClient
 from app.services.openrouter_client import _build_chat_payload as _build_openrouter_chat_payload, _build_headers as _build_openrouter_headers, _extract_message as _extract_openrouter_message, openrouter_api_base_url
+from app.services.nlp.grounding import LanguageRewrite, build_algebra_explanation_plan, validate_language_rewrites
 from app.services.router9_client import Router9Client, _extract_message_content as _extract_router9_message_content
 
 ALGEBRA_EXPLAINER_SYSTEM_PROMPT = """
@@ -49,8 +50,19 @@ class AlgebraExplanationStep(BaseModel):
 class AlgebraExplanationPayload(BaseModel):
     steps: list[AlgebraExplanationStep] = Field(default_factory=list)
 
-def _map_ai_step(step: AlgebraExplanationStep, original: AlgebraSolveStep) -> AlgebraSolveStep:
-    """Rewrite only pedagogical text fields; math structure stays on the original step."""
+def _map_ai_step(
+    step: AlgebraExplanationStep,
+    original: AlgebraSolveStep,
+    rewrites_by_claim: dict[str, LanguageRewrite] | None = None,
+    *,
+    prefix: str = "step",
+) -> AlgebraSolveStep:
+    claim_id = f"{prefix}-{original.index}"
+    rewrite = rewrites_by_claim.get(claim_id) if rewrites_by_claim is not None else None
+
+    def language(field: str):
+        return getattr(rewrite, field) if rewrite is not None else getattr(step, field)
+
     ai_sub_by_index = {sub.index: sub for sub in step.sub_steps}
     rewritten_subs: list[AlgebraSolveStep] = []
     for original_sub in original.sub_steps:
@@ -58,22 +70,29 @@ def _map_ai_step(step: AlgebraExplanationStep, original: AlgebraSolveStep) -> Al
         if ai_sub is None:
             rewritten_subs.append(original_sub)
         else:
-            rewritten_subs.append(_map_ai_step(ai_sub, original_sub))
+            rewritten_subs.append(
+                _map_ai_step(
+                    ai_sub,
+                    original_sub,
+                    rewrites_by_claim,
+                    prefix=claim_id,
+                )
+            )
     return AlgebraSolveStep(
         index=original.index,
-        title=_safe_rewrite(step.title, original.title) or original.title,
-        explanation=_safe_rewrite(step.explanation, original.explanation) or original.explanation,
+        title=_safe_rewrite(language("title"), original.title) or original.title,
+        explanation=_safe_rewrite(language("explanation"), original.explanation) or original.explanation,
         short_explanation=original.short_explanation,
         detail_level=original.detail_level,
         method=original.method,
-        goal=_safe_rewrite(step.goal, original.goal) or original.goal,
-        why=_safe_rewrite(step.why, original.why) or original.why,
-        rule=_safe_rewrite(step.rule, original.rule) or original.rule,
-        operation=_safe_rewrite(step.operation, original.operation) or original.operation,
+        goal=_safe_rewrite(language("goal"), original.goal) or original.goal,
+        why=_safe_rewrite(language("why"), original.why) or original.why,
+        rule=_safe_rewrite(language("rule"), original.rule) or original.rule,
+        operation=_safe_rewrite(language("operation"), original.operation) or original.operation,
         before_latex=original.before_latex,
         after_latex=original.after_latex,
-        pitfall=_safe_rewrite(step.pitfall, original.pitfall) or original.pitfall,
-        check=_safe_rewrite(step.check, original.check) or original.check,
+        pitfall=_safe_rewrite(language("pitfall"), original.pitfall) or original.pitfall,
+        check=_safe_rewrite(language("check"), original.check) or original.check,
         expression=original.expression,
         expression_latex=original.expression_latex,
         result=original.result,
@@ -84,8 +103,11 @@ def _map_ai_step(step: AlgebraExplanationStep, original: AlgebraSolveStep) -> Al
     )
 
 
-def merge_ai_explanation_steps(original_steps: list[AlgebraSolveStep], ai_steps: list[AlgebraExplanationStep]) -> list[AlgebraSolveStep]:
-    """Lock step order/count to deterministic steps; AI may only rewrite matched indices."""
+def merge_ai_explanation_steps(
+    original_steps: list[AlgebraSolveStep],
+    ai_steps: list[AlgebraExplanationStep],
+    rewrites_by_claim: dict[str, LanguageRewrite] | None = None,
+) -> list[AlgebraSolveStep]:
     ai_by_index = {step.index: step for step in ai_steps}
     merged: list[AlgebraSolveStep] = []
     for original in original_steps:
@@ -93,8 +115,33 @@ def merge_ai_explanation_steps(original_steps: list[AlgebraSolveStep], ai_steps:
         if ai_step is None:
             merged.append(original)
         else:
-            merged.append(_map_ai_step(ai_step, original))
+            merged.append(_map_ai_step(ai_step, original, rewrites_by_claim))
     return merged
+
+
+def _language_rewrites(
+    steps: list[AlgebraExplanationStep],
+    *,
+    prefix: str = "step",
+) -> list[LanguageRewrite]:
+    rewrites: list[LanguageRewrite] = []
+    for step in steps:
+        claim_id = f"{prefix}-{step.index}"
+        rewrites.append(
+            LanguageRewrite(
+                claim_id=claim_id,
+                title=step.title,
+                explanation=step.explanation,
+                goal=step.goal,
+                why=step.why,
+                rule=step.rule,
+                operation=step.operation,
+                pitfall=step.pitfall,
+                check=step.check,
+            )
+        )
+        rewrites.extend(_language_rewrites(step.sub_steps, prefix=claim_id))
+    return rewrites
 
 
 async def explain_algebra_response_with_ai(response: AlgebraSolveResponse, settings: Settings) -> AlgebraSolveResponse:
@@ -103,6 +150,8 @@ async def explain_algebra_response_with_ai(response: AlgebraSolveResponse, setti
     if response.verification.status not in {"verified", "partially_verified"}:
         response.warnings.append("Bỏ qua AI diễn giải vì kết quả chưa được kiểm chứng đủ an toàn.")
         return response
+    plan = response.grounding or build_algebra_explanation_plan(response)
+    response.grounding = plan
     try:
         data = await _call_explainer(_payload(response), settings)
         payload = AlgebraExplanationPayload.model_validate(data)
@@ -110,12 +159,18 @@ async def explain_algebra_response_with_ai(response: AlgebraSolveResponse, setti
             return response
 
         original_steps = list(response.steps)
-        response.steps = merge_ai_explanation_steps(original_steps, payload.steps)
+        rewrites_by_claim = validate_language_rewrites(plan, _language_rewrites(payload.steps))
+        response.steps = merge_ai_explanation_steps(original_steps, payload.steps, rewrites_by_claim)
+        response.realization_status = "ai_validated"
+        response.realization_fallback_reason = None
         response.warnings.append(
             "Đã dùng AI để diễn giải ngôn ngữ các bước deterministic; công thức/thứ tự bước và đáp án không đổi."
         )
     except Exception as error:
-        response.warnings.append(f"Không gọi được AI diễn giải, đang dùng lời giải deterministic: {_short_error(str(error))}")
+        reason = _short_error(str(error))
+        response.realization_status = "fallback"
+        response.realization_fallback_reason = reason
+        response.warnings.append(f"Không gọi được AI diễn giải, đang dùng lời giải deterministic: {reason}")
     return response
 
 
@@ -133,6 +188,7 @@ def _payload(response: AlgebraSolveResponse) -> dict:
         "assumptions": response.assumptions,
         "warnings": response.warnings,
         "milestones": response.milestones,
+        "explanation_plan": response.grounding.model_dump(mode="json") if response.grounding else None,
         "steps": [step.model_dump() for step in response.steps],
     }
 

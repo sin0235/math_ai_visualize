@@ -4,8 +4,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-TRUSTED_SOURCES = {"given", "verified", "inferred"}
-TRUSTED_VERIFICATION = {"verified", "unsupported", "unverifiable", None}
+REJECTED_VERIFICATION = {"failed", "error"}
 
 
 @dataclass(frozen=True)
@@ -21,9 +20,15 @@ class GeometryFact:
     @property
     def trusted(self) -> bool:
         confidence = str(self.metadata.get("confidence") or "").lower()
-        if self.source == "construction" and confidence not in {"verified", "exact"}:
+        if self.verification_status in REJECTED_VERIFICATION:
             return False
-        return self.source in TRUSTED_SOURCES or confidence in {"verified", "exact"}
+        if self.source == "construction":
+            return confidence in {"verified", "exact"}
+        if self.source == "given":
+            return True
+        if self.verification_status == "verified":
+            return True
+        return self.source == "verified" or (self.source == "inferred" and confidence in {"verified", "exact"})
 
 
 @dataclass(frozen=True)
@@ -53,6 +58,11 @@ def build_geometry_fact_graph(scene: dict[str, Any]) -> GeometryFactGraph:
     for index, relation in enumerate(scene.get("relations") or []):
         if isinstance(relation, dict):
             fact = _relation_fact(relation, index)
+            if fact:
+                facts.append(fact)
+    for index, derived in enumerate(scene.get("derived_facts") or []):
+        if isinstance(derived, dict):
+            fact = _derived_fact(derived, index)
             if fact:
                 facts.append(fact)
     for index, obj in enumerate(scene.get("objects") or []):
@@ -88,12 +98,31 @@ def _annotation_fact(annotation: dict[str, Any], index: int) -> GeometryFact | N
     return None
 
 
+def _derived_fact(derived: dict[str, Any], index: int) -> GeometryFact | None:
+    kind = str(derived.get("kind") or "").strip()
+    provenance = str(derived.get("provenance") or "").strip().lower()
+    if not kind or provenance == "render_only":
+        return None
+    value = derived.get("value") if isinstance(derived.get("value"), dict) else {}
+    source_ids = tuple(str(item) for item in derived.get("source_ids") or [] if str(item))
+    return GeometryFact(
+        id=str(derived.get("id") or f"derived:{index}"),
+        type=f"derived_{kind}",
+        args={"source_ids": source_ids, **value},
+        source="verified" if provenance == "verified" else "inferred",
+        text=str(value.get("text") or f"Dữ kiện {kind} được suy ra từ scene."),
+        verification_status="verified" if provenance == "verified" else None,
+        metadata={"provenance": provenance, "relation_id": derived.get("relation_id")},
+    )
+
+
 def _relation_fact(relation: dict[str, Any], index: int) -> GeometryFact | None:
     metadata = relation.get("metadata") if isinstance(relation.get("metadata"), dict) else {}
     rel_type = str(relation.get("type") or "").strip().lower()
     verification = _verification_status(relation)
-    if verification not in TRUSTED_VERIFICATION:
+    if verification in REJECTED_VERIFICATION:
         return None
+    source = _source_from_metadata(metadata, str(relation.get("source") or "verified"))
 
     if rel_type == "perpendicular":
         segment, plane = perpendicular_segment_plane(relation)
@@ -102,7 +131,7 @@ def _relation_fact(relation: dict[str, Any], index: int) -> GeometryFact | None:
                 id=str(relation.get("id") or f"relation:{index}"),
                 type="perpendicular_line_plane",
                 args={"line": segment, "plane": tuple(plane)},
-                source=_source_from_metadata(metadata, "verified"),
+                source=source,
                 text=f"{segment[0]}{segment[1]} vuông góc với ({''.join(plane)}).",
                 verification_status=verification,
                 metadata=metadata,
@@ -114,7 +143,7 @@ def _relation_fact(relation: dict[str, Any], index: int) -> GeometryFact | None:
                 id=str(relation.get("id") or f"relation:{index}"),
                 type="perpendicular_lines",
                 args={"first": first, "second": second},
-                source=_source_from_metadata(metadata, "verified"),
+                source=source,
                 text=f"{first[0]}{first[1]} vuông góc với {second[0]}{second[1]}.",
                 verification_status=verification,
                 metadata=metadata,
@@ -127,7 +156,7 @@ def _relation_fact(relation: dict[str, Any], index: int) -> GeometryFact | None:
                 id=str(relation.get("id") or f"relation:{index}"),
                 type="point_on_plane",
                 args={"point": point, "plane": tuple(plane)},
-                source=_source_from_metadata(metadata, "verified"),
+                source=source,
                 text=f"{point} thuộc ({''.join(plane)}).",
                 verification_status=verification,
                 metadata=metadata,
@@ -140,7 +169,7 @@ def _relation_fact(relation: dict[str, Any], index: int) -> GeometryFact | None:
                 id=str(relation.get("id") or f"relation:{index}"),
                 type="midpoint",
                 args={"point": point, "segment": edge},
-                source=_source_from_metadata(metadata, "verified"),
+                source=source,
                 text=f"{point} là trung điểm của {edge[0]}{edge[1]}.",
                 verification_status=verification,
                 metadata=metadata,

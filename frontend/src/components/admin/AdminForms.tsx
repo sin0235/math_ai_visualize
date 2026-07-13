@@ -33,6 +33,10 @@ function parseLines(value: string) {
   return value.split('\n').map((item) => item.trim()).filter(Boolean);
 }
 
+function splitRolloutRules(value: string) {
+  return Array.from(new Set(value.split(',').map((item) => item.trim().toLowerCase()).filter(Boolean)));
+}
+
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
@@ -770,12 +774,35 @@ export function AdminFeatureFlagsForm({ value, onSave, onToast }: { value: Recor
   const [ocr, setOcr] = useState(value.ocr_enabled !== false);
   const [render, setRender] = useState(value.render_enabled !== false);
   const [turnstile, setTurnstile] = useState(value.turnstile_enabled === true);
+  const [nlpShadowRules, setNlpShadowRules] = useState(Array.isArray(value.nlp_shadow_rules) ? value.nlp_shadow_rules.join(', ') : '');
+  const [nlpAuthoritativeRules, setNlpAuthoritativeRules] = useState(Array.isArray(value.nlp_authoritative_rules) ? value.nlp_authoritative_rules.join(', ') : '');
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setMaintenanceMode(value.maintenance_mode === true);
+    setMessage(getStringValue(value.maintenance_message, 'Hệ thống đang bảo trì. Vui lòng thử lại sau.'));
+    setGoogleOAuth(value.google_oauth_enabled !== false);
+    setOcr(value.ocr_enabled !== false);
+    setRender(value.render_enabled !== false);
+    setTurnstile(value.turnstile_enabled === true);
+    setNlpShadowRules(Array.isArray(value.nlp_shadow_rules) ? value.nlp_shadow_rules.join(', ') : '');
+    setNlpAuthoritativeRules(Array.isArray(value.nlp_authoritative_rules) ? value.nlp_authoritative_rules.join(', ') : '');
+  }, [value]);
 
   async function saveFlags() {
     setSaving(true);
     try {
-      await onSave({ version: 1, maintenance_mode: maintenanceMode, maintenance_message: message, google_oauth_enabled: googleOAuth, ocr_enabled: ocr, render_enabled: render, turnstile_enabled: turnstile });
+      await onSave({
+        version: 2,
+        maintenance_mode: maintenanceMode,
+        maintenance_message: message,
+        google_oauth_enabled: googleOAuth,
+        ocr_enabled: ocr,
+        render_enabled: render,
+        turnstile_enabled: turnstile,
+        nlp_shadow_rules: splitRolloutRules(nlpShadowRules),
+        nlp_authoritative_rules: splitRolloutRules(nlpAuthoritativeRules),
+      });
     } catch (error) {
       onToast?.('Cờ tính năng', getErrorMessage(error, 'Không thể lưu cờ tính năng.'), 'error');
     } finally {
@@ -790,7 +817,10 @@ export function AdminFeatureFlagsForm({ value, onSave, onToast }: { value: Recor
       <label className="checkbox-label"><input type="checkbox" checked={ocr} onChange={(event) => setOcr(event.target.checked)} disabled={saving} /> Cho phép OCR</label>
       <label className="checkbox-label"><input type="checkbox" checked={googleOAuth} onChange={(event) => setGoogleOAuth(event.target.checked)} disabled={saving} /> Cho phép đăng nhập Google</label>
       <label className="checkbox-label"><input type="checkbox" checked={turnstile} onChange={(event) => setTurnstile(event.target.checked)} disabled={saving} /> Bật xác minh Turnstile</label>
-    </div><label className="field-label">Thông báo bảo trì<textarea rows={3} value={message} onChange={(event) => setMessage(event.target.value)} disabled={saving} /></label><button type="button" className="secondary-button" onClick={() => void saveFlags()} disabled={saving} aria-busy={saving}>{saving ? 'Đang lưu...' : 'Lưu cờ tính năng'}</button></section>
+    </div>
+    <label className="field-label">NLP shadow rules<input value={nlpShadowRules} onChange={(event) => setNlpShadowRules(event.target.value)} placeholder="algebra, render:solid_geometry" disabled={saving} /><span className="field-hint">Target hoặc target:intent, phân cách bằng dấu phẩy. Chỉ ghi mismatch, không đổi kết quả.</span></label>
+    <label className="field-label">NLP authoritative rules<input value={nlpAuthoritativeRules} onChange={(event) => setNlpAuthoritativeRules(event.target.value)} placeholder="algebra:equation" disabled={saving} /><span className="field-hint">Chỉ bật slice đã đạt quality gate. Rule authoritative ưu tiên shadow.</span></label>
+    <label className="field-label">Thông báo bảo trì<textarea rows={3} value={message} onChange={(event) => setMessage(event.target.value)} disabled={saving} /></label><button type="button" className="secondary-button" onClick={() => void saveFlags()} disabled={saving} aria-busy={saving}>{saving ? 'Đang lưu...' : 'Lưu cờ tính năng'}</button></section>
   );
 }
 

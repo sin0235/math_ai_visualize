@@ -10,7 +10,12 @@ def scene_v3_to_solver_input(
     verification: Iterable[ConstraintResultV3] = (),
 ) -> dict[str, Any]:
     names = _object_names(scene)
-    verification_by_relation = {item.relation_id: item for item in verification}
+    verification_by_relation = {
+        relation.id: relation.verification
+        for relation in scene.relations
+        if relation.verification is not None
+    }
+    verification_by_relation.update({item.relation_id: item for item in verification})
     return {
         "schema_version": scene.schema_version,
         "scene_id": scene.scene_id,
@@ -27,8 +32,11 @@ def scene_v3_to_solver_input(
             {
                 "id": annotation.id,
                 "type": annotation.type,
+                "target_ids": list(annotation.target_ids),
                 "target": "-".join(names[target_id] for target_id in annotation.target_ids),
                 "label": annotation.label,
+                "provenance": annotation.provenance,
+                "relation_id": annotation.relation_id,
                 "metadata": {
                     **annotation.metadata,
                     "source": "given" if annotation.provenance == "given" else annotation.provenance,
@@ -37,6 +45,8 @@ def scene_v3_to_solver_input(
             }
             for annotation in scene.annotations
         ],
+        "derived_facts": [fact.model_dump(mode="json", exclude_none=True) for fact in scene.derived_facts],
+        "construction_steps": [step.model_dump(mode="json", exclude_none=True) for step in scene.construction_steps],
         "parameters": [parameter.model_dump(mode="json") for parameter in scene.parameters],
     }
 
@@ -56,6 +66,7 @@ def _object_names(scene: MathSceneV3) -> dict[str, str]:
 
 def _solver_object(obj: SceneObjectV3, names: dict[str, str]) -> dict[str, Any]:
     data = obj.model_dump(mode="json", exclude_none=True)
+    data["object_id"] = obj.id
     data["name"] = names[obj.id]
     data.pop("label", None)
     if "point_ids" in data:
@@ -89,9 +100,12 @@ def _solver_relation(
     return {
         "id": relation.id,
         "type": relation.type,
+        "operands": [operand.model_dump(mode="json") for operand in relation.operands],
         "object_1": operands[0],
         "object_2": operands[1] if len(operands) > 1 else None,
         "args": relation.args,
+        "source": relation.source,
+        "verification": verification.model_dump(mode="json", exclude_none=True) if verification is not None else None,
         "metadata": metadata,
     }
 

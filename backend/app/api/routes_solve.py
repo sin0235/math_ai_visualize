@@ -10,17 +10,20 @@ from pydantic import BaseModel, Field
 from app.api.deps import enforce_rate_limit, require_active_user, require_trusted_origin
 from app.api.routes_render import enforce_render_access
 from app.core.config import get_settings
+from app.core.logging import get_request_id
 from app.db.models import UserRecord
 from app.db.session import DatabaseClient, get_database
 from app.repositories.admin import AdminRepository
 from app.schemas.advisory import QualityRiskAdvisory
 from app.schemas.scene import MAX_PROBLEM_TEXT_CHARS, RuntimeSettings
 from app.schemas.scene_v3 import CommittedSceneRefV3
+from app.schemas.nlp import ExplanationPlan, InputEnvelope
 from app.services.ai_resolution import resolve_byok_ai_config, settings_with_byok_connection
 from app.services.api_errors import api_error, bad_request_from_error
 from app.services.committed_scene_v3 import CommittedSceneError, load_committed_scene_v3
 from app.services.downstream_scene_v3 import scene_v3_to_solver_input
 from app.services.model_registry import load_model_registry, resolve_effective_settings, resolve_task_profile
+from app.services.nlp_rollout import evaluate_configured_nlp_rollout, log_nlp_taxonomy
 from app.services.user_ai_settings import UserAiSettingsError
 
 router = APIRouter(prefix="/api", tags=["solver"])
@@ -63,6 +66,9 @@ class SolveResponse(BaseModel):
     used_theorems: list[dict[str, str]] = Field(default_factory=list)
     data_issues: list[str] = Field(default_factory=list)
     advisory: QualityRiskAdvisory | None = None
+    grounding: ExplanationPlan | None = None
+    realization_status: str = "deterministic"
+    realization_fallback_reason: str | None = None
 
 
 @router.post("/solve", response_model=SolveResponse, dependencies=[Depends(require_trusted_origin)])
@@ -81,12 +87,43 @@ async def solve_problem(
         committed = await load_committed_scene_v3(db, user.id, request.scene_ref)
         scene_input = scene_v3_to_solver_input(committed.result.scene, committed.result.verification)
         geometry_method = request.geometry_method if request.geometry_method in {"oxyz", "classical"} else "oxyz"
-        result = await asyncio.to_thread(solve, scene_input, request.question, geometry_method)
+        rollout = await evaluate_configured_nlp_rollout(
+            db,
+            InputEnvelope(
+                text=request.question,
+                target="geometry_solve",
+                context={
+                    "scene_topic": committed.result.scene.topic,
+                    "scene_id": committed.result.scene.scene_id,
+                    "geometry_method": request.geometry_method,
+                    "scene_objects": [
+                        obj.model_dump(
+                            mode="json",
+                            include={"id", "label", "type", "point_ids", "from_point_id", "to_point_id"},
+                            exclude_none=True,
+                        )
+                        for obj in committed.result.scene.objects
+                    ],
+                },
+            ),
+            user_id=user.id,
+            request_id=get_request_id(),
+            legacy_status="accepted",
+            legacy_canonical=request.question,
+        )
+        question = request.question
+        if rollout and rollout.can_apply and rollout.candidate:
+            question = rollout.candidate.canonical_text or rollout.response.normalized_text
+        result = await asyncio.to_thread(solve, scene_input, question, geometry_method)
+        from app.services.nlp.grounding import build_geometry_explanation_plan
+
+        if result.grounding is None:
+            result.grounding = build_geometry_explanation_plan(result).model_dump(mode="json")
         advisory = None
         if get_settings().advisory_enabled:
             from app.services.quality_advisory import build_solve_advisory
 
-            advisory = await asyncio.to_thread(build_solve_advisory, request.question, scene_input, result)
+            advisory = await asyncio.to_thread(build_solve_advisory, question, scene_input, result)
         settings = await resolve_effective_settings(db, request.runtime_settings)
         byok_used = False
         byok = None
@@ -123,6 +160,24 @@ async def solve_problem(
 
     if used_ai and not byok_used:
         await AdminRepository(db).record_user_usage_event(user.id, "solver_ai", {"source": "geometry_solve"})
+    if getattr(result, "confidence", "verified") == "insufficient":
+        await log_nlp_taxonomy(
+            db,
+            user_id=user.id,
+            taxonomy_code="solver_unsupported",
+            target="geometry_solve",
+            status="unsupported",
+            request_id=get_request_id(),
+        )
+    if getattr(result, "realization_status", "deterministic") == "fallback":
+        await log_nlp_taxonomy(
+            db,
+            user_id=user.id,
+            taxonomy_code="explainer_fallback",
+            target="geometry_solve",
+            status="accepted",
+            request_id=get_request_id(),
+        )
     from app.repositories.activity import try_log_user_activity
 
     await try_log_user_activity(
@@ -161,4 +216,7 @@ async def solve_problem(
         used_theorems=getattr(result, "used_theorems", []),
         data_issues=getattr(result, "data_issues", []),
         advisory=advisory,
+        grounding=getattr(result, "grounding", None),
+        realization_status=getattr(result, "realization_status", "deterministic"),
+        realization_fallback_reason=getattr(result, "realization_fallback_reason", None),
     )

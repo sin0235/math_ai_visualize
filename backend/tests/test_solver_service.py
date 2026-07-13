@@ -518,5 +518,4 @@ def test_ai_explainer_cannot_change_formula_or_result(monkeypatch):
     assert explained.steps[0].formula_latex == "AB"
     assert explained.steps[0].substitution_latex == "1"
     assert explained.steps[0].result_latex == "1"
-    assert explained.steps[0].sub_steps[0].formula_latex is None
-    assert explained.steps[0].sub_steps[0].result_latex is None
+    assert explained.steps[0].sub_steps == []

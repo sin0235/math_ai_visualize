@@ -1,10 +1,6 @@
-import { useRef, useState } from 'react';
-import { addStyles, EditableMathField } from 'react-mathquill';
 import type { AlgebraInputFormat, AlgebraTopic } from '../../api/client';
 import { KatexSpan } from '../KatexSpan';
-import { isToolbarActionSupported } from './toolbarCapability';
-
-addStyles();
+import { MathInputComposer } from '../math-input/MathInputComposer';
 
 type AlgebraDomain = 'R' | 'C' | 'N' | 'Z';
 const DOMAIN_TEX: Record<AlgebraDomain, string> = {
@@ -173,94 +169,7 @@ export function AlgebraInput({
   onSequenceDraftChange: (value: SequenceDraft) => void;
   onSubmit: () => void;
 }) {
-  const [activeSnippetGroup, setActiveSnippetGroup] = useState(0);
   const suggestedTopic = suggestTopic(input);
-  const mathFieldRef = useRef<{
-    cmd: (command: string) => void;
-    write: (latex: string) => void;
-    keystroke: (keys: string) => void;
-    focus: () => void;
-  } | null>(null);
-
-  function insertMathSnippet(action: MathSnippetAction) {
-    onInputModeChange('math');
-    onInputFormatChange('latex');
-
-    const mathField = mathFieldRef.current;
-    if (!mathField) return;
-
-    mathField.focus();
-    if (action === 'frac') mathField.cmd('\\frac');
-    else if (action === 'nthRoot') mathField.write('\\sqrt[3]{}');
-    else if (action === 'power') mathField.write('^{}');
-    else if (action === 'log') mathField.write('\\log_{}\\left(\\right)');
-    else if (action === 'ln') mathField.write('\\ln\\left(\\right)');
-    else if (action === 'abs') mathField.write('\\left|\\right|');
-    else if (action === 'vector') mathField.write('\\vec{}');
-    else if (action === 'derivative') {
-      onTopicChange('calculus_derivative');
-      mathField.write('\\frac{d}{dx}\\left(\\right)');
-    }
-    else if (action === 'integral') {
-      onTopicChange('calculus_integral');
-      mathField.write('\\int_{}^{}');
-    }
-    else if (action === 'sum') mathField.write('\\sum_{}^{}');
-    else if (action === 'product') mathField.write('\\prod_{}^{}');
-    else if (action === 'limit') {
-      onTopicChange('calculus_limit');
-      mathField.write('\\lim_{x\\to0}\\left(\\right)');
-    }
-    else if (action === 'system2') {
-      onTopicChange('system');
-      onVariablesChange('x,y');
-      mathField.write('x+y=0; x-y=0');
-    }
-    else if (action === 'system3') {
-      onTopicChange('system');
-      onVariablesChange('x,y,z');
-      mathField.write('x+y+z=0; x-y=0; y-z=0');
-    }
-    else if (action === 'equation') mathField.write('x=0');
-    else if (action === 'sin') mathField.write('\\sin\\left(\\right)');
-    else if (action === 'cos') mathField.write('\\cos\\left(\\right)');
-    else if (action === 'tan') mathField.write('\\tan\\left(\\right)');
-    else if (action === 'cot') mathField.write('\\cot\\left(\\right)');
-    else if (action === 'asin') mathField.write('\\sin^{-1}\\left(\\right)');
-    else if (action === 'acos') mathField.write('\\cos^{-1}\\left(\\right)');
-    else if (action === 'atan') mathField.write('\\tan^{-1}\\left(\\right)');
-    else if (action === 'acot') mathField.write('\\cot^{-1}\\left(\\right)');
-    else if (action === 'gt') mathField.write('>');
-    else if (action === 'lt') mathField.write('<');
-    else if (action === 'ge') mathField.write('\\ge ');
-    else if (action === 'le') mathField.write('\\le ');
-    else if (action === 'eq') mathField.write('=');
-    else if (action === 'ne') mathField.write('\\ne ');
-    else if (action === 'approx') mathField.write('\\approx ');
-    else if (action === 'plus') mathField.write('+');
-    else if (action === 'minus') mathField.write('-');
-    else if (action === 'pm') mathField.write('\\pm ');
-    else if (action === 'times') mathField.write('\\cdot ');
-    else if (action === 'divide') mathField.write('/');
-    else if (action === 'pi') mathField.write('\\pi ');
-    else if (action === 'e') mathField.write('e');
-    else if (action === 'infty') mathField.write('\\infty ');
-    else if (action === 'posInfty') mathField.write('+\\infty ');
-    else if (action === 'negInfty') mathField.write('-\\infty ');
-    else if (action === 'in') mathField.write('\\in ');
-    else if (action === 'notin') mathField.write('\\notin ');
-    else if (action === 'subset') mathField.write('\\subset ');
-    else if (action === 'cup') mathField.write('\\cup ');
-    else if (action === 'cap') mathField.write('\\cap ');
-    else if (action === 'emptyset') mathField.write('\\emptyset ');
-    else if (action === 'forall') mathField.write('\\forall ');
-    else if (action === 'exists') mathField.write('\\exists ');
-    else if (action === 'Rightarrow') mathField.write('\\Rightarrow ');
-    else if (action === 'Leftrightarrow') mathField.write('\\Leftrightarrow ');
-    else if (action === 'factorial') mathField.write('!');
-    else if (action === 'combination') mathField.write('C_{}^{}');
-    else if (action === 'permutation') mathField.write('A_{}^{}');
-  }
 
   return (
     <section className="algebra-input-panel">
@@ -271,80 +180,34 @@ export function AlgebraInput({
 
       <div className="algebra-input-section">
         <div className="algebra-input-section-head"><span>01</span><strong>Đề bài</strong></div>
-        <div className="algebra-mode-tabs" role="tablist" aria-label="Chế độ nhập">
-        <button type="button" className={inputMode === 'natural' ? 'active' : ''} onClick={() => { onInputModeChange('natural'); onInputFormatChange('auto'); }} disabled={loading}>Tiếng Việt</button>
-        <button type="button" className={inputMode === 'math' ? 'active' : ''} onClick={() => { onInputModeChange('math'); onInputFormatChange('latex'); }} disabled={loading}>Công thức</button>
-      </div>
+        {topic === 'sequence' && (
+          <SequenceBuilder draft={sequenceDraft} loading={loading} onChange={onSequenceDraftChange} />
+        )}
 
-      {topic === 'sequence' && (
-        <SequenceBuilder draft={sequenceDraft} loading={loading} onChange={onSequenceDraftChange} />
-      )}
+        <MathInputComposer
+          value={input}
+          mode={inputMode}
+          onChange={onInputChange}
+          onModeChange={(mode) => {
+            onInputModeChange(mode);
+            onInputFormatChange(mode === 'math' ? 'latex' : 'auto');
+          }}
+          keyboard="algebra"
+          disabled={loading}
+          label="Nhập bài toán"
+          naturalPlaceholder="Ví dụ: Giải phương trình x² - 5x + 6 = 0"
+          onSubmit={onSubmit}
+        />
 
-      {inputMode === 'math' ? (
-        <div className="field-label algebra-math-field-wrap">
-          Nhập công thức
-          <EditableMathField
-            latex={input}
-            onChange={(mathField) => onInputChange(mathField.latex())}
-            mathquillDidMount={(mathField) => { mathFieldRef.current = mathField; }}
-            config={{ spaceBehavesLikeTab: true }}
-            className="algebra-math-field"
-          />
-        </div>
-      ) : (
-        <label className="field-label">
-          Nhập bài toán
-          <textarea
-            value={input}
-            onChange={(event) => onInputChange(event.target.value)}
-            placeholder="Nhập đề bài bằng tiếng Việt"
-            rows={5}
-            disabled={loading}
-          />
-        </label>
-      )}
-
-      {suggestedTopic && topic !== suggestedTopic && (
-        <button type="button" className="algebra-topic-suggestion" onClick={() => onTopicChange(suggestedTopic)} disabled={loading}>
-          Gợi ý dạng bài: {topicLabel(suggestedTopic)}
-        </button>
-      )}
+        {suggestedTopic && topic !== suggestedTopic && (
+          <button type="button" className="algebra-topic-suggestion" onClick={() => onTopicChange(suggestedTopic)} disabled={loading}>
+            Gợi ý dạng bài: {topicLabel(suggestedTopic)}
+          </button>
+        )}
       </div>
 
       <div className="algebra-input-section">
-        <div className="algebra-input-section-head"><span>02</span><strong>Bàn phím toán</strong></div>
-        <div className="algebra-math-toolbar" aria-label="Chèn ô công thức">
-        <div className="algebra-snippet-tabs" role="tablist" aria-label="Nhóm công thức">
-          {MATH_SNIPPET_GROUPS.map((group, index) => (
-            <button
-              type="button"
-              role="tab"
-              key={group.title}
-              className={activeSnippetGroup === index ? 'active' : ''}
-              aria-selected={activeSnippetGroup === index}
-              aria-label={group.title}
-              title={group.title}
-              onClick={() => setActiveSnippetGroup(index)}
-              disabled={loading}
-            >
-              <KatexSpan tex={group.tex} className="algebra-snippet-katex" />
-            </button>
-          ))}
-        </div>
-        <div className="algebra-snippet-grid" role="tabpanel">
-          {MATH_SNIPPET_GROUPS[activeSnippetGroup].items
-            .filter((snippet) => isToolbarActionSupported(snippet.action))
-            .map((snippet) => (
-            <button type="button" key={snippet.title} title={snippet.title} aria-label={snippet.title} onClick={() => insertMathSnippet(snippet.action)} disabled={loading}>
-              <KatexSpan tex={snippet.tex} className="algebra-snippet-katex" />
-            </button>
-          ))}
-        </div>
-        </div>
-      </div>
-
-      <div className="algebra-input-section">
-        <div className="algebra-input-section-head"><span>03</span><strong>Thiết lập lời giải</strong></div>
+        <div className="algebra-input-section-head"><span>02</span><strong>Thiết lập lời giải</strong></div>
         <div className="algebra-option-grid">
         <label className="field-label">
           Dạng bài

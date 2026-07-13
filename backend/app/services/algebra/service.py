@@ -29,6 +29,7 @@ from app.services.algebra.solvers.statistics_solver import solve_statistics
 from app.services.algebra.solvers.system_solver import solve_system
 from app.services.algebra.solvers.trig_solver import solve_trigonometry
 from app.services.algebra.solvers.expression_solver import solve_expression
+from app.services.nlp.grounding import build_algebra_explanation_plan
 
 
 def solve_algebra(request: AlgebraSolveRequest) -> AlgebraSolveResponse:
@@ -206,6 +207,7 @@ def solve_algebra_deterministic(request: AlgebraSolveRequest) -> AlgebraSolveRes
         "total_ms": elapsed_ms,
         "solve_ms": stage_ms.get("solve_ms", max(0, elapsed_ms - stage_ms.get("interpret_ms", 0) - stage_ms.get("parse_ms", 0))),
     }
+    response.grounding = build_algebra_explanation_plan(response)
     return response
 
 

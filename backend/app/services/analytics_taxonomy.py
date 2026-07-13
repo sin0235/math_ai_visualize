@@ -29,6 +29,32 @@ ANALYZE_FAILED = "analyze.failed"
 # Client
 CLIENT_ERROR = "client.error"
 CLIENT_API_ERROR = "client.api_error"
+NLP_PREFLIGHT = "nlp.preflight"
+
+NLP_UNKNOWN_INTENT = "unknown_intent"
+NLP_LOW_CONFIDENCE = "low_confidence"
+NLP_CLARIFICATION_SHOWN = "clarification_shown"
+NLP_CLARIFICATION_ACCEPTED = "clarification_accepted"
+NLP_CLARIFICATION_EDITED = "clarification_edited"
+NLP_CANONICAL_VALIDATION_FAILURE = "canonical_validation_failure"
+NLP_SOLVER_UNSUPPORTED = "solver_unsupported"
+NLP_EXPLAINER_FALLBACK = "explainer_fallback"
+NLP_SHADOW_MISMATCH = "shadow_mismatch"
+
+NLP_TAXONOMY_CODES = frozenset({
+    NLP_UNKNOWN_INTENT,
+    NLP_LOW_CONFIDENCE,
+    NLP_CLARIFICATION_SHOWN,
+    NLP_CLARIFICATION_ACCEPTED,
+    NLP_CLARIFICATION_EDITED,
+    NLP_CANONICAL_VALIDATION_FAILURE,
+    NLP_SOLVER_UNSUPPORTED,
+    NLP_EXPLAINER_FALLBACK,
+    NLP_SHADOW_MISMATCH,
+})
+NLP_TARGETS = frozenset({"render", "geometry_solve", "algebra", "analyzer", "ocr"})
+NLP_STATUSES = frozenset({"accepted", "needs_confirmation", "abstained", "unsupported"})
+NLP_CONFIDENCE_BUCKETS = frozenset({"very_low", "low", "medium", "high", "very_high"})
 
 FEATURE_KEYS = frozenset({
     "home",
@@ -53,4 +79,5 @@ ALLOWED_CLIENT_EVENT_TYPES = frozenset({
     FEATURE_OPEN,
     CLIENT_ERROR,
     CLIENT_API_ERROR,
+    NLP_PREFLIGHT,
 })

@@ -285,16 +285,18 @@ export function useFunctionAnalysis(initialExpression: string) {
     }
   }
 
-  async function handleAnalyze() {
+  async function handleAnalyze(expressionOverride?: string) {
     if (ocrCandidate) return;
-    const expr = expression.trim();
+    const expr = (expressionOverride ?? expression).trim();
     if (!expr) return;
+    if (expressionOverride) setExpression(expr);
     await runAnalyze(expr, { clearResult: true, requestOptions: buildAnalyzeOptions() });
   }
 
-  async function handleConfirmOcr() {
-    const expr = expression.trim();
+  async function handleConfirmOcr(expressionOverride?: string) {
+    const expr = (expressionOverride ?? expression).trim();
     if (!expr || !ocrCandidate) return;
+    if (expressionOverride) setExpression(expr);
     const provenance = { ...ocrCandidate.provenance, source: 'ocr_confirmed' as const };
     const succeeded = await runAnalyze(expr, {
       clearResult: true,

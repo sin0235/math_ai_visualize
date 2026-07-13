@@ -528,11 +528,29 @@ class OcrUploadResponse(BaseModel):
     public_url: str | None = None
 
 
+class OcrLineResponse(BaseModel):
+    text: str
+    confidence: float = Field(ge=0.0, le=1.0)
+    bbox: tuple[int, int, int, int] | None = None
+
+
+class OcrFormulaCandidateResponse(BaseModel):
+    latex: str
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    bbox: tuple[int, int, int, int] | None = None
+    source: str = "formula_ocr"
+
+
 class OcrResponse(BaseModel):
     text: str
     provider: OcrProvider
     model: str
     warnings: list[str] = Field(default_factory=list)
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    raw_text: str | None = None
+    normalized_text: str | None = None
+    lines: list[OcrLineResponse] = Field(default_factory=list)
+    formula_candidates: list[OcrFormulaCandidateResponse] = Field(default_factory=list)
 
 
 class DiagramOcrRequest(BaseModel):

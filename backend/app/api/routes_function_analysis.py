@@ -12,6 +12,7 @@ from app.api.deps import enforce_rate_limit, get_optional_current_user, require_
 from app.api.routes_ocr import enforce_ocr_access, resolve_image_source
 from app.db.models import UserRecord
 from app.db.session import DatabaseClient, get_database
+from app.core.logging import get_request_id
 from app.repositories.admin import AdminRepository
 from app.schemas.analysis import (
     AnalyzeOcrRequest,
@@ -36,6 +37,7 @@ from app.schemas.analysis import (
     VariationTableV2,
 )
 from app.schemas.scene import MAX_PROBLEM_TEXT_CHARS
+from app.schemas.nlp import InputEnvelope
 from app.services.ai_resolution import resolve_byok_ai_config, settings_with_byok_connection
 from app.services.analyzer_errors import AnalyzerErrorCode, analyzer_error, analyzer_error_from_payload
 from app.services.analyzer_runtime import (
@@ -61,6 +63,7 @@ from app.services.analyzer_runtime import (
 )
 from app.services.api_errors import api_error
 from app.services.model_registry import load_model_registry, resolve_effective_settings, resolve_task_profile
+from app.services.nlp_rollout import evaluate_configured_nlp_rollout
 from app.services.user_ai_settings import UserAiSettingsError
 
 router = APIRouter(prefix="/api", tags=["function-analysis"])
@@ -220,9 +223,29 @@ async def analyze_function_endpoint(
         await enforce_rate_limit(db, http_request, None, "analyze_tool_ip", 90, 60)
         if user is not None:
             await enforce_rate_limit(db, http_request, user, "analyze_tool_user", 120, 60)
+    expression = request.expression
+    rollout = await evaluate_configured_nlp_rollout(
+        db,
+        InputEnvelope(
+            text=request.expression,
+            target="analyzer",
+            context={
+                "has_interval": bool(request.interval),
+                "has_line": bool(request.line),
+                "has_transform": bool(request.transform),
+            },
+        ),
+        user_id=user.id if user else None,
+        request_id=get_request_id(),
+        legacy_status="accepted",
+        legacy_canonical=request.expression,
+    )
+    if rollout and rollout.can_apply and rollout.candidate:
+        canonical_expression = (rollout.candidate.canonical_payload or {}).get("expression")
+        expression = canonical_expression if isinstance(canonical_expression, str) else rollout.candidate.canonical_text or expression
     try:
         data = await _run_cached_analyzer_job(
-            request.expression,
+            expression,
             _dump_option(request.parameters),
             parameter_mode=request.parameter_mode,
             interval=_dump_option(request.interval),
@@ -262,7 +285,7 @@ async def analyze_function_endpoint(
                 "source": request.provenance.source if request.provenance else "manual",
             },
         )
-    return _analysis_response(request.expression, data)
+    return _analysis_response(expression, data)
 
 
 @router.post(

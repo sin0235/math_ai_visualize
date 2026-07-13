@@ -5,4 +5,5 @@ export * from './analyze';
 export * from './algebra';
 export * from './chat';
 export * from './userSettings';
+export * from './nlp';
 export { ApiError } from './core';

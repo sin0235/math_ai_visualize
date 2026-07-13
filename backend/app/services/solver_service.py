@@ -99,6 +99,9 @@ class SolverResult:
         used_facts: list[dict[str, str]] | None = None,
         data_issues: list[str] | None = None,
         used_theorems: list[dict[str, str]] | None = None,
+        realization_status: str = "deterministic",
+        realization_fallback_reason: str | None = None,
+        grounding: dict[str, Any] | None = None,
     ) -> None:
         self.question = question
         self.answer = answer
@@ -109,6 +112,9 @@ class SolverResult:
         self.used_facts = used_facts or []
         self.data_issues = data_issues or []
         self.used_theorems = used_theorems or []
+        self.realization_status = realization_status
+        self.realization_fallback_reason = realization_fallback_reason
+        self.grounding = grounding
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -121,6 +127,9 @@ class SolverResult:
             "used_facts": self.used_facts,
             "data_issues": self.data_issues,
             "used_theorems": self.used_theorems,
+            "realization_status": self.realization_status,
+            "realization_fallback_reason": self.realization_fallback_reason,
+            "grounding": self.grounding,
         }
 
 

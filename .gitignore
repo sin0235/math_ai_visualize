@@ -40,6 +40,9 @@ backend/backend/.data/
 # schemathesis test runner cache
 .schemathesis/
 
+# certification evidence artifacts
+minh_chung/
+
 # OS / editor
 .DS_Store
 Thumbs.db

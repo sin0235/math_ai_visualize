@@ -1,5 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError, changePassword, consumeAnalyzerLinkFromLocation, deleteRenderHistory, forgotPassword, getCurrentUser, getHealth, getLearningProfile, getRenderHistory, getRenderHistoryDetail, getSessions, getSettingsDefaults, login, loginWithGoogle, logout, ocrImageByUploadId, patchRenderHistory, register, renderEditedScene, renderProblemV3, resendVerification, resetPassword, restoreRenderHistoryV3, revokeOtherSessions, revokeSession, updateLearningProfile, updateProfile, uploadOcrImage, verifyEmail, type AdminRenderHistoryDetail, type PracticeHandoffPayload, type RenderHandoffPayload, type RenderHistoryDetailV2, type RenderHistoryItem, type SessionResponse, type UserLearningProfileResponse, type UserLearningProfileUpdateRequest, type UserResponse } from './api/client';
+import type { InterpretationCandidate, InterpretationResponse } from './api/nlp';
+import { InterpretationPanel, useInterpretationPreflight } from './components/nlp/InterpretationPanel';
 import { defaultAdvancedSettings, ProblemInput, type TierKey } from './components/ProblemInput';
 import { AccountPage } from './components/AccountPage';
 import { SettingsPage } from './components/SettingsPage';
@@ -177,6 +179,12 @@ export default function App() {
   const [editorSaving, setEditorSaving] = useState(false);
   const [ocrLoading, setOcrLoading] = useState(false);
   const [problemText, setProblemText] = useState('');
+  const renderPreflight = useInterpretationPreflight();
+  const pendingRenderRef = useRef<{
+    tier: TierKey;
+    advancedSettings?: AdvancedRenderSettings;
+    preferredRenderer?: Renderer;
+  } | null>(null);
   const [lastAdvancedSettings, setLastAdvancedSettings] = useState<AdvancedRenderSettings>(defaultAdvancedSettings);
   const [editTool, setEditTool] = useState<EditTool>('move');
   const [pointToSegmentSource, setPointToSegmentSource] = useState<string | null>(null);
@@ -539,6 +547,7 @@ export default function App() {
       const uploaded = await uploadOcrImage(file);
       const response = await ocrImageByUploadId(uploaded.file_id);
       setProblemText(response.text.trim());
+      renderPreflight.reset();
     } catch (caught) {
       const apiError = toApiError(caught, 'Không thể OCR ảnh đề bài.');
       await reportWorkspaceError('OCR thất bại', apiError, 'Hãy kiểm tra ảnh có rõ chữ không hoặc liên hệ admin kiểm tra cấu hình OCR hệ thống.');
@@ -549,7 +558,7 @@ export default function App() {
   }
 
   async function handleSubmit(
-    problemText: string,
+    nextProblemText: string,
     tier: TierKey,
     advancedSettings?: AdvancedRenderSettings,
     preferredRenderer?: Renderer,
@@ -559,12 +568,34 @@ export default function App() {
       navigateTo('login');
       return;
     }
+    pendingRenderRef.current = { tier, advancedSettings, preferredRenderer };
+    const accepted = await renderPreflight.check({
+      text: nextProblemText,
+      target: 'render',
+      context: { tier, preferred_renderer: preferredRenderer ?? null },
+    });
+    if (accepted) await runConfirmedRender(accepted);
+  }
+
+  async function runConfirmedRender(confirmed: { candidate: InterpretationCandidate; response: InterpretationResponse }) {
+    const pending = pendingRenderRef.current;
+    if (!pending) return;
+    const canonicalText = confirmed.candidate.canonical_text?.trim() || confirmed.response.normalized_text.trim();
+    if (!canonicalText) return;
+    renderPreflight.reset();
+    setProblemText(canonicalText);
     setLoading(true);
     setPointToSegmentSource(null);
     setEditTool('move');
-    setLastAdvancedSettings(advancedSettings ?? defaultAdvancedSettings);
+    setLastAdvancedSettings(pending.advancedSettings ?? defaultAdvancedSettings);
     try {
-      const response = await renderProblemV3(problemText, tier, advancedSettings, preferredRenderer, runtimeSettings);
+      const response = await renderProblemV3(
+        canonicalText,
+        pending.tier,
+        pending.advancedSettings,
+        pending.preferredRenderer,
+        runtimeSettings,
+      );
       setWorkspaceResultV3(response);
       setResult(null);
       setActiveScene(null);
@@ -576,6 +607,7 @@ export default function App() {
       const apiError = toApiError(caught, 'Không thể dựng hình từ đề bài này.');
       await reportWorkspaceError('Dựng hình thất bại', apiError, 'Hãy thử mức độ chất lượng khác hoặc viết đề bài rõ hơn.');
     } finally {
+      pendingRenderRef.current = null;
       setLoading(false);
     }
   }
@@ -1168,16 +1200,22 @@ export default function App() {
               {sidebarTool === 'input' ? (
                 <>
                   <ProblemInput
-                    loading={loading}
+                    loading={loading || renderPreflight.state.phase === 'loading'}
                     ocrLoading={ocrLoading}
                     ocrError={null}
                     problemText={problemText}
                     tier={renderTier}
-                    onProblemTextChange={setProblemText}
+                    onProblemTextChange={(value) => { setProblemText(value); renderPreflight.reset(); }}
                     onTierChange={setRenderTier}
                     onOcrImage={handleOcrImage}
                     onOcrClipboardImage={handleOcrClipboardImage}
                     onSubmit={handleSubmit}
+                  />
+                  <InterpretationPanel
+                    controller={renderPreflight}
+                    title="Cách hệ thống hiểu đề dựng hình"
+                    confirmLabel="Xác nhận và dựng hình"
+                    onConfirm={(confirmed) => runConfirmedRender(confirmed)}
                   />
                   {user && (
                     <div className="history-drawer-wrap">
