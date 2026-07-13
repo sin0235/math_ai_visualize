@@ -11,6 +11,8 @@ from app.schemas.algebra import (
 )
 from app.schemas.analysis import AnalyzeRequest, AnalyzeResponse, VerificationCheck, VerificationReport
 from app.schemas.math_problem import CurriculumReference
+from app.schemas.math_solution import VerificationEvidence as SolutionVerificationEvidence
+from app.services.math_verification import evaluate_verification_contract
 from app.services.math_solution_projectors import (
     CAPABILITY_VERSION,
     project_algebra_solution,
@@ -49,6 +51,26 @@ def test_algebra_projector_preserves_legacy_result_and_adds_verified_ir():
     assert projected.capability.accepted is True
     assert projected.capability.registry_version == "vn-k12-math-v1-capabilities-v1"
     assert projected.capability_version == CAPABILITY_VERSION
+    assert projected.artifacts["verification_contract"]["accepted"] is True
+
+
+def test_verification_contract_rejects_failed_evidence_and_low_exactness():
+    result = evaluate_verification_contract(
+        ["probability.classical"],
+        "partial",
+        [
+            SolutionVerificationEvidence(
+                policy_methods=["stdlib_fraction_recompute"],
+                status="fail",
+                method="stdlib_fraction_recompute",
+            )
+        ],
+    )
+
+    assert result.accepted is False
+    assert result.minimum_exactness == "exact"
+    assert any("thất bại" in failure for failure in result.failures)
+    assert any("thấp hơn" in failure for failure in result.failures)
 
 
 def test_function_projector_maps_analysis_and_verification():

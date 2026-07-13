@@ -12,6 +12,7 @@ from app.math_curriculum import (
     skills_for_legacy_intent,
 )
 from app.math_curriculum.coverage import build_coverage_report
+from app.math_curriculum.quality import build_quality_report
 from app.schemas.algebra import AlgebraTopic
 
 
@@ -99,6 +100,20 @@ def test_coverage_report_uses_corpus_and_test_evidence():
     assert rows["geometry.solid_metric"]["test_case_count"] > 0
     assert rows["statistics.grouped_data"]["status"] == "partial"
     assert report["unmapped_intents"]
+
+
+def test_quality_dashboard_closes_static_and_mutation_gates():
+    report = build_quality_report(
+        BACKEND_ROOT / "tests/nlp/corpus/v1.jsonl",
+        BACKEND_ROOT / "tests",
+    )
+
+    assert report["ready"] is True
+    assert report["public_blockers"] == []
+    assert report["mutation"]["catch_rate"] == 1.0
+    assert report["coverage"]["evidence_counts"] == {"corpus_and_tests": len(SKILLS)}
+    assert report["rollout_stage_counts"]["public"] > 0
+    assert report["rollout_stage_counts"]["internal_beta"] > 0
 
 
 def test_upper_secondary_resolvers_do_not_overclaim_neighboring_skills():

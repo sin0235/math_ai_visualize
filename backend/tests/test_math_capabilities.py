@@ -22,7 +22,13 @@ def test_math_capability_registry_covers_taxonomy_and_ui_topics():
 
     assert registry.version == CAPABILITY_REGISTRY_VERSION
     assert registry.curriculum_version == CURRICULUM_VERSION
+    assert registry.rollout_version.endswith("-rollout-v1")
     assert {capability.skill_id for capability in registry.capabilities} == set(SKILLS)
+    assert all(capability.name_vi for capability in registry.capabilities)
+    assert all(
+        capability.rollout_stage == ("public" if capability.status == "supported" else "internal_beta" if capability.status == "partial" else "shadow")
+        for capability in registry.capabilities
+    )
     assert all(capability.solvers for capability in registry.capabilities if capability.status in {"supported", "partial"})
     assert {topic.topic for topic in registry.ui.algebra_topics} == {
         "arithmetic",

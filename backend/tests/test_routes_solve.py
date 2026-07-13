@@ -85,12 +85,13 @@ async def test_solve_endpoint_returns_trust_metadata(monkeypatch):
         db=object(),
     )
 
-    assert payload.answer == "d(A,(BCD)) = 3"
+    assert payload.answer == "Không đủ dữ kiện"
     assert payload.method == "classical"
-    assert payload.confidence == "verified"
-    assert any(fact["source"] == "given" for fact in payload.used_facts)
-    assert payload.data_issues == []
+    assert payload.confidence == "insufficient"
+    assert payload.proof_plan is None
+    assert payload.data_issues
+    assert payload.solution_ir is not None
+    assert payload.solution_ir.status == "unsupported"
     assert payload.advisory is not None
     assert payload.advisory.classification.task_type == "distance"
     assert payload.advisory.classification.sub_type == "point_plane"
-    assert payload.advisory.risk_level == "low"

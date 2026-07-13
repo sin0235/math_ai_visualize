@@ -6,6 +6,7 @@ import { FunctionGraph } from './FunctionGraph';
 import { SvgIcon, type IconName } from './icons';
 import { VariationTable } from './VariationTable';
 import type { ParameterSnapshot } from './useFunctionAnalysis';
+import { MathCapabilitySummary } from '../MathCapabilitySummary';
 
 export function EmptyAnalyzerResult() {
   return (
@@ -76,6 +77,7 @@ export function AnalyzerResult({
               {activeResultTab === 'quick' ? (
                 <div className="fa2-quick-workbench">
                   <QuickSummary result={result} />
+                  <MathCapabilitySummary solution={result.solution_ir} />
                   {warnings.length > 0 && <WarningSummary warnings={warnings} />}
                   {(result.parameter_mode === 'substitute' || parameterSnapshots.length > 0) && (
                     <details className="fa2-result-disclosure">

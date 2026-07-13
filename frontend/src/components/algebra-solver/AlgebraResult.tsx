@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { downloadAlgebraPdf, type AlgebraSolveResponse, type AlgebraVerificationCheck } from '../../api/client';
 import { KatexSpan, MixedTextRenderer } from '../KatexSpan';
 import { AlgebraStepList } from './AlgebraStepList';
+import { MathCapabilitySummary } from '../MathCapabilitySummary';
 
 const ANALYZER_PREFILL_KEY = 'math_ai_analyzer_prefill';
 
@@ -177,6 +178,8 @@ export function AlgebraResult({
           )}
         </section>
       )}
+
+      <MathCapabilitySummary solution={result.solution_ir} />
 
       {steps.length > 0 && (
         <section className="algebra-result-card algebra-solution-steps">

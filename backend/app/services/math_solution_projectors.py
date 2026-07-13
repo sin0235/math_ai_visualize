@@ -78,7 +78,7 @@ def project_algebra_solution(request: AlgebraSolveRequest, response: AlgebraSolv
         assumptions=list(dict.fromkeys(response.assumptions)),
         constraints=_algebra_constraints(request),
     )
-    return Solution(
+    return _apply_verification_contract(Solution(
         capability_version=CAPABILITY_VERSION,
         capability=resolve_problem_capabilities(problem),
         problem=problem,
@@ -96,7 +96,7 @@ def project_algebra_solution(request: AlgebraSolveRequest, response: AlgebraSolv
         unsupported_reason=response.answer if status == "unsupported" else None,
         verification=evidence,
         artifacts={"milestones": response.milestones},
-    )
+    ))
 
 
 def project_function_solution(
@@ -148,7 +148,7 @@ def project_function_solution(
         goal="Khảo sát hàm số",
         constraints=_function_constraints(request),
     )
-    return Solution(
+    return _apply_verification_contract(Solution(
         capability_version=CAPABILITY_VERSION,
         capability=resolve_problem_capabilities(problem),
         problem=problem,
@@ -184,7 +184,7 @@ def project_function_solution(
             "asymptotes": response.asymptotes_v2,
             "graph_scene": response.graph_scene,
         },
-    )
+    ))
 
 
 def project_geometry_solution(
@@ -244,7 +244,7 @@ def project_geometry_solution(
         for legacy, step in zip(response.steps, steps)
         if legacy.claim
     ]
-    return Solution(
+    return _apply_verification_contract(Solution(
         capability_version=CAPABILITY_VERSION,
         capability=resolve_problem_capabilities(problem),
         problem=problem,
@@ -259,9 +259,24 @@ def project_geometry_solution(
         artifacts={
             "used_theorems": response.used_theorems,
             "used_facts": response.used_facts,
-            "proof_plan": response.proof_plan,
+            "proof_plan": getattr(response, "proof_plan", None),
         },
+    ))
+
+
+def _apply_verification_contract(solution: Solution) -> Solution:
+    from app.services.math_verification import evaluate_verification_contract
+
+    contract = evaluate_verification_contract(
+        solution.problem.curriculum.skill_ids,
+        solution.exactness,
+        solution.verification,
     )
+    solution.artifacts["verification_contract"] = contract.to_dict()
+    if solution.status == "solved_verified" and not contract.accepted:
+        solution.status = "solved_partial"
+        solution.warnings.extend(contract.failures)
+    return solution
 
 
 def _curriculum_reference(skill_ids: Iterable[str]) -> CurriculumReference:

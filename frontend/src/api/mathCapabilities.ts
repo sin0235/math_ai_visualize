@@ -5,9 +5,12 @@ export type MathCapabilityStatus = 'supported' | 'partial' | 'planned' | 'unsupp
 export interface MathCapability {
   capability_id: string;
   skill_id: string;
+  name_vi: string;
   strand: string;
   grades: number[];
+  prerequisites: string[];
   status: MathCapabilityStatus;
+  rollout_stage: 'shadow' | 'internal_beta' | 'public';
   accepted_input_kinds: Array<'expression' | 'function_analysis' | 'geometry_scene'>;
   tasks: string[];
   solvers: string[];
@@ -26,6 +29,7 @@ export interface AlgebraTopicCapability {
 
 export interface MathCapabilityRegistry {
   version: string;
+  rollout_version: string;
   curriculum_version: string;
   capabilities: MathCapability[];
   ui: {
