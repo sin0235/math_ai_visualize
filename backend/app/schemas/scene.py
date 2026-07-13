@@ -565,15 +565,6 @@ class DiagramOcrResponse(BaseModel):
     model: str
 
 
-class ProblemVariantsRequest(BaseModel):
-    scene: MathScene
-    response: RenderResponse | None = None
-    count: int = Field(default=3, ge=1, le=10)
-    original_problem: str | None = Field(default=None, max_length=MAX_PROBLEM_TEXT_CHARS)
-    preferred_ai_model: str | None = Field(default=None, max_length=MAX_MODEL_ID_CHARS)
-    runtime_settings: RuntimeSettings | None = None
-
-
 class ProblemVariantsResponse(BaseModel):
     variants: list[str]
     provider: str
@@ -696,13 +687,6 @@ class ExportViewCapture(BaseModel):
         return self
 
 
-class SceneRenderRequest(BaseModel):
-    scene: MathScene
-    advanced_settings: AdvancedRenderSettings = Field(default_factory=AdvancedRenderSettings)
-    response: RenderResponse | None = None
-    view_capture: ExportViewCapture | None = None
-
-
 class RenderPayload(BaseModel):
     renderer: Renderer
     geogebra_commands: list[str] = Field(default_factory=list)
@@ -740,9 +724,20 @@ class RenderResponse(BaseModel):
         return self
 
 
-_SCENE_SCHEMA_TYPES = globals()
-SceneRenderRequest.model_rebuild(_types_namespace=_SCENE_SCHEMA_TYPES)
-ProblemVariantsRequest.model_rebuild(_types_namespace=_SCENE_SCHEMA_TYPES)
+class ProblemVariantsRequest(BaseModel):
+    scene: MathScene
+    response: RenderResponse | None = None
+    count: int = Field(default=3, ge=1, le=10)
+    original_problem: str | None = Field(default=None, max_length=MAX_PROBLEM_TEXT_CHARS)
+    preferred_ai_model: str | None = Field(default=None, max_length=MAX_MODEL_ID_CHARS)
+    runtime_settings: RuntimeSettings | None = None
+
+
+class SceneRenderRequest(BaseModel):
+    scene: MathScene
+    advanced_settings: AdvancedRenderSettings = Field(default_factory=AdvancedRenderSettings)
+    response: RenderResponse | None = None
+    view_capture: ExportViewCapture | None = None
 
 
 class RenderJobCreateResponse(BaseModel):
