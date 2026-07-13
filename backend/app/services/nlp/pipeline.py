@@ -23,7 +23,10 @@ def interpret_input(
     target: ExcludeAutoTarget = infer_target(normalized.text) if envelope.target == "auto" else envelope.target
     active_registry = registry or default_registry()
     candidates = sorted(
-        active_registry.resolve(target)(envelope, normalized),
+        (
+            _with_input_provenance(candidate, envelope)
+            for candidate in active_registry.resolve(target)(envelope, normalized)
+        ),
         key=lambda candidate: (-candidate.confidence, candidate.candidate_id),
     )
     status, selected_candidate_id = decide_interpretation(candidates)
@@ -35,6 +38,17 @@ def interpret_input(
         selected_candidate_id=selected_candidate_id,
         adapter_version=ADAPTER_VERSION,
     )
+
+
+def _with_input_provenance(
+    candidate: InterpretationCandidate,
+    envelope: InputEnvelope,
+) -> InterpretationCandidate:
+    provenance = list(candidate.provenance)
+    for item in envelope.provenance:
+        if item not in provenance:
+            provenance.append(item)
+    return candidate.model_copy(update={"provenance": provenance[-16:]})
 
 
 def decide_interpretation(

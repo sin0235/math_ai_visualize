@@ -1,6 +1,6 @@
 import { ApiError, apiUrl, fetchWithRetry, networkApiError, parseApiError, requestJson } from './core';
 
-export type AlgebraTopic = 'auto' | 'equation' | 'inequality' | 'exponential_log' | 'trigonometry' | 'complex' | 'sequence' | 'combinatorics_probability' | 'statistics' | 'system' | 'parameter' | 'calculus_derivative' | 'calculus_limit' | 'calculus_integral';
+export type AlgebraTopic = 'auto' | 'equation' | 'inequality' | 'exponential_log' | 'trigonometry' | 'complex' | 'sequence' | 'combinatorics_probability' | 'statistics' | 'system' | 'parameter' | 'calculus_derivative' | 'calculus_derivative_by_definition' | 'calculus_limit' | 'calculus_continuous_at' | 'calculus_integral';
 export type AlgebraStatus = 'solved' | 'partial' | 'unsupported' | 'error';
 export type AlgebraVerificationStatus = 'verified' | 'partially_verified' | 'failed' | 'skipped';
 export type AlgebraInputFormat = 'auto' | 'plain' | 'latex' | 'structured';

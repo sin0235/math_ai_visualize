@@ -69,6 +69,7 @@ jobs:
             tests/test_nlp_rollout.py
 
       - name: Run pytest
+        timeout-minutes: 15
         env:
           ENVIRONMENT: test
           DATABASE_BACKEND: sqlite

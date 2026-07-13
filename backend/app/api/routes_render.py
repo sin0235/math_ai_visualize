@@ -46,6 +46,13 @@ RENDER_TIMEOUT_SECONDS = 310
 RENDER_AI_USAGE_EVENT_TYPES = ["algebra_ai", "problem_variants", "solver_ai"]
 
 
+def _bind_scene_request_fields(scene: MathScene, request: RenderRequest) -> MathScene:
+    updates = {"problem_text": request.problem_text}
+    if request.grade is not None:
+        updates["grade"] = request.grade
+    return scene.model_copy(update=updates)
+
+
 async def _apply_render_nlp_rollout(
     request: RenderRequest,
     db: DatabaseClient,
@@ -321,6 +328,7 @@ async def build_problem_render_response(request: RenderRequest, db: DatabaseClie
                 for attempt in getattr(extraction, "attempts", [])
             ],
         )
+    scene = _bind_scene_request_fields(scene, request)
     if request.preferred_renderer is not None:
         scene.renderer = request.preferred_renderer
     scene_data = scene.model_dump()

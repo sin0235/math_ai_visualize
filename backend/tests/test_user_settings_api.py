@@ -1,20 +1,34 @@
 import asyncio
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from app.api.routes_auth import router as auth_router
+from app.api.routes_user_settings import router as user_settings_router
 from app.core.config import Settings, get_settings
 from app.db.migrations import apply_sqlite_migrations
 from app.db.session import SQLiteClient, get_database
-from app.main import app
 from app.repositories.auth import UserRepository
 from app.services.secret_crypto import generate_user_secret_key
+
+
+def _test_app(settings: Settings, db: SQLiteClient) -> FastAPI:
+    test_app = FastAPI()
+    test_app.include_router(auth_router)
+    test_app.include_router(user_settings_router)
+
+    async def override_db():
+        return db
+
+    test_app.dependency_overrides[get_database] = override_db
+    test_app.dependency_overrides[get_settings] = lambda: settings
+    return test_app
 
 
 @pytest.fixture()
 def client(tmp_path, monkeypatch):
     db = SQLiteClient(str(tmp_path / "user-settings.db"))
-    asyncio.run(apply_sqlite_migrations(db))
     settings = Settings(
         _env_file=None,
         sqlite_path=db.path,
@@ -23,22 +37,18 @@ def client(tmp_path, monkeypatch):
         user_secret_encryption_key=generate_user_secret_key(),
     )
 
-    async def override_db():
-        return db
-
     async def noop_email(*args, **kwargs):
         return None
 
-    app.dependency_overrides[get_database] = override_db
-    app.dependency_overrides[get_settings] = lambda: settings
     monkeypatch.setattr("app.api.routes_auth.send_verification_email", noop_email)
     monkeypatch.setattr("app.api.routes_auth.send_password_reset_email", noop_email)
     monkeypatch.setattr("app.api.routes_auth.get_settings", lambda: settings)
     monkeypatch.setattr("app.api.deps.get_settings", lambda: settings)
-    with TestClient(app) as test_client:
+    with TestClient(_test_app(settings, db)) as test_client:
+        test_client.portal.call(apply_sqlite_migrations, db)
         test_client.db = db
         yield test_client
-    app.dependency_overrides.clear()
+        test_client.portal.call(db.close)
 
 
 def register_and_login(client: TestClient, email: str = "byok@example.com") -> str:
@@ -88,28 +98,23 @@ def test_user_can_save_byok_provider_without_leaking_key(client):
 
 def test_user_settings_requires_encryption_key_for_enabled_byok(tmp_path, monkeypatch):
     db = SQLiteClient(str(tmp_path / "missing-key.db"))
-    asyncio.run(apply_sqlite_migrations(db))
     settings = Settings(_env_file=None, sqlite_path=db.path, auth_email_dev_mode=True, require_email_verification=False)
-
-    async def override_db():
-        return db
 
     async def noop_email(*args, **kwargs):
         return None
 
-    app.dependency_overrides[get_database] = override_db
-    app.dependency_overrides[get_settings] = lambda: settings
     monkeypatch.setattr("app.api.routes_auth.send_verification_email", noop_email)
     monkeypatch.setattr("app.api.routes_auth.send_password_reset_email", noop_email)
     monkeypatch.setattr("app.api.routes_auth.get_settings", lambda: settings)
     monkeypatch.setattr("app.api.deps.get_settings", lambda: settings)
-    with TestClient(app) as test_client:
+    with TestClient(_test_app(settings, db)) as test_client:
+        test_client.portal.call(apply_sqlite_migrations, db)
         register_and_login(test_client, "missing-key@example.com")
         response = test_client.put(
             "/api/user/settings/ai-provider",
             json={"enabled": True, "base_url": "http://localhost:1234/v1", "api_key": "sk-test-secret"},
         )
-    app.dependency_overrides.clear()
+        test_client.portal.call(db.close)
 
     assert response.status_code == 400
     assert "USER_SECRET_ENCRYPTION_KEY" in response.json()["detail"]

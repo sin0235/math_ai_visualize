@@ -6,7 +6,7 @@ import pytest
 
 from app.api import routes_nlp
 from app.main import app
-from app.schemas.nlp import InputEnvelope, InterpretationStatus
+from app.schemas.nlp import InputEnvelope, InterpretationStatus, Provenance
 from app.services.nlp.adapters import default_registry
 from app.services.nlp.normalization import normalize_input
 from app.services.nlp.pipeline import interpret_input
@@ -55,6 +55,17 @@ def test_algebra_interpretation_accepts_complete_relation():
     assert result.selected_candidate_id == "algebra-1"
     assert result.candidates[0].intent.topic == "equation"
     assert result.candidates[0].canonical_text == "x^2-5*x+6=0"
+
+
+def test_user_confirmed_provenance_survives_revalidation():
+    result = interpret_input(InputEnvelope(
+        text="x^2 - 1 = 0",
+        target="algebra",
+        provenance=[Provenance(source="user_confirmed")],
+    ))
+
+    assert any(item.source == "user_confirmed" for item in result.candidates[0].provenance)
+    assert any(item.source == "rule" for item in result.candidates[0].provenance)
 
 
 def test_algebra_interpretation_requires_missing_relation_confirmation():

@@ -7,6 +7,7 @@ from tests.nlp.benchmark import CORPUS_PATH, evaluate, load_cases, pipeline_pred
 
 THRESHOLDS_PATH = Path(__file__).with_name("thresholds.json")
 PIPELINE_THRESHOLDS_PATH = Path(__file__).with_name("pipeline-thresholds.json")
+PIPELINE_BASELINE_PATH = Path(__file__).with_name("pipeline-baseline-v1.json")
 
 
 def test_corpus_schema_and_slice_coverage():
@@ -48,18 +49,34 @@ def test_legacy_nlp_metrics_do_not_regress_below_versioned_thresholds():
 
 
 def test_pipeline_nlp_metrics_do_not_regress_below_measured_thresholds():
-    _assert_thresholds(
-        evaluate(load_cases(CORPUS_PATH, expand_paraphrases=False), predictor=pipeline_predict),
-        PIPELINE_THRESHOLDS_PATH,
-    )
+    report = evaluate(load_cases(CORPUS_PATH), predictor=pipeline_predict)
+
+    _assert_thresholds(report, PIPELINE_THRESHOLDS_PATH)
+    baseline = json.loads(PIPELINE_BASELINE_PATH.read_text(encoding="utf-8"))
+    assert report["schema_version"] == baseline["schema_version"]
+    assert report["case_count"] >= baseline["case_count"]
 
 
 def _assert_thresholds(report: dict, thresholds_path: Path):
     thresholds = json.loads(thresholds_path.read_text(encoding="utf-8"))
 
     for scope, expected_metrics in thresholds.items():
-        actual_metrics = report["overall"] if scope == "overall" else report["targets"][scope]
-        for metric, minimum in expected_metrics.get("minimum", {}).items():
-            assert actual_metrics[metric] >= minimum, f"{scope}.{metric} giảm dưới {minimum}"
-        for metric, maximum in expected_metrics.get("maximum", {}).items():
-            assert actual_metrics[metric] <= maximum, f"{scope}.{metric} vượt {maximum}"
+        if scope == "overall":
+            _assert_metric_thresholds(report["overall"], expected_metrics, scope)
+            continue
+        if scope == "geometry_subtypes":
+            for subtype, subtype_thresholds in expected_metrics.items():
+                _assert_metric_thresholds(
+                    report["geometry_subtypes"][subtype],
+                    subtype_thresholds,
+                    f"geometry_subtypes.{subtype}",
+                )
+            continue
+        _assert_metric_thresholds(report["targets"][scope], expected_metrics, scope)
+
+
+def _assert_metric_thresholds(actual_metrics: dict, expected_metrics: dict, scope: str):
+    for metric, minimum in expected_metrics.get("minimum", {}).items():
+        assert actual_metrics[metric] >= minimum, f"{scope}.{metric} giảm dưới {minimum}"
+    for metric, maximum in expected_metrics.get("maximum", {}).items():
+        assert actual_metrics[metric] <= maximum, f"{scope}.{metric} vượt {maximum}"

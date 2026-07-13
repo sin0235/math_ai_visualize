@@ -62,6 +62,8 @@ from app.services.analyzer_runtime import (
     session_expiry_iso,
 )
 from app.services.api_errors import api_error
+from app.services.math_capabilities import resolve_function_capability
+from app.services.math_solution_projectors import project_function_solution
 from app.services.model_registry import load_model_registry, resolve_effective_settings, resolve_task_profile
 from app.services.nlp_rollout import evaluate_configured_nlp_rollout
 from app.services.user_ai_settings import UserAiSettingsError
@@ -95,6 +97,12 @@ def _dump_option(value: Any | None) -> dict[str, Any] | None:
     return value.model_dump(mode="json", exclude_none=True) if value is not None else None
 
 
+def _enforce_function_capability(expression: str, parameters: dict[str, Any] | None) -> None:
+    snapshot = resolve_function_capability(expression, parameters or {})
+    if not snapshot.accepted:
+        raise api_error(422, snapshot.reason or "Dạng hàm chưa được hỗ trợ.", "FUNCTION_CAPABILITY_UNSUPPORTED")
+
+
 @router.get("/analyze/capabilities", response_model=AnalyzerCapabilityRegistry)
 def analyzer_capabilities_endpoint() -> AnalyzerCapabilityRegistry:
     from app.services.function_analysis_capabilities import analyzer_capability_registry
@@ -113,9 +121,11 @@ async def analyze_session_endpoint(
     if user is not None:
         await enforce_rate_limit(db, http_request, user, "analyzer_base_user", 60, 60)
     scope = analysis_scope(user.id if user else None, http_request)
+    parameters = _dump_option(request.parameters)
+    _enforce_function_capability(request.expression, parameters)
     data = await run_cached_analysis(
         request.expression,
-        _dump_option(request.parameters),
+        parameters,
         parameter_mode=request.parameter_mode,
         scope=scope,
         request=http_request,
@@ -127,7 +137,7 @@ async def analyze_session_endpoint(
     from app.services.function_analysis_curriculum import apply_curriculum_profile
 
     data = apply_curriculum_profile(data, request.curriculum_profile)
-    response = _analysis_response(request.expression, data)
+    response = _analysis_response(request.expression, data, request=request)
     session = create_analysis_session(scope, response.model_dump(mode="json"))
     return AnalyzerSessionResponse(
         **response.model_dump(),
@@ -248,6 +258,7 @@ async def analyze_function_endpoint(
     if rollout and rollout.can_apply and rollout.candidate:
         canonical_expression = (rollout.candidate.canonical_payload or {}).get("expression")
         expression = canonical_expression if isinstance(canonical_expression, str) else rollout.candidate.canonical_text or expression
+    _enforce_function_capability(expression, _dump_option(request.parameters))
     try:
         data = await _run_cached_analyzer_job(
             expression,
@@ -290,7 +301,7 @@ async def analyze_function_endpoint(
                 "source": request.provenance.source if request.provenance else "manual",
             },
         )
-    return _analysis_response(expression, data)
+    return _analysis_response(expression, data, request=request)
 
 
 @router.post(
@@ -414,6 +425,7 @@ async def analyze_from_ocr(
                 ocr_expression=extraction.expression,
                 warnings=extraction.warnings,
             )
+        _enforce_function_capability(extraction.expression, None)
         data = await _run_cached_analyzer_job(
             extraction.expression,
             scope=analysis_scope(user.id, http_request),
@@ -447,7 +459,8 @@ async def analyze_from_ocr(
         target_type="analyzer",
         metadata={"source": "ocr", "provider": extraction.provenance.provider, "model": extraction.provenance.model},
     )
-    return _analysis_response(extraction.expression, data)
+    compatibility_request = AnalyzeRequest(expression=extraction.expression, provenance=extraction.provenance)
+    return _analysis_response(extraction.expression, data, request=compatibility_request)
 
 
 async def _extract_function_ocr_request(
@@ -579,11 +592,19 @@ def _analyzer_error(message: str, code: str) -> dict[str, Any]:
     return {"error": message, "error_code": code, "warnings": [message]}
 
 
-def _analysis_response(expression: str, data: dict[str, Any]) -> AnalyzeResponse:
+def _analysis_response(
+    expression: str,
+    data: dict[str, Any],
+    *,
+    request: AnalyzeRequest | AnalyzerBaseRequest | None = None,
+) -> AnalyzeResponse:
+    projection_request = request or AnalyzeRequest(expression=expression)
     if "error" in data:
-        return AnalyzeResponse(expression=expression, error=data["error"], error_code=data.get("error_code"), stage_statuses=data.get("stage_statuses"), warnings=data.get("warnings", []), ocr_text=data.get("ocr_text"), ocr_expression=data.get("ocr_expression"), provenance=data.get("provenance"))
+        response = AnalyzeResponse(expression=expression, error=data["error"], error_code=data.get("error_code"), stage_statuses=data.get("stage_statuses"), warnings=data.get("warnings", []), ocr_text=data.get("ocr_text"), ocr_expression=data.get("ocr_expression"), provenance=data.get("provenance"))
+        response.solution_ir = project_function_solution(projection_request, response)
+        return response
 
-    return AnalyzeResponse(
+    response = AnalyzeResponse(
         expression=data["expression"],
         expression_latex=data.get("expression_latex"),
         evaluated_expression=data.get("evaluated_expression"),
@@ -645,6 +666,8 @@ def _analysis_response(expression: str, data: dict[str, Any]) -> AnalyzeResponse
         curriculum_presentation=data.get("curriculum_presentation"),
         warnings=data.get("warnings", []),
     )
+    response.solution_ir = project_function_solution(projection_request, response)
+    return response
 
 
 async def _extract_function_candidate(text: str, settings) -> FunctionOcrCandidate:

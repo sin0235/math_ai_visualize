@@ -296,6 +296,7 @@ export interface AnalyzerCapabilityExample {
 
 export interface AnalyzerCapabilityRegistry {
   version: string;
+  math_registry_version: string;
   parser: {
     functions: string[];
     constants: string[];

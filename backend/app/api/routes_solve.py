@@ -15,6 +15,7 @@ from app.db.models import UserRecord
 from app.db.session import DatabaseClient, get_database
 from app.repositories.admin import AdminRepository
 from app.schemas.advisory import QualityRiskAdvisory
+from app.schemas.math_solution import Solution
 from app.schemas.scene import MAX_PROBLEM_TEXT_CHARS, RuntimeSettings
 from app.schemas.scene_v3 import CommittedSceneRefV3
 from app.schemas.nlp import ExplanationPlan, InputEnvelope
@@ -22,6 +23,7 @@ from app.services.ai_resolution import resolve_byok_ai_config, settings_with_byo
 from app.services.api_errors import api_error, bad_request_from_error
 from app.services.committed_scene_v3 import CommittedSceneError, load_committed_scene_v3
 from app.services.downstream_scene_v3 import scene_v3_to_solver_input
+from app.services.math_solution_projectors import project_geometry_solution
 from app.services.model_registry import load_model_registry, resolve_effective_settings, resolve_task_profile
 from app.services.nlp_rollout import evaluate_configured_nlp_rollout, log_nlp_taxonomy
 from app.services.user_ai_settings import UserAiSettingsError
@@ -73,6 +75,7 @@ class SolveResponse(BaseModel):
     grounding: ExplanationPlan | None = None
     realization_status: str = "deterministic"
     realization_fallback_reason: str | None = None
+    solution_ir: Solution | None = None
 
 
 @router.post("/solve", response_model=SolveResponse, dependencies=[Depends(require_trusted_origin)])
@@ -215,7 +218,7 @@ async def solve_problem(
             construction_actions=getattr(s, "construction_actions", []),
         )
 
-    return SolveResponse(
+    response = SolveResponse(
         question=result.question,
         answer=result.answer,
         steps=[_map_step(s) for s in result.steps],
@@ -230,3 +233,9 @@ async def solve_problem(
         realization_status=getattr(result, "realization_status", "deterministic"),
         realization_fallback_reason=getattr(result, "realization_fallback_reason", None),
     )
+    response.solution_ir = project_geometry_solution(
+        request,
+        response,
+        scene_topic=committed.result.scene.topic,
+    )
+    return response

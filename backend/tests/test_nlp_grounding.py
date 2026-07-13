@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from app.schemas.algebra import AlgebraSolveRequest
+from app.schemas.nlp import ExplanationPlan, GroundedClaim
 from app.services.algebra import ai_explainer
 from app.services.algebra.service import solve_algebra_deterministic
 from app.services.nlp.grounding import (
@@ -55,6 +56,16 @@ def test_plan_anchor_invariant_detects_answer_change():
         assert_plan_anchors_unchanged(plan, changed)
 
 
+def test_explanation_plan_rejects_dependency_cycles():
+    claims = [
+        GroundedClaim(claim_id="a", kind="step", deterministic_text="A", depends_on=["b"], confidence="verified"),
+        GroundedClaim(claim_id="b", kind="step", deterministic_text="B", depends_on=["a"], confidence="verified"),
+    ]
+
+    with pytest.raises(ValueError, match="chu trình"):
+        ExplanationPlan(plan_id="cycle", claims=claims, answer="x", verification_state="verified")
+
+
 @pytest.mark.anyio
 async def test_algebra_ai_realization_rejects_new_numeric_claim(monkeypatch):
     response = solve_algebra_deterministic(AlgebraSolveRequest(input="x^2 - 1 = 0"))
@@ -78,6 +89,28 @@ async def test_algebra_ai_realization_rejects_new_numeric_claim(monkeypatch):
     assert explained.steps[0].explanation == original_explanation
     assert explained.realization_status == "ai_validated"
     assert explained.grounding is not None
+
+
+@pytest.mark.anyio
+async def test_algebra_ai_marks_fully_rejected_payload(monkeypatch):
+    response = solve_algebra_deterministic(AlgebraSolveRequest(input="x^2 - 1 = 0"))
+    original_steps = list(response.steps)
+
+    async def fake_call(_payload, _settings):
+        return {
+            "steps": [{
+                "index": response.steps[0].index,
+                "title": "Có 999 nghiệm",
+                "explanation": "Kết quả mới là 999",
+            }],
+        }
+
+    monkeypatch.setattr(ai_explainer, "_call_explainer", fake_call)
+    explained = await ai_explainer.explain_algebra_response_with_ai(response, object())
+
+    assert explained.steps == original_steps
+    assert explained.realization_status == "ai_rejected"
+    assert explained.realization_fallback_reason
 
 
 def _geometry_result() -> SolverResult:
@@ -184,6 +217,24 @@ async def test_geometry_ai_rejects_unknown_object_name_per_step(monkeypatch):
     assert explained.steps[0].title == "Trình bày trực quan"
     assert explained.steps[0].explanation == original_explanation
     assert explained.realization_status == "ai_validated"
+
+
+@pytest.mark.anyio
+async def test_geometry_ai_marks_unknown_only_payload_rejected(monkeypatch):
+    result = _geometry_result()
+    original_steps = list(result.steps)
+
+    async def fake_call(*_args, **_kwargs):
+        return {
+            "steps": [{"index": 99, "title": "Bước lạ", "explanation": "Không thuộc plan."}],
+        }
+
+    monkeypatch.setattr("app.services.solver_explainer._call_explainer", fake_call)
+    explained = await explain_solver_result(result, {}, object())
+
+    assert explained.steps == original_steps
+    assert explained.realization_status == "ai_rejected"
+    assert explained.realization_fallback_reason
 
 
 @pytest.mark.anyio

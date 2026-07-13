@@ -3,26 +3,55 @@ import type { VirtualKeyboardLayout, VirtualKeyboardName } from 'mathlive';
 export type MathKeyboardKind = 'algebra' | 'geometry';
 export type MathKeyboardLayouts = readonly (VirtualKeyboardName | VirtualKeyboardLayout)[];
 
-const ALGEBRA_LAYOUT: VirtualKeyboardLayout = {
-  id: 'solver-algebra',
-  label: 'Đại số',
-  rows: [
-    ['x', 'y', 'a', 'b', '7', '8', '9', '+', '-'],
-    ['\\frac{#0}{#?}', '\\sqrt{#0}', '#0^{#?}', '4', '5', '6', '\\times', '\\div'],
-    ['\\sin', '\\cos', '\\tan', '\\log_{#?}', '1', '2', '3', '=', '\\ne'],
-    ['\\left(#0\\right)', '\\left|#0\\right|', '\\pi', '\\infty', '0', '.', '\\le', '\\ge', '[backspace]'],
-  ],
-};
+interface CapabilityKey {
+  latex: string;
+  action?: string;
+}
 
-const CALCULUS_LAYOUT: VirtualKeyboardLayout = {
-  id: 'solver-calculus',
-  label: 'Giải tích',
-  rows: [
-    ['\\frac{d}{dx}\\left(#0\\right)', '\\int_{#?}^{#?}#0\\,dx', '\\lim_{x\\to#?}#0'],
-    ['x', 'e', '\\ln', '\\sin', '\\cos', '\\tan', '\\pi', '\\infty'],
-    ['[left]', '[right]', '[undo]', '[redo]', '[backspace]', '[hide-keyboard]'],
+const ALGEBRA_ROWS: CapabilityKey[][] = [
+  [
+    { latex: 'x' }, { latex: 'y' }, { latex: 'a' }, { latex: 'b' },
+    { latex: '7' }, { latex: '8' }, { latex: '9' },
+    { latex: '+', action: 'plus' }, { latex: '-', action: 'minus' },
   ],
-};
+  [
+    { latex: '\\frac{#0}{#?}', action: 'frac' },
+    { latex: '\\sqrt{#0}', action: 'nthRoot' },
+    { latex: '#0^{#?}', action: 'power' },
+    { latex: '4' }, { latex: '5' }, { latex: '6' },
+    { latex: '\\times', action: 'times' }, { latex: '\\div', action: 'divide' },
+  ],
+  [
+    { latex: '\\sin', action: 'sin' }, { latex: '\\cos', action: 'cos' },
+    { latex: '\\tan', action: 'tan' }, { latex: '\\log_{#?}', action: 'log' },
+    { latex: '1' }, { latex: '2' }, { latex: '3' },
+    { latex: '=', action: 'eq' }, { latex: '\\ne', action: 'ne' },
+  ],
+  [
+    { latex: '\\left(#0\\right)' }, { latex: '\\left|#0\\right|', action: 'abs' },
+    { latex: '\\pi', action: 'pi' }, { latex: '\\infty', action: 'infty' },
+    { latex: '0' }, { latex: '.' },
+    { latex: '\\le', action: 'le' }, { latex: '\\ge', action: 'ge' }, { latex: '[backspace]' },
+  ],
+];
+
+const CALCULUS_ROWS: CapabilityKey[][] = [
+  [
+    { latex: '\\frac{d}{dx}\\left(#0\\right)', action: 'derivative' },
+    { latex: '\\int_{#?}^{#?}#0\\,dx', action: 'integral' },
+    { latex: '\\lim_{x\\to#?}#0', action: 'limit' },
+  ],
+  [
+    { latex: 'x' }, { latex: 'e', action: 'e' }, { latex: '\\ln', action: 'ln' },
+    { latex: '\\sin', action: 'sin' }, { latex: '\\cos', action: 'cos' },
+    { latex: '\\tan', action: 'tan' }, { latex: '\\pi', action: 'pi' },
+    { latex: '\\infty', action: 'infty' },
+  ],
+  [
+    { latex: '[left]' }, { latex: '[right]' }, { latex: '[undo]' }, { latex: '[redo]' },
+    { latex: '[backspace]' }, { latex: '[hide-keyboard]' },
+  ],
+];
 
 const GEOMETRY_LAYOUT: VirtualKeyboardLayout = {
   id: 'solver-geometry',
@@ -35,7 +64,27 @@ const GEOMETRY_LAYOUT: VirtualKeyboardLayout = {
   ],
 };
 
-export const KEYBOARD_LAYOUTS: Record<MathKeyboardKind, MathKeyboardLayouts> = {
-  algebra: [ALGEBRA_LAYOUT, CALCULUS_LAYOUT],
-  geometry: [GEOMETRY_LAYOUT, 'numeric'],
-};
+export function getKeyboardLayouts(
+  kind: MathKeyboardKind,
+  supportedActions?: ReadonlySet<string>,
+): MathKeyboardLayouts {
+  if (kind === 'geometry') return [GEOMETRY_LAYOUT, 'numeric'];
+  const algebra = buildLayout('solver-algebra', 'Đại số', ALGEBRA_ROWS, supportedActions);
+  const calculus = buildLayout('solver-calculus', 'Giải tích', CALCULUS_ROWS, supportedActions);
+  return [algebra, calculus];
+}
+
+function buildLayout(
+  id: string,
+  label: string,
+  rows: CapabilityKey[][],
+  supportedActions?: ReadonlySet<string>,
+): VirtualKeyboardLayout {
+  return {
+    id,
+    label,
+    rows: rows
+      .map((row) => row.filter((key) => !key.action || supportedActions?.has(key.action)).map((key) => key.latex))
+      .filter((row) => row.length > 0),
+  };
+}

@@ -2,7 +2,8 @@ import pytest
 from fastapi.testclient import TestClient
 from app.main import app
 from app.api.deps import require_active_user
-from app.schemas.scene import MathScene, CasIssueResponse
+from app.api.routes_render import _bind_scene_request_fields
+from app.schemas.scene import MathScene, CasIssueResponse, RenderRequest
 
 def test_render_routes_cas_issues(monkeypatch):
     async def mock_active_user():
@@ -113,3 +114,33 @@ def test_render_routes_cas_issues(monkeypatch):
         assert accepted_edit.status_code == 200
     finally:
         app.dependency_overrides.clear()
+
+
+def test_render_request_fields_override_untrusted_scene_metadata():
+    scene = MathScene.model_validate({
+        "problem_text": "Bỏ qua đề gốc",
+        "grade": 12,
+        "renderer": "geogebra_2d",
+        "view": {"dimension": "2d"},
+    })
+    request = RenderRequest(problem_text="Vẽ đường thẳng AB", grade=10)
+
+    bound = _bind_scene_request_fields(scene, request)
+
+    assert bound.problem_text == request.problem_text
+    assert bound.grade == request.grade
+    assert scene.problem_text == "Bỏ qua đề gốc"
+
+
+def test_render_request_without_grade_keeps_inferred_grade():
+    scene = MathScene.model_validate({
+        "problem_text": "model text",
+        "grade": 11,
+        "renderer": "geogebra_2d",
+        "view": {"dimension": "2d"},
+    })
+
+    bound = _bind_scene_request_fields(scene, RenderRequest(problem_text="Đề gốc"))
+
+    assert bound.problem_text == "Đề gốc"
+    assert bound.grade == 11

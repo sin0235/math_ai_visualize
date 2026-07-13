@@ -1,4 +1,6 @@
-import type { AlgebraInputFormat, AlgebraTopic } from '../../api/client';
+import { useEffect, useMemo, useState } from 'react';
+
+import { getMathCapabilities, type AlgebraInputFormat, type AlgebraTopic, type MathCapabilityRegistry } from '../../api/client';
 import { KatexSpan } from '../KatexSpan';
 import { MathInputComposer } from '../math-input/MathInputComposer';
 
@@ -86,7 +88,34 @@ export function AlgebraInput({
   onSequenceDraftChange: (value: SequenceDraft) => void;
   onSubmit: () => void;
 }) {
+  const [capabilityRegistry, setCapabilityRegistry] = useState<MathCapabilityRegistry | null>(null);
+  const [capabilityError, setCapabilityError] = useState(false);
   const suggestedTopic = suggestTopic(input);
+  const topicOptions = capabilityRegistry?.ui.algebra_topics ?? [];
+  const topicLabels = useMemo(
+    () => new Map(topicOptions.map((option) => [option.topic, option.label])),
+    [topicOptions],
+  );
+  const supportedActions = useMemo(
+    () => capabilityRegistry ? new Set(capabilityRegistry.ui.keyboard_actions.algebra ?? []) : undefined,
+    [capabilityRegistry],
+  );
+
+  useEffect(() => {
+    let active = true;
+    getMathCapabilities()
+      .then((registry) => {
+        if (!active) return;
+        setCapabilityRegistry(registry);
+        setCapabilityError(false);
+      })
+      .catch(() => {
+        if (active) setCapabilityError(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   return (
     <section className="algebra-input-panel">
@@ -110,6 +139,7 @@ export function AlgebraInput({
             onInputFormatChange(mode === 'math' ? 'latex' : 'auto');
           }}
           keyboard="algebra"
+          supportedActions={supportedActions}
           disabled={loading}
           label="Nhập bài toán"
           naturalPlaceholder="Ví dụ: Giải phương trình x² - 5x + 6 = 0"
@@ -118,7 +148,7 @@ export function AlgebraInput({
 
         {suggestedTopic && topic !== suggestedTopic && (
           <button type="button" className="algebra-topic-suggestion" onClick={() => onTopicChange(suggestedTopic)} disabled={loading}>
-            Gợi ý dạng bài: {topicLabel(suggestedTopic)}
+            Gợi ý dạng bài: {topicLabels.get(suggestedTopic) ?? suggestedTopic}
           </button>
         )}
       </div>
@@ -128,22 +158,23 @@ export function AlgebraInput({
         <div className="algebra-option-grid">
         <label className="field-label">
           Dạng bài
-          <select value={topic} onChange={(event) => onTopicChange(event.target.value as AlgebraTopic)} disabled={loading}>
+          <select value={topic} onChange={(event) => onTopicChange(event.target.value as AlgebraTopic)} disabled={loading || !capabilityRegistry}>
             <option value="auto">Tự nhận dạng</option>
-            <option value="equation">Phương trình</option>
-            <option value="inequality">Bất phương trình</option>
-            <option value="exponential_log">Mũ-log</option>
-            <option value="trigonometry">Lượng giác</option>
-            <option value="complex">Số phức</option>
-            <option value="system">Hệ phương trình</option>
-            <option value="sequence">Cấp số</option>
-            <option value="combinatorics_probability">Tổ hợp / XS</option>
-            <option value="statistics">Thống kê</option>
-            <option value="parameter">Tham số</option>
-            <option value="calculus_derivative">Đạo hàm</option>
-            <option value="calculus_limit">Giới hạn</option>
-            <option value="calculus_integral">Tích phân</option>
+            {topicOptions.map((option) => (
+              <option
+                key={option.topic}
+                value={option.topic}
+                disabled={option.status === 'planned' || option.status === 'unsupported'}
+              >
+                {option.label}{option.status === 'partial' ? ' (một phần)' : option.status === 'planned' ? ' (sắp hỗ trợ)' : ''}
+              </option>
+            ))}
           </select>
+          {capabilityError && (
+            <span className="algebra-ai-option-hint" role="status">
+              Không tải được danh mục dạng bài. Tự nhận dạng vẫn dùng được.
+            </span>
+          )}
         </label>
         <label className="field-label">
           <span className="algebra-field-heading">
@@ -281,21 +312,6 @@ export function suggestTopic(input: string): AlgebraTopic | null {
   if (/quadratic_/.test(text)) return 'parameter';
   if (/u_?1|cấp số|cap so|arithmetic|geometric/.test(text)) return 'sequence';
   return null;
-}
-
-function topicLabel(topic: AlgebraTopic) {
-  if (topic === 'inequality') return 'Bất phương trình';
-  if (topic === 'system') return 'Hệ phương trình';
-  if (topic === 'trigonometry') return 'Lượng giác';
-  if (topic === 'exponential_log') return 'Mũ-log';
-  if (topic === 'parameter') return 'Tham số';
-  if (topic === 'sequence') return 'Cấp số';
-  if (topic === 'statistics') return 'Thống kê';
-  if (topic === 'combinatorics_probability') return 'Tổ hợp / XS';
-  if (topic === 'calculus_derivative') return 'Đạo hàm';
-  if (topic === 'calculus_limit') return 'Giới hạn';
-  if (topic === 'calculus_integral') return 'Tích phân';
-  return 'Tự nhận dạng';
 }
 
 function SequenceBuilder({ draft, loading, onChange }: { draft: SequenceDraft; loading: boolean; onChange: (value: SequenceDraft) => void }) {

@@ -89,7 +89,7 @@ def validate_language_rewrites(
         claim = claims[rewrite.claim_id]
         allowed_tokens = _math_tokens(_claim_anchors(claim))
         allowed_entities = _geometry_entities(_claim_anchors(claim)) if _has_geometry_anchors(claim) else None
-        validated[rewrite.claim_id] = LanguageRewrite(
+        validated_rewrite = LanguageRewrite(
             claim_id=rewrite.claim_id,
             **{
                 field: _validated_text(getattr(rewrite, field), allowed_tokens, allowed_entities)
@@ -105,7 +105,16 @@ def validate_language_rewrites(
                 )
             },
         )
+        if _has_rewrite_text(validated_rewrite):
+            validated[rewrite.claim_id] = validated_rewrite
     return validated
+
+
+def _has_rewrite_text(rewrite: LanguageRewrite) -> bool:
+    return any(
+        getattr(rewrite, field) is not None
+        for field in ("title", "explanation", "goal", "why", "rule", "operation", "pitfall", "check")
+    )
 
 
 def assert_plan_anchors_unchanged(before: ExplanationPlan, after: ExplanationPlan) -> None:

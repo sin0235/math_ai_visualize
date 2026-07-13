@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { MathfieldElement } from 'mathlive';
 
-import { KEYBOARD_LAYOUTS, type MathKeyboardKind } from './keyboardLayouts';
+import { getKeyboardLayouts, type MathKeyboardKind } from './keyboardLayouts';
 
 export type MathOutputFormat = 'latex' | 'ascii-math';
 
@@ -9,6 +9,7 @@ interface MathFormulaFieldProps {
   value: string;
   onChange: (value: string) => void;
   keyboard: MathKeyboardKind;
+  supportedActions?: ReadonlySet<string>;
   outputFormat?: MathOutputFormat;
   disabled?: boolean;
   ariaLabel: string;
@@ -19,6 +20,7 @@ export function MathFormulaField({
   value,
   onChange,
   keyboard,
+  supportedActions,
   outputFormat = 'latex',
   disabled = false,
   ariaLabel,
@@ -31,11 +33,13 @@ export function MathFormulaField({
   const onSubmitRef = useRef(onSubmit);
   const formatRef = useRef(outputFormat);
   const keyboardRef = useRef(keyboard);
+  const supportedActionsRef = useRef(supportedActions);
 
   onChangeRef.current = onChange;
   onSubmitRef.current = onSubmit;
   formatRef.current = outputFormat;
   keyboardRef.current = keyboard;
+  supportedActionsRef.current = supportedActions;
 
   useEffect(() => {
     const host = hostRef.current;
@@ -52,7 +56,7 @@ export function MathFormulaField({
     const handleInput = () => onChangeRef.current(field.getValue(formatRef.current));
     const handleKeyboardToggle = () => setKeyboardVisible(window.mathVirtualKeyboard.visible);
     const handleFocus = () => {
-      window.mathVirtualKeyboard.layouts = KEYBOARD_LAYOUTS[keyboardRef.current];
+      window.mathVirtualKeyboard.layouts = getKeyboardLayouts(keyboardRef.current, supportedActionsRef.current);
     };
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Enter' || event.shiftKey || !onSubmitRef.current) return;
@@ -91,7 +95,7 @@ export function MathFormulaField({
     const field = fieldRef.current;
     if (!field || disabled) return;
     field.focus();
-    window.mathVirtualKeyboard.layouts = KEYBOARD_LAYOUTS[keyboardRef.current];
+    window.mathVirtualKeyboard.layouts = getKeyboardLayouts(keyboardRef.current, supportedActionsRef.current);
     if (window.mathVirtualKeyboard.visible) window.mathVirtualKeyboard.hide();
     else window.mathVirtualKeyboard.show();
   }

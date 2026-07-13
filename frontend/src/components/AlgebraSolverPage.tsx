@@ -373,7 +373,7 @@ function isAlgebraTopic(value: unknown): value is AlgebraTopic {
   return [
     'auto', 'equation', 'inequality', 'exponential_log', 'trigonometry', 'complex', 'sequence',
     'combinatorics_probability', 'statistics', 'system', 'parameter', 'calculus_derivative',
-    'calculus_limit', 'calculus_integral',
+    'calculus_derivative_by_definition', 'calculus_limit', 'calculus_continuous_at', 'calculus_integral',
   ].includes(String(value));
 }
 

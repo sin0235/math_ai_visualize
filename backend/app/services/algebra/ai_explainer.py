@@ -161,6 +161,11 @@ async def explain_algebra_response_with_ai(response: AlgebraSolveResponse, setti
 
         original_steps = list(response.steps)
         rewrites_by_claim = validate_language_rewrites(plan, _language_rewrites(payload.steps))
+        if not rewrites_by_claim:
+            response.realization_status = "ai_rejected"
+            response.realization_fallback_reason = "Model không trả field ngôn ngữ hợp lệ."
+            response.warnings.append("Đã bỏ toàn bộ diễn giải AI vì không field nào vượt qua grounding validation.")
+            return response
         response.steps = merge_ai_explanation_steps(original_steps, payload.steps, rewrites_by_claim)
         response.realization_status = "ai_validated"
         response.realization_fallback_reason = None

@@ -11,6 +11,7 @@ interface MathInputComposerProps {
   onChange: (value: string) => void;
   onModeChange: (mode: MathInputMode) => void;
   keyboard: MathKeyboardKind;
+  supportedActions?: ReadonlySet<string>;
   disabled?: boolean;
   label: string;
   naturalPlaceholder: string;
@@ -25,6 +26,7 @@ export function MathInputComposer({
   onChange,
   onModeChange,
   keyboard,
+  supportedActions,
   disabled = false,
   label,
   naturalPlaceholder,
@@ -88,6 +90,7 @@ export function MathInputComposer({
           value={value}
           onChange={onChange}
           keyboard={keyboard}
+          supportedActions={supportedActions}
           outputFormat={mathOutputFormat}
           disabled={disabled}
           ariaLabel={label}

@@ -65,6 +65,11 @@ async def explain_solver_result(result: SolverResult, scene: dict[str, Any], set
         if not steps_by_index:
             return result
         rewrites = validate_language_rewrites(plan, _geometry_language_rewrites(steps_by_index))
+        if not rewrites:
+            result.realization_status = "ai_rejected"
+            result.realization_fallback_reason = "Model không trả field ngôn ngữ hợp lệ."
+            result.warnings.append("Đã bỏ toàn bộ diễn giải LLM vì không field nào vượt qua grounding validation.")
+            return result
         result.steps = _merge_geometry_steps(result.steps, steps_by_index, rewrites)
         assert_plan_anchors_unchanged(plan, build_geometry_explanation_plan(result))
         result.realization_status = "ai_validated"

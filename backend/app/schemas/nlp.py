@@ -182,4 +182,29 @@ class ExplanationPlan(StrictModel):
         claim_ids = [claim.claim_id for claim in self.claims]
         if len(claim_ids) != len(set(claim_ids)):
             raise ValueError("claim_id phải duy nhất")
+        known = set(claim_ids)
+        graph: dict[str, list[str]] = {}
+        for claim in self.claims:
+            if len(claim.depends_on) != len(set(claim.depends_on)):
+                raise ValueError("depends_on không được trùng lặp")
+            if claim.claim_id in claim.depends_on:
+                raise ValueError("claim không được phụ thuộc chính nó")
+            graph[claim.claim_id] = [dependency for dependency in claim.depends_on if dependency in known]
+
+        visiting: set[str] = set()
+        visited: set[str] = set()
+
+        def visit(claim_id: str) -> None:
+            if claim_id in visiting:
+                raise ValueError("dependency graph không được có chu trình")
+            if claim_id in visited:
+                return
+            visiting.add(claim_id)
+            for dependency in graph[claim_id]:
+                visit(dependency)
+            visiting.remove(claim_id)
+            visited.add(claim_id)
+
+        for claim_id in claim_ids:
+            visit(claim_id)
         return self

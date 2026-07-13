@@ -29,6 +29,7 @@ from app.services.algebra.solvers.statistics_solver import solve_statistics
 from app.services.algebra.solvers.system_solver import solve_system
 from app.services.algebra.solvers.trig_solver import solve_trigonometry
 from app.services.algebra.solvers.expression_solver import solve_expression
+from app.services.math_capabilities import resolve_algebra_capability
 from app.services.nlp.grounding import build_algebra_explanation_plan
 
 
@@ -236,6 +237,27 @@ def _solve_algebra_core(request: AlgebraSolveRequest) -> tuple[AlgebraSolveRespo
         result = solver_fn(problem)
         stage_ms["solve_ms"] = int((time.perf_counter() - started) * 1000)
         return result
+
+    capability = resolve_algebra_capability(
+        original=request.input,
+        canonical=interpretation.canonical_input,
+        topic=requested_topic,
+        task="solve",
+        variables=variables or [],
+        parameters=list(request.parameters),
+        domain=domain,
+    )
+    if not capability.accepted:
+        return _done(AlgebraSolveResponse(
+            input=request.input,
+            normalized_input=interpretation.canonical_input,
+            input_interpretation=interpretation,
+            topic=requested_topic,
+            problem_type="capability_unsupported",
+            status="unsupported",
+            answer=capability.reason or "Dạng bài chưa có capability phù hợp.",
+            warnings=interpretation.warnings,
+        ))
 
     if requested_topic == "combinatorics_probability":
         problem = _raw_problem(request, interpretation.canonical_input, variables, domain, requested_topic, solve_interval)

@@ -31,6 +31,7 @@ from app.services.algebra.cost import algebra_request_cost, cost_exceeds_limit
 from app.services.algebra.load_gate import algebra_load_gate
 from app.services.algebra.pdf_export import build_algebra_pdf
 from app.services.api_errors import api_error
+from app.services.math_solution_projectors import project_algebra_solution
 from app.services.nlp_rollout import evaluate_configured_nlp_rollout, log_nlp_taxonomy
 from app.services.user_ai_settings import UserAiSettingsError
 
@@ -134,6 +135,7 @@ async def solve_algebra_endpoint(
             raise api_error(500, "Lỗi nội bộ khi giải bài đại số.", "ALGEBRA_INTERNAL_ERROR") from error
 
         response.cost_score = cost
+        response.solution_ir = project_algebra_solution(request, response)
         if response.problem_type == "timeout" or any("ALGEBRA_TIMEOUT" in item for item in response.errors):
             algebra_circuit_breaker.record_timeout()
             if user is not None:
@@ -154,6 +156,7 @@ async def solve_algebra_endpoint(
                 "Miền R đang là mặc định; đổi sang C nếu bài số phức.",
                 *response.warnings,
             ]
+        response.solution_ir = project_algebra_solution(request, response)
         if response.status == "unsupported":
             await log_nlp_taxonomy(
                 db,
@@ -367,7 +370,7 @@ def _history_item(row: dict) -> AlgebraHistoryItem:
 
 
 def _timeout_payload(request: AlgebraSolveRequest, message: str, cost: int) -> dict:
-    return AlgebraSolveResponse(
+    response = AlgebraSolveResponse(
         input=request.input,
         normalized_input=request.input,
         topic=str(request.topic),
@@ -377,7 +380,9 @@ def _timeout_payload(request: AlgebraSolveRequest, message: str, cost: int) -> d
         errors=[f"ALGEBRA_TIMEOUT: {message}"],
         warnings=["Timeout; worker process có thể đã bị terminate khi isolation bật."],
         cost_score=cost,
-    ).model_dump(mode="json")
+    )
+    response.solution_ir = project_algebra_solution(request, response)
+    return response.model_dump(mode="json")
 
 
 async def _active_user_from_request(request: Request, db: DatabaseClient) -> UserRecord | None:
