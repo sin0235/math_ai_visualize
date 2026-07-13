@@ -1228,6 +1228,18 @@ def _resolve_highlight_object_ids(scene_dict: dict[str, Any], labels: list[str])
     return resolved
 
 
+def _resolve_highlight_object_ids(scene_dict: dict[str, Any], labels: list[str]) -> list[str]:
+    label_set = set(labels)
+    resolved: list[str] = []
+    for obj in scene_dict.get("objects") or []:
+        if not isinstance(obj, dict) or str(obj.get("name") or "") not in label_set:
+            continue
+        object_id = str(obj.get("object_id") or obj.get("id") or "")
+        if object_id and object_id not in resolved:
+            resolved.append(object_id)
+    return resolved
+
+
 def _classical_method_step(kind: str, highlight: list[str], question: str = "", scene_dict: dict | None = None) -> SolverStep:
     label = ", ".join(highlight)
     if kind == "distance_point_plane" and len(highlight) >= 4:
