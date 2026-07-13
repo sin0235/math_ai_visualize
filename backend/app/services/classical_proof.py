@@ -39,6 +39,8 @@ def build_classical_proof(
     graph = build_geometry_fact_graph(scene)
     if kind == "intersection":
         return _intersection_proof(graph, question, highlight, answer, result_latex)
+    if kind == "distance_point_point":
+        return _point_point_distance_proof(graph, highlight, answer, result_latex)
     if kind == "distance_point_line":
         return _point_line_distance_proof(graph, highlight, answer, result_latex)
     if kind == "distance_point_plane":
@@ -86,6 +88,49 @@ def _intersection_proof(graph, question: str, highlight: list[str], answer: str,
     return None
 
 
+def _point_point_distance_proof(graph, highlight: list[str], answer: str, result_latex: str | None) -> ClassicalProof | None:
+    if len(highlight) < 2:
+        return None
+    first, second = highlight[:2]
+    label = graph.length_label(first, second)
+    if label is None:
+        return None
+    fact = next(
+        (
+            item
+            for item in graph.by_type("length")
+            if set(item.args.get("points") or ()) == {first, second}
+        ),
+        None,
+    )
+    if fact is None:
+        return None
+    segment = f"{first}{second}"
+    spec = theorem("distance.point_point.segment_length")
+    setup = _setup_step(highlight, [fact], f"Xét hai điểm {first}, {second}.")
+    method = ClassicalProofStep(
+        title="Dùng độ dài đoạn nối hai điểm",
+        explanation=f"Khoảng cách giữa {first} và {second} là độ dài đoạn {segment} đã cho.",
+        highlight=highlight,
+        kind="distance_point_point",
+        formula_latex=rf"d({first},{second})={segment}",
+        claim=f"d({first},{second}) = {segment}",
+        theorem=spec.statement,
+        theorem_id=spec.theorem_id,
+        depends_on=[fact.id],
+    )
+    conclusion = ClassicalProofStep(
+        title="Kết luận",
+        explanation=f"Mà {segment} = {label}, nên {answer}.",
+        highlight=highlight,
+        kind="result",
+        result_latex=result_latex,
+        claim=answer,
+        depends_on=[fact.id],
+    )
+    return ClassicalProof([setup, method, conclusion], [spec.statement])
+
+
 def _point_line_distance_proof(graph, highlight: list[str], answer: str, result_latex: str | None) -> ClassicalProof | None:
     if len(highlight) < 3:
         return None
@@ -118,7 +163,9 @@ def _point_line_distance_proof(graph, highlight: list[str], answer: str, result_
     line_name = "".join(target)
     label = graph.length_label(point, foot)
     theorem_text = theorem("distance.point_line.perpendicular_segment").statement
-    setup = _setup_step(highlight, [fact], f"Xét điểm {point} và đường thẳng {line_name}.")
+    length_fact = graph.length_fact(point, foot)
+    setup_facts = [fact, *([length_fact] if length_fact else [])]
+    setup = _setup_step(highlight, setup_facts, f"Xét điểm {point} và đường thẳng {line_name}.")
     method = ClassicalProofStep(
         title="Nhận ra đoạn vuông góc",
         explanation=f"Vì {segment} vuông góc với {line_name} tại {foot}, nên khoảng cách từ {point} đến {line_name} là độ dài {segment}.",
@@ -138,7 +185,7 @@ def _point_line_distance_proof(graph, highlight: list[str], answer: str, result_
         kind="result",
         result_latex=result_latex,
         claim=answer,
-        depends_on=[fact.id],
+        depends_on=[item.id for item in setup_facts],
     )
     return ClassicalProof([setup, method, conclusion], [theorem_text])
 
@@ -154,7 +201,9 @@ def _point_plane_distance_proof(graph, question: str, highlight: list[str], answ
         return None
     segment, foot, fact = height
     label = graph.length_label(point, foot)
-    setup = _setup_step(highlight, [fact], f"Xét điểm {point}, mặt phẳng ({plane_name}) và quan hệ vuông góc đã cho.")
+    length_fact = graph.length_fact(point, foot)
+    setup_facts = [fact, *([length_fact] if length_fact else [])]
+    setup = _setup_step(highlight, setup_facts, f"Xét điểm {point}, mặt phẳng ({plane_name}) và quan hệ vuông góc đã cho.")
     method = ClassicalProofStep(
         title="Nhận ra đường cao",
         explanation=f"Vì {segment} vuông góc với mặt phẳng ({plane_name}) và {foot} thuộc ({plane_name}), nên {segment} là đoạn vuông góc kẻ từ {point} đến ({plane_name}). Do đó khoảng cách cần tìm là {segment}.",
@@ -174,7 +223,7 @@ def _point_plane_distance_proof(graph, question: str, highlight: list[str], answ
         kind="result",
         result_latex=result_latex,
         claim=answer,
-        depends_on=[fact.id],
+        depends_on=[item.id for item in setup_facts],
     )
     return ClassicalProof([setup, method, conclusion], [method.theorem or ""])
 
@@ -284,7 +333,11 @@ def _line_plane_angle_proof(graph, question: str, highlight: list[str], answer: 
     plane_tuple = tuple(plane)
     plane_name = "".join(plane_tuple)
     line_name = "".join(line)
-    setup = _setup_step(highlight, graph.by_type("perpendicular_line_plane"), f"Xét đường thẳng {line_name} và mặt phẳng ({plane_name}).")
+    relevant_facts = [
+        *graph.by_type("perpendicular_line_plane"),
+        *graph.length_facts_for(highlight),
+    ]
+    setup = _setup_step(highlight, relevant_facts, f"Xét đường thẳng {line_name} và mặt phẳng ({plane_name}).")
 
     for fact in graph.by_type("perpendicular_line_plane"):
         segment = fact.args.get("line")
@@ -453,7 +506,8 @@ def _pyramid_volume_proof(graph, highlight: list[str], answer: str, result_latex
     base_name = "".join(base)
     label = graph.length_label(apex, foot)
     theorem_text = theorem("volume.pyramid.base_height").statement
-    setup = _setup_step(highlight, [fact], f"Xét khối chóp có đỉnh {apex}, đáy {base_name} và đường cao ứng viên {segment}.")
+    setup_facts = [fact, *graph.length_facts_for(highlight)]
+    setup = _setup_step(highlight, setup_facts, f"Xét khối chóp có đỉnh {apex}, đáy {base_name} và đường cao ứng viên {segment}.")
     method = ClassicalProofStep(
         title="Nhận ra đáy và chiều cao",
         explanation=f"Vì {segment} vuông góc với mặt phẳng đáy ({base_name}) và {foot} thuộc đáy, nên {segment} là chiều cao của khối chóp.",
@@ -469,7 +523,7 @@ def _pyramid_volume_proof(graph, highlight: list[str], answer: str, result_latex
         text = f"Với đáy {base_name} và chiều cao {segment} = {label}, áp dụng V = 1/3·S_đáy·h, suy ra {answer}."
     else:
         text = f"Với đáy {base_name} và chiều cao {segment}, áp dụng V = 1/3·S_đáy·h, suy ra {answer}."
-    conclusion = ClassicalProofStep("Kết luận", text, highlight, "result", result_latex=result_latex, claim=answer, depends_on=[fact.id])
+    conclusion = ClassicalProofStep("Kết luận", text, highlight, "result", result_latex=result_latex, claim=answer, depends_on=[item.id for item in setup_facts])
     return ClassicalProof([setup, method, conclusion], [theorem_text])
 
 

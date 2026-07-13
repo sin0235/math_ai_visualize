@@ -26,6 +26,14 @@ GeometryTask = Literal[
 ]
 GeometryVerificationState = Literal["verified", "partial", "insufficient", "unsupported"]
 GeometryEvidenceStatus = Literal["given", "verified", "derived", "unverified", "failed"]
+GeometryFactProvenance = Literal[
+    "given",
+    "derived",
+    "verified",
+    "numerically_verified",
+    "symbolically_verified",
+    "construction_only",
+]
 ConstructionActionType = Literal[
     "highlight",
     "add_point",
@@ -62,7 +70,7 @@ class GeometryFact(GeometryReasoningModel):
     type: str = Field(min_length=1, max_length=64)
     object_ids: list[str] = Field(default_factory=list, max_length=12)
     value: str | float | int | bool | None = None
-    provenance: Literal["given", "verified", "derived", "construction_only"]
+    provenance: GeometryFactProvenance
     evidence: list[VerificationEvidence] = Field(min_length=1, max_length=16)
 
 

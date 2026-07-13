@@ -116,6 +116,7 @@ class SolverResult:
         used_facts: list[dict[str, str]] | None = None,
         data_issues: list[str] | None = None,
         used_theorems: list[dict[str, str]] | None = None,
+        proof_plan: dict[str, Any] | None = None,
         realization_status: str = "deterministic",
         realization_fallback_reason: str | None = None,
         grounding: dict[str, Any] | None = None,
@@ -129,6 +130,7 @@ class SolverResult:
         self.used_facts = used_facts or []
         self.data_issues = data_issues or []
         self.used_theorems = used_theorems or []
+        self.proof_plan = proof_plan
         self.realization_status = realization_status
         self.realization_fallback_reason = realization_fallback_reason
         self.grounding = grounding
@@ -144,6 +146,7 @@ class SolverResult:
             "used_facts": self.used_facts,
             "data_issues": self.data_issues,
             "used_theorems": self.used_theorems,
+            "proof_plan": self.proof_plan,
             "realization_status": self.realization_status,
             "realization_fallback_reason": self.realization_fallback_reason,
             "grounding": self.grounding,
@@ -342,8 +345,45 @@ def solve(scene_dict: dict, question: str, geometry_method: str = "oxyz") -> Sol
     _prepend_context_warnings(result, warnings)
     if geometry_method == "classical":
         result = _classicalize_result(result, scene_dict, pts)
+    result = _attach_replayed_proof(result, scene_dict, capability_task, method)
     _apply_result_metadata(result, scene_dict, geometry_method)
     return result
+
+
+def _attach_replayed_proof(
+    result: SolverResult,
+    scene_dict: dict[str, Any],
+    task: str,
+    method: str,
+) -> SolverResult:
+    if not result.used_theorems or result.answer in {"Không xác định", "Không đủ dữ kiện"}:
+        return result
+    from app.services.geometry.proof_search import build_and_replay_proof_plan
+
+    subtype = result.steps[1].kind if len(result.steps) > 1 and result.steps[1].kind else task
+    replay = build_and_replay_proof_plan(
+        scene_dict,
+        task=task,
+        subtype=subtype,
+        method=method,
+        question=result.question,
+        answer=result.answer,
+        steps=result.steps,
+    )
+    if replay.accepted and replay.plan is not None:
+        result.proof_plan = replay.plan.model_dump(mode="json")
+        return result
+    reason = replay.reason or "Proof không replay được."
+    return SolverResult(
+        result.question,
+        "Không đủ dữ kiện",
+        [],
+        [*result.warnings, reason],
+        confidence="insufficient",
+        method=method,
+        used_facts=result.used_facts,
+        data_issues=[reason],
+    )
 
 
 def _apply_result_metadata(result: SolverResult, scene_dict: dict, method: str) -> None:
@@ -1110,53 +1150,17 @@ def _classicalize_result(result: SolverResult, scene_dict: dict, points: dict[st
         ]
         return result
 
-    facts = _relevant_scene_facts(scene_dict, highlight)
-    fact_sub_steps = [
-        SolverStep(index + 1, "Dữ kiện từ đề/hình", fact, None, None, highlight, kind="fact")
-        for index, fact in enumerate(facts[:6])
-    ]
-    if not fact_sub_steps:
-        fact_sub_steps = [SolverStep(1, "Dữ kiện từ hình", f"Các đối tượng liên quan là {', '.join(highlight)}.", None, None, highlight, kind="fact")]
-
-    setup = SolverStep(
-        1,
-        "Xác định dữ kiện hình học",
-        "Chỉ dùng các điểm, quan hệ và nhãn đã có trong scene; không thêm giả thiết ngoài đề.",
-        None,
-        None,
-        highlight,
-        kind="input",
-        sub_steps=fact_sub_steps,
+    reason = (
+        f"Missing premise/theorem cho dạng {kind}; mode classical không dùng tọa độ render để thay thế chứng minh."
     )
-    point_plane_height = _point_plane_height_fact(scene_dict, highlight) if kind == "distance_point_plane" else None
-    line_plane_projection = _line_plane_projection_fact(scene_dict, result.question, highlight) if kind == "angle_line_plane" else None
-    plane_plane_angle = _plane_plane_angle_fact(scene_dict, result.question) if kind == "angle_plane_plane" else None
-    pyramid_volume = _pyramid_volume_fact(scene_dict, highlight) if kind == "volume_pyramid" else None
-    method_step = _classical_method_step(kind, highlight, result.question, scene_dict)
-    conclusion = SolverStep(
-        3,
-        "Kết luận",
-        _classical_conclusion_text(
-            kind,
-            highlight,
-            result.answer,
-            point_plane_height,
-            line_plane_projection,
-            plane_plane_angle,
-            pyramid_volume,
-        ),
-        None,
-        result.steps[-1].result,
-        highlight,
-        kind="result",
-        result_latex=result.steps[-1].result_latex,
+    return SolverResult(
+        result.question,
+        "Không đủ dữ kiện",
+        [],
+        [*result.warnings, reason],
+        confidence="insufficient",
+        method="classical",
     )
-    result.steps = [setup, method_step, conclusion]
-    result.warnings = [
-        *result.warnings,
-        "Mode Tương quan hình học đang dùng template deterministic an toàn; AI không được phép tự thêm định lý, dữ kiện hoặc thay đổi kết quả.",
-    ]
-    return result
 
 
 def _classical_proof_for_result(result: SolverResult, scene_dict: dict, kind: str, highlight: list[str]) -> dict[str, list] | None:
@@ -1204,7 +1208,12 @@ def _classical_proof_for_result(result: SolverResult, scene_dict: dict, kind: st
             relation_ids=step_relation_ids,
             construction_actions=construction_actions,
         ))
-    return {"steps": steps, "used_theorems": [{"name": item} for item in proof.used_theorems if item]}
+    used_theorems = [
+        {"id": step.theorem_id or "", "name": step.theorem or ""}
+        for step in proof.steps
+        if step.theorem_id
+    ]
+    return {"steps": steps, "used_theorems": used_theorems}
 
 
 def _resolve_highlight_object_ids(scene_dict: dict[str, Any], labels: list[str]) -> list[str]:

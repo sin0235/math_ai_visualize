@@ -1,6 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+
+
+@dataclass(frozen=True)
+class PremiseSpec:
+    fact_type: str
+    min_count: int = 1
 
 
 @dataclass(frozen=True)
@@ -10,6 +16,9 @@ class TheoremSpec:
     statement: str
     grade: int
     cost: int = 1
+    premises: tuple[PremiseSpec, ...] = ()
+    conclusion: str = ""
+    construction: tuple[str, ...] = ()
 
 
 THEOREMS: dict[str, TheoremSpec] = {
@@ -20,6 +29,12 @@ THEOREMS: dict[str, TheoremSpec] = {
             "Khoảng cách từ điểm đến mặt phẳng",
             "Khoảng cách từ điểm đến mặt phẳng là độ dài đoạn vuông góc kẻ từ điểm đó đến mặt phẳng.",
             11,
+        ),
+        TheoremSpec(
+            "distance.point_point.segment_length",
+            "Khoảng cách giữa hai điểm",
+            "Khoảng cách giữa hai điểm bằng độ dài đoạn thẳng nối hai điểm đó.",
+            6,
         ),
         TheoremSpec(
             "distance.point_line.perpendicular_segment",
@@ -130,6 +145,99 @@ THEOREMS: dict[str, TheoremSpec] = {
             11,
         ),
     )
+}
+
+
+_THEOREM_CONTRACTS: dict[str, dict[str, object]] = {
+    "distance.point_plane.perpendicular_segment": {
+        "premises": (PremiseSpec("perpendicular_line_plane"),),
+        "conclusion": "distance_equals_perpendicular_segment",
+        "construction": ("project_point",),
+    },
+    "distance.point_point.segment_length": {
+        "premises": (PremiseSpec("length"),),
+        "conclusion": "distance_equals_segment_length",
+    },
+    "distance.point_line.perpendicular_segment": {
+        "premises": (PremiseSpec("perpendicular_lines|perpendicular_line_plane"),),
+        "conclusion": "distance_equals_perpendicular_segment",
+        "construction": ("project_point",),
+    },
+    "perpendicular.line_plane.implies_line": {
+        "premises": (PremiseSpec("perpendicular_line_plane"), PremiseSpec("point_on_plane")),
+        "conclusion": "perpendicular_lines",
+    },
+    "angle.line_line.perpendicular": {
+        "premises": (PremiseSpec("perpendicular_lines"),),
+        "conclusion": "angle_measure_90",
+    },
+    "angle.line_plane.projection": {
+        "premises": (PremiseSpec("perpendicular_line_plane"),),
+        "conclusion": "line_plane_angle_equals_projection_angle",
+        "construction": ("project_point", "connect_points"),
+    },
+    "angle.line_plane.perpendicular": {
+        "premises": (PremiseSpec("perpendicular_line_plane"),),
+        "conclusion": "line_plane_angle_90",
+    },
+    "angle.plane_plane.normal_section": {
+        "premises": (PremiseSpec("perpendicular_lines|perpendicular_line_plane", 2),),
+        "conclusion": "plane_angle_equals_normal_section_angle",
+        "construction": ("add_auxiliary_line",),
+    },
+    "quadrilateral.metric.direct_formula": {
+        "premises": (PremiseSpec("scalar_measure"),),
+        "conclusion": "quadrilateral_metric",
+    },
+    "circle.metric.direct_formula": {
+        "premises": (PremiseSpec("scalar_measure"),),
+        "conclusion": "circle_metric",
+    },
+    "triangle.congruence.sss": {
+        "premises": (PremiseSpec("equal_length", 3),),
+        "conclusion": "triangle_congruence",
+    },
+    "triangle.similarity.aa": {
+        "premises": (PremiseSpec("angle_measure", 2),),
+        "conclusion": "triangle_similarity",
+    },
+    "triangle.pythagoras.length": {
+        "premises": (PremiseSpec("right_angle|perpendicular_lines"), PremiseSpec("length", 2)),
+        "conclusion": "triangle_side_length",
+    },
+    "area.triangle.perpendicular_sides": {
+        "premises": (PremiseSpec("perpendicular_lines"), PremiseSpec("length", 2)),
+        "conclusion": "triangle_area",
+    },
+    "volume.pyramid.base_height": {
+        "premises": (PremiseSpec("perpendicular_line_plane"),),
+        "conclusion": "pyramid_volume",
+    },
+    "incidence.intersection.given": {
+        "premises": (PremiseSpec("intersection"),),
+        "conclusion": "intersection",
+    },
+    "relation.parallel.given": {
+        "premises": (PremiseSpec("parallel_lines"),),
+        "conclusion": "parallel_lines",
+    },
+    "relation.collinear.given": {
+        "premises": (PremiseSpec("collinear"),),
+        "conclusion": "collinear",
+    },
+    "relation.coplanar.given": {
+        "premises": (PremiseSpec("coplanar|plane_points"),),
+        "conclusion": "coplanar",
+    },
+    "volume.prism.base_height": {
+        "premises": (PremiseSpec("perpendicular_line_plane"),),
+        "conclusion": "prism_volume",
+    },
+}
+
+THEOREMS = {
+    theorem_id: replace(spec, **_THEOREM_CONTRACTS[theorem_id])
+    for theorem_id, spec in THEOREMS.items()
 }
 
 

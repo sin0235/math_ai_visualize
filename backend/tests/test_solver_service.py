@@ -305,12 +305,12 @@ def test_classical_line_plane_angle_detects_perpendicular_line(scene):
     assert "góc giữa BA và (BCD) bằng 90°" in result.steps[2].explanation
 
 
-def test_classical_plane_plane_angle_template(scene):
+def test_classical_plane_plane_angle_requires_replayable_premises(scene):
     result = solve(scene, "Góc giữa (ABC) và (BCD)", geometry_method="classical")
 
-    assert result.answer.startswith("\\angle((ABC),(BCD))")
-    assert result.steps[1].title == "Dựng góc giữa hai mặt phẳng"
-    assert "giao tuyến" in result.steps[1].explanation
+    assert result.answer == "Không đủ dữ kiện"
+    assert result.steps == []
+    assert any("Missing premise/theorem" in warning for warning in result.warnings)
 
 
 def test_classical_plane_plane_angle_uses_flat_dihedral_angle():
@@ -490,11 +490,12 @@ def test_solve_collinear_false(scene):
     assert result.steps[1].kind == "proof_collinear"
 
 
-def test_classical_collinear_template(scene):
+def test_classical_collinear_requires_replayable_premise(scene):
     result = solve(scene, "A B C thẳng hàng?", geometry_method="classical")
 
-    assert result.answer == "ABC thẳng hàng: SAI"
-    assert result.steps[1].title == "Kiểm tra quan hệ thẳng hàng"
+    assert result.answer == "Không đủ dữ kiện"
+    assert result.steps == []
+    assert any("Missing premise/theorem" in warning for warning in result.warnings)
 
 
 def test_solve_coplanar_true(scene):

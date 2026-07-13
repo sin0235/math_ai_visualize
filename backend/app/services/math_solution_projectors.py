@@ -256,7 +256,11 @@ def project_geometry_solution(
         warnings=[*response.warnings, *response.data_issues],
         unsupported_reason=response.answer if status == "unsupported" else None,
         verification=evidence,
-        artifacts={"used_theorems": response.used_theorems, "used_facts": response.used_facts},
+        artifacts={
+            "used_theorems": response.used_theorems,
+            "used_facts": response.used_facts,
+            "proof_plan": response.proof_plan,
+        },
     )
 
 
