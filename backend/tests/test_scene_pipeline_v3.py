@@ -71,7 +71,7 @@ def make_line_plane_scene(*, perpendicular=True):
         "renderer": "threejs_3d",
         "view": {"dimension": "3d"},
         "objects": [
-            {"id": "s", "type": "point_3d", "x": 0, "y": 0, "z": 2 if perpendicular else 0},
+            {"id": "s", "type": "point_3d", "x": 1 if not perpendicular else 0, "y": 0, "z": 2 if perpendicular else 2},
             {"id": "a", "type": "point_3d", "x": 0, "y": 0, "z": 0},
             {"id": "b", "type": "point_3d", "x": 1, "y": 0, "z": 0},
             {"id": "c", "type": "point_3d", "x": 1, "y": 1, "z": 0},
