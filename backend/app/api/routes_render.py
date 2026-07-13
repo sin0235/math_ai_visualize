@@ -25,6 +25,7 @@ from app.schemas.scene_v3 import (
     SceneWorkspaceResponseV3,
 )
 from app.schemas.scene import (
+    MathScene,
     RenderJobCreateResponse,
     RenderJobStatusResponse,
     RenderRequest,
