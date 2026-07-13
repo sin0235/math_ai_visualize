@@ -16,6 +16,7 @@ from app.db.session import DatabaseClient, get_database
 from app.repositories.admin import AdminRepository
 from app.schemas.advisory import QualityRiskAdvisory
 from app.schemas.math_solution import Solution
+from app.schemas.geometry_reasoning import GeometryProofPlan
 from app.schemas.scene import MAX_PROBLEM_TEXT_CHARS, RuntimeSettings
 from app.schemas.scene_v3 import CommittedSceneRefV3
 from app.schemas.nlp import ExplanationPlan, InputEnvelope
@@ -70,6 +71,7 @@ class SolveResponse(BaseModel):
     method: str = "oxyz"
     used_facts: list[dict[str, str]] = Field(default_factory=list)
     used_theorems: list[dict[str, str]] = Field(default_factory=list)
+    proof_plan: GeometryProofPlan | None = None
     data_issues: list[str] = Field(default_factory=list)
     advisory: QualityRiskAdvisory | None = None
     grounding: ExplanationPlan | None = None

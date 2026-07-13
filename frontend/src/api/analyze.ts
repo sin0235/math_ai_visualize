@@ -1,4 +1,5 @@
 import type { MathScene } from '../types/scene';
+import type { MathSolutionIr } from './mathSolution';
 import { apiUrl, fetchWithRetry, parseApiError, requestJson } from './core';
 import { uploadOcrImage } from './render';
 
@@ -540,6 +541,7 @@ export interface AnalyzeResponse {
   warnings: string[];
   error?: string | null;
   error_code?: string | null;
+  solution_ir?: MathSolutionIr | null;
 }
 
 let analyzerCapabilitiesRequest: Promise<AnalyzerCapabilityRegistry> | null = null;

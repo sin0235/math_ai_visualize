@@ -14,9 +14,12 @@ class CapabilityModel(BaseModel):
 class MathCapability(CapabilityModel):
     capability_id: str
     skill_id: str
+    name_vi: str
     strand: str
     grades: list[int]
+    prerequisites: list[str] = Field(default_factory=list)
     status: SkillStatus
+    rollout_stage: Literal["shadow", "internal_beta", "public"]
     accepted_input_kinds: list[Literal["expression", "function_analysis", "geometry_scene"]]
     tasks: list[str]
     solvers: list[str]
@@ -40,6 +43,7 @@ class MathCapabilityUi(CapabilityModel):
 
 class MathCapabilityRegistry(CapabilityModel):
     version: str
+    rollout_version: str
     curriculum_version: str
     capabilities: list[MathCapability]
     ui: MathCapabilityUi
@@ -53,5 +57,6 @@ class CapabilitySnapshot(CapabilityModel):
     accepted: bool
     reason: str | None = None
     limits: dict[str, int | float | str | bool] = Field(default_factory=dict)
+    prerequisites: list[str] = Field(default_factory=list)
     verifier_methods: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)

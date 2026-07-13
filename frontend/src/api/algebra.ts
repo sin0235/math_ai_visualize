@@ -1,4 +1,5 @@
 import { ApiError, apiUrl, fetchWithRetry, networkApiError, parseApiError, requestJson } from './core';
+import type { MathSolutionIr } from './mathSolution';
 
 export type AlgebraTopic = 'auto' | 'arithmetic' | 'expression' | 'equation' | 'inequality' | 'exponential_log' | 'trigonometry' | 'complex' | 'sequence' | 'combinatorics_probability' | 'statistics' | 'system' | 'parameter' | 'calculus_derivative' | 'calculus_derivative_by_definition' | 'calculus_limit' | 'calculus_continuous_at' | 'calculus_integral';
 export type AlgebraStatus = 'solved' | 'partial' | 'unsupported' | 'error';
@@ -129,6 +130,7 @@ export interface AlgebraSolveResponse {
   timings_ms?: Record<string, number>;
   history_id?: string | null;
   cost_score?: number | null;
+  solution_ir?: MathSolutionIr | null;
 }
 
 export interface AlgebraHistoryItem {

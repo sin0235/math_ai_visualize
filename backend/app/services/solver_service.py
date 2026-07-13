@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from app.services.geometry_engine import (
+from app.services.geometry.metric_solver import (
     calculate_line_equation,
     calculate_line_line_angle,
     calculate_line_line_distance,
@@ -33,121 +33,13 @@ from app.services.cross_check import (
     verify_triangle_area as _xc_triangle_area,
 )
 from app.services.linalg import Vec3, cross as _cross, dot as _dot, norm as _norm, sub as _sub, vec3
-from app.services.math_capabilities import infer_geometry_task, resolve_geometry_capability
+from app.services.math_capabilities import resolve_geometry_capability
+from app.services.geometry.goals import infer_geometry_goal
 from app.services.plane_shape_solver import solve_plane_shape_metric
 from app.services.pythagoras_solver import PythagorasResult, solve_pythagoras
 from app.services.triangle_proof_solver import solve_triangle_proof
-
-
-class SolverStep:
-    def __init__(
-        self,
-        index: int,
-        title: str,
-        explanation: str,
-        expression: str | None,
-        result: str | None,
-        highlight: list[str],
-        kind: str | None = None,
-        formula_latex: str | None = None,
-        substitution_latex: str | None = None,
-        result_latex: str | None = None,
-        sub_steps: list["SolverStep"] | None = None,
-        theorem: str | None = None,
-        theorem_id: str | None = None,
-        claim: str | None = None,
-        depends_on: list[str] | None = None,
-        highlight_object_ids: list[str] | None = None,
-        relation_ids: list[str] | None = None,
-        construction_actions: list[dict[str, Any]] | None = None,
-    ) -> None:
-        self.index = index
-        self.title = title
-        self.explanation = explanation
-        self.expression = expression
-        self.result = result
-        self.highlight = highlight
-        self.kind = kind
-        self.formula_latex = formula_latex
-        self.substitution_latex = substitution_latex
-        self.result_latex = result_latex
-        self.sub_steps = sub_steps or []
-        self.theorem = theorem
-        self.theorem_id = theorem_id
-        self.claim = claim
-        self.depends_on = depends_on or []
-        self.highlight_object_ids = highlight_object_ids or []
-        self.relation_ids = relation_ids or []
-        self.construction_actions = construction_actions or []
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "index": self.index,
-            "title": self.title,
-            "explanation": self.explanation,
-            "expression": self.expression,
-            "result": self.result,
-            "highlight": self.highlight,
-            "kind": self.kind,
-            "formula_latex": self.formula_latex,
-            "substitution_latex": self.substitution_latex,
-            "result_latex": self.result_latex,
-            "sub_steps": [s.to_dict() for s in self.sub_steps],
-            "theorem": self.theorem,
-            "theorem_id": self.theorem_id,
-            "claim": self.claim,
-            "depends_on": self.depends_on,
-            "highlight_object_ids": self.highlight_object_ids,
-            "relation_ids": self.relation_ids,
-            "construction_actions": self.construction_actions,
-        }
-
-
-class SolverResult:
-    def __init__(
-        self,
-        question: str,
-        answer: str,
-        steps: list[SolverStep],
-        warnings: list[str],
-        *,
-        confidence: str = "verified",
-        method: str = "oxyz",
-        used_facts: list[dict[str, str]] | None = None,
-        data_issues: list[str] | None = None,
-        used_theorems: list[dict[str, str]] | None = None,
-        realization_status: str = "deterministic",
-        realization_fallback_reason: str | None = None,
-        grounding: dict[str, Any] | None = None,
-    ) -> None:
-        self.question = question
-        self.answer = answer
-        self.steps = steps
-        self.warnings = warnings
-        self.confidence = confidence
-        self.method = method
-        self.used_facts = used_facts or []
-        self.data_issues = data_issues or []
-        self.used_theorems = used_theorems or []
-        self.realization_status = realization_status
-        self.realization_fallback_reason = realization_fallback_reason
-        self.grounding = grounding
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "question": self.question,
-            "answer": self.answer,
-            "steps": [s.to_dict() for s in self.steps],
-            "warnings": self.warnings,
-            "confidence": self.confidence,
-            "method": self.method,
-            "used_facts": self.used_facts,
-            "data_issues": self.data_issues,
-            "used_theorems": self.used_theorems,
-            "realization_status": self.realization_status,
-            "realization_fallback_reason": self.realization_fallback_reason,
-            "grounding": self.grounding,
-        }
+from app.services.geometry.solution_builder import SolverResult, SolverStep, attach_replayed_proof
+from app.services.geometry.parser import normalize_solver_question
 
 
 def _latex_to_plain_text(text: str) -> str:
@@ -183,96 +75,12 @@ _COPLANAR_RE = re.compile(r"đồng\s*phẳng|coplanar", re.IGNORECASE)
 _POINT_RE = r"[A-Z](?:[0-9]+|')?"
 
 
-def normalize_solver_question(question: str) -> str:
-    q = question.strip()
-    if not q:
-        return ""
-    replacements = {
-        "​": "",
-        "‌": "",
-        "‍": "",
-        "（": "(",
-        "）": ")",
-        "，": ",",
-        "、": ",",
-        "−": "-",
-        "–": "-",
-        "—": "-",
-        "✕": "×",
-        "*": "×",
-        "·": ".",
-        "•": ".",
-    }
-    for old, new in replacements.items():
-        q = q.replace(old, new)
-    q = re.sub(r"\s+", " ", q).strip()
-    q = re.sub(r"\b(?:k/c|kc|khoang\s+cach|khoảng\s+cách)\b", "d", q, flags=re.IGNORECASE)
-    q = re.sub(r"\b(?:den|đến|toi|tới|tu|từ|cua|của)\b", " ", q, flags=re.IGNORECASE)
-    q = re.sub(r"\b(?:mp|mat\s+phang|mặt\s+phẳng)\s+([A-Za-z](?:\s*[A-Za-z0-9']\s*){2,})", lambda m: f"({ _compact_point_sequence_text(m.group(1)) })", q, flags=re.IGNORECASE)
-    q = re.sub(r"\b(?:dien\s+tich|diện\s+tích)\s+([A-Za-z](?:\s*[A-Za-z0-9']\s*){2,})", lambda m: f"S({_compact_point_sequence_text(m.group(1))})", q, flags=re.IGNORECASE)
-    q = re.sub(r"\b(?:chu\s+vi|perimeter)\s+([A-Za-z](?:\s*[A-Za-z0-9']\s*){2,})", lambda m: f"P({_compact_point_sequence_text(m.group(1))})", q, flags=re.IGNORECASE)
-    q = re.sub(r"\b(?:the\s+tich|thể\s+tích)\s+([A-Za-z][A-Za-z0-9']*(?:\s*\.\s*)?[A-Za-z](?:\s*[A-Za-z0-9']\s*){2,})", lambda m: f"V({_compact_solid_text(m.group(1))})", q, flags=re.IGNORECASE)
-    q = re.sub(r"\b([dDpPsSvV])\s*\(", lambda m: f"{m.group(1).upper()}(" if m.group(1).lower() in {"p", "s", "v"} else "d(", q)
-    q = _normalize_parenthesized_geometry(q)
-    q = re.sub(r"\bd\s+([A-Za-z](?:[0-9]+|')?)\s+(\([A-Za-z0-9'\s]+\)|[A-Za-z](?:\s*[A-Za-z0-9']\s*){1,})", lambda m: f"d({m.group(1).upper()},{_normalize_distance_target_text(m.group(2))})", q, flags=re.IGNORECASE)
-    q = _uppercase_geometry_tokens(q)
-    q = re.sub(r"\s+", " ", q).strip()
-    q = re.sub(r"\bGOC\b", "góc", q, flags=re.IGNORECASE)
-    return q
-
-
-def _normalize_distance_target_text(value: str) -> str:
-    target = value.strip()
-    if target.startswith("(") and target.endswith(")"):
-        return f"({_compact_point_sequence_text(target[1:-1])})"
-    return _compact_point_sequence_text(target)
-
-
-def _uppercase_geometry_tokens(value: str) -> str:
-    return re.sub(r"\b([A-Za-z](?:[0-9]+|')?)\s*-\s*([A-Za-z](?:[0-9]+|')?)\b", lambda m: f"{m.group(1).upper()}-{m.group(2).upper()}", value)
-
-
-def _compact_point_sequence_text(value: str) -> str:
-    return "".join(re.findall(r"[A-Za-z](?:[0-9]+|')?", value)).upper()
-
-
-def _compact_solid_text(value: str) -> str:
-    cleaned = value.strip().replace(" ", "")
-    if "." in cleaned:
-        left, right = cleaned.split(".", 1)
-        return f"{_compact_point_sequence_text(left)}.{_compact_point_sequence_text(right)}"
-    compact = _compact_point_sequence_text(value)
-    return f"{compact[0]}.{compact[1:]}" if len(compact) >= 4 else compact
-
-
-def _normalize_parenthesized_geometry(question: str) -> str:
-    result: list[str] = []
-    index = 0
-    while index < len(question):
-        char = question[index]
-        if char != "(":
-            result.append(char)
-            index += 1
-            continue
-        end = _find_matching_paren(question, index)
-        if end is None:
-            result.append(char)
-            index += 1
-            continue
-        inner = _normalize_parenthesized_geometry(question[index + 1:end])
-        if re.fullmatch(r"[A-Za-z0-9'\s.]+", inner):
-            inner = _compact_solid_text(inner) if "." in inner else _compact_point_sequence_text(inner)
-        result.append(f"({inner})")
-        index = end + 1
-    return "".join(result)
-
-
 def solve(scene_dict: dict, question: str, geometry_method: str = "oxyz") -> SolverResult:
     pts = _point_map(scene_dict)
     warnings: list[str] = _scene_reliability_warnings(scene_dict)
     q = normalize_solver_question(question)
     method = geometry_method if geometry_method in {"oxyz", "classical"} else "oxyz"
-    capability_task = infer_geometry_task(q)
+    capability_task = infer_geometry_goal(q)
     capability = resolve_geometry_capability(
         question=q,
         task=capability_task,
@@ -342,6 +150,7 @@ def solve(scene_dict: dict, question: str, geometry_method: str = "oxyz") -> Sol
     _prepend_context_warnings(result, warnings)
     if geometry_method == "classical":
         result = _classicalize_result(result, scene_dict, pts)
+    result = attach_replayed_proof(result, scene_dict, capability_task, method)
     _apply_result_metadata(result, scene_dict, geometry_method)
     return result
 
@@ -365,6 +174,7 @@ def _result_highlights(result: SolverResult) -> list[str]:
 def _result_data_issues(result: SolverResult) -> list[str]:
     issue_markers = (
         "không đủ dữ kiện",
+        "missing premise",
         "không dùng tọa độ minh họa",
         "cảnh báo cas",
         "scene còn cảnh báo cas",
@@ -1110,53 +920,17 @@ def _classicalize_result(result: SolverResult, scene_dict: dict, points: dict[st
         ]
         return result
 
-    facts = _relevant_scene_facts(scene_dict, highlight)
-    fact_sub_steps = [
-        SolverStep(index + 1, "Dữ kiện từ đề/hình", fact, None, None, highlight, kind="fact")
-        for index, fact in enumerate(facts[:6])
-    ]
-    if not fact_sub_steps:
-        fact_sub_steps = [SolverStep(1, "Dữ kiện từ hình", f"Các đối tượng liên quan là {', '.join(highlight)}.", None, None, highlight, kind="fact")]
-
-    setup = SolverStep(
-        1,
-        "Xác định dữ kiện hình học",
-        "Chỉ dùng các điểm, quan hệ và nhãn đã có trong scene; không thêm giả thiết ngoài đề.",
-        None,
-        None,
-        highlight,
-        kind="input",
-        sub_steps=fact_sub_steps,
+    reason = (
+        f"Missing premise/theorem cho dạng {kind}; mode classical không dùng tọa độ render để thay thế chứng minh."
     )
-    point_plane_height = _point_plane_height_fact(scene_dict, highlight) if kind == "distance_point_plane" else None
-    line_plane_projection = _line_plane_projection_fact(scene_dict, result.question, highlight) if kind == "angle_line_plane" else None
-    plane_plane_angle = _plane_plane_angle_fact(scene_dict, result.question) if kind == "angle_plane_plane" else None
-    pyramid_volume = _pyramid_volume_fact(scene_dict, highlight) if kind == "volume_pyramid" else None
-    method_step = _classical_method_step(kind, highlight, result.question, scene_dict)
-    conclusion = SolverStep(
-        3,
-        "Kết luận",
-        _classical_conclusion_text(
-            kind,
-            highlight,
-            result.answer,
-            point_plane_height,
-            line_plane_projection,
-            plane_plane_angle,
-            pyramid_volume,
-        ),
-        None,
-        result.steps[-1].result,
-        highlight,
-        kind="result",
-        result_latex=result.steps[-1].result_latex,
+    return SolverResult(
+        result.question,
+        "Không đủ dữ kiện",
+        [],
+        [*result.warnings, reason],
+        confidence="insufficient",
+        method="classical",
     )
-    result.steps = [setup, method_step, conclusion]
-    result.warnings = [
-        *result.warnings,
-        "Mode Tương quan hình học đang dùng template deterministic an toàn; AI không được phép tự thêm định lý, dữ kiện hoặc thay đổi kết quả.",
-    ]
-    return result
 
 
 def _classical_proof_for_result(result: SolverResult, scene_dict: dict, kind: str, highlight: list[str]) -> dict[str, list] | None:
@@ -1204,7 +978,24 @@ def _classical_proof_for_result(result: SolverResult, scene_dict: dict, kind: st
             relation_ids=step_relation_ids,
             construction_actions=construction_actions,
         ))
-    return {"steps": steps, "used_theorems": [{"name": item} for item in proof.used_theorems if item]}
+    used_theorems = [
+        {"id": step.theorem_id or "", "name": step.theorem or ""}
+        for step in proof.steps
+        if step.theorem_id
+    ]
+    return {"steps": steps, "used_theorems": used_theorems}
+
+
+def _resolve_highlight_object_ids(scene_dict: dict[str, Any], labels: list[str]) -> list[str]:
+    label_set = set(labels)
+    resolved: list[str] = []
+    for obj in scene_dict.get("objects") or []:
+        if not isinstance(obj, dict) or str(obj.get("name") or "") not in label_set:
+            continue
+        object_id = str(obj.get("object_id") or obj.get("id") or "")
+        if object_id and object_id not in resolved:
+            resolved.append(object_id)
+    return resolved
 
 
 def _resolve_highlight_object_ids(scene_dict: dict[str, Any], labels: list[str]) -> list[str]:

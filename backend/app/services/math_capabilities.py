@@ -14,6 +14,8 @@ from app.math_curriculum import (
     skills_for_legacy_intent,
 )
 from app.math_curriculum.models import CurriculumSkill, SkillStatus
+from app.math_curriculum.rollout import ROLLOUT_VERSION, rollout_stage
+from app.services.geometry.goals import infer_geometry_goal
 from app.schemas.math_capabilities import (
     AlgebraTopicCapability,
     CapabilitySnapshot,
@@ -114,9 +116,12 @@ def math_capability_registry() -> MathCapabilityRegistry:
             MathCapability(
                 capability_id=f"math.{skill.skill_id}.v1",
                 skill_id=skill.skill_id,
+                name_vi=skill.name_vi,
                 strand=skill.strand.value,
                 grades=list(skill.grades),
+                prerequisites=list(skill.prerequisites),
                 status=skill.status,
+                rollout_stage=rollout_stage(skill.status),
                 accepted_input_kinds=[kind],
                 tasks=list(skill.problem_forms),
                 solvers=list(skill.current_engines),
@@ -138,6 +143,7 @@ def math_capability_registry() -> MathCapabilityRegistry:
     ]
     return MathCapabilityRegistry(
         version=CAPABILITY_REGISTRY_VERSION,
+        rollout_version=ROLLOUT_VERSION,
         curriculum_version=CURRICULUM_VERSION,
         capabilities=capabilities,
         ui=MathCapabilityUi(algebra_topics=topics, keyboard_actions=_KEYBOARD_ACTIONS),
@@ -168,6 +174,11 @@ def resolve_problem_capabilities(problem: ProblemEnvelope) -> CapabilitySnapshot
         accepted=accepted,
         reason=reason,
         limits=_merge_limits(capability.limits for capability in capabilities),
+        prerequisites=list(dict.fromkeys(
+            prerequisite
+            for capability in capabilities
+            for prerequisite in by_skill[capability.skill_id].prerequisites
+        )),
         verifier_methods=list(dict.fromkeys(method for capability in capabilities for method in capability.verifier_methods)),
         metadata={"input_kind": input_kind, "domain": problem.domain, "task": problem.task},
     )
@@ -214,27 +225,7 @@ def resolve_function_capability(expression: str, parameters: dict[str, str | flo
 
 
 def infer_geometry_task(question: str) -> str:
-    text = question.lower()
-    markers = {
-        "distance": ("khoảng cách", "distance", "d("),
-        "angle": ("góc", "angle"),
-        "circle_metric": ("hình tròn", "đường tròn", "circle"),
-        "quadrilateral_metric": ("hình chữ nhật", "hình vuông", "hình bình hành", "hình thang", "rectangle", "square", "parallelogram", "trapezoid"),
-        "area": ("diện tích", "area", "s("),
-        "perimeter": ("chu vi", "perimeter", "p("),
-        "triangle_congruence": ("bằng nhau", "congruent", "≅", "≡"),
-        "triangle_similarity": ("đồng dạng", "similar", "∼"),
-        "pythagoras": ("pythagor", "pi-ta-go", "tính cạnh", "tìm cạnh", "calculate side", "find side"),
-        "volume": ("thể tích", "volume", "v("),
-        "equation": ("phương trình", "equation", "pt "),
-        "projection": ("hình chiếu", "projection"),
-        "reflection": ("đối xứng", "reflection"),
-        "intersection": ("giao điểm", "giao tuyến", "intersection"),
-        "vector": ("vector", "vectơ", " dot(", "cross(", " × ", " . "),
-        "proof": ("chứng minh", "song song", "vuông góc", "parallel", "perpendicular"),
-        "relation": ("thẳng hàng", "đồng phẳng", "collinear", "coplanar"),
-    }
-    return next((task for task, terms in markers.items() if any(term in text for term in terms)), "unknown")
+    return infer_geometry_goal(question)
 
 
 def resolve_geometry_capability(

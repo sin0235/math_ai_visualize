@@ -4,6 +4,7 @@ import type { RuntimeSettings, ScannedModelInfo, SettingsDefaults } from '../typ
 import { buildExportFilename, type ExportFormatKey } from '../utils/exportFilename';
 import { decodeRenderHistoryDetail } from '../utils/renderHistoryV3';
 import { ApiError, apiUrl, compactRuntimeSettings, fetchWithRetry, networkApiError, parseApiError, requestJson, requestVoid, timeoutSignal } from './core';
+import type { MathSolutionIr } from './mathSolution';
 
 export interface OcrResponse {
   text: string;
@@ -154,6 +155,8 @@ export interface SolveResponse {
   used_theorems?: SolveTheorem[];
   data_issues?: string[];
   advisory?: QualityRiskAdvisory | null;
+  proof_plan?: Record<string, unknown> | null;
+  solution_ir?: MathSolutionIr | null;
 }
 
 const EXPORT_META: Record<ExportFormat, { path: string; errorMessage: string }> = {

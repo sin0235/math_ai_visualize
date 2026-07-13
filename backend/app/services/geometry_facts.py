@@ -30,7 +30,11 @@ class GeometryFact:
             return True
         if self.verification_status == "verified":
             return True
-        return self.source == "verified" or (self.source == "inferred" and confidence in {"verified", "exact"})
+        if self.source == "inferred":
+            return confidence in {"verified", "exact"} or (
+                confidence == "partial" and bool(str(self.metadata.get("evidence") or "").strip())
+            )
+        return self.source == "verified"
 
 
 @dataclass(frozen=True)
@@ -41,13 +45,28 @@ class GeometryFactGraph:
         return [fact for fact in self.facts if fact.type == fact_type and fact.trusted]
 
     def length_label(self, first: str, second: str) -> str | None:
+        fact = self.length_fact(first, second)
+        if fact is None:
+            return None
+        label = fact.args.get("label")
+        return str(label) if label else None
+
+    def length_fact(self, first: str, second: str) -> GeometryFact | None:
         target = {first, second}
         for fact in self.by_type("length"):
             points = fact.args.get("points")
             if isinstance(points, tuple) and set(points) == target:
-                label = fact.args.get("label")
-                return str(label) if label else None
+                return fact
         return None
+
+    def length_facts_for(self, points: list[str] | tuple[str, ...]) -> list[GeometryFact]:
+        target = set(points)
+        return [
+            fact
+            for fact in self.by_type("length")
+            if isinstance(fact.args.get("points"), tuple)
+            and set(fact.args["points"]).issubset(target)
+        ]
 
 
 def build_geometry_fact_graph(scene: dict[str, Any]) -> GeometryFactGraph:

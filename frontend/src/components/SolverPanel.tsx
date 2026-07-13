@@ -7,6 +7,7 @@ import type { RuntimeSettings } from '../types/settings';
 import type { MathSceneV3, SceneWorkspaceResponseV3 } from '../types/sceneV3';
 import { KatexSpan, normalizeLatexForKatex, sympyToLatex } from './KatexSpan';
 import { MathInputComposer, type MathInputMode } from './math-input/MathInputComposer';
+import { MathCapabilitySummary } from './MathCapabilitySummary';
 
 interface SolverPanelProps {
   workspace: SceneWorkspaceResponseV3;
@@ -333,6 +334,7 @@ export function SolverPanel({ workspace, runtimeSettings, onHighlight }: SolverP
           </div>
 
           <SolverTrustPanel result={result} />
+          <MathCapabilitySummary solution={result.solution_ir} />
 
           {/* Warnings */}
           {result.warnings.length > 0 && (
