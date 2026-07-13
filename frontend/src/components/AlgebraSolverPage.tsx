@@ -46,6 +46,7 @@ export function AlgebraSolverPage() {
   const [solvedFingerprint, setSolvedFingerprint] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [inputExpanded, setInputExpanded] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const preflight = useInterpretationPreflight();
   const [localHistory, setLocalHistory] = useState<AlgebraHistoryItem[]>(() => loadAlgebraHistory());
@@ -170,6 +171,7 @@ export function AlgebraSolverPage() {
         },
       }, { signal: controller.signal });
       setResult(response);
+      setInputExpanded(false);
       setSolvedFingerprint(currentFingerprint);
       setLocalHistory(saveAlgebraHistoryItem(response));
       if (historySource === 'server') {
@@ -253,6 +255,8 @@ export function AlgebraSolverPage() {
           intervalClosedStart={intervalClosedStart}
           intervalClosedEnd={intervalClosedEnd}
           loading={loading}
+          expanded={inputExpanded}
+          onExpandedChange={setInputExpanded}
           onInputChange={(value) => { setInput(value); preflight.reset(); }}
           onInputFormatChange={setInputFormat}
           onInputModeChange={(value) => { setInputMode(value); preflight.reset(); }}

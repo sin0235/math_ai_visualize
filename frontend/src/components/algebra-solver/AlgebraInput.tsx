@@ -40,6 +40,8 @@ export function AlgebraInput({
   intervalClosedStart,
   intervalClosedEnd,
   loading,
+  expanded,
+  onExpandedChange,
   onInputChange,
   onInputFormatChange,
   onInputModeChange,
@@ -71,6 +73,8 @@ export function AlgebraInput({
   intervalClosedStart: boolean;
   intervalClosedEnd: boolean;
   loading: boolean;
+  expanded: boolean;
+  onExpandedChange: (expanded: boolean) => void;
   onInputChange: (value: string) => void;
   onInputFormatChange: (value: AlgebraInputFormat) => void;
   onInputModeChange: (value: AlgebraInputMode) => void;
