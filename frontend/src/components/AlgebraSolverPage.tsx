@@ -21,7 +21,6 @@ import {
 import { AlgebraInput, suggestTopic, type AlgebraAngleUnit, type AlgebraInputMode, type SequenceDraft } from './algebra-solver/AlgebraInput';
 import { AlgebraLoadingResult, AlgebraResult, EmptyAlgebraResult } from './algebra-solver/AlgebraResult';
 import {
-  clearAlgebraHistory,
   loadAlgebraHistory,
   saveAlgebraHistoryItem,
   type AlgebraHistoryItem,
@@ -49,6 +48,7 @@ export function AlgebraSolverPage() {
   const [solvedFingerprint, setSolvedFingerprint] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [inputExpanded, setInputExpanded] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const preflight = useInterpretationPreflight();
   const [localHistory, setLocalHistory] = useState<AlgebraHistoryItem[]>(() => loadAlgebraHistory());
@@ -170,6 +170,7 @@ export function AlgebraSolverPage() {
         },
       }, { signal: controller.signal });
       setResult(response);
+      setInputExpanded(false);
       setSolvedFingerprint(currentFingerprint);
       setLocalHistory(saveAlgebraHistoryItem(response));
       if (historySource === 'server') {
@@ -253,6 +254,8 @@ export function AlgebraSolverPage() {
           intervalClosedStart={intervalClosedStart}
           intervalClosedEnd={intervalClosedEnd}
           loading={loading}
+          expanded={inputExpanded}
+          onExpandedChange={setInputExpanded}
           onInputChange={(value) => { setInput(value); preflight.reset(); }}
           onInputFormatChange={setInputFormat}
           onInputModeChange={(value) => { setInputMode(value); preflight.reset(); }}
@@ -271,60 +274,6 @@ export function AlgebraSolverPage() {
           onSubmit={requestConfirmIfNeeded}
         />
         <div className="algebra-result-wrap">
-          {(historySource === 'server' ? serverHistory.length > 0 : localHistory.length > 0) && (
-            <section className="algebra-history-panel" aria-label="Lịch sử bài gần đây">
-              <div className="algebra-history-head">
-                <strong>
-                  {historySource === 'server' ? 'Lịch sử tài khoản' : 'Lịch sử máy này'}
-                </strong>
-                <button
-                  type="button"
-                  className="algebra-action-btn"
-                  onClick={() => {
-                    if (historySource === 'server') {
-                      setServerHistory([]);
-                    } else {
-                      clearAlgebraHistory();
-                      setLocalHistory([]);
-                    }
-                  }}
-                >
-                  Ẩn
-                </button>
-              </div>
-              <ul className="algebra-history-list">
-                {historySource === 'server'
-                  ? serverHistory.slice(0, 8).map((item) => (
-                    <li key={item.id}>
-                      <button type="button" className="algebra-history-item" onClick={() => void restoreServerHistoryItem(item)}>
-                        <span className="algebra-history-meta">{item.topic} · {item.status}</span>
-                        <span className="algebra-history-input">{item.problem_preview}</span>
-                      </button>
-                      <button
-                        type="button"
-                        className="algebra-action-btn"
-                        onClick={() => {
-                          void deleteAlgebraHistory(item.id).then(async () => {
-                            setServerHistory(await listAlgebraHistory({ limit: 20 }));
-                          }).catch(() => undefined);
-                        }}
-                      >
-                        Xóa
-                      </button>
-                    </li>
-                  ))
-                  : localHistory.slice(0, 8).map((item) => (
-                    <li key={item.id}>
-                      <button type="button" className="algebra-history-item" onClick={() => restoreLocalHistoryItem(item)}>
-                        <span className="algebra-history-meta">{item.topic} · {item.status}</span>
-                        <span className="algebra-history-input">{item.input}</span>
-                        <span className="algebra-history-answer">{item.answer}</span>
-                      </button>
-                    </li>
-                  ))}
-              </ul>
-            </section>
-          )}
           {error && <div className="sp-error"><strong>Solver lỗi</strong><span>{error}</span></div>}
           <InterpretationPanel
             controller={preflight}
@@ -343,6 +292,48 @@ export function AlgebraSolverPage() {
           ) : preflight.state.phase === 'idle' ? (
             <EmptyAlgebraResult />
           ) : null}
+          {(historySource === 'server' ? serverHistory.length > 0 : localHistory.length > 0) && (
+            <section className="algebra-history-panel" aria-label="Lịch sử bài gần đây">
+              <details className="algebra-history-disclosure">
+                <summary>
+                  <strong>{historySource === 'server' ? 'Lịch sử tài khoản' : 'Lịch sử máy này'}</strong>
+                  <span>{historySource === 'server' ? serverHistory.length : localHistory.length} bài</span>
+                </summary>
+                <ul className="algebra-history-list">
+                  {historySource === 'server'
+                    ? serverHistory.slice(0, 8).map((item) => (
+                      <li key={item.id}>
+                        <button type="button" className="algebra-history-item" onClick={() => void restoreServerHistoryItem(item)}>
+                          <span className="algebra-history-meta">{item.topic} · {item.status}</span>
+                          <span className="algebra-history-input">{item.problem_preview}</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="algebra-action-btn"
+                          aria-label={`Xóa ${item.problem_preview} khỏi lịch sử`}
+                          onClick={() => {
+                            void deleteAlgebraHistory(item.id).then(async () => {
+                              setServerHistory(await listAlgebraHistory({ limit: 20 }));
+                            }).catch(() => undefined);
+                          }}
+                        >
+                          Xóa
+                        </button>
+                      </li>
+                    ))
+                    : localHistory.slice(0, 8).map((item) => (
+                      <li key={item.id}>
+                        <button type="button" className="algebra-history-item" onClick={() => restoreLocalHistoryItem(item)}>
+                          <span className="algebra-history-meta">{item.topic} · {item.status}</span>
+                          <span className="algebra-history-input">{item.input}</span>
+                          <span className="algebra-history-answer">{item.answer}</span>
+                        </button>
+                      </li>
+                    ))}
+                </ul>
+              </details>
+            </section>
+          )}
         </div>
       </div>
     </section>

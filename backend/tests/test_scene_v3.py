@@ -2,6 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.schemas.scene_v3 import MathSceneV3, MovePointCommand, SceneCommandRequest
+from app.services.scene_pipeline_v3 import run_scene_pipeline_v3
 from app.services.scene_v3_adapter import migrate_scene_v2_dict
 
 
@@ -46,6 +47,31 @@ def test_v2_adapter_creates_deterministic_typed_references():
         by_label["M"].id,
         by_label["B"].id,
     }
+
+
+def test_v2_adapter_resolves_compact_segment_names_for_linear_relations():
+    payload = v2_scene()
+    payload["objects"][3].pop("name")
+    payload["objects"].extend([
+        {"type": "point_2d", "name": "C", "x": 0, "y": 2},
+        {"type": "segment", "points": ["A", "C"]},
+    ])
+    payload["relations"] = [
+        {"type": "perpendicular", "object_1": "AB", "object_2": "AC"},
+        {"type": "distance", "object_1": "AB", "metadata": {"value": 2}},
+        {"type": "distance", "object_1": "AC", "metadata": {"value": 2}},
+    ]
+    payload["annotations"] = []
+
+    scene, report = migrate_scene_v2_dict(payload)
+    result = run_scene_pipeline_v3(scene)
+
+    assert not report.requires_confirmation
+    assert [operand.ref_kind for operand in scene.relations[0].operands] == ["segment", "segment"]
+    assert all([operand.ref_kind for operand in relation.operands] == ["point", "point"] for relation in scene.relations[1:])
+    assert [relation.args["value"] for relation in scene.relations[1:]] == [2, 2]
+    assert result.status == "verified"
+    assert result.can_project
 
 
 def test_v3_rejects_missing_reference_instead_of_dropping_data():

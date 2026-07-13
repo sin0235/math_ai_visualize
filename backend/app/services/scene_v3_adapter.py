@@ -35,6 +35,7 @@ class _MigrationState:
     labels: dict[str, list[str]] = field(default_factory=dict)
     object_ids: set[str] = field(default_factory=set)
     object_kinds: dict[str, str] = field(default_factory=dict)
+    object_point_ids: dict[str, tuple[str, ...]] = field(default_factory=dict)
     relation_ids: set[str] = field(default_factory=set)
     unresolved: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
@@ -151,7 +152,8 @@ def _migrate_objects(raw_objects: Any, state: _MigrationState) -> list[dict[str,
             refs = obj.pop("points", [])
             obj["point_ids"] = _resolve_many(refs, state, f"objects[{index}].points")
         elif obj_type in {"line_2d", "line_3d"}:
-            obj["point_ids"] = _resolve_many(obj.pop("through", []), state, f"objects[{index}].through")
+            refs = obj.pop("through", [])
+            obj["point_ids"] = _resolve_many(refs, state, f"objects[{index}].through")
         elif obj_type in {"vector_2d", "vector_3d"}:
             obj["from_point_id"] = state.resolve_label(obj.pop("from_point", None), f"objects[{index}].from_point")
             obj["to_point_id"] = state.resolve_label(obj.pop("to_point", None), f"objects[{index}].to_point")
@@ -169,8 +171,24 @@ def _migrate_objects(raw_objects: Any, state: _MigrationState) -> list[dict[str,
             if isinstance(label, str) and label in state.labels:
                 state.labels[label] = [candidate for candidate in state.labels[label] if candidate != obj["id"]]
             continue
+        _register_linear_aliases(obj, refs if obj_type in {"segment", "line_2d", "line_3d"} else None, state)
         migrated.append(obj)
     return migrated
+
+
+def _register_linear_aliases(obj: dict[str, Any], raw_points: Any, state: _MigrationState) -> None:
+    point_ids = obj.get("point_ids")
+    if isinstance(point_ids, list):
+        state.object_point_ids[obj["id"]] = tuple(point_ids)
+    if obj.get("label") or not isinstance(raw_points, (list, tuple)) or len(raw_points) != 2:
+        return
+    labels = [str(value).strip() for value in raw_points]
+    if any(not label or len(label) != 1 for label in labels):
+        return
+    for alias in ("".join(labels), "".join(reversed(labels))):
+        candidates = state.labels.setdefault(alias, [])
+        if obj["id"] not in candidates:
+            candidates.append(obj["id"])
 
 
 def _migrate_relations(raw_relations: Any, state: _MigrationState) -> list[dict[str, Any]]:
@@ -185,14 +203,19 @@ def _migrate_relations(raw_relations: Any, state: _MigrationState) -> list[dict[
         if not operands:
             state.warnings.append(f"Relation {relation_id} không chuyển được operand; đã bỏ")
             continue
+        relation_type = str(raw.get("type") or "unknown")
+        metadata = raw.get("metadata") if isinstance(raw.get("metadata"), dict) else {}
+        args = dict(raw.get("args")) if isinstance(raw.get("args"), dict) else {}
+        if relation_type == "distance" and "value" not in args and isinstance(metadata.get("value"), (int, float)):
+            args["value"] = metadata["value"]
         relation = {
             "id": relation_id,
-            "type": str(raw.get("type") or "unknown"),
+            "type": relation_type,
             "operands": operands,
-            "args": raw.get("args") if isinstance(raw.get("args"), dict) else {},
+            "args": args,
             "source": raw.get("source") or "ai_inferred",
             "verification": None,
-            "metadata": raw.get("metadata") if isinstance(raw.get("metadata"), dict) else {},
+            "metadata": metadata,
         }
         state.relation_ids.add(relation_id)
         relations.append(relation)
@@ -218,8 +241,15 @@ def _relation_operands(raw: dict[str, Any], state: _MigrationState, index: int) 
         ref_id = state.resolve_label(label, f"relations[{index}].{role}")
         if ref_id:
             operands.append({"role": role if role != "object" else f"object_{position + 1}", "ref_id": ref_id, "ref_kind": state.object_kinds.get(ref_id, "object")})
+    if str(raw.get("type") or "") == "distance" and len(operands) == 1:
+        linear = operands[0]
+        point_ids = state.object_point_ids.get(linear["ref_id"], ())
+        if linear["ref_kind"] in {"segment", "line"} and len(point_ids) == 2:
+            return [
+                {"role": f"point_{position + 1}", "ref_id": point_id, "ref_kind": "point"}
+                for position, point_id in enumerate(point_ids)
+            ]
     return operands
-
 
 def _migrate_annotations(raw_annotations: Any, state: _MigrationState) -> list[dict[str, Any]]:
     annotations: list[dict[str, Any]] = []

@@ -169,7 +169,7 @@ export function AlgebraResult({
           {result.answer_latex ? (
             <KatexSpan tex={result.answer_latex} display className="algebra-answer-katex" />
           ) : (
-            <strong className="algebra-answer-text">{result.answer}</strong>
+            <strong className="algebra-answer-text"><MixedTextRenderer text={result.answer} /></strong>
           )}
           {result.verification.status !== 'skipped' && (
             <span className={`algebra-verify-pill status-${result.verification.status}`}>
@@ -189,8 +189,12 @@ export function AlgebraResult({
       )}
 
       {interpretation && (
-        <section className="algebra-result-card">
-          <SectionTitle title="Hệ thống hiểu đề" />
+        <details className="algebra-result-card algebra-result-disclosure">
+          <summary>
+            <span>Hệ thống hiểu đề</span>
+            <small>Thông tin kỹ thuật</small>
+          </summary>
+          <div className="algebra-result-disclosure-content">
           <dl className="algebra-interpretation-grid">
             <div>
               <dt>Đề gốc</dt>
@@ -242,7 +246,8 @@ export function AlgebraResult({
               Đưa canonical vào ô nhập để sửa &amp; giải lại
             </button>
           )}
-        </section>
+          </div>
+        </details>
       )}
 
       {(assumptions.length > 0 || notices.length > 0) && (

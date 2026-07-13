@@ -53,6 +53,28 @@ def test_calculus_interpreter_detects_vietnamese_natural_inputs():
     assert derivative.status == limit.status == integral.status == "solved"
 
 
+def test_calculus_interpreter_solves_sum_from_given_derivatives_without_nested_wrapping():
+    input_text = (
+        "Cho các hàm số (y=f(x)) và (y=g(x)) có đạo hàm trên tập số thực "
+        "(\\mathbb{R}), thỏa mãn (f'(x)=x) và (g'(x)=x^2). "
+        "Đạo hàm của hàm số (y=f(x)+g(x)) là:"
+    )
+
+    result = solve_algebra(AlgebraSolveRequest(input=input_text))
+    replay = solve_algebra(AlgebraSolveRequest(input=result.normalized_input, input_format="structured"))
+
+    assert result.status == replay.status == "solved"
+    assert result.topic == replay.topic == "calculus_derivative"
+    assert result.normalized_input == "derivative_sum(functions=f|g,values=x|x**2,var=x)"
+    assert replay.normalized_input == result.normalized_input
+    assert result.answer_latex == replay.answer_latex == "x^{2} + x"
+    assert [step.title for step in result.steps[:3]] == [
+        "Dùng quy tắc đạo hàm của tổng",
+        "Thay các đạo hàm đã cho",
+        "Rút gọn kết quả",
+    ]
+
+
 def test_calculus_derivative_explains_quotient_rule():
     result = solve_algebra(AlgebraSolveRequest(input="derivative(expr=(x^2+1)/(x-1),var=x)", topic="auto"))
 

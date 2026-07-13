@@ -1256,20 +1256,23 @@ export default function App() {
                       onCommitted={setWorkspaceResultV3}
                       onImageCaptureReady={handleThreeImageCaptureReady}
                     />
-                    <div className="panel diagram-tools">
-                      <ExportMenuItems
-                        workspace={workspaceResultV3}
-                        captureCurrentView={threeImageCapture}
-                        preferCurrentViewCapture={workspaceResultV3.projection.dimension === '3d'}
-                        onError={(message) => showNotification('Xuất hình thất bại', message, [], 'error')}
-                      />
-                      <ProblemVariantTool
-                        workspace={workspaceResultV3}
-                        originalProblem={problemText}
-                        runtimeSettings={runtimeSettings}
-                        onError={(message) => showNotification('Công cụ hình', message, [], 'info')}
-                      />
-                    </div>
+                    <details className="panel diagram-tools">
+                      <summary className="diagram-tools-toggle">Xuất hình và tạo đề biến thể</summary>
+                      <div className="diagram-tools-content">
+                        <ExportMenuItems
+                          workspace={workspaceResultV3}
+                          captureCurrentView={threeImageCapture}
+                          preferCurrentViewCapture={workspaceResultV3.projection.dimension === '3d'}
+                          onError={(message) => showNotification('Xuất hình thất bại', message, [], 'error')}
+                        />
+                        <ProblemVariantTool
+                          workspace={workspaceResultV3}
+                          originalProblem={problemText}
+                          runtimeSettings={runtimeSettings}
+                          onError={(message) => showNotification('Công cụ hình', message, [], 'info')}
+                        />
+                      </div>
+                    </details>
                   </>
                 ) : (
                   <>
