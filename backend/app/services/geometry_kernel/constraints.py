@@ -137,13 +137,35 @@ def _equal_length(relation: RelationV3, geometry: GeometryIndex) -> Residual:
 
 
 def _midpoint(relation: RelationV3, geometry: GeometryIndex) -> Residual:
-    point_ids = _ids(relation, "point")
-    segment_ids = _ids(relation, "segment", "line")
-    if len(point_ids) != 1 or len(segment_ids) != 1:
-        raise ValueError(f"Relation {relation.id} cần một điểm và một đoạn")
-    expected = midpoint(*geometry.line_points(segment_ids[0]))
-    residual = distance(geometry.point(point_ids[0]), expected)
-    return Residual(residual, geometry.tolerance, {"point_id": point_ids[0], "segment_id": segment_ids[0], "expected": expected})
+    point_ids = _matching_ids(relation, "point")
+    segment_ids = _matching_ids(relation, "segment", "line")
+
+    # Dạng chuẩn: 1 điểm giữa + 1 đoạn thẳng.
+    if len(point_ids) == 1 and len(segment_ids) == 1:
+        expected = midpoint(*geometry.line_points(segment_ids[0]))
+        residual = distance(geometry.point(point_ids[0]), expected)
+        return Residual(residual, geometry.tolerance, {"point_id": point_ids[0], "segment_id": segment_ids[0], "expected": expected})
+
+    # Dạng 3 điểm: E là trung điểm của A và B (thường AI gửi midpoint(A, B, E)).
+    # Kiểm tra: 1 trong 3 điểm có khoảng cách tới trung điểm của 2 điểm còn lại ≈ 0.
+    if len(point_ids) == 3:
+        pts = [geometry.point(pid) for pid in point_ids]
+        best_residual = float("inf")
+        best_evidence: dict = {}
+        for i in range(3):
+            others = [j for j in range(3) if j != i]
+            expected_mid = midpoint(pts[others[0]], pts[others[1]])
+            res = distance(pts[i], expected_mid)
+            if res < best_residual:
+                best_residual = res
+                best_evidence = {
+                    "midpoint_id": point_ids[i],
+                    "endpoint_ids": [point_ids[j] for j in others],
+                    "expected": expected_mid,
+                }
+        return Residual(best_residual, geometry.tolerance, best_evidence)
+
+    raise ValueError(f"Relation {relation.id} cần (1 điểm + 1 đoạn) hoặc 3 điểm")
 
 
 def _on_line(relation: RelationV3, geometry: GeometryIndex) -> Residual:
@@ -217,15 +239,69 @@ def _on_sphere(relation: RelationV3, geometry: GeometryIndex) -> Residual:
 
 
 def _distance(relation: RelationV3, geometry: GeometryIndex) -> Residual:
-    ids = _ids(relation, "point")
+    point_ids = _matching_ids(relation, "point")
+    line_ids = _matching_ids(relation, "line", "segment", "vector")
+    plane_ids = _matching_ids(relation, "plane", "face")
     expected = relation.args.get("value")
-    if len(ids) != 2 or not isinstance(expected, (int, float)):
-        raise ValueError(f"Relation {relation.id} cần hai điểm và args.value")
-    actual = distance(geometry.point(ids[0]), geometry.point(ids[1]))
-    return Residual(abs(actual - float(expected)), geometry.tolerance, {"point_ids": ids, "expected": expected, "actual": actual})
+
+    # Dạng chuẩn: 2 điểm.
+    if len(point_ids) == 2 and not line_ids and not plane_ids:
+        if not isinstance(expected, (int, float)):
+            raise ValueError(f"Relation {relation.id} cần args.value")
+        actual = distance(geometry.point(point_ids[0]), geometry.point(point_ids[1]))
+        return Residual(abs(actual - float(expected)), geometry.tolerance, {"point_ids": point_ids, "expected": expected, "actual": actual})
+
+    # Dạng điểm-đường: khoảng cách từ điểm đến đường/đoạn.
+    if len(point_ids) == 1 and len(line_ids) == 1 and not plane_ids:
+        if not isinstance(expected, (int, float)):
+            raise ValueError(f"Relation {relation.id} cần args.value")
+        actual = point_line_distance(geometry.point(point_ids[0]), *geometry.line_points(line_ids[0]), geometry.tolerance)
+        return Residual(abs(actual - float(expected)), geometry.tolerance, {"point_id": point_ids[0], "line_id": line_ids[0], "expected": expected, "actual": actual})
+
+    # Dạng điểm-mặt phẳng: khoảng cách từ điểm đến mặt phẳng.
+    if len(point_ids) == 1 and len(plane_ids) == 1 and not line_ids:
+        if not isinstance(expected, (int, float)):
+            raise ValueError(f"Relation {relation.id} cần args.value")
+        actual = point_plane_distance(geometry.point(point_ids[0]), geometry.plane_points(plane_ids[0]), geometry.tolerance)
+        return Residual(abs(actual - float(expected)), geometry.tolerance, {"point_id": point_ids[0], "plane_id": plane_ids[0], "expected": expected, "actual": actual})
+
+    raise ValueError(f"Relation {relation.id} cần (2 điểm), (1 điểm + 1 đường) hoặc (1 điểm + 1 mặt phẳng)")
 
 
 def _angle(relation: RelationV3, geometry: GeometryIndex) -> Residual:
+    point_ids = _matching_ids(relation, "point")
+
+    # Dạng 3 điểm: góc tại đỉnh (giữa) tạo bởi 2 cạnh đến 2 điểm còn lại.
+    if len(point_ids) == 3:
+        expected = relation.args.get("degrees")
+        if not isinstance(expected, (int, float)):
+            raise ValueError(f"Relation {relation.id} thiếu args.degrees")
+        # Thử tất cả 3 hoán vị đỉnh, chọn đỉnh cho góc gần expected nhất.
+        pts = [geometry.point(pid) for pid in point_ids]
+        best_residual = float("inf")
+        best_evidence: dict = {}
+        for i in range(3):
+            vertex = pts[i]
+            others = [pts[j] for j in range(3) if j != i]
+            v1 = sub(others[0], vertex)
+            v2 = sub(others[1], vertex)
+            u1 = normalized(v1, geometry.tolerance)
+            u2 = normalized(v2, geometry.tolerance)
+            cosine = max(-1.0, min(1.0, abs(dot(u1, u2))))
+            actual = degrees(acos(cosine))
+            res = abs(actual - float(expected))
+            if res < best_residual:
+                best_residual = res
+                best_evidence = {
+                    "vertex_id": point_ids[i],
+                    "arm_ids": [point_ids[j] for j in range(3) if j != i],
+                    "expected_degrees": expected,
+                    "actual_degrees": actual,
+                }
+        angular_degrees = degrees(geometry.policy.angular_tolerance)
+        return Residual(best_residual, angular_degrees, best_evidence)
+
+    # Dạng 2 đường/đoạn: góc giữa 2 vector hướng.
     ids, directions = _line_directions(relation, geometry)
     expected = relation.args.get("degrees")
     if not isinstance(expected, (int, float)):
@@ -258,13 +334,27 @@ def _perpendicular_planes(relation: RelationV3, geometry: GeometryIndex) -> Resi
 
 def _intersection(relation: RelationV3, geometry: GeometryIndex) -> Residual:
     point_ids = _ids(relation, "point")
-    object_ids = _ids(relation, "line", "segment")
-    if len(point_ids) != 1 or len(object_ids) != 2:
-        raise ValueError(f"Relation {relation.id} cần một giao điểm và hai đường/đoạn")
+    line_ids = _matching_ids(relation, "line", "segment")
+    plane_ids = _matching_ids(relation, "plane", "face")
+
+    if len(point_ids) != 1:
+        raise ValueError(f"Relation {relation.id} cần đúng một giao điểm")
     point = geometry.point(point_ids[0])
-    distances = [point_line_distance(point, *geometry.line_points(object_id), geometry.tolerance) for object_id in object_ids]
-    residual = max(distances)
-    return Residual(residual, geometry.tolerance, {"point_id": point_ids[0], "object_ids": object_ids, "distances": distances})
+
+    # Dạng chuẩn: giao 2 đường.
+    if len(line_ids) == 2 and not plane_ids:
+        distances = [point_line_distance(point, *geometry.line_points(oid), geometry.tolerance) for oid in line_ids]
+        residual = max(distances)
+        return Residual(residual, geometry.tolerance, {"point_id": point_ids[0], "line_ids": line_ids, "distances": distances})
+
+    # Dạng 3D: giao đường với mặt phẳng.
+    if len(line_ids) == 1 and len(plane_ids) == 1:
+        line_dist = point_line_distance(point, *geometry.line_points(line_ids[0]), geometry.tolerance)
+        plane_dist = point_plane_distance(point, geometry.plane_points(plane_ids[0]), geometry.tolerance)
+        residual = max(line_dist, plane_dist)
+        return Residual(residual, geometry.tolerance, {"point_id": point_ids[0], "line_id": line_ids[0], "plane_id": plane_ids[0], "distances": [line_dist, plane_dist]})
+
+    raise ValueError(f"Relation {relation.id} cần (1 điểm + 2 đường) hoặc (1 điểm + 1 đường + 1 mặt phẳng)")
 
 
 def _line_in_plane(relation: RelationV3, geometry: GeometryIndex) -> Residual:
