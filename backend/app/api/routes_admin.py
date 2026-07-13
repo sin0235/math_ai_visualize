@@ -35,7 +35,7 @@ from app.schemas.auth import (
 )
 from app.schemas.feedback import AdminFeedbackResponse, AdminFeedbackUpdateRequest
 from app.schemas.scene import MathScene, ModelScanRequest, RenderPayload
-from app.services.admin_settings import build_database_diagnostics, normalize_provider_defaults, sync_ai_profiles_to_registry, sync_ai_settings_to_registry, sync_ai_tier_profiles_to_registry
+from app.services.admin_settings import build_database_diagnostics, normalize_provider_defaults, remove_legacy_model_inventory, sync_ai_profiles_to_registry, sync_ai_settings_to_registry, sync_ai_tier_profiles_to_registry
 from app.services.database_cleanup import cleanup_database, reset_dev_data
 from app.services.model_provider import canonicalize_explicit_provider_model, canonicalize_fallback_models, parse_provider_model_ref
 from app.services.model_registry import health_check_model, load_model_registry, resolve_effective_settings, save_provider_check
@@ -623,9 +623,10 @@ async def admin_save_system_setting(
         base_value = parse_setting_value(current_ai.value_json) if current_ai is not None else {}
         raw_value = deep_merge_dict(base_value, request.value)
     value = validate_system_setting(request.key, raw_value)
-    setting = await repo.upsert_system_setting(request.key, value, admin.id)
     if request.key == "ai_settings":
         await sync_ai_settings_to_registry(db, value, request.value)
+        value = remove_legacy_model_inventory(value)
+    setting = await repo.upsert_system_setting(request.key, value, admin.id)
     if request.key == "ai_profiles":
         await sync_ai_profiles_to_registry(db, value, request.value)
     if request.key == "ai_tier_profiles":

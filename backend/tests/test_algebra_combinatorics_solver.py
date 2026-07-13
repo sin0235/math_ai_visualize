@@ -49,6 +49,9 @@ def test_probability_classical_fraction():
     assert result.status == "solved"
     assert result.problem_type == "calculate_probability"
     assert result.solution_set.text in {"3/10", "0.3"}
+    assert result.verification.status == "verified"
+    assert result.verification.checks[0].name == "probability_classical_recompute"
+    assert result.verification.method == ["stdlib_fraction_recompute"]
 
 
 def test_probability_complement_and_independent():
@@ -58,6 +61,7 @@ def test_probability_complement_and_independent():
     independent = solve_algebra(AlgebraSolveRequest(input="P_and(1/2,1/3)", topic="combinatorics_probability"))
     assert independent.status == "solved"
     assert independent.solution_set.text in {"1/6", "0.1666666666666667"}
+    assert independent.verification.checks[0].name == "probability_independent_product"
 
 
 def test_probability_from_vietnamese_interpreter():

@@ -6,7 +6,14 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
-from app.math_curriculum.registry import CURRICULUM_VERSION, SKILLS, skills_for_legacy_intent
+from app.math_curriculum.registry import (
+    CURRICULUM_VERSION,
+    SKILLS,
+    skills_for_algebra_problem,
+    skills_for_function_problem,
+    skills_for_geometry_problem,
+    skills_for_legacy_intent,
+)
 
 _TEST_FILE_HINTS = {
     "equation": ("algebra.linear_equation", "algebra.quadratic_equation", "algebra.polynomial_rational_equation"),
@@ -20,8 +27,21 @@ _TEST_FILE_HINTS = {
     "parameter": ("algebra.parameter",),
     "calculus": ("calculus.derivative", "calculus.limit_continuity", "calculus.integral"),
     "complex": ("algebra.complex_numbers",),
-    "function_analyzer": ("function.analysis",),
+    "algebra_lower_secondary": (
+        "number.integer_arithmetic",
+        "number.rational_arithmetic",
+        "number.divisibility",
+        "number.ratio_percent",
+        "algebra.expression_transform",
+        "algebra.polynomial_operations",
+        "algebra.linear_equation",
+        "algebra.linear_inequality",
+        "algebra.linear_system",
+        "algebra.absolute_radical",
+    ),
+    "function_analyzer": ("function.linear_quadratic", "function.analysis"),
     "geometry_engine": ("geometry.basic_measurement", "geometry.coordinate_2d", "geometry.coordinate_3d", "geometry.solid_metric"),
+    "geometry_lower_secondary": ("geometry.basic_measurement", "geometry.triangle_congruence", "geometry.similarity_pythagoras", "geometry.quadrilateral", "geometry.circle_basic"),
     "geometry_kernel": ("geometry.circle_basic", "geometry.solid_relations", "geometry.coordinate_3d"),
     "geometry_facts": ("geometry.triangle_congruence", "geometry.similarity_pythagoras", "geometry.solid_relations"),
     "geometry_reasoning": ("geometry.triangle_congruence", "geometry.similarity_pythagoras", "geometry.solid_relations"),
@@ -38,7 +58,15 @@ def build_coverage_report(corpus_path: Path, tests_dir: Path) -> dict[str, Any]:
         target = str(case.get("target") or "")
         topic = str(expected.get("topic") or "")
         task = str(expected.get("task") or "")
-        skill_ids = skills_for_legacy_intent(target, topic, task)
+        canonical = str(expected.get("canonical") or "")
+        if target == "algebra":
+            skill_ids = skills_for_algebra_problem(topic, task, canonical)
+        elif target == "analyzer":
+            skill_ids = skills_for_function_problem(canonical, task)
+        elif target == "geometry_solve":
+            skill_ids = skills_for_geometry_problem(topic, task)
+        else:
+            skill_ids = skills_for_legacy_intent(target, topic, task)
         if not skill_ids:
             unmapped_intents[f"{target}:{topic}:{task}"] += 1
         for skill_id in skill_ids:

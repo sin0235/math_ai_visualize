@@ -1032,7 +1032,7 @@ export default function App() {
           <img src={logoUrl} alt="" className="header-logo" />
           <span className="header-titles">
             <span className="header-title">AI Math Renderer</span>
-            <span className="header-subtitle">Dựng hình toán học từ ngôn ngữ tự nhiên</span>
+            <span className="header-subtitle">Biến toán học thành điều bạn có thể nhìn thấy</span>
           </span>
         </button>
         <nav className="header-nav" aria-label="Điều hướng chính">

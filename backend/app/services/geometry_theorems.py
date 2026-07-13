@@ -58,6 +58,36 @@ THEOREMS: dict[str, TheoremSpec] = {
             11,
         ),
         TheoremSpec(
+            "quadrilateral.metric.direct_formula",
+            "Công thức metric tứ giác",
+            "Diện tích và chu vi tứ giác đặc biệt được tính từ các kích thước exact theo công thức tương ứng.",
+            8,
+        ),
+        TheoremSpec(
+            "circle.metric.direct_formula",
+            "Công thức metric đường tròn",
+            "Chu vi đường tròn bằng 2πr và diện tích hình tròn bằng πr².",
+            9,
+        ),
+        TheoremSpec(
+            "triangle.congruence.sss",
+            "Trường hợp bằng nhau cạnh-cạnh-cạnh",
+            "Hai tam giác có ba cặp cạnh tương ứng bằng nhau thì bằng nhau.",
+            7,
+        ),
+        TheoremSpec(
+            "triangle.similarity.aa",
+            "Trường hợp đồng dạng góc-góc",
+            "Hai tam giác có hai cặp góc tương ứng bằng nhau thì đồng dạng.",
+            8,
+        ),
+        TheoremSpec(
+            "triangle.pythagoras.length",
+            "Định lý Pythagore",
+            "Trong tam giác vuông, bình phương cạnh huyền bằng tổng bình phương hai cạnh góc vuông.",
+            8,
+        ),
+        TheoremSpec(
             "area.triangle.perpendicular_sides",
             "Diện tích tam giác vuông",
             "Diện tích tam giác vuông bằng một nửa tích độ dài hai cạnh góc vuông.",

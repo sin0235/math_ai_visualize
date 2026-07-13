@@ -8,6 +8,9 @@ from app.math_curriculum import (
     CAPABILITY_REGISTRY_VERSION,
     CURRICULUM_VERSION,
     SKILLS,
+    skills_for_algebra_problem,
+    skills_for_function_problem,
+    skills_for_geometry_problem,
     skills_for_legacy_intent,
 )
 from app.math_curriculum.models import CurriculumSkill, SkillStatus
@@ -29,6 +32,8 @@ from app.schemas.math_problem import (
 
 
 _TOPIC_LABELS = {
+    "arithmetic": "Số học THCS",
+    "expression": "Biểu thức và đa thức",
     "equation": "Phương trình",
     "inequality": "Bất phương trình",
     "exponential_log": "Mũ và logarit",
@@ -53,9 +58,16 @@ _KEYBOARD_ACTIONS = {
         "asin", "acos", "atan", "acot", "gt", "lt", "ge", "le", "eq", "ne", "plus", "minus", "pm",
         "times", "divide", "pi", "e", "infty", "posInfty", "negInfty",
     ],
-    "geometry": ["distance", "angle", "area", "volume", "perpendicular", "parallel"],
+    "geometry": ["distance", "angle", "area", "perimeter", "volume", "perpendicular", "parallel"],
 }
 
+_GEOMETRY_TASK_VERIFIERS = {
+    "pythagoras": ("pythagoras_substitution",),
+    "triangle_congruence": ("triangle_congruence_replay",),
+    "triangle_similarity": ("triangle_similarity_replay",),
+    "quadrilateral_metric": ("plane_metric_recompute",),
+    "circle_metric": ("circle_metric_recompute",),
+}
 _SKILL_EXAMPLES = {
     "algebra.linear_equation": [{"label": "Phương trình bậc nhất", "input": "2*x + 3 = 7"}],
     "algebra.quadratic_equation": [{"label": "Phương trình bậc hai", "input": "x^2 - 5*x + 6 = 0"}],
@@ -171,11 +183,7 @@ def resolve_algebra_capability(
     parameters: list[str],
     domain: Literal["R", "C", "N", "Z"],
 ) -> CapabilitySnapshot:
-    skill_ids = (
-        ("algebra.expression_transform", "algebra.polynomial_operations")
-        if topic == "expression"
-        else skills_for_legacy_intent("algebra", topic, task)
-    )
+    skill_ids = skills_for_algebra_problem(topic, task, canonical)
     problem = ProblemEnvelope(
         domain="algebra",
         task=task,
@@ -193,7 +201,7 @@ def resolve_algebra_capability(
 
 
 def resolve_function_capability(expression: str, parameters: dict[str, str | float | None]) -> CapabilitySnapshot:
-    skill_ids = skills_for_legacy_intent("analyzer", "function_analysis", "analyze")
+    skill_ids = skills_for_function_problem(expression, "analyze")
     problem = ProblemEnvelope(
         domain="function",
         task="analyze",
@@ -210,13 +218,19 @@ def infer_geometry_task(question: str) -> str:
     markers = {
         "distance": ("khoảng cách", "distance", "d("),
         "angle": ("góc", "angle"),
+        "circle_metric": ("hình tròn", "đường tròn", "circle"),
+        "quadrilateral_metric": ("hình chữ nhật", "hình vuông", "hình bình hành", "hình thang", "rectangle", "square", "parallelogram", "trapezoid"),
         "area": ("diện tích", "area", "s("),
+        "perimeter": ("chu vi", "perimeter", "p("),
+        "triangle_congruence": ("bằng nhau", "congruent", "≅", "≡"),
+        "triangle_similarity": ("đồng dạng", "similar", "∼"),
+        "pythagoras": ("pythagor", "pi-ta-go", "tính cạnh", "tìm cạnh", "calculate side", "find side"),
         "volume": ("thể tích", "volume", "v("),
-        "equation": ("phương trình", "equation"),
+        "equation": ("phương trình", "equation", "pt "),
         "projection": ("hình chiếu", "projection"),
         "reflection": ("đối xứng", "reflection"),
         "intersection": ("giao điểm", "giao tuyến", "intersection"),
-        "vector": ("vector", "vectơ"),
+        "vector": ("vector", "vectơ", " dot(", "cross(", " × ", " . "),
         "proof": ("chứng minh", "song song", "vuông góc", "parallel", "perpendicular"),
         "relation": ("thẳng hàng", "đồng phẳng", "collinear", "coplanar"),
     }
@@ -232,7 +246,7 @@ def resolve_geometry_capability(
     scene_topic: str,
     method: Literal["oxyz", "classical"],
 ) -> CapabilitySnapshot:
-    skill_ids = skills_for_legacy_intent("geometry_solve", scene_topic, task)
+    skill_ids = skills_for_geometry_problem(scene_topic, task)
     problem = ProblemEnvelope(
         domain="geometry",
         task=task,
@@ -246,7 +260,20 @@ def resolve_geometry_capability(
         ),
         goal=question,
     )
-    return resolve_problem_capabilities(problem)
+    snapshot = resolve_problem_capabilities(problem)
+    return snapshot.model_copy(update={
+        "verifier_methods": geometry_verifier_methods(task, skill_ids),
+    })
+
+
+def geometry_verifier_methods(task: str, skill_ids: tuple[str, ...]) -> list[str]:
+    methods = list(dict.fromkeys(
+        method
+        for skill_id in skill_ids
+        for method in SKILLS[skill_id].verification.methods
+    ))
+    allowed = _GEOMETRY_TASK_VERIFIERS.get(task)
+    return [method for method in methods if method in allowed] if allowed else methods
 
 
 def _merge_limits(limit_sets) -> dict[str, int | float | str | bool]:

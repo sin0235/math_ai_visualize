@@ -343,6 +343,18 @@ async def test_load_model_registry_keeps_namespaced_router9_profile(db):
     assert json.loads(row["fallbacks_json"]) == ["openrouter/google/gemma-4-31b-it:free", "cc/codex-5.5-image"]
 
 
+@pytest.mark.anyio
+async def test_setting_allowlist_removes_unselected_manual_model(db):
+    settings = Settings(_env_file=None)
+    await load_model_registry(db, settings)
+
+    await set_allowed_models(db, "openrouter", ["manual-model"])
+    await set_allowed_models(db, "openrouter", [])
+    registry = await load_model_registry(db, settings)
+
+    assert all(model.id != "manual-model" for model in registry.models["openrouter"])
+
+
 def test_validate_system_setting_removes_provider_model():
     from app.api.routes_admin import validate_system_setting
 

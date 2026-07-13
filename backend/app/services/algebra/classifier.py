@@ -19,9 +19,11 @@ def classify_algebra_problem(problem: ParsedAlgebraProblem) -> str:
         if problem.topic != "auto":
             return problem.topic
         normalized = problem.normalized_input.strip()
+        if normalized.startswith(("gcd(", "lcm(", "power(", "divisible(", "percent(", "percent_ratio(", "percent_base(", "ratio(", "word_inventory(", "word_product(", "word_share(")):
+            return "arithmetic"
         if normalized.startswith(("arithmetic(", "arithmetic_sum(", "geometric(", "geometric_sum(")):
             return "sequence"
-        if normalized.lower().startswith(("stats(", "stats_freq(")):
+        if normalized.lower().startswith(("stats(", "stats_freq(", "stats_grouped(")):
             return "statistics"
         if (
             normalized.startswith((

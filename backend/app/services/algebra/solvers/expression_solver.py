@@ -12,25 +12,23 @@ def solve_expression(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
         return _unsupported(problem, "Không tìm thấy biểu thức hợp lệ.")
 
     expression = problem.expression
-    
-    # Analyze the expression to decide what to do
     expanded = sp.expand(expression)
     factored = sp.factor(expression)
-    simplified = sp.simplify(expression)
 
-    # Determine primary transformation
-    if expression != expanded and factored == expression:
-        result = expanded
-        action = "khai triển"
-        method = "expand"
+    if problem.expression_action == "expand":
+        result, action, method = expanded, "khai triển", "expand"
+    elif problem.expression_action == "factor":
+        result, action, method = factored, "phân tích nhân tử", "factor"
+    elif problem.expression_action == "simplify":
+        result, action, method = sp.simplify(expression), "rút gọn", "simplify"
+    elif expression != expanded and factored == expression:
+        result, action, method = expanded, "khai triển", "expand"
     elif expression != factored and expanded == expression:
-        result = factored
-        action = "phân tích nhân tử"
-        method = "factor"
+        result, action, method = factored, "phân tích nhân tử", "factor"
     else:
-        result = simplified
-        action = "rút gọn"
-        method = "simplify"
+        result, action, method = sp.simplify(expression), "rút gọn", "simplify"
+
+    verification_passed = sp.simplify(expression - result) == 0
 
     milestones: list[str] = [
         f"Biểu thức gốc: {sp.latex(expression)}",
@@ -61,9 +59,18 @@ def solve_expression(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
     steps.append(conclusion_step(2, answer, sp.latex(result)))
 
     verification = AlgebraVerificationReport(
-        status="verified",
-        checks=[AlgebraVerificationCheck(name="expression_transform", status="pass", detail=f"Biến đổi symbolic {method} thành công.", latex=sp.latex(result))],
-        method=[f"sympy.{method}"],
+        status="verified" if verification_passed else "failed",
+        checks=[AlgebraVerificationCheck(
+            name="symbolic_equivalence",
+            status="pass" if verification_passed else "fail",
+            detail=(
+                f"Hiệu giữa biểu thức gốc và kết quả {method} rút gọn về 0."
+                if verification_passed
+                else f"Kết quả {method} không tương đương biểu thức gốc."
+            ),
+            latex=sp.latex(sp.simplify(expression - result)),
+        )],
+        method=["symbolic_difference"],
     )
 
     return AlgebraSolveResponse(
@@ -71,7 +78,7 @@ def solve_expression(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
         normalized_input=problem.normalized_input,
         topic="expression",
         problem_type=f"transform_{method}",
-        status="solved",
+        status="solved" if verification_passed else "error",
         answer=answer,
         answer_latex=sp.latex(result),
         solution_set=AlgebraSolutionSet(kind="expression", text=sp.sstr(result), latex=sp.latex(result)),

@@ -7,6 +7,9 @@ from app.math_curriculum.registry import (
     RENDER_TOPIC_SKILLS,
     SKILLS,
     registry_snapshot,
+    skills_for_algebra_problem,
+    skills_for_function_problem,
+    skills_for_geometry_problem,
     skills_for_grade,
     skills_for_legacy_intent,
 )
@@ -20,6 +23,9 @@ __all__ = [
     "RENDER_TOPIC_SKILLS",
     "SKILLS",
     "registry_snapshot",
+    "skills_for_algebra_problem",
+    "skills_for_function_problem",
+    "skills_for_geometry_problem",
     "skills_for_grade",
     "skills_for_legacy_intent",
 ]

@@ -29,3 +29,15 @@ def test_system_solver_auto_variables_when_empty():
     assert result.topic == "system"
     assert "x = 2" in result.answer
     assert "y = 1" in result.answer
+
+
+def test_system_solver_handles_nonlinear_system_with_substitution_verifier():
+    result = solve_algebra(AlgebraSolveRequest(input="Giải hệ x^2 + y^2 = 5 và x - y = 1"))
+
+    assert result.status == "solved"
+    assert result.topic == "system"
+    assert result.problem_type == "solve_system"
+    assert "(-1, -2)" in result.solution_set.text
+    assert "(2, 1)" in result.solution_set.text
+    assert result.verification.status == "verified"
+    assert all(check.name == "system_tuple_substitution" for check in result.verification.checks)

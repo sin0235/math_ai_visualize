@@ -44,11 +44,7 @@ def test_algebra_projector_preserves_legacy_result_and_adds_verified_ir():
 
     assert response.answer == "x = 1"
     assert projected.status == "solved_verified"
-    assert projected.problem.curriculum.skill_ids == [
-        "algebra.linear_equation",
-        "algebra.quadratic_equation",
-        "algebra.polynomial_rational_equation",
-    ]
+    assert projected.problem.curriculum.skill_ids == ["algebra.linear_equation"]
     assert projected.verification[0].status == "pass"
     assert projected.capability.accepted is True
     assert projected.capability.registry_version == "vn-k12-math-v1-capabilities-v1"
@@ -70,7 +66,7 @@ def test_function_projector_maps_analysis_and_verification():
     projected = project_function_solution(request, response)
 
     assert projected.status == "solved_verified"
-    assert projected.problem.curriculum.skill_ids == ["function.analysis"]
+    assert projected.problem.curriculum.skill_ids == ["function.linear_quadratic"]
     assert projected.result is not None
     assert projected.result.data["derivative"] == "2*x"
     assert projected.verification[0].method == "symbolic"

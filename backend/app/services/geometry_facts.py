@@ -97,6 +97,43 @@ def _annotation_fact(annotation: dict[str, Any], index: int) -> GeometryFact | N
                 text=f"{first}{second} = {label.strip()}",
                 metadata=metadata,
             )
+    if annotation.get("type") == "measure":
+        name = str(annotation.get("target") or metadata.get("name") or "").strip().lower()
+        label = annotation.get("label")
+        if name and isinstance(label, str) and label.strip():
+            return GeometryFact(
+                id=str(annotation.get("id") or f"annotation:{index}"),
+                type="scalar_measure",
+                args={"name": name, "label": label.strip()},
+                source=_source_from_metadata(metadata, "given"),
+                text=f"{name} = {label.strip()}",
+                metadata=metadata,
+            )
+    if annotation.get("type") == "angle":
+        vertex = str(annotation.get("target") or "").strip().upper()
+        arms = _point_list(metadata.get("arms"))
+        label = annotation.get("label")
+        if vertex and len(arms) == 2 and vertex not in arms and isinstance(label, str) and label.strip():
+            return GeometryFact(
+                id=str(annotation.get("id") or f"annotation:{index}"),
+                type="angle_measure",
+                args={"vertex": vertex, "arms": tuple(arms), "label": label.strip()},
+                source=_source_from_metadata(metadata, "given"),
+                text=f"Góc {arms[0]}{vertex}{arms[1]} = {label.strip()}",
+                metadata=metadata,
+            )
+    if annotation.get("type") == "right_angle":
+        vertex = str(annotation.get("target") or "").strip().upper()
+        arms = _point_list(metadata.get("arms"))
+        if vertex and len(arms) == 2 and vertex not in arms:
+            return GeometryFact(
+                id=str(annotation.get("id") or f"annotation:{index}"),
+                type="right_angle",
+                args={"vertex": vertex, "arms": tuple(arms)},
+                source=_source_from_metadata(metadata, str(annotation.get("source") or "given")),
+                text=f"Góc {arms[0]}{vertex}{arms[1]} vuông.",
+                metadata=metadata,
+            )
     return None
 
 

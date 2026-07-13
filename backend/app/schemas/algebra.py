@@ -11,6 +11,8 @@ MAX_ALGEBRA_INPUT_CHARS = 2_000
 
 AlgebraTopic = Literal[
     "auto",
+    "arithmetic",
+    "expression",
     "equation",
     "inequality",
     "exponential_log",
@@ -62,6 +64,7 @@ class AlgebraInputInterpretation(BaseModel):
     source: Literal["raw", "rule_based_vi", "latex_normalizer", "structured_ui"] = "raw"
     canonical_input: str
     topic_hint: AlgebraTopic = "auto"
+    expression_action: Literal["simplify", "expand", "factor"] | None = None
     variables: list[str] = Field(default_factory=list)
     domain: Literal["R", "C", "N", "Z"] = "R"
     chips: list[AlgebraInputChip] = Field(default_factory=list)
@@ -72,6 +75,7 @@ class AlgebraSolveRequest(BaseModel):
     input: str = Field(min_length=1, max_length=MAX_ALGEBRA_INPUT_CHARS)
     input_format: Literal["auto", "plain", "latex", "structured"] = "auto"
     topic: AlgebraTopic = "auto"
+    expression_action: Literal["simplify", "expand", "factor"] | None = None
     variables: list[str] = Field(default_factory=list, max_length=8)
     parameters: list[str] = Field(default_factory=list, max_length=8)
     domain: Literal["R", "C", "N", "Z"] = "R"

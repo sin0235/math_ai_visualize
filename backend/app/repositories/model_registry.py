@@ -175,6 +175,12 @@ class ModelRegistryRepository:
             [provider_id, model_id, model_id],
         )
 
+    async def delete_unallowed_manual_models(self, provider_id: str) -> None:
+        await self.db.execute(
+            "DELETE FROM ai_models WHERE provider_id = ? AND source = 'manual' AND allowed = 0",
+            [provider_id],
+        )
+
     async def record_model_scan_job(
         self,
         scan_id: str,

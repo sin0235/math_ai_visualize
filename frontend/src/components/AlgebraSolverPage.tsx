@@ -9,6 +9,7 @@ import {
   listAlgebraHistory,
   solveAlgebra,
   type AlgebraDomainSource,
+  type AlgebraExpressionAction,
   type AlgebraHistoryItem as ServerHistoryItem,
   type AlgebraInputFormat,
   type AlgebraHandoffPayload,
@@ -351,7 +352,7 @@ export function AlgebraSolverPage() {
 function algebraCanonicalPayload(
   candidate: InterpretationCandidate,
   response: InterpretationResponse,
-): Pick<AlgebraSolveRequest, 'input' | 'input_format' | 'topic' | 'variables' | 'domain'> {
+): Pick<AlgebraSolveRequest, 'input' | 'input_format' | 'topic' | 'expression_action' | 'variables' | 'domain'> {
   const payload = candidate.canonical_payload ?? {};
   const input = typeof payload.input === 'string'
     ? payload.input
@@ -360,18 +361,30 @@ function algebraCanonicalPayload(
     ? payload.input_format as AlgebraInputFormat
     : 'plain';
   const topic = isAlgebraTopic(payload.topic) ? payload.topic : 'auto';
+  const expressionAction = isAlgebraExpressionAction(payload.expression_action) ? payload.expression_action : null;
   const canonicalDomain = ['R', 'C', 'N', 'Z'].includes(String(payload.domain))
     ? payload.domain as AlgebraDomain
     : 'R';
   const canonicalVariables = Array.isArray(payload.variables)
     ? payload.variables.filter((value): value is string => typeof value === 'string')
     : [];
-  return { input, input_format: inputFormat, topic, variables: canonicalVariables, domain: canonicalDomain };
+  return {
+    input,
+    input_format: inputFormat,
+    topic,
+    expression_action: expressionAction,
+    variables: canonicalVariables,
+    domain: canonicalDomain,
+  };
+}
+
+function isAlgebraExpressionAction(value: unknown): value is AlgebraExpressionAction {
+  return ['simplify', 'expand', 'factor'].includes(String(value));
 }
 
 function isAlgebraTopic(value: unknown): value is AlgebraTopic {
   return [
-    'auto', 'equation', 'inequality', 'exponential_log', 'trigonometry', 'complex', 'sequence',
+    'auto', 'arithmetic', 'expression', 'equation', 'inequality', 'exponential_log', 'trigonometry', 'complex', 'sequence',
     'combinatorics_probability', 'statistics', 'system', 'parameter', 'calculus_derivative',
     'calculus_derivative_by_definition', 'calculus_limit', 'calculus_continuous_at', 'calculus_integral',
   ].includes(String(value));

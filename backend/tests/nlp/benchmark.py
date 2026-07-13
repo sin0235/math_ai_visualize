@@ -86,7 +86,7 @@ def legacy_predict(case: dict[str, Any]) -> Prediction:
         return Prediction(
             domain="algebra" if topic != "auto" else "unknown",
             topic=topic if topic != "auto" else "unknown",
-            task=_algebra_task(topic),
+            task=interpretation.expression_action or _algebra_task(topic),
             canonical=interpretation.canonical_input or None,
             entities=tuple(f"variable:{value}" for value in interpretation.variables),
             constraints=(),
@@ -129,7 +129,7 @@ def legacy_predict(case: dict[str, Any]) -> Prediction:
             entities=("variable:x",) if expression_like and re.search(r"\bx\b", text) else (),
             constraints=(),
             status="accepted" if text else "abstained",
-            confidence=0.8 if expression_like else 0.2,
+            confidence=0.9 if expression_like else 0.2,
         )
     # OCR hiện chỉ trả merged text/provider/model; chưa có downstream interpretation contract.
     return Prediction(

@@ -18110,21 +18110,32 @@ button.analyzer-guide-label:hover {
   gap: 16px;
 }
 
-.scene-editor-v3-header,
+.scene-editor-v3-toggle,
 .scene-editor-v3-history {
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
-.scene-editor-v3-header {
+.scene-editor-v3-toggle {
   justify-content: space-between;
+  width: 100%;
+  border: 0;
+  padding: 0;
+  color: var(--ink);
+  background: transparent;
+  text-align: left;
 }
 
-.scene-editor-v3-header > div:first-child,
+.scene-editor-v3-toggle > span:first-child,
 .scene-editor-v3-parameters {
   display: grid;
   gap: 8px;
+}
+
+.scene-editor-v3-content {
+  display: grid;
+  gap: 16px;
 }
 
 .scene-editor-v3-placement {
@@ -18217,7 +18228,7 @@ button.analyzer-guide-label:hover {
 }
 
 @media (max-width: 640px) {
-  .scene-editor-v3-header {
+  .scene-editor-v3-history {
     align-items: stretch;
     flex-direction: column;
   }

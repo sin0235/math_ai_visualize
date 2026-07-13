@@ -55,7 +55,7 @@ def interpret_algebra(envelope: InputEnvelope, normalized: NormalizedInput) -> l
         "input_format": envelope.input_format,
         "save_history": False,
     }
-    for field in ("topic", "variables", "parameters", "domain", "domain_source", "angle_unit", "interval"):
+    for field in ("topic", "expression_action", "variables", "parameters", "domain", "domain_source", "angle_unit", "interval"):
         if field in envelope.context:
             request_data[field] = envelope.context[field]
     try:
@@ -100,10 +100,11 @@ def interpret_algebra(envelope: InputEnvelope, normalized: NormalizedInput) -> l
             )
         )
     confidence = 0.82 if topic != "unknown" and not missing_fields else 0.4
+    task = interpretation.expression_action or _algebra_task(topic)
     return [
         InterpretationCandidate(
             candidate_id="algebra-1",
-            intent=MathIntent(domain="algebra" if topic != "unknown" else "unknown", topic=topic, task=_algebra_task(topic)),
+            intent=MathIntent(domain="algebra" if topic != "unknown" else "unknown", topic=topic, task=task),
             canonical_text=interpretation.canonical_input,
             canonical_payload={
                 "input": interpretation.canonical_input,
@@ -116,6 +117,7 @@ def interpret_algebra(envelope: InputEnvelope, normalized: NormalizedInput) -> l
                 ),
                 "input_mode": envelope.input_mode,
                 "topic": interpretation.topic_hint,
+                "expression_action": interpretation.expression_action,
                 "variables": interpretation.variables,
                 "domain": interpretation.domain,
                 "save_history": False,
@@ -177,9 +179,39 @@ def interpret_geometry_solve(envelope: InputEnvelope, normalized: NormalizedInpu
         if len(canonical_text) == len(normalized.text)
         else normalized
     )
+    polygon_task = classification.task_type == "perimeter" or (
+        classification.task_type == "area" and scene_topic == "plane_geometry"
+    )
+    if polygon_task:
+        entities = list({
+            ("polygon" if entity.kind in {"solid", "plane"} else entity.kind, entity.name): (
+                entity.model_copy(update={"kind": "polygon", "confidence": 0.9})
+                if entity.kind in {"solid", "plane"}
+                else entity
+            )
+            for entity in entities
+        }.values())
+    if classification.task_type in {"triangle_congruence", "triangle_similarity"}:
+        entities = [
+            Entity(
+                kind="triangle",
+                name=match.group(1).upper(),
+                confidence=0.95,
+                provenance=[normalized.provenance()],
+            )
+            for match in re.finditer(
+                r"(?:tam\s*gi[aá]c|triangle|[△∆])\s*([A-Z]{3})",
+                normalized.text,
+                re.IGNORECASE,
+            )
+        ]
     missing_fields: list[str] = []
     if classification.task_type == "unknown":
         missing_fields.append("target")
+    elif classification.task_type in {"triangle_congruence", "triangle_similarity"} and len(entities) != 2:
+        missing_fields.append("target_triangles")
+    elif classification.task_type == "pythagoras" and len(entities) < 1:
+        missing_fields.append("target_objects")
     elif classification.task_type in {"distance", "angle", "projection", "reflection", "equation"} and len(entities) < 2:
         missing_fields.append("target_objects")
 
@@ -353,6 +385,12 @@ def _canonical_geometry_question(text: str) -> str:
         flags=re.IGNORECASE,
     )
     question = re.sub(
+        r"\b(?:chu\s+vi|perimeter)\s+([A-Za-z](?:\s*[A-Za-z0-9']\s*){2,})",
+        lambda match: f"P({_compact_geometry_points(match.group(1))})",
+        question,
+        flags=re.IGNORECASE,
+    )
+    question = re.sub(
         r"\b(?:the\s+tich|thể\s+tích)\s+([A-Za-z][A-Za-z0-9']*(?:\s*\.\s*)?[A-Za-z](?:\s*[A-Za-z0-9']\s*){2,})",
         lambda match: f"V({_compact_geometry_solid(match.group(1))})",
         question,
@@ -403,7 +441,7 @@ def _geometry_subtype_from_entities(task: str, entities: list[Entity]) -> str | 
             return "line_plane"
         if pair == ["plane", "plane"]:
             return "plane_plane"
-    if task == "area":
+    if task in {"area", "perimeter"}:
         return "polygon"
     if task == "volume":
         return "solid"
@@ -416,6 +454,12 @@ def _geometry_goal_task(task: str) -> str | None:
         "distance": "distance",
         "angle": "angle",
         "area": "area",
+        "perimeter": "perimeter",
+        "pythagoras": "pythagoras",
+        "triangle_congruence": "triangle_congruence",
+        "triangle_similarity": "triangle_similarity",
+        "quadrilateral_metric": "quadrilateral_metric",
+        "circle_metric": "circle_metric",
         "volume": "volume",
         "projection": "projection",
         "reflection": "reflection",
@@ -454,7 +498,7 @@ def _resolve_geometry_entities(
     resolved: list[str] = []
     ambiguities: list[tuple[str, list[str]]] = []
     for entity in entities:
-        if entity.kind == "solid":
+        if entity.kind in {"solid", "polygon", "triangle"}:
             point_ids = [
                 ids[0]
                 for point_name in re.findall(r"[A-Z](?:[0-9]+|')?", entity.name.upper())
@@ -585,7 +629,7 @@ def _asks_to_solve(text: str) -> bool:
 
 
 def _is_structured_operation(text: str) -> bool:
-    return bool(re.match(r"^(?:C|A|P|P_not|P_and|Punion|stats|derivative|limit|integral|quadratic_)\b", text))
+    return bool(re.match(r"^(?:gcd|lcm|power|divisible|percent(?:_ratio|_base)?|ratio|word_(?:inventory|product|share)|C|A|P|P_not|P_and|Punion|stats|derivative|limit|integral|quadratic_)\b", text))
 
 
 def _algebra_task(topic: str) -> str:

@@ -3,7 +3,13 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Any
 
-from app.math_curriculum import CURRICULUM_VERSION, SKILLS, skills_for_legacy_intent
+from app.math_curriculum import (
+    CURRICULUM_VERSION,
+    SKILLS,
+    skills_for_algebra_problem,
+    skills_for_function_problem,
+    skills_for_geometry_problem,
+)
 from app.schemas.algebra import AlgebraSolveRequest, AlgebraSolveResponse
 from app.schemas.analysis import AnalyzeRequest, AnalyzeResponse, AnalyzerBaseRequest
 from app.schemas.math_problem import (
@@ -23,14 +29,14 @@ from app.schemas.math_solution import (
     SolutionValue,
     VerificationEvidence,
 )
-from app.services.math_capabilities import resolve_problem_capabilities
+from app.services.math_capabilities import geometry_verifier_methods, resolve_problem_capabilities
 
 
 CAPABILITY_VERSION = "legacy-solver-adapters-v1"
 
 
 def project_algebra_solution(request: AlgebraSolveRequest, response: AlgebraSolveResponse) -> Solution:
-    skill_ids = skills_for_legacy_intent("algebra", response.topic, response.problem_type)
+    skill_ids = skills_for_algebra_problem(response.topic, response.problem_type, response.normalized_input)
     status = _algebra_status(response)
     exactness = _algebra_exactness(response)
     evidence = [
@@ -97,7 +103,7 @@ def project_function_solution(
     request: AnalyzeRequest | AnalyzerBaseRequest,
     response: AnalyzeResponse,
 ) -> Solution:
-    skill_ids = skills_for_legacy_intent("analyzer", "function_analysis", "analyze")
+    skill_ids = skills_for_function_problem(response.evaluated_expression or response.expression, "analyze")
     verification = response.verification
     status = _function_status(response)
     exactness = _verification_exactness(verification.status if verification else None)
@@ -188,16 +194,21 @@ def project_geometry_solution(
     scene_topic: str,
 ) -> Solution:
     task = _geometry_task(response)
-    skill_ids = skills_for_legacy_intent("geometry_solve", scene_topic, task)
+    skill_ids = skills_for_geometry_problem(scene_topic, task)
     status = _geometry_status(response)
     exactness: Exactness = "symbolic_checked" if response.confidence == "verified" and response.method == "classical" else "numeric_checked" if response.confidence == "verified" else "partial"
+    verifier_methods = geometry_verifier_methods(task, skill_ids)
     evidence = []
     if response.confidence == "verified":
         evidence.append(
             VerificationEvidence(
-                policy_methods=_verification_policy_methods(skill_ids),
+                policy_methods=verifier_methods,
                 status="pass",
-                method="theorem_replay" if response.method == "classical" else "geometry_residual",
+                method=(
+                    verifier_methods[0]
+                    if task in {"pythagoras", "triangle_congruence", "triangle_similarity", "quadrilateral_metric", "circle_metric"} and verifier_methods
+                    else "theorem_replay" if response.method == "classical" else "geometry_residual"
+                ),
                 detail=f"Geometry solver báo {response.confidence} bằng phương pháp {response.method}.",
             )
         )
@@ -356,15 +367,31 @@ def _analysis_step_exactness(status: str) -> Exactness:
 
 
 def _geometry_task(response: Any) -> str:
-    supported = {"distance", "angle", "area", "volume", "proof", "relation", "equation", "projection", "reflection", "intersection", "vector"}
+    supported = {"distance", "angle", "area", "perimeter", "pythagoras", "triangle_congruence", "triangle_similarity", "quadrilateral_metric", "circle_metric", "volume", "proof", "relation", "equation", "projection", "reflection", "intersection", "vector"}
+    step_task = {
+        "pythagoras_length": "pythagoras",
+        "perimeter_polygon": "perimeter",
+        "triangle_congruence_sss": "triangle_congruence",
+        "triangle_similarity_aa": "triangle_similarity",
+        "quadrilateral_metric": "quadrilateral_metric",
+        "circle_metric": "circle_metric",
+    }
     for step in response.steps:
+        if step.kind in step_task:
+            return step_task[step.kind]
         if step.kind in supported:
             return step.kind
     text = f"{response.question} {response.answer}".lower()
     markers = {
         "distance": ("khoảng cách", "distance", "d("),
         "angle": ("góc", "angle"),
+        "circle_metric": ("hình tròn", "đường tròn", "circle"),
+        "quadrilateral_metric": ("hình chữ nhật", "hình vuông", "hình bình hành", "hình thang", "rectangle", "square", "parallelogram", "trapezoid"),
         "area": ("diện tích", "area", "s("),
+        "perimeter": ("chu vi", "perimeter", "p("),
+        "pythagoras": ("pythagor", "pi-ta-go", "tính cạnh", "tìm cạnh"),
+        "triangle_congruence": ("bằng nhau", "congruent", "≅", "≡"),
+        "triangle_similarity": ("đồng dạng", "similar", "∼"),
         "volume": ("thể tích", "volume", "v("),
         "equation": ("phương trình", "equation"),
         "projection": ("hình chiếu", "projection"),

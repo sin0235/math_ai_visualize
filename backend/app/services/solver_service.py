@@ -18,6 +18,7 @@ from app.services.geometry_engine import (
     calculate_point_plane_reflection,
     calculate_point_point_distance,
     calculate_polygon_area,
+    calculate_polygon_perimeter,
     calculate_prism_volume,
     calculate_pyramid_volume,
     calculate_tetrahedron_volume,
@@ -33,6 +34,9 @@ from app.services.cross_check import (
 )
 from app.services.linalg import Vec3, cross as _cross, dot as _dot, norm as _norm, sub as _sub, vec3
 from app.services.math_capabilities import infer_geometry_task, resolve_geometry_capability
+from app.services.plane_shape_solver import solve_plane_shape_metric
+from app.services.pythagoras_solver import PythagorasResult, solve_pythagoras
+from app.services.triangle_proof_solver import solve_triangle_proof
 
 
 class SolverStep:
@@ -163,6 +167,7 @@ def _sanitize_explanation(text: str) -> str:
 _DISTANCE_RE = re.compile(r"kho[aả]ng\s*c[áa]ch|distance|\bd\s*\(", re.IGNORECASE)
 _ANGLE_RE = re.compile(r"g[oó]c|angle|cos\s*\(|sin\s*\(", re.IGNORECASE)
 _AREA_RE = re.compile(r"di[eệ]n\s*t[íi]ch|area|\bS\s*\(", re.IGNORECASE)
+_PERIMETER_RE = re.compile(r"chu\s*vi|perimeter|\bP\s*\(", re.IGNORECASE)
 _VECTOR_RE = re.compile(r"vector|vect[ơo]|v[ée]c\s*t[ơo]|tọa\s*độ\s*vector|to[aọ]\s*do\s*vector", re.IGNORECASE)
 _VOLUME_RE = re.compile(r"th[eể]\s*t[íi]ch|volume|\bV\s*\(", re.IGNORECASE)
 _PARALLEL_RE = re.compile(r"song\s*song|parallel", re.IGNORECASE)
@@ -205,8 +210,9 @@ def normalize_solver_question(question: str) -> str:
     q = re.sub(r"\b(?:den|đến|toi|tới|tu|từ|cua|của)\b", " ", q, flags=re.IGNORECASE)
     q = re.sub(r"\b(?:mp|mat\s+phang|mặt\s+phẳng)\s+([A-Za-z](?:\s*[A-Za-z0-9']\s*){2,})", lambda m: f"({ _compact_point_sequence_text(m.group(1)) })", q, flags=re.IGNORECASE)
     q = re.sub(r"\b(?:dien\s+tich|diện\s+tích)\s+([A-Za-z](?:\s*[A-Za-z0-9']\s*){2,})", lambda m: f"S({_compact_point_sequence_text(m.group(1))})", q, flags=re.IGNORECASE)
+    q = re.sub(r"\b(?:chu\s+vi|perimeter)\s+([A-Za-z](?:\s*[A-Za-z0-9']\s*){2,})", lambda m: f"P({_compact_point_sequence_text(m.group(1))})", q, flags=re.IGNORECASE)
     q = re.sub(r"\b(?:the\s+tich|thể\s+tích)\s+([A-Za-z][A-Za-z0-9']*(?:\s*\.\s*)?[A-Za-z](?:\s*[A-Za-z0-9']\s*){2,})", lambda m: f"V({_compact_solid_text(m.group(1))})", q, flags=re.IGNORECASE)
-    q = re.sub(r"\b([dDsSvV])\s*\(", lambda m: f"{m.group(1).upper()}(" if m.group(1).lower() in {"s", "v"} else "d(", q)
+    q = re.sub(r"\b([dDpPsSvV])\s*\(", lambda m: f"{m.group(1).upper()}(" if m.group(1).lower() in {"p", "s", "v"} else "d(", q)
     q = _normalize_parenthesized_geometry(q)
     q = re.sub(r"\bd\s+([A-Za-z](?:[0-9]+|')?)\s+(\([A-Za-z0-9'\s]+\)|[A-Za-z](?:\s*[A-Za-z0-9']\s*){1,})", lambda m: f"d({m.group(1).upper()},{_normalize_distance_target_text(m.group(2))})", q, flags=re.IGNORECASE)
     q = _uppercase_geometry_tokens(q)
@@ -266,15 +272,16 @@ def solve(scene_dict: dict, question: str, geometry_method: str = "oxyz") -> Sol
     warnings: list[str] = _scene_reliability_warnings(scene_dict)
     q = normalize_solver_question(question)
     method = geometry_method if geometry_method in {"oxyz", "classical"} else "oxyz"
+    capability_task = infer_geometry_task(q)
     capability = resolve_geometry_capability(
         question=q,
-        task=infer_geometry_task(q),
+        task=capability_task,
         scene_id=str(scene_dict.get("scene_id") or "legacy-scene"),
         revision=max(1, int(scene_dict.get("revision") or 1)),
         scene_topic=str(scene_dict.get("topic") or "solid_geometry"),
         method=method,
     )
-    if not capability.accepted:
+    if capability_task != "unknown" and not capability.accepted:
         return SolverResult(
             q,
             capability.reason or "Dạng bài hình học chưa được hỗ trợ.",
@@ -284,13 +291,19 @@ def solve(scene_dict: dict, question: str, geometry_method: str = "oxyz") -> Sol
             method=method,
         )
 
-    guard = _metric_data_guard(scene_dict, q)
+    guard = None if capability_task in {"pythagoras", "quadrilateral_metric", "circle_metric"} else _metric_data_guard(scene_dict, q)
     if guard:
         result = SolverResult(q, "Không đủ dữ kiện", [], [*warnings, guard])
         _apply_result_metadata(result, scene_dict, geometry_method)
         return result
 
-    if _INTERSECTION_RE.search(q):
+    if capability_task in {"quadrilateral_metric", "circle_metric"}:
+        result = _solve_plane_shape_metric(scene_dict, q, warnings)
+    elif capability_task in {"triangle_congruence", "triangle_similarity"}:
+        result = _solve_triangle_proof(scene_dict, q, warnings)
+    elif capability_task == "pythagoras":
+        result = _solve_pythagoras(scene_dict, q, warnings)
+    elif _INTERSECTION_RE.search(q):
         result = _solve_intersection(scene_dict, q, warnings)
     elif _EQUATION_RE.search(q):
         result = _solve_equation(pts, q, warnings)
@@ -312,6 +325,8 @@ def solve(scene_dict: dict, question: str, geometry_method: str = "oxyz") -> Sol
         result = _solve_angle(pts, q, warnings)
     elif _AREA_RE.search(q):
         result = _solve_area(scene_dict, pts, q, warnings)
+    elif _PERIMETER_RE.search(q):
+        result = _solve_perimeter(scene_dict, pts, q, warnings)
     elif _VOLUME_RE.search(q):
         result = _solve_volume(pts, q, warnings)
     elif _is_vector_dot_question(q):
@@ -404,7 +419,7 @@ def _metric_data_guard(scene_dict: dict, question: str) -> str | None:
         return None
     if scene_dict.get("topic") in {"coordinate_2d", "coordinate_3d"}:
         return None
-    metric_query = any(regex.search(question) for regex in (_DISTANCE_RE, _ANGLE_RE, _AREA_RE, _VOLUME_RE))
+    metric_query = any(regex.search(question) for regex in (_DISTANCE_RE, _ANGLE_RE, _AREA_RE, _PERIMETER_RE, _VOLUME_RE))
     if not metric_query:
         return None
     if _ANGLE_RE.search(question) and _has_angle_evidence(scene_dict):
@@ -617,6 +632,204 @@ def _solve_angle(pts: dict[str, Vec3], question: str, warnings: list[str]) -> So
         calc = calculate_line_line_angle(pts, (operands[1], operands[0]), (operands[1], operands[2]))
         calc["label"] = f"∠{''.join(operands)}"
     return _result_from_calculation(question, calc, pts)
+
+
+def _solve_plane_shape_metric(scene_dict: dict, question: str, warnings: list[str]) -> SolverResult:
+    metric = solve_plane_shape_metric(scene_dict, question)
+    if metric.status != "ok" or metric.goal is None or metric.value is None:
+        detail = metric.warning or "Thiếu dữ kiện metric exact cho hình phẳng."
+        return SolverResult(question, "Không đủ dữ kiện", [], [*warnings, detail])
+
+    goal = metric.goal
+    kind = "circle_metric" if goal.shape == "circle" else "quadrilateral_metric"
+    theorem_id = "circle.metric.direct_formula" if goal.shape == "circle" else "quadrilateral.metric.direct_formula"
+    theorem_name = "Công thức metric đường tròn" if goal.shape == "circle" else "Công thức metric tứ giác"
+    symbol = "S" if goal.task == "area" else "C" if goal.shape == "circle" else "P"
+    answer = f"{symbol} = {metric.result_latex}"
+    evidence_ids = [fact.id for fact in metric.premise_facts]
+    highlights = [goal.shape]
+    steps = [
+        SolverStep(
+            1,
+            "Xác định dữ kiện exact",
+            "; ".join(fact.text for fact in metric.premise_facts),
+            None,
+            None,
+            highlights,
+            kind="input",
+            relation_ids=evidence_ids,
+        ),
+        SolverStep(
+            2,
+            "Áp dụng công thức",
+            "Thay trực tiếp các đại lượng đã cho vào công thức metric của hình.",
+            metric.formula_latex,
+            None,
+            highlights,
+            kind=kind,
+            formula_latex=metric.formula_latex,
+            substitution_latex=metric.substitution_latex,
+            theorem=theorem_name,
+            theorem_id=theorem_id,
+            relation_ids=evidence_ids,
+        ),
+        SolverStep(
+            3,
+            "Kiểm tra và kết luận",
+            f"Tính lại độc lập cho kết quả {metric.verifier_latex}.",
+            metric.verifier_latex,
+            metric.result_latex,
+            highlights,
+            kind="result",
+            result_latex=metric.result_latex,
+            theorem_id=theorem_id,
+            claim=answer,
+            depends_on=[theorem_id],
+            relation_ids=evidence_ids,
+        ),
+    ]
+    return SolverResult(
+        question,
+        answer,
+        steps,
+        warnings,
+        used_theorems=[{"id": theorem_id, "name": theorem_name}],
+    )
+
+
+def _solve_triangle_proof(scene_dict: dict, question: str, warnings: list[str]) -> SolverResult:
+    proof = solve_triangle_proof(scene_dict, question)
+    if proof.status != "verified" or proof.goal is None:
+        detail = proof.warning or "Thiếu premise để chứng minh quan hệ giữa hai tam giác."
+        return SolverResult(question, "Không đủ dữ kiện", [], [*warnings, detail])
+
+    goal = proof.goal
+    evidence_ids = [fact.id for fact in proof.premise_facts]
+    premise_text = "; ".join(fact.text for fact in proof.premise_facts)
+    kind = "triangle_congruence_sss" if goal.kind == "congruence" else "triangle_similarity_aa"
+    label = "bằng nhau" if goal.kind == "congruence" else "đồng dạng"
+    highlights = list(dict.fromkeys((*goal.first, *goal.second)))
+    steps = [
+        SolverStep(
+            1,
+            "Đối chiếu các premise tương ứng",
+            premise_text,
+            None,
+            None,
+            highlights,
+            kind="input",
+            relation_ids=evidence_ids,
+            claim=f"Đủ premise để xét hai tam giác {''.join(goal.first)} và {''.join(goal.second)}",
+        ),
+        SolverStep(
+            2,
+            f"Áp dụng trường hợp {label}",
+            proof.theorem_name or "Áp dụng định lý tam giác.",
+            None,
+            None,
+            highlights,
+            kind=kind,
+            theorem=proof.theorem_name,
+            theorem_id=proof.theorem_id,
+            claim=proof.answer,
+            depends_on=evidence_ids,
+            relation_ids=evidence_ids,
+        ),
+        SolverStep(
+            3,
+            "Kết luận",
+            f"Các premise khớp đúng thứ tự đỉnh tương ứng, suy ra {proof.answer}.",
+            None,
+            proof.answer,
+            highlights,
+            kind="result",
+            result_latex=proof.answer,
+            theorem_id=proof.theorem_id,
+            claim=proof.answer,
+            depends_on=[proof.theorem_id] if proof.theorem_id else [],
+            relation_ids=evidence_ids,
+        ),
+    ]
+    return SolverResult(
+        question,
+        proof.answer or "Không xác định",
+        steps,
+        warnings,
+        used_theorems=[{"id": proof.theorem_id or "", "name": proof.theorem_name or ""}],
+    )
+
+
+def _solve_pythagoras(scene_dict: dict, question: str, warnings: list[str]) -> SolverResult:
+    calculation = solve_pythagoras(scene_dict, question)
+    if calculation.status != "ok" or calculation.problem is None or calculation.value is None:
+        answer = "Không đủ dữ kiện" if calculation.status == "insufficient" else "Không xác định"
+        return SolverResult(question, answer, [], [*warnings, calculation.warning or "Không giải được bằng định lý Pythagore."])
+
+    problem = calculation.problem
+    target = "".join(problem.target)
+    result_latex = calculation.result_latex or str(calculation.value)
+    highlights = list(problem.vertices)
+    evidence_ids = list(problem.evidence_ids)
+    steps = [
+        SolverStep(
+            1,
+            "Xác định tam giác vuông và dữ kiện",
+            f"Tam giác {''.join(problem.vertices)} vuông tại {problem.right_vertex}; cần tính cạnh {target} từ đúng hai độ dài đã biết.",
+            None,
+            None,
+            highlights,
+            kind="input",
+            relation_ids=evidence_ids,
+            claim=f"Tam giác {''.join(problem.vertices)} vuông tại {problem.right_vertex}",
+        ),
+        SolverStep(
+            2,
+            "Áp dụng định lý Pythagore",
+            "Bình phương cạnh huyền bằng tổng bình phương hai cạnh góc vuông.",
+            calculation.formula_latex,
+            None,
+            highlights,
+            kind="pythagoras_length",
+            formula_latex=calculation.formula_latex,
+            substitution_latex=calculation.substitution_latex,
+            theorem="Định lý Pythagore",
+            theorem_id="triangle.pythagoras.length",
+            claim=f"{target} = {result_latex}",
+            depends_on=["right-angle-given", "two-lengths-given"],
+            relation_ids=evidence_ids,
+        ),
+        SolverStep(
+            3,
+            "Thế lại để kiểm tra",
+            f"Thế kết quả vào đẳng thức Pythagore được {calculation.verification_latex}; đẳng thức đúng.",
+            calculation.verification_latex,
+            result_latex,
+            highlights,
+            kind="result",
+            result_latex=result_latex,
+            theorem_id="triangle.pythagoras.length",
+            claim=f"{target} = {result_latex}",
+            depends_on=["pythagoras-substitution"],
+            relation_ids=evidence_ids,
+        ),
+    ]
+    return SolverResult(
+        question,
+        f"{target} = {result_latex}",
+        steps,
+        warnings,
+        used_theorems=[{"id": "triangle.pythagoras.length", "name": "Định lý Pythagore"}],
+    )
+
+
+def _solve_perimeter(scene_dict: dict, pts: dict[str, Vec3], question: str, warnings: list[str]) -> SolverResult:
+    polygon = _parse_polygon_after_marker(question, "P")
+    if polygon is None:
+        polygon = _find_face_points(scene_dict, question) or _parse_point_sequence(question)
+    if polygon is None or len(polygon) < 3:
+        warnings.append("Không đủ thông tin để tính chu vi. Ví dụ: P(ABC) hoặc chu vi ABCD.")
+        return SolverResult(question, "Không xác định", [], warnings)
+    return _result_from_calculation(question, calculate_polygon_perimeter(pts, polygon), pts)
 
 
 def _solve_area(scene_dict: dict, pts: dict[str, Vec3], question: str, warnings: list[str]) -> SolverResult:
@@ -877,6 +1090,8 @@ def _classicalize_result(result: SolverResult, scene_dict: dict, points: dict[st
     kind = result.steps[1].kind or ""
     highlight = result.steps[1].highlight
     if not kind:
+        return result
+    if kind in {"pythagoras_length", "triangle_congruence_sss", "triangle_similarity_aa", "quadrilateral_metric", "circle_metric"}:
         return result
     if kind == "volume_pyramid" and _pyramid_volume_fact(scene_dict, highlight) is None:
         warnings = [

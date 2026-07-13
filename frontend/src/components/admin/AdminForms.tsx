@@ -66,8 +66,8 @@ function getAdminProviderSettings(value: Record<string, unknown>, provider: stri
     ...defaultAdminProviderSettings(),
     ...data,
     base_url: typeof data.base_url === 'string' && data.base_url ? data.base_url : providerDefaults?.base_url ?? '',
-    scanned_models: Array.isArray(data.scanned_models) && data.scanned_models.length > 0 ? data.scanned_models : providerDefaults?.scanned_models ?? [],
-    allowed_model_ids: Array.isArray(data.allowed_model_ids) ? data.allowed_model_ids.map(String) : providerDefaults?.allowed_model_ids ?? [],
+    scanned_models: providerDefaults?.scanned_models ?? [],
+    allowed_model_ids: providerDefaults?.allowed_model_ids ?? [],
     last_scanned_at: typeof data.last_scanned_at === 'string' ? data.last_scanned_at : '',
     only_mode: typeof data.only_mode === 'boolean' ? data.only_mode : provider === 'router9' ? defaults?.router9.only_mode ?? false : false,
   };
@@ -157,11 +157,6 @@ function adminModelOptions(providerValue: ReturnType<typeof defaultAdminProvider
   return [...byId.values()];
 }
 
-function sameJson(left: unknown, right: unknown) {
-  return JSON.stringify(left) === JSON.stringify(right);
-}
-
-/** Thứ tự cố định theo lần quét; tránh reorder DOM khi tick checkbox làm danh sách nhảy. */
 function orderedAllowlistModelOptions(
   providerValue: ReturnType<typeof defaultAdminProviderSettings>,
   allowedModelIds: string[]
@@ -390,10 +385,6 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave, onToast }
     };
     if (provider === 'router9') providerPatch.only_mode = nextProvider.only_mode;
     if ((nextProvider as { api_key?: string }).api_key?.trim()) providerPatch.api_key = (nextProvider as { api_key?: string }).api_key;
-    if (!sameJson(current.scanned_models, nextProvider.scanned_models)) {
-      providerPatch.scanned_models = nextProvider.scanned_models;
-      providerPatch.last_scanned_at = nextProvider.last_scanned_at;
-    }
     try {
       await onSave({
         [provider]: providerPatch,

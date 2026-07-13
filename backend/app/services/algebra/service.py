@@ -17,6 +17,7 @@ from app.services.algebra.normalizer import normalize_algebra_input
 from app.services.algebra.load_gate import AlgebraSlot, algebra_load_gate
 from app.services.algebra.parser import AlgebraParseError, ParsedAlgebraProblem, parse_algebra_problem, parse_interval_bound
 from app.services.algebra.process_worker import solve_algebra_in_process
+from app.services.algebra.solvers.arithmetic_solver import solve_arithmetic
 from app.services.algebra.solvers.calculus_solver import solve_calculus
 from app.services.algebra.solvers.combinatorics_probability_solver import solve_combinatorics_probability
 from app.services.algebra.solvers.complex_solver import solve_complex
@@ -177,6 +178,7 @@ def _preserve_explicit_request_contract(
 ) -> AlgebraSolveRequest:
     protected_fields = {
         **({"topic": original.topic} if original.topic != "auto" else {}),
+        **({"expression_action": original.expression_action} if original.expression_action else {}),
         **({"domain": original.domain, "domain_source": original.domain_source} if original.domain_source == "user" else {}),
         **({"variables": original.variables} if original.variables else {}),
         **({"parameters": original.parameters} if original.parameters else {}),
@@ -252,27 +254,34 @@ def _solve_algebra_core(request: AlgebraSolveRequest) -> tuple[AlgebraSolveRespo
         stage_ms["solve_ms"] = int((time.perf_counter() - started) * 1000)
         return result
 
-    capability = resolve_algebra_capability(
-        original=request.input,
-        canonical=interpretation.canonical_input,
-        topic=requested_topic,
-        task="solve",
-        variables=variables or [],
-        parameters=list(request.parameters),
-        domain=domain,
-    )
-    if not capability.accepted:
-        return _done(AlgebraSolveResponse(
-            input=request.input,
-            normalized_input=interpretation.canonical_input,
-            input_interpretation=interpretation,
+    if requested_topic != "auto":
+        capability = resolve_algebra_capability(
+            original=request.input,
+            canonical=interpretation.canonical_input,
             topic=requested_topic,
-            problem_type="capability_unsupported",
-            status="unsupported",
-            answer=capability.reason or "Dạng bài chưa có capability phù hợp.",
-            warnings=interpretation.warnings,
-        ))
+            task=interpretation.expression_action or "solve",
+            variables=variables or [],
+            parameters=list(request.parameters),
+            domain=domain,
+        )
+        if not capability.accepted:
+            return _done(AlgebraSolveResponse(
+                input=request.input,
+                normalized_input=interpretation.canonical_input,
+                input_interpretation=interpretation,
+                topic=requested_topic,
+                problem_type="capability_unsupported",
+                status="unsupported",
+                answer=capability.reason or "Dạng bài chưa có capability phù hợp.",
+                warnings=interpretation.warnings,
+            ))
 
+    if requested_topic == "arithmetic":
+        problem = _raw_problem(request, interpretation.canonical_input, variables, domain, requested_topic, solve_interval)
+        return _done(
+            _with_interpretation(_timed_solve(solve_arithmetic, problem), request.input, interpretation),
+            solve_ms=stage_ms.get("solve_ms", 0),
+        )
     if requested_topic == "combinatorics_probability":
         problem = _raw_problem(request, interpretation.canonical_input, variables, domain, requested_topic, solve_interval)
         return _done(
@@ -305,7 +314,13 @@ def _solve_algebra_core(request: AlgebraSolveRequest) -> tuple[AlgebraSolveRespo
         )
     parse_started = time.perf_counter()
     try:
-        problem = parse_algebra_problem(interpretation.canonical_input, topic=requested_topic, variables=variables, domain=domain)
+        problem = parse_algebra_problem(
+            interpretation.canonical_input,
+            topic=requested_topic,
+            variables=variables,
+            domain=domain,
+            expression_action=interpretation.expression_action,
+        )
         problem = replace(
             problem,
             solve_interval=solve_interval if solve_interval is not None else problem.solve_interval,
@@ -326,7 +341,27 @@ def _solve_algebra_core(request: AlgebraSolveRequest) -> tuple[AlgebraSolveRespo
         ), parse_ms=parse_ms)
     parse_ms = int((time.perf_counter() - parse_started) * 1000)
     topic = classify_algebra_problem(problem)
+    capability = resolve_algebra_capability(
+        original=request.input,
+        canonical=problem.normalized_input,
+        topic=topic,
+        task="solve",
+        variables=[str(variable) for variable in problem.variables],
+        parameters=list(request.parameters),
+        domain=domain,
+    )
+    if not capability.accepted:
+        return _done(_with_interpretation(AlgebraSolveResponse(
+            input=request.input,
+            normalized_input=problem.normalized_input,
+            topic=topic,
+            problem_type="capability_unsupported",
+            status="unsupported",
+            answer=capability.reason or "Dạng bài chưa có capability phù hợp.",
+            warnings=interpretation.warnings,
+        ), request.input, interpretation), parse_ms=parse_ms)
     solvers = {
+        "arithmetic": solve_arithmetic,
         "equation": solve_equation,
         "inequality": solve_inequality,
         "exponential_log": solve_exp_log,

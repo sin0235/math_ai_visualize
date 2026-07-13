@@ -35,10 +35,11 @@ def test_solve_request_rejects_coerced_boolean():
 def test_calculus_derivative_has_independent_checks():
     result = solve_algebra(AlgebraSolveRequest(input="derivative(expr=x^2,var=x)"))
     assert result.status == "solved"
-    assert result.verification.status in {"verified", "partially_verified"}
+    assert result.verification.status == "partially_verified"
     names = {check.name for check in result.verification.checks}
     assert "derivative_recompute" in names
     assert "derivative_numeric_sample" in names
+    assert result.verification.method == ["solver_consistency_replay", "finite_difference"]
 
 
 def test_calculus_integral_diff_back():
@@ -59,7 +60,9 @@ def test_calculus_definite_integral_newton_leibniz_check():
 def test_calculus_limit_has_recompute_check():
     result = solve_algebra(AlgebraSolveRequest(input="limit(expr=(x^2-1)/(x-1),var=x,to=1)"))
     assert result.status == "solved"
+    assert result.verification.status == "partially_verified"
     assert any(check.name == "limit_recompute" for check in result.verification.checks)
+    assert result.verification.method == ["solver_consistency_replay", "numeric_approach"]
 
 
 def test_calculus_rejects_huge_derivative_order():

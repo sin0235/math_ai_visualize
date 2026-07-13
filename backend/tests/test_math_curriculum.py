@@ -6,6 +6,8 @@ from app.math_curriculum import (
     CURRICULUM_VERSION,
     SKILLS,
     registry_snapshot,
+    skills_for_algebra_problem,
+    skills_for_function_problem,
     skills_for_grade,
     skills_for_legacy_intent,
 )
@@ -61,8 +63,56 @@ def test_coverage_report_uses_corpus_and_test_evidence():
     assert report["corpus_case_count"] >= 42
     assert report["test_file_count"] >= 80
     assert rows["algebra.trigonometry"]["test_case_count"] > 0
-    assert rows["algebra.trigonometry"]["corpus_case_count"] == 0
-    assert rows["algebra.trigonometry"]["evidence"] == "tests_only"
+    assert rows["algebra.trigonometry"]["corpus_case_count"] == 1
+    assert rows["algebra.trigonometry"]["evidence"] == "corpus_and_tests"
+    assert rows["number.divisibility"]["evidence"] == "corpus_and_tests"
+    assert rows["number.divisibility"]["corpus_case_count"] == 3
+    assert "test_algebra_lower_secondary.py" in rows["number.divisibility"]["test_sources"]
+    assert rows["number.ratio_percent"]["evidence"] == "corpus_and_tests"
+    assert rows["number.ratio_percent"]["corpus_case_count"] == 4
+    assert rows["algebra.expression_transform"]["corpus_case_count"] == 3
+    assert rows["algebra.expression_transform"]["evidence"] == "corpus_and_tests"
+    assert rows["algebra.polynomial_operations"]["corpus_case_count"] == 2
+    assert rows["algebra.polynomial_operations"]["evidence"] == "corpus_and_tests"
+    assert rows["algebra.absolute_radical"]["corpus_case_count"] == 2
+    assert rows["algebra.absolute_radical"]["evidence"] == "corpus_and_tests"
+    assert rows["geometry.quadrilateral"]["evidence"] == "corpus_and_tests"
+    assert rows["geometry.circle_basic"]["evidence"] == "corpus_and_tests"
+    assert rows["algebra.exponential_logarithm"]["evidence"] == "corpus_and_tests"
+    assert rows["algebra.sequence"]["evidence"] == "corpus_and_tests"
+    assert rows["algebra.nonlinear_system"]["evidence"] == "corpus_and_tests"
+    assert rows["function.linear_quadratic"]["evidence"] == "corpus_and_tests"
+    assert rows["geometry.coordinate_2d"]["evidence"] == "corpus_and_tests"
+    assert rows["geometry.coordinate_3d"]["evidence"] == "corpus_and_tests"
+    assert rows["combinatorics.counting"]["evidence"] == "corpus_and_tests"
+    assert rows["probability.classical"]["evidence"] == "corpus_and_tests"
+    assert rows["probability.rules"]["evidence"] == "corpus_and_tests"
+    assert rows["statistics.descriptive_raw"]["evidence"] == "corpus_and_tests"
+    assert rows["statistics.grouped_data"]["evidence"] == "corpus_and_tests"
+    assert rows["calculus.integral"]["evidence"] == "corpus_and_tests"
+    assert rows["geometry.basic_measurement"]["evidence"] == "corpus_and_tests"
+    assert rows["geometry.basic_measurement"]["corpus_case_count"] == 2
+    assert "test_geometry_lower_secondary.py" in rows["geometry.basic_measurement"]["test_sources"]
     assert rows["geometry.solid_metric"]["test_case_count"] > 0
-    assert rows["statistics.grouped_data"]["status"] == "planned"
+    assert rows["statistics.grouped_data"]["status"] == "partial"
     assert report["unmapped_intents"]
+
+
+def test_upper_secondary_resolvers_do_not_overclaim_neighboring_skills():
+    assert skills_for_algebra_problem("equation", "solve_equation", "2*x+3=7") == (
+        "algebra.linear_equation",
+    )
+    assert skills_for_algebra_problem("equation", "solve_equation", "x^2-5*x+6=0") == (
+        "algebra.quadratic_equation",
+    )
+    assert skills_for_algebra_problem("equation", "solve_equation", "(x^2-1)/(x-1)=0") == (
+        "algebra.polynomial_rational_equation",
+    )
+    assert skills_for_algebra_problem("system", "solve_system", "x+y=3;x-y=1") == (
+        "algebra.linear_system",
+    )
+    assert skills_for_algebra_problem("system", "solve_system", "x^2+y^2=5;x-y=1") == (
+        "algebra.nonlinear_system",
+    )
+    assert skills_for_function_problem("x^2-4*x+3") == ("function.linear_quadratic",)
+    assert skills_for_function_problem("x^3-3*x+1") == ("function.analysis",)

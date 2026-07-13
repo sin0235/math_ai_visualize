@@ -42,6 +42,7 @@ def test_parameter_solver_auto_detects_structured_template():
     assert result.topic == "parameter"
     assert result.input_interpretation is not None
     assert result.input_interpretation.topic_hint == "parameter"
+    assert result.input_interpretation.variables == ["x"]
 
 
 def test_parameter_solver_case_splits_when_leading_coefficient_depends_on_m():
