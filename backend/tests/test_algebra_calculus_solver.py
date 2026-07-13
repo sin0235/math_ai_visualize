@@ -46,11 +46,32 @@ def test_calculus_interpreter_detects_vietnamese_natural_inputs():
     derivative = solve_algebra(AlgebraSolveRequest(input="đạo hàm (x^2+1)^3"))
     limit = solve_algebra(AlgebraSolveRequest(input="giới hạn (x^2-1)/(x-1) khi x tới 1"))
     integral = solve_algebra(AlgebraSolveRequest(input="tích phân 2*x từ 0 đến 1"))
+    logarithmic_integral = solve_algebra(AlgebraSolveRequest(input="Tính tích phân x*lnx từ 1 đến 2"))
 
     assert derivative.topic == "calculus_derivative"
     assert limit.topic == "calculus_limit"
     assert integral.topic == "calculus_integral"
-    assert derivative.status == limit.status == integral.status == "solved"
+    assert logarithmic_integral.topic == "calculus_integral"
+    assert derivative.status == limit.status == integral.status == logarithmic_integral.status == "solved"
+    assert logarithmic_integral.normalized_input == "integral(expr=x*ln(x),var=x,a=1,b=2)"
+
+
+def test_calculus_interpreter_solves_vietnamese_integral_phrase_with_steps():
+    result = solve_algebra(AlgebraSolveRequest(input="tìm tích phân của 2*x+1", topic="calculus_integral"))
+
+    assert result.status == "solved"
+    assert result.topic == "calculus_integral"
+    assert result.normalized_input == "integral(expr=2*x+1,var=x)"
+    assert result.answer_latex == r"x \left(x + 1\right)+C"
+    assert [step.title for step in result.steps[:2]] == ["Nhận dạng tích phân", "Tìm nguyên hàm"]
+
+
+def test_calculus_interpreter_does_not_double_wrap_structured_integral_with_bad_expr():
+    result = solve_algebra(AlgebraSolveRequest(input="integral(expr=tìm tích phân của 2*x+1,var=x)", topic="calculus_integral"))
+
+    assert result.status == "unsupported"
+    assert result.normalized_input.startswith("integral(expr=")
+    assert "integral(expr=integral" not in result.normalized_input
 
 
 def test_calculus_interpreter_solves_sum_from_given_derivatives_without_nested_wrapping():

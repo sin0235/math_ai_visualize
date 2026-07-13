@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
+  ApiError,
   createAnalyzerSession,
   extractFunctionImageFile,
   openAnalyzerHistory,
@@ -15,6 +16,7 @@ import {
   type CurriculumProfile,
   type FunctionOcrExtraction,
 } from '../../api/client';
+import { analyzerToolError, toolRequestFingerprint } from './analyzerPresentation';
 
 type AnalysisState = 'editing' | 'loading' | 'current' | 'stale' | 'error';
 
@@ -92,6 +94,7 @@ export function useFunctionAnalysis(initialExpression: string) {
   const [warnings, setWarnings] = useState<string[]>([]);
   const [toolError, setToolError] = useState<string | null>(null);
   const [toolLoading, setToolLoading] = useState(false);
+  const [toolCooldownSeconds, setToolCooldownSeconds] = useState(0);
   const analyzeRequestRef = useRef(0);
   const baseAbortRef = useRef<AbortController | null>(null);
   const toolAbortRef = useRef<AbortController | null>(null);
@@ -100,6 +103,8 @@ export function useFunctionAnalysis(initialExpression: string) {
   const animationRef = useRef<number | null>(null);
   const animationStartedRef = useRef<number | null>(null);
   const baseResultRef = useRef<AnalyzerSessionResponse | null>(null);
+  const lastToolFingerprintRef = useRef('');
+  const toolCooldownUntilRef = useRef(0);
 
   useEffect(() => {
     return () => {
@@ -122,6 +127,16 @@ export function useFunctionAnalysis(initialExpression: string) {
     document.addEventListener('visibilitychange', syncVisibility);
     return () => document.removeEventListener('visibilitychange', syncVisibility);
   }, []);
+
+  useEffect(() => {
+    if (toolCooldownSeconds <= 0) return;
+    const timer = window.setInterval(() => {
+      const remaining = Math.max(0, Math.ceil((toolCooldownUntilRef.current - Date.now()) / 1000));
+      setToolCooldownSeconds(remaining);
+      if (remaining === 0) setToolError(null);
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [toolCooldownSeconds]);
 
   useEffect(() => {
     if (!isAnimatingTransform || !enableTransform || !requiresTransformValue(transformType) || !pageVisible) {
@@ -189,21 +204,25 @@ export function useFunctionAnalysis(initialExpression: string) {
   }
 
   function scheduleToolAnalyze(overrides?: AnalyzeOptionOverrides) {
-    if (!baseResultRef.current || analysisState !== 'current') return;
+    if (!baseResultRef.current || analysisState !== 'current' || Date.now() < toolCooldownUntilRef.current) return;
     const requestOptions = buildAnalyzeOptions(overrides);
     if (!requestOptions.interval && !requestOptions.line && !requestOptions.transform) {
       toolAbortRef.current?.abort();
+      lastToolFingerprintRef.current = '';
       setResult(baseResultRef.current);
       return;
     }
     if (sliderDebounceRef.current !== null) window.clearTimeout(sliderDebounceRef.current);
-    sliderDebounceRef.current = window.setTimeout(() => void runTool(requestOptions), 280);
+    sliderDebounceRef.current = window.setTimeout(() => void runTool(requestOptions), 650);
   }
 
   async function runTool(options: AnalyzeOptions, baseOverride?: AnalyzerSessionResponse) {
     const base = baseOverride ?? baseResultRef.current;
-    if (!base || (!baseOverride && analysisState !== 'current')) return false;
+    if (!base || (!baseOverride && analysisState !== 'current') || Date.now() < toolCooldownUntilRef.current) return false;
+    const fingerprint = toolRequestFingerprint(base.analysis_id, options);
+    if (lastToolFingerprintRef.current === fingerprint) return true;
     toolAbortRef.current?.abort();
+    lastToolFingerprintRef.current = fingerprint;
     const controller = new AbortController();
     toolAbortRef.current = controller;
     setToolLoading(true);
@@ -231,7 +250,19 @@ export function useFunctionAnalysis(initialExpression: string) {
       return true;
     } catch (error: unknown) {
       if (!isAbortError(error)) {
-        setToolError(error instanceof Error ? error.message : 'Không chạy được công cụ phân tích.');
+        const presented = analyzerToolError(error instanceof ApiError
+          ? error
+          : { message: error instanceof Error ? error.message : 'Không cập nhật được công cụ khảo sát.' });
+        setToolError(presented.message);
+        if (presented.rateLimited) {
+          lastToolFingerprintRef.current = '';
+          toolCooldownUntilRef.current = Date.now() + presented.retryAfterSeconds * 1000;
+          setToolCooldownSeconds(presented.retryAfterSeconds);
+          setIsAnimatingTransform(false);
+          if (sliderDebounceRef.current !== null) window.clearTimeout(sliderDebounceRef.current);
+        } else {
+          lastToolFingerprintRef.current = '';
+        }
       }
       return false;
     } finally {
@@ -469,7 +500,10 @@ export function useFunctionAnalysis(initialExpression: string) {
     setToolLoading(false);
     const base = baseResultRef.current;
     if (base) setResult(base);
-    if (!key) return;
+    if (!key) {
+      lastToolFingerprintRef.current = '';
+      return;
+    }
 
     const requestOptions = buildAnalyzeOptions({
       enableInterval: nextEnableInterval,
@@ -517,6 +551,7 @@ export function useFunctionAnalysis(initialExpression: string) {
     warnings,
     toolError,
     toolLoading,
+    toolCooldownSeconds,
     intervalA,
     intervalB,
     intervalOpenA,
@@ -558,8 +593,7 @@ function containsParameterM(expression: string) {
 }
 
 function formatAnalyzeError(response: AnalyzeResponse): string {
-  if (!response.error_code) return response.error ?? 'Không thể phân tích hàm số.';
-  return `${response.error ?? 'Không thể phân tích hàm số.'} Mã lỗi: ${response.error_code}.`;
+  return response.error ?? 'Không thể phân tích hàm số.';
 }
 
 function buildTransformCommands(baseCommands: string[], expression: string) {

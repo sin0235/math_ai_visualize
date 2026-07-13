@@ -83,6 +83,13 @@ def test_exact_approx_contract_is_additive_for_roots_points_extrema_and_asymptot
     assert rational["asymptotes_v2"]["vertical"][0]["x_value"]["exact"] == "1"
 
 
+def test_analyzer_simplifies_range_endpoints_from_unevaluated_input():
+    result = analyze_function("x^4 + 2*x^3 - 12")
+
+    assert result["range"] == "Interval(-219/16, oo)"
+    assert result["range_latex"] == r"\left[- \frac{219}{16}, \infty\right)"
+
+
 def test_analyzer_api_worker_returns_clean_payload():
     result = _run_analyzer_job_sync("x^2 - 1", None, None, None, None, None)
 

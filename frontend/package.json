@@ -9,6 +9,8 @@
     "preview": "vite preview",
     "test:simulation": "node scripts/run-simulation-baseline.mjs",
     "test:analyzer-values": "node scripts/run-typescript-test.mjs src/components/function-analyzer/graphValues.test.mjs",
+    "test:analyzer-presentation": "node scripts/run-typescript-test.mjs src/components/function-analyzer/analyzerPresentation.test.mjs",
+    "test:api-core": "node scripts/run-typescript-test.mjs src/api/core.test.mjs",
     "test:scene-workspace": "node scripts/run-typescript-test.mjs src/hooks/sceneWorkspaceV3State.test.mjs",
     "test:scene-inspector": "node scripts/run-typescript-test.mjs src/components/sceneInspectorV3State.test.mjs",
     "test:render-projection": "node scripts/run-typescript-test.mjs src/utils/renderProjectionV3.test.mjs",

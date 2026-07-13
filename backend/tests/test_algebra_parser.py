@@ -38,6 +38,7 @@ def test_normalizer_handles_latex_sqrt_and_trig_fraction():
     assert normalize_algebra_input(r"\sin\left(x^2\right)=\frac{1}{2}") == "sin(x**2)=((1)/(2))"
     assert normalize_algebra_input(r"\sqrt{x+1}=2") == "sqrt(x+1)=2"
     assert normalize_algebra_input(r"\sqrt[3]{x+1}=2") == "root(x+1, 3)=2"
+    assert normalize_algebra_input("lnx") == "ln(x)"
 
 
 def test_normalizer_handles_latex_cases_system():

@@ -194,7 +194,7 @@ export function FunctionGraph({ result }: { result: AnalyzeResponse }) {
   }, []);
 
   if (result.requires_substitution_for_graph) {
-    return <div className="info-box">Chọn một giá trị exact của m để dựng đồ thị.</div>;
+    return <div className="info-box">Chọn một giá trị chính xác của tham số để dựng đồ thị.</div>;
   }
 
   if (activeRenderer === 'geogebra') {
@@ -917,29 +917,29 @@ function plotSpecialPoints(
       kind: point.kind,
       label: point.kind === 'max' ? 'CĐ' : point.kind === 'min' ? 'CT' : 'T',
       raw: { x, y },
-      coordsText: `(${point.x_exact || point.x}; ${point.y_exact || point.y || '?'})`,
+      coordsText: `(${shortNumber(x)}; ${shortNumber(y)})`,
     }];
   });
   const inflectionPoints = result.inflection_points.flatMap((point, index) => {
     const x = featureCoordinate(point.x_value, point.x, result.inflection_points_v2?.[index], 'x_value');
     const y = featureCoordinate(point.y_value, point.y, result.inflection_points_v2?.[index], 'y_value');
     if (x === null || y === null) return [];
-    return [{ key: `ip-${index}`, kind: 'inflection', label: 'U', raw: { x, y }, coordsText: `(${point.x_exact || point.x}; ${point.y_exact || point.y})` }];
+    return [{ key: `ip-${index}`, kind: 'inflection', label: 'U', raw: { x, y }, coordsText: `(${shortNumber(x)}; ${shortNumber(y)})` }];
   });
   const xIntercepts = (result.x_intercepts_v2?.roots ?? []).flatMap((root, index) => {
     const x = root.value?.approx ?? decimalGraphNumber(root.x_approx);
     if (x === null) return [];
-    return [{ key: `ox-${index}`, kind: 'axis-x', label: 'Ox', raw: { x, y: 0 }, coordsText: `(${root.x_exact || root.x}; 0)` }];
+    return [{ key: `ox-${index}`, kind: 'axis-x', label: 'Ox', raw: { x, y: 0 }, coordsText: `(${shortNumber(x)}; 0)` }];
   });
   const legacyXIntercepts = result.x_intercepts_v2 ? [] : result.x_intercepts.flatMap((value, index) => {
     const x = decimalGraphNumber(value);
-    return x === null ? [] : [{ key: `ox-${index}`, kind: 'axis-x', label: 'Ox', raw: { x, y: 0 }, coordsText: `(${value}; 0)` }];
+    return x === null ? [] : [{ key: `ox-${index}`, kind: 'axis-x', label: 'Ox', raw: { x, y: 0 }, coordsText: `(${shortNumber(x)}; 0)` }];
   });
   const yIntercept = decimalGraphNumber(result.y_intercept);
   const points = [
     ...criticalPoints,
     ...inflectionPoints,
-    ...(yIntercept === null ? [] : [{ key: 'oy', kind: 'axis-y', label: 'Oy', raw: { x: 0, y: yIntercept }, coordsText: `(0; ${result.y_intercept})` }]),
+    ...(yIntercept === null ? [] : [{ key: 'oy', kind: 'axis-y', label: 'Oy', raw: { x: 0, y: yIntercept }, coordsText: `(0; ${shortNumber(yIntercept)})` }]),
     ...xIntercepts,
     ...legacyXIntercepts,
   ].map((point) => ({ ...point, ...project(point.raw) }));

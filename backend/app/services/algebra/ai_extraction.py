@@ -44,7 +44,8 @@ Quy tắc:
 7. Nếu đề hỏi "vô nghiệm thực", dùng quadratic_no_real_root.
 8. Nếu đề hỏi "tam thức/phương trình dương với mọi x", dùng quadratic_positive_all.
 9. Dùng * cho phép nhân, ^ cho lũy thừa, không dùng LaTeX trong input.
-10. Nếu không chắc topic/variables/domain: ghi rõ trong warnings.
+10. Trong các hàm như `integral(expr=...)`, `derivative(expr=...)`, tham số `expr` CHỈ được chứa biểu thức toán học (ví dụ: `x*ln(x)`), TUYỆT ĐỐI KHÔNG chứa văn bản tự nhiên như "tìm tích phân", "tính", v.v.
+11. Nếu không chắc topic/variables/domain: ghi rõ trong warnings.
    Không bịa field để ghi đè lựa chọn người dùng; server sẽ merge và giữ field user đã chọn.
    Chỉ điền các field còn auto/thiếu. Ưu tiên cảnh báo hơn đoán mò.
 """.strip()

@@ -4638,14 +4638,14 @@ button:disabled {
 .viewer-header-row {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
   gap: 12px;
 }
 
 .viewer-controls {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 6px;
   flex-wrap: wrap;
   width: 100%;
@@ -7531,23 +7531,23 @@ pre {
   display: inline-flex;
   justify-content: center;
   align-items: center;
-  border: 1px solid var(--line-2);
-  border-radius: 999px;
-  padding: 6px 12px;
-  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 10px;
+  background: transparent;
   color: var(--ink-3);
   font-family: inherit;
   font-size: 0.78rem;
-  font-weight: 850;
+  font-weight: 600;
   cursor: pointer;
   transition: background 0.14s, border-color 0.14s, color 0.14s;
 }
 
 .fa2-tool-pill:hover,
 .fa2-tool-pill.is-active {
-  border-color: var(--ink);
-  background: var(--ink);
-  color: #fff;
+  border-color: var(--line-2);
+  background: var(--surface);
+  color: var(--ink);
 }
 
 .fa2-tool-pill:disabled {
@@ -7581,7 +7581,7 @@ pre {
 .fa2-tool-label {
   color: var(--ink-3);
   font-size: 0.78rem;
-  font-weight: 900;
+  font-weight: 600;
 }
 
 .fa2-slider-row {
@@ -7602,9 +7602,10 @@ pre {
   padding: 6px 8px;
   background: var(--paper);
   color: var(--ink);
-  font-family: 'Courier New', monospace;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
   font-size: 0.82rem;
-  font-weight: 800;
+  font-weight: 500;
 }
 
 .fa2-result-table {
@@ -8347,11 +8348,9 @@ pre {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  color: var(--ink-2);
-  font-size: 0.72rem;
-  font-weight: 900;
-  text-transform: uppercase;
-  letter-spacing: 0.09em;
+  color: var(--ink-3);
+  font-size: 0.78rem;
+  font-weight: 600;
 }
 
 .fa2-formula-row-control {
@@ -8414,7 +8413,7 @@ pre {
 
 .fa2-expression-preview > span:first-child {
   flex: 0 0 auto;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .fa2-expression-syntax {
@@ -8423,18 +8422,44 @@ pre {
 }
 
 .fa2-copy-values {
+  color: var(--ink-4);
+  font-size: 0.72rem;
+}
+
+.fa2-copy-values > summary {
+  width: fit-content;
+  cursor: pointer;
+  list-style: none;
+}
+
+.fa2-copy-values > summary::-webkit-details-marker {
+  display: none;
+}
+
+.fa2-copy-values > div {
+  display: grid;
+  gap: 6px;
+  padding-top: 6px;
+}
+
+.fa2-copy-value-group {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
+  flex-wrap: wrap;
+}
+
+.fa2-copy-value-group > span {
+  min-width: 68px;
+  color: var(--ink-3);
 }
 
 .fa2-copy-values button {
-  border: 1px solid var(--line-2);
-  border-radius: 7px;
+  border: 0;
+  border-radius: 6px;
   padding: 4px 7px;
-  background: var(--paper);
-  color: var(--ink-2);
+  background: var(--surface);
+  color: var(--ink-3);
   font: inherit;
   cursor: pointer;
 }
@@ -8457,7 +8482,7 @@ pre {
 .fa2-parameter-controls label {
   color: var(--ink-3);
   font-size: 0.76rem;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .fa2-parameter-controls label,
@@ -8513,7 +8538,7 @@ pre {
 .fa2-ocr-review-head span {
   color: var(--ink-3);
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .fa2-ocr-review img {
@@ -8538,7 +8563,7 @@ pre {
 .fa2-ocr-confidence {
   display: grid;
   gap: 4px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .fa2-ocr-confidence progress {
@@ -8936,67 +8961,6 @@ pre {
   align-content: start;
 }
 
-.fa2-result-tabs {
-  display: grid;
-  gap: 12px;
-  border: 0;
-  border-top: 1px solid var(--line-2);
-  border-radius: 0;
-  padding: 10px 0 0;
-  background: transparent;
-  box-shadow: none;
-  min-width: 0;
-}
-
-.fa2-tab-list {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  align-items: center;
-  gap: 0;
-  border-bottom: 1px solid var(--line-2);
-  overflow-x: auto;
-}
-
-.fa2-result-tab {
-  display: inline-flex;
-  justify-content: center;
-  position: relative;
-  border: 0;
-  border-radius: 0;
-  padding: 0 0 10px;
-  background: transparent;
-  color: var(--ink-4);
-  font-family: inherit;
-  font-size: 0.78rem;
-  font-weight: 900;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.fa2-result-tab::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -1px;
-  height: 2px;
-  background: var(--ink);
-  transform: scaleX(0);
-  transform-origin: left center;
-  transition: transform 0.18s ease;
-}
-
-.fa2-result-tab:hover,
-.fa2-result-tab.is-active {
-  color: var(--ink);
-}
-
-.fa2-result-tab.is-active::after {
-  transform: scaleX(1);
-}
-
 .fa2-tab-panel,
 .fa2-quick-workbench,
 .fa2-tools-workbench,
@@ -9012,7 +8976,7 @@ pre {
   padding-top: 12px;
   color: var(--ink-4);
   font-size: 0.82rem;
-  font-weight: 800;
+  font-weight: 500;
 }
 
 .fa2-detail-grid {
@@ -9038,13 +9002,10 @@ pre {
   text-align: left;
 }
 
-/* Chỉ nhãn (Tập XD, Đạo hàm…); không uppercase KatexSpan — làm hỏng x, chỉ số */
 .fa2-summary-card > span:first-child {
   color: var(--ink-4);
-  font-size: 0.68rem;
-  font-weight: 900;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
+  font-size: 0.72rem;
+  font-weight: 600;
 }
 
 .fa2-summary-card strong {
@@ -9070,10 +9031,8 @@ pre {
 
 .fa2-quick-eyebrow {
   color: var(--ink-4);
-  font-size: 0.72rem;
-  font-weight: 900;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  font-size: 0.74rem;
+  font-weight: 600;
 }
 
 .fa2-quick-expression {
@@ -9110,7 +9069,7 @@ pre {
   padding: 4px 9px;
   color: var(--ink-3);
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 650;
 }
 
 .fa2-verification-badge.is-verified { color: #166534; }
@@ -9137,7 +9096,7 @@ pre {
   justify-content: space-between;
   gap: 12px;
   cursor: pointer;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .fa2-analysis-steps details > ul {
@@ -9593,10 +9552,8 @@ pre {
   flex-shrink: 0;
 }
 .fa2-section-title {
-  font-size: 0.78rem;
-  font-weight: 900;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
+  font-size: 0.82rem;
+  font-weight: 650;
   color: var(--ink-3);
 }
 .fa2-section-trailing {
@@ -9633,7 +9590,7 @@ pre {
 }
 .fa2-label-katex .katex {
   font-size: 1.02rem;
-  font-weight: 900;
+  font-weight: 400;
 }
 .fa2-katex { font-size: 1.28rem; }
 
@@ -9685,8 +9642,8 @@ pre {
 .fa2-ext-axis-x,
 .fa2-ext-axis-y { border-color: var(--line-2); background: #ffffff; color: var(--ink); }
 .fa2-ext-body { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.fa2-ext-kind { font-size: 0.82rem; font-weight: 800; color: var(--ink-3); white-space: nowrap; }
-.fa2-ext-coords { font-size: 0.88rem; font-weight: 700; color: var(--ink); overflow-x: auto; }
+.fa2-ext-kind { font-size: 0.82rem; font-weight: 600; color: var(--ink-3); white-space: nowrap; }
+.fa2-ext-coords { font-size: 0.88rem; font-weight: 400; color: var(--ink); overflow-x: auto; }
 
 /* Monotone */
 .fa2-mono {
@@ -9705,8 +9662,8 @@ pre {
 .fa2-mono-arrow { font-size: 1.1rem; font-weight: 900; width: 18px; text-align: center; }
 .fa2-mono-inc .fa2-mono-arrow,
 .fa2-mono-dec .fa2-mono-arrow { color: var(--ink); }
-.fa2-mono-label { font-weight: 700; color: var(--ink-3); }
-.fa2-mono-val   { font-family: 'Courier New', monospace; word-break: break-word; }
+.fa2-mono-label { font-weight: 600; color: var(--ink-3); }
+.fa2-mono-val   { font-variant-numeric: tabular-nums; word-break: break-word; }
 
 /* Asymptotes */
 .fa2-asym-list { display: grid; gap: 6px; }
@@ -9725,10 +9682,8 @@ pre {
   flex-shrink: 0;
   border-radius: 6px;
   padding: 2px 8px;
-  font-size: 0.7rem;
-  font-weight: 900;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  font-size: 0.72rem;
+  font-weight: 600;
 }
 .fa2-asym-h { background: var(--line); color: var(--ink-2); }
 .fa2-asym-v { background: #fde8e8; color: #991b1b; }
@@ -13832,10 +13787,6 @@ button.analyzer-guide-label:hover {
   font-family: inherit;
 }
 
-.algebra-workspace:has(.algebra-input-disclosure:not([open])) {
-  grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
-}
-
 .algebra-input-panel,
 .algebra-result-panel,
 .algebra-empty-result,
@@ -13855,7 +13806,7 @@ button.analyzer-guide-label:hover {
   background: #fafafa;
 }
 
-.algebra-input-disclosure > summary,
+.algebra-input-header,
 .algebra-result-disclosure > summary,
 .algebra-history-disclosure > summary {
   display: flex;
@@ -13866,13 +13817,11 @@ button.analyzer-guide-label:hover {
   cursor: pointer;
 }
 
-.algebra-input-disclosure > summary::-webkit-details-marker,
 .algebra-result-disclosure > summary::-webkit-details-marker,
 .algebra-history-disclosure > summary::-webkit-details-marker {
   display: none;
 }
 
-.algebra-input-disclosure > summary:focus-visible,
 .algebra-result-disclosure > summary:focus-visible,
 .algebra-history-disclosure > summary:focus-visible {
   border-radius: var(--radius-sm);
@@ -13897,21 +13846,6 @@ button.analyzer-guide-label:hover {
   font-weight: 620;
   line-height: 1.2;
   text-wrap: balance;
-}
-
-.algebra-disclosure-action {
-  color: var(--ink-3);
-  font-size: 0;
-  font-weight: 600;
-}
-
-.algebra-disclosure-action::after {
-  content: "Mở";
-  font-size: 0.76rem;
-}
-
-.algebra-input-disclosure[open] .algebra-disclosure-action::after {
-  content: "Đóng";
 }
 
 .algebra-input-panel .field-label {
@@ -14973,7 +14907,6 @@ button.analyzer-guide-label:hover {
 
 @media (max-width: 960px) {
   .algebra-workspace,
-  .algebra-workspace:has(.algebra-input-disclosure:not([open])),
   .algebra-result-grid,
   .algebra-sequence-grid,
   .algebra-quick-examples,
@@ -17945,6 +17878,19 @@ button.analyzer-guide-label:hover {
 /* Analyzer focused workspace */
 .fa2-panel {
   gap: 12px;
+  font-family: inherit;
+}
+
+.fa2-panel button,
+.fa2-panel input,
+.fa2-panel select,
+.fa2-panel textarea,
+.fa2-panel .fa2-mini-input,
+.fa2-panel .fa2-geogebra-point-popover strong,
+.fa2-panel .fa2-graph-trace text,
+.fa2-panel .fa2-graph-popover-coords,
+.fa2-panel .fa2-graph-tick {
+  font-family: inherit;
 }
 
 .fa2-control-panel {
@@ -17990,8 +17936,52 @@ button.analyzer-guide-label:hover {
   z-index: 20;
   display: grid;
   gap: 6px;
-  border-bottom: 1px solid var(--line);
-  padding-bottom: 10px;
+  margin-top: 4px;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+.fa2-actions-disclosure > summary,
+.fa2-tools-disclosure > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  list-style: none;
+  color: var(--ink-3);
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.fa2-actions-disclosure > summary::-webkit-details-marker,
+.fa2-tools-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.fa2-actions-disclosure:not([open]) > .fa2-action-bar,
+.fa2-tools-disclosure:not([open]) > .fa2-tools-workbench,
+.fa2-copy-values:not([open]) > div {
+  display: none;
+}
+
+.fa2-actions-disclosure > summary small,
+.fa2-tools-disclosure > summary small {
+  color: var(--ink-4);
+  font-size: 0.72rem;
+  font-weight: 400;
+}
+
+.fa2-actions-disclosure > summary:focus-visible,
+.fa2-tools-disclosure > summary:focus-visible {
+  border-radius: 6px;
+  outline: 2px solid var(--ink);
+  outline-offset: 4px;
+}
+
+.fa2-actions-disclosure[open] > summary,
+.fa2-tools-disclosure[open] > summary {
+  color: var(--ink);
 }
 
 .fa2-action-bar {
@@ -17999,6 +17989,7 @@ button.analyzer-guide-label:hover {
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
+  padding-top: 10px;
 }
 
 .fa2-action-menu {
@@ -18015,7 +18006,7 @@ button.analyzer-guide-label:hover {
   background: var(--paper);
   color: var(--ink-2);
   font-size: 0.8rem;
-  font-weight: 800;
+  font-weight: 600;
   cursor: pointer;
   list-style: none;
 }
@@ -18111,6 +18102,110 @@ button.analyzer-guide-label:hover {
   font-size: 0.78rem;
 }
 
+.fa2-tools-disclosure {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.fa2-tools-workbench {
+  padding-top: 12px;
+}
+
+.fa2-tool-error {
+  border-left: 2px solid #d97706;
+  padding: 7px 10px;
+  color: #78350f;
+  background: #fffbeb;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.fa2-summary-math-list,
+.fa2-summary-math-list > div {
+  display: grid;
+  gap: 5px;
+}
+
+.fa2-summary-math-list > div {
+  grid-template-columns: minmax(72px, auto) minmax(0, 1fr);
+  align-items: baseline;
+}
+
+.fa2-summary-math-list small {
+  color: var(--ink-4);
+  font-size: 0.72rem;
+}
+
+.fa2-verification-details,
+.fa2-evidence-list,
+.fa2-tangent-result,
+.fa2-interval-overview,
+.fa2-extreme-result,
+.fa2-conclusion,
+.fa2-pedagogical-steps {
+  display: grid;
+  gap: 8px;
+}
+
+.fa2-interval-overview,
+.fa2-extreme-result,
+.fa2-conclusion {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--paper);
+}
+
+.fa2-interval-overview {
+  justify-items: center;
+  overflow-x: auto;
+}
+
+.fa2-conclusion {
+  border-color: var(--line-2);
+  background: var(--surface);
+  line-height: 1.5;
+}
+
+.fa2-evidence-list {
+  margin: 0;
+}
+
+.fa2-evidence-list > div {
+  display: grid;
+  grid-template-columns: minmax(100px, 0.35fr) minmax(0, 1fr);
+  gap: 10px;
+}
+
+.fa2-evidence-list dt {
+  color: var(--ink-4);
+}
+
+.fa2-evidence-list dd {
+  margin: 0;
+}
+
+.fa2-pedagogical-steps ol {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.fa2-tangent-list,
+.fa2-parameter-cases,
+.fa2-root-summary {
+  margin-top: 12px;
+}
+
+.fa2-parameter-cases,
+.fa2-root-summary {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.fa2-root-summary {
+  align-items: flex-start;
+}
+
 .fa2-result-disclosure,
 .fa2-warning-summary {
   border-top: 1px solid var(--line);
@@ -18121,7 +18216,7 @@ button.analyzer-guide-label:hover {
 .fa2-warning-summary > summary {
   color: var(--ink-3);
   font-size: 0.8rem;
-  font-weight: 850;
+  font-weight: 600;
   cursor: pointer;
 }
 
@@ -18171,7 +18266,7 @@ button.analyzer-guide-label:hover {
 
 @media (min-width: 1101px) {
   .fa2-result-shell {
-    grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.65fr);
+    grid-template-columns: minmax(0, 1.1fr) minmax(380px, 0.9fr);
     gap: clamp(18px, 2vw, 28px);
   }
 }
@@ -18199,6 +18294,17 @@ button.analyzer-guide-label:hover {
 
   .fa2-header-sub,
   .fa2-expression-preview > span:first-child {
+    display: none;
+  }
+
+  .fa2-tool-strip,
+  .fa2-evidence-list > div,
+  .fa2-summary-math-list > div {
+    grid-template-columns: 1fr;
+  }
+
+  .fa2-actions-disclosure > summary small,
+  .fa2-tools-disclosure > summary small {
     display: none;
   }
 
