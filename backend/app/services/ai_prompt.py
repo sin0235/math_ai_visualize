@@ -138,6 +138,12 @@ Quy tắc suy luận hình đặc biệt:
 - Mặt cầu tâm O bán kính r: tạo point_3d O tại đúng tâm và object sphere center O radius r; opacity 0.12-0.2.
 - Đường tròn/mặt cầu đi qua A: nếu có tâm O và bán kính chưa cho, suy ra bán kính OA.
 
+Quy tắc thể hiện yêu cầu/câu hỏi của đề bài (QUAN TRỌNG):
+- Khi đề bài yêu cầu tính/chứng minh về khoảng cách, góc, AI PHẢI tự suy luận vị trí và vẽ các đoạn thẳng/điểm phụ để thể hiện rõ đại lượng đó trên hình (nổi bật bằng màu #f97316 hoặc #7c3aed, style='dashed').
+- KHOẢNG CÁCH TỪ 1 ĐIỂM ĐẾN 1 MẶT PHẲNG: Ví dụ "khoảng cách từ A đến mặt phẳng (SBC)". AI phải tự xác định chân đường vuông góc H từ A xuống (SBC). Tạo point_3d H, vẽ segment A-H (dashed, line_width 2, color nổi bật), thêm right_angle tại H (ví dụ arms ["A", "S"] hoặc điểm khác trên mặt).
+- KHOẢNG CÁCH GIỮA 2 ĐƯỜNG CHÉO NHAU: Tự dựng đoạn vuông góc chung MN. Tạo point_3d M, N; vẽ segment M-N (dashed); thêm 2 right_angle tại M và N.
+- GÓC GIỮA ĐƯỜNG VÀ MẶT / HAI MẶT PHẲNG: Tự dựng hình chiếu, tạo các đoạn thẳng tạo nên góc phẳng đó, thêm angle annotation.
+
 Quy tắc vector:
 - Với bài yêu cầu mô phỏng tổng hai vector u + v, phải tạo các point phụ trợ để thể hiện quy tắc đầu-nối-đuôi hoặc hình bình hành, rồi tạo vector kết quả u+v bằng object vector_2d/vector_3d có tên/label rõ.
 - Với bài yêu cầu mô phỏng hiệu u - v, biểu diễn thành u + (-v): tạo vector đối của v nếu cần, đặt tên như mv hoặc minus_v, rồi tạo vector kết quả u-v rõ ràng.
@@ -434,8 +440,9 @@ Quy tắc phân tích:
 6. Liệt kê mọi quan hệ hình học kèm reasoning.
 7. Liệt kê mọi annotation cần hiển thị trên hình.
 8. Với toán ứng dụng/thực tế: chuyển mô hình đời thực thành hình học trước.
-9. Nếu đề có biến tổng quát chưa cho giá trị (a, h, alpha, m, k...), liệt kê vào parameters với min/max/default/step hợp lý; ghi chú trong expr_for_points các toạ độ phụ thuộc tham số (ví dụ "B.x":"a", "S.y":"h"). Toạ độ trong points vẫn ghi giá trị eval với defaults (mặc định a=3, h=3, alpha=60). Nếu đề có giá trị cụ thể (cạnh = 4) thì để parameters = [], hình tĩnh.
-10. Thêm warnings nếu phát hiện mâu thuẫn hoặc thiếu dữ kiện.
+9. Tự động dựng hình minh họa câu hỏi của đề bài: Nếu đề hỏi tính khoảng cách, góc, thiết diện... PHẢI chủ động dựng thêm điểm phụ (ví dụ: hình chiếu H), lập toạ độ cho nó, và thêm đoạn thẳng nối (style dashed) cùng góc vuông để đại diện cho đại lượng đó trên hình.
+10. Nếu đề có biến tổng quát chưa cho giá trị (a, h, alpha, m, k...), liệt kê vào parameters với min/max/default/step hợp lý; ghi chú trong expr_for_points các toạ độ phụ thuộc tham số (ví dụ "B.x":"a", "S.y":"h"). Toạ độ trong points vẫn ghi giá trị eval với defaults (mặc định a=3, h=3, alpha=60). Nếu đề có giá trị cụ thể (cạnh = 4) thì để parameters = [], hình tĩnh.
+11. Thêm warnings nếu phát hiện mâu thuẫn hoặc thiếu dữ kiện.
 
 Self-check kế hoạch (BẮT BUỘC tự kiểm trong nội bộ trước khi xuất):
 - Mọi tên điểm trong edges_and_faces/relations/annotations_needed phải có entry trong points.
