@@ -19114,6 +19114,33 @@ iframe {
   box-shadow: 0 1px 4px rgb(15 23 42 / 12%);
 }
 
+.math-formula-control {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.math-formula-host {
+  min-width: 0;
+}
+
+.math-formula-keyboard-toggle {
+  justify-self: end;
+  min-height: 40px;
+  border: 1px solid var(--line-2);
+  border-radius: 9px;
+  padding: 8px 12px;
+  background: var(--paper-2);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.math-formula-keyboard-toggle:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
 .math-input-composer textarea,
 .math-formula-field {
   box-sizing: border-box;
@@ -19168,6 +19195,7 @@ iframe {
   }
 
   .math-input-composer__tabs,
+  .math-formula-keyboard-toggle,
   .sp-composer-submit {
     width: 100%;
   }

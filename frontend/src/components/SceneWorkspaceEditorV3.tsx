@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
+import type { ConstructionAction } from '../api/render';
 import { previewPointMove } from '../hooks/sceneWorkspaceV3State';
 import { useSceneWorkspaceV3 } from '../hooks/useSceneWorkspaceV3';
 import type { MathSceneV3, SceneCommand, SceneWorkspaceResponseV3 } from '../types/sceneV3';
@@ -12,23 +13,39 @@ type Vec3 = { x: number; y: number; z: number };
 
 interface SceneWorkspaceEditorV3Props {
   initialResponse: SceneWorkspaceResponseV3;
+  highlightedObjectIds?: string[];
+  constructionActions?: ConstructionAction[];
   onCommitted?: (response: SceneWorkspaceResponseV3) => void;
   onImageCaptureReady?: (capture: ThreeSceneImageCapture | null) => void;
 }
 
-export function SceneWorkspaceEditorV3({ initialResponse, onCommitted, onImageCaptureReady }: SceneWorkspaceEditorV3Props) {
+export function SceneWorkspaceEditorV3({
+  initialResponse,
+  highlightedObjectIds = [],
+  constructionActions = [],
+  onCommitted,
+  onImageCaptureReady,
+}: SceneWorkspaceEditorV3Props) {
   const workspace = useSceneWorkspaceV3();
   const [tool, setTool] = useState<EditToolV3>('move');
   const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
   const [placementPlane, setPlacementPlane] = useState<'xy' | 'xz' | 'yz'>('xy');
   const [placementDepth, setPlacementDepth] = useState(0);
-  const [highlightedObjectIds, setHighlightedObjectIds] = useState<string[]>([]);
+  const [inspectorHighlightedObjectIds, setInspectorHighlightedObjectIds] = useState<string[]>([]);
   const [localError, setLocalError] = useState<string | null>(null);
   const hydratedSceneId = useRef<string | null>(null);
   const parameterTimer = useRef<number | null>(null);
   const response = workspace.state.committed;
   const scene = response?.scene ?? null;
   const saving = workspace.state.pendingCommand !== null;
+  const renderedHighlightObjectIds = useMemo(() => Array.from(new Set([
+    ...inspectorHighlightedObjectIds,
+    ...highlightedObjectIds,
+    ...constructionActions.flatMap((action) => [
+      ...action.source_object_ids,
+      ...(action.result_object_id ? [action.result_object_id] : []),
+    ]),
+  ])), [constructionActions, highlightedObjectIds, inspectorHighlightedObjectIds]);
 
   useEffect(() => {
     if (hydratedSceneId.current === initialResponse.scene.scene_id) return;
@@ -169,7 +186,7 @@ export function SceneWorkspaceEditorV3({ initialResponse, onCommitted, onImageCa
         response={response}
         previewScene={workspace.state.previewScene}
         interaction={interaction}
-        highlightedObjectIds={highlightedObjectIds}
+        highlightedObjectIds={renderedHighlightObjectIds}
         saving={saving}
         onPointChange={movePoint}
         onImageCaptureReady={onImageCaptureReady}
@@ -215,8 +232,8 @@ export function SceneWorkspaceEditorV3({ initialResponse, onCommitted, onImageCa
         {scene && <SceneInspectorV3
           response={response}
           saving={saving}
-          highlightedObjectIds={highlightedObjectIds}
-          onHighlight={setHighlightedObjectIds}
+          highlightedObjectIds={renderedHighlightObjectIds}
+          onHighlight={setInspectorHighlightedObjectIds}
           onSetVisibility={setVisibility}
           onDelete={deleteObject}
           onUndo={undoLatest}

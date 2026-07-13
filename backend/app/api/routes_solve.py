@@ -49,8 +49,12 @@ class SolveStepResponse(BaseModel):
     result_latex: str | None = None
     sub_steps: list["SolveStepResponse"] = Field(default_factory=list)
     theorem: str | None = None
+    theorem_id: str | None = None
     claim: str | None = None
     depends_on: list[str] = Field(default_factory=list)
+    highlight_object_ids: list[str] = Field(default_factory=list)
+    relation_ids: list[str] = Field(default_factory=list)
+    construction_actions: list[dict[str, object]] = Field(default_factory=list)
 
 SolveStepResponse.model_rebuild()
 
@@ -139,11 +143,13 @@ async def solve_problem(
         else:
             registry = await load_model_registry(db, settings)
             solver_profile = resolve_task_profile(registry, "solver_explanation")
-        if geometry_method != "classical" and (settings.router9_api_key or settings.openrouter_api_key or settings.openai_compat_api_key):
+        ai_configured = settings.router9_api_key or settings.openrouter_api_key or settings.openai_compat_api_key
+        proof_verified = getattr(result, "confidence", "verified") == "verified" and bool(result.steps)
+        if ai_configured and (geometry_method != "classical" or proof_verified):
             from app.services.solver_explainer import explain_solver_result
 
             result = await explain_solver_result(result, scene_input, settings, solver_profile, method=geometry_method)
-            used_ai = True
+            used_ai = result.realization_status == "ai_validated"
     except CommittedSceneError as error:
         raise api_error(error.status_code, str(error), error.code) from error
     except Exception as e:
@@ -201,8 +207,12 @@ async def solve_problem(
             result_latex=s.result_latex,
             sub_steps=[_map_step(sub) for sub in getattr(s, "sub_steps", [])],
             theorem=getattr(s, "theorem", None),
+            theorem_id=getattr(s, "theorem_id", None),
             claim=getattr(s, "claim", None),
             depends_on=getattr(s, "depends_on", []),
+            highlight_object_ids=getattr(s, "highlight_object_ids", []),
+            relation_ids=getattr(s, "relation_ids", []),
+            construction_actions=getattr(s, "construction_actions", []),
         )
 
     return SolveResponse(

@@ -101,6 +101,7 @@ def _solver_relation(
         "id": relation.id,
         "type": relation.type,
         "operands": [operand.model_dump(mode="json") for operand in relation.operands],
+        "operand_names": operands,
         "object_1": operands[0],
         "object_2": operands[1] if len(operands) > 1 else None,
         "args": relation.args,

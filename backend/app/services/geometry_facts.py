@@ -4,6 +4,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.services.relation_registry import normalize_relation_type
+
 REJECTED_VERIFICATION = {"failed", "error"}
 
 
@@ -118,7 +120,7 @@ def _derived_fact(derived: dict[str, Any], index: int) -> GeometryFact | None:
 
 def _relation_fact(relation: dict[str, Any], index: int) -> GeometryFact | None:
     metadata = relation.get("metadata") if isinstance(relation.get("metadata"), dict) else {}
-    rel_type = str(relation.get("type") or "").strip().lower()
+    rel_type = normalize_relation_type(str(relation.get("type") or ""))
     verification = _verification_status(relation)
     if verification in REJECTED_VERIFICATION:
         return None
@@ -171,6 +173,58 @@ def _relation_fact(relation: dict[str, Any], index: int) -> GeometryFact | None:
                 args={"point": point, "segment": edge},
                 source=source,
                 text=f"{point} là trung điểm của {edge[0]}{edge[1]}.",
+                verification_status=verification,
+                metadata=metadata,
+            )
+    if rel_type == "intersection":
+        names = tuple(str(item) for item in relation.get("operand_names") or [] if str(item))
+        if len(names) >= 3:
+            return GeometryFact(
+                id=str(relation.get("id") or f"relation:{index}"),
+                type="intersection",
+                args={"point": names[0], "objects": names[1:]},
+                source=source,
+                text=f"{names[0]} là giao điểm của {names[1]} và {names[2]}.",
+                verification_status=verification,
+                metadata=metadata,
+            )
+    if rel_type == "parallel":
+        first = parse_edge_token(str(relation.get("object_1") or ""))
+        second = parse_edge_token(str(relation.get("object_2") or ""))
+        if first and second:
+            return GeometryFact(
+                id=str(relation.get("id") or f"relation:{index}"),
+                type="parallel_lines",
+                args={"first": first, "second": second},
+                source=source,
+                text=f"{first[0]}{first[1]} song song với {second[0]}{second[1]}.",
+                verification_status=verification,
+                metadata=metadata,
+            )
+    if rel_type in {"collinear", "coplanar"}:
+        names = tuple(str(item) for item in relation.get("operand_names") or [] if str(item))
+        minimum = 3 if rel_type == "collinear" else 4
+        if len(names) >= minimum:
+            description = "thẳng hàng" if rel_type == "collinear" else "đồng phẳng"
+            return GeometryFact(
+                id=str(relation.get("id") or f"relation:{index}"),
+                type=rel_type,
+                args={"points": names},
+                source=source,
+                text=f"Các điểm {', '.join(names)} {description}.",
+                verification_status=verification,
+                metadata=metadata,
+            )
+    if rel_type == "equal_length":
+        first = parse_edge_token(str(relation.get("object_1") or ""))
+        second = parse_edge_token(str(relation.get("object_2") or ""))
+        if first and second:
+            return GeometryFact(
+                id=str(relation.get("id") or f"relation:{index}"),
+                type="equal_length",
+                args={"first": first, "second": second},
+                source=source,
+                text=f"{first[0]}{first[1]} = {second[0]}{second[1]}.",
                 verification_status=verification,
                 metadata=metadata,
             )

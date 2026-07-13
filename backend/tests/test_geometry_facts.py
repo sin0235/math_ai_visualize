@@ -103,3 +103,47 @@ def test_classical_proof_derives_normal_section_for_plane_angle():
     assert proof is not None
     assert proof.steps[1].title == "Dựng góc phẳng nhị diện"
     assert set(proof.steps[1].depends_on) == {"sa-perp-base", "ac-perp-ab"}
+
+
+def test_geometry_fact_graph_extracts_wave2_relations():
+    scene = {
+        "relations": [
+            {"id": "parallel", "type": "parallel", "object_1": "AB", "object_2": "CD", "source": "given"},
+            {"id": "collinear", "type": "collinear", "operand_names": ["A", "E", "B"], "source": "given"},
+            {"id": "coplanar", "type": "coplanar", "operand_names": ["A", "B", "C", "D"], "source": "given"},
+            {"id": "equal", "type": "equal_length", "object_1": "AB", "object_2": "AC", "source": "given"},
+        ],
+    }
+
+    graph = build_geometry_fact_graph(scene)
+
+    assert graph.by_type("parallel_lines")[0].args == {"first": ("A", "B"), "second": ("C", "D")}
+    assert graph.by_type("collinear")[0].args["points"] == ("A", "E", "B")
+    assert graph.by_type("coplanar")[0].args["points"] == ("A", "B", "C", "D")
+    assert graph.by_type("equal_length")[0].args == {"first": ("A", "B"), "second": ("A", "C")}
+
+
+def test_classical_proof_uses_verified_parallel_relation():
+    scene = {
+        "relations": [{
+            "id": "ab-parallel-cd",
+            "type": "parallel",
+            "object_1": "AB",
+            "object_2": "CD",
+            "source": "given",
+            "verification": {"status": "verified"},
+        }],
+    }
+
+    proof = build_classical_proof(
+        scene,
+        "Chứng minh AB song song CD",
+        "angle_line_line",
+        ["A", "B", "C", "D"],
+        "AB song song CD: ĐÚNG",
+        "0",
+    )
+
+    assert proof is not None
+    assert proof.steps[1].theorem_id == "relation.parallel.given"
+    assert proof.steps[1].depends_on == ["ab-parallel-cd"]

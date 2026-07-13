@@ -102,6 +102,14 @@ export interface ProblemVariantsResponse {
   model: string;
 }
 
+export interface ConstructionAction {
+  action_id: string;
+  type: 'highlight' | 'add_point' | 'connect_points' | 'project_point' | 'intersect_objects' | 'add_auxiliary_line' | 'add_auxiliary_plane';
+  source_object_ids: string[];
+  result_object_id?: string | null;
+  parameters: Record<string, unknown>;
+}
+
 export interface SolveStep {
   index: number;
   title: string;
@@ -115,8 +123,12 @@ export interface SolveStep {
   result_latex?: string | null;
   sub_steps?: SolveStep[];
   theorem?: string | null;
+  theorem_id?: string | null;
   claim?: string | null;
   depends_on?: string[];
+  highlight_object_ids?: string[];
+  relation_ids?: string[];
+  construction_actions?: ConstructionAction[];
 }
 
 export type SolveConfidence = 'verified' | 'partial' | 'insufficient';

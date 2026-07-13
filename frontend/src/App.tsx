@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError, changePassword, consumeAnalyzerLinkFromLocation, deleteRenderHistory, forgotPassword, getCurrentUser, getHealth, getLearningProfile, getRenderHistory, getRenderHistoryDetail, getSessions, getSettingsDefaults, login, loginWithGoogle, logout, ocrImageByUploadId, patchRenderHistory, register, renderEditedScene, renderProblemV3, resendVerification, resetPassword, restoreRenderHistoryV3, revokeOtherSessions, revokeSession, updateLearningProfile, updateProfile, uploadOcrImage, verifyEmail, type AdminRenderHistoryDetail, type PracticeHandoffPayload, type RenderHandoffPayload, type RenderHistoryDetailV2, type RenderHistoryItem, type SessionResponse, type UserLearningProfileResponse, type UserLearningProfileUpdateRequest, type UserResponse } from './api/client';
+import type { ConstructionAction } from './api/render';
 import type { InterpretationCandidate, InterpretationResponse } from './api/nlp';
 import { InterpretationPanel, useInterpretationPreflight } from './components/nlp/InterpretationPanel';
 import { defaultAdvancedSettings, ProblemInput, type TierKey } from './components/ProblemInput';
@@ -201,6 +202,7 @@ export default function App() {
   const [renderToolsPanel, setRenderToolsPanel] = useState<'export' | 'variants' | null>(null);
   const [sidebarTool, setSidebarTool] = useState<'input' | 'solver'>('input');
   const [highlightedObjects, setHighlightedObjects] = useState<string[]>([]);
+  const [constructionActions, setConstructionActions] = useState<ConstructionAction[]>([]);
   const [threeImageCapture, setThreeImageCapture] = useState<ThreeSceneImageCapture | null>(null);
   const [editorButtonTop, setEditorButtonTop] = useState(220);
   const [user, setUser] = useState<UserResponse | null>(null);
@@ -1227,7 +1229,14 @@ export default function App() {
                   )}
                 </>
               ) : workspaceResultV3 && user ? (
-                <SolverPanel workspace={workspaceResultV3} runtimeSettings={runtimeSettings} onHighlight={setHighlightedObjects} />
+                <SolverPanel
+                  workspace={workspaceResultV3}
+                  runtimeSettings={runtimeSettings}
+                  onHighlight={(objectIds, actions = []) => {
+                    setHighlightedObjects(objectIds);
+                    setConstructionActions(actions);
+                  }}
+                />
               ) : (
                 <div className="solver-disabled-state">
                   <strong>Chưa thể giải từng bước</strong>
@@ -1242,6 +1251,8 @@ export default function App() {
                   <>
                     <SceneWorkspaceEditorV3
                       initialResponse={workspaceResultV3}
+                      highlightedObjectIds={highlightedObjects}
+                      constructionActions={constructionActions}
                       onCommitted={setWorkspaceResultV3}
                       onImageCaptureReady={handleThreeImageCaptureReady}
                     />

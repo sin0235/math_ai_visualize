@@ -35,8 +35,22 @@ class Prediction:
         return "/".join((self.domain, self.topic, self.task))
 
 
-def load_cases(path: Path = CORPUS_PATH) -> list[dict[str, Any]]:
-    cases = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+def load_cases(path: Path = CORPUS_PATH, *, expand_paraphrases: bool = True) -> list[dict[str, Any]]:
+    source_cases = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    cases: list[dict[str, Any]] = []
+    for case in source_cases:
+        cases.append(case)
+        if not expand_paraphrases:
+            continue
+        for index, text in enumerate(case["input"].get("paraphrases", []), start=1):
+            variant = {
+                **case,
+                "case_id": f"{case['case_id']}-p{index:02d}",
+                "input": {**case["input"], "text": text},
+                "tags": [*case["tags"], "paraphrase"],
+            }
+            variant["input"].pop("paraphrases", None)
+            cases.append(variant)
     case_ids = [case["case_id"] for case in cases]
     if len(case_ids) != len(set(case_ids)):
         raise ValueError("case_id trong corpus phải duy nhất")
@@ -77,7 +91,7 @@ def legacy_predict(case: dict[str, Any]) -> Prediction:
             entities=tuple(f"variable:{value}" for value in interpretation.variables),
             constraints=(),
             status="accepted",
-            confidence=0.72 if topic != "auto" else 0.25,
+            confidence=0.75 if topic != "auto" else 0.25,
         )
     if target == "render":
         result = classify_render_problem(text)
@@ -136,6 +150,8 @@ def pipeline_predict(case: dict[str, Any]) -> Prediction:
     response = interpret_input(InputEnvelope(
         text=case["input"]["text"],
         target=case["target"],
+        input_mode=case["input"].get("input_mode", "natural"),
+        input_format=case["input"].get("input_format", "auto"),
         context=case["input"].get("context", {}),
     ))
     candidate = next(
@@ -175,12 +191,20 @@ def evaluate(
     by_target: dict[str, list[tuple[dict[str, Any], Prediction, str]]] = defaultdict(list)
     for row in rows:
         by_target[row[0]["target"]].append(row)
+    geometry_rows = [row for row in rows if row[0]["target"] == "geometry_solve"]
+    geometry_by_subtype: dict[str, list[tuple[dict[str, Any], Prediction, str]]] = defaultdict(list)
+    for row in geometry_rows:
+        geometry_by_subtype[row[0]["expected"]["task"]].append(row)
     return {
         "schema_version": 1,
         "corpus": CORPUS_PATH.name,
         "case_count": len(rows),
         "overall": _metrics(rows),
         "targets": {target: _metrics(target_rows) for target, target_rows in sorted(by_target.items())},
+        "geometry_subtypes": {
+            subtype: _geometry_goal_metrics(subtype_rows)
+            for subtype, subtype_rows in sorted(geometry_by_subtype.items())
+        },
     }
 
 
@@ -214,6 +238,22 @@ def _metrics(rows: list[tuple[dict[str, Any], Prediction, str]]) -> dict[str, fl
         ),
         "brier_score": round(sum((confidence - correct) ** 2 for confidence, correct in zip(confidences, intent_correctness)) / len(rows), 6),
         "ece_10": round(_ece(confidences, intent_correctness), 6),
+    }
+
+
+def _geometry_goal_metrics(rows: list[tuple[dict[str, Any], Prediction, str]]) -> dict[str, float | int]:
+    if not rows:
+        return {"case_count": 0, "goal_exact_match": 1.0, "entity_f1": 1.0}
+    exact = sum(
+        prediction.task == case["expected"]["task"]
+        and set(prediction.entities) == set(case["expected"]["entities"])
+        and prediction.status == case["expected"]["status"]
+        for case, prediction, _gold in rows
+    )
+    return {
+        "case_count": len(rows),
+        "goal_exact_match": round(exact / len(rows), 6),
+        "entity_f1": round(_set_f1(rows, "entities"), 6),
     }
 
 

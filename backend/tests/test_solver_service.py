@@ -77,6 +77,58 @@ def test_classical_solver_uses_deterministic_safe_template(scene):
     assert any(fact["source"] == "verified" and "vuông góc" in fact["text"] for fact in result.used_facts)
 
 
+def test_classical_step_exposes_stable_scene_references(scene):
+    identified_scene = {
+        **scene,
+        "objects": [
+            {**item, "object_id": f"point-{item['name'].lower()}"}
+            if item.get("type") == "point_3d"
+            else item
+            for item in scene["objects"]
+        ],
+        "annotations": [
+            {"id": "length-ab", "type": "length", "target": "A-B", "label": "3", "metadata": {"source": "given"}},
+        ],
+        "relations": [
+            {"id": "relation-ab-plane", "type": "perpendicular", "object_1": "AB", "object_2": "plane(BCD)", "source": "given"},
+        ],
+    }
+
+    result = solve(identified_scene, "d(A,(BCD))", geometry_method="classical")
+    method_step = result.steps[1]
+    payload = method_step.to_dict()
+
+    assert method_step.theorem_id == "distance.point_plane.perpendicular_segment"
+    assert method_step.highlight_object_ids == ["point-a", "point-b", "point-c", "point-d"]
+    assert method_step.relation_ids == ["relation-ab-plane"]
+    assert payload["construction_actions"] == []
+
+
+def test_classical_solver_uses_verified_intersection_relation():
+    scene = {
+        "objects": [
+            {"object_id": "point-a", "type": "point_3d", "name": "A", "x": 0, "y": 0, "z": 0},
+            {"object_id": "point-b", "type": "point_3d", "name": "B", "x": 2, "y": 2, "z": 0},
+            {"object_id": "point-c", "type": "point_3d", "name": "C", "x": 0, "y": 2, "z": 0},
+            {"object_id": "point-d", "type": "point_3d", "name": "D", "x": 2, "y": 0, "z": 0},
+            {"object_id": "point-i", "type": "point_3d", "name": "I", "x": 1, "y": 1, "z": 0},
+        ],
+        "relations": [{
+            "id": "intersection-i",
+            "type": "intersection",
+            "operand_names": ["I", "AB", "CD"],
+            "source": "given",
+        }],
+    }
+
+    result = solve(scene, "Tìm giao điểm của AB và CD", geometry_method="classical")
+
+    assert result.answer == "Giao điểm của AB và CD là I"
+    assert result.steps[1].theorem_id == "incidence.intersection.given"
+    assert result.steps[1].depends_on == ["intersection-i"]
+    assert set(result.steps[1].highlight_object_ids) == {"point-i", "point-a", "point-b", "point-c", "point-d"}
+
+
 def test_metric_solver_rejects_generic_solid_without_metric_evidence():
     generic_scene = {
         "problem_text": "Cho hình chóp S.ABCD.",

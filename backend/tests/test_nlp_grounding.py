@@ -99,7 +99,16 @@ def _geometry_result() -> SolverResult:
                 substitution_latex="4/2",
                 result_latex="2",
                 theorem="Công thức khoảng cách",
+                theorem_id="distance.point_plane.perpendicular_segment",
                 depends_on=["fact:A", "fact:P"],
+                highlight_object_ids=["point-a", "plane-p"],
+                relation_ids=["relation-a-p"],
+                construction_actions=[{
+                    "action_id": "action-foot",
+                    "type": "highlight",
+                    "source_object_ids": ["point-a", "plane-p"],
+                    "parameters": {},
+                }],
                 sub_steps=[
                     SolverStep(
                         index=1,
@@ -146,8 +155,34 @@ async def test_geometry_ai_cannot_add_substeps_or_change_anchors(monkeypatch):
     assert explained.steps[0].substitution_latex == "4/2"
     assert explained.steps[0].result_latex == "2"
     assert explained.steps[0].theorem == "Công thức khoảng cách"
+    assert explained.steps[0].theorem_id == "distance.point_plane.perpendicular_segment"
     assert explained.steps[0].depends_on == ["fact:A", "fact:P"]
+    assert explained.steps[0].highlight_object_ids == ["point-a", "plane-p"]
+    assert explained.steps[0].relation_ids == ["relation-a-p"]
+    assert explained.steps[0].construction_actions[0]["action_id"] == "action-foot"
     assert explained.confidence == "verified"
+    assert explained.realization_status == "ai_validated"
+
+
+@pytest.mark.anyio
+async def test_geometry_ai_rejects_unknown_object_name_per_step(monkeypatch):
+    result = _geometry_result()
+    original_explanation = result.steps[0].explanation
+
+    async def fake_call(*_args, **_kwargs):
+        return {
+            "steps": [{
+                "index": 1,
+                "title": "Trình bày trực quan",
+                "explanation": "Gọi M là hình chiếu cần dùng.",
+            }],
+        }
+
+    monkeypatch.setattr("app.services.solver_explainer._call_explainer", fake_call)
+    explained = await explain_solver_result(result, {}, object(), method="classical")
+
+    assert explained.steps[0].title == "Trình bày trực quan"
+    assert explained.steps[0].explanation == original_explanation
     assert explained.realization_status == "ai_validated"
 
 

@@ -1112,7 +1112,7 @@ export function AdminAiPromptsForm({ value, onSave, onToast }: { value: Record<s
 
   async function savePrompts() {
     try {
-      await onSave({ version: 1, scene_extraction: sceneExtraction.trim(), reasoning: reasoning.trim() });
+      await onSave({ version: 2, scene_extraction: sceneExtraction.trim(), reasoning: reasoning.trim() });
       onToast?.('Prompt hệ thống', 'Đã lưu prompt hệ thống.', 'info');
     } catch (error) {
       onToast?.('Prompt hệ thống', getErrorMessage(error, 'Không thể lưu prompt hệ thống.'), 'error');

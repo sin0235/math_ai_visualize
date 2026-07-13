@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { MathfieldElement } from 'mathlive';
 
 import { KEYBOARD_LAYOUTS, type MathKeyboardKind } from './keyboardLayouts';
@@ -24,6 +24,7 @@ export function MathFormulaField({
   ariaLabel,
   onSubmit,
 }: MathFormulaFieldProps) {
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
   const hostRef = useRef<HTMLDivElement>(null);
   const fieldRef = useRef<MathfieldElement | null>(null);
   const onChangeRef = useRef(onChange);
@@ -43,12 +44,13 @@ export function MathFormulaField({
     const field = new MathfieldElement();
     field.className = 'math-formula-field';
     field.setAttribute('aria-label', ariaLabel);
-    field.mathVirtualKeyboardPolicy = 'auto';
+    field.mathVirtualKeyboardPolicy = 'manual';
     field.smartFence = true;
     field.smartMode = false;
     field.setValue(value, { silenceNotifications: true });
 
     const handleInput = () => onChangeRef.current(field.getValue(formatRef.current));
+    const handleKeyboardToggle = () => setKeyboardVisible(window.mathVirtualKeyboard.visible);
     const handleFocus = () => {
       window.mathVirtualKeyboard.layouts = KEYBOARD_LAYOUTS[keyboardRef.current];
     };
@@ -61,6 +63,7 @@ export function MathFormulaField({
     field.addEventListener('input', handleInput);
     field.addEventListener('focus', handleFocus);
     field.addEventListener('keydown', handleKeyDown);
+    window.mathVirtualKeyboard.addEventListener('virtual-keyboard-toggle', handleKeyboardToggle);
     host.append(field);
     fieldRef.current = field;
 
@@ -68,6 +71,7 @@ export function MathFormulaField({
       field.removeEventListener('input', handleInput);
       field.removeEventListener('focus', handleFocus);
       field.removeEventListener('keydown', handleKeyDown);
+      window.mathVirtualKeyboard.removeEventListener('virtual-keyboard-toggle', handleKeyboardToggle);
       field.remove();
       fieldRef.current = null;
     };
@@ -83,5 +87,28 @@ export function MathFormulaField({
     if (fieldRef.current) fieldRef.current.disabled = disabled;
   }, [disabled]);
 
-  return <div ref={hostRef} className="math-formula-host" />;
+  function toggleKeyboard() {
+    const field = fieldRef.current;
+    if (!field || disabled) return;
+    field.focus();
+    window.mathVirtualKeyboard.layouts = KEYBOARD_LAYOUTS[keyboardRef.current];
+    if (window.mathVirtualKeyboard.visible) window.mathVirtualKeyboard.hide();
+    else window.mathVirtualKeyboard.show();
+  }
+
+  return (
+    <div className="math-formula-control">
+      <div ref={hostRef} className="math-formula-host" />
+      <button
+        type="button"
+        className="math-formula-keyboard-toggle"
+        onClick={toggleKeyboard}
+        disabled={disabled}
+        aria-pressed={keyboardVisible}
+        aria-label={keyboardVisible ? 'Ẩn bàn phím công thức' : 'Mở bàn phím công thức'}
+      >
+        {keyboardVisible ? 'Ẩn bàn phím' : 'Bàn phím công thức'}
+      </button>
+    </div>
+  );
 }

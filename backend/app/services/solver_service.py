@@ -49,8 +49,12 @@ class SolverStep:
         result_latex: str | None = None,
         sub_steps: list["SolverStep"] | None = None,
         theorem: str | None = None,
+        theorem_id: str | None = None,
         claim: str | None = None,
         depends_on: list[str] | None = None,
+        highlight_object_ids: list[str] | None = None,
+        relation_ids: list[str] | None = None,
+        construction_actions: list[dict[str, Any]] | None = None,
     ) -> None:
         self.index = index
         self.title = title
@@ -64,8 +68,12 @@ class SolverStep:
         self.result_latex = result_latex
         self.sub_steps = sub_steps or []
         self.theorem = theorem
+        self.theorem_id = theorem_id
         self.claim = claim
         self.depends_on = depends_on or []
+        self.highlight_object_ids = highlight_object_ids or []
+        self.relation_ids = relation_ids or []
+        self.construction_actions = construction_actions or []
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -81,8 +89,12 @@ class SolverStep:
             "result_latex": self.result_latex,
             "sub_steps": [s.to_dict() for s in self.sub_steps],
             "theorem": self.theorem,
+            "theorem_id": self.theorem_id,
             "claim": self.claim,
             "depends_on": self.depends_on,
+            "highlight_object_ids": self.highlight_object_ids,
+            "relation_ids": self.relation_ids,
+            "construction_actions": self.construction_actions,
         }
 
 
@@ -155,6 +167,7 @@ _VOLUME_RE = re.compile(r"th[eể]\s*t[íi]ch|volume|\bV\s*\(", re.IGNORECASE)
 _PARALLEL_RE = re.compile(r"song\s*song|parallel", re.IGNORECASE)
 _PERP_RE = re.compile(r"vu[oô]ng\s*g[oó]c|perpendicular", re.IGNORECASE)
 _EQUATION_RE = re.compile(r"phương\s*trình|\bpt\b|equation", re.IGNORECASE)
+_INTERSECTION_RE = re.compile(r"giao\s*(?:điểm|tuyến)|intersection|\bgiao\b", re.IGNORECASE)
 _DOT_RE = re.compile(r"dot\s*\(|tích\s*vô\s*hướng|\.\s*|·", re.IGNORECASE)
 _CROSS_RE = re.compile(r"cross\s*\(|tích\s*có\s*hướng|×", re.IGNORECASE)
 _PROJECTION_RE = re.compile(r"hình\s*chiếu|projection|project", re.IGNORECASE)
@@ -258,7 +271,9 @@ def solve(scene_dict: dict, question: str, geometry_method: str = "oxyz") -> Sol
         _apply_result_metadata(result, scene_dict, geometry_method)
         return result
 
-    if _EQUATION_RE.search(q):
+    if _INTERSECTION_RE.search(q):
+        result = _solve_intersection(scene_dict, q, warnings)
+    elif _EQUATION_RE.search(q):
         result = _solve_equation(pts, q, warnings)
     elif _PROJECTION_RE.search(q):
         result = _solve_projection(pts, q, warnings)
@@ -468,6 +483,31 @@ def _solve_equation(pts: dict[str, Vec3], question: str, warnings: list[str]) ->
         return _result_from_calculation(question, calculate_line_equation(pts, edges[0]), pts)
     warnings.append("Cần chỉ rõ đường thẳng hoặc mặt phẳng. Ví dụ: phương trình đường thẳng AB, phương trình mặt phẳng (ABC).")
     return SolverResult(question, "Không xác định", [], warnings)
+
+
+def _solve_intersection(scene_dict: dict[str, Any], question: str, warnings: list[str]) -> SolverResult:
+    from app.services.geometry_facts import build_geometry_fact_graph
+
+    requested = {"".join(edge) for edge in _parse_edges(question)}
+    for fact in build_geometry_fact_graph(scene_dict).by_type("intersection"):
+        objects = tuple(str(item) for item in fact.args.get("objects") or ())
+        point = str(fact.args.get("point") or "")
+        if len(objects) < 2 or not point or (requested and not requested.issubset(set(objects))):
+            continue
+        highlight = list(dict.fromkeys([point, *[name for edge in _parse_edges(question) for name in edge]]))
+        answer = f"Giao điểm của {objects[0]} và {objects[1]} là {point}"
+        steps = [
+            SolverStep(1, "Xác định hai đối tượng", f"Xét {objects[0]} và {objects[1]} trong scene đã kiểm chứng.", None, None, highlight, kind="input", claim=f"Xét {objects[0]} và {objects[1]}", depends_on=[fact.id]),
+            SolverStep(2, "Xác định giao điểm", fact.text, None, point, highlight, kind="intersection", claim=answer, depends_on=[fact.id]),
+            SolverStep(3, "Kết luận", answer, None, point, highlight, kind="result", claim=answer, depends_on=[fact.id]),
+        ]
+        return SolverResult(question, answer, steps, warnings)
+    return SolverResult(
+        question,
+        "Không đủ dữ kiện",
+        [],
+        [*warnings, "Scene chưa có quan hệ giao điểm đủ tin cậy cho các đối tượng được hỏi."],
+    )
 
 
 def _solve_projection(pts: dict[str, Vec3], question: str, warnings: list[str]) -> SolverResult:
@@ -898,8 +938,21 @@ def _classical_proof_for_result(result: SolverResult, scene_dict: dict, kind: st
     )
     if proof is None:
         return None
-    steps = [
-        SolverStep(
+    relation_ids = {str(item.get("id")) for item in scene_dict.get("relations") or [] if isinstance(item, dict) and item.get("id")}
+    steps: list[SolverStep] = []
+    for index, step in enumerate(proof.steps, start=1):
+        highlight_object_ids = _resolve_highlight_object_ids(scene_dict, step.highlight)
+        step_relation_ids = [dependency for dependency in step.depends_on if dependency in relation_ids]
+        construction_actions = []
+        if highlight_object_ids and ("dựng" in step.title.lower() or "hình chiếu" in step.explanation.lower()):
+            construction_actions.append({
+                "action_id": f"proof-step-{index}-highlight",
+                "type": "highlight",
+                "source_object_ids": highlight_object_ids,
+                "result_object_id": None,
+                "parameters": {},
+            })
+        steps.append(SolverStep(
             index=index,
             title=step.title,
             explanation=step.explanation,
@@ -910,12 +963,26 @@ def _classical_proof_for_result(result: SolverResult, scene_dict: dict, kind: st
             formula_latex=step.formula_latex,
             result_latex=step.result_latex,
             theorem=step.theorem,
+            theorem_id=step.theorem_id,
             claim=step.claim,
             depends_on=step.depends_on,
-        )
-        for index, step in enumerate(proof.steps, start=1)
-    ]
+            highlight_object_ids=highlight_object_ids,
+            relation_ids=step_relation_ids,
+            construction_actions=construction_actions,
+        ))
     return {"steps": steps, "used_theorems": [{"name": item} for item in proof.used_theorems if item]}
+
+
+def _resolve_highlight_object_ids(scene_dict: dict[str, Any], labels: list[str]) -> list[str]:
+    label_set = set(labels)
+    resolved: list[str] = []
+    for obj in scene_dict.get("objects") or []:
+        if not isinstance(obj, dict) or str(obj.get("name") or "") not in label_set:
+            continue
+        object_id = str(obj.get("object_id") or obj.get("id") or "")
+        if object_id and object_id not in resolved:
+            resolved.append(object_id)
+    return resolved
 
 
 def _classical_method_step(kind: str, highlight: list[str], question: str = "", scene_dict: dict | None = None) -> SolverStep:

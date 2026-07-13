@@ -230,3 +230,36 @@ def test_geometry_interpretation_requires_confirmation_for_duplicate_scene_label
     assert result.status == InterpretationStatus.NEEDS_CONFIRMATION
     assert "scene_object_resolution" in candidate.missing_fields
     assert candidate.ambiguities[0].alternatives == ["plane-1", "plane-2"]
+
+
+def test_algebra_limit_removes_leading_limit_notation_from_expression():
+    result = interpret_input(InputEnvelope(
+        text="Tính giới hạn lim x→0 (sin x)/x",
+        target="algebra",
+    ))
+
+    candidate = result.candidates[0]
+    assert result.status == InterpretationStatus.ACCEPTED
+    assert candidate.canonical_text == "limit(expr=(sin(x))/x,var=x,to=0)"
+    assert candidate.canonical_payload["variables"] == ["x"]
+
+
+@pytest.mark.parametrize(
+    ("text", "expected_entities"),
+    [
+        ("S(ABC)", [("plane", "ABC")]),
+        ("V(S.ABCD)", [("solid", "S.ABCD")]),
+    ],
+)
+def test_geometry_function_markers_are_not_entities(text, expected_entities):
+    result = interpret_input(InputEnvelope(
+        text=text,
+        target="geometry_solve",
+        input_mode="math",
+        input_format="plain",
+        context={"scene_topic": "solid_geometry"},
+    ))
+
+    candidate = result.candidates[0]
+    assert result.status == InterpretationStatus.ACCEPTED
+    assert [(entity.kind, entity.name) for entity in candidate.entities] == expected_entities

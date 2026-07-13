@@ -139,7 +139,7 @@ def classify_solve_question(
     if task_type is None:
         task_type, sub_type, signal = _solve_task_from_question(question)
         if task_type is not None:
-            confidence = 0.65
+            confidence = 0.8
             signals.append(signal)
 
     answer = str(getattr(solver_result, "answer", "") or "") if solver_result is not None else ""

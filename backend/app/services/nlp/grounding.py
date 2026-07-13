@@ -20,7 +20,12 @@ class GeometryStep(Protocol):
     substitution_latex: str | None
     result_latex: str | None
     theorem: str | None
+    theorem_id: str | None
+    claim: str | None
     depends_on: list[str]
+    highlight_object_ids: list[str]
+    relation_ids: list[str]
+    construction_actions: list[dict[str, object]]
     sub_steps: list["GeometryStep"]
 
 
@@ -83,10 +88,11 @@ def validate_language_rewrites(
         seen.add(rewrite.claim_id)
         claim = claims[rewrite.claim_id]
         allowed_tokens = _math_tokens(_claim_anchors(claim))
+        allowed_entities = _geometry_entities(_claim_anchors(claim)) if _has_geometry_anchors(claim) else None
         validated[rewrite.claim_id] = LanguageRewrite(
             claim_id=rewrite.claim_id,
             **{
-                field: _validated_text(getattr(rewrite, field), allowed_tokens)
+                field: _validated_text(getattr(rewrite, field), allowed_tokens, allowed_entities)
                 for field in (
                     "title",
                     "explanation",
@@ -133,10 +139,15 @@ def _geometry_claims(step: GeometryStep, *, prefix: str) -> list[GroundedClaim]:
         claim_id=claim_id,
         kind=step.kind or "step",
         deterministic_text=step.explanation or step.title,
+        claim_text=step.claim,
         formula_latex=step.formula_latex or step.substitution_latex,
         result_latex=step.result_latex,
         theorem=step.theorem,
+        theorem_id=step.theorem_id,
         depends_on=list(step.depends_on),
+        highlight_object_ids=list(step.highlight_object_ids),
+        relation_ids=list(step.relation_ids),
+        construction_actions=[dict(action) for action in step.construction_actions],
         confidence="verified",
         provenance=[_engine_provenance("geometry")],
     )
@@ -158,7 +169,11 @@ def _fallback_claim(claim_id: str, answer: str, confidence: str) -> GroundedClai
     )
 
 
-def _validated_text(value: str | None, allowed_tokens: set[str]) -> str | None:
+def _validated_text(
+    value: str | None,
+    allowed_tokens: set[str],
+    allowed_entities: set[str] | None = None,
+) -> str | None:
     if value is None:
         return None
     cleaned = re.sub(r"\s+", " ", value).strip()
@@ -166,7 +181,23 @@ def _validated_text(value: str | None, allowed_tokens: set[str]) -> str | None:
         return None
     if not _math_tokens(cleaned) <= allowed_tokens:
         return None
+    if allowed_entities is not None and not _geometry_entities(cleaned) <= allowed_entities:
+        return None
     return cleaned
+
+
+def _geometry_entities(value: str) -> set[str]:
+    entities: set[str] = set()
+    for match in re.finditer(r"(?<![\wÀ-ỹ])(?:[A-Z](?:\d+|')?|[A-Z]{2,})(?![\wÀ-ỹ])", value):
+        prefix = value[:match.start()].rstrip()
+        if not prefix or prefix[-1] in ".!?;:":
+            continue
+        entities.add(match.group(0))
+    return entities
+
+
+def _has_geometry_anchors(claim: GroundedClaim) -> bool:
+    return bool(claim.theorem_id or claim.highlight_object_ids or claim.relation_ids or claim.construction_actions)
 
 
 def _math_tokens(value: str) -> set[str]:
@@ -174,17 +205,23 @@ def _math_tokens(value: str) -> set[str]:
 
 
 def _claim_anchors(claim: GroundedClaim) -> str:
-    return " ".join(
-        value
-        for value in (
-            claim.deterministic_text,
-            claim.formula_latex,
-            claim.result_latex,
-            claim.theorem,
-            *claim.depends_on,
-        )
-        if value
+    scalar_values = (
+        claim.deterministic_text,
+        claim.claim_text,
+        claim.formula_latex,
+        claim.result_latex,
+        claim.theorem,
+        claim.theorem_id,
+        *claim.depends_on,
+        *claim.highlight_object_ids,
+        *claim.relation_ids,
     )
+    construction_values = (
+        str(value)
+        for action in claim.construction_actions
+        for value in action.values()
+    )
+    return " ".join(str(value) for value in (*scalar_values, *construction_values) if value)
 
 
 def _plan_anchors(plan: ExplanationPlan) -> tuple:
@@ -196,15 +233,28 @@ def _plan_anchors(plan: ExplanationPlan) -> tuple:
             (
                 claim.claim_id,
                 claim.kind,
+                claim.claim_text,
                 claim.formula_latex,
                 claim.result_latex,
                 claim.theorem,
+                claim.theorem_id,
                 tuple(claim.depends_on),
+                tuple(claim.highlight_object_ids),
+                tuple(claim.relation_ids),
+                tuple(_freeze_mapping(action) for action in claim.construction_actions),
                 claim.confidence,
             )
             for claim in plan.claims
         ),
     )
+
+
+def _freeze_mapping(value: object) -> object:
+    if isinstance(value, Mapping):
+        return tuple(sorted((str(key), _freeze_mapping(item)) for key, item in value.items()))
+    if isinstance(value, list):
+        return tuple(_freeze_mapping(item) for item in value)
+    return value
 
 
 def _engine_provenance(adapter: str) -> Provenance:

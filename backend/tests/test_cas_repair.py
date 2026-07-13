@@ -111,6 +111,29 @@ def test_repair_iteratively_fixes_after_one_call():
     assert m.y == pytest.approx(0.0)
 
 
+def test_repair_rejects_scene_structure_change():
+    raw = _scene_with_off_midpoint()
+    scene = MathScene.model_validate(raw)
+    issues = verify_scene(scene)
+
+    def fake_llm(prompt: str) -> str:
+        changed = json.loads(json.dumps(raw))
+        changed["relations"] = []
+        return json.dumps(changed)
+
+    outcome = repair_scene_iteratively(
+        scene,
+        issues,
+        fake_llm,
+        max_iterations=1,
+        min_severity="warning",
+    )
+
+    assert outcome.scene is scene
+    assert outcome.attempts[0].error == "structure_changed"
+    assert any("thay đổi cấu trúc" in warning for warning in outcome.warnings)
+
+
 def test_repair_iteratively_handles_invalid_json():
     raw = _scene_with_off_midpoint()
     scene = MathScene.model_validate(raw)

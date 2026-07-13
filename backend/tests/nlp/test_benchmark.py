@@ -12,7 +12,10 @@ PIPELINE_THRESHOLDS_PATH = Path(__file__).with_name("pipeline-thresholds.json")
 def test_corpus_schema_and_slice_coverage():
     cases = load_cases(CORPUS_PATH)
 
-    assert len(cases) >= 35
+    assert len(cases) >= 120
+    geometry_cases = [case for case in cases if case["target"] == "geometry_solve"]
+    assert len(geometry_cases) >= 100
+    assert sum("paraphrase" in case["tags"] for case in geometry_cases) >= 80
     assert {case["target"] for case in cases} == {
         "algebra",
         "render",
@@ -31,13 +34,22 @@ def test_corpus_schema_and_slice_coverage():
     }
 
 
+def test_geometry_metrics_are_reported_per_subtype():
+    report = evaluate(load_cases(CORPUS_PATH), predictor=pipeline_predict)
+
+    assert {"distance", "angle", "proof", "volume"} <= set(report["geometry_subtypes"])
+    for metrics in report["geometry_subtypes"].values():
+        assert "goal_exact_match" in metrics
+        assert "entity_f1" in metrics
+
+
 def test_legacy_nlp_metrics_do_not_regress_below_versioned_thresholds():
-    _assert_thresholds(evaluate(load_cases(CORPUS_PATH)), THRESHOLDS_PATH)
+    _assert_thresholds(evaluate(load_cases(CORPUS_PATH, expand_paraphrases=False)), THRESHOLDS_PATH)
 
 
 def test_pipeline_nlp_metrics_do_not_regress_below_measured_thresholds():
     _assert_thresholds(
-        evaluate(load_cases(CORPUS_PATH), predictor=pipeline_predict),
+        evaluate(load_cases(CORPUS_PATH, expand_paraphrases=False), predictor=pipeline_predict),
         PIPELINE_THRESHOLDS_PATH,
     )
 

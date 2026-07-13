@@ -88,15 +88,17 @@ def interpret_algebra(envelope: InputEnvelope, normalized: NormalizedInput) -> l
         )
         for variable in interpretation.variables
     ]
-    constraints = [
-        Constraint(
-            kind="domain",
-            arguments=interpretation.variables,
-            value=interpretation.domain,
-            confidence=1.0 if "domain" in envelope.context else 0.55,
-            provenance=[_rule_provenance("algebra")],
+    constraints = []
+    if "domain" in envelope.context:
+        constraints.append(
+            Constraint(
+                kind="domain",
+                arguments=interpretation.variables,
+                value=interpretation.domain,
+                confidence=1.0,
+                provenance=[_rule_provenance("algebra")],
+            )
         )
-    ]
     confidence = 0.82 if topic != "unknown" and not missing_fields else 0.4
     return [
         InterpretationCandidate(
@@ -226,7 +228,7 @@ def interpret_geometry_solve(envelope: InputEnvelope, normalized: NormalizedInpu
                 domain=classification.domain,
                 topic=classification.topic,
                 task=classification.task_type or "unknown",
-                subtype=classification.sub_type,
+                subtype=goal_subtype,
             ),
             canonical_text=canonical_text,
             canonical_payload=canonical_payload,
@@ -385,6 +387,29 @@ def _compact_geometry_solid(value: str) -> str:
     return f"{compact[0]}.{compact[1:]}" if len(compact) >= 4 else compact
 
 
+def _geometry_subtype_from_entities(task: str, entities: list[Entity]) -> str | None:
+    kinds = [entity.kind for entity in entities if entity.kind != "solid"]
+    if task in {"distance", "angle"} and len(kinds) >= 2:
+        pair = kinds[:2]
+        if pair == ["point", "point"]:
+            return "point_point"
+        if set(pair) == {"point", "line"}:
+            return "point_line"
+        if set(pair) == {"point", "plane"}:
+            return "point_plane"
+        if pair == ["line", "line"]:
+            return "line_line"
+        if set(pair) == {"line", "plane"}:
+            return "line_plane"
+        if pair == ["plane", "plane"]:
+            return "plane_plane"
+    if task == "area":
+        return "polygon"
+    if task == "volume":
+        return "solid"
+    return None
+
+
 def _geometry_goal_task(task: str) -> str | None:
     return {
         "proof": "prove",
@@ -476,17 +501,26 @@ def _derived_object_label(item: dict, point_labels: dict[str, str]) -> str:
 def _geometry_structure(normalized: NormalizedInput) -> tuple[list[Entity], list[Constraint]]:
     provenance = [normalized.provenance()]
     entities: dict[tuple[str, str], Entity] = {}
+    occupied_spans: list[tuple[int, int]] = []
     for match in _SOLID_RE.finditer(normalized.text):
         name = match.group(1)
+        occupied_spans.append(match.span(1))
         entities[("solid", name)] = Entity(kind="solid", name=name, confidence=0.88, provenance=provenance)
     for match in _PLANE_RE.finditer(normalized.text):
         name = match.group(1)
+        occupied_spans.append(match.span(1))
         entities[("plane", name)] = Entity(kind="plane", name=name, confidence=0.92, provenance=provenance)
     for match in _SEGMENT_RE.finditer(normalized.text):
         name = match.group(1)
+        occupied_spans.append(match.span(1))
         entities[("line", name)] = Entity(kind="line", name=name, confidence=0.82, provenance=provenance)
     for match in _POINT_RE.finditer(normalized.text):
         name = match.group(1)
+        start, end = match.span(1)
+        if any(start >= occupied_start and end <= occupied_end for occupied_start, occupied_end in occupied_spans):
+            continue
+        if name in {"S", "V"} and re.match(r"\s*\(", normalized.text[end:]):
+            continue
         entities[("point", name)] = Entity(kind="point", name=name, confidence=0.75, provenance=provenance)
     constraints: list[Constraint] = []
     if re.search(r"vu[oô]ng\s+g[oó]c|\bperp\b|⊥", normalized.text, re.IGNORECASE):

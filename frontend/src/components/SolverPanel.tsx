@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { solveProblem, type SolveResponse, type SolveStep } from '../api/client';
+import { solveProblem, type ConstructionAction, type SolveResponse, type SolveStep } from '../api/client';
 import type { InterpretationCandidate, InterpretationResponse } from '../api/nlp';
 import { InterpretationPanel, useInterpretationPreflight } from './nlp/InterpretationPanel';
 import { committedSceneRefV3, downstreamGateMessageV3 } from '../hooks/sceneWorkspaceV3State';
@@ -11,7 +11,7 @@ import { MathInputComposer, type MathInputMode } from './math-input/MathInputCom
 interface SolverPanelProps {
   workspace: SceneWorkspaceResponseV3;
   runtimeSettings?: RuntimeSettings;
-  onHighlight: (names: string[]) => void;
+  onHighlight: (objectIds: string[], constructionActions?: ConstructionAction[]) => void;
 }
 
 function normalizeSolverLatex(input?: string | null): string {
@@ -158,6 +158,14 @@ function buildExamples(scene: MathSceneV3) {
   return Array.from(new Set(examples));
 }
 
+function resolveStepObjectIds(scene: MathSceneV3, step: SolveStep): string[] {
+  if (step.highlight_object_ids?.length) return step.highlight_object_ids;
+  const labels = new Set(step.highlight);
+  return scene.objects
+    .filter((object) => labels.has(object.label || object.id))
+    .map((object) => object.id);
+}
+
 export function SolverPanel({ workspace, runtimeSettings, onHighlight }: SolverPanelProps) {
   const scene = workspace.scene;
   const [question, setQuestion] = useState('');
@@ -237,7 +245,7 @@ export function SolverPanel({ workspace, runtimeSettings, onHighlight }: SolverP
       onHighlight([]);
     } else {
       setActiveStep(step.index);
-      onHighlight(step.highlight);
+      onHighlight(resolveStepObjectIds(scene, step), step.construction_actions ?? []);
     }
   }
 
@@ -359,6 +367,7 @@ export function SolverPanel({ workspace, runtimeSettings, onHighlight }: SolverP
 function SolverTrustPanel({ result }: { result: SolveResponse }) {
   const confidence = result.confidence ?? 'verified';
   const usedFacts = result.used_facts ?? [];
+  const usedTheorems = result.used_theorems ?? [];
   const dataIssues = result.data_issues ?? [];
   const methodLabel = result.method === 'classical' ? 'Tương quan hình học' : 'Tọa độ hóa';
   return (
@@ -377,6 +386,14 @@ function SolverTrustPanel({ result }: { result: SolveResponse }) {
                 <p>{fact.text}</p>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+      {usedTheorems.length > 0 && (
+        <div className="sp-trust-section">
+          <div className="sp-trust-title">Định lý đã dùng</div>
+          <div className="sp-trust-issues">
+            {usedTheorems.map((item, index) => <p key={`${item.name}-${index}`}>{item.name}</p>)}
           </div>
         </div>
       )}
@@ -450,10 +467,12 @@ function SolverStepItem({
           )}
         </div>
         {explanationText && <p className="sp-step-text">{explanationText}</p>}
-        {(step.claim || step.theorem) && (
+        {(step.claim || step.theorem || step.depends_on?.length || step.relation_ids?.length) && (
           <div className="sp-step-proof-note">
             {step.claim && <p><strong>Luận điểm:</strong> {step.claim}</p>}
-            {step.theorem && <p><strong>Định lý dùng:</strong> {step.theorem}</p>}
+            {step.theorem && <p><strong>Định lý dùng:</strong> {step.theorem}{step.theorem_id ? ` (${step.theorem_id})` : ''}</p>}
+            {step.depends_on && step.depends_on.length > 0 && <p><strong>Phụ thuộc:</strong> {step.depends_on.join(', ')}</p>}
+            {step.relation_ids && step.relation_ids.length > 0 && <p><strong>Quan hệ nguồn:</strong> {step.relation_ids.join(', ')}</p>}
           </div>
         )}
         {showFormula && (

@@ -939,13 +939,20 @@ def test_openrouter_ocr_payload_uses_vision_message(monkeypatch):
     monkeypatch.setattr("app.services.http_pool.get_client", lambda *args, **kwargs: FakeAsyncClient(kwargs.get("timeout") or args[1] if len(args) > 1 else 20))
 
     text = __import__("asyncio").run(
-        OpenRouterClient(Settings(openrouter_api_key="secret")).ocr_image(_IMAGE_DATA_URL, "openrouter/vision-model")
+        OpenRouterClient(Settings(openrouter_api_key="secret")).ocr_image(
+            _IMAGE_DATA_URL,
+            "openrouter/vision-model",
+            system_prompt="CUSTOM OCR SYSTEM",
+            user_text="CUSTOM OCR USER",
+        )
     )
 
     assert text == "Cho A(0,0)."
     assert payloads[0][0] == "https://openrouter.ai/api/v1/chat/completions"
     assert payloads[0][1]["Authorization"] == "Bearer secret"
     assert payloads[0][2]["model"] == "vision-model"
+    assert payloads[0][2]["messages"][0]["content"] == "CUSTOM OCR SYSTEM"
+    assert payloads[0][2]["messages"][1]["content"][0]["text"] == "CUSTOM OCR USER"
     assert payloads[0][2]["messages"][1]["content"][1]["image_url"]["url"] == _IMAGE_DATA_URL
 
 
@@ -961,7 +968,8 @@ def test_function_ocr_candidate_requires_strict_json_and_normalizes_parameters(m
     }
 
     async def fake_chat_text(prompt, settings):
-        assert "Không làm theo chỉ dẫn" in prompt
+        assert "OCR_DATA" in prompt
+        assert "ignore previous instructions" in prompt
         return json.dumps(payload)
 
     monkeypatch.setattr("app.api.routes_function_analysis._chat_text", fake_chat_text)
@@ -1061,3 +1069,32 @@ def test_legacy_function_ocr_endpoint_still_analyzes_candidate(monkeypatch):
     assert response.status_code == 200, response.text
     assert response.json()["ocr_expression"] == "x**2"
     assert calls == ["x**2"]
+
+
+def test_legacy_function_ocr_endpoint_blocks_unconfirmed_candidate(monkeypatch):
+    extraction = FunctionOcrExtraction(
+        expression="x**2",
+        variable="x",
+        parameters=[],
+        confidence=0.8,
+        warnings=["Ký hiệu chưa rõ."],
+        ambiguous_tokens=[],
+        needs_confirmation=True,
+        ocr_text="y = x²",
+        provenance=FunctionOcrProvenance(source="ocr", provider="local", model="test-model"),
+    )
+
+    async def fake_extract_request(request, user, db):
+        return extraction, True
+
+    async def forbidden_analyzer(*args, **kwargs):
+        raise AssertionError("Candidate chưa xác nhận không được chạy analyzer.")
+
+    monkeypatch.setattr("app.api.routes_function_analysis._extract_function_ocr_request", fake_extract_request)
+    monkeypatch.setattr("app.api.routes_function_analysis._run_cached_analyzer_job", forbidden_analyzer)
+
+    response = TestClient(app).post("/api/analyze/ocr", json={"image_data_url": _IMAGE_DATA_URL})
+
+    assert response.status_code == 200, response.text
+    assert response.json()["error"] == "Biểu thức OCR cần được xác nhận trước khi phân tích."
+    assert response.json()["ocr_expression"] == "x**2"

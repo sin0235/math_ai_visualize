@@ -450,9 +450,21 @@ class AiTaskProfile(BaseModel):
 class SystemAiPrompts(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    version: int = 1
+    version: int = 2
     scene_extraction: str = Field(default="", max_length=50_000)
     reasoning: str = Field(default="", max_length=50_000)
+
+    @field_validator("scene_extraction", "reasoning")
+    @classmethod
+    def validate_prompt_override(cls, value: str) -> str:
+        prompt = value.strip()
+        if not prompt:
+            return ""
+        if len(prompt) < 100 or "json" not in prompt.lower():
+            raise ValueError("Prompt override phải dài ít nhất 100 ký tự và mô tả output JSON.")
+        if "\x00" in prompt:
+            raise ValueError("Prompt override chứa ký tự không hợp lệ.")
+        return prompt
 
 
 class SystemAiProfiles(BaseModel):

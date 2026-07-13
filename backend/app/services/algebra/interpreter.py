@@ -162,6 +162,11 @@ def _calculus_template_from_text(text: str, plain: str) -> str | None:
         target = re.search(r"(?:x\s*(?:toi|tới|->|→)\s*)(-?\d+|oo|\+?∞|-∞)", plain)
         point = target.group(1).replace("∞", "oo") if target else "0"
         expression = re.sub(r"(?i)^\s*(gioi han|giới hạn|lim|tinh gioi han|tính giới hạn)\s*", "", cleaned).strip()
+        expression = re.sub(
+            r"(?i)^\s*(?:lim\s*)?x\s*(?:toi|tới|->|→)\s*(?:-?\d+|oo|\+?∞|-∞)\s*",
+            "",
+            expression,
+        )
         expression = re.split(r"(?i)\s+(?:khi|voi|với)\s+x\s*(?:toi|tới|->|→)\s*", expression)[0]
         expression = _clean_canonical(expression)
         if expression:
@@ -365,9 +370,13 @@ def _replace_vietnamese_math_words(text: str) -> str:
     result = text
     for pattern, repl in replacements:
         result = re.sub(pattern, repl, result, flags=re.IGNORECASE)
-    result = re.sub(r"\bsin\s+([a-zA-Z0-9(])", r"sin(\1", result)
-    result = re.sub(r"\bcos\s+([a-zA-Z0-9(])", r"cos(\1", result)
-    result = re.sub(r"\btan\s+([a-zA-Z0-9(])", r"tan(\1", result)
+    result = re.sub(
+        r"\b(sin|cos|tan)\s+([a-zA-Z0-9]+|\([^()]*\))",
+        lambda match: match.group(1).lower()
+        + (match.group(2) if match.group(2).startswith("(") else f"({match.group(2)})"),
+        result,
+        flags=re.IGNORECASE,
+    )
     return result
 
 
@@ -478,7 +487,7 @@ def _detect_topic(raw: str, normalized: str) -> str:
 
 def _detect_variables(raw: str, normalized: str, topic_hint: str) -> list[str]:
     plain = _strip_accents(raw.lower())
-    explicit = re.search(r"(?:theo|ẩn|an|biến|bien)\s+([a-zA-Z](?:\s*,\s*[a-zA-Z])*)", plain)
+    explicit = re.search(r"\b(?:theo|an|bien)\b\s+([a-zA-Z](?:\s*,\s*[a-zA-Z])*)", plain)
     if explicit:
         return [item.strip() for item in explicit.group(1).split(",") if item.strip()]
     if topic_hint in {"calculus_derivative", "calculus_limit", "calculus_integral"}:

@@ -70,6 +70,30 @@ THEOREMS: dict[str, TheoremSpec] = {
             11,
         ),
         TheoremSpec(
+            "incidence.intersection.given",
+            "Giao điểm đã xác định",
+            "Điểm cùng thuộc hai đối tượng cắt nhau là giao điểm của hai đối tượng đó.",
+            10,
+        ),
+        TheoremSpec(
+            "relation.parallel.given",
+            "Quan hệ song song đã kiểm chứng",
+            "Hai đường thẳng có quan hệ song song đã được kiểm chứng thì kết luận chúng song song.",
+            10,
+        ),
+        TheoremSpec(
+            "relation.collinear.given",
+            "Quan hệ thẳng hàng đã kiểm chứng",
+            "Các điểm cùng thuộc một đường thẳng thì thẳng hàng.",
+            10,
+        ),
+        TheoremSpec(
+            "relation.coplanar.given",
+            "Quan hệ đồng phẳng đã kiểm chứng",
+            "Các điểm cùng thuộc một mặt phẳng thì đồng phẳng.",
+            10,
+        ),
+        TheoremSpec(
             "volume.prism.base_height",
             "Thể tích khối lăng trụ",
             "Thể tích khối lăng trụ bằng diện tích đáy nhân với chiều cao.",

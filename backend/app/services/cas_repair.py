@@ -105,6 +105,40 @@ def _parse_llm_scene(raw: str) -> dict[str, Any]:
     return json.loads(text)
 
 
+def _scene_structure(scene: MathScene) -> dict[str, Any]:
+    data = scene.model_dump(
+        mode="json",
+        exclude_none=True,
+        exclude={"scene_id", "cas_issues"},
+    )
+
+    def without_generated_ids(value: Any) -> Any:
+        if isinstance(value, list):
+            return [without_generated_ids(item) for item in value]
+        if isinstance(value, dict):
+            return {
+                key: without_generated_ids(item)
+                for key, item in value.items()
+                if key != "id"
+            }
+        return value
+
+    data = without_generated_ids(data)
+    objects = data.get("objects")
+    if isinstance(objects, list):
+        data["objects"] = [
+            {
+                key: value
+                for key, value in obj.items()
+                if key not in {"x", "y", "z"}
+            }
+            if isinstance(obj, dict) and obj.get("type") in {"point_2d", "point_3d"}
+            else obj
+            for obj in objects
+        ]
+    return data
+
+
 def repair_scene_iteratively(
     scene: MathScene,
     issues: list[CasIssue],
@@ -147,6 +181,22 @@ def repair_scene_iteratively(
             attempt.error = f"parse_failed: {exc!r}"
             outcome.attempts.append(attempt)
             outcome.warnings.append(f"[CAS Repair] iteration {iteration}: không parse được JSON ({exc!s}).")
+            continue
+
+        try:
+            candidate_scene = MathScene.model_validate(scene_dict)
+        except Exception as exc:
+            attempt.error = f"validate_failed: {exc!r}"
+            outcome.attempts.append(attempt)
+            outcome.warnings.append(f"[CAS Repair] iteration {iteration}: validate scene LLM lỗi ({exc!s}).")
+            continue
+
+        if _scene_structure(candidate_scene) != _scene_structure(current_scene):
+            attempt.error = "structure_changed"
+            outcome.attempts.append(attempt)
+            outcome.warnings.append(
+                f"[CAS Repair] iteration {iteration}: LLM đã thay đổi cấu trúc scene; bỏ kết quả."
+            )
             continue
 
         try:

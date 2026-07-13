@@ -408,8 +408,15 @@ async def _run_reasoning_stage(
                         thinking_enabled=thinking_enabled,
                     )
                     if isinstance(plan, dict):
+                        from app.schemas.ai_reasoning import SceneReasoningPlan
+
+                        validated = SceneReasoningPlan.model_validate(plan)
+                        if validated.problem_analysis.original_text != problem_text:
+                            raise ValueError("Reasoning plan đã thay đổi đề bài gốc.")
+                        if grade is not None and validated.problem_analysis.grade != grade:
+                            raise ValueError("Reasoning plan đã thay đổi lớp học được yêu cầu.")
                         logger.info("Reasoning stage succeeded via %s/%s", provider, model)
-                        return plan
+                        return validated.model_dump(mode="json")
                 except Exception as error:
                     logger.warning("Reasoning stage failed via %s/%s: %s", provider, model, error)
                     warnings.append(f"Tầng suy luận lỗi ({provider}/{model}): {_short_error(str(error))}")
