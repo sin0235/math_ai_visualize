@@ -75,17 +75,43 @@ def cas_supported_relation_types() -> set[str]:
 @dataclass(frozen=True)
 class RelationContractV3:
     required_kinds: tuple[tuple[str, int], ...]
+    # Các tổ hợp operand thay thế hợp lệ (bất kỳ 1 alternative match là pass).
+    alternative_kinds: tuple[tuple[tuple[str, int], ...], ...] = ()
     minimum_kinds: tuple[tuple[str, int], ...] = ()
     dimensions: tuple[str, ...] = ("2d", "3d")
     verifier: str = "geometry-kernel-v3"
 
 
 RELATION_CONTRACTS_V3: dict[str, RelationContractV3] = {
-    "perpendicular": RelationContractV3((("linear", 2),)),
-    "parallel": RelationContractV3((("linear", 2),)),
+    # perpendicular: 2 đường HOẶC 1 đường + 1 mặt phẳng (3D)
+    "perpendicular": RelationContractV3(
+        required_kinds=(("linear", 2),),
+        alternative_kinds=(
+            (("linear", 1), ("planar", 1)),  # đường vuông góc mặt phẳng
+        ),
+    ),
+    # parallel: 2 đường HOẶC 1 đường + 1 mặt phẳng (3D)
+    "parallel": RelationContractV3(
+        required_kinds=(("linear", 2),),
+        alternative_kinds=(
+            (("linear", 1), ("planar", 1)),  # đường song song mặt phẳng
+        ),
+    ),
     "equal_length": RelationContractV3((("linear", 2),)),
-    "midpoint": RelationContractV3((("point", 1), ("linear", 1))),
-    "intersection": RelationContractV3((("point", 1), ("linear", 2))),
+    # midpoint: (1 điểm giữa + 1 đoạn thẳng) HOẶC (3 điểm: E là trung điểm của AB)
+    "midpoint": RelationContractV3(
+        required_kinds=(("point", 1), ("linear", 1)),
+        alternative_kinds=(
+            (("point", 3),),  # midpoint(A, B, E): E giữa A và B
+        ),
+    ),
+    # intersection: (1 điểm + 2 đường) HOẶC (1 điểm + 1 đường + 1 mặt phẳng, 3D)
+    "intersection": RelationContractV3(
+        required_kinds=(("point", 1), ("linear", 2)),
+        alternative_kinds=(
+            (("point", 1), ("linear", 1), ("planar", 1)),  # giao đường với mặt phẳng
+        ),
+    ),
     "tangent": RelationContractV3((), minimum_kinds=(("object", 2),)),
     "collinear": RelationContractV3((), minimum_kinds=(("point", 3),)),
     "coplanar": RelationContractV3((), minimum_kinds=(("point", 4),), dimensions=("3d",)),
@@ -93,8 +119,21 @@ RELATION_CONTRACTS_V3: dict[str, RelationContractV3] = {
     "on_plane": RelationContractV3((("point", 1), ("planar", 1)), dimensions=("3d",)),
     "on_sphere": RelationContractV3((("point", 1), ("sphere", 1)), dimensions=("3d",)),
     "on_circle": RelationContractV3((("point", 1), ("circle", 1)), dimensions=("2d",)),
-    "distance": RelationContractV3((("point", 2),)),
-    "angle": RelationContractV3((("linear", 2),)),
+    # distance: 2 điểm HOẶC (1 điểm + 1 đường/đoạn) HOẶC (1 điểm + 1 mặt phẳng, 3D)
+    "distance": RelationContractV3(
+        required_kinds=(("point", 2),),
+        alternative_kinds=(
+            (("point", 1), ("linear", 1)),   # khoảng cách từ điểm đến đường/đoạn
+            (("point", 1), ("planar", 1)),   # khoảng cách từ điểm đến mặt phẳng (3D)
+        ),
+    ),
+    # angle: 2 đường HOẶC 3 điểm (B là đỉnh, A và C trên hai cạnh)
+    "angle": RelationContractV3(
+        required_kinds=(("linear", 2),),
+        alternative_kinds=(
+            (("point", 3),),  # angle(A, B, C): góc tại B
+        ),
+    ),
     "point_on_segment": RelationContractV3((("point", 1), ("segment", 1))),
     "line_in_plane": RelationContractV3((("linear", 1), ("planar", 1)), dimensions=("3d",)),
     "parallel_planes": RelationContractV3((("planar", 2),), dimensions=("3d",)),
@@ -114,22 +153,31 @@ def validate_v3_relation_operands(relation_type: str, operand_kinds: list[str], 
     contract = RELATION_CONTRACTS_V3.get(normalized_type)
     if contract is None:
         return [f"Relation {relation_type} chưa được đăng ký trong contract v3."]
-    if (
-        normalized_type in {"perpendicular", "parallel"}
-        and dimension == "3d"
-        and _kind_count(operand_kinds, "linear") == 1
-        and _kind_count(operand_kinds, "planar") == 1
-        and len(operand_kinds) == 2
-    ):
-        return []
-    errors: list[str] = []
     if dimension not in contract.dimensions:
-        errors.append(f"Relation {relation_type} không hỗ trợ dimension={dimension}.")
-    for kind, count in contract.required_kinds:
+        return [f"Relation {relation_type} không hỗ trợ dimension={dimension}."]
+    # Kiểm tra contract chính.
+    errors = _check_required_kinds(contract.required_kinds, contract.minimum_kinds, operand_kinds, relation_type)
+    if not errors:
+        return []
+    # Kiểm tra các alternative contracts.
+    for alt_kinds in contract.alternative_kinds:
+        if not _check_required_kinds(alt_kinds, (), operand_kinds, relation_type):
+            return []
+    return errors
+
+
+def _check_required_kinds(
+    required_kinds: tuple[tuple[str, int], ...],
+    minimum_kinds: tuple[tuple[str, int], ...],
+    operand_kinds: list[str],
+    relation_type: str,
+) -> list[str]:
+    errors: list[str] = []
+    for kind, count in required_kinds:
         actual = _kind_count(operand_kinds, kind)
         if actual != count:
             errors.append(f"Relation {relation_type} cần đúng {count} operand kind={kind}, nhận {actual}.")
-    for kind, minimum in contract.minimum_kinds:
+    for kind, minimum in minimum_kinds:
         actual = _kind_count(operand_kinds, kind)
         if actual < minimum:
             errors.append(f"Relation {relation_type} cần ít nhất {minimum} operand kind={kind}, nhận {actual}.")

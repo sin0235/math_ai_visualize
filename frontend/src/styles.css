@@ -18027,6 +18027,9 @@ button.analyzer-guide-label:hover {
   color: var(--ink-4);
   font-size: 0.72rem;
   font-weight: 400;
+  border: 1px solid var(--line-strong);
+  padding: 2px 8px;
+  border-radius: 6px;
 }
 
 .fa2-actions-disclosure > summary:focus-visible,
