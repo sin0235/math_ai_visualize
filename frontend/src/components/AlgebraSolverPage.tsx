@@ -22,11 +22,18 @@ import {
   saveAlgebraHistoryItem,
   type AlgebraHistoryItem,
 } from './algebra-solver/algebraHistory';
+import { isDocumentHidden, showBrowserNotify } from '../utils/browserNotify';
 
 type AlgebraDomain = 'R' | 'C' | 'N' | 'Z';
 export type IntervalPreset = '' | 'unit_circle' | 'custom';
 
-export function AlgebraSolverPage() {
+type ToastKind = 'error' | 'warning' | 'info';
+
+export function AlgebraSolverPage({
+  onToast,
+}: {
+  onToast?: (title: string, message: string, kind?: ToastKind, details?: string[]) => void;
+} = {}) {
   const [input, setInput] = useState('');
   const [inputMode, setInputMode] = useState<AlgebraInputMode>('natural');
   const [inputFormat, setInputFormat] = useState<AlgebraInputFormat>('auto');
@@ -171,6 +178,7 @@ export function AlgebraSolverPage() {
       setInputExpanded(false);
       setSolvedFingerprint(currentFingerprint);
       setLocalHistory(saveAlgebraHistoryItem(response));
+      notifyAlgebraSideChannel(response, onToast);
       if (historySource === 'server') {
         try {
           setServerHistory(await listAlgebraHistory({ limit: 20 }));
@@ -180,12 +188,18 @@ export function AlgebraSolverPage() {
       }
     } catch (caught) {
       if (caught instanceof ApiError && caught.message.includes('hủy')) {
-        setError(caught.message);
+        setError('');
+        onToast?.('Đã hủy', caught.message, 'info');
       } else {
         setResult(null);
         setSolvedFingerprint('');
-        if (caught instanceof ApiError) setError(caught.message);
-        else setError(caught instanceof Error ? caught.message : 'Không thể giải bài đại số.');
+        const message = caught instanceof ApiError
+          ? caught.message
+          : caught instanceof Error
+            ? caught.message
+            : 'Không thể giải bài đại số.';
+        setError('');
+        onToast?.('Không giải được', message, 'error');
       }
     } finally {
       setLoading(false);
@@ -267,8 +281,7 @@ export function AlgebraSolverPage() {
           onSubmit={requestConfirmIfNeeded}
         />
         <div className="algebra-result-wrap">
-          {error && <div className="sp-error"><strong>Solver lỗi</strong><span>{error}</span></div>}
-          {loading ? (
+                    {loading ? (
             <AlgebraLoadingResult elapsedSeconds={elapsedSeconds} onCancel={cancelSolve} />
           ) : result ? (
             <AlgebraResult
@@ -398,4 +411,53 @@ function fingerprintRequest(state: {
     intervalClosedEnd: state.intervalClosedEnd,
     sequenceDraft: state.sequenceDraft,
   });
+}
+
+function notifyAlgebraSideChannel(
+  result: AlgebraSolveResponse,
+  onToast?: (title: string, message: string, kind?: ToastKind, details?: string[]) => void,
+) {
+  if (!onToast) return;
+  const routine = (value: string) => (
+    value.includes('Đã diễn giải đề tiếng Việt')
+    || value.includes('Đầu vào gồm cả mô tả tự nhiên')
+    || value.includes('Miền R đang là mặc định')
+    || value.includes('rule-based')
+    || value.includes('NLP:')
+    || value.includes('mathcore')
+  );
+  const warnings = (result.warnings || []).filter((item) => item.trim() && !routine(item));
+  const errors = (result.errors || []).filter((item) => item.trim());
+  if (result.status === 'error' || result.status === 'unsupported') {
+    onToast(
+      result.status === 'unsupported' ? 'Chưa hỗ trợ dạng này' : 'Không giải được',
+      result.answer || errors[0] || 'Không thể giải bài này.',
+      result.status === 'unsupported' ? 'warning' : 'error',
+      [...errors, ...warnings].slice(0, 5),
+    );
+    return;
+  }
+  const details = [...warnings, ...errors].slice(0, 6);
+  if (details.length > 0) {
+    onToast('Lưu ý khi giải', details[0], 'warning', details.slice(1));
+  }
+  const failedChecks = (result.verification?.checks || []).filter((check) => check.status === 'fail' || check.status === 'warn');
+  if (result.verification?.status === 'failed' || failedChecks.length > 0) {
+    onToast(
+      'Cần rà lại kết quả',
+      failedChecks[0]?.detail || 'Một số kiểm tra lời giải chưa đạt.',
+      'warning',
+      failedChecks.slice(0, 4).map((check) => check.detail || check.name).filter(Boolean),
+    );
+    return;
+  }
+  // Clean solved: OS notify only when tab is hidden.
+  if (result.status === 'solved' && (result.steps?.length || 0) > 0 && details.length === 0 && isDocumentHidden()) {
+    showBrowserNotify({
+      title: 'Đã giải xong',
+      body: (result.answer || 'Có lời giải từng bước.').slice(0, 120),
+      kind: 'info',
+      tag: 'solve-done',
+    });
+  }
 }

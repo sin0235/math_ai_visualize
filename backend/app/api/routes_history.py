@@ -10,14 +10,12 @@ from app.repositories.history import RenderHistoryRepository
 from app.repositories.scene_workspaces import SceneWorkspaceRepository
 from app.schemas.auth import (
     RenderHistoryDetail,
-    RenderHistoryDetailV2,
     RenderHistoryDetailV3,
     RenderHistoryItem,
     RenderHistoryPatchRequest,
     RestoreHistoryV3Request,
     SceneRevisionResponse,
 )
-from app.schemas.scene import MathScene, RenderPayload, RenderResponse
 from app.schemas.scene_v3 import CommittedSceneRefV3, SceneWorkspaceResponseV3
 
 router = APIRouter(prefix="/api/history", tags=["history"])
@@ -46,38 +44,27 @@ async def get_history(job_id: str, user: UserRecord = Depends(get_current_user),
     if job is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy lịch sử dựng hình.")
     item = await render_history_item(repo, job)
-    if job.schema_version == "3.0":
-        snapshot = await repo.find_v3_snapshot_for_user(user.id, job_id)
-        if snapshot is None or snapshot.response_json is None:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Lịch sử v3 không có snapshot hợp lệ.")
-        try:
-            workspace = SceneWorkspaceResponseV3.model_validate_json(snapshot.response_json)
-            command_log = json.loads(snapshot.command_log_json)
-        except Exception as error:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Snapshot lịch sử v3 không hợp lệ.") from error
-        return RenderHistoryDetailV3(
-            **item.model_dump(),
-            workspace=workspace,
-            snapshot_revision=snapshot.snapshot_revision or workspace.scene.revision,
-            command_log=command_log,
-            render_request=parse_json_object(job.render_request_json),
-            runtime_settings=parse_json_object(job.runtime_settings_json),
+    if job.schema_version != "3.0":
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail="Lịch sử Scene v2 đã bị gỡ. Hãy dựng lại hình bằng pipeline Scene v3.",
         )
+    snapshot = await repo.find_v3_snapshot_for_user(user.id, job_id)
+    if snapshot is None or snapshot.response_json is None:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Lịch sử v3 không có snapshot hợp lệ.")
     try:
-        response = RenderResponse.model_validate_json(job.response_json) if job.response_json else None
-        scene = response.scene if response else MathScene.model_validate_json(job.scene_json)
-        payload = response.payload if response else RenderPayload.model_validate_json(job.payload_json)
-        warnings = response.warnings if response else json.loads(job.warnings_json)
+        workspace = SceneWorkspaceResponseV3.model_validate_json(snapshot.response_json)
+        command_log = json.loads(snapshot.command_log_json or "[]")
+        if not isinstance(command_log, list):
+            command_log = []
     except Exception as error:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Lịch sử này dùng định dạng cũ hoặc không còn tương thích với render v2.") from error
-    return RenderHistoryDetailV2(
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Snapshot lịch sử v3 không hợp lệ.") from error
+    return RenderHistoryDetailV3(
         **item.model_dump(),
-        scene=scene,
-        payload=payload,
-        warnings=warnings,
-        response=response,
+        workspace=workspace,
+        snapshot_revision=snapshot.snapshot_revision or workspace.scene.revision,
+        command_log=command_log,
         render_request=parse_json_object(job.render_request_json),
-        advanced_settings=parse_json_object(job.advanced_settings_json),
         runtime_settings=parse_json_object(job.runtime_settings_json),
     )
 

@@ -10,6 +10,7 @@ def scene_v3_to_solver_input(
     verification: Iterable[ConstraintResultV3] = (),
 ) -> dict[str, Any]:
     names = _object_names(scene)
+    by_id = {obj.id: obj for obj in scene.objects}
     verification_by_relation = {
         relation.id: relation.verification
         for relation in scene.relations
@@ -25,7 +26,12 @@ def scene_v3_to_solver_input(
         "renderer": scene.renderer,
         "objects": [_solver_object(obj, names) for obj in scene.objects],
         "relations": [
-            _solver_relation(relation, names, verification_by_relation.get(relation.id))
+            _solver_relation(
+                relation,
+                names,
+                by_id,
+                verification_by_relation.get(relation.id),
+            )
             for relation in scene.relations
         ],
         "annotations": [
@@ -33,7 +39,7 @@ def scene_v3_to_solver_input(
                 "id": annotation.id,
                 "type": annotation.type,
                 "target_ids": list(annotation.target_ids),
-                "target": "-".join(names[target_id] for target_id in annotation.target_ids),
+                "target": "-".join(names.get(target_id, target_id) for target_id in annotation.target_ids),
                 "label": annotation.label,
                 "provenance": annotation.provenance,
                 "relation_id": annotation.relation_id,
@@ -87,9 +93,14 @@ def _solver_object(obj: SceneObjectV3, names: dict[str, str]) -> dict[str, Any]:
 def _solver_relation(
     relation,
     names: dict[str, str],
+    by_id: dict[str, SceneObjectV3],
     verification: ConstraintResultV3 | None,
 ) -> dict[str, Any]:
-    operands = [names[operand.ref_id] for operand in relation.operands]
+    operand_names = [names.get(operand.ref_id, operand.ref_id) for operand in relation.operands]
+    classic_tokens = [
+        _classic_token(operand, names, by_id)
+        for operand in relation.operands
+    ]
     confidence = verification.status if verification is not None else "unverified"
     metadata = {
         **relation.metadata,
@@ -101,14 +112,38 @@ def _solver_relation(
         "id": relation.id,
         "type": relation.type,
         "operands": [operand.model_dump(mode="json") for operand in relation.operands],
-        "operand_names": operands,
-        "object_1": operands[0],
-        "object_2": operands[1] if len(operands) > 1 else None,
+        "operand_names": operand_names,
+        # Classical engines parse edge/plane tokens; expand segment/plane to A-B / plane(ABC).
+        "object_1": classic_tokens[0] if classic_tokens else None,
+        "object_2": classic_tokens[1] if len(classic_tokens) > 1 else None,
         "args": relation.args,
         "source": relation.source,
         "verification": verification.model_dump(mode="json", exclude_none=True) if verification is not None else None,
         "metadata": metadata,
     }
+
+
+def _classic_token(operand, names: dict[str, str], by_id: dict[str, SceneObjectV3]) -> str:
+    """Map typed operand to classical label token used by geometry_facts parsers."""
+    obj = by_id.get(operand.ref_id)
+    label = names.get(operand.ref_id, operand.ref_id)
+    if obj is None:
+        return label
+    if obj.type in {"segment", "line_2d", "line_3d"}:
+        point_ids = list(getattr(obj, "point_ids", ()) or ())
+        if len(point_ids) >= 2:
+            a = names.get(point_ids[0], point_ids[0])
+            b = names.get(point_ids[1], point_ids[1])
+            return f"{a}-{b}"
+    if obj.type in {"vector_2d", "vector_3d"}:
+        a = names.get(obj.from_point_id, obj.from_point_id)
+        b = names.get(obj.to_point_id, obj.to_point_id)
+        return f"{a}-{b}"
+    if obj.type in {"face", "plane"}:
+        pts = [names.get(pid, pid) for pid in list(getattr(obj, "point_ids", []) or [])]
+        if len(pts) >= 3:
+            return f"plane({''.join(pts)})"
+    return label
 
 
 __all__ = ["scene_v3_to_solver_input", "scene_v3_to_variants_input"]

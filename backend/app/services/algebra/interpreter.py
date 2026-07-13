@@ -290,17 +290,29 @@ def _extract_quadratic_coefficients(expression: str) -> tuple[str | None, str | 
     return a, b.rstrip("*"), c, variable, parameter
 
 
+def _normalize_sequence_key(key: str) -> str:
+    """Chuẩn hóa khóa tham số cấp số: u_1/u₁ → u1, u_2 → u2, ..."""
+    text = key.strip().lower().replace(" ", "")
+    for index, glyph in enumerate("₀₁₂₃₄₅₆₇₈₉"):
+        text = text.replace(glyph, str(index))
+    match = re.fullmatch(r"([us])_?(\d+)", text)
+    if match:
+        return f"{match.group(1)}{match.group(2)}"
+    return text
+
+
 def _sequence_template_from_text(plain: str) -> str | None:
     if not _looks_like_sequence_text(plain):
         return None
     listed = _sequence_template_from_list_text(plain)
     if listed:
         return listed
-    values = dict(re.findall(r"\b(u_?1|u₁|d|q|n)\s*=\s*(-?\d+(?:/\d+)?)", plain))
-    if "u_1" in values and "u1" not in values:
-        values["u1"] = values["u_1"]
-    if "u₁" in values and "u1" not in values:
-        values["u1"] = values["u₁"]
+    values: dict[str, str] = {}
+    for key, value in re.findall(
+        r"\b(u_?\d+|u[₀₁₂₃₄₅₆₇₈₉]+|d|q|n)\s*=\s*(-?\d+(?:/\d+)?)",
+        plain,
+    ):
+        values[_normalize_sequence_key(key)] = value
     n = values.get("n") or _extract_sequence_n(plain)
     if n:
         values["n"] = n
@@ -308,6 +320,10 @@ def _sequence_template_from_text(plain: str) -> str | None:
         u1 = _extract_named_number(plain, ("u1", "u_1", "u₁", "so hang dau", "số hạng đầu"))
         if u1 is not None:
             values["u1"] = u1
+    if "u2" not in values:
+        u2 = _extract_named_number(plain, ("u2", "u_2", "u₂"))
+        if u2 is not None:
+            values["u2"] = u2
     if "d" not in values:
         d = _extract_named_number(plain, ("cong sai", "d"))
         if d is not None:
@@ -319,14 +335,25 @@ def _sequence_template_from_text(plain: str) -> str | None:
     if "u1" not in values or "n" not in values:
         return None
     asks_sum = "tong" in plain or "s_n" in plain or "sn" in plain
-    has_d = values.get("d") is not None
-    has_q = values.get("q") is not None
+    has_d = "d" in values
+    has_q = "q" in values
+    has_u2 = "u2" in values
+    # "cap so cong" / "cong sai" / has d → arithmetic; không mặc định d=0.
     if ("cong" in plain or has_d) and not has_q:
         name = "arithmetic_sum" if asks_sum else "arithmetic"
-        return f"{name}(u1={values['u1']},d={values.get('d', 0)},n={values['n']})"
+        if has_d:
+            return f"{name}(u1={values['u1']},d={values['d']},n={values['n']})"
+        if has_u2:
+            return f"{name}(u1={values['u1']},u2={values['u2']},n={values['n']})"
+        return None
+    # "cap so nhan" / "cong boi" / has q → geometric; không mặc định q=0.
     if "nhan" in plain or has_q:
         name = "geometric_sum" if asks_sum else "geometric"
-        return f"{name}(u1={values['u1']},q={values.get('q', 0)},n={values['n']})"
+        if has_q:
+            return f"{name}(u1={values['u1']},q={values['q']},n={values['n']})"
+        if has_u2:
+            return f"{name}(u1={values['u1']},u2={values['u2']},n={values['n']})"
+        return None
     return None
 
 
@@ -335,6 +362,18 @@ def _looks_like_sequence_text(plain: str) -> bool:
 
 
 def _extract_sequence_n(plain: str) -> str | None:
+    # Ưu tiên cụm từ hỏi n ("số hạng thứ 9", "tìm u9", tổng n số hạng...) trước bare u_k/s_k.
+    phrase_patterns = [
+        r"(?:so hang thu|số hạng thứ|hang thu|hạng thứ)\s*(\d+)",
+        r"(?:tong|tổng)\s*(\d+)\s*(?:so hang|số hạng)",
+        r"(\d+)\s*(?:so hang dau|số hạng đầu)",
+        r"(?:tim|tìm)\s*u\s*_?\s*(\d+)\b",
+        r"(?:tim|tìm)\s*s\s*_?\s*(\d+)\b",
+    ]
+    for pattern in phrase_patterns:
+        match = re.search(pattern, plain)
+        if match:
+            return match.group(1)
     direct_index_patterns = [
         (r"\bu\s*_?\s*(\d+)\b", "u"),
         (r"\bs\s*_?\s*(\d+)\b", "s"),
@@ -345,18 +384,10 @@ def _extract_sequence_n(plain: str) -> str | None:
         for match in re.finditer(pattern, plain):
             value = match.group(1)
             tail = plain[match.end(): match.end() + 3]
-            if kind == "u" and value == "1" and re.match(r"\s*=", tail):
+            # Bỏ qua mọi u_k / s_k đang gán giá trị (u1=..., u2=..., s3=...), không chỉ u1.
+            if kind in {"u", "s"} and re.match(r"\s*=", tail):
                 continue
             return value
-    phrase_patterns = [
-        r"(?:so hang thu|số hạng thứ|hang thu|hạng thứ)\s*(\d+)",
-        r"(?:tong|tổng)\s*(\d+)\s*(?:so hang|số hạng)",
-        r"(\d+)\s*(?:so hang dau|số hạng đầu)",
-    ]
-    for pattern in phrase_patterns:
-        match = re.search(pattern, plain)
-        if match:
-            return match.group(1)
     return None
 
 

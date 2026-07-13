@@ -1,16 +1,16 @@
-"""Regression test: đảm bảo các phần quan trọng của AI prompt còn nguyên.
+"""Regression test: critical AI prompt contracts for Scene v3 + reasoning.
 
-Khi prompt bị refactor, các block ràng buộc reference/expression/self-check
-phải còn nguyên — vì validator + verifier dựa vào hành vi LLM tuân theo
-prompt này. Nếu mất, chất lượng output sẽ tụt rõ rệt.
+Production extract/repair uses SCENE_EXTRACTION_V3_SYSTEM_PROMPT (and
+get_system_prompts defaults to V3). These gates protect that path.
 """
 
 import pytest
 
 from app.schemas.ai_reasoning import SceneReasoningPlan
 from app.services.ai_prompt import (
+    DEFAULT_SCENE_EXTRACTION_SYSTEM_PROMPT,
     REASONING_SYSTEM_PROMPT,
-    SCENE_EXTRACTION_SYSTEM_PROMPT,
+    SCENE_EXTRACTION_V3_SYSTEM_PROMPT,
     SYSTEM_PROMPT_SECURITY_PREFIX,
     SYSTEM_PROMPT_SECURITY_SUFFIX,
     _secure_system_prompt,
@@ -20,60 +20,62 @@ from app.services.ai_prompt import (
 
 
 # ---------------------------------------------------------------------------
-# Scene extraction prompt
+# Scene extraction V3 prompt (production default)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("snippet", [
-    "Reference Integrity",
-    "Expression Integrity",
-    "Self-check",
-    "Quy tắc relation type",
+    "schema_version",
+    "point_ids",
+    "ref_id",
+    "ref_kind",
     "midpoint",
     "on_plane",
-    "on_line",
-    "on_sphere",
-    "on_circle",
     "collinear",
     "coplanar",
-    "tangent",
     "distance",
     "angle",
+    "perpendicular",
+    "plane_geometry",
+    "solid_geometry",
+    "operands",
 ])
-def test_scene_extraction_prompt_contains(snippet: str):
-    assert snippet in SCENE_EXTRACTION_SYSTEM_PROMPT, (
-        f"SCENE_EXTRACTION_SYSTEM_PROMPT thiếu phần '{snippet}' — "
-        "đây là ràng buộc bắt buộc cho validator/verifier"
+def test_scene_extraction_v3_prompt_contains(snippet: str):
+    assert snippet in SCENE_EXTRACTION_V3_SYSTEM_PROMPT, (
+        f"SCENE_EXTRACTION_V3_SYSTEM_PROMPT thiếu phần '{snippet}'"
     )
 
 
-@pytest.mark.parametrize("relation", [
-    '"type":"midpoint"',
-    '"type":"on_plane"',
-    '"type":"on_line"',
-    '"type":"on_sphere"',
-    '"type":"on_circle"',
-    '"type":"collinear"',
-    '"type":"coplanar"',
-    '"type":"tangent"',
-    '"type":"distance"',
-    '"type":"angle"',
+def test_default_scene_extraction_prompt_is_v3():
+    assert DEFAULT_SCENE_EXTRACTION_SYSTEM_PROMPT is SCENE_EXTRACTION_V3_SYSTEM_PROMPT
+    assert "schema_version" in DEFAULT_SCENE_EXTRACTION_SYSTEM_PROMPT
+    assert "point_ids" in DEFAULT_SCENE_EXTRACTION_SYSTEM_PROMPT
+
+
+@pytest.mark.parametrize("relation_type", [
+    "midpoint",
+    "on_plane",
+    "collinear",
+    "coplanar",
+    "distance",
+    "angle",
+    "perpendicular",
+    "parallel",
 ])
-def test_scene_prompt_has_relation_example(relation: str):
-    """Mỗi loại relation phải có ví dụ JSON cụ thể trong schema."""
-    assert relation in SCENE_EXTRACTION_SYSTEM_PROMPT
+def test_scene_v3_prompt_has_relation_tokens(relation_type: str):
+    assert relation_type in SCENE_EXTRACTION_V3_SYSTEM_PROMPT
 
 
-def test_scene_prompt_warns_about_dropping_invalid_refs():
-    """Phải nói rõ tham chiếu sai sẽ bị drop để LLM tự sửa."""
-    text = SCENE_EXTRACTION_SYSTEM_PROMPT.lower()
-    assert "drop" in text or "bỏ" in text or "loại bỏ" in text
+def test_scene_v3_prompt_requires_stable_ids_and_typed_operands():
+    text = SCENE_EXTRACTION_V3_SYSTEM_PROMPT
+    assert "ref_id" in text and "ref_kind" in text
+    assert "id" in text
+    assert "AB" in text or "shorthand" in text.lower() or "không" in text.lower()
 
 
-def test_scene_prompt_mentions_naming_uniqueness():
-    """Phải có ràng buộc: tên object phải duy nhất."""
-    text = SCENE_EXTRACTION_SYSTEM_PROMPT
-    assert "duy nhất" in text or "unique" in text.lower() or "trùng" in text
+def test_scene_v3_prompt_mentions_immutable_problem_text():
+    text = SCENE_EXTRACTION_V3_SYSTEM_PROMPT.lower()
+    assert "nguyên văn" in text or "không sửa" in text or "immutable" in text
 
 
 # ---------------------------------------------------------------------------

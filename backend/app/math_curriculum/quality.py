@@ -133,7 +133,7 @@ def run_mutation_checks() -> list[dict[str, object]]:
 def main() -> None:
     backend_root = Path(__file__).resolve().parents[2]
     parser = argparse.ArgumentParser(description="Dashboard quality và rollout capability toán.")
-    parser.add_argument("--corpus", type=Path, default=backend_root / "tests/nlp/corpus/v1.jsonl")
+    parser.add_argument("--corpus", type=Path, default=backend_root.parent / "data/nlp/corpus/v2.jsonl")
     parser.add_argument("--tests", type=Path, default=backend_root / "tests")
     parser.add_argument("--strict", action="store_true")
     args = parser.parse_args()

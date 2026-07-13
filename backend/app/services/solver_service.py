@@ -75,12 +75,21 @@ _COPLANAR_RE = re.compile(r"đồng\s*phẳng|coplanar", re.IGNORECASE)
 _POINT_RE = r"[A-Z](?:[0-9]+|')?"
 
 
-def solve(scene_dict: dict, question: str, geometry_method: str = "oxyz") -> SolverResult:
+def solve(
+    scene_dict: dict,
+    question: str,
+    geometry_method: str = "oxyz",
+    *,
+    geometry_goal: dict[str, Any] | None = None,
+    target_object_ids: list[str] | None = None,
+) -> SolverResult:
     pts = _point_map(scene_dict)
     warnings: list[str] = _scene_reliability_warnings(scene_dict)
     q = normalize_solver_question(question)
     method = geometry_method if geometry_method in {"oxyz", "classical"} else "oxyz"
-    capability_task = infer_geometry_goal(q)
+    capability_task = _resolve_capability_task(q, geometry_goal)
+    if target_object_ids:
+        scene_dict = {**scene_dict, "solver_target_object_ids": list(target_object_ids)}
     capability = resolve_geometry_capability(
         question=q,
         task=capability_task,
@@ -92,7 +101,7 @@ def solve(scene_dict: dict, question: str, geometry_method: str = "oxyz") -> Sol
     if capability_task != "unknown" and not capability.accepted:
         return SolverResult(
             q,
-            capability.reason or "Dạng bài hình học chưa được hỗ trợ.",
+            capability.reason or "Dạng bài này chưa giải được trên hình hiện tại.",
             [],
             [*warnings, capability.reason or "Không có capability phù hợp."],
             confidence="insufficient",
@@ -102,6 +111,7 @@ def solve(scene_dict: dict, question: str, geometry_method: str = "oxyz") -> Sol
     guard = None if capability_task in {"pythagoras", "quadrilateral_metric", "circle_metric"} else _metric_data_guard(scene_dict, q)
     if guard:
         result = SolverResult(q, "Không đủ dữ kiện", [], [*warnings, guard])
+        _attach_highlight_object_ids(result, scene_dict)
         _apply_result_metadata(result, scene_dict, geometry_method)
         return result
 
@@ -144,15 +154,24 @@ def solve(scene_dict: dict, question: str, geometry_method: str = "oxyz") -> Sol
     elif _VECTOR_RE.search(q):
         result = _solve_vector(pts, q, warnings)
     else:
-        warnings.append("Chưa nhận diện được dạng bài. Hãy thử hỏi cụ thể hơn: d(A,B), d(A,BC), d(A,(BCD)), góc giữa AB và CD, S(ABC), V(S.ABCD), phương trình AB, AB . AC, hình chiếu A lên (BCD).")
+        warnings.append("Chưa hiểu rõ câu hỏi. Hãy nêu rõ cần tìm gì (khoảng cách, góc, diện tích, thể tích, …) và các điểm hoặc mặt liên quan, ví dụ: khoảng cách từ A đến mặt phẳng (BCD).")
         result = SolverResult(q, "Không xác định", [], warnings)
 
     _prepend_context_warnings(result, warnings)
     if geometry_method == "classical":
         result = _classicalize_result(result, scene_dict, pts)
     result = attach_replayed_proof(result, scene_dict, capability_task, method)
+    _attach_highlight_object_ids(result, scene_dict)
     _apply_result_metadata(result, scene_dict, geometry_method)
     return result
+
+
+def _resolve_capability_task(question: str, geometry_goal: dict[str, Any] | None) -> str:
+    if isinstance(geometry_goal, dict):
+        task = str(geometry_goal.get("task") or "").strip()
+        if task and task != "unknown":
+            return task
+    return infer_geometry_goal(question)
 
 
 def _apply_result_metadata(result: SolverResult, scene_dict: dict, method: str) -> None:
@@ -224,6 +243,10 @@ def _scene_reliability_warnings(scene_dict: dict) -> list[str]:
     return warnings
 
 
+_METRIC_RESIDUAL_TOL = 1e-2
+_METRIC_LENGTH_TOL = 5e-2
+
+
 def _metric_data_guard(scene_dict: dict, question: str) -> str | None:
     if not scene_dict.get("problem_text"):
         return None
@@ -234,43 +257,90 @@ def _metric_data_guard(scene_dict: dict, question: str) -> str | None:
         return None
     if _ANGLE_RE.search(question) and _has_angle_evidence(scene_dict):
         return None
-    if _has_metric_evidence(scene_dict):
+    evidence = _metric_evidence_status(scene_dict, question)
+    if evidence == "ok":
         return None
+    if evidence == "inconsistent":
+        return (
+            "Dữ kiện độ dài/góc trong scene không khớp residual kernel hoặc tọa độ đã kiểm chứng. "
+            "Hệ thống không dùng label mâu thuẫn để kết luận số học."
+        )
     return (
         "Đề/scene hiện không có dữ kiện định lượng đã kiểm chứng cho đại lượng cần tính. "
         "Hệ thống không dùng tọa độ minh họa do AI tự chọn để kết luận số học."
     )
 
 
-def _has_metric_evidence(scene_dict: dict) -> bool:
-    if scene_dict.get("parameters"):
-        return True
+def _metric_evidence_status(scene_dict: dict, question: str) -> str:
+    """Return 'ok' | 'missing' | 'inconsistent' for metric unlock."""
+    pts = _point_map(scene_dict)
+    saw_candidate = False
+    saw_ok = False
+    saw_inconsistent = False
+
+    # Symbolic parameters only unlock when the goal is itself symbolic (variable names).
+    if scene_dict.get("parameters") and _question_is_symbolic_metric(question, scene_dict):
+        return "ok"
+
     for obj in scene_dict.get("objects", []):
         if not isinstance(obj, dict):
             continue
         if any(isinstance(obj.get(field), str) and obj.get(field) for field in ("x_expr", "y_expr", "z_expr", "radius_expr")):
-            return True
+            return "ok"
+
     for rel in scene_dict.get("relations", []):
         if not isinstance(rel, dict):
             continue
+        rel_type = str(rel.get("type") or "").strip().lower()
         metadata = rel.get("metadata") if isinstance(rel.get("metadata"), dict) else {}
-        if (
-            rel.get("type") in {"distance", "angle", "equal_length"}
-            and any(key in metadata for key in ("value", "length", "angle"))
-            and _metadata_is_usable_fact(metadata, default=True)
-        ):
-            return True
+        args = rel.get("args") if isinstance(rel.get("args"), dict) else {}
+        has_value = any(key in metadata or key in args for key in ("value", "length", "angle"))
+        if rel_type not in {"distance", "angle", "equal_length"} or not has_value:
+            continue
+        if not _metadata_is_usable_fact(metadata, default=True):
+            continue
+        saw_candidate = True
+        if not _relation_verification_consistent(rel):
+            saw_inconsistent = True
+            continue
+        saw_ok = True
+
     for ann in scene_dict.get("annotations", []):
         if not isinstance(ann, dict):
             continue
         metadata = ann.get("metadata") if isinstance(ann.get("metadata"), dict) else {}
-        if (
-            ann.get("type") in {"length", "angle"}
-            and _looks_metric_label(ann.get("label"))
-            and _metadata_is_usable_fact(metadata, default=True)
-        ):
-            return True
-    return False
+        if ann.get("type") not in {"length", "angle"} or not _looks_metric_label(ann.get("label")):
+            continue
+        consistency = _annotation_metric_consistent(scene_dict, ann, pts)
+        usable = _metadata_is_usable_fact(metadata, default=True)
+        source = str(metadata.get("source") or "").lower()
+        confidence = str(metadata.get("confidence") or "").lower()
+        # Construction / unverified labels never unlock metric — even if coords match by chance.
+        if source == "construction" or confidence == "unverified":
+            continue
+        # LLM often tags given lengths as render_only; if coords match the label, accept.
+        if not usable and consistency is not True:
+            continue
+        saw_candidate = True
+        if consistency is False:
+            saw_inconsistent = True
+            continue
+        if consistency is True:
+            saw_ok = True
+            continue
+        # consistency is None: unlock only for trusted symbolic labels, not unresolved numerics.
+        if usable and _parse_metric_number(str(ann.get("label") or "")) is None:
+            saw_ok = True
+
+    if saw_ok:
+        return "ok"
+    if saw_inconsistent or saw_candidate:
+        return "inconsistent" if saw_inconsistent else "missing"
+    return "missing"
+
+
+def _has_metric_evidence(scene_dict: dict) -> bool:
+    return _metric_evidence_status(scene_dict, str(scene_dict.get("problem_text") or "")) == "ok"
 
 
 def _looks_metric_label(value: Any) -> bool:
@@ -282,13 +352,182 @@ def _looks_metric_label(value: Any) -> bool:
     return bool(re.search(r"\d|sqrt|√|\b[a-z]\b", text, flags=re.IGNORECASE))
 
 
+def _question_is_symbolic_metric(question: str, scene_dict: dict) -> bool:
+    param_names = [
+        str(item.get("name")).strip()
+        for item in scene_dict.get("parameters") or []
+        if isinstance(item, dict) and item.get("name")
+    ]
+    if not param_names:
+        return False
+    q = question.lower()
+    if any(name.lower() in q for name in param_names):
+        return True
+    # Goal keeps symbols (h, a, …) rather than pure numeric readout.
+    return bool(re.search(r"\b[a-z]\b", question)) and not re.search(r"\d", question)
+
+
+def _relation_verification_consistent(relation: dict[str, Any]) -> bool:
+    verification = relation.get("verification")
+    if not isinstance(verification, dict):
+        return True
+    status = str(verification.get("status") or "").lower()
+    if status in {"failed", "error"}:
+        return False
+    residual = verification.get("residual")
+    if residual is None:
+        return status in {"", "verified", "partial", "unverifiable", "unsupported"}
+    try:
+        return abs(float(residual)) <= _METRIC_RESIDUAL_TOL
+    except (TypeError, ValueError):
+        return status == "verified"
+
+
+def _annotation_metric_consistent(
+    scene_dict: dict,
+    annotation: dict[str, Any],
+    pts: dict[str, Vec3],
+) -> bool | None:
+    """True=match, False=mismatch, None=cannot verify (symbolic or missing coords)."""
+    relation_id = annotation.get("relation_id")
+    if relation_id:
+        for rel in scene_dict.get("relations") or []:
+            if isinstance(rel, dict) and rel.get("id") == relation_id:
+                if not _relation_verification_consistent(rel):
+                    return False
+                break
+
+    if annotation.get("type") != "length":
+        return None
+
+    label = str(annotation.get("label") or "").strip()
+    numeric = _parse_metric_number(label)
+    if numeric is None:
+        return None  # symbolic label
+
+    endpoints = _annotation_length_endpoints(annotation, scene_dict)
+    if endpoints is None:
+        return None
+    first, second = endpoints
+    if first not in pts or second not in pts:
+        return None
+    distance = _norm(_sub(pts[second], pts[first]))
+    return abs(distance - numeric) <= _METRIC_LENGTH_TOL
+
+
+def _annotation_length_endpoints(
+    annotation: dict[str, Any],
+    scene_dict: dict[str, Any] | None = None,
+) -> tuple[str, str] | None:
+    """Resolve length annotation to two point names for coordinate checks."""
+    object_index = _solver_object_index(scene_dict or {})
+    target_ids = annotation.get("target_ids")
+    if isinstance(target_ids, list) and target_ids:
+        resolved: list[str] = []
+        if len(target_ids) >= 2:
+            for raw_id in target_ids[:2]:
+                name = _point_name_from_ref(str(raw_id), object_index)
+                if name:
+                    resolved.append(name)
+            if len(resolved) == 2:
+                return resolved[0], resolved[1]
+        elif len(target_ids) == 1:
+            edge = _edge_from_object_ref(str(target_ids[0]), object_index)
+            if edge:
+                return edge
+
+    target = str(annotation.get("target") or "").strip()
+    if not target and isinstance(target_ids, list) and target_ids:
+        # Last resort: join ids (may be "AB" or "A-B")
+        target = "-".join(str(item) for item in target_ids if str(item))
+    if "-" in target:
+        parts = [part.strip() for part in target.split("-") if part.strip()]
+        if len(parts) == 2:
+            a = _point_name_from_ref(parts[0], object_index) or parts[0]
+            b = _point_name_from_ref(parts[1], object_index) or parts[1]
+            return a, b
+    if len(target) == 2 and target.isalpha():
+        return target[0], target[1]
+    # Single token that names a segment object
+    edge = _edge_from_object_ref(target, object_index)
+    if edge:
+        return edge
+    return None
+
+
+def _solver_object_index(scene_dict: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    index: dict[str, dict[str, Any]] = {}
+    for obj in scene_dict.get("objects") or []:
+        if not isinstance(obj, dict):
+            continue
+        for key in (obj.get("object_id"), obj.get("id"), obj.get("name"), obj.get("label")):
+            if key:
+                index[str(key)] = obj
+    return index
+
+
+def _point_name_from_ref(ref: str, object_index: dict[str, dict[str, Any]]) -> str | None:
+    if not ref:
+        return None
+    obj = object_index.get(ref)
+    if obj is None:
+        # Bare point label/name already
+        return ref if ref in object_index or (len(ref) <= 4 and ref[:1].isalpha()) else None
+    obj_type = str(obj.get("type") or "")
+    if obj_type in {"point_2d", "point_3d"}:
+        return str(obj.get("name") or obj.get("label") or ref)
+    return None
+
+
+def _edge_from_object_ref(ref: str, object_index: dict[str, dict[str, Any]]) -> tuple[str, str] | None:
+    obj = object_index.get(ref)
+    if obj is None:
+        return None
+    obj_type = str(obj.get("type") or "")
+    if obj_type not in {"segment", "line_2d", "line_3d", "vector_2d", "vector_3d"}:
+        return None
+    pts = obj.get("points") or obj.get("through") or obj.get("point_ids") or []
+    if isinstance(pts, list) and len(pts) >= 2:
+        a = _point_name_from_ref(str(pts[0]), object_index) or str(pts[0])
+        b = _point_name_from_ref(str(pts[1]), object_index) or str(pts[1])
+        return a, b
+    if obj_type in {"vector_2d", "vector_3d"}:
+        a = obj.get("from_point") or obj.get("from_point_id")
+        b = obj.get("to_point") or obj.get("to_point_id")
+        if a and b:
+            return (
+                _point_name_from_ref(str(a), object_index) or str(a),
+                _point_name_from_ref(str(b), object_index) or str(b),
+            )
+    return None
+
+
+def _parse_metric_number(label: str) -> float | None:
+    text = label.strip().replace(",", ".")
+    if re.fullmatch(r"-?\d+(?:\.\d+)?", text):
+        return float(text)
+    match = re.fullmatch(r"sqrt\(([^)]+)\)|√\s*\(?([^)]+)\)?", text, flags=re.IGNORECASE)
+    if match:
+        inner = match.group(1) or match.group(2)
+        try:
+            return float(inner) ** 0.5
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
 def _has_angle_evidence(scene_dict: dict) -> bool:
     for rel in scene_dict.get("relations", []):
         if not isinstance(rel, dict):
             continue
         metadata = rel.get("metadata") if isinstance(rel.get("metadata"), dict) else {}
-        if rel.get("type") in {"angle", "perpendicular", "parallel"} and _metadata_is_usable_fact(metadata, default=True):
-            return True
+        if rel.get("type") not in {"angle", "perpendicular", "parallel"}:
+            continue
+        if not _metadata_is_usable_fact(metadata, default=True):
+            continue
+        if not _relation_verification_consistent(rel):
+            continue
+        return True
     for ann in scene_dict.get("annotations", []):
         if not isinstance(ann, dict):
             continue
@@ -409,7 +648,7 @@ def _solve_vector_operation(pts: dict[str, Vec3], question: str, warnings: list[
 def _solve_distance(pts: dict[str, Vec3], question: str, warnings: list[str]) -> SolverResult:
     parsed = _parse_distance(question)
     if parsed is None:
-        warnings.append("Không nhận diện được đối tượng. Ví dụ: d(A,B), d(A,BC), d(A,(BCD)).")
+        warnings.append("Chưa xác định được đối tượng cần tính. Hãy nêu tên điểm, đường hoặc mặt phẳng trong hình.")
         return SolverResult(question, "Không xác định", [], warnings)
 
     kind, operands = parsed
@@ -986,27 +1225,51 @@ def _classical_proof_for_result(result: SolverResult, scene_dict: dict, kind: st
     return {"steps": steps, "used_theorems": used_theorems}
 
 
-def _resolve_highlight_object_ids(scene_dict: dict[str, Any], labels: list[str]) -> list[str]:
-    label_set = set(labels)
-    resolved: list[str] = []
-    for obj in scene_dict.get("objects") or []:
-        if not isinstance(obj, dict) or str(obj.get("name") or "") not in label_set:
+def _attach_highlight_object_ids(result: SolverResult, scene_dict: dict[str, Any]) -> None:
+    """Ensure Oxyz/classical steps expose stable object ids for UI highlighting."""
+    for step in result.steps:
+        if step.highlight_object_ids:
             continue
-        object_id = str(obj.get("object_id") or obj.get("id") or "")
-        if object_id and object_id not in resolved:
-            resolved.append(object_id)
-    return resolved
+        if step.highlight:
+            step.highlight_object_ids = _resolve_highlight_object_ids(scene_dict, step.highlight)
+        for sub in step.sub_steps:
+            if not sub.highlight_object_ids and sub.highlight:
+                sub.highlight_object_ids = _resolve_highlight_object_ids(scene_dict, sub.highlight)
 
 
 def _resolve_highlight_object_ids(scene_dict: dict[str, Any], labels: list[str]) -> list[str]:
-    label_set = set(labels)
+    label_set = {str(label) for label in labels if str(label)}
+    if not label_set:
+        return []
     resolved: list[str] = []
     for obj in scene_dict.get("objects") or []:
-        if not isinstance(obj, dict) or str(obj.get("name") or "") not in label_set:
+        if not isinstance(obj, dict):
             continue
+        name = str(obj.get("name") or obj.get("label") or "")
         object_id = str(obj.get("object_id") or obj.get("id") or "")
+        # Match label name, compound edge AB via points list, or raw id.
+        matched = name in label_set or object_id in label_set
+        if not matched and name and len(name) == 2 and name.isalpha():
+            matched = name[0] in label_set and name[1] in label_set
+        points = obj.get("points") or obj.get("through")
+        if not matched and isinstance(points, list) and len(points) >= 2:
+            point_names = [str(item) for item in points]
+            matched = all(item in label_set for item in point_names[:2]) or set(point_names).issubset(label_set)
+        if not matched:
+            continue
         if object_id and object_id not in resolved:
             resolved.append(object_id)
+    # Prefer explicit solver targets when provided by NLP.
+    targets = scene_dict.get("solver_target_object_ids")
+    if isinstance(targets, list):
+        for target in targets:
+            tid = str(target)
+            if tid and tid not in resolved:
+                # Only append if object exists in scene
+                for obj in scene_dict.get("objects") or []:
+                    if isinstance(obj, dict) and str(obj.get("object_id") or obj.get("id") or "") == tid:
+                        resolved.append(tid)
+                        break
     return resolved
 
 

@@ -49,3 +49,28 @@ def test_merge_keeps_default_domain_r_over_ai():
     req, warnings = merge_extraction_request(base, payload)
     assert req.domain == "R"
     assert any("miền" in warning for warning in warnings)
+
+
+def test_merge_preserves_expression_action_domain_source_angle_unit():
+    base = AlgebraSolveRequest(
+        input="raw",
+        topic="auto",
+        expression_action="factor",
+        domain="R",
+        domain_source="user",
+        angle_unit="degree",
+        variables=["x"],
+    )
+    payload = AlgebraExtractionPayload(
+        input="x^2-1",
+        input_format="plain",
+        topic="equation",
+        variables=["x"],
+        domain="C",
+    )
+    req, warnings = merge_extraction_request(base, payload)
+    assert req.expression_action == "factor"
+    assert req.domain_source == "user"
+    assert req.angle_unit == "degree"
+    assert req.domain == "R"
+    assert any("miền" in warning for warning in warnings)

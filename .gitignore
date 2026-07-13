@@ -50,8 +50,22 @@ Thumbs.db
 .idea/
 .gstack/
 
-data/
+# Local data trees; re-include NLP corpus/eval under data/nlp/
+data/*
+!data/nlp/
+!data/nlp/**
 
 danh_gia/
 
 docs/
+
+# Local SQLite dumps and one-off scratch scripts (do not ship)
+*.db
+backend/check_db.py
+backend/check_d1.py
+backend/check_profiles.py
+backend/list_providers.py
+backend/update_d1.py
+backend/test_e2e.py
+backend/test_registry.py
+backend/d1_migrate_engine.py

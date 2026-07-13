@@ -108,6 +108,150 @@ class RenderHistoryRepository:
             raise RuntimeError("Không thể lưu lịch sử dựng hình v3.")
         return render_job_from_row(row)
 
+    async def complete_pending_as_v3(
+        self,
+        job_id: str,
+        user_id: str,
+        response: SceneWorkspaceResponseV3,
+        *,
+        render_request_json: str | None = None,
+        duration_ms: int | None = None,
+        provider: str | None = None,
+        model: str | None = None,
+    ) -> RenderJobRecord:
+        """Finish a queued/running job as Scene v3 workspace + history (async worker path)."""
+        scene = response.scene
+        provider = provider or scene.audit.generator_provider
+        model = model or scene.audit.generator_model
+        workspace_json = response.model_dump_json()
+
+        # Fail closed on scene_id ownership collisions (same hash, different user).
+        # Sync create_v3_workspace raises IntegrityError / 409; async must not overwrite.
+        existing = await self.db.fetch_one(
+            "SELECT user_id FROM scene_workspaces WHERE scene_id = ?",
+            [scene.scene_id],
+        )
+        if existing is not None and str(existing.get("user_id") or "") not in {"", user_id}:
+            raise RuntimeError(
+                f"Scene workspace {scene.scene_id} đã thuộc user khác (SCENE_WORKSPACE_EXISTS)."
+            )
+
+        await self.db.execute_many([
+            (
+                """
+                UPDATE render_jobs
+                SET status = 'completed',
+                    provider = ?, model = ?,
+                    scene_json = ?, payload_json = ?, warnings_json = ?,
+                    renderer = ?, degraded = 0, fallback_source = 'none', ai_source = 'none',
+                    response_json = ?, schema_version = '3.0',
+                    duration_ms = ?, finished_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                [
+                    provider,
+                    model,
+                    scene.model_dump_json(),
+                    response.payload.model_dump_json(),
+                    json.dumps([issue.message for issue in response.issues], ensure_ascii=False),
+                    scene.renderer,
+                    workspace_json,
+                    duration_ms,
+                    job_id,
+                ],
+            ),
+            (
+                """
+                INSERT INTO history_items (
+                  id, user_id, render_job_id, problem_preview, topic, grade, tier, renderer,
+                  provider, model, source_type, status
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'problem', 'completed')
+                ON CONFLICT(id) DO UPDATE SET
+                  problem_preview = excluded.problem_preview,
+                  topic = excluded.topic,
+                  grade = excluded.grade,
+                  tier = excluded.tier,
+                  renderer = excluded.renderer,
+                  provider = excluded.provider,
+                  model = excluded.model,
+                  status = 'completed',
+                  updated_at = CURRENT_TIMESTAMP
+                """,
+                [
+                    job_id,
+                    user_id,
+                    job_id,
+                    scene.problem_text[:240],
+                    scene.topic,
+                    str(scene.grade) if scene.grade is not None else None,
+                    request_tier(render_request_json),
+                    scene.renderer,
+                    provider,
+                    model,
+                ],
+            ),
+            (
+                """
+                INSERT INTO scene_revisions (
+                  id, history_item_id, render_job_id, revision_no, change_source, change_summary,
+                  scene_json, response_json, schema_version, command_log_json, scene_id, snapshot_revision
+                ) VALUES (?, ?, ?, ?, 'render_v3_async', 'Bản dựng v3 (async)', ?, ?, '3.0', '[]', ?, ?)
+                ON CONFLICT(id) DO NOTHING
+                """,
+                [
+                    f"{job_id}:r{scene.revision}",
+                    job_id,
+                    job_id,
+                    scene.revision,
+                    scene.model_dump_json(),
+                    workspace_json,
+                    scene.scene_id,
+                    scene.revision,
+                ],
+            ),
+            (
+                """
+                INSERT INTO scene_workspaces (
+                  scene_id, user_id, history_item_id, revision, scene_json, status, verification_json, issues_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(scene_id) DO UPDATE SET
+                  history_item_id = excluded.history_item_id,
+                  revision = excluded.revision,
+                  scene_json = excluded.scene_json,
+                  status = excluded.status,
+                  verification_json = excluded.verification_json,
+                  issues_json = excluded.issues_json
+                WHERE scene_workspaces.user_id = excluded.user_id
+                """,
+                [
+                    scene.scene_id,
+                    user_id,
+                    job_id,
+                    scene.revision,
+                    scene.model_dump_json(),
+                    response.status,
+                    json.dumps([item.model_dump(mode="json") for item in response.verification], ensure_ascii=False),
+                    json.dumps([item.model_dump(mode="json") for item in response.issues], ensure_ascii=False),
+                ],
+            ),
+        ])
+        # If ON CONFLICT WHERE blocked the update (other owner), fail closed.
+        # Only assert ownership — not history_item_id — so concurrent same-user
+        # re-renders of the same scene_id do not false-fail after a later write.
+        workspace_row = await self.db.fetch_one(
+            "SELECT user_id FROM scene_workspaces WHERE scene_id = ?",
+            [scene.scene_id],
+        )
+        if workspace_row is None or str(workspace_row.get("user_id") or "") != user_id:
+            raise RuntimeError(
+                f"Không ghi được scene_workspaces cho {scene.scene_id} (ownership conflict)."
+            )
+
+        row = await self.db.fetch_one("SELECT * FROM render_jobs WHERE id = ?", [job_id])
+        if row is None:
+            raise RuntimeError("Không thể hoàn tất job render v3.")
+        return render_job_from_row(row)
+
     async def create(
         self,
         user_id: str,

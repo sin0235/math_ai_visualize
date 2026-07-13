@@ -10,7 +10,6 @@ import sympy as sp
 from app.core.config import Settings, get_settings
 from app.schemas.algebra import AlgebraInterval, AlgebraSolveOptions, AlgebraSolveRequest, AlgebraSolveResponse, AlgebraVerificationReport
 from app.services.algebra.ai_explainer import explain_algebra_response_with_ai
-from app.services.algebra.ai_extraction import extract_algebra_request_with_ai
 from app.services.algebra.classifier import classify_algebra_problem
 from app.services.algebra.interpreter import interpret_algebra_input
 from app.services.algebra.normalizer import normalize_algebra_input
@@ -78,95 +77,71 @@ async def solve_algebra_with_optional_ai(
     settings: Settings | None = None,
     load_slot: AlgebraSlot | None = None,
 ) -> AlgebraSolveResponse:
+    """NLP (LLM/rule-based) → mathcore deterministic solve.
+
+    - NLP layer: ``resolve_algebra_nlp`` (LLM primary for natural language).
+    - Mathcore: always ``solve_algebra_deterministic`` / process worker.
+    - Never AI-solve answers or steps.
+    """
     settings = settings or get_settings()
-    extraction_warnings: list[str] = []
-    deterministic_request = request
     isolation = bool(settings.algebra_process_isolation)
-    # Single wall-clock budget shared across sequential deterministic attempts.
     total_budget = max(0.5, float(settings.algebra_solve_timeout_seconds))
     deadline = time.perf_counter() + total_budget
-    # Never stack a second solve after timeout.
 
     def _remaining_budget() -> float:
         return max(0.0, deadline - time.perf_counter())
 
-    if request.options.use_ai_extraction:
-        # Rule-based first: only call AI when deterministic path fails or is unsupported.
-        first_timeout = _remaining_budget()
-        if first_timeout < 0.5:
-            return _timeout_response(
-                request,
-                request.input,
-                str(request.topic),
-                extra_warnings=["Hết ngân sách thời gian trước khi giải deterministic."],
-            )
-        try:
-            rule_based = await _run_deterministic_with_timeout(
-                request,
-                first_timeout,
-                load_slot,
-                process_isolation=isolation,
-            )
-        except (asyncio.TimeoutError, TimeoutError):
-            return _timeout_response(
-                request,
-                request.input,
-                str(request.topic),
-                extra_warnings=[
-                    "Timeout trên lần giải rule-based; không gọi AI và không chạy lại solve."
-                    + (" Worker process đã bị terminate." if isolation else " Worker thread có thể còn chạy tới khi xong.")
-                ],
-            )
-        if rule_based.status in {"solved", "partial"}:
-            rule_based.warnings = [
-                "Đã dùng interpreter rule-based; không cần AI diễn giải cho đề này.",
-                *rule_based.warnings,
-            ]
-            if request.options.ai_explanation:
-                rule_based = await explain_algebra_response_with_ai(rule_based, settings)
-            return rule_based
-        try:
-            deterministic_request, extraction_warnings = await extract_algebra_request_with_ai(request.input, request, settings)
-            deterministic_request = _preserve_explicit_request_contract(request, deterministic_request)
-        except Exception:
-            extraction_warnings = ["Không gọi được AI extraction, đang dùng rule-based interpreter."]
-            rule_based.warnings = [*extraction_warnings, *rule_based.warnings]
-            return rule_based
+    from app.services.nlp.algebra_nlp import resolve_algebra_nlp
 
-    second_timeout = _remaining_budget() if request.options.use_ai_extraction else total_budget
-    if second_timeout < 0.5:
+    original_input = request.input
+    # Reserve a slice for mathcore so LLM NLP cannot consume the entire budget.
+    nlp_budget = max(0.5, min(_remaining_budget() * 0.55, total_budget * 0.55))
+    try:
+        nlp = await asyncio.wait_for(resolve_algebra_nlp(request, settings), timeout=nlp_budget)
+    except (asyncio.TimeoutError, TimeoutError):
         return _timeout_response(
             request,
-            deterministic_request.input,
-            str(deterministic_request.topic),
+            original_input,
+            str(request.topic),
+            extra_warnings=["Timeout NLP (LLM/rule-based) trước khi mathcore giải."],
+        )
+    solve_request = nlp.request
+
+    solve_timeout = _remaining_budget()
+    if solve_timeout < 0.5:
+        return _timeout_response(
+            request,
+            solve_request.input,
+            str(solve_request.topic),
             extra_warnings=[
-                *extraction_warnings,
-                "Hết ngân sách thời gian deterministic sau lần giải rule-based / AI extraction; không chạy solve thứ hai.",
+                *nlp.warnings,
+                "Hết ngân sách thời gian trước khi mathcore giải.",
             ],
         )
     try:
         response = await _run_deterministic_with_timeout(
-            deterministic_request,
-            second_timeout,
+            solve_request,
+            solve_timeout,
             load_slot,
             process_isolation=isolation,
         )
     except (asyncio.TimeoutError, TimeoutError):
         return _timeout_response(
             request,
-            deterministic_request.input,
-            str(deterministic_request.topic),
+            solve_request.input,
+            str(solve_request.topic),
             extra_warnings=[
-                *extraction_warnings,
-                "Timeout deterministic solve."
+                *nlp.warnings,
+                "Timeout mathcore solve."
                 + (" Worker process đã bị terminate." if isolation else " Worker thread có thể còn chạy tới khi xong."),
             ],
         )
-    if deterministic_request.input != request.input:
-        response.input = request.input
-        response.normalized_input = deterministic_request.input
-    if extraction_warnings:
-        response.warnings = [*extraction_warnings, *response.warnings]
+
+    # Preserve user text; normalized_input is what mathcore consumed.
+    response.input = original_input
+    response.normalized_input = solve_request.input
+    if nlp.warnings:
+        response.warnings = [*nlp.warnings, *response.warnings]
     if request.options.ai_explanation:
         response = await explain_algebra_response_with_ai(response, settings)
     return response
@@ -176,14 +151,18 @@ def _preserve_explicit_request_contract(
     original: AlgebraSolveRequest,
     extracted: AlgebraSolveRequest,
 ) -> AlgebraSolveRequest:
-    protected_fields = {
+    """Keep user-explicit fields when NLP/LLM extraction returns a new request."""
+    protected_fields: dict = {
+        "domain_source": original.domain_source,
+        "angle_unit": original.angle_unit,
         **({"topic": original.topic} if original.topic != "auto" else {}),
         **({"expression_action": original.expression_action} if original.expression_action else {}),
-        **({"domain": original.domain, "domain_source": original.domain_source} if original.domain_source == "user" else {}),
+        # Sticky domain when user chose explicitly; default domain still sticky in merge.
+        **({"domain": original.domain} if original.domain_source == "user" else {}),
         **({"variables": original.variables} if original.variables else {}),
         **({"parameters": original.parameters} if original.parameters else {}),
     }
-    return extracted.model_copy(update=protected_fields) if protected_fields else extracted
+    return extracted.model_copy(update=protected_fields)
 
 
 def _timeout_response(

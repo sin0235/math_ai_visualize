@@ -203,7 +203,13 @@ export function SceneWorkspaceEditorV3({
         >
           <span>
             <strong>Chỉnh sửa có ràng buộc</strong>
-            <span className="field-hint">Revision {scene?.revision} · backend xác minh trước khi commit</span>
+            <span className="field-hint">
+              Revision {scene?.revision}
+              {' · '}
+              {response.trusted_for_downstream ? 'trusted downstream' : 'chưa trusted'}
+              {' · '}
+              status: {response.status}
+            </span>
           </span>
           <span aria-hidden="true">{editorOpen ? '▲' : '▼'}</span>
         </button>

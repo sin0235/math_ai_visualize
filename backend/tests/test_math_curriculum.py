@@ -55,32 +55,34 @@ def test_registry_snapshot_is_machine_readable_and_status_explicit():
 
 def test_coverage_report_uses_corpus_and_test_evidence():
     report = build_coverage_report(
-        BACKEND_ROOT / "tests/nlp/corpus/v1.jsonl",
+        BACKEND_ROOT.parent / "data/nlp/corpus/v2.jsonl",
         BACKEND_ROOT / "tests",
     )
     rows = {row["skill_id"]: row for row in report["skills"]}
 
     assert report["curriculum_version"] == CURRICULUM_VERSION
-    assert report["corpus_case_count"] >= 42
+    # Corpus v2: 19k+ cases; counts are floors (not locked to exact template counts).
+    assert report["corpus_case_count"] >= 1000
     assert report["test_file_count"] >= 80
     assert rows["algebra.trigonometry"]["test_case_count"] > 0
-    assert rows["algebra.trigonometry"]["corpus_case_count"] == 1
+    assert rows["algebra.trigonometry"]["corpus_case_count"] >= 1
     assert rows["algebra.trigonometry"]["evidence"] == "corpus_and_tests"
     assert rows["number.divisibility"]["evidence"] == "corpus_and_tests"
-    assert rows["number.divisibility"]["corpus_case_count"] == 3
+    assert rows["number.divisibility"]["corpus_case_count"] >= 3
     assert "test_algebra_lower_secondary.py" in rows["number.divisibility"]["test_sources"]
     assert rows["number.ratio_percent"]["evidence"] == "corpus_and_tests"
-    assert rows["number.ratio_percent"]["corpus_case_count"] == 4
-    assert rows["algebra.expression_transform"]["corpus_case_count"] == 3
+    assert rows["number.ratio_percent"]["corpus_case_count"] >= 4
+    assert rows["algebra.expression_transform"]["corpus_case_count"] >= 3
     assert rows["algebra.expression_transform"]["evidence"] == "corpus_and_tests"
-    assert rows["algebra.polynomial_operations"]["corpus_case_count"] == 2
+    assert rows["algebra.polynomial_operations"]["corpus_case_count"] >= 2
     assert rows["algebra.polynomial_operations"]["evidence"] == "corpus_and_tests"
-    assert rows["algebra.absolute_radical"]["corpus_case_count"] == 2
+    assert rows["algebra.absolute_radical"]["corpus_case_count"] >= 2
     assert rows["algebra.absolute_radical"]["evidence"] == "corpus_and_tests"
     assert rows["geometry.quadrilateral"]["evidence"] == "corpus_and_tests"
     assert rows["geometry.circle_basic"]["evidence"] == "corpus_and_tests"
     assert rows["algebra.exponential_logarithm"]["evidence"] == "corpus_and_tests"
     assert rows["algebra.sequence"]["evidence"] == "corpus_and_tests"
+    assert rows["algebra.sequence"]["corpus_case_count"] >= 100
     assert rows["algebra.nonlinear_system"]["evidence"] == "corpus_and_tests"
     assert rows["function.linear_quadratic"]["evidence"] == "corpus_and_tests"
     assert rows["geometry.coordinate_2d"]["evidence"] == "corpus_and_tests"
@@ -95,16 +97,17 @@ def test_coverage_report_uses_corpus_and_test_evidence():
     assert rows["algebra.linear_inequality"]["evidence"] == "corpus_and_tests"
     assert rows["algebra.complex_numbers"]["evidence"] == "corpus_and_tests"
     assert rows["geometry.basic_measurement"]["evidence"] == "corpus_and_tests"
-    assert rows["geometry.basic_measurement"]["corpus_case_count"] == 2
+    assert rows["geometry.basic_measurement"]["corpus_case_count"] >= 2
     assert "test_geometry_lower_secondary.py" in rows["geometry.basic_measurement"]["test_sources"]
     assert rows["geometry.solid_metric"]["test_case_count"] > 0
     assert rows["statistics.grouped_data"]["status"] == "partial"
     assert report["unmapped_intents"]
+    assert report["evidence_counts"]["corpus_and_tests"] == len(rows)
 
 
 def test_quality_dashboard_closes_static_and_mutation_gates():
     report = build_quality_report(
-        BACKEND_ROOT / "tests/nlp/corpus/v1.jsonl",
+        BACKEND_ROOT.parent / "data/nlp/corpus/v2.jsonl",
         BACKEND_ROOT / "tests",
     )
 

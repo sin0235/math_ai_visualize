@@ -91,6 +91,10 @@ async def solve_problem(
 
     await enforce_rate_limit(db, http_request, user, "solve", 30 if user else 10, 60)
     await enforce_render_access(db, user)
+    settings = get_settings()
+    from app.services.prompt_security import enforce_prompt_injection_gate
+
+    enforce_prompt_injection_gate(request.question, mode=settings.prompt_injection_gate_mode)
     used_ai = False
     try:
         committed = await load_committed_scene_v3(db, user.id, request.scene_ref)
@@ -121,9 +125,23 @@ async def solve_problem(
             legacy_canonical=request.question,
         )
         question = request.question
+        geometry_goal = None
+        target_object_ids = None
         if rollout and rollout.can_apply and rollout.candidate:
             question = rollout.candidate.canonical_text or rollout.response.normalized_text
-        result = await asyncio.to_thread(solve, scene_input, question, geometry_method)
+            payload = rollout.candidate.canonical_payload if isinstance(rollout.candidate.canonical_payload, dict) else {}
+            geometry_goal = payload.get("geometry_goal") if isinstance(payload.get("geometry_goal"), dict) else None
+            raw_targets = payload.get("target_object_ids")
+            if isinstance(raw_targets, list):
+                target_object_ids = [str(item) for item in raw_targets if str(item)]
+        result = await asyncio.to_thread(
+            solve,
+            scene_input,
+            question,
+            geometry_method,
+            geometry_goal=geometry_goal,
+            target_object_ids=target_object_ids,
+        )
         from app.services.nlp.grounding import build_geometry_explanation_plan
 
         if result.grounding is None:
@@ -220,6 +238,7 @@ async def solve_problem(
             construction_actions=getattr(s, "construction_actions", []),
         )
 
+    proof_plan = getattr(result, "proof_plan", None)
     response = SolveResponse(
         question=result.question,
         answer=result.answer,
@@ -229,6 +248,7 @@ async def solve_problem(
         method=getattr(result, "method", "oxyz"),
         used_facts=getattr(result, "used_facts", []),
         used_theorems=getattr(result, "used_theorems", []),
+        proof_plan=proof_plan,
         data_issues=getattr(result, "data_issues", []),
         advisory=advisory,
         grounding=getattr(result, "grounding", None),

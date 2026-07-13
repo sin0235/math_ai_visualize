@@ -3,11 +3,17 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from tests.nlp.benchmark import CORPUS_PATH, evaluate, load_cases, pipeline_predict
+from tests.nlp.benchmark import (
+    CORPUS_PATH,
+    EVAL_DIR,
+    evaluate,
+    load_cases,
+    pipeline_predict,
+)
 
-THRESHOLDS_PATH = Path(__file__).with_name("thresholds.json")
-PIPELINE_THRESHOLDS_PATH = Path(__file__).with_name("pipeline-thresholds.json")
-PIPELINE_BASELINE_PATH = Path(__file__).with_name("pipeline-baseline-v1.json")
+THRESHOLDS_PATH = EVAL_DIR / "thresholds.json"
+PIPELINE_THRESHOLDS_PATH = EVAL_DIR / "pipeline-thresholds.json"
+PIPELINE_BASELINE_PATH = EVAL_DIR / "pipeline-baseline-v1.json"
 
 
 def test_corpus_schema_and_slice_coverage():

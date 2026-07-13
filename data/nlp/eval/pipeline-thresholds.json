@@ -1,0 +1,116 @@
+{
+  "overall": {
+    "minimum": {
+      "case_count": 19521,
+      "intent_macro_f1": 0.204688,
+      "entity_f1": 0.316622,
+      "constraint_f1": 0.045961,
+      "unsupported_recall": 0.203922,
+      "abstention_precision": 0.130045
+    },
+    "maximum": {
+      "brier_score": 0.253726,
+      "ece_10": 0.201688
+    }
+  },
+  "algebra": {
+    "minimum": {
+      "case_count": 10488,
+      "intent_macro_f1": 0.187874,
+      "entity_f1": 0.503261,
+      "unsupported_recall": 0.342105,
+      "abstention_precision": 0.07108,
+      "constraint_f1": 0.0
+    },
+    "maximum": {
+      "brier_score": 0.246888,
+      "ece_10": 0.225465
+    }
+  },
+  "analyzer": {
+    "minimum": {
+      "case_count": 1292,
+      "intent_macro_f1": 0.386962,
+      "entity_f1": 0.005265,
+      "unsupported_recall": 0.0,
+      "abstention_precision": 0.069984,
+      "constraint_f1": 0.0
+    },
+    "maximum": {
+      "brier_score": 0.317508,
+      "ece_10": 0.393344
+    }
+  },
+  "geometry_solve": {
+    "minimum": {
+      "case_count": 2971,
+      "intent_macro_f1": 0.216707,
+      "entity_f1": 0.218492,
+      "unsupported_recall": 0.0,
+      "abstention_precision": 0.096901,
+      "constraint_f1": 0.0625
+    },
+    "maximum": {
+      "brier_score": 0.330514,
+      "ece_10": 0.310653
+    }
+  },
+  "ocr": {
+    "minimum": {
+      "case_count": 3075,
+      "intent_macro_f1": 0.112429,
+      "entity_f1": 0.290002,
+      "unsupported_recall": 1.0,
+      "abstention_precision": 0.423706,
+      "constraint_f1": 0.0
+    },
+    "maximum": {
+      "brier_score": 0.266344,
+      "ece_10": 0.252898
+    }
+  },
+  "render": {
+    "minimum": {
+      "case_count": 1695,
+      "intent_macro_f1": 0.162898,
+      "entity_f1": 0.003675,
+      "unsupported_recall": 0.0,
+      "abstention_precision": 0.069074,
+      "constraint_f1": 0.013793
+    },
+    "maximum": {
+      "brier_score": 0.089932,
+      "ece_10": 0.145209
+    }
+  },
+  "geometry_subtypes": {
+    "angle": {
+      "minimum": {
+        "case_count": 168,
+        "goal_exact_match": 0.005952,
+        "entity_f1": 0.166667
+      }
+    },
+    "distance": {
+      "minimum": {
+        "case_count": 231,
+        "goal_exact_match": 0.354978,
+        "entity_f1": 0.569767
+      }
+    },
+    "proof": {
+      "minimum": {
+        "case_count": 91,
+        "goal_exact_match": 0.120879,
+        "entity_f1": 0.435897
+      }
+    },
+    "volume": {
+      "minimum": {
+        "case_count": 405,
+        "goal_exact_match": 0.032099,
+        "entity_f1": 0.057041
+      }
+    }
+  }
+}

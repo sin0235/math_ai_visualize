@@ -15,7 +15,11 @@ from app.services.algebra.interpreter import interpret_algebra_input
 from app.services.nlp import interpret_input
 from app.services.problem_classifier import classify_render_problem, classify_solve_question
 
-CORPUS_PATH = Path(__file__).with_name("corpus") / "v1.jsonl"
+# Repo data/ — corpus product/eval, not pytest fixtures.
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+NLP_DATA_DIR = _REPO_ROOT / "data" / "nlp"
+CORPUS_PATH = NLP_DATA_DIR / "corpus" / "v2.jsonl"
+EVAL_DIR = NLP_DATA_DIR / "eval"
 ABSTENTION_STATUSES = {"abstained", "needs_confirmation"}
 
 

@@ -150,7 +150,10 @@ export interface SettingsDefaults {
   registry_task_profiles?: RegistryTaskProfileDefaults[];
   registry_legacy_ai_settings_present?: boolean;
   feature_flags?: FeatureFlagsDefaults;
-  /** When true, client uses /api/render/jobs + poll instead of long-held POST /api/render. */
+  /**
+   * Server worker flag only. Public SPA always uses POST /api/render/v3 (sync).
+   * Legacy /api/render and /api/render/jobs are retired; do not branch client on this.
+   */
   render_async_enabled?: boolean;
 }
 

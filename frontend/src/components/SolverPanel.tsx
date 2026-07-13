@@ -4,13 +4,17 @@ import { useInterpretationPreflight } from './nlp/InterpretationPanel';
 import { committedSceneRefV3, downstreamGateMessageV3 } from '../hooks/sceneWorkspaceV3State';
 import type { RuntimeSettings } from '../types/settings';
 import type { MathSceneV3, SceneWorkspaceResponseV3 } from '../types/sceneV3';
+import { isDocumentHidden, showBrowserNotify } from '../utils/browserNotify';
 import { KatexSpan, normalizeLatexForKatex, sympyToLatex } from './KatexSpan';
-import { MathCapabilitySummary } from './MathCapabilitySummary';
+
+type ToastKind = 'error' | 'warning' | 'info';
 
 interface SolverPanelProps {
   workspace: SceneWorkspaceResponseV3;
   runtimeSettings?: RuntimeSettings;
   onHighlight: (objectIds: string[], constructionActions?: ConstructionAction[]) => void;
+  /** Optional popup/toast for warnings — keep result panel answer+steps only. */
+  onToast?: (title: string, message: string, kind?: ToastKind, details?: string[]) => void;
 }
 
 function normalizeSolverLatex(input?: string | null): string {
@@ -19,24 +23,52 @@ function normalizeSolverLatex(input?: string | null): string {
 }
 
 function normalizeSolverQuestionInput(input: string): string {
+  // Keep FE pre-normalize light; authoritative normalization is backend geometry.parser.
   let question = input
     .trim()
-    .replace(/[​-‍﻿]/g, '')
-    .replace(/[（）]/g, (char) => char === '（' ? '(' : ')')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/[（）]/g, (char) => (char === '（' ? '(' : ')'))
     .replace(/[，、]/g, ',')
     .replace(/[−–—]/g, '-')
     .replace(/[✕*]/g, '×')
     .replace(/[·•]/g, '.')
     .replace(/\s+/g, ' ');
-  question = question.replace(/\b(?:k\/c|kc|khoang\s+cach|khoảng\s+cách)\b/gi, 'd');
-  question = question.replace(/\b(?:den|đến|toi|tới|tu|từ|cua|của)\b/gi, ' ');
+  for (let i = 0; i < 4; i += 1) {
+    const next = question.replace(/\(\(([^()]+)\)\)/g, '($1)');
+    if (next === question) break;
+    question = next;
+  }
+  // Prefer metric sentence from long problem paste
+  const metricChunks = question
+    .split(/(?<=[.?!\n])\s+|(?=Cho\s+hình)|(?=Gọi\b)/i)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .filter((part) => /khoảng\s+cách|khoang\s+cach|\bd\s*\(|diện\s+tích|thể\s+tích|góc\b/i.test(part));
+  if (metricChunks.length > 0) {
+    metricChunks.sort((a, b) => Number(a.length > 160) - Number(b.length > 160) || a.length - b.length);
+    question = metricChunks[0];
+  }
+  question = question.replace(/\b(?:diem|điểm)\s*\(\s*([A-Za-z](?:[0-9]+|')?)\s*\)/gi, 'điểm $1');
+  question = question.replace(
+    /\b(?:k\/c|kc|khoang\s+cach|khoảng\s+cách)\s+(?:tu|từ|from)?\s*(?:diem|điểm)?\s*([A-Za-z](?:[0-9]+|')?)\s+(?:den|đến|toi|tới|to)?\s*(?:mp|mat\s+phang|mặt\s+phẳng)?\s*(\([A-Za-z0-9'\s.]+\)|[A-Za-z](?:\s*[A-Za-z0-9']\s*){1,})/gi,
+    (_, point: string, target: string) => `d(${point.toUpperCase()},${normalizeDistanceTargetText(target)})`,
+  );
+  if (!/\bd\s*\(/i.test(question)) {
+    question = question.replace(/\b(?:k\/c|kc|khoang\s+cach|khoảng\s+cách)\b/gi, 'd');
+    question = question.replace(/\b(?:den|đến|toi|tới|tu|từ|cua|của)\b/gi, ' ');
+  }
   question = question.replace(/\b(?:mp|mat\s+phang|mặt\s+phẳng)\s+([A-Za-z](?:\s*[A-Za-z0-9']\s*){2,})/gi, (_, value: string) => `(${compactPointSequenceText(value)})`);
   question = question.replace(/\b(?:dien\s+tich|diện\s+tích)\s+([A-Za-z](?:\s*[A-Za-z0-9']\s*){2,})/gi, (_, value: string) => `S(${compactPointSequenceText(value)})`);
   question = question.replace(/\b(?:the\s+tich|thể\s+tích)\s+([A-Za-z][A-Za-z0-9']*(?:\s*\.\s*)?[A-Za-z](?:\s*[A-Za-z0-9']\s*){2,})/gi, (_, value: string) => `V(${compactSolidText(value)})`);
   question = question.replace(/\b([dDsSvV])\s*\(/g, (_, name: string) => `${name.toLowerCase() === 'd' ? 'd' : name.toUpperCase()}(`);
   question = normalizeParenthesizedGeometry(question);
-  question = question.replace(/\bd\s+([A-Za-z](?:[0-9]+|')?)\s+(\([A-Za-z0-9'\s]+\)|[A-Za-z](?:\s*[A-Za-z0-9']\s*){1,})/gi, (_, point: string, target: string) => `d(${point.toUpperCase()},${normalizeDistanceTargetText(target)})`);
+  question = question.replace(/\bd\s+(?:diem|điểm)?\s*([A-Za-z](?:[0-9]+|')?)\s+(?:mp|mat\s+phang|mặt\s+phẳng)?\s*(\([A-Za-z0-9'\s.]+\)|[A-Za-z](?:\s*[A-Za-z0-9']\s*){1,})/gi, (_, point: string, target: string) => `d(${point.toUpperCase()},${normalizeDistanceTargetText(target)})`);
   question = question.replace(/\s+/g, ' ').trim();
+  const pure = question.match(/\b([dDsSpPvV])\(([^()]*(?:\([^()]*\)[^()]*)*)\)/);
+  if (pure) {
+    const name = pure[1];
+    return `${name.toLowerCase() === 'd' ? 'd' : name.toUpperCase()}(${pure[2]})`;
+  }
   return question.replace(/\bgoc\b/gi, 'góc');
 }
 
@@ -165,7 +197,7 @@ function resolveStepObjectIds(scene: MathSceneV3, step: SolveStep): string[] {
     .map((object) => object.id);
 }
 
-export function SolverPanel({ workspace, runtimeSettings, onHighlight }: SolverPanelProps) {
+export function SolverPanel({ workspace, runtimeSettings, onHighlight, onToast }: SolverPanelProps) {
   const scene = workspace.scene;
   const [question, setQuestion] = useState('');
   const [loading, setLoading] = useState(false);
@@ -182,7 +214,7 @@ export function SolverPanel({ workspace, runtimeSettings, onHighlight }: SolverP
     const trimmedQuestion = question.trim();
     if (!trimmedQuestion || gateMessage || loading) return;
     setError(null);
-    await preflight.check({
+    const accepted = await preflight.check({
       text: trimmedQuestion,
       target: 'geometry_solve',
       input_mode: 'natural',
@@ -200,7 +232,11 @@ export function SolverPanel({ workspace, runtimeSettings, onHighlight }: SolverP
         })),
       },
     });
-    await handleSolve(trimmedQuestion);
+    // Use NLP canonical question when user/system accepted interpretation; keep original otherwise.
+    const solvedQuestion = accepted
+      ? accepted.candidate.canonical_text?.trim() || accepted.response.normalized_text.trim() || trimmedQuestion
+      : trimmedQuestion;
+    await handleSolve(solvedQuestion);
   }
 
   async function handleSolve(trimmedQuestion: string) {
@@ -216,6 +252,7 @@ export function SolverPanel({ workspace, runtimeSettings, onHighlight }: SolverP
       const cached = cacheRef.current.get(cacheKey);
       if (cached) {
         setResult(cached);
+        notifySolverSideChannel(cached, onToast);
         return;
       }
       const res = await solveProblem(
@@ -226,8 +263,11 @@ export function SolverPanel({ workspace, runtimeSettings, onHighlight }: SolverP
       );
       cacheRef.current.set(cacheKey, res);
       setResult(res);
+      notifySolverSideChannel(res, onToast);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Lỗi không xác định.');
+      const message = e instanceof Error ? e.message : 'Lỗi không xác định.';
+      setError(message);
+      onToast?.('Không giải được', message, 'error');
     } finally {
       setLoading(false);
     }
@@ -268,8 +308,8 @@ export function SolverPanel({ workspace, runtimeSettings, onHighlight }: SolverP
           value={geometryMethod}
           onChange={(e) => setGeometryMethod(e.target.value as 'oxyz' | 'classical')}
         >
-          <option value="oxyz">Tọa độ hóa</option>
-          <option value="classical">Tương quan hình học</option>
+          <option value="oxyz">Dùng tọa độ</option>
+          <option value="classical">Dùng quan hệ hình học</option>
         </select>
       </div>
 
@@ -302,7 +342,7 @@ export function SolverPanel({ workspace, runtimeSettings, onHighlight }: SolverP
         </button>
       </div>
 
-      <div className="sp-input-help">Gõ tự nhiên bằng tiếng Việt. NLP đọc ý hỏi, solver dùng hình đã dựng để giải từng bước.</div>
+      <div className="sp-input-help">Gõ câu hỏi bằng tiếng Việt. Hệ thống dùng hình đã dựng để trả lời và hướng dẫn từng bước.</div>
 
       {/* Error */}
       {error && (
@@ -312,26 +352,14 @@ export function SolverPanel({ workspace, runtimeSettings, onHighlight }: SolverP
         </div>
       )}
 
-      {/* Result */}
+      {/* Result: chỉ kết quả + bước. Warning / trạng thái → popup toast. */}
       {result && (
         <div className="sp-result">
-          {/* Answer */}
           <div className="sp-answer">
             <span className="sp-answer-label">Kết quả</span>
             <span className="sp-answer-value">{result.answer}</span>
           </div>
 
-          <SolverTrustPanel result={result} />
-          <MathCapabilitySummary solution={result.solution_ir} />
-
-          {/* Warnings */}
-          {result.warnings.length > 0 && (
-            <div className="sp-warnings">
-              {result.warnings.map((w, i) => <div key={i} className="sp-warning">{w}</div>)}
-            </div>
-          )}
-
-          {/* Steps */}
           {result.steps.length > 0 && (
             <div className="sp-steps">
               <div className="sp-steps-meta">
@@ -354,65 +382,80 @@ export function SolverPanel({ workspace, runtimeSettings, onHighlight }: SolverP
   );
 }
 
-function SolverTrustPanel({ result }: { result: SolveResponse }) {
+
+/** Side-channel only: warnings / insufficient data / theorems → toast popup, not result body. */
+function notifySolverSideChannel(
+  result: SolveResponse,
+  onToast?: (title: string, message: string, kind?: ToastKind, details?: string[]) => void,
+) {
+  if (!onToast) return;
   const confidence = result.confidence ?? 'verified';
-  const usedFacts = result.used_facts ?? [];
-  const usedTheorems = result.used_theorems ?? [];
-  const dataIssues = result.data_issues ?? [];
-  const methodLabel = result.method === 'classical' ? 'Tương quan hình học' : 'Tọa độ hóa';
+  const warnings = (result.warnings ?? [])
+    .map((item) => toLearnerIssue(item))
+    .filter((item) => item && !isInternalSolverNoise(item));
+  const dataIssues = (result.data_issues ?? [])
+    .map((item) => toLearnerIssue(item))
+    .filter((item) => item && !isInternalSolverNoise(item));
+  const details = [...dataIssues, ...warnings].slice(0, 6);
+
+  if (confidence === 'insufficient') {
+    onToast(
+      'Chưa đủ dữ kiện',
+      result.answer && result.answer !== 'Không đủ dữ kiện'
+        ? result.answer
+        : 'Hình hoặc câu hỏi chưa đủ để tính. Hãy bổ sung dữ kiện hoặc nêu rõ hơn.',
+      'warning',
+      details,
+    );
+    return;
+  }
+  if (confidence === 'partial') {
+    onToast(
+      'Kết quả gợi ý',
+      'Đã có đáp án nhưng còn điểm cần lưu ý.',
+      'warning',
+      details,
+    );
+    return;
+  }
+  if (details.length > 0) {
+    onToast('Lưu ý khi giải', details[0], 'warning', details.slice(1));
+    return;
+  }
+  // Clean success: panel has answer+steps; OS notify only when tab hidden.
+  if (result.steps.length > 0 && isDocumentHidden()) {
+    showBrowserNotify({
+      title: 'Đã giải xong',
+      body: (result.answer || 'Có lời giải từng bước.').slice(0, 120),
+      kind: 'info',
+      tag: 'solve-done',
+    });
+  }
+}
+
+function isInternalSolverNoise(text: string) {
+  const value = text.toLowerCase();
   return (
-    <div className={`sp-trust sp-trust--${confidence}`}>
-      <div className="sp-trust-head">
-        <span className="sp-trust-badge">{confidenceLabel(confidence)}</span>
-        <span className="sp-trust-method">{methodLabel}</span>
-      </div>
-      {usedFacts.length > 0 && (
-        <div className="sp-trust-section">
-          <div className="sp-trust-title">Dữ kiện đã dùng</div>
-          <div className="sp-trust-facts">
-            {usedFacts.slice(0, 6).map((fact, index) => (
-              <div key={`${fact.source}-${index}`} className="sp-trust-fact">
-                <span>{factSourceLabel(fact.source)}</span>
-                <p>{fact.text}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-      {usedTheorems.length > 0 && (
-        <div className="sp-trust-section">
-          <div className="sp-trust-title">Định lý đã dùng</div>
-          <div className="sp-trust-issues">
-            {usedTheorems.map((item, index) => <p key={`${item.name}-${index}`}>{item.name}</p>)}
-          </div>
-        </div>
-      )}
-      {dataIssues.length > 0 && (
-        <div className="sp-trust-section">
-          <div className="sp-trust-title">Vấn đề dữ kiện</div>
-          <div className="sp-trust-issues">
-            {dataIssues.slice(0, 4).map((issue, index) => <p key={index}>{issue}</p>)}
-          </div>
-        </div>
-      )}
-    </div>
+    value.includes('d(a,b)')
+    || value.includes('s(abc)')
+    || value.includes('v(s.abcd)')
+    || value.includes('capability')
+    || value.includes('kiểm chứng')
+    || value.includes('verifier')
+    || value.includes('phạm vi')
+    || value.includes('đã kiểm')
+    || value.includes('chưa nhận diện được dạng bài. hãy thử hỏi cụ thể hơn')
   );
 }
 
-function confidenceLabel(confidence: string) {
-  if (confidence === 'insufficient') return 'Không đủ dữ kiện';
-  if (confidence === 'partial') return 'Cần kiểm tra';
-  return 'Đủ dữ kiện';
+function toLearnerIssue(text: string) {
+  if (!text.trim()) return '';
+  if (isInternalSolverNoise(text)) {
+    return 'Hãy nêu rõ đại lượng cần tìm (khoảng cách, góc, diện tích, thể tích, …) và các điểm/mặt liên quan.';
+  }
+  return text.trim();
 }
 
-function factSourceLabel(source: string) {
-  if (source === 'given') return 'Đề cho';
-  if (source === 'inferred') return 'Suy ra';
-  if (source === 'verified') return 'Đã kiểm';
-  if (source === 'parameter_default') return 'Mặc định';
-  if (source === 'construction_only') return 'Minh họa';
-  return 'Dữ kiện';
-}
 
 function SolverStepItem({
   step,

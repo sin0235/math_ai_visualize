@@ -143,7 +143,7 @@ def _evidence_level(corpus_count: int, test_count: int) -> str:
 def main() -> None:
     backend_root = Path(__file__).resolve().parents[2]
     parser = argparse.ArgumentParser(description="Báo cáo baseline độ phủ curriculum theo corpus và test hiện có.")
-    parser.add_argument("--corpus", type=Path, default=backend_root / "tests/nlp/corpus/v1.jsonl")
+    parser.add_argument("--corpus", type=Path, default=backend_root.parent / "data/nlp/corpus/v2.jsonl")
     parser.add_argument("--tests", type=Path, default=backend_root / "tests")
     args = parser.parse_args()
     print(json.dumps(build_coverage_report(args.corpus, args.tests), ensure_ascii=False, indent=2))

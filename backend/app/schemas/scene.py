@@ -17,7 +17,7 @@ MAX_REFERER_CHARS = 2_048
 MAX_TITLE_CHARS = 256
 
 Renderer = Literal["geogebra_2d", "geogebra_3d", "threejs_3d"]
-AiProvider = Literal["auto", "router9", "openrouter", "openrouter_gpt_oss", "opencode_nemotron", "nvidia", "ollama", "ollama_gpt_oss", "openai_compat", "mock"]
+AiProvider = Literal["auto", "router9", "openrouter", "nvidia", "ollama", "openai_compat", "mock"]
 CoordinateAssignment = Literal["ai", "auto_origin", "prefer_o_origin"]
 ReasoningLayerMode = Literal["off", "auto", "force"]
 RenderJobStatus = Literal["queued", "running", "completed", "failed"]
@@ -34,6 +34,7 @@ Topic = Literal[
     "function_graph",
     "conic",
     "vector_2d",
+    "plane_geometry",
     "solid_geometry",
     "coordinate_3d",
     "unknown",

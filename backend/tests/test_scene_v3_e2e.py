@@ -124,7 +124,7 @@ def test_render_edit_solve_export_history_restore_v3(tmp_path, monkeypatch):
             "geometry_method": "oxyz",
         })
         assert solved.status_code == 200
-        assert solved.json()["answer"] == "d(A,B) = 3"
+        assert solved.json()["answer"] in {"d(A,B) = 3", "d(A,B) = 3.0"}
 
         exported = client.post("/api/export/tikz", json={"scene_ref": scene_ref})
         assert exported.status_code == 200

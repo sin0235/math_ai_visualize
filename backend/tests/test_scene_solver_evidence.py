@@ -74,7 +74,11 @@ def test_solver_adapter_preserves_scene_evidence_and_identity():
     assert payload["objects"][0]["object_id"] == "point-s"
     assert payload["relations"][0]["operands"][0]["ref_id"] == "segment-sa"
     assert payload["relations"][0]["verification"]["status"] == "verified"
+    # Classical engines need expanded edge/plane tokens, not raw object labels.
+    assert payload["relations"][0]["object_1"] == "S-A"
+    assert payload["relations"][0]["object_2"] == "plane(ABC)"
     assert payload["annotations"][0]["target_ids"] == ["point-s", "point-a"]
+    assert payload["annotations"][0]["target"] == "S-A"
     assert payload["derived_facts"][0]["id"] == "derived-height"
     assert payload["construction_steps"][0]["relation_ids"] == ["relation-sa-perp-abc"]
 
@@ -85,6 +89,34 @@ def test_fact_graph_keeps_verified_derived_fact():
     fact = next(item for item in graph.facts if item.id == "derived-height")
     assert fact.type == "derived_measurement"
     assert fact.trusted is True
+    perp = graph.by_type("perpendicular_line_plane")
+    assert len(perp) == 1
+    assert perp[0].args == {"line": ("S", "A"), "plane": ("A", "B", "C")}
+
+
+def test_fact_graph_from_typed_operands_without_classic_tokens():
+    graph = build_geometry_fact_graph({
+        "objects": [
+            {"object_id": "segment-sa", "type": "segment", "name": "SA", "points": ["S", "A"]},
+            {"object_id": "plane-abc", "type": "plane", "name": "ABC", "points": ["A", "B", "C"]},
+        ],
+        "relations": [
+            {
+                "id": "typed-perp",
+                "type": "perpendicular",
+                "operands": [
+                    {"role": "line", "ref_id": "segment-sa", "ref_kind": "segment"},
+                    {"role": "plane", "ref_id": "plane-abc", "ref_kind": "plane"},
+                ],
+                "source": "given",
+                "metadata": {"source": "given"},
+            }
+        ],
+    })
+
+    facts = graph.by_type("perpendicular_line_plane")
+    assert len(facts) == 1
+    assert facts[0].args == {"line": ("S", "A"), "plane": ("A", "B", "C")}
 
 
 def test_unverifiable_inferred_relation_is_not_trusted():

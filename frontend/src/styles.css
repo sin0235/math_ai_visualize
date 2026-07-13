@@ -1,6 +1,8 @@
 :root {
   color: #111111;
   background: #f6f6f4;
+  /* Keep native form controls on the light palette even if the OS is dark. */
+  color-scheme: light;
   font-family: "Segoe UI Variable", "Segoe UI", Aptos, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   --radius-sm: 8px;
   --radius-md: 10px;
@@ -49,6 +51,79 @@ select {
   font: inherit;
 }
 
+/*
+ * Custom monochrome checkbox/radio.
+ * appearance:none kills native blue accents and OS dark-mode paint flashes on toggle.
+ */
+input[type="checkbox"],
+input[type="radio"] {
+  appearance: none;
+  -webkit-appearance: none;
+  color-scheme: light;
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  flex-shrink: 0;
+  vertical-align: middle;
+  border: 1.5px solid var(--line-2);
+  background: var(--paper);
+  color: var(--ink);
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+}
+
+input[type="checkbox"] {
+  border-radius: 4px;
+}
+
+input[type="radio"] {
+  border-radius: 50%;
+}
+
+input[type="checkbox"]:checked,
+input[type="radio"]:checked {
+  border-color: var(--ink);
+  background-color: var(--ink);
+  background-repeat: no-repeat;
+  background-position: center;
+}
+
+input[type="checkbox"]:checked {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M3.5 8.2L6.4 11.1L12.5 4.9' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-size: 12px 12px;
+}
+
+input[type="radio"]:checked {
+  background-image: radial-gradient(circle, var(--paper) 0 35%, transparent 36%);
+}
+
+input[type="checkbox"]:hover:not(:disabled),
+input[type="radio"]:hover:not(:disabled) {
+  border-color: var(--ink-3);
+}
+
+input[type="checkbox"]:checked:hover:not(:disabled),
+input[type="radio"]:checked:hover:not(:disabled) {
+  border-color: var(--ink);
+  background-color: var(--ink-2);
+}
+
+input[type="checkbox"]:disabled,
+input[type="radio"]:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+  background-color: var(--surface-2);
+  border-color: var(--line);
+}
+
+input[type="checkbox"]:checked:disabled,
+input[type="radio"]:checked:disabled {
+  background-color: var(--ink-3);
+  border-color: var(--ink-3);
+}
+
 button:focus-visible,
 a:focus-visible,
 input:focus-visible,
@@ -58,6 +133,17 @@ summary:focus-visible,
 [tabindex]:not([tabindex="-1"]):focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 3px;
+}
+
+input[type="checkbox"]:focus-visible,
+input[type="radio"]:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+input[type="checkbox"]:focus:not(:focus-visible),
+input[type="radio"]:focus:not(:focus-visible) {
+  outline: none;
 }
 
 textarea,
@@ -1149,19 +1235,12 @@ select {
 .pdf-word-option-toggles .checkbox-label:has(input:checked) {
   background: var(--paper);
   border-color: var(--ink);
-  box-shadow: 0 0 0 1px var(--ink);
 }
 
 .pdf-word-option-toggles .checkbox-label input[type="checkbox"] {
   width: 16px;
   height: 16px;
-  padding: 0;
-  border: none;
-  border-radius: 3px;
-  accent-color: var(--ink);
   margin: 0;
-  flex-shrink: 0;
-  cursor: pointer;
 }
 
 .pdf-word-advanced-options {
@@ -3384,8 +3463,6 @@ select {
 .admin-plan-toggle input {
   width: 16px;
   height: 16px;
-  accent-color: #171717;
-  color-scheme: light;
 }
 
 .admin-plan-save {
@@ -3863,7 +3940,7 @@ select {
   border: 1px solid #e5e5e5;
   border-radius: 8px;
   background: #ffffff;
-  transition: all 0.15s;
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
 
 .admin-model-checkbox label {
@@ -3881,10 +3958,8 @@ select {
 }
 
 .admin-model-checkbox input[type="checkbox"] {
-  flex-shrink: 0;
   width: 18px;
   height: 18px;
-  cursor: pointer;
 }
 
 .admin-model-checkbox .model-label {
@@ -4388,14 +4463,17 @@ textarea {
   display: flex;
   align-items: center;
   gap: 10px;
-  color: #333333;
+  color: var(--ink-2);
   font-weight: 500;
   font-size: 0.9rem;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.checkbox-label input {
-  width: auto;
-  accent-color: #111111;
+.checkbox-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
 }
 
 button {
@@ -6060,10 +6138,10 @@ button:disabled {
   line-height: 1.45;
 }
 
-.legal-consent-row input {
-  width: auto;
+.legal-consent-row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
   margin-top: 3px;
-  accent-color: #111111;
 }
 
 .legal-consent-row button {
@@ -11768,10 +11846,8 @@ button.analyzer-guide-label:hover {
 }
 
 .csim-check input[type="checkbox"] {
-  accent-color: #000;
   width: 18px;
   height: 18px;
-  cursor: pointer;
 }
 
 /* ── Step explanation card ── */
@@ -14028,7 +14104,8 @@ button.analyzer-guide-label:hover {
 }
 
 .algebra-ai-option-row input[type='checkbox'] {
-  width: auto;
+  width: 16px;
+  height: 16px;
   margin: 0;
 }
 
@@ -15334,7 +15411,6 @@ button.analyzer-guide-label:hover {
   width: 16px;
   min-height: 16px;
   height: 16px;
-  accent-color: var(--ink);
 }
 
 .settings-page .nested-panel {
@@ -15371,7 +15447,6 @@ button.analyzer-guide-label:hover {
   width: 15px;
   min-height: 15px;
   height: 15px;
-  accent-color: var(--ink);
 }
 
 .settings-page .nested-panel > button {
@@ -18401,6 +18476,59 @@ button.analyzer-guide-label:hover {
   gap: 18px;
 }
 
+.workspace-status-banner {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+  background: color-mix(in srgb, var(--panel) 92%, #e2e8f0);
+}
+
+.workspace-status-banner.is-trusted {
+  border-color: color-mix(in srgb, #16a34a 35%, var(--line));
+  background: color-mix(in srgb, #dcfce7 55%, var(--panel));
+}
+
+.workspace-status-banner.needs-trust,
+.workspace-status-banner.status-needs_confirmation {
+  border-color: color-mix(in srgb, #d97706 40%, var(--line));
+  background: color-mix(in srgb, #fef3c7 55%, var(--panel));
+}
+
+.workspace-status-banner.status-failed {
+  border-color: color-mix(in srgb, #dc2626 40%, var(--line));
+  background: color-mix(in srgb, #fee2e2 55%, var(--panel));
+}
+
+.workspace-status-banner-main {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  align-items: baseline;
+}
+
+.workspace-status-banner-main strong {
+  font-size: 0.95rem;
+}
+
+.workspace-status-banner-main span,
+.workspace-status-hint {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.workspace-status-issues {
+  margin: 0;
+  padding-left: 1.15rem;
+  color: var(--ink);
+  font-size: 0.88rem;
+}
+
+.workspace-status-hint {
+  margin: 0;
+}
+
 .scene-editor-v3 {
   display: grid;
   gap: 16px;
@@ -19589,4 +19717,52 @@ iframe {
     grid-template-columns: 1fr;
     gap: 2px;
   }
+}
+
+
+/* Browser notification soft prompt */
+.browser-notify-soft-prompt {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 80;
+  max-width: min(22rem, calc(100vw - 2rem));
+}
+.browser-notify-soft-prompt-card {
+  background: var(--paper, #fff);
+  color: var(--ink, #111);
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.12);
+  padding: 0.9rem 1rem;
+  display: grid;
+  gap: 0.5rem;
+}
+.browser-notify-soft-prompt-card p {
+  margin: 0;
+  font-size: 0.9rem;
+  opacity: 0.85;
+}
+.browser-notify-soft-prompt-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.settings-notify-card {
+  margin: 1rem 0 1.25rem;
+  padding: 1rem;
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 12px;
+  display: grid;
+  gap: 0.65rem;
+}
+.settings-notify-card h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+.settings-toggle-row {
+  display: flex;
+  gap: 0.55rem;
+  align-items: center;
+  font-size: 0.95rem;
 }

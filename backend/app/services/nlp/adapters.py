@@ -19,13 +19,10 @@ from app.services.algebra.interpreter import interpret_algebra_input
 from app.services.nlp.normalization import NormalizedInput
 from app.services.nlp.router import AdapterRegistry, infer_target
 from app.services.problem_classifier import classify_render_problem, classify_solve_question
+from app.services.prompt_security import classify_prompt_injection
 from app.services.safe_math_parser import SafeMathParseError, parse_safe_math_expression
 
 ADAPTER_VERSION = "nlp-rules-v1"
-_UNSUPPORTED_RE = re.compile(
-    r"\b(ignore previous|reveal secrets?|select \*|dịch .* tiếng anh|dich .* tieng anh|viết bài văn|viet bai van|bỏ mọi quy tắc|bo moi quy tac)\b",
-    re.IGNORECASE,
-)
 _RELATION_RE = re.compile(r"(?:<=|>=|!=|=|<|>)")
 _VARIABLE_RE = re.compile(r"\b([a-zA-Z])\b")
 _POINT_RE = re.compile(r"\b([A-Z])\b")
@@ -99,7 +96,21 @@ def interpret_algebra(envelope: InputEnvelope, normalized: NormalizedInput) -> l
                 provenance=[_rule_provenance("algebra")],
             )
         )
-    confidence = 0.82 if topic != "unknown" and not missing_fields else 0.4
+    # Rule-based NLP: high confidence only when canonical is clearly structured math.
+    # Natural prose without solid structure stays medium/low so it is not authoritative.
+    is_natural = interpretation.detected_format in {"natural_vi", "mixed"}
+    from app.services.algebra.normalizer import is_structured_algebra_input as _is_struct
+    structured_ok = _is_struct(interpretation.canonical_input)
+    has_relation = any(token in interpretation.canonical_input for token in ("=", "<", ">", "!=", "<=" , ">="))
+    solid_canonical = structured_ok or (has_relation and topic not in {"unknown", "auto"})
+    if topic == "unknown" or missing_fields:
+        confidence = 0.35
+    elif is_natural and solid_canonical:
+        confidence = 0.78  # enough for shadow/accept, still below pure structured
+    elif is_natural:
+        confidence = 0.45
+    else:
+        confidence = 0.9 if solid_canonical else 0.7
     task = interpretation.expression_action or _algebra_task(topic)
     return [
         InterpretationCandidate(
@@ -127,7 +138,7 @@ def interpret_algebra(envelope: InputEnvelope, normalized: NormalizedInput) -> l
             ambiguities=ambiguities,
             field_confidences=[
                 FieldConfidence(field="intent", confidence=confidence),
-                FieldConfidence(field="canonical_text", confidence=0.88 if interpretation.canonical_input else 0.0),
+                FieldConfidence(field="canonical_text", confidence=confidence if interpretation.canonical_input else 0.0),
             ],
             confidence=confidence,
             missing_fields=missing_fields,
@@ -613,13 +624,18 @@ def _minimum_ocr_confidence(envelope: InputEnvelope) -> float | None:
 
 
 def _unsupported_candidate(normalized: NormalizedInput) -> InterpretationCandidate | None:
-    if not _UNSUPPORTED_RE.search(normalized.text):
+    """Block clear prompt-injection / out-of-scope abuse before math adapters run."""
+    gate = classify_prompt_injection(normalized.text)
+    if not gate.blocked:
         return None
+    reason = gate.message or "Yêu cầu nằm ngoài phạm vi diễn giải bài toán toán học."
+    if gate.reasons:
+        reason = f"{reason} ({', '.join(gate.reasons[:4])})"
     return InterpretationCandidate(
         candidate_id="unsupported-1",
         intent=MathIntent(domain="unknown", topic="unknown", task="unknown"),
         confidence=1.0,
-        unsupported_reason="Yêu cầu nằm ngoài phạm vi diễn giải bài toán toán học.",
+        unsupported_reason=reason,
         provenance=[_rule_provenance("safety-scope"), normalized.provenance()],
     )
 

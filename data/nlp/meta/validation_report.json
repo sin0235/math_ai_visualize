@@ -1,0 +1,91 @@
+{
+  "version": "2.0.0",
+  "seed": 260714,
+  "records_total": 19431,
+  "source_seed_records": 83,
+  "generated_records": 19348,
+  "duplicate_records_removed": 52,
+  "schema_errors": 0,
+  "by_split": {
+    "train": 15731,
+    "test": 1873,
+    "validation": 1827
+  },
+  "by_target": {
+    "algebra": 10488,
+    "render": 1695,
+    "geometry_solve": 2882,
+    "analyzer": 1291,
+    "ocr": 3075
+  },
+  "by_status": {
+    "accepted": 17265,
+    "needs_confirmation": 1758,
+    "unsupported": 255,
+    "abstained": 153
+  },
+  "by_domain": {
+    "algebra": 11971,
+    "unknown": 407,
+    "geometry": 3570,
+    "function": 3483
+  },
+  "by_grade": {
+    "6": 2615,
+    "7": 2638,
+    "8": 2600,
+    "9": 2615,
+    "10": 2636,
+    "11": 2655,
+    "12": 2641
+  },
+  "top_topics": {
+    "statistics": 3457,
+    "function_analysis": 1590,
+    "sequence": 1049,
+    "number_theory": 928,
+    "combinatorics_probability": 832,
+    "equation": 821,
+    "algebraic_expression": 806,
+    "coordinate_3d": 793,
+    "calculus_derivative": 753,
+    "solid_geometry": 714,
+    "set_logic": 625,
+    "coordinate_2d": 616,
+    "calculus_integral": 544,
+    "arithmetic": 495,
+    "fraction_decimal": 485,
+    "polynomial_identity": 427,
+    "function_graph": 420,
+    "system": 413,
+    "unknown": 408,
+    "triangle_trigonometry": 365,
+    "linear_inequality_2d": 257,
+    "plane_geometry": 247,
+    "function_intersection": 232,
+    "real_numbers": 217,
+    "rational_numbers": 217,
+    "ratio_proportion": 209,
+    "inequality": 163,
+    "thales": 158,
+    "triangle_relations": 130,
+    "radical": 120,
+    "exponential_log": 119,
+    "right_triangle_trigonometry": 101,
+    "circle_metric": 86,
+    "basic_geometry": 82,
+    "expression": 65,
+    "parameter": 62,
+    "parallel_lines": 48,
+    "quadrilateral": 47,
+    "trigonometry": 43,
+    "regular_polygon": 37
+  },
+  "unique_input_texts": 19361,
+  "unique_canonicals": 13815,
+  "notes": [
+    "Các mẫu sinh mới là dữ liệu nguyên bản theo template tham số, không sao chép nguyên văn hàng loạt từ Toán Math.",
+    "math_solution_verified=false: corpus này ưu tiên intent routing, normalization, extraction và canonicalization; chưa phải bộ lời giải vàng.",
+    "Split theo semantic_group_id để hạn chế rò rỉ giữa biến thể sạch và OCR của cùng canonical."
+  ]
+}

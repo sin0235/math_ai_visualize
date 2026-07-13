@@ -46,6 +46,7 @@ class ProviderRegistryItem:
     label: str
     base_url: str
     api_key_configured: bool
+    engine: str = "openai_compat"
     enabled: bool = True
     last_checked_at: str | None = None
     last_check_status: str | None = None
@@ -168,6 +169,7 @@ async def _load_model_registry_uncached(db: DatabaseClient, settings: Settings) 
             label=str(row["label"]),
             base_url=str(row["base_url"] or ""),
             api_key_configured=bool(row["api_key_configured"]),
+            engine=str(row.get("engine") or "openai_compat"),
             enabled=bool(row["enabled"]),
             last_checked_at=row.get("last_checked_at"),
             last_check_status=row.get("last_check_status"),
@@ -246,7 +248,7 @@ def _provider_has_credentials(settings: Settings, provider_id: str) -> bool:
 
 
 def default_text_profile(settings: Settings, preferred_provider: str | None = None) -> tuple[str, str]:
-    provider_id = normalize_registry_provider_id(preferred_provider) or "auto"
+    provider_id = canonical_provider_id(preferred_provider) or "auto"
     models = {
         "router9": _router9_default_model(settings),
         "nvidia": settings.nvidia_text_model,
@@ -672,8 +674,8 @@ def health_check_model(registry: ModelRegistry, provider_id: str) -> str:
 
 def resolve_task_profile(registry: ModelRegistry, task: str, preferred_provider: str | None = None, preferred_model: str | None = None) -> TaskProfile:
     profile = registry.task_profiles.get(task)
-    preferred_provider_id = normalize_registry_provider_id(preferred_provider)
-    profile_provider = normalize_registry_provider_id(profile.provider_id) if profile else None
+    preferred_provider_id = canonical_provider_id(preferred_provider)
+    profile_provider = canonical_provider_id(profile.provider_id) if profile else None
     provider_id = preferred_provider_id or profile_provider
     if not provider_id or provider_id == "auto":
         raise ValueError(f"Task profile {task} phải chọn provider rõ ràng.")
@@ -714,7 +716,7 @@ def resolve_render_tier_candidates(registry: ModelRegistry, tier: str) -> list[T
 def _tier_profile_candidates(registry: ModelRegistry, profile: TaskProfile | None) -> list[TierModelCandidate]:
     if profile is None:
         return []
-    provider_id = normalize_registry_provider_id(profile.provider_id)
+    provider_id = canonical_provider_id(profile.provider_id)
     if provider_id == "auto" and profile.model_id:
         return []
     if provider_id == "auto":
@@ -771,16 +773,11 @@ def _tier_fallback_provider_model(fallback: str) -> tuple[str, str]:
     return ref.provider_id, ref.model_id
 
 
-def normalize_registry_provider_id(provider_id: str | None) -> str | None:
-    if provider_id == "ollama_gpt_oss":
-        return "ollama"
-    if provider_id in {"openrouter_gpt_oss", "opencode_nemotron"}:
-        return "openrouter"
-    return provider_id
+
 
 
 def model_supports_thinking(registry: ModelRegistry, provider_id: str | None, model_id: str | None) -> bool | None:
-    provider_id = normalize_registry_provider_id(provider_id)
+    provider_id = canonical_provider_id(provider_id)
     model_id = normalize_model_for_provider(provider_id, model_id or "") if provider_id else model_id
     if not provider_id or not model_id:
         return None

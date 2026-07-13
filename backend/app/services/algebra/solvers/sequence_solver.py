@@ -6,7 +6,7 @@ from fractions import Fraction
 
 import sympy as sp
 
-from app.schemas.algebra import AlgebraSolutionSet, AlgebraSolveResponse, AlgebraSolveStep, AlgebraVerificationCheck, AlgebraVerificationReport
+from app.schemas.algebra import AlgebraSolutionSet, AlgebraSolveResponse, AlgebraSolveStep, AlgebraVerificationReport
 from app.services.algebra.parser import ParsedAlgebraProblem
 from app.services.algebra.steps import conclusion_step
 
@@ -18,47 +18,66 @@ def solve_sequence(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
     except ValueError as exc:
         return _unsupported(problem, str(exc))
     result = calculation.result
-    steps = [
-        AlgebraSolveStep(
-            index=1,
-            title="Viết công thức",
-            explanation=calculation.formula_explanation,
-            before_latex=calculation.formula_latex,
-            after_latex=calculation.substitution_latex,
-            expression=calculation.formula_text,
-            expression_latex=calculation.formula_latex,
-            result=calculation.substitution_text,
-            result_latex=calculation.substitution_latex,
-            kind="transform",
-            confidence="verified",
-        ),
-        AlgebraSolveStep(
-            index=2,
-            title="Tính kết quả",
-            explanation=calculation.result_explanation,
-            before_latex=calculation.substitution_latex,
-            after_latex=calculation.result_latex,
-            expression=calculation.substitution_text,
-            expression_latex=calculation.substitution_latex,
-            result=sp.sstr(result),
-            result_latex=calculation.result_latex,
-            kind="solve",
-            confidence="verified",
-        ),
-    ]
+    steps: list[AlgebraSolveStep] = []
+    index = 1
+    if calculation.preamble is not None:
+        steps.append(
+            AlgebraSolveStep(
+                index=index,
+                title=calculation.preamble.title,
+                explanation=calculation.preamble.explanation,
+                before_latex=calculation.preamble.before_latex,
+                after_latex=calculation.preamble.after_latex,
+                expression=calculation.preamble.expression,
+                expression_latex=calculation.preamble.before_latex,
+                result=calculation.preamble.result,
+                result_latex=calculation.preamble.after_latex,
+                kind="transform",
+            )
+        )
+        index += 1
+    steps.extend(
+        [
+            AlgebraSolveStep(
+                index=index,
+                title="Viết công thức",
+                explanation=calculation.formula_explanation,
+                before_latex=calculation.formula_latex,
+                after_latex=calculation.substitution_latex,
+                expression=calculation.formula_text,
+                expression_latex=calculation.formula_latex,
+                result=calculation.substitution_text,
+                result_latex=calculation.substitution_latex,
+                kind="transform",
+            ),
+            AlgebraSolveStep(
+                index=index + 1,
+                title="Tính kết quả",
+                explanation=calculation.result_explanation,
+                before_latex=calculation.substitution_latex,
+                after_latex=calculation.result_latex,
+                expression=calculation.substitution_text,
+                expression_latex=calculation.substitution_latex,
+                result=sp.sstr(result),
+                result_latex=calculation.result_latex,
+                kind="solve",
+            ),
+        ]
+    )
     answer = f"Kết quả: {sp.sstr(result)}"
-    steps.append(conclusion_step(3, answer, sp.latex(result)))
-    
+    steps.append(conclusion_step(index + 2, answer, sp.latex(result)))
+
     milestones = [
         f"Công thức: {calculation.formula_latex}",
         f"Thay số: {calculation.substitution_latex}",
-        f"Kết quả: {calculation.result_latex}"
+        f"Kết quả: {calculation.result_latex}",
     ]
-    
+
+    # Quiet production verification: status ok, no check/method noise.
     verification = AlgebraVerificationReport(
         status="verified",
-        checks=[AlgebraVerificationCheck(name="sequence_formula_checked", status="pass", detail="Kết quả được tính bằng công thức cấp số chuẩn và kiểm tra tham số structured.")],
-        method=["rule_based"],
+        checks=[],
+        method=[],
     )
     return AlgebraSolveResponse(
         input=problem.raw_input,
@@ -79,6 +98,16 @@ def solve_sequence(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
 
 
 @dataclass(frozen=True)
+class SequencePreamble:
+    title: str
+    explanation: str
+    before_latex: str
+    after_latex: str
+    expression: str
+    result: str
+
+
+@dataclass(frozen=True)
 class SequenceCalculation:
     result: sp.Expr
     formula_text: str
@@ -88,6 +117,7 @@ class SequenceCalculation:
     result_latex: str
     formula_explanation: str
     result_explanation: str
+    preamble: SequencePreamble | None = None
 
 
 def _evaluate(text: str) -> SequenceCalculation:
@@ -102,10 +132,22 @@ def _evaluate(text: str) -> SequenceCalculation:
         raise ValueError("Cần nhập u1 cho cấp số.")
     if kind.startswith("arithmetic"):
         d = args.get("d")
+        preamble: SequencePreamble | None = None
         if d is None:
             u2 = args.get("u2")
             if u2 is not None:
                 d = u2 - u1
+                preamble = SequencePreamble(
+                    title="Tìm công sai",
+                    explanation=(
+                        f"Cấp số cộng có $u_1 = {_latex_fraction(u1)}$, $u_2 = {_latex_fraction(u2)}$. "
+                        f"Công sai $d = u_2 - u_1 = {_latex_fraction(u2)} - {_latex_fraction(u1)} = {_latex_fraction(d)}$."
+                    ),
+                    before_latex=rf"d=u_2-u_1",
+                    after_latex=rf"d={_latex_fraction(u2)}-{_latex_fraction(u1)}={_latex_fraction(d)}",
+                    expression=f"d = u2 - u1 = {u2} - {u1}",
+                    result=f"d = {d}",
+                )
             else:
                 raise ValueError("Cấp số cộng cần tham số d hoặc u2.")
         if kind == "arithmetic":
@@ -117,8 +159,12 @@ def _evaluate(text: str) -> SequenceCalculation:
                 substitution_text=f"u_{n} = {u1} + ({n}-1)*{d}",
                 substitution_latex=rf"u_{{{n}}}={_latex_fraction(u1)}+({n}-1)\cdot {_latex_fraction(d)}",
                 result_latex=rf"u_{{{n}}}={sp.latex(_to_sympy(result))}",
-                formula_explanation="Cấp số cộng dùng công thức số hạng tổng quát.",
-                result_explanation=f"Thay n = {n} rồi tính ra số hạng cần tìm.",
+                formula_explanation="Áp dụng công thức số hạng tổng quát của cấp số cộng: $u_n = u_1 + (n-1)d$.",
+                result_explanation=(
+                    f"Thay $u_1 = {_latex_fraction(u1)}$, $d = {_latex_fraction(d)}$, $n = {n}$: "
+                    f"$u_{{{n}}} = {_latex_fraction(u1)} + ({n}-1)\\cdot {_latex_fraction(d)} = {sp.latex(_to_sympy(result))}$."
+                ),
+                preamble=preamble,
             )
         result = Fraction(n, 2) * (2 * u1 + (n - 1) * d)
         return SequenceCalculation(
@@ -128,16 +174,32 @@ def _evaluate(text: str) -> SequenceCalculation:
             substitution_text=f"S_{n} = {n}*(2*{u1}+({n}-1)*{d})/2",
             substitution_latex=rf"S_{{{n}}}=\frac{{{n}\left(2\cdot {_latex_fraction(u1)}+({n}-1)\cdot {_latex_fraction(d)}\right)}}{{2}}",
             result_latex=rf"S_{{{n}}}={sp.latex(_to_sympy(result))}",
-            formula_explanation="Tổng n số hạng đầu của cấp số cộng dùng công thức tổng.",
-            result_explanation=f"Thay n = {n} rồi rút gọn tổng.",
+            formula_explanation="Áp dụng công thức tổng $n$ số hạng đầu của cấp số cộng: $S_n = \\dfrac{n}{2}\\bigl(2u_1+(n-1)d\\bigr)$.",
+            result_explanation=(
+                f"Thay $u_1 = {_latex_fraction(u1)}$, $d = {_latex_fraction(d)}$, $n = {n}$: "
+                f"$S_{{{n}}} = {sp.latex(_to_sympy(result))}$."
+            ),
+            preamble=preamble,
         )
     q = args.get("q")
+    preamble = None
     if q is None:
         u2 = args.get("u2")
         if u2 is not None:
             if u1 == 0:
                 raise ValueError("Không thể tìm công bội q vì u1 = 0.")
             q = u2 / u1
+            preamble = SequencePreamble(
+                title="Tìm công bội",
+                explanation=(
+                    f"Cấp số nhân có $u_1 = {_latex_fraction(u1)}$, $u_2 = {_latex_fraction(u2)}$. "
+                    f"Công bội $q = \\dfrac{{u_2}}{{u_1}} = \\dfrac{{{_latex_fraction(u2)}}}{{{_latex_fraction(u1)}}} = {_latex_fraction(q)}$."
+                ),
+                before_latex=r"q=\frac{u_2}{u_1}",
+                after_latex=rf"q=\frac{{{_latex_fraction(u2)}}}{{{_latex_fraction(u1)}}}={_latex_fraction(q)}",
+                expression=f"q = u2 / u1 = {u2} / {u1}",
+                result=f"q = {q}",
+            )
         else:
             raise ValueError("Cấp số nhân cần tham số q hoặc u2.")
     if kind == "geometric":
@@ -149,8 +211,12 @@ def _evaluate(text: str) -> SequenceCalculation:
             substitution_text=f"u_{n} = {u1}*{q}^({n}-1)",
             substitution_latex=rf"u_{{{n}}}={_latex_fraction(u1)}\cdot ({_latex_fraction(q)})^{{{n}-1}}",
             result_latex=rf"u_{{{n}}}={sp.latex(_to_sympy(result))}",
-            formula_explanation="Cấp số nhân dùng công thức số hạng tổng quát.",
-            result_explanation=f"Thay n = {n} rồi tính lũy thừa.",
+            formula_explanation="Áp dụng công thức số hạng tổng quát của cấp số nhân: $u_n = u_1 q^{n-1}$.",
+            result_explanation=(
+                f"Thay $u_1 = {_latex_fraction(u1)}$, $q = {_latex_fraction(q)}$, $n = {n}$: "
+                f"$u_{{{n}}} = {_latex_fraction(u1)}\\cdot ({_latex_fraction(q)})^{{{n}-1}} = {sp.latex(_to_sympy(result))}$."
+            ),
+            preamble=preamble,
         )
     if q == 1:
         result = u1 * n
@@ -167,8 +233,12 @@ def _evaluate(text: str) -> SequenceCalculation:
         substitution_text=f"S_{n} = {u1}*({q}^{n}-1)/({q}-1)",
         substitution_latex=substitution_latex,
         result_latex=rf"S_{{{n}}}={sp.latex(_to_sympy(result))}",
-        formula_explanation="Tổng n số hạng đầu của cấp số nhân dùng công thức tổng.",
-        result_explanation=f"Thay n = {n} rồi rút gọn tổng.",
+        formula_explanation="Áp dụng công thức tổng $n$ số hạng đầu của cấp số nhân: $S_n = \\dfrac{u_1(q^n-1)}{q-1}$.",
+        result_explanation=(
+            f"Thay $u_1 = {_latex_fraction(u1)}$, $q = {_latex_fraction(q)}$, $n = {n}$: "
+            f"$S_{{{n}}} = {sp.latex(_to_sympy(result))}$."
+        ),
+        preamble=preamble,
     )
 
 

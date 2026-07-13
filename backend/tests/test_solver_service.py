@@ -150,6 +150,43 @@ def test_metric_solver_rejects_generic_solid_without_metric_evidence():
     assert result.data_issues
 
 
+def test_metric_guard_rejects_inconsistent_length_annotation():
+    scene = {
+        "problem_text": "Cho SA = 3 nhưng tọa độ không khớp.",
+        "topic": "solid_geometry",
+        "objects": [
+            {"object_id": "point-s", "type": "point_3d", "name": "S", "x": 0, "y": 0, "z": 5},
+            {"object_id": "point-a", "type": "point_3d", "name": "A", "x": 0, "y": 0, "z": 0},
+            {"object_id": "point-b", "type": "point_3d", "name": "B", "x": 1, "y": 0, "z": 0},
+            {"object_id": "point-c", "type": "point_3d", "name": "C", "x": 0, "y": 1, "z": 0},
+        ],
+        "annotations": [
+            {"type": "length", "target": "S-A", "label": "3", "metadata": {"source": "given"}},
+        ],
+    }
+
+    result = solve(scene, "d(S,(ABC))")
+
+    assert result.answer == "Không đủ dữ kiện"
+    assert any("không khớp residual" in warning or "mâu thuẫn" in warning for warning in result.warnings)
+
+
+def test_oxyz_steps_attach_highlight_object_ids():
+    scene = {
+        "objects": [
+            {"object_id": "point-a", "type": "point_3d", "name": "A", "x": 0, "y": 0, "z": 0},
+            {"object_id": "point-b", "type": "point_3d", "name": "B", "x": 3, "y": 0, "z": 0},
+            {"object_id": "point-c", "type": "point_3d", "name": "C", "x": 0, "y": 4, "z": 0},
+        ],
+    }
+
+    result = solve(scene, "d(A,B)")
+
+    assert result.answer == "d(A,B) = 3"
+    assert all(step.highlight_object_ids for step in result.steps if step.highlight)
+    assert set(result.steps[0].highlight_object_ids) == {"point-a", "point-b"}
+
+
 def test_metric_solver_rejects_construction_only_metric_label(scene):
     construction_scene = {
         **scene,

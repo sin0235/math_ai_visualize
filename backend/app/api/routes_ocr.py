@@ -97,7 +97,9 @@ async def ocr_image(
             raise bad_request_from_error(error, "ocr_failed") from error
         if byok is not None and byok.client is not None:
             try:
-                text = await byok.client.ocr_image(image_data_url, byok.model_id)
+                from app.services.ocr import sanitize_ocr_text
+
+                text = sanitize_ocr_text(await byok.client.ocr_image(image_data_url, byok.model_id))
             except RuntimeError as error:
                 raise bad_request_from_error(error, "ocr_failed") from error
             return OcrResponse(text=text, provider="openai_compat", model=byok.model_id, warnings=["OCR sử dụng BYOK OpenAI-compatible."])

@@ -106,8 +106,16 @@ def test_pipeline_verifies_failed_3d_line_plane_perpendicular_relation():
     result = run_scene_pipeline_v3(make_line_plane_scene(perpendicular=False))
 
     assert result.status == "partially_verified"
-    assert result.can_project
+    # Fail-closed: constraint errors must not project as a successful figure.
+    assert not result.can_project
     assert any(issue.code == "CONSTRAINT_FAILED" for issue in result.issues)
+
+
+def test_pipeline_failed_2d_constraint_blocks_projection():
+    result = run_scene_pipeline_v3(make_scene(perpendicular=False))
+    assert result.status == "partially_verified"
+    assert not result.can_project
+    assert result.projection is not None  # projection may be built but can_project is false
 
 
 def test_pipeline_dependency_query_uses_typed_ids():

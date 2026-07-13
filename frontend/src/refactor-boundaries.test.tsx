@@ -4,7 +4,7 @@ import type { AnalyzeOptions, AnalyzeResponse, FunctionOcrExtraction, RenderHist
 import { analyzeFunction, analyzeFunctionImage, extractFunctionImage } from './api/analyze';
 import { getCurrentUser, login, logout } from './api/auth';
 import { checkAllAdminProviders, getAdminSummary } from './api/admin';
-import { getHealth, renderProblem, solveProblem } from './api/render';
+import { getHealth, renderProblemV3, solveProblem } from './api/render';
 import { AccessDeniedPage, HistoryPanel, isGeometryMobileWarningView } from './components/AppPages';
 import { FunctionAnalyzerPanel } from './components/FunctionAnalyzerPanel';
 import { AnalyzerInput } from './components/function-analyzer/AnalyzerInput';
@@ -244,7 +244,7 @@ void logout;
 void checkAllAdminProviders;
 void getAdminSummary;
 void getHealth;
-void renderProblem;
+void renderProblemV3;
 void solveProblem;
 void (undefined as RuntimeSettings | undefined);
 

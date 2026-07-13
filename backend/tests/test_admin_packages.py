@@ -18,7 +18,7 @@ def register_payload(email: str, password: str = "StrongPass123") -> dict:
 def client(tmp_path, monkeypatch):
     db = SQLiteClient(str(tmp_path / "admin-packages.db"))
     asyncio.run(apply_sqlite_migrations(db))
-    settings = Settings(_env_file=None, sqlite_path=db.path, auth_email_dev_mode=True, require_email_verification=False)
+    settings = Settings(_env_file=None, database_backend="sqlite", sqlite_path=db.path, auth_email_dev_mode=True, require_email_verification=False)
 
     async def override_db():
         return db

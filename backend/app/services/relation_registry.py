@@ -22,7 +22,7 @@ RELATION_REGISTRY: dict[str, RelationSpec] = {
     "parallel": RelationSpec("parallel", verify="supported", auto_fix_policy="proposal"),
     "equal_length": RelationSpec("equal_length", verify="supported", auto_fix_policy="proposal"),
     "midpoint": RelationSpec("midpoint", verify="supported", auto_fix_policy="safe"),
-    "intersection": RelationSpec("intersection", verify="unsupported", auto_fix_policy="none"),
+    "intersection": RelationSpec("intersection", verify="supported", auto_fix_policy="none"),
     "tangent": RelationSpec("tangent", verify="supported", auto_fix_policy="proposal"),
     "collinear": RelationSpec("collinear", verify="supported", auto_fix_policy="proposal"),
     "coplanar": RelationSpec("coplanar", verify="supported", auto_fix_policy="proposal"),

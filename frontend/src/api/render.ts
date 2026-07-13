@@ -77,15 +77,6 @@ interface RenderHistoryDetailBase extends RenderHistoryItem {
   runtime_settings?: Record<string, unknown> | null;
 }
 
-export interface RenderHistoryDetailV2 extends RenderHistoryDetailBase {
-  kind: 'math_scene_v2';
-  scene: MathScene;
-  payload: RenderResponse['payload'];
-  warnings: string[];
-  response?: RenderResponse | null;
-  advanced_settings?: Record<string, unknown> | null;
-}
-
 export interface RenderHistoryDetailV3 extends RenderHistoryDetailBase {
   kind: 'math_scene_v3';
   workspace: SceneWorkspaceResponseV3;
@@ -93,7 +84,7 @@ export interface RenderHistoryDetailV3 extends RenderHistoryDetailBase {
   command_log: SceneCommand[];
 }
 
-export type RenderHistoryDetail = RenderHistoryDetailV2 | RenderHistoryDetailV3;
+export type RenderHistoryDetail = RenderHistoryDetailV3;
 
 export type ExportFormat = ExportFormatKey;
 
@@ -217,47 +208,6 @@ export type RenderJobCreateResponse = {
   status: 'queued' | 'running' | 'completed' | 'failed';
 };
 
-export type RenderJobStatusResponse = {
-  job_id: string;
-  status: 'queued' | 'running' | 'completed' | 'failed';
-  response?: RenderResponse | null;
-  error?: { code?: string; message?: string; debug_message?: string } | null;
-};
-
-export async function renderProblem(
-  problemText: string,
-  tier: 'tier1' | 'tier2' | 'tier3' = 'tier1',
-  advancedSettings?: AdvancedRenderSettings,
-  preferredRenderer?: Renderer,
-  runtimeSettings?: RuntimeSettings,
-  preferredAiModel?: string,
-  options?: { async?: boolean },
-): Promise<RenderResponse> {
-  const body = {
-    problem_text: problemText,
-    tier,
-    preferred_renderer: preferredRenderer,
-    advanced_settings: advancedSettings,
-    ...preferredAiModelPayload(preferredAiModel),
-    runtime_settings: compactRuntimeSettings(runtimeSettings),
-  };
-  if (options?.async) {
-    const created = await requestJson<RenderJobCreateResponse>('/api/render/jobs', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify(body),
-    }, 'Không thể xếp hàng dựng hình.');
-    return pollRenderJob(created.job_id);
-  }
-  return requestJson('/api/render', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'include',
-    body: JSON.stringify(body),
-  }, 'Không thể dựng hình.');
-}
-
 export async function renderProblemV3(
   problemText: string,
   tier: 'tier1' | 'tier2' | 'tier3' = 'tier1',
@@ -279,28 +229,6 @@ export async function renderProblemV3(
       runtime_settings: compactRuntimeSettings(runtimeSettings),
     }),
   }, 'Không thể dựng scene workspace v3.');
-}
-
-async function pollRenderJob(jobId: string, maxMs = 320_000): Promise<RenderResponse> {
-  const started = Date.now();
-  let delay = 600;
-  while (Date.now() - started < maxMs) {
-    const status = await requestJson<RenderJobStatusResponse>(
-      `/api/render/jobs/${encodeURIComponent(jobId)}`,
-      { credentials: 'include' },
-      'Không thể kiểm tra tiến độ dựng hình.',
-    );
-    if (status.status === 'completed' && status.response) {
-      return status.response;
-    }
-    if (status.status === 'failed') {
-      const message = status.error?.debug_message || status.error?.message || 'Dựng hình thất bại.';
-      throw new ApiError(message, [status.error?.code || 'RENDER_FAILED'].filter(Boolean) as string[]);
-    }
-    await new Promise((resolve) => window.setTimeout(resolve, delay));
-    delay = Math.min(delay + 400, 2500);
-  }
-  throw new ApiError('Dựng hình quá thời gian chờ. Vui lòng thử lại.');
 }
 
 function preferredAiModelPayload(selection?: string) {
@@ -376,19 +304,6 @@ export async function scanRouter9Models(runtimeSettings: RuntimeSettings): Promi
     body: JSON.stringify({ runtime_settings: compactRuntimeSettings(runtimeSettings) }),
   }, 'Không thể quét model 9router.');
   return response.models;
-}
-
-export async function renderEditedScene(scene: MathScene, advancedSettings: AdvancedRenderSettings, response?: RenderResponse | null): Promise<RenderResponse> {
-  return requestJson('/api/render/scene', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'include',
-    body: JSON.stringify({
-      scene,
-      response,
-      advanced_settings: advancedSettings,
-    }),
-  }, 'Không thể dựng lại scene.');
 }
 
 export async function createSceneWorkspaceV3(scene: MathSceneV3): Promise<SceneWorkspaceResponseV3> {

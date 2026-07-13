@@ -14,26 +14,30 @@ from app.db.session import SQLiteClient, get_database
 from app.main import app
 from app.repositories.auth import UserRepository
 from app.repositories.scene_workspaces import SceneWorkspaceRepository
+from app.schemas.scene_v3 import MathSceneV3
 from app.services.scene_pipeline_v3 import run_scene_pipeline_v3
-from app.services.scene_v3_adapter import migrate_scene_v2_dict
 from app.services import problem_variants as variants_module
 
 _IMAGE_DATA_URL = "data:image/png;base64,aGVsbG8="
 
-_SCENE_JSON = {
+_SCENE_V3 = {
+    "scene_id": "variants-scene",
+    "schema_version": "3.0",
+    "revision": 1,
     "problem_text": "Cho tam giác ABC vuông tại A.",
     "topic": "coordinate_2d",
     "renderer": "geogebra_2d",
     "view": {"dimension": "2d", "show_axes": True, "show_grid": False},
     "objects": [
-        {"type": "point_2d", "name": "A", "x": 0, "y": 0},
-        {"type": "point_2d", "name": "B", "x": 4, "y": 0},
-        {"type": "point_2d", "name": "C", "x": 0, "y": 3},
-        {"type": "segment", "name": "AB", "points": ["A", "B"]},
-        {"type": "segment", "name": "AC", "points": ["A", "C"]},
-        {"type": "segment", "name": "BC", "points": ["B", "C"]},
+        {"id": "pt_a", "type": "point_2d", "label": "A", "x": 0, "y": 0},
+        {"id": "pt_b", "type": "point_2d", "label": "B", "x": 4, "y": 0},
+        {"id": "pt_c", "type": "point_2d", "label": "C", "x": 0, "y": 3},
+        {"id": "seg_ab", "type": "segment", "label": "AB", "point_ids": ["pt_a", "pt_b"]},
+        {"id": "seg_ac", "type": "segment", "label": "AC", "point_ids": ["pt_a", "pt_c"]},
+        {"id": "seg_bc", "type": "segment", "label": "BC", "point_ids": ["pt_b", "pt_c"]},
     ],
     "annotations": [],
+    "audit": {"created_by": "test"},
 }
 
 
@@ -66,8 +70,8 @@ def isolated_database(tmp_path, monkeypatch):
         asyncio.run(db.close())
 
 
-def _create_committed_workspace(db, user) -> dict[str, object]:
-    scene, _ = migrate_scene_v2_dict({**_SCENE_JSON, "scene_id": "variants-scene", "revision": 1})
+def _create_committed_workspace(db, user, *, scene_id: str = "variants-scene") -> dict[str, object]:
+    scene = MathSceneV3.model_validate({**_SCENE_V3, "scene_id": scene_id, "revision": 1})
     asyncio.run(SceneWorkspaceRepository(db).create(user.id, run_scene_pipeline_v3(scene)))
     return {"scene_id": scene.scene_id, "revision": scene.revision}
 
@@ -189,7 +193,7 @@ def test_generate_variants_handles_empty_response(monkeypatch, isolated_database
 
 
 def test_math_scene_v3_serialises_for_variants_prompt():
-    scene, _ = migrate_scene_v2_dict({**_SCENE_JSON, "scene_id": "variants-prompt"})
+    scene = MathSceneV3.model_validate({**_SCENE_V3, "scene_id": "variants-prompt"})
     payload = scene.model_dump(mode="json")
     prompt = variants_module._build_user_prompt(payload, None, 2)
     assert scene.problem_text.startswith("Cho tam giác")

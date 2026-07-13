@@ -6,11 +6,12 @@ import httpx
 
 from app.core.config import Settings
 from app.schemas.scene import AiModelInfo
-from app.services.ai_prompt import REASONING_SYSTEM_PROMPT, SCENE_EXTRACTION_SYSTEM_PROMPT, build_reasoning_prompt, build_scene_extraction_prompt
+from app.services.ai_prompt import REASONING_SYSTEM_PROMPT, SCENE_EXTRACTION_V3_SYSTEM_PROMPT, build_reasoning_prompt, build_scene_extraction_prompt
 from app.services.chat_response import extract_chat_message_content
 from app.services.openrouter_client import OCR_SYSTEM_PROMPT
 from app.services.model_scan import CAPABILITY_KEYS, _extract_capabilities
 from app.services.provider_logging import chat_message_input_chars, format_provider_error, log_ocr_summary, log_provider_http_error, log_provider_request, log_provider_response, log_scene_summary
+from app.services.prompt_security import parse_llm_json_dict, secure_system_prompt
 
 
 class Router9Client:
@@ -63,19 +64,22 @@ class Router9Client:
         reasoning_layer: str = "off",
         reasoning_plan: dict | None = None,
         system_prompt: str | None = None,
+        nlp_hints: dict | None = None,
+        user_prompt: str | None = None,
+        schema_version: str = "3.0",
     ) -> dict:
         if not _api_key(self.settings):
             raise RuntimeError("ROUTER9_API_KEY chưa được cấu hình.")
         if not self.model:
             raise RuntimeError("Chưa chọn model 9router.")
 
-        sys_prompt = system_prompt or SCENE_EXTRACTION_SYSTEM_PROMPT
+        sys_prompt = secure_system_prompt(system_prompt or SCENE_EXTRACTION_V3_SYSTEM_PROMPT)
 
         payload = {
             "model": self.model,
             "messages": [
                 {"role": "system", "content": sys_prompt},
-                {"role": "user", "content": build_scene_extraction_prompt(problem_text, grade, reasoning_layer, reasoning_plan=reasoning_plan)},
+                {"role": "user", "content": user_prompt or build_scene_extraction_prompt(problem_text, grade, reasoning_layer, reasoning_plan=reasoning_plan, nlp_hints=nlp_hints, schema_version=schema_version)},
             ],
             "temperature": 0.1,
             "stream": False,
@@ -89,10 +93,10 @@ class Router9Client:
         if not isinstance(content, str) or not content.strip():
             raise RuntimeError("9router không trả về nội dung JSON trong choices[0].message.content.")
         try:
-            scene_json = json.loads(_strip_json_fences(content))
+            scene_json = parse_llm_json_dict(content, task="scene")
             log_scene_summary("9router", scene_json)
             return scene_json
-        except json.JSONDecodeError as error:
+        except (json.JSONDecodeError, RuntimeError) as error:
             log_provider_parse_error("9router", "scene", self.model, f"invalid_json: {error.msg}", response_chars=len(content))
             raise RuntimeError(f"9router trả về JSON không hợp lệ: {error.msg}") from error
 
@@ -103,7 +107,7 @@ class Router9Client:
         if not self.model:
             raise RuntimeError("Chưa chọn model 9router.")
 
-        sys_prompt = system_prompt or REASONING_SYSTEM_PROMPT
+        sys_prompt = secure_system_prompt(system_prompt or REASONING_SYSTEM_PROMPT)
 
         payload = {
             "model": self.model,
@@ -124,8 +128,8 @@ class Router9Client:
         if not isinstance(content, str) or not content.strip():
             raise RuntimeError("9router không trả về nội dung reasoning.")
         try:
-            return json.loads(_strip_json_fences(content))
-        except json.JSONDecodeError as error:
+            return parse_llm_json_dict(content, task="reasoning")
+        except (json.JSONDecodeError, RuntimeError) as error:
             log_provider_parse_error("9router", "reasoning", self.model, f"invalid_json: {error.msg}", response_chars=len(content))
             raise RuntimeError(f"9router reasoning JSON không hợp lệ: {error.msg}") from error
 

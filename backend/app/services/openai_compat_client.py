@@ -8,11 +8,12 @@ from typing import Any
 import httpx
 
 from app.core.config import Settings
-from app.services.ai_prompt import REASONING_SYSTEM_PROMPT, SCENE_EXTRACTION_SYSTEM_PROMPT, build_reasoning_prompt, build_scene_extraction_prompt
+from app.services.ai_prompt import REASONING_SYSTEM_PROMPT, SCENE_EXTRACTION_V3_SYSTEM_PROMPT, build_reasoning_prompt, build_scene_extraction_prompt
 from app.services.openrouter_client import OCR_SYSTEM_PROMPT, _strip_json_fences, _strip_text_fences
 from app.services.chat_response import chat_response_shape, extract_chat_response_content
 from app.services.chat_stream import extract_openai_chat_stream_content
 from app.services.provider_logging import chat_message_input_chars, format_provider_error, log_ocr_summary, log_provider_parse, log_provider_request, log_provider_response, log_scene_summary
+from app.services.prompt_security import parse_llm_json_dict, secure_system_prompt
 
 _SCENE_MAX_TOKENS = 8192
 _REASONING_MAX_TOKENS = 4096
@@ -36,14 +37,17 @@ class OpenAICompatClient:
         reasoning_layer: str = "off",
         reasoning_plan: dict | None = None,
         system_prompt: str | None = None,
+        nlp_hints: dict | None = None,
+        user_prompt: str | None = None,
+        schema_version: str = "3.0",
     ) -> dict:
         if not self.model:
             raise RuntimeError("Chưa chọn model OpenAI-compatible.")
         payload = {
             "model": self.model,
             "messages": [
-                {"role": "system", "content": system_prompt or SCENE_EXTRACTION_SYSTEM_PROMPT},
-                {"role": "user", "content": build_scene_extraction_prompt(problem_text, grade, reasoning_layer, reasoning_plan=reasoning_plan)},
+                {"role": "system", "content": secure_system_prompt(system_prompt or SCENE_EXTRACTION_V3_SYSTEM_PROMPT)},
+                {"role": "user", "content": user_prompt or build_scene_extraction_prompt(problem_text, grade, reasoning_layer, reasoning_plan=reasoning_plan, nlp_hints=nlp_hints, schema_version=schema_version)},
             ],
             "temperature": 0.1,
             "max_tokens": _SCENE_MAX_TOKENS,
@@ -52,10 +56,10 @@ class OpenAICompatClient:
         }
         content = await self._post_chat(payload, "scene", problem_chars=len(problem_text))
         try:
-            scene_json = json.loads(_strip_json_fences(content))
+            scene_json = parse_llm_json_dict(content, task="scene")
             log_scene_summary("openai_compat", scene_json, model=self.model)
             return scene_json
-        except json.JSONDecodeError as error:
+        except (json.JSONDecodeError, RuntimeError) as error:
             _log_openai_compat_parse_error("scene", self.model, f"invalid_json: {error.msg}", response_chars=len(content))
             raise RuntimeError(f"OpenAI-compatible trả về JSON không hợp lệ: {error.msg}") from error
 
@@ -65,7 +69,7 @@ class OpenAICompatClient:
         payload = {
             "model": self.model,
             "messages": [
-                {"role": "system", "content": system_prompt or REASONING_SYSTEM_PROMPT},
+                {"role": "system", "content": secure_system_prompt(system_prompt or REASONING_SYSTEM_PROMPT)},
                 {"role": "user", "content": build_reasoning_prompt(problem_text, grade)},
             ],
             "temperature": 0.15,
@@ -75,8 +79,8 @@ class OpenAICompatClient:
         }
         content = await self._post_chat(payload, "reasoning", problem_chars=len(problem_text))
         try:
-            return json.loads(_strip_json_fences(content))
-        except json.JSONDecodeError as error:
+            return parse_llm_json_dict(content, task="reasoning")
+        except (json.JSONDecodeError, RuntimeError) as error:
             _log_openai_compat_parse_error("reasoning", self.model, f"invalid_json: {error.msg}", response_chars=len(content))
             raise RuntimeError(f"OpenAI-compatible reasoning JSON không hợp lệ: {error.msg}") from error
 

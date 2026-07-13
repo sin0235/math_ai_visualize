@@ -5,12 +5,7 @@ from app.schemas.scene import OcrProvider
 
 CANONICAL_PROVIDERS = {"local", "openrouter", "nvidia", "ollama", "openai_compat", "router9"}
 REGISTRY_PROVIDERS = ("openrouter", "nvidia", "ollama", "openai_compat", "router9")
-PROVIDER_ALIASES = {
-    "ollama_gpt_oss": "ollama",
-    "openrouter_gpt_oss": "openrouter",
-    "opencode_nemotron": "openrouter",
-    "openai-compat": "openai_compat",
-}
+
 
 
 @dataclass(frozen=True)
@@ -65,8 +60,7 @@ def parse_provider_model_ref(value: str | None, *, allow_legacy_slash: bool = Fa
 def canonical_provider_id(provider: str | None) -> str | None:
     if provider is None:
         return None
-    provider = provider.strip()
-    return PROVIDER_ALIASES.get(provider, provider)
+    return provider.strip()
 
 
 def normalize_provider_defaults(value: dict | None) -> dict | None:
