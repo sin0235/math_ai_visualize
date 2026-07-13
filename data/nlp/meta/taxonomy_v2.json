@@ -1,0 +1,210 @@
+{
+  "name": "Math AI Renderer Vietnamese Curriculum Taxonomy",
+  "version": "2.0.0",
+  "scope": {
+    "language": "vi",
+    "grades": [
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12
+    ],
+    "levels": [
+      "THCS",
+      "THPT"
+    ],
+    "primary_targets": [
+      "algebra",
+      "geometry_solve",
+      "render",
+      "analyzer",
+      "ocr"
+    ],
+    "status_labels": [
+      "accepted",
+      "needs_confirmation",
+      "unsupported",
+      "abstained"
+    ]
+  },
+  "reference_policy": {
+    "reference_sites": [
+      "https://thcs.toanmath.com/",
+      "https://toanmath.com/"
+    ],
+    "usage": "Dùng cấu trúc chuyên mục và phạm vi chủ đề làm tham chiếu bao phủ; không sao chép hàng loạt nguyên văn đề, lời giải hoặc PDF.",
+    "content_origin": "Các mẫu v2 được sinh mới từ template có tham số; 83 mẫu đầu là dữ liệu người dùng cung cấp."
+  },
+  "grades": {
+    "6": {
+      "level": "THCS",
+      "topics": [
+        "natural_numbers",
+        "integers",
+        "fractions",
+        "decimals",
+        "divisibility",
+        "prime_numbers",
+        "gcd_lcm",
+        "ratio_percent",
+        "basic_plane_geometry",
+        "symmetry",
+        "points_lines_segments_angles",
+        "perimeter_area",
+        "data_collection",
+        "data_analysis",
+        "experimental_probability"
+      ]
+    },
+    "7": {
+      "level": "THCS",
+      "topics": [
+        "rational_numbers",
+        "real_numbers",
+        "ratio_proportion",
+        "algebraic_expressions",
+        "polynomials_one_variable",
+        "parallel_lines_angles",
+        "triangle_congruence",
+        "triangle_relations",
+        "prisms_and_boxes",
+        "data_representation",
+        "mean_median_mode",
+        "elementary_probability"
+      ]
+    },
+    "8": {
+      "level": "THCS",
+      "topics": [
+        "polynomials",
+        "algebraic_identities",
+        "factorization",
+        "rational_expressions",
+        "linear_equations",
+        "functions_and_graphs",
+        "pythagorean_theorem",
+        "quadrilaterals",
+        "thales_theorem",
+        "triangle_similarity",
+        "practical_solids",
+        "frequency_and_relative_frequency",
+        "probability"
+      ]
+    },
+    "9": {
+      "level": "THCS",
+      "topics": [
+        "square_and_cube_roots",
+        "linear_equations_and_systems",
+        "linear_inequalities",
+        "quadratic_function",
+        "quadratic_equation",
+        "right_triangle_trigonometry",
+        "circle",
+        "tangents_and_inscribed_angles",
+        "regular_polygons",
+        "cylinder_cone_sphere",
+        "frequency_relative_frequency",
+        "elementary_probability",
+        "entrance_exam_grade_10"
+      ]
+    },
+    "10": {
+      "level": "THPT",
+      "topics": [
+        "propositions_and_sets",
+        "linear_inequalities_two_variables",
+        "functions_and_graphs",
+        "equations_systems_inequalities",
+        "triangle_trigonometry",
+        "vectors",
+        "coordinate_geometry_2d",
+        "descriptive_statistics",
+        "classical_probability",
+        "combinatorics",
+        "mathematical_induction",
+        "newton_binomial",
+        "linear_system_three_variables",
+        "conics"
+      ]
+    },
+    "11": {
+      "level": "THPT",
+      "topics": [
+        "trigonometric_functions_and_equations",
+        "sequences",
+        "arithmetic_and_geometric_progressions",
+        "limits_and_continuity",
+        "parallelism_in_space",
+        "grouped_statistics",
+        "probability_rules",
+        "exponential_and_logarithmic_functions",
+        "derivatives",
+        "perpendicularity_in_space",
+        "plane_transformations",
+        "graph_theory",
+        "technical_drawing"
+      ]
+    },
+    "12": {
+      "level": "THPT",
+      "topics": [
+        "derivative_applications",
+        "function_survey_and_graphing",
+        "antiderivatives_and_integrals",
+        "area_and_volume_applications",
+        "vectors_and_coordinate_system_3d",
+        "lines_planes_spheres",
+        "grouped_data_dispersion",
+        "conditional_probability",
+        "bayes_rule",
+        "graduation_exam"
+      ]
+    }
+  },
+  "nlp_dimensions": {
+    "intent": [
+      "solve",
+      "simplify",
+      "expand",
+      "factor",
+      "proof",
+      "analyze",
+      "plot",
+      "render_scene",
+      "distance",
+      "angle",
+      "area",
+      "volume",
+      "equation",
+      "classify"
+    ],
+    "language_variants": [
+      "natural_vi",
+      "no_diacritics",
+      "lowercase",
+      "student_shorthand",
+      "mixed_notation",
+      "math_mode"
+    ],
+    "noise": [
+      "ocr_noise",
+      "zero_as_O",
+      "one_as_l",
+      "lost_diacritics",
+      "unicode_superscript",
+      "dropped_character",
+      "bracket_confusion"
+    ],
+    "safety_and_robustness": [
+      "ambiguous",
+      "missing_context",
+      "prompt_injection",
+      "unsupported",
+      "needs_clarification"
+    ]
+  }
+}

@@ -38,7 +38,10 @@ def verify_constraints(scene: MathSceneV3, index: GeometryIndex | None = None) -
 
 
 def verify_relation(relation: RelationV3, geometry: GeometryIndex) -> ConstraintResultV3:
-    verifier = VERIFIERS.get(relation.type)
+    from app.services.relation_registry import normalize_relation_type
+
+    relation_type = normalize_relation_type(relation.type)
+    verifier = VERIFIERS.get(relation_type)
     if verifier is None:
         return ConstraintResultV3(
             relation_id=relation.id,

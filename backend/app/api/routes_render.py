@@ -9,8 +9,7 @@ from fastapi import APIRouter, Depends, Request, status
 
 from app.api.deps import enforce_rate_limit, require_active_user, require_trusted_origin
 from app.db.models import UserRecord
-from app.db.session import DatabaseClient, create_database_client, get_database
-from app.repositories.activity import try_log_user_activity
+from app.db.session import DatabaseClient, get_database
 from app.repositories.admin import AdminRepository
 from app.repositories.history import RenderHistoryRepository
 from app.repositories.scene_workspaces import SceneWorkspaceRepository
@@ -24,15 +23,7 @@ from app.schemas.scene_v3 import (
     SceneWorkspaceCreateRequest,
     SceneWorkspaceResponseV3,
 )
-from app.schemas.scene import (
-    MathScene,
-    RenderJobCreateResponse,
-    RenderJobStatusResponse,
-    RenderRequest,
-    RenderResponse,
-    RenderSourceResponse,
-    SceneRenderRequest,
-)
+from app.schemas.scene import RenderRequest
 from app.schemas.nlp import InputEnvelope
 from app.services.api_errors import api_error
 from app.services.nlp_rollout import evaluate_configured_nlp_rollout
@@ -47,18 +38,20 @@ RENDER_TIMEOUT_SECONDS = 310
 RENDER_AI_USAGE_EVENT_TYPES = ["algebra_ai", "problem_variants", "solver_ai"]
 
 
-def _bind_scene_request_fields(scene: MathScene, request: RenderRequest) -> MathScene:
-    updates = {"problem_text": request.problem_text}
-    if request.grade is not None:
-        updates["grade"] = request.grade
-    return scene.model_copy(update=updates)
-
-
-async def _apply_render_nlp_rollout(
+async def _run_render_nlp(
     request: RenderRequest,
     db: DatabaseClient,
     user: UserRecord | None,
-) -> RenderRequest:
+    *,
+    preserve_problem_text: bool = True,
+) -> tuple[RenderRequest, dict | None]:
+    """Run NLP preflight for render.
+
+    Returns (request, nlp_hints). When preserve_problem_text is True (v3 default),
+    problem_text is never rewritten; hints are for the LLM only.
+    """
+    from app.services.ai_prompt import nlp_hints_payload_from_candidate
+
     rollout = await evaluate_configured_nlp_rollout(
         db,
         InputEnvelope(
@@ -71,243 +64,78 @@ async def _apply_render_nlp_rollout(
         legacy_status="accepted",
         legacy_canonical=request.problem_text,
     )
-    if not rollout or not rollout.can_apply or not rollout.candidate:
-        return request
+    hints = None
+    if rollout is not None:
+        hints = nlp_hints_payload_from_candidate(rollout.candidate, mode=rollout.mode)
+    if preserve_problem_text or not rollout or not rollout.can_apply or not rollout.candidate:
+        return request, hints
     canonical_text = rollout.candidate.canonical_text or rollout.response.normalized_text
-    return request.model_copy(update={"problem_text": canonical_text})
+    return request.model_copy(update={"problem_text": canonical_text}), hints
 
 
-@router.post("/render/jobs", response_model=RenderJobCreateResponse, dependencies=[Depends(require_trusted_origin)])
-async def create_render_job(
+async def _apply_render_nlp_rollout(
     request: RenderRequest,
-    http_request: Request,
-    user: UserRecord = Depends(require_active_user),
-    db: DatabaseClient = Depends(get_database),
-) -> RenderJobCreateResponse:
-    """Enqueue an async render job and return immediately."""
-    from app.services.render_jobs import enqueue_render_job, spawn_inline_job
-
-    await enforce_rate_limit(db, http_request, user, "render", 20 if user else 8, 60)
-    request = await _apply_render_nlp_rollout(request, db, user)
-    settings = get_settings()
-    try:
-        byok = await resolve_byok_ai_config(db, user, "render", settings)
-    except UserAiSettingsError as error:
-        raise api_error(status.HTTP_400_BAD_REQUEST, f"Cấu hình BYOK không hợp lệ: {error}", "RENDER_FAILED") from error
-    if byok is None:
-        await enforce_render_access(db, user)
-
-    job_id = await enqueue_render_job(db, user.id, request)
-    # Inline processing keeps single-container deploys working without a separate worker.
-    spawn_inline_job(db, job_id)
-    await try_log_user_activity(
-        db,
-        user.id,
-        "render.queued",
-        target_type="render_job",
-        target_id=job_id,
-        metadata={"tier": request.tier, "renderer": request.preferred_renderer, "byok": byok is not None},
+    db: DatabaseClient,
+    user: UserRecord | None,
+    *,
+    preserve_problem_text: bool = False,
+) -> RenderRequest:
+    """Backward-compatible wrapper used by any residual callers."""
+    updated, _hints = await _run_render_nlp(
+        request, db, user, preserve_problem_text=preserve_problem_text
     )
-    return RenderJobCreateResponse(job_id=job_id, status="queued")
+    return updated
 
 
-@router.get("/render/jobs/{job_id}", response_model=RenderJobStatusResponse)
-async def get_render_job(
-    job_id: str,
-    user: UserRecord = Depends(require_active_user),
-    db: DatabaseClient = Depends(get_database),
-) -> RenderJobStatusResponse:
-    job = await RenderHistoryRepository(db).find_for_user(user.id, job_id)
-    if job is None:
-        # Pending jobs may not have history_items yet; fall back to raw job ownership.
-        job = await RenderHistoryRepository(db).find_by_id(job_id)
-        if job is None or job.user_id != user.id:
-            raise api_error(status.HTTP_404_NOT_FOUND, "Không tìm thấy render job.", "RENDER_JOB_NOT_FOUND")
-    status_value = job.status if job.status in {"queued", "running", "completed", "failed"} else "failed"
-    response = None
-    error = None
-    if status_value == "completed" and job.response_json:
-        try:
-            response = RenderResponse.model_validate_json(job.response_json)
-        except Exception:
-            error = {"code": "RENDER_FAILED", "message": "Không đọc được kết quả render."}
-            status_value = "failed"
-    if status_value == "failed" and job.error_json:
-        try:
-            error = json.loads(job.error_json)
-        except json.JSONDecodeError:
-            error = {"code": "RENDER_FAILED", "message": job.error_json}
-    return RenderJobStatusResponse(job_id=job.id, status=status_value, response=response, error=error)
-
-
-@router.post("/render", response_model=RenderResponse, dependencies=[Depends(require_trusted_origin)])
-async def render_problem(
+async def build_problem_render_result_v3(
     request: RenderRequest,
-    http_request: Request,
-    user: UserRecord = Depends(require_active_user),
-    db: DatabaseClient = Depends(get_database),
-) -> RenderResponse:
-    from app.services.load_gates import render_load_gate
+    db: DatabaseClient,
+    user: UserRecord | None = None,
+    byok=None,
+    nlp_hints: dict | None = None,
+):
+    """Native Scene v3: LLM → MathSceneV3 → pipeline → one repair → project.
 
-    await enforce_rate_limit(db, http_request, user, "render", 20 if user else 8, 60)
-    request = await _apply_render_nlp_rollout(request, db, user)
-    settings = get_settings()
-    try:
-        byok = await resolve_byok_ai_config(db, user, "render", settings)
-    except UserAiSettingsError as error:
-        raise api_error(status.HTTP_400_BAD_REQUEST, f"Cấu hình BYOK không hợp lệ: {error}", "RENDER_FAILED") from error
-    if byok is None:
-        await enforce_render_access(db, user)
-
-    slot = await render_load_gate.try_acquire(settings.render_max_concurrent)
-    if slot is None:
-        raise api_error(
-            status.HTTP_429_TOO_MANY_REQUESTS,
-            "Hệ thống đang xử lý quá nhiều yêu cầu dựng hình. Vui lòng thử lại sau.",
-            "RENDER_CONCURRENT_LIMIT",
-            ["Chờ vài giây rồi thử lại.", "Giảm số tab/render song song."],
-        )
-
-    import time
-
-    from app.repositories.errors import try_record_error_event
-
-    started = time.perf_counter()
-    try:
-        try:
-            response = await asyncio.wait_for(build_problem_render_response(request, db, user, byok=byok), timeout=RENDER_TIMEOUT_SECONDS)
-        except TimeoutError as error:
-            duration_ms = int((time.perf_counter() - started) * 1000)
-            await try_log_user_activity(
-                db,
-                user.id,
-                "render.failed",
-                target_type="render_job",
-                metadata={
-                    "code": "TIMEOUT",
-                    "tier": request.tier,
-                    "renderer": request.preferred_renderer,
-                    "byok": byok is not None,
-                    "duration_ms": duration_ms,
-                    "async": False,
-                },
-            )
-            await try_record_error_event(
-                db,
-                message=f"Render vượt quá {RENDER_TIMEOUT_SECONDS}s.",
-                source="server",
-                request_id=get_request_id(),
-                user_id=user.id,
-                route="/api/render",
-                method="POST",
-                status_code=504,
-                error_code="TIMEOUT",
-                metadata={"duration_ms": duration_ms, "tier": request.tier},
-            )
-            raise api_error(
-                status.HTTP_504_GATEWAY_TIMEOUT,
-                f"Render vượt quá {RENDER_TIMEOUT_SECONDS}s.",
-                "TIMEOUT",
-                ["Thử lại sau hoặc chọn tier thấp hơn (tier1 nhanh hơn tier3)."],
-            ) from error
-        except (RuntimeError, ValueError, KeyError) as error:
-            duration_ms = int((time.perf_counter() - started) * 1000)
-            payload = render_error_payload(error)
-            await try_log_user_activity(
-                db,
-                user.id,
-                "render.failed",
-                target_type="render_job",
-                metadata={
-                    "code": payload["code"],
-                    "tier": request.tier,
-                    "renderer": request.preferred_renderer,
-                    "byok": byok is not None,
-                    "duration_ms": duration_ms,
-                    "async": False,
-                },
-            )
-            await try_record_error_event(
-                db,
-                message=payload.get("debug_message") or payload.get("message") or str(error),
-                source="server",
-                request_id=get_request_id(),
-                user_id=user.id,
-                route="/api/render",
-                method="POST",
-                status_code=400,
-                error_code=payload.get("code") or "RENDER_FAILED",
-                metadata={"duration_ms": duration_ms, "tier": request.tier},
-            )
-            raise api_error(status.HTTP_400_BAD_REQUEST, payload["debug_message"], payload["code"], payload["suggestions"]) from error
-        duration_ms = int((time.perf_counter() - started) * 1000)
-        if user is not None:
-            job = await RenderHistoryRepository(db).create(
-                user.id,
-                request.problem_text,
-                response.source.provider,
-                response.source.model,
-                response,
-                render_request_json=json.dumps(sanitize_request_dump(request), ensure_ascii=False),
-                advanced_settings_json=request.advanced_settings.model_dump_json(),
-                runtime_settings_json=request.runtime_settings.model_dump_json(exclude_none=True) if request.runtime_settings is not None else None,
-                source_type="problem",
-                renderer=response.scene.renderer,
-            )
-            # Persist duration on completed history row when column exists.
-            try:
-                await db.execute("UPDATE render_jobs SET duration_ms = ? WHERE id = ?", [duration_ms, job.id])
-            except Exception:
-                pass
-            await try_log_user_activity(
-                db,
-                user.id,
-                "render.completed",
-                target_type="render_job",
-                target_id=job.id,
-                metadata={
-                    "tier": request.tier,
-                    "renderer": response.scene.renderer,
-                    "provider": response.source.provider,
-                    "model": response.source.model,
-                    "source_kind": response.source.kind,
-                    "degraded": response.degraded,
-                    "fallback_source": response.fallback_source,
-                    "duration_ms": duration_ms,
-                    "async": False,
-                },
-            )
-        return response
-    finally:
-        slot.release()
-
-
-async def build_problem_render_response(request: RenderRequest, db: DatabaseClient, user: UserRecord | None = None, byok=None) -> RenderResponse:
-    from app.services.extractor import build_scene_with_cas_fix, extract_scene
-    from app.services.scene_pipeline import validate_normalize_verify_scene
+    Does not call extractor v2 or migrate_scene_v2_dict.
+    """
+    from app.services.extractor_v3 import extract_scene_v3, parse_math_scene_v3, repair_scene_v3
+    from app.services.scene_pipeline_v3 import PipelineIssueV3, run_scene_pipeline_v3
 
     settings = get_settings()
-    source = RenderSourceResponse(kind="ai")
-    degraded = False
-    fallback_source = "none"
+    original_text = request.problem_text
     if byok is None:
         try:
             byok = await resolve_byok_ai_config(db, user, "render", settings)
         except UserAiSettingsError as error:
             raise RuntimeError(f"Cấu hình BYOK không hợp lệ: {error}") from error
+
+    provider: str | None = None
+    model: str | None = None
+    warnings: list[str] = []
+    degraded = False
+
+    byok_client = None
     if byok is not None and byok.client is not None:
+        byok_client = byok.client
+        provider = byok.provider
+        model = byok.model_id
         try:
+            from app.services.ai_prompt import SCENE_EXTRACTION_V3_SYSTEM_PROMPT
+            from app.services.ai_prompt import _secure_system_prompt
+
             scene_json = await byok.client.extract_scene_json(
                 request.problem_text,
                 request.grade,
                 request.advanced_settings.reasoning_layer,
+                system_prompt=_secure_system_prompt(SCENE_EXTRACTION_V3_SYSTEM_PROMPT),
+                nlp_hints=nlp_hints,
+                schema_version="3.0",
             )
-            scene, warnings = build_scene_with_cas_fix(scene_json, verify=request.advanced_settings.verify_scene)
-            source = RenderSourceResponse(kind="byok")
+            scene = parse_math_scene_v3(scene_json, problem_text=original_text, grade=request.grade)
         except Exception as error:
-            raise RuntimeError(f"Render BYOK thất bại: {error}") from error
+            raise RuntimeError(f"Render BYOK Scene v3 thất bại: {error}") from error
     else:
-        extraction = await extract_scene(
+        extraction = await extract_scene_v3(
             request.problem_text,
             request.grade,
             request.tier,
@@ -316,65 +144,132 @@ async def build_problem_render_response(request: RenderRequest, db: DatabaseClie
             preferred_ai_provider=request.preferred_ai_provider,
             preferred_ai_model=request.preferred_ai_model,
             runtime_settings=request.runtime_settings,
+            nlp_hints=nlp_hints,
         )
-        scene, warnings, degraded, fallback_source = unpack_extraction_result(extraction)
-        source = RenderSourceResponse(
-            kind="mock" if fallback_source == "mock" else "ai",
-            provider=getattr(extraction, "provider", None),
-            model=getattr(extraction, "model", None),
-            fallback_used=fallback_source != "none" or degraded,
-            fallback_reason=fallback_source if fallback_source != "none" else None,
-            candidate_attempts=[
-                {"provider": attempt.provider, "model": attempt.model, "stage": "extract", "success": False, "message": attempt.message}
-                for attempt in getattr(extraction, "attempts", [])
-            ],
-        )
-    scene = _bind_scene_request_fields(scene, request)
+        scene = extraction.scene
+        warnings = list(extraction.warnings)
+        provider = extraction.provider
+        model = extraction.model
+        degraded = extraction.degraded
+
+    # Always re-bind original user text (NLP must not rewrite source).
+    updates: dict = {"problem_text": original_text}
+    if request.grade is not None:
+        updates["grade"] = request.grade
     if request.preferred_renderer is not None:
-        scene.renderer = request.preferred_renderer
-    scene_data = scene.model_dump()
+        updates["renderer"] = request.preferred_renderer
+    scene = scene.model_copy(update=updates)
+    scene = _stamp_generator_audit(scene, provider, model)
+
+    view_updates: dict = {}
     if request.advanced_settings.show_coordinates is not None:
-        scene_data["view"]["show_coordinates"] = request.advanced_settings.show_coordinates
+        view_updates["show_coordinates"] = request.advanced_settings.show_coordinates
     if request.advanced_settings.show_axes is not None:
-        scene_data["view"]["show_axes"] = request.advanced_settings.show_axes
+        view_updates["show_axes"] = request.advanced_settings.show_axes
     if request.advanced_settings.show_grid is not None:
-        scene_data["view"]["show_grid"] = request.advanced_settings.show_grid
-    scene = scene.model_validate(scene_data)
-    if scene.topic == "unknown":
-        warnings.append("Chưa nhận diện được dạng toán, hãy thử đề cụ thể hơn.")
-    response = validate_normalize_verify_scene(
-        scene,
-        request.advanced_settings,
-        warnings=warnings,
-        source=source,
-        build_problem_advisory=True,
-    ).response
-    return response
+        view_updates["show_grid"] = request.advanced_settings.show_grid
+    if view_updates:
+        scene = scene.model_copy(update={"view": scene.view.model_copy(update=view_updates)})
 
-
-async def build_problem_render_result_v3(request: RenderRequest, db: DatabaseClient, user: UserRecord | None = None, byok=None):
-    from app.services.scene_pipeline_v3 import PipelineIssueV3, run_scene_pipeline_v3
-    from app.services.scene_v3_adapter import migrate_scene_v2_dict
-
-    # ponytail: extractor vẫn sinh v2; xóa bridge này khi prompt/parser phát MathSceneV3 trực tiếp.
-    legacy_response = await build_problem_render_response(request, db, user, byok=byok)
-    scene, report = migrate_scene_v2_dict(legacy_response.scene.model_dump(mode="json"))
     result = run_scene_pipeline_v3(scene)
-    confirmation_reasons = [*report.warnings, *report.unresolved_references]
-    if legacy_response.degraded or legacy_response.requires_user_confirmation:
-        confirmation_reasons.append("Nguồn render fallback hoặc chưa được xác nhận.")
+
+    # One structured repair when deterministic pipeline rejects the scene.
+    if not result.can_project and any(issue.severity == "error" for issue in result.issues):
+        repaired = await repair_scene_v3(
+            result.scene,
+            result.issues,
+            problem_text=original_text,
+            grade=request.grade,
+            tier=request.tier,
+            advanced_settings=request.advanced_settings,
+            db=db,
+            runtime_settings=request.runtime_settings,
+            provider=provider,
+            model=model,
+            byok_client=byok_client,
+        )
+        if repaired is not None:
+            repaired = repaired.model_copy(update={"problem_text": original_text})
+            repaired = _stamp_generator_audit(repaired, provider, model)
+            result = run_scene_pipeline_v3(repaired)
+            warnings.append("Đã chạy một lượt LLM repair Scene v3.")
+        else:
+            warnings.append("LLM repair Scene v3 không thành công.")
+
+    # Final scene always carries generator identity for history/async completion.
+    result = replace(result, scene=_stamp_generator_audit(result.scene, provider, model))
+
+    # Mock/degraded: refuse unless ALLOW_RENDER_MOCK is intentionally on (internal tests).
+    if degraded and not settings.allow_render_mock:
+        raise RuntimeError(
+            "Render Scene v3 ở chế độ mock/degraded bị từ chối. "
+            "Bật ALLOW_RENDER_MOCK chỉ cho test nội bộ."
+        )
+
+    # Only real trust signals demote verified → needs_confirmation.
+    # Telemetry (NLP attached, reasoning done, AI fallback notes) must stay info-only.
+    confirmation_reasons = [
+        message for message in dict.fromkeys(warnings) if _is_trust_confirmation_warning(message)
+    ]
+    if degraded and settings.allow_render_mock:
+        confirmation_reasons.append("Hình mock (ALLOW_RENDER_MOCK); không dùng cho export/solve production.")
     if not confirmation_reasons:
         return result
-    issues = (*result.issues, *(
+
+    extra_issues = tuple(
         PipelineIssueV3(
             stage="repair",
             code="REPAIR_CONFIRMATION_REQUIRED",
             message=message,
             severity="warning",
         )
-        for message in dict.fromkeys(confirmation_reasons)
-    ))
-    return replace(result, status="needs_confirmation", issues=issues, requires_user_confirmation=True)
+        for message in confirmation_reasons
+    )
+    return replace(
+        result,
+        issues=(*result.issues, *extra_issues),
+        requires_user_confirmation=True,
+        status="needs_confirmation" if result.status == "verified" else result.status,
+    )
+
+
+def _stamp_generator_audit(scene, provider: str | None, model: str | None):
+    """Persist platform/BYOK generator identity onto scene.audit for history rows."""
+    if not provider and not model:
+        return scene
+    audit_updates: dict = {}
+    if provider:
+        audit_updates["generator_provider"] = provider
+    if model:
+        audit_updates["generator_model"] = model
+    return scene.model_copy(update={"audit": scene.audit.model_copy(update=audit_updates)})
+
+
+def _is_trust_confirmation_warning(message: str) -> bool:
+    """True only for warnings that should block trusted_for_downstream."""
+    lower = (message or "").strip().lower()
+    if not lower:
+        return False
+    # Explicit info / telemetry — never demote trust.
+    # Successful one-shot LLM repair is telemetry only: pipeline already re-verified.
+    info_markers = (
+        "nlp hints được đính kèm",
+        "đã hoàn thành tầng suy luận",
+        "ai fallback:",
+        "bỏ qua reasoning layer",
+        "đã chạy một lượt llm repair",
+    )
+    if any(marker in lower for marker in info_markers):
+        return False
+    trust_markers = (
+        "mock",
+        "degraded",
+        "allow_render_mock",
+        "llm repair scene v3 không thành công",
+        "giả định",
+        "thiếu dữ kiện",
+    )
+    return any(marker in lower for marker in trust_markers)
 
 
 @router.post(
@@ -392,8 +287,12 @@ async def render_problem_v3(
     from app.services.load_gates import render_load_gate
 
     await enforce_rate_limit(db, http_request, user, "render", 20 if user else 8, 60)
-    request = await _apply_render_nlp_rollout(request, db, user)
     settings = get_settings()
+    from app.services.prompt_security import enforce_prompt_injection_gate
+
+    enforce_prompt_injection_gate(request.problem_text, mode=settings.prompt_injection_gate_mode)
+    # Native v3: keep original problem_text; NLP only as LLM hints.
+    request, nlp_hints = await _run_render_nlp(request, db, user, preserve_problem_text=True)
     try:
         byok = await resolve_byok_ai_config(db, user, "render", settings)
     except UserAiSettingsError as error:
@@ -405,12 +304,38 @@ async def render_problem_v3(
         raise api_error(status.HTTP_429_TOO_MANY_REQUESTS, "Hệ thống đang xử lý quá nhiều yêu cầu dựng hình.", "RENDER_CONCURRENT_LIMIT")
     try:
         try:
-            result = await asyncio.wait_for(build_problem_render_result_v3(request, db, user, byok=byok), timeout=RENDER_TIMEOUT_SECONDS)
+            result = await asyncio.wait_for(
+                build_problem_render_result_v3(request, db, user, byok=byok, nlp_hints=nlp_hints),
+                timeout=RENDER_TIMEOUT_SECONDS,
+            )
         except TimeoutError as error:
             raise api_error(status.HTTP_504_GATEWAY_TIMEOUT, f"Render vượt quá {RENDER_TIMEOUT_SECONDS}s.", "TIMEOUT") from error
+        except (RuntimeError, ValueError, KeyError) as error:
+            message = str(error) or error.__class__.__name__
+            code = "AI_PROVIDER_FAILED" if "provider" in message.lower() or "thất bại" in message.lower() else "RENDER_FAILED"
+            raise api_error(
+                status.HTTP_502_BAD_GATEWAY if code == "AI_PROVIDER_FAILED" else status.HTTP_400_BAD_REQUEST,
+                message,
+                code,
+                ["Kiểm tra đề bài và cấu hình model.", "Thử tier khác hoặc viết đề rõ hơn."],
+            ) from error
         if not result.can_project:
-            code = next((issue.code for issue in result.issues if issue.severity == "error"), "SCENE_SCHEMA_INVALID")
-            raise api_error(status.HTTP_422_UNPROCESSABLE_CONTENT, "Scene v3 không vượt qua pipeline.", code)
+            error_issues = [issue for issue in result.issues if issue.severity == "error"]
+            code = next((issue.code for issue in error_issues), "SCENE_SCHEMA_INVALID")
+            detail_parts = [f"[{issue.code}] {issue.message}" for issue in error_issues[:5]]
+            message = "Scene v3 không vượt qua pipeline."
+            if detail_parts:
+                message = f"{message} {'; '.join(detail_parts)}"
+            raise api_error(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                message,
+                code,
+                [
+                    "Kiểm tra quan hệ dùng segment/line/plane id, không dùng shorthand AB.",
+                    "Sửa tọa độ hoặc quan hệ mâu thuẫn trong đề, rồi dựng lại.",
+                ],
+            )
+        # Fail-closed trust: only fully verified scenes are auto-trusted for solve/export.
         response = workspace_response_v3(result, trusted_for_downstream=result.status == "verified")
         try:
             await RenderHistoryRepository(db).create_v3_workspace(
@@ -423,29 +348,6 @@ async def render_problem_v3(
         return response
     finally:
         slot.release()
-
-
-@router.post("/render/scene", response_model=RenderResponse, dependencies=[Depends(require_trusted_origin)])
-async def render_scene(
-    request: SceneRenderRequest,
-    http_request: Request,
-    user: UserRecord = Depends(require_active_user),
-) -> RenderResponse:
-    from app.services.scene_pipeline import validate_normalize_verify_scene
-
-    db = optional_database_for_scene_render(user)
-    if db is not None:
-        await enforce_rate_limit(db, http_request, user, "render_scene", 40 if user else 12, 60)
-        await enforce_render_access(db, user)
-    assert_scene_edit_revision(request)
-    response = validate_normalize_verify_scene(
-        request.scene,
-        request.advanced_settings,
-        warnings=[],
-        source=RenderSourceResponse(kind="scene_edit"),
-        build_problem_advisory=False,
-    ).response
-    return response
 
 
 @router.post(
@@ -619,35 +521,6 @@ def workspace_response_v3(
     })
 
 
-def assert_scene_edit_revision(request: SceneRenderRequest) -> None:
-    if request.response is None:
-        return
-    base = request.response.scene
-    scene = request.scene
-    if base.scene_id and scene.scene_id and base.scene_id != scene.scene_id:
-        raise api_error(
-            status.HTTP_409_CONFLICT,
-            "Scene đang sửa không khớp kết quả dựng hình hiện tại; hãy tải lại hoặc dựng lại hình.",
-            "SCENE_EDIT_STALE",
-        )
-    expected_revision = (base.revision or 0) + 1
-    if scene.revision != expected_revision:
-        raise api_error(
-            status.HTTP_409_CONFLICT,
-            f"Revision chỉnh sửa không hợp lệ: cần {expected_revision}, nhận {scene.revision}.",
-            "SCENE_EDIT_STALE",
-        )
-
-
-def optional_database_for_scene_render(user: UserRecord | None) -> DatabaseClient | None:
-    try:
-        return create_database_client(get_settings())
-    except RuntimeError:
-        if user is not None:
-            raise
-        return None
-
-
 async def enforce_render_access(db: DatabaseClient, user: UserRecord | None) -> None:
     flags = await load_feature_flags(db)
     enforce_enabled(flags)
@@ -675,33 +548,5 @@ def enforce_enabled(flags: SystemFeatureFlags) -> None:
         raise api_error(status.HTTP_403_FORBIDDEN, "Tính năng render đang tạm tắt.", "RENDER_DISABLED")
 
 
-def unpack_extraction_result(extraction) -> tuple:
-    if hasattr(extraction, "scene"):
-        return extraction.scene, extraction.warnings, extraction.degraded, extraction.fallback_source
-    scene, warnings = extraction
-    return scene, warnings, False, "none"
-
-
-def render_degradation_metadata(warnings: list[str]) -> tuple[bool, str]:
-    for warning in warnings:
-        lowered = warning.lower()
-        if "mock" in lowered:
-            return True, "mock"
-        if "fallback" in lowered or "dự phòng" in lowered:
-            return True, "provider_fallback"
-    return False, "none"
-
-
-def render_error_payload(error: Exception) -> dict:
-    message = str(error) or error.__class__.__name__
-    code = "RENDERER_INCOMPATIBLE" if "không tương thích" in message.lower() else "RENDER_EXTRACTION_FAILED"
-    return {
-        "code": code,
-        "message": "Không thể dựng hình từ đề bài này.",
-        "debug_message": message,
-        "suggestions": ["Kiểm tra đề bài và cấu hình tier model.", "Thử mức chất lượng khác hoặc viết đề bài rõ hơn."],
-    }
-
-
-def sanitize_request_dump(request: RenderRequest | SceneRenderRequest) -> dict:
+def sanitize_request_dump(request: RenderRequest) -> dict:
     return request.model_dump(mode="json", exclude={"advanced_settings", "runtime_settings"})

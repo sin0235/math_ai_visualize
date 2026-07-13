@@ -34,7 +34,8 @@ from app.schemas.auth import (
     UserResponse,
 )
 from app.schemas.feedback import AdminFeedbackResponse, AdminFeedbackUpdateRequest
-from app.schemas.scene import MathScene, ModelScanRequest, RenderPayload
+from app.schemas.scene import ModelScanRequest
+from app.schemas.scene_v3 import SceneWorkspaceResponseV3
 from app.services.admin_settings import build_database_diagnostics, normalize_provider_defaults, remove_legacy_model_inventory, sync_ai_profiles_to_registry, sync_ai_settings_to_registry, sync_ai_tier_profiles_to_registry
 from app.services.database_cleanup import cleanup_database, reset_dev_data
 from app.services.model_provider import canonicalize_explicit_provider_model, canonicalize_fallback_models, parse_provider_model_ref
@@ -408,9 +409,33 @@ async def admin_render_jobs(
 
 @router.get("/render-jobs/{job_id}", response_model=AdminRenderHistoryDetail)
 async def admin_render_job(job_id: str, _: UserRecord = Depends(require_admin_user), db: DatabaseClient = Depends(get_database)) -> AdminRenderHistoryDetail:
+    from app.repositories.history import RenderHistoryRepository
+
     job = await AdminRepository(db).find_render_job(job_id)
     if job is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy lịch sử dựng hình.")
+    if job.schema_version != "3.0":
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail="Lịch sử Scene v2 đã bị gỡ.")
+    snapshot = await RenderHistoryRepository(db).find_v3_snapshot_for_user(job.user_id or "", job_id)
+    if snapshot is None and job.response_json:
+        # Admin may open jobs without matching history_items path; try response_json on job.
+        try:
+            workspace = SceneWorkspaceResponseV3.model_validate_json(job.response_json)
+            command_log: list = []
+            snapshot_revision = workspace.scene.revision
+        except Exception as error:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Snapshot admin v3 không hợp lệ.") from error
+    elif snapshot is None or snapshot.response_json is None:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Lịch sử v3 không có snapshot hợp lệ.")
+    else:
+        try:
+            workspace = SceneWorkspaceResponseV3.model_validate_json(snapshot.response_json)
+            command_log = json.loads(snapshot.command_log_json or "[]")
+            if not isinstance(command_log, list):
+                command_log = []
+            snapshot_revision = snapshot.snapshot_revision or workspace.scene.revision
+        except Exception as error:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Snapshot admin v3 không hợp lệ.") from error
     return AdminRenderHistoryDetail(
         id=job.id,
         user_id=job.user_id,
@@ -433,11 +458,10 @@ async def admin_render_job(job_id: str, _: UserRecord = Depends(require_admin_us
         archived_at=job.archived_at,
         last_opened_at=job.last_opened_at,
         updated_at=job.history_updated_at,
-        scene=MathScene.model_validate_json(job.scene_json),
-        payload=RenderPayload.model_validate_json(job.payload_json),
-        warnings=json.loads(job.warnings_json),
+        workspace=workspace,
+        snapshot_revision=snapshot_revision,
+        command_log=command_log,
         render_request=parse_json_object(job.render_request_json),
-        advanced_settings=parse_json_object(job.advanced_settings_json),
         runtime_settings=parse_json_object(job.runtime_settings_json),
     )
 

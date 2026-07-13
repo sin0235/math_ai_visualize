@@ -135,18 +135,20 @@ def test_invalid_interval_warns_and_continues():
         assert any("không hợp lệ" in warning.lower() or "bỏ qua" in warning.lower() for warning in result.warnings)
 
 
-def test_rule_based_first_skips_ai_extractor(monkeypatch):
+def test_structured_input_skips_llm_nlp_uses_mathcore(monkeypatch):
+    """Symbolic/structured input goes straight to mathcore; LLM NLP is not called."""
     import asyncio
     from app.core.config import Settings
     from app.services.algebra import service as algebra_service
+    from app.services.algebra import ai_extraction
 
     called = {"extractor": False}
 
     async def boom(*args, **kwargs):
         called["extractor"] = True
-        raise AssertionError("AI extractor must not be called when rule-based already solved")
+        raise AssertionError("LLM NLP must not be called for structured/symbolic algebra input")
 
-    monkeypatch.setattr(algebra_service, "extract_algebra_request_with_ai", boom)
+    monkeypatch.setattr(ai_extraction, "extract_algebra_request_with_ai", boom)
     settings = Settings()
     response = asyncio.run(algebra_service.solve_algebra_with_optional_ai(
         AlgebraSolveRequest(
@@ -157,4 +159,74 @@ def test_rule_based_first_skips_ai_extractor(monkeypatch):
     ))
     assert response.status == "solved"
     assert called["extractor"] is False
-    assert any("rule-based" in warning.lower() for warning in response.warnings)
+    assert not any("rule-based" in warning.lower() for warning in response.warnings)
+
+
+def test_natural_language_uses_llm_nlp_then_mathcore(monkeypatch):
+    """Natural Vietnamese: unified NLP uses LLM extract; mathcore solves (no AI solve)."""
+    import asyncio
+    from app.core.config import Settings
+    from app.services.algebra import service as algebra_service
+    from app.services.algebra.ai_extraction import AlgebraExtractionPayload, merge_extraction_request
+    from app.services.algebra import ai_extraction
+
+    called = {"extractor": 0}
+
+    async def fake_extract(problem_text, base_request, settings):
+        called["extractor"] += 1
+        payload = AlgebraExtractionPayload(
+            input="arithmetic(u1=2,u2=6,n=9)",
+            input_format="structured",
+            topic="sequence",
+            variables=[],
+            domain="R",
+        )
+        req, warnings = merge_extraction_request(base_request, payload)
+        return req, warnings
+
+    monkeypatch.setattr(ai_extraction, "extract_algebra_request_with_ai", fake_extract)
+    settings = Settings()
+    response = asyncio.run(algebra_service.solve_algebra_with_optional_ai(
+        AlgebraSolveRequest(
+            input="với cấp số cộng với u1 = 2, u2 = 6, hỏi số hạng thứ 9 bằng bao nhiêu",
+            options=AlgebraSolveOptions(use_ai_extraction=True, ai_explanation=False),
+        ),
+        settings,
+    ))
+    assert called["extractor"] == 1
+    assert response.status == "solved"
+    assert "34" in (response.answer or "") or response.answer_latex == "34"
+    assert "cấp số" in response.input or "u1" in response.input
+    assert "arithmetic" in (response.normalized_input or "")
+
+
+def test_llm_nlp_invalid_form_falls_back_to_rule_based(monkeypatch):
+    """If LLM returns non-mathcore form, orchestrator falls back to rule-based NLP."""
+    import asyncio
+    from app.core.config import Settings
+    from app.services.algebra import service as algebra_service
+    from app.services.algebra.ai_extraction import AlgebraExtractionPayload, merge_extraction_request
+    from app.services.algebra import ai_extraction
+
+    async def bad_extract(problem_text, base_request, settings):
+        payload = AlgebraExtractionPayload(
+            input="hãy giải giúp tôi bài toán cấp số này",
+            input_format="plain",
+            topic="sequence",
+            variables=[],
+            domain="R",
+        )
+        req, warnings = merge_extraction_request(base_request, payload)
+        return req, warnings
+
+    monkeypatch.setattr(ai_extraction, "extract_algebra_request_with_ai", bad_extract)
+    settings = Settings()
+    response = asyncio.run(algebra_service.solve_algebra_with_optional_ai(
+        AlgebraSolveRequest(
+            input="với cấp số cộng với u1 = 2, u2 = 6, hỏi số hạng thứ 9 bằng bao nhiêu",
+            options=AlgebraSolveOptions(use_ai_extraction=True, ai_explanation=False),
+        ),
+        settings,
+    ))
+    assert response.status == "solved"
+    assert "34" in (response.answer or "") or response.answer_latex == "34"

@@ -83,12 +83,23 @@ async def process_render_job(db: DatabaseClient, job_id: str, settings: Settings
 
 
 async def _execute_claimed_job(db: DatabaseClient, job: RenderJobRecord, settings: Settings) -> None:
+    import json
     import time
 
-    from app.api.routes_render import build_problem_render_response, render_error_payload
+    from pydantic import ValidationError
+
+    from app.api.routes_render import (
+        _run_render_nlp,
+        build_problem_render_result_v3,
+        sanitize_request_dump,
+        workspace_response_v3,
+    )
     from app.repositories.activity import try_log_user_activity
     from app.repositories.auth import UserRepository
     from app.repositories.errors import try_record_error_event
+    from app.services.ai_resolution import resolve_byok_ai_config
+    from app.services.prompt_security import enforce_prompt_injection_gate
+    from app.services.user_ai_settings import UserAiSettingsError
 
     job_id = job.id
     repo = RenderHistoryRepository(db)
@@ -102,100 +113,71 @@ async def _execute_claimed_job(db: DatabaseClient, job: RenderJobRecord, setting
         return
 
     started = time.perf_counter()
+    user = None
+    request = None
     try:
         if not job.render_request_json:
-            error = {"code": "RENDER_FAILED", "message": "Thiếu payload render."}
-            duration_ms = int((time.perf_counter() - started) * 1000)
-            await repo.mark_failed(job_id, error, duration_ms=duration_ms)
-            if job.user_id:
-                await try_log_user_activity(
-                    db,
-                    job.user_id,
-                    "render.failed",
-                    target_type="render_job",
-                    target_id=job_id,
-                    metadata={"code": error["code"], "duration_ms": duration_ms, "async": True},
-                )
-            await try_record_error_event(
-                db,
-                message=error["message"],
-                source="worker",
-                user_id=job.user_id,
-                route="/worker/render",
-                error_code=error["code"],
-                metadata={"job_id": job_id, "duration_ms": duration_ms},
-            )
-            return
-        request = RenderRequest.model_validate_json(job.render_request_json)
+            raise RuntimeError("Thiếu payload render.")
+
+        try:
+            request = RenderRequest.model_validate_json(job.render_request_json)
+        except ValidationError as error:
+            raise RuntimeError(f"Payload render không hợp lệ: {error}") from error
+
         user = await UserRepository(db).find_by_id(job.user_id) if job.user_id else None
         if user is None:
-            error = {"code": "RENDER_FAILED", "message": "User không tồn tại."}
-            duration_ms = int((time.perf_counter() - started) * 1000)
-            await repo.mark_failed(job_id, error, duration_ms=duration_ms)
-            await try_record_error_event(
-                db,
-                message=error["message"],
-                source="worker",
-                user_id=job.user_id,
-                route="/worker/render",
-                error_code=error["code"],
-                metadata={"job_id": job_id},
-            )
-            return
+            raise RuntimeError("User không tồn tại.")
+
+        enforce_prompt_injection_gate(request.problem_text, mode=settings.prompt_injection_gate_mode)
+        request, nlp_hints = await _run_render_nlp(request, db, user, preserve_problem_text=True)
+
         try:
-            response = await asyncio.wait_for(
-                build_problem_render_response(request, db, user),
-                timeout=RENDER_TIMEOUT_SECONDS,
-            )
-        except TimeoutError:
-            duration_ms = int((time.perf_counter() - started) * 1000)
-            error = {"code": "TIMEOUT", "message": f"Render vượt quá {RENDER_TIMEOUT_SECONDS}s."}
-            await repo.mark_failed(job_id, error, duration_ms=duration_ms)
-            await try_log_user_activity(
-                db,
-                user.id,
-                "render.failed",
-                target_type="render_job",
-                target_id=job_id,
-                metadata={"code": "TIMEOUT", "duration_ms": duration_ms, "async": True, "tier": request.tier},
-            )
-            await try_record_error_event(
-                db,
-                message=error["message"],
-                source="worker",
-                user_id=user.id,
-                route="/worker/render",
-                error_code="TIMEOUT",
-                metadata={"job_id": job_id, "duration_ms": duration_ms},
-            )
-            return
-        except (RuntimeError, ValueError, KeyError) as error:
-            duration_ms = int((time.perf_counter() - started) * 1000)
-            payload = render_error_payload(error)
-            await repo.mark_failed(job_id, payload, duration_ms=duration_ms)
-            await try_log_user_activity(
-                db,
-                user.id,
-                "render.failed",
-                target_type="render_job",
-                target_id=job_id,
-                metadata={"code": payload.get("code"), "duration_ms": duration_ms, "async": True, "tier": request.tier},
-            )
-            await try_record_error_event(
-                db,
-                message=str(payload.get("debug_message") or payload.get("message") or error),
-                source="worker",
-                user_id=user.id,
-                route="/worker/render",
-                error_code=str(payload.get("code") or "RENDER_FAILED"),
-                metadata={"job_id": job_id, "duration_ms": duration_ms},
-            )
-            return
+            byok = await resolve_byok_ai_config(db, user, "render", settings)
+        except UserAiSettingsError as error:
+            raise RuntimeError(f"Cấu hình BYOK không hợp lệ: {error}") from error
+
+        result = await asyncio.wait_for(
+            build_problem_render_result_v3(request, db, user, byok=byok, nlp_hints=nlp_hints),
+            timeout=RENDER_TIMEOUT_SECONDS,
+        )
+        if not result.can_project:
+            error_issues = [issue for issue in result.issues if issue.severity == "error"]
+            code = next((issue.code for issue in error_issues), "SCENE_SCHEMA_INVALID")
+            detail = "; ".join(f"[{issue.code}] {issue.message}" for issue in error_issues[:4])
+            raise RuntimeError(detail or f"Scene v3 không vượt qua pipeline ({code}).")
+
+        response = workspace_response_v3(result, trusted_for_downstream=result.status == "verified")
         duration_ms = int((time.perf_counter() - started) * 1000)
-        await repo.mark_completed(job_id, response, response.scene.renderer, duration_ms=duration_ms)
-        completed = await repo.find_by_id(job_id)
-        if completed is not None:
-            await repo.ensure_history_item(completed, response=response, tier=request.tier)
+        try:
+            await repo.complete_pending_as_v3(
+                job_id,
+                user.id,
+                response,
+                render_request_json=json.dumps(sanitize_request_dump(request), ensure_ascii=False),
+                duration_ms=duration_ms,
+                provider=response.scene.audit.generator_provider,
+                model=response.scene.audit.generator_model,
+            )
+        except Exception as error:
+            logger.exception("Failed to persist async render job %s", job_id)
+            await repo.mark_failed(
+                job_id,
+                {
+                    "code": "HISTORY_PERSIST_FAILED",
+                    "message": f"Không lưu được lịch sử Scene v3: {error}",
+                },
+                duration_ms=duration_ms,
+            )
+            await try_log_user_activity(
+                db,
+                user.id,
+                "render.failed",
+                target_type="render_job",
+                target_id=job_id,
+                metadata={"code": "HISTORY_PERSIST_FAILED", "duration_ms": duration_ms, "async": True},
+            )
+            return
+
         await try_log_user_activity(
             db,
             user.id,
@@ -205,12 +187,73 @@ async def _execute_claimed_job(db: DatabaseClient, job: RenderJobRecord, setting
             metadata={
                 "tier": request.tier,
                 "renderer": response.scene.renderer,
-                "provider": response.source.provider,
-                "model": response.source.model,
+                "provider": response.scene.audit.generator_provider,
+                "model": response.scene.audit.generator_model,
                 "duration_ms": duration_ms,
                 "async": True,
-                "degraded": response.degraded,
+                "schema_version": "3.0",
+                "status": response.status,
             },
+        )
+    except TimeoutError:
+        duration_ms = int((time.perf_counter() - started) * 1000)
+        error = {"code": "TIMEOUT", "message": f"Render vượt quá {RENDER_TIMEOUT_SECONDS}s."}
+        await repo.mark_failed(job_id, error, duration_ms=duration_ms)
+        if user is not None:
+            await try_log_user_activity(
+                db,
+                user.id,
+                "render.failed",
+                target_type="render_job",
+                target_id=job_id,
+                metadata={
+                    "code": "TIMEOUT",
+                    "duration_ms": duration_ms,
+                    "async": True,
+                    "tier": getattr(request, "tier", None),
+                },
+            )
+        await try_record_error_event(
+            db,
+            message=error["message"],
+            source="worker",
+            user_id=job.user_id,
+            route="worker/render",
+            error_code="TIMEOUT",
+            metadata={"job_id": job_id, "duration_ms": duration_ms},
+        )
+    except Exception as error:
+        duration_ms = int((time.perf_counter() - started) * 1000)
+        message = str(error) or error.__class__.__name__
+        code = (
+            "AI_PROVIDER_FAILED"
+            if "provider" in message.lower() or "thất bại" in message.lower()
+            else "RENDER_FAILED"
+        )
+        payload = {"code": code, "message": message}
+        await repo.mark_failed(job_id, payload, duration_ms=duration_ms)
+        if user is not None:
+            await try_log_user_activity(
+                db,
+                user.id,
+                "render.failed",
+                target_type="render_job",
+                target_id=job_id,
+                metadata={
+                    "code": code,
+                    "duration_ms": duration_ms,
+                    "async": True,
+                    "tier": getattr(request, "tier", None),
+                },
+            )
+        await try_record_error_event(
+            db,
+            message=message,
+            source="worker",
+            user_id=job.user_id,
+            route="worker/render",
+            error_code=code,
+            metadata={"job_id": job_id, "duration_ms": duration_ms},
         )
     finally:
         slot.release()

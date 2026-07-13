@@ -139,6 +139,7 @@ def test_ai_extraction_cannot_override_explicit_problem_contract():
     assert protected.expression_action == "factor"
     assert protected.domain == "C"
     assert protected.domain_source == "user"
+    assert protected.angle_unit == original.angle_unit
     assert protected.variables == ["z"]
     assert protected.parameters == ["m"]
 

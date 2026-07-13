@@ -120,3 +120,99 @@ def test_v3_history_snapshots_commands_and_restores_workspace(tmp_path):
         await db.close()
 
     asyncio.run(run())
+
+
+def test_complete_pending_as_v3_rejects_foreign_workspace_owner(tmp_path):
+    """Async completion must not overwrite another user's scene_id workspace."""
+
+    async def run():
+        db = await _db(tmp_path / "history-v3-owner.db")
+        history = RenderHistoryRepository(db)
+        other_user = "other-user-id"
+        await db.execute(
+            "INSERT INTO users (id, email, password_hash) VALUES (?, ?, ?)",
+            [other_user, "other@example.com", "unused"],
+        )
+
+        scene = _scene()
+        result = run_scene_pipeline_v3(scene)
+        response = workspace_response_v3(result, trusted_for_downstream=True)
+
+        # Owner A creates workspace for scene_id.
+        await history.create_v3_workspace(USER_ID, response)
+
+        # Owner B has a pending job that would collide on the same scene_id.
+        pending = await history.create_pending(
+            other_user,
+            scene.problem_text,
+            provider="test",
+            model="test-model",
+            render_request_json='{"problem_text":"Đoạn thẳng AB.","tier":"tier1"}',
+        )
+        try:
+            await history.complete_pending_as_v3(
+                pending.id,
+                other_user,
+                response,
+                provider="test",
+                model="test-model",
+            )
+            raise AssertionError("expected ownership conflict")
+        except RuntimeError as error:
+            assert "SCENE_WORKSPACE_EXISTS" in str(error) or "ownership" in str(error).lower()
+
+        # Original owner still holds the workspace.
+        workspaces = SceneWorkspaceRepository(db)
+        owned = await workspaces.find_for_user(USER_ID, scene.scene_id)
+        assert owned is not None
+        assert owned.history_item_id is not None
+        foreign = await workspaces.find_for_user(other_user, scene.scene_id)
+        assert foreign is None
+        await db.close()
+
+    asyncio.run(run())
+
+
+def test_complete_pending_as_v3_same_user_rebind_ok(tmp_path):
+    """Same user may complete a second async job for the same scene_id."""
+
+    async def run():
+        db = await _db(tmp_path / "history-v3-rebind.db")
+        history = RenderHistoryRepository(db)
+        base = _scene()
+        scene = base.model_copy(
+            update={"audit": base.audit.model_copy(update={
+                "generator_provider": "openai",
+                "generator_model": "gpt-test",
+            })}
+        )
+        result = run_scene_pipeline_v3(scene)
+        response = workspace_response_v3(result, trusted_for_downstream=True)
+
+        first = await history.create_v3_workspace(USER_ID, response)
+        pending = await history.create_pending(
+            USER_ID,
+            scene.problem_text,
+            provider="openai",
+            model="gpt-test",
+            render_request_json='{"problem_text":"Đoạn thẳng AB.","tier":"tier1"}',
+        )
+        completed = await history.complete_pending_as_v3(
+            pending.id,
+            USER_ID,
+            response,
+            provider="openai",
+            model="gpt-test",
+            duration_ms=12,
+        )
+        assert completed.status == "completed"
+        assert completed.provider == "openai"
+        assert completed.model == "gpt-test"
+        workspaces = SceneWorkspaceRepository(db)
+        owned = await workspaces.find_for_user(USER_ID, scene.scene_id)
+        assert owned is not None
+        assert owned.history_item_id == pending.id
+        assert owned.history_item_id != first.id
+        await db.close()
+
+    asyncio.run(run())

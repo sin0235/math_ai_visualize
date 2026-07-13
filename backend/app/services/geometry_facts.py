@@ -71,6 +71,7 @@ class GeometryFactGraph:
 
 def build_geometry_fact_graph(scene: dict[str, Any]) -> GeometryFactGraph:
     facts: list[GeometryFact] = []
+    object_index = _object_index(scene)
     for index, annotation in enumerate(scene.get("annotations") or []):
         if isinstance(annotation, dict):
             fact = _annotation_fact(annotation, index)
@@ -78,7 +79,7 @@ def build_geometry_fact_graph(scene: dict[str, Any]) -> GeometryFactGraph:
                 facts.append(fact)
     for index, relation in enumerate(scene.get("relations") or []):
         if isinstance(relation, dict):
-            fact = _relation_fact(relation, index)
+            fact = _relation_fact(relation, index, object_index)
             if fact:
                 facts.append(fact)
     for index, derived in enumerate(scene.get("derived_facts") or []):
@@ -174,16 +175,33 @@ def _derived_fact(derived: dict[str, Any], index: int) -> GeometryFact | None:
     )
 
 
-def _relation_fact(relation: dict[str, Any], index: int) -> GeometryFact | None:
+def _object_index(scene: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    index: dict[str, dict[str, Any]] = {}
+    for obj in scene.get("objects") or []:
+        if not isinstance(obj, dict):
+            continue
+        for key in (obj.get("object_id"), obj.get("id"), obj.get("name")):
+            if key:
+                index[str(key)] = obj
+    return index
+
+
+def _relation_fact(
+    relation: dict[str, Any],
+    index: int,
+    object_index: dict[str, dict[str, Any]] | None = None,
+) -> GeometryFact | None:
+    object_index = object_index or {}
     metadata = relation.get("metadata") if isinstance(relation.get("metadata"), dict) else {}
     rel_type = normalize_relation_type(str(relation.get("type") or ""))
     verification = _verification_status(relation)
     if verification in REJECTED_VERIFICATION:
         return None
     source = _source_from_metadata(metadata, str(relation.get("source") or "verified"))
+    tokens = _relation_tokens(relation, object_index)
 
     if rel_type == "perpendicular":
-        segment, plane = perpendicular_segment_plane(relation)
+        segment, plane = perpendicular_segment_plane(relation, object_index)
         if segment and plane:
             return GeometryFact(
                 id=str(relation.get("id") or f"relation:{index}"),
@@ -194,9 +212,9 @@ def _relation_fact(relation: dict[str, Any], index: int) -> GeometryFact | None:
                 verification_status=verification,
                 metadata=metadata,
             )
-        first = parse_edge_token(str(relation.get("object_1") or ""))
-        second = parse_edge_token(str(relation.get("object_2") or ""))
-        if first and second:
+        edges = [parse_edge_token(token) for token in tokens[:2]]
+        if edges[0] and edges[1] if len(edges) >= 2 else False:
+            first, second = edges[0], edges[1]
             return GeometryFact(
                 id=str(relation.get("id") or f"relation:{index}"),
                 type="perpendicular_lines",
@@ -207,9 +225,10 @@ def _relation_fact(relation: dict[str, Any], index: int) -> GeometryFact | None:
                 metadata=metadata,
             )
     if rel_type == "on_plane":
-        point = str(relation.get("object_1") or "").strip()
-        plane = parse_plane_token(str(relation.get("object_2") or ""))
-        if point and plane:
+        point = tokens[0] if tokens else str(relation.get("object_1") or "").strip()
+        plane = parse_plane_token(tokens[1] if len(tokens) > 1 else str(relation.get("object_2") or ""))
+        # Typed operands: point name + plane expanded token
+        if point and "-" not in point and plane:
             return GeometryFact(
                 id=str(relation.get("id") or f"relation:{index}"),
                 type="point_on_plane",
@@ -220,8 +239,8 @@ def _relation_fact(relation: dict[str, Any], index: int) -> GeometryFact | None:
                 metadata=metadata,
             )
     if rel_type == "midpoint":
-        point = str(relation.get("object_1") or "").strip()
-        edge = parse_edge_token(str(relation.get("object_2") or ""))
+        point = tokens[0] if tokens else str(relation.get("object_1") or "").strip()
+        edge = parse_edge_token(tokens[1] if len(tokens) > 1 else str(relation.get("object_2") or ""))
         if point and edge:
             return GeometryFact(
                 id=str(relation.get("id") or f"relation:{index}"),
@@ -233,7 +252,7 @@ def _relation_fact(relation: dict[str, Any], index: int) -> GeometryFact | None:
                 metadata=metadata,
             )
     if rel_type == "intersection":
-        names = tuple(str(item) for item in relation.get("operand_names") or [] if str(item))
+        names = tuple(tokens or [str(item) for item in relation.get("operand_names") or [] if str(item)])
         if len(names) >= 3:
             return GeometryFact(
                 id=str(relation.get("id") or f"relation:{index}"),
@@ -245,9 +264,9 @@ def _relation_fact(relation: dict[str, Any], index: int) -> GeometryFact | None:
                 metadata=metadata,
             )
     if rel_type == "parallel":
-        first = parse_edge_token(str(relation.get("object_1") or ""))
-        second = parse_edge_token(str(relation.get("object_2") or ""))
-        if first and second:
+        edges = [parse_edge_token(token) for token in tokens[:2]]
+        if len(edges) >= 2 and edges[0] and edges[1]:
+            first, second = edges[0], edges[1]
             return GeometryFact(
                 id=str(relation.get("id") or f"relation:{index}"),
                 type="parallel_lines",
@@ -258,7 +277,7 @@ def _relation_fact(relation: dict[str, Any], index: int) -> GeometryFact | None:
                 metadata=metadata,
             )
     if rel_type in {"collinear", "coplanar"}:
-        names = tuple(str(item) for item in relation.get("operand_names") or [] if str(item))
+        names = tuple(tokens or [str(item) for item in relation.get("operand_names") or [] if str(item)])
         minimum = 3 if rel_type == "collinear" else 4
         if len(names) >= minimum:
             description = "thẳng hàng" if rel_type == "collinear" else "đồng phẳng"
@@ -272,9 +291,9 @@ def _relation_fact(relation: dict[str, Any], index: int) -> GeometryFact | None:
                 metadata=metadata,
             )
     if rel_type == "equal_length":
-        first = parse_edge_token(str(relation.get("object_1") or ""))
-        second = parse_edge_token(str(relation.get("object_2") or ""))
-        if first and second:
+        edges = [parse_edge_token(token) for token in tokens[:2]]
+        if len(edges) >= 2 and edges[0] and edges[1]:
+            first, second = edges[0], edges[1]
             return GeometryFact(
                 id=str(relation.get("id") or f"relation:{index}"),
                 type="equal_length",
@@ -284,10 +303,93 @@ def _relation_fact(relation: dict[str, Any], index: int) -> GeometryFact | None:
                 verification_status=verification,
                 metadata=metadata,
             )
+    if rel_type == "distance":
+        value = (relation.get("args") or {}).get("value") if isinstance(relation.get("args"), dict) else None
+        if value is None:
+            value = metadata.get("value") or metadata.get("length")
+        edge = parse_edge_token(tokens[0]) if tokens else None
+        if edge is None and len(tokens) >= 2:
+            edge = (tokens[0], tokens[1])
+        if edge and value is not None:
+            return GeometryFact(
+                id=str(relation.get("id") or f"relation:{index}"),
+                type="length",
+                args={"points": edge, "label": str(value), "value": value},
+                source=source,
+                text=f"{edge[0]}{edge[1]} = {value}.",
+                verification_status=verification,
+                metadata=metadata,
+            )
     return None
 
 
-def perpendicular_segment_plane(relation: dict[str, Any]) -> tuple[tuple[str, str] | None, list[str] | None]:
+def _relation_tokens(relation: dict[str, Any], object_index: dict[str, dict[str, Any]]) -> list[str]:
+    """Prefer classical tokens (object_1/2), then operand_names, then expand typed operands."""
+    tokens: list[str] = []
+    for key in ("object_1", "object_2"):
+        value = relation.get(key)
+        if value:
+            tokens.append(str(value))
+    if tokens:
+        return tokens
+    names = [str(item) for item in relation.get("operand_names") or [] if str(item)]
+    if names:
+        return names
+    for operand in relation.get("operands") or []:
+        if not isinstance(operand, dict):
+            continue
+        ref_id = str(operand.get("ref_id") or "")
+        obj = object_index.get(ref_id)
+        if obj is None:
+            if ref_id:
+                tokens.append(ref_id)
+            continue
+        name = str(obj.get("name") or obj.get("label") or ref_id)
+        obj_type = str(obj.get("type") or "")
+        if obj_type in {"segment", "line_2d", "line_3d"}:
+            pts = obj.get("points") or obj.get("through") or obj.get("point_ids") or []
+            if isinstance(pts, list) and len(pts) >= 2:
+                a = str(pts[0])
+                b = str(pts[1])
+                # Expand point_ids through object_index to labels when available.
+                a_obj = object_index.get(a)
+                b_obj = object_index.get(b)
+                if a_obj and a_obj.get("type") in {"point_2d", "point_3d"}:
+                    a = str(a_obj.get("name") or a_obj.get("label") or a)
+                if b_obj and b_obj.get("type") in {"point_2d", "point_3d"}:
+                    b = str(b_obj.get("name") or b_obj.get("label") or b)
+                tokens.append(f"{a}-{b}")
+                continue
+        if obj_type in {"face", "plane"}:
+            pts = obj.get("points") or obj.get("point_ids") or []
+            if isinstance(pts, list) and len(pts) >= 3:
+                labels = []
+                for pid in pts:
+                    pobj = object_index.get(str(pid))
+                    if pobj and pobj.get("type") in {"point_2d", "point_3d"}:
+                        labels.append(str(pobj.get("name") or pobj.get("label") or pid))
+                    else:
+                        labels.append(str(pid))
+                tokens.append(f"plane({''.join(labels)})")
+                continue
+        tokens.append(name)
+    return tokens
+
+
+def perpendicular_segment_plane(
+    relation: dict[str, Any],
+    object_index: dict[str, dict[str, Any]] | None = None,
+) -> tuple[tuple[str, str] | None, list[str] | None]:
+    tokens = _relation_tokens(relation, object_index or {})
+    if len(tokens) >= 2:
+        segment = parse_edge_token(tokens[0])
+        plane = parse_plane_token(tokens[1])
+        if segment and plane:
+            return segment, plane
+        segment = parse_edge_token(tokens[1])
+        plane = parse_plane_token(tokens[0])
+        if segment and plane:
+            return segment, plane
     object_1 = str(relation.get("object_1") or "")
     object_2 = str(relation.get("object_2") or "")
     segment = parse_edge_token(object_1)

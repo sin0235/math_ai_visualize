@@ -4,11 +4,12 @@ import time
 import httpx
 
 from app.core.config import Settings
-from app.services.ai_prompt import REASONING_SYSTEM_PROMPT, SCENE_EXTRACTION_SYSTEM_PROMPT, build_reasoning_prompt, build_scene_extraction_prompt
+from app.services.ai_prompt import REASONING_SYSTEM_PROMPT, SCENE_EXTRACTION_V3_SYSTEM_PROMPT, build_reasoning_prompt, build_scene_extraction_prompt
 from app.services.chat_response import extract_chat_message_content
 from app.services.chat_stream import collect_openai_chat_stream
 from app.services.openrouter_client import OCR_SYSTEM_PROMPT
 from app.services.provider_logging import chat_message_input_chars, format_provider_error, log_ocr_summary, log_provider_http_error, log_provider_request, log_provider_response, log_scene_summary
+from app.services.prompt_security import parse_llm_json_dict, secure_system_prompt
 
 
 class NvidiaClient:
@@ -31,11 +32,14 @@ class NvidiaClient:
         reasoning_layer: str = "off",
         reasoning_plan: dict | None = None,
         system_prompt: str | None = None,
+        nlp_hints: dict | None = None,
+        user_prompt: str | None = None,
+        schema_version: str = "3.0",
     ) -> dict:
         if not _api_key(self.settings):
             raise RuntimeError("NVIDIA_API_KEY chưa được cấu hình.")
 
-        sys_prompt = system_prompt or SCENE_EXTRACTION_SYSTEM_PROMPT
+        sys_prompt = secure_system_prompt(system_prompt or SCENE_EXTRACTION_V3_SYSTEM_PROMPT)
 
         chat_template_kwargs: dict[str, str | bool] = {}
         if self.thinking:
@@ -47,7 +51,7 @@ class NvidiaClient:
             "model": self.model,
             "messages": [
                 {"role": "system", "content": sys_prompt},
-                {"role": "user", "content": build_scene_extraction_prompt(problem_text, grade, reasoning_layer, reasoning_plan=reasoning_plan)},
+                {"role": "user", "content": user_prompt or build_scene_extraction_prompt(problem_text, grade, reasoning_layer, reasoning_plan=reasoning_plan, nlp_hints=nlp_hints, schema_version=schema_version)},
             ],
             "temperature": 0.1,
             "top_p": 0.95,
@@ -82,10 +86,10 @@ class NvidiaClient:
         if not content.strip():
             raise RuntimeError("NVIDIA không trả về nội dung JSON trong choices[0].message.content.")
         try:
-            scene_json = json.loads(_strip_json_fences(content))
+            scene_json = parse_llm_json_dict(content, task="scene")
             log_scene_summary("nvidia", scene_json)
             return scene_json
-        except json.JSONDecodeError as error:
+        except (json.JSONDecodeError, RuntimeError) as error:
             raise RuntimeError(f"NVIDIA trả về JSON không hợp lệ: {error.msg}") from error
 
     async def reason_about_problem(self, problem_text: str, grade: int | None = None, system_prompt: str | None = None) -> dict:
@@ -93,7 +97,7 @@ class NvidiaClient:
         if not _api_key(self.settings):
             raise RuntimeError("NVIDIA_API_KEY chưa được cấu hình.")
 
-        sys_prompt = system_prompt or REASONING_SYSTEM_PROMPT
+        sys_prompt = secure_system_prompt(system_prompt or REASONING_SYSTEM_PROMPT)
 
         payload = {
             "model": self.model,
@@ -134,8 +138,8 @@ class NvidiaClient:
         if not content.strip():
             raise RuntimeError("NVIDIA không trả về reasoning content.")
         try:
-            return json.loads(_strip_json_fences(content))
-        except json.JSONDecodeError as error:
+            return parse_llm_json_dict(content, task="reasoning")
+        except (json.JSONDecodeError, RuntimeError) as error:
             raise RuntimeError(f"NVIDIA reasoning JSON không hợp lệ: {error.msg}") from error
 
     async def ocr_image(self, image_data_url: str, model: str | None = None, system_prompt: str | None = None, user_text: str = "Trích xuất nguyên văn đề toán trong ảnh.") -> str:

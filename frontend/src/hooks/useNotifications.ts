@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ApiError } from '../api/client';
+import { maybeBrowserNotifyFromToast } from '../utils/browserNotify';
 
 export type Notification = {
   id: number;
@@ -25,7 +26,10 @@ export function useNotifications() {
 
   function showNotification(title: string, message: string, details: string[] = [], kind: Notification['kind'] = 'error', action?: Notification['action']) {
     const id = Date.now() + Math.floor(Math.random() * 1000);
-    setNotifications((current) => [...current.slice(-2), { id, kind, title, message: friendlyMessage(message), details: friendlyDetails(details), action }]);
+    const friendly = friendlyMessage(message);
+    const friendlyDet = friendlyDetails(details);
+    setNotifications((current) => [...current.slice(-2), { id, kind, title, message: friendly, details: friendlyDet, action }]);
+    maybeBrowserNotifyFromToast(title, friendly, kind, friendlyDet);
   }
 
   function dismissNotification(id: number) {

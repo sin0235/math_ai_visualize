@@ -1348,11 +1348,11 @@ function AdminRenderJobDetailPanel({ detail, onOpen, onClose }: { detail: AdminR
         <span><strong>Nguồn</strong>{detail.source_type}</span>
       </div>
       <p className="admin-problem-text">{detail.problem_text}</p>
-      {detail.warnings.length > 0 && <AdminDetails title="Warnings" value={detail.warnings} />}
-      <AdminDetails title="Scene JSON" value={detail.scene} />
-      <AdminDetails title="Payload JSON" value={detail.payload} />
+      {detail.workspace?.issues?.length ? <AdminDetails title="Pipeline issues" value={detail.workspace.issues} /> : null}
+      <AdminDetails title="Workspace Scene v3" value={detail.workspace?.scene} />
+      <AdminDetails title="Projection v3" value={detail.workspace?.projection} />
+      <AdminDetails title="Payload v3" value={detail.workspace?.payload} />
       <AdminDetails title="Render request" value={detail.render_request} />
-      <AdminDetails title="Advanced settings" value={detail.advanced_settings} />
       <AdminDetails title="Runtime settings" value={detail.runtime_settings} />
     </section>
   );

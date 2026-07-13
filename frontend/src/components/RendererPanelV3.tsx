@@ -1,9 +1,8 @@
 import { lazy, Suspense, useMemo } from 'react';
 
-import type { MathScene } from '../types/scene';
 import type { MathSceneV3, SceneWorkspaceResponseV3 } from '../types/sceneV3';
 import { threeSceneFromProjectionV3 } from '../utils/renderProjectionV3';
-import { GeoGebraView } from './GeoGebraView';
+import { GeoGebraView, type GeoGebraPoint } from './GeoGebraView';
 import type { ThreeSceneImageCapture, ThreeSceneInteraction } from './ThreeGeometryView';
 
 const ThreeGeometryView = lazy(() => import('./ThreeGeometryView').then((module) => ({ default: module.ThreeGeometryView })));
@@ -42,15 +41,23 @@ export function RendererPanelV3({
     };
   }, [previewScene, response]);
   const threeScene = useMemo(() => projection?.renderer === 'threejs_3d' ? threeSceneFromProjectionV3(projection) : null, [projection]);
+  const geogebraPoints = useMemo<GeoGebraPoint[]>(
+    () => (projection?.points ?? []).map((point) => ({
+      name: point.name,
+      x: point.position[0],
+      y: point.position[1],
+      z: projection?.dimension === '3d' ? point.position[2] : undefined,
+    })),
+    [projection],
+  );
   const aliasToId = useMemo(
     () => new Map(Object.entries(projection?.object_names ?? {}).map(([id, name]) => [name, id])),
     [projection?.object_names],
   );
 
   if (!response || !projection) return <div className="renderer-frame"><div className="empty-state">Chưa có projection v3.</div></div>;
-  const trustLabels = response.status === 'verified' && !response.requires_user_confirmation
-    ? ['Dựng theo dữ kiện']
-    : ['Hình cần xác nhận'];
+  // Keep canvas clean; confirmation is handled via toast + workspace banner.
+  const trustLabels: string[] = [];
 
   if (projection.renderer === 'geogebra_2d' || projection.renderer === 'geogebra_3d') {
     return (
@@ -58,14 +65,14 @@ export function RendererPanelV3({
         <GeoGebraView
           commands={response.payload.geogebra_commands ?? []}
           renderer={projection.renderer}
-          scene={legacyPointScene(response)}
+          points={geogebraPoints}
           view={projection.view}
           onPointChange={onPointChange ? (name, point) => {
             const objectId = aliasToId.get(name);
             if (objectId) return onPointChange(objectId, point);
           } : undefined}
         />
-        {saving && <div className="renderer-saving-overlay">Đang kiểm chứng chỉnh sửa...</div>}
+        {saving && <div className="renderer-saving-overlay">Đang cập nhật hình...</div>}
       </div>
     );
   }
@@ -82,45 +89,10 @@ export function RendererPanelV3({
             onImageCaptureReady={onImageCaptureReady}
           />
         </Suspense>
-        {saving && <div className="renderer-saving-overlay">Đang kiểm chứng chỉnh sửa...</div>}
+        {saving && <div className="renderer-saving-overlay">Đang cập nhật hình...</div>}
       </div>
     );
   }
 
   return <div className="renderer-frame"><div className="error-box">Projection không có payload renderer tương thích.</div></div>;
-}
-
-function legacyPointScene(response: SceneWorkspaceResponseV3): MathScene {
-  return {
-    scene_id: response.scene.scene_id,
-    schema_version: '3.0-projection',
-    revision: response.scene.revision,
-    problem_text: response.scene.problem_text,
-    grade: response.scene.grade,
-    topic: response.scene.topic,
-    renderer: response.projection.renderer,
-    objects: response.projection.points.map((point) => response.projection.dimension === '3d'
-      ? {
-          id: point.object_id,
-          type: 'point_3d',
-          name: point.name,
-          x: point.position[0],
-          y: point.position[1],
-          z: point.position[2],
-          source: 'user_edited',
-          metadata: {},
-        }
-      : {
-          id: point.object_id,
-          type: 'point_2d',
-          name: point.name,
-          x: point.position[0],
-          y: point.position[1],
-          source: 'user_edited',
-          metadata: {},
-        }),
-    relations: [],
-    annotations: [],
-    view: response.projection.view,
-  };
 }

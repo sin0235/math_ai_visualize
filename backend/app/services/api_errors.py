@@ -44,6 +44,14 @@ ERROR_SUGGESTIONS: dict[str, list[str]] = {
         "Kiểm tra ảnh có rõ chữ và đúng định dạng không.",
         "Liên hệ admin nếu cần kiểm tra cấu hình OCR hệ thống.",
     ],
+    "PROMPT_INJECTION_BLOCKED": [
+        "Chỉ gửi đề toán hợp lệ; không gửi chỉ dẫn thao túng hệ thống.",
+        "Nếu đây là đề thật, diễn đạt lại phần toán và bỏ câu lệnh ngoài phạm vi.",
+    ],
+    "LLM_OUTPUT_REJECTED": [
+        "Thử lại hoặc đổi model/provider.",
+        "Rút gọn đề bài nếu lỗi lặp lại.",
+    ],
     "RENDER_FAILED": [
         "Kiểm tra đề bài và model dựng hình đã chọn.",
         "Thử provider/model khác hoặc viết đề bài rõ hơn.",
@@ -58,9 +66,29 @@ ERROR_SUGGESTIONS: dict[str, list[str]] = {
     ],
     "SCENE_WORKSPACE_NOT_FOUND": ["Tải lại lịch sử hoặc dựng lại scene."],
     "SCENE_TRUST_REQUIRED": ["Kiểm tra scene và xác nhận đúng revision trước khi tiếp tục."],
-    "CONSTRAINT_FAILED": ["Hoàn tác chỉnh sửa gần nhất hoặc sửa ràng buộc chưa đạt."],
+    "CONSTRAINT_FAILED": [
+        "Tọa độ hoặc quan hệ trong hình mâu thuẫn với ràng buộc toán học.",
+        "Viết lại đề rõ dữ kiện (độ dài, vuông góc, song song) rồi dựng lại.",
+        "Hoàn tác chỉnh sửa gần nhất hoặc sửa ràng buộc chưa đạt trong workspace.",
+    ],
     "RENDERER_UNSUPPORTED": ["Đổi renderer hoặc loại bỏ đối tượng chưa được hỗ trợ."],
     "SCENE_SCHEMA_INVALID": ["Kiểm tra cấu trúc và reference của scene."],
+    "RELATION_CONTRACT_INVALID": [
+        "Kiểm tra quan hệ dùng segment/line/plane object id, không dùng shorthand AB.",
+        "Thử viết lại đề rõ hơn hoặc dựng lại hình sau khi model sửa operands.",
+    ],
+    "REFERENCE_NOT_FOUND": [
+        "Đảm bảo mọi relation/annotation trỏ tới object đã khai báo trong scene.",
+        "Thử dựng lại hình để LLM tạo đủ điểm và đoạn phụ.",
+    ],
+    "REFERENCE_KIND_MISMATCH": [
+        "Operand ref_kind phải khớp loại object (point/segment/plane…).",
+        "Thử dựng lại hình hoặc sửa relation trong workspace.",
+    ],
+    "AI_PROVIDER_FAILED": [
+        "Dịch vụ AI không trả được Scene v3 hợp lệ; hệ thống không dựng hình giả.",
+        "Thử lại sau, đổi tier/model, hoặc kiểm tra cấu hình provider.",
+    ],
 }
 
 

@@ -68,6 +68,26 @@ jobs:
             tests/test_nlp_grounding.py \
             tests/test_nlp_rollout.py
 
+      - name: Prompt-injection security gates
+        env:
+          ENVIRONMENT: test
+          DATABASE_BACKEND: sqlite
+          AUTH_EMAIL_DEV_MODE: "true"
+        run: |
+          python -m pytest -q --tb=line \
+            tests/test_prompt_security.py \
+            tests/test_prompt_security_fixtures.py \
+            tests/test_ai_prompt.py
+
+      - name: Scene v3 fidelity gate (offline corpus)
+        env:
+          ENVIRONMENT: test
+          DATABASE_BACKEND: sqlite
+          AUTH_EMAIL_DEV_MODE: "true"
+        run: |
+          python -m app.math_curriculum.scene_fidelity --json | tee /tmp/scene-v3-fidelity.json
+          python -m pytest -q --tb=line tests/test_scene_v3_fidelity.py
+
       - name: Run pytest
         timeout-minutes: 15
         env:
@@ -77,7 +97,8 @@ jobs:
         run: |
           python -m pytest -q --tb=line \
             --ignore=tests/test_geometry_scenes_large_scale.py \
-            --ignore=tests/test_math_core_large_scale.py
+            --ignore=tests/test_math_core_large_scale.py \
+            --ignore=tests/nlp
 
   frontend:
     name: Frontend build

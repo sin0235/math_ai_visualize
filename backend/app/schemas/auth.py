@@ -3,7 +3,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
-from app.schemas.scene import MAX_BASE_URL_CHARS, MAX_MODEL_ID_CHARS, MathScene, RenderPayload, RenderResponse
+from app.schemas.scene import MAX_BASE_URL_CHARS, MAX_MODEL_ID_CHARS
 from app.schemas.scene_v3 import SceneCommand, SceneWorkspaceResponseV3
 
 MAX_STORED_MODELS = 1000
@@ -334,17 +334,6 @@ class SceneRevisionResponse(BaseModel):
     snapshot_revision: int | None = None
 
 
-class RenderHistoryDetailV2(RenderHistoryItem):
-    kind: Literal["math_scene_v2"] = "math_scene_v2"
-    scene: MathScene
-    payload: RenderPayload
-    warnings: list[str]
-    response: RenderResponse | None = None
-    render_request: dict | None = None
-    advanced_settings: dict | None = None
-    runtime_settings: dict | None = None
-
-
 class RenderHistoryDetailV3(RenderHistoryItem):
     kind: Literal["math_scene_v3"] = "math_scene_v3"
     workspace: SceneWorkspaceResponseV3
@@ -354,7 +343,7 @@ class RenderHistoryDetailV3(RenderHistoryItem):
     runtime_settings: dict | None = None
 
 
-RenderHistoryDetail = Annotated[RenderHistoryDetailV2 | RenderHistoryDetailV3, Field(discriminator="kind")]
+RenderHistoryDetail = RenderHistoryDetailV3
 
 
 class RestoreHistoryV3Request(BaseModel):
@@ -693,7 +682,7 @@ class AdminRenderHistoryItem(RenderHistoryItem):
     user_id: str | None = None
 
 
-class AdminRenderHistoryDetail(RenderHistoryDetailV2):
+class AdminRenderHistoryDetail(RenderHistoryDetailV3):
     user_id: str | None = None
 
 

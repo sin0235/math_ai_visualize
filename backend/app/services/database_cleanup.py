@@ -34,22 +34,48 @@ REPORT_ONLY_TABLES = {
 REMOTE_UPLOAD_PROVIDERS = {"appwrite", "r2"}
 DELETE_TEST_UPLOADS_CONFIRM = "DELETE_TEST_UPLOADS"
 RESET_DEV_DATA_CONFIRM = "RESET_DEV_DATA_KEEP_ADMIN_CONFIG"
-DEV_RESET_USER_TABLES = ["model_scan_jobs", "oauth_identities", "auth_tokens", "sessions", "legal_acceptances", "user_learning_profiles", "user_settings"]
+# Tables with user_id, scoped to non-admin users only.
+DEV_RESET_USER_TABLES = [
+    "model_scan_jobs",
+    "oauth_identities",
+    "auth_tokens",
+    "sessions",
+    "legal_acceptances",
+    "user_learning_profiles",
+    "user_settings",
+    "user_ai_models",
+    "user_ai_provider_settings",
+    "user_ai_task_profiles",
+    "algebra_history",
+    "analyzer_history",
+]
+# Tables keyed by owner_user_id (not user_id).
+DEV_RESET_OWNER_USER_TABLES = [
+    "analyzer_links",
+]
+# Child tables first. Keeps admin users + system_settings + AI registry/config tables.
 DEV_RESET_GLOBAL_TABLES = [
     "chat_messages",
     "chat_conversations",
     "feedback",
     "usage_events",
     "user_activity_events",
+    "error_events",
+    "ai_call_metrics",
+    "audit_logs",
     "history_item_tags",
     "history_tags",
+    "scene_commands",
+    "scene_confirmations",
     "scene_revisions",
+    "scene_workspaces",
     "history_items",
     "history_projects",
     "render_jobs",
     "uploaded_files",
     "rate_limit_events",
     "oauth_states",
+    "model_scan_job_models",
 ]
 
 
@@ -460,6 +486,10 @@ async def dev_reset_counts(db: DatabaseClient) -> dict[str, int]:
         counts[table] = await count_where(db, table, "1 = 1")
     for table in DEV_RESET_USER_TABLES:
         counts[table] = await count_where(db, table, "user_id IN (SELECT id FROM users WHERE role != 'admin')")
+    for table in DEV_RESET_OWNER_USER_TABLES:
+        counts[table] = await count_where(
+            db, table, "owner_user_id IN (SELECT id FROM users WHERE role != 'admin')"
+        )
     counts["users"] = await count_where(db, "users", "role != 'admin'")
     return counts
 
@@ -469,6 +499,10 @@ async def execute_dev_reset(db: DatabaseClient) -> None:
         await delete_where(db, table, "1 = 1")
     for table in DEV_RESET_USER_TABLES:
         await delete_where(db, table, "user_id IN (SELECT id FROM users WHERE role != 'admin')")
+    for table in DEV_RESET_OWNER_USER_TABLES:
+        await delete_where(
+            db, table, "owner_user_id IN (SELECT id FROM users WHERE role != 'admin')"
+        )
     await delete_where(db, "users", "role != 'admin'")
 
 

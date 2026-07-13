@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { downloadAlgebraPdf, type AlgebraSolveResponse, type AlgebraVerificationCheck } from '../../api/client';
 import { KatexSpan, MixedTextRenderer } from '../KatexSpan';
 import { AlgebraStepList } from './AlgebraStepList';
-import { MathCapabilitySummary } from '../MathCapabilitySummary';
 
 const ANALYZER_PREFILL_KEY = 'math_ai_analyzer_prefill';
 
@@ -13,11 +12,11 @@ export function EmptyAlgebraResult() {
         <p className="algebra-empty-eyebrow">Không gian lời giải</p>
         <EmptyResultIllustration />
         <strong>Kết quả sẽ hiện ở đây</strong>
-        <span>Nhập bài toán ở cột trái để nhận lời giải có cấu trúc và kiểm chứng.</span>
+        <span>Nhập bài toán ở cột trái để nhận lời giải từng bước rõ ràng.</span>
         <ul className="algebra-empty-features" aria-label="Nội dung kết quả">
           <li>Lời giải từng bước</li>
-          <li>Đáp án chính xác</li>
-          <li>Báo cáo kiểm chứng</li>
+          <li>Đáp án rõ ràng</li>
+          <li>Giả thiết khi cần</li>
         </ul>
       </div>
     </div>
@@ -59,13 +58,7 @@ export function AlgebraResult({
   onApplyCanonical?: (canonical: string) => void;
 }) {
   const [copyFeedback, setCopyFeedback] = useState('');
-  const [showAllChecks, setShowAllChecks] = useState(false);
   const assumptions = result.assumptions.filter(hasText);
-  const notices = [...result.warnings, ...result.errors].filter((item) => hasText(item) && !isRoutineInterpretationNotice(item));
-  const allChecks = result.verification.checks.filter((check) => hasText(check.name) || hasText(check.detail) || hasText(check.latex));
-  const failWarnChecks = allChecks.filter((check) => check.status !== 'pass');
-  const visibleChecks = showAllChecks ? allChecks : failWarnChecks;
-  const passCount = allChecks.filter((check) => check.status === 'pass').length;
   const steps = result.steps.filter((step) => (
     step.kind !== 'conclusion'
     && (
@@ -152,15 +145,8 @@ export function AlgebraResult({
           ) : (
             <strong className="algebra-answer-text"><MixedTextRenderer text={result.answer} /></strong>
           )}
-          {result.verification.status !== 'skipped' && (
-            <span className={`algebra-verify-pill status-${result.verification.status}`}>
-              {verificationStatusLabel(result.verification.status)}
-            </span>
-          )}
         </section>
       )}
-
-      <MathCapabilitySummary solution={result.solution_ir} />
 
       {steps.length > 0 && (
         <section className="algebra-result-card algebra-solution-steps">
@@ -170,52 +156,10 @@ export function AlgebraResult({
       )}
 
 
-      {(assumptions.length > 0 || notices.length > 0) && (
-        <div className="algebra-result-grid">
-          {assumptions.length > 0 && (
-            <section className="algebra-result-card">
-              <SectionTitle title="Điều kiện/giả thiết" />
-              <InfoList items={assumptions} />
-            </section>
-          )}
-          {notices.length > 0 && (
-            <section className="algebra-result-card">
-              <SectionTitle title="Cảnh báo" />
-              <InfoList items={notices} />
-            </section>
-          )}
-        </div>
-      )}
-
-      {(allChecks.length > 0 || result.verification.status !== 'skipped') && (
+      {assumptions.length > 0 && (
         <section className="algebra-result-card">
-          <div className="algebra-section-head">
-            <SectionTitle title="Kiểm chứng" />
-            {allChecks.length > 0 && (
-              <span className="algebra-verify-summary">
-                {passCount}/{allChecks.length} kiểm tra đạt · {verificationStatusLabel(result.verification.status)}
-              </span>
-            )}
-          </div>
-          {result.verification.method.length > 0 && (
-            <p className="algebra-verify-method">Phương pháp: {result.verification.method.join(', ')}</p>
-          )}
-          {visibleChecks.length > 0 && (
-            <div className="algebra-check-list">
-              {visibleChecks.map((check, index) => (
-                <CheckCard check={check} key={`${check.name}-${index}`} />
-              ))}
-            </div>
-          )}
-          {allChecks.some((check) => check.status === 'pass') && (
-            <button
-              type="button"
-              className="algebra-action-btn"
-              onClick={() => setShowAllChecks((value) => !value)}
-            >
-              {showAllChecks ? 'Ẩn kiểm tra đã đạt' : 'Hiện tất cả kiểm tra'}
-            </button>
-          )}
+          <SectionTitle title="Điều kiện" />
+          <InfoList items={assumptions} />
         </section>
       )}
 
@@ -313,6 +257,10 @@ function buildPrintableHtml(result: AlgebraSolveResponse): string {
       return `<section><h3>${step.index}. ${escape(step.title || '')}</h3>${body}</section>`;
     })
     .join('\n');
+  const assumptions = result.assumptions.filter(hasText);
+  const assumptionHtml = assumptions.length
+    ? `<h2>Giả thiết</h2><ul>${assumptions.map((item) => `<li>${escape(item)}</li>`).join('')}</ul>`
+    : '';
   return `<!DOCTYPE html>
 <html lang="vi"><head><meta charset="utf-8"/>
 <title>Lời giải đại số</title>
@@ -328,12 +276,11 @@ function buildPrintableHtml(result: AlgebraSolveResponse): string {
 <p class="meta">Trạng thái: ${escape(result.status)} · Topic: ${escape(result.topic)}
 ${result.request_id ? ` · ID: ${escape(result.request_id)}` : ''}</p>
 <h2>Đề</h2><pre>${escape(result.input)}</pre>
-<h2>Canonical</h2><pre>${escape(result.normalized_input)}</pre>
 <h2>Đáp án</h2><p>${escape(result.answer)}</p>
 ${result.answer_latex ? `<pre>${escape(result.answer_latex)}</pre>` : ''}
+${assumptionHtml}
 <h2>Các bước</h2>
 ${steps || '<p>(không có bước)</p>'}
-<h2>Kiểm chứng</h2><p>${escape(result.verification.status)}</p>
 <script>window.addEventListener('load',function(){/* ready for print */});</script>
 </body></html>`;
 }
@@ -350,22 +297,19 @@ function buildMarkdown(result: AlgebraSolveResponse): string {
     result.input,
     '```',
     '',
-    `## Canonical`,
-    '```',
-    result.normalized_input,
-    '```',
-    '',
     `## Đáp án`,
     result.answer,
   ];
   if (result.answer_latex) {
     lines.push('', '```latex', result.answer_latex, '```');
   }
-  if (result.assumptions.length) {
-    lines.push('', '## Giả thiết', ...result.assumptions.map((item) => `- ${item}`));
+  const assumptions = result.assumptions.filter(hasText);
+  if (assumptions.length) {
+    lines.push('', '## Giả thiết', ...assumptions.map((item) => `- ${item}`));
   }
-  if (result.warnings.length) {
-    lines.push('', '## Cảnh báo', ...result.warnings.map((item) => `- ${item}`));
+  const learnerWarnings = result.warnings.filter((item) => hasText(item) && !isRoutineInterpretationNotice(item));
+  if (learnerWarnings.length) {
+    lines.push('', '## Cảnh báo', ...learnerWarnings.map((item) => `- ${item}`));
   }
   if (result.steps.length) {
     lines.push('', '## Các bước');
@@ -377,7 +321,6 @@ function buildMarkdown(result: AlgebraSolveResponse): string {
       lines.push('');
     }
   }
-  lines.push('', `## Kiểm chứng: ${result.verification.status}`);
   return lines.join('\n');
 }
 
@@ -411,7 +354,10 @@ function hasText(value: string | null | undefined) {
 
 function isRoutineInterpretationNotice(value: string) {
   return value.includes('Đã diễn giải đề tiếng Việt thành biểu thức chuẩn trước khi giải.')
-    || value.includes('Đầu vào gồm cả mô tả tự nhiên và ký hiệu toán; hệ thống ưu tiên phần biểu thức được trích xuất.');
+    || value.includes('Đầu vào gồm cả mô tả tự nhiên và ký hiệu toán; hệ thống ưu tiên phần biểu thức được trích xuất.')
+    || value.includes('Miền R đang là mặc định')
+    || value.includes('Đã dùng interpreter rule-based')
+    || value.includes('Đã diễn giải đề tiếng Việt');
 }
 
 

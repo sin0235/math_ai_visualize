@@ -1,6 +1,6 @@
 import type { RuntimeSettings } from '../types/settings';
 import type { FeedbackResponse, FeedbackStatus, UserResponse } from './auth';
-import type { RenderHistoryDetailV2, RenderHistoryItem } from './render';
+import type { RenderHistoryDetailV3, RenderHistoryItem } from './render';
 import { cleanText, compactRuntimeSettings, queryString, requestJson, requestVoid } from './core';
 
 export interface AdminSummaryResponse {
@@ -64,7 +64,7 @@ export interface AdminRenderHistoryItem extends RenderHistoryItem {
   user_display_name?: string | null;
 }
 
-export interface AdminRenderHistoryDetail extends RenderHistoryDetailV2 {
+export interface AdminRenderHistoryDetail extends RenderHistoryDetailV3 {
   user_id?: string | null;
   user_email?: string | null;
   user_display_name?: string | null;

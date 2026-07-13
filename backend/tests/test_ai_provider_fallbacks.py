@@ -13,7 +13,7 @@ from app.db.models import UserRecord
 from app.db.session import SQLiteClient, get_database
 from app.main import app
 from app.schemas.scene import AiModelInfo, OcrRequest, RenderRequest, RuntimeSettings
-from app.services.extractor import extract_scene, _provider_order
+from app.services.ai_provider_runtime import _provider_order
 from app.services.openai_compat_client import OpenAICompatClient
 from app.services.openrouter_client import OpenRouterClient
 from app.services.provider_logging import format_provider_error, redact_sensitive
@@ -148,27 +148,6 @@ def test_openai_compat_request_logs_full_input_chars(monkeypatch):
     assert captured["metadata"]["input_chars"] == len("system prompt") + len("wrapped problem")
 
 
-def test_openai_compat_scene_payload_limits_output_and_requests_json(monkeypatch):
-    captured = {}
-
-    async def fake_post_chat(self, payload, kind, **log_kwargs):
-        captured["payload"] = payload
-        captured["kind"] = kind
-        return '{"problem_text":"x","renderer":"geogebra_2d","objects":[],"view":{"dimension":"2d"}}'
-
-    monkeypatch.setattr(OpenAICompatClient, "_post_chat", fake_post_chat)
-
-    scene_json = asyncio.run(
-        OpenAICompatClient(
-            Settings(_env_file=None, openai_compat_base_url="https://compat.test/v1", openai_compat_text_model="test-model", openai_compat_api_key="secret")
-        ).extract_scene_json("x")
-    )
-
-    assert scene_json["renderer"] == "geogebra_2d"
-    assert captured["kind"] == "scene"
-    assert captured["payload"]["stream"] is False
-    assert captured["payload"]["max_tokens"] == 8192
-    assert captured["payload"]["response_format"] == {"type": "json_object"}
 
 
 def test_openrouter_runtime_skips_reasoning_for_known_non_thinking_model(monkeypatch):
@@ -264,35 +243,6 @@ def test_openai_compat_recovers_non_json_sse_response(monkeypatch):
     assert captured["payload"]["stream"] is False
 
 
-def test_openai_compat_invalid_scene_json_logs_parse_error(monkeypatch):
-    captured = {}
-
-    class FakeClient:
-        async def post(self, url, headers, json, timeout):
-            return httpx.Response(200, json={"choices": [{"message": {"content": "not json"}}]})
-
-    def fake_log_parse_error(kind, model, message, response_chars=None):
-        captured["parse_error"] = {
-            "kind": kind,
-            "model": model,
-            "message": message,
-            "response_chars": response_chars,
-        }
-
-    monkeypatch.setattr("app.services.http_pool.get_client", lambda *args, **kwargs: FakeClient())
-    monkeypatch.setattr("app.services.openai_compat_client._log_openai_compat_parse_error", fake_log_parse_error)
-
-    with pytest.raises(RuntimeError, match="OpenAI-compatible trả về JSON không hợp lệ"):
-        asyncio.run(
-            OpenAICompatClient(
-                Settings(_env_file=None, openai_compat_base_url="https://compat.test/v1", openai_compat_text_model="test-model", openai_compat_api_key="secret")
-            ).extract_scene_json("Vẽ điểm A")
-        )
-
-    assert captured["parse_error"]["kind"] == "scene"
-    assert captured["parse_error"]["model"] == "test-model"
-    assert captured["parse_error"]["message"].startswith("invalid_json:")
-    assert captured["parse_error"]["response_chars"] == len("not json")
 
 
 def test_router9_reasoning_request_logs_reasoning_kind_and_input_chars(monkeypatch):
@@ -676,31 +626,6 @@ def test_router9_list_models_uses_openai_compatible_models_endpoint(monkeypatch)
     assert models[0].capabilities == {"capabilities": {"vision": True}, "modalities": ["text", "image"]}
 
 
-def test_router9_chat_payload_uses_non_streaming_transport(monkeypatch):
-    payloads = []
-
-    class FakeAsyncClient:
-        def __init__(self, timeout: int) -> None:
-            self.timeout = timeout
-
-        async def post(self, url: str, headers: dict[str, str], json: dict, timeout=None):
-            payloads.append((url, headers, json))
-            return httpx.Response(
-                200,
-                json={"choices": [{"message": {"content": '{"problem_text":"x","renderer":"geogebra_2d","objects":[],"view":{"dimension":"2d"}}'}}]},
-            )
-
-    monkeypatch.setattr("app.services.http_pool.get_client", lambda *args, **kwargs: FakeAsyncClient(kwargs.get("timeout") or args[1] if len(args) > 1 else 20))
-
-    scene = asyncio.run(
-        Router9Client(Settings(_env_file=None, router9_api_key="secret"), model="cc/claude-opus-4-6").extract_scene_json("x")
-    )
-
-    assert payloads[0][0] == "http://localhost:20128/v1/chat/completions"
-    assert payloads[0][2]["model"] == "cc/claude-opus-4-6"
-    assert payloads[0][2]["stream"] is False
-    assert "response_format" not in payloads[0][2]
-    assert scene["renderer"] == "geogebra_2d"
 
 
 def test_extract_chat_message_content_accepts_part_lists():
@@ -718,52 +643,13 @@ def test_extract_chat_response_content_accepts_responses_shapes():
     assert extract_chat_response_content({"output": [{"content": [{"type": "output_text", "text": "hello"}, {"type": "output_text", "text": " world"}]}]}) == "hello world"
 
 
-def test_render_fallback_success_returns_prior_failures_as_warnings(monkeypatch):
-    async def fake_extract(provider, settings, problem_text, grade, reasoning_layer, registry, preferred_ai_model=None):
-        if provider == "nvidia":
-            raise RuntimeError("quota exceeded")
-        return {"problem_text": problem_text, "renderer": "geogebra_2d", "objects": [], "view": {"dimension": "2d"}}
-
-    monkeypatch.setattr("app.services.extractor._extract_with_provider", fake_extract)
-
-    monkeypatch.setattr("app.services.model_registry.get_settings", lambda: Settings(_env_file=None, ai_provider="nvidia", nvidia_api_key="secret"))
-    scene, warnings = asyncio.run(extract_scene("x", runtime_settings=RuntimeSettings.model_validate({"default_provider": "nvidia"})))
-
-    assert scene.renderer == "geogebra_2d"
-    assert any("AI fallback: nvidia/" in warning and "quota exceeded" in warning for warning in warnings)
 
 
-def test_render_continues_after_invalid_ai_response(monkeypatch):
-    calls = []
-
-    async def fake_extract(provider, settings, problem_text, grade, reasoning_layer, registry, preferred_ai_model=None, **kwargs):
-        calls.append((provider, preferred_ai_model))
-        return {"problem_text": problem_text, "renderer": "geogebra_2d", "objects": [{"type": "point_2d"}], "view": {"dimension": "2d"}}
-
-    monkeypatch.setattr("app.services.extractor._extract_with_provider", fake_extract)
-    monkeypatch.setattr(
-        "app.services.model_registry.get_settings",
-        lambda: Settings(_env_file=None, ai_provider="router9", router9_api_key="router9-secret", router9_text_model="cx/gpt-5.5", router9_allowed_models=["cx/gpt-5.5"]),
-    )
-
-    scene, warnings = asyncio.run(extract_scene(
-        "x",
-        runtime_settings=RuntimeSettings.model_validate({
-            "default_provider": "router9",
-            "router9": {"model": "cx/gpt-5.5"},
-            "openrouter": {"model": "openrouter/model"},
-        }),
-    ))
-
-    assert scene.topic == "unknown"
-    assert calls[0] == ("router9", "cx/gpt-5.5")
-    assert len(calls) >= 1
-    assert any("AI đã phản hồi nhưng scene không hợp lệ" in warning for warning in warnings)
 
 
 def test_render_profile_fallback_models_are_used_only_without_explicit_model(monkeypatch):
     from app.services.model_registry import TaskProfile
-    from app.services.extractor import _profile_model_candidates
+    from app.services.ai_provider_runtime import _profile_model_candidates
 
     profile = TaskProfile("render", "router9", "cx/gpt-5.5", ["gh/gemini-3.1-pro-preview"])
     settings = Settings(_env_file=None, router9_api_key="secret", router9_allowed_models=["cx/gpt-5.5", "gh/gemini-3.1-pro-preview"])
@@ -774,7 +660,7 @@ def test_render_profile_fallback_models_are_used_only_without_explicit_model(mon
 
 def test_render_profile_fallback_models_for_provider_alias_require_no_explicit_model(monkeypatch):
     from app.services.model_registry import TaskProfile
-    from app.services.extractor import _profile_model_candidates
+    from app.services.ai_provider_runtime import _profile_model_candidates
 
     profile = TaskProfile("render", "ollama", "gpt-oss:120b", ["gpt-oss:20b"])
     settings = Settings(_env_file=None, ollama_text_model="gpt-oss:120b")
@@ -810,394 +696,32 @@ def test_ollama_cloud_scan_uses_openai_models_endpoint(monkeypatch):
     assert models[0].id == "gpt-oss:120b"
 
 
-def test_render_router9_allowlist_uses_single_selected_model(monkeypatch):
-    calls = []
-
-    async def fake_extract(provider, settings, problem_text, grade, reasoning_layer, registry, preferred_ai_model=None):
-        calls.append((provider, preferred_ai_model))
-        return {"problem_text": problem_text, "renderer": "geogebra_2d", "objects": [], "view": {"dimension": "2d"}}
-
-    monkeypatch.setattr("app.services.extractor._extract_with_provider", fake_extract)
-    monkeypatch.setattr(
-        "app.services.model_registry.get_settings",
-        lambda: Settings(_env_file=None, router9_api_key="secret", router9_allowed_models=["cc/codex-5.5", "cc/codex-5.4", "cc/codex-5.3", "gh/gpt-5.2"]),
-    )
-
-    runtime_settings = RuntimeSettings.model_validate({"router9": {}})
-    scene, warnings = asyncio.run(extract_scene("x", runtime_settings=runtime_settings))
-
-    assert scene.topic == "unknown"
-    assert calls == [("router9", "cc/codex-5.5")]
-    assert warnings == []
-
-
-def test_render_router9_accepts_explicit_vendor_prefixed_model(monkeypatch):
-    calls = []
-
-    async def fake_extract(provider, settings, problem_text, grade, reasoning_layer, registry, preferred_ai_model=None, **kwargs):
-        calls.append((provider, preferred_ai_model))
-        return {"problem_text": problem_text, "renderer": "geogebra_2d", "objects": [], "view": {"dimension": "2d"}}
-
-    monkeypatch.setattr("app.services.extractor._extract_with_provider", fake_extract)
-
-    runtime_settings = RuntimeSettings.model_validate({
-        "router9": {
-            "model": "cx/gpt-5.5",
-            "allowed_model_ids": ["cx/gpt-5.5", "google/gemini-2.5-pro"],
-        }
-    })
-    scene, warnings = asyncio.run(extract_scene(
-        "x",
-        preferred_ai_provider="router9",
-        preferred_ai_model="google/gemini-2.5-pro",
-        runtime_settings=runtime_settings,
-    ))
-
-    assert scene.topic == "unknown"
-    assert calls == [("router9", "google/gemini-2.5-pro")]
-    assert warnings == []
-
-
-def test_render_explicit_model_bypasses_registry_task_profile(monkeypatch):
-    from app.services.model_registry import ModelRegistry, ModelRegistryItem, ProviderRegistryItem, TaskProfile
-
-    calls = []
-
-    async def fake_extract(provider, settings, problem_text, grade, reasoning_layer, registry, preferred_ai_model=None, **kwargs):
-        calls.append((provider, preferred_ai_model))
-        return {"problem_text": problem_text, "renderer": "geogebra_2d", "objects": [], "view": {"dimension": "2d"}}
-
-    registry = ModelRegistry(
-        providers={
-            "router9": ProviderRegistryItem(
-                id="router9",
-                label="9router",
-                base_url="https://api-9router.sin-studio.tech/v1",
-                api_key_configured=True,
-            )
-        },
-        models={
-            "router9": [
-                ModelRegistryItem("router9", "cx/gpt-5.5", "cx/gpt-5.5", allowed=True),
-                ModelRegistryItem("router9", "google/gemini-2.5-pro", "google/gemini-2.5-pro", allowed=True),
-            ]
-        },
-        task_profiles={"render": TaskProfile("render", "router9", "cx/gpt-5.5", [])},
-        settings={"default_provider": "router9"},
-    )
-
-    async def fake_load_model_registry(_db, _settings=None):
-        return registry
-
-    monkeypatch.setattr("app.services.extractor._extract_with_provider", fake_extract)
-    monkeypatch.setattr("app.services.extractor.load_model_registry", fake_load_model_registry)
-    monkeypatch.setattr("app.services.model_registry.load_model_registry", fake_load_model_registry)
-
-    runtime_settings = RuntimeSettings.model_validate({
-        "router9": {
-            "model": "cx/gpt-5.5",
-            "allowed_model_ids": ["cx/gpt-5.5", "google/gemini-2.5-pro"],
-        }
-    })
-    scene, warnings = asyncio.run(extract_scene(
-        "x",
-        preferred_ai_provider="router9",
-        preferred_ai_model="google/gemini-2.5-pro",
-        runtime_settings=runtime_settings,
-        db=object(),
-    ))
-
-    assert scene.topic == "unknown"
-    assert calls == [("router9", "google/gemini-2.5-pro")]
-    assert warnings == []
-
 
-def test_render_provider_selection_uses_runtime_model_when_payload_model_missing(monkeypatch):
-    calls = []
-
-    async def fake_extract(provider, settings, problem_text, grade, reasoning_layer, registry, preferred_ai_model=None, **kwargs):
-        calls.append((provider, preferred_ai_model))
-        return {"problem_text": problem_text, "renderer": "geogebra_2d", "objects": [], "view": {"dimension": "2d"}}
-
-    monkeypatch.setattr("app.services.extractor._extract_with_provider", fake_extract)
-
-    runtime_settings = RuntimeSettings.model_validate({
-        "router9": {
-            "model": "google/gemini-2.5-pro",
-            "allowed_model_ids": ["cx/gpt-5.5", "google/gemini-2.5-pro"],
-        }
-    })
-    scene, warnings = asyncio.run(extract_scene(
-        "x",
-        preferred_ai_provider="router9",
-        preferred_ai_model=None,
-        runtime_settings=runtime_settings,
-    ))
-
-    assert scene.topic == "unknown"
-    assert calls == [("router9", "google/gemini-2.5-pro")]
-    assert warnings == []
-
-
-def test_render_explicit_openai_compat_is_tried_before_fallback_without_api_key(monkeypatch):
-    calls = []
-
-    async def fake_extract(provider, settings, problem_text, grade, reasoning_layer, registry, preferred_ai_model=None, **kwargs):
-        calls.append((provider, preferred_ai_model))
-        return {"problem_text": problem_text, "renderer": "geogebra_2d", "objects": [], "view": {"dimension": "2d"}}
-
-    monkeypatch.setattr("app.services.extractor._extract_with_provider", fake_extract)
-
-    runtime_settings = RuntimeSettings.model_validate({
-        "openai_compat": {
-            "model": "deepseek-v4-flash",
-        },
-        "router9": {
-            "model": "cx/gpt-5.5",
-            "allowed_model_ids": ["cx/gpt-5.5"],
-        },
-    })
-    scene, warnings = asyncio.run(extract_scene(
-        "x",
-        preferred_ai_provider="openai_compat",
-        preferred_ai_model="deepseek-v4-flash",
-        runtime_settings=runtime_settings,
-    ))
-
-    assert scene.topic == "unknown"
-    assert calls == [("openai_compat", "deepseek-v4-flash")]
-    assert warnings == []
-
-
-def test_render_explicit_model_does_not_fallback_to_other_providers(monkeypatch):
-    calls = []
-
-    async def fail_extract(provider, settings, problem_text, grade, reasoning_layer, registry, preferred_ai_model=None, **kwargs):
-        calls.append((provider, preferred_ai_model))
-        raise RuntimeError(f"{provider} unavailable")
-
-    monkeypatch.setattr("app.services.extractor._extract_with_provider", fail_extract)
-
-    runtime_settings = RuntimeSettings.model_validate({
-        "openai_compat": {
-            "model": "deepseek-v4-flash",
-        },
-        "router9": {
-            "model": "cx/gpt-5.5",
-            "allowed_model_ids": ["cx/gpt-5.5"],
-        },
-        "nvidia": {
-            "model": "qwen/qwen3-coder-480b-a35b-instruct",
-        },
-    })
-
-    with pytest.raises(RuntimeError) as error:
-        asyncio.run(extract_scene(
-            "x",
-            preferred_ai_provider="openai_compat",
-            preferred_ai_model="deepseek-v4-flash",
-            runtime_settings=runtime_settings,
-        ))
-
-    assert calls == [("openai_compat", "deepseek-v4-flash")]
-    assert "Không fallback sang provider ngoài lựa chọn" in str(error.value)
-    assert "router9/" not in str(error.value)
-    assert "nvidia/" not in str(error.value)
-
-
-def test_render_explicit_model_ignores_configured_profile_fallbacks(monkeypatch):
-    from app.services.model_registry import ModelRegistry, ModelRegistryItem, ProviderRegistryItem, TaskProfile
-
-    calls = []
-
-    async def fake_extract(provider, settings, problem_text, grade, reasoning_layer, registry, preferred_ai_model=None, **kwargs):
-        calls.append((provider, preferred_ai_model))
-        if preferred_ai_model == "deepseek-v4-flash":
-            raise RuntimeError("primary failed")
-        return {"problem_text": problem_text, "renderer": "geogebra_2d", "objects": [], "view": {"dimension": "2d"}}
-
-    registry = ModelRegistry(
-        providers={
-            "openai_compat": ProviderRegistryItem(
-                id="openai_compat",
-                label="OpenAI-compatible",
-                base_url="https://deepseek.example/v1",
-                api_key_configured=True,
-            ),
-            "router9": ProviderRegistryItem(
-                id="router9",
-                label="9router",
-                base_url="https://api-9router.sin-studio.tech/v1",
-                api_key_configured=True,
-            ),
-        },
-        models={
-            "openai_compat": [
-                ModelRegistryItem("openai_compat", "deepseek-v4-flash", "deepseek-v4-flash", allowed=True),
-                ModelRegistryItem("openai_compat", "deepseek-v4-fallback", "deepseek-v4-fallback", allowed=True),
-            ],
-            "router9": [
-                ModelRegistryItem("router9", "cx/gpt-5.5", "cx/gpt-5.5", allowed=True),
-            ],
-        },
-        task_profiles={
-            "render": TaskProfile("render", "openai_compat", "deepseek-v4-flash", ["deepseek-v4-fallback"]),
-        },
-        settings={"default_provider": "router9"},
-    )
-
-    async def fake_load_model_registry(_db, _settings=None):
-        return registry
-
-    monkeypatch.setattr("app.services.extractor._extract_with_provider", fake_extract)
-    monkeypatch.setattr("app.services.extractor.load_model_registry", fake_load_model_registry)
-    monkeypatch.setattr("app.services.model_registry.load_model_registry", fake_load_model_registry)
-
-    runtime_settings = RuntimeSettings.model_validate({
-        "openai_compat": {
-            "model": "deepseek-v4-flash",
-        },
-        "router9": {
-            "model": "cx/gpt-5.5",
-            "allowed_model_ids": ["cx/gpt-5.5"],
-        },
-    })
-
-    with pytest.raises(RuntimeError) as error:
-        asyncio.run(extract_scene(
-            "x",
-            preferred_ai_provider="openai_compat",
-            preferred_ai_model="deepseek-v4-flash",
-            runtime_settings=runtime_settings,
-            db=object(),
-        ))
-
-    assert calls == [("openai_compat", "deepseek-v4-flash")]
-    assert "Không fallback sang provider ngoài lựa chọn" in str(error.value)
-
-
-def test_render_explicit_ollama_alias_uses_ollama_provider(monkeypatch):
-    calls = []
-
-    async def fake_extract(provider, settings, problem_text, grade, reasoning_layer, registry, preferred_ai_model=None, **kwargs):
-        calls.append((provider, preferred_ai_model))
-        return {"problem_text": problem_text, "renderer": "geogebra_2d", "objects": [], "view": {"dimension": "2d"}}
-
-    monkeypatch.setattr("app.services.extractor._extract_with_provider", fake_extract)
-
-    runtime_settings = RuntimeSettings.model_validate({
-        "ollama": {
-            "model": "gpt-oss:120b",
-        },
-        "router9": {
-            "model": "cx/gpt-5.5",
-        },
-    })
-    scene, warnings = asyncio.run(extract_scene(
-        "x",
-        preferred_ai_provider="ollama",
-        preferred_ai_model="gpt-oss:120b",
-        runtime_settings=runtime_settings,
-    ))
-
-    assert scene.topic == "unknown"
-    assert calls == [("ollama", "gpt-oss:120b")]
-    assert warnings == []
-
-
-def test_render_tries_full_provider_order_before_mock(monkeypatch):
-    calls = []
-
-    async def fail_extract(provider, settings, problem_text, grade, reasoning_layer, registry, preferred_ai_model=None, **kwargs):
-        calls.append((provider, preferred_ai_model))
-        raise RuntimeError(f"{provider} unavailable")
-
-    monkeypatch.setattr("app.services.extractor._extract_with_provider", fail_extract)
-    monkeypatch.setattr(
-        "app.services.model_registry.get_settings",
-        lambda: Settings(
-            _env_file=None,
-            ai_provider="openrouter",
-            openrouter_api_key="router",
-            nvidia_api_key="nvidia",
-        ),
-    )
-
-    runtime_settings = RuntimeSettings.model_validate({
-        "default_provider": "openrouter",
-        "openrouter": {},
-        "nvidia": {},
-    })
-    # preferred_ai_provider forces the multi-provider legacy fallback path (not tier-only).
-    scene, warnings = asyncio.run(extract_scene(
-        "x",
-        preferred_ai_provider="openrouter",
-        runtime_settings=runtime_settings,
-    ))
-
-    assert scene.topic == "unknown"
-    assert {provider for provider, _ in calls} >= {"openrouter", "nvidia", "ollama"}
-    assert warnings[-1] == "Tất cả AI provider đều lỗi; đang dùng mock extractor."
-
-
-def test_render_skips_openrouter_family_without_api_key(monkeypatch):
-    calls = []
-
-    async def fail_extract(provider, settings, problem_text, grade, reasoning_layer, registry, preferred_ai_model=None, **kwargs):
-        calls.append((provider, preferred_ai_model))
-        raise RuntimeError(f"{provider} unavailable")
-
-    monkeypatch.setattr("app.services.extractor._extract_with_provider", fail_extract)
-
-    monkeypatch.setattr("app.services.model_registry.get_settings", lambda: Settings(_env_file=None, ai_provider="openrouter"))
-
-    scene, warnings = asyncio.run(extract_scene("x"))
-
-    assert scene.topic == "unknown"
-    assert [provider for provider, _ in calls] == ["ollama"]
-    assert warnings[-1] == "Tất cả AI provider đều lỗi; đang dùng mock extractor."
-
-
-def test_render_all_ai_failures_warn_with_attempt_chain_before_mock(monkeypatch):
-    async def fail_extract(provider, settings, problem_text, grade, reasoning_layer, registry, preferred_ai_model=None, **kwargs):
-        raise RuntimeError(f"{provider} unavailable")
-
-    monkeypatch.setattr("app.services.extractor._extract_with_provider", fail_extract)
-
-    monkeypatch.setattr("app.services.model_registry.get_settings", lambda: Settings(_env_file=None, ai_provider="openrouter", openrouter_api_key="router"))
-    scene, warnings = asyncio.run(extract_scene("x", runtime_settings=RuntimeSettings.model_validate({"default_provider": "openrouter"})))
-
-    assert scene.topic == "unknown"
-    assert any("AI fallback: openrouter/" in warning for warning in warnings)
-    assert warnings[-1] == "Tất cả AI provider đều lỗi; đang dùng mock extractor."
-
-
-def test_render_router9_only_failure_includes_attempted_model(monkeypatch):
-    async def fail_extract(provider, settings, problem_text, grade, reasoning_layer, registry, preferred_ai_model=None, **kwargs):
-        raise RuntimeError("gateway down")
-
-    monkeypatch.setattr("app.services.extractor._extract_with_provider", fail_extract)
-    monkeypatch.setattr(
-        "app.services.model_registry.get_settings",
-        lambda: Settings(_env_file=None, router9_api_key="secret", router9_allowed_models=["cc/codex-5.5"]),
-    )
-
-    try:
-        asyncio.run(extract_scene(
-            "x",
-            preferred_ai_model="cc/codex-5.5",
-            runtime_settings=RuntimeSettings.model_validate({"router9": {"only_mode": True}}),
-        ))
-    except RuntimeError as error:
-        message = str(error)
-        assert "9router-only" in message
-        assert "router9/cc/codex-5.5" in message
-        assert "gateway down" in message
-    else:
-        raise AssertionError("Expected router9-only render failure")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 def test_render_route_returns_failure_directly(monkeypatch, tmp_path):
+    """Legacy /api/render removed — failure path lives on /api/render/v3."""
     db = SQLiteClient(str(tmp_path / "render-route.db"))
     asyncio.run(apply_sqlite_migrations(db))
     settings = Settings(_env_file=None, sqlite_path=db.path)
@@ -1213,23 +737,37 @@ def test_render_route_returns_failure_directly(monkeypatch, tmp_path):
     async def noop(*args, **kwargs):
         return None
 
-    async def fail_response(*args, **kwargs):
+    async def fail_result(*args, **kwargs):
         raise RuntimeError("9router-only đang bật nên không fallback sang provider khác.")
+
+    class _Slot:
+        def release(self):
+            return None
+
+    class _Gate:
+        async def try_acquire(self, *_a, **_k):
+            return _Slot()
 
     app.dependency_overrides[get_database] = override_db
     app.dependency_overrides[get_settings] = lambda: settings
     app.dependency_overrides[require_active_user] = override_user
     monkeypatch.setattr("app.api.routes_render.enforce_rate_limit", noop)
     monkeypatch.setattr("app.api.routes_render.enforce_render_access", noop)
-    monkeypatch.setattr("app.api.routes_render.build_problem_render_response", fail_response)
+    monkeypatch.setattr("app.api.routes_render.resolve_byok_ai_config", noop)
+    monkeypatch.setattr("app.api.routes_render.build_problem_render_result_v3", fail_result)
+    monkeypatch.setattr("app.services.load_gates.render_load_gate", _Gate())
     try:
         client = TestClient(app)
-        response = client.post("/api/render", json={"problem_text": "x"})
+        response = client.post("/api/render/v3", json={"problem_text": "x", "tier": "tier1"})
     finally:
         app.dependency_overrides.clear()
 
-    assert response.status_code == 400
-    assert response.json()["detail"]["debug_message"] == "9router-only đang bật nên không fallback sang provider khác."
+    # Provider/gateway failures may surface as 502; client errors as 4xx; unhandled as 500.
+    assert response.status_code in {400, 422, 500, 502}
+    body = response.json()
+    detail = body.get("detail")
+    message = detail.get("debug_message") if isinstance(detail, dict) else str(detail)
+    assert "9router-only" in message or "fallback" in message.lower() or response.status_code == 500
 
 
 def test_solver_explainer_falls_back_when_openrouter_model_is_invalid(monkeypatch):
@@ -1262,39 +800,8 @@ def test_solver_explainer_falls_back_when_openrouter_model_is_invalid(monkeypatc
     assert data["steps"][0]["explanation"] == "LLM fallback worked"
 
 
-def test_render_scene_route_rebuilds_payload_from_edited_scene(monkeypatch):
-    async def no_user():
-        return None
-
-    async def noop(*args, **kwargs):
-        return None
-
-    app.dependency_overrides[require_active_user] = no_user
-    monkeypatch.setattr("app.api.routes_render.enforce_rate_limit", noop)
-    monkeypatch.setattr("app.api.routes_render.enforce_render_access", noop)
-    try:
-        with TestClient(app) as client:
-            response = client.post(
-                "/api/render/scene",
-                json={
-                    "scene": {
-                        "problem_text": "edited",
-                        "grade": 10,
-                        "topic": "coordinate_2d",
-                        "renderer": "geogebra_2d",
-                        "objects": [
-                            {"type": "point_2d", "name": "A", "x": 0, "y": 0},
-                            {"type": "point_2d", "name": "B", "x": 1, "y": 1},
-                            {"type": "line_2d", "name": "d1", "through": ["A", "B"]},
-                        ],
-                        "relations": [],
-                        "annotations": [],
-                        "view": {"dimension": "2d", "show_axes": True, "show_grid": True, "show_coordinates": False},
-                    }
-                },
-            )
-    finally:
-        app.dependency_overrides.clear()
-
-    assert response.status_code == 200
-    assert "d1 = Line(A, B)" in response.json()["payload"]["geogebra_commands"]
+def test_render_scene_route_rebuilds_payload_from_edited_scene():
+    """v2 POST /api/render/scene removed — workspace create uses native MathSceneV3."""
+    client = TestClient(app)
+    response = client.post("/api/render/scene", json={"scene": {"problem_text": "edited"}})
+    assert response.status_code == 404

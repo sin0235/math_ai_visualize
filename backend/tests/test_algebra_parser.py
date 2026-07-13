@@ -115,6 +115,14 @@ def test_interpreter_converts_sequence_term_index_to_structured_input():
     assert interpretation.topic_hint == "sequence"
 
 
+def test_interpreter_sequence_u1_u2_find_term():
+    interpretation = interpret_algebra_input(AlgebraSolveRequest(
+        input="với cấp số cộng với u1 = 2, u2 = 6, hỏi số hạng thứ 9 bằng bao nhiêu"
+    ))
+    assert interpretation.canonical_input == "arithmetic(u1=2,u2=6,n=9)"
+    assert interpretation.topic_hint == "sequence"
+
+
 def test_interpreter_converts_sequence_sum_text_to_structured_input():
     interpretation = interpret_algebra_input(AlgebraSolveRequest(input="Tính tổng 10 số hạng đầu của cấp số nhân u1=3 q=2"))
 

@@ -59,6 +59,9 @@ async def solve_algebra_endpoint(
         )
 
     user = await _active_user_from_request(http_request, db)
+    from app.services.prompt_security import enforce_prompt_injection_gate
+
+    enforce_prompt_injection_gate(request.input, mode=settings.prompt_injection_gate_mode)
     rollout = await evaluate_configured_nlp_rollout(
         db,
         InputEnvelope(
@@ -71,7 +74,16 @@ async def solve_algebra_endpoint(
         legacy_status="accepted",
         legacy_canonical=request.input,
     )
-    if rollout and rollout.can_apply and rollout.candidate:
+    # Rule-based NLP rollout must NOT rewrite natural-language algebra input into a
+    # weak/wrong canonical before mathcore. LLM NLP (when enabled) owns natural language;
+    # structured/symbolic inputs already pass through without rewrite.
+    if (
+        rollout
+        and rollout.can_apply
+        and rollout.candidate
+        and request.options.use_ai_extraction is False
+        and request.input_format == "structured"
+    ):
         request = _apply_algebra_canonical(request, rollout.candidate.canonical_payload)
 
     cost = algebra_request_cost(request)
@@ -151,11 +163,7 @@ async def solve_algebra_endpoint(
             return JSONResponse(status_code=504, content=response.model_dump(mode="json"))
 
         algebra_circuit_breaker.record_success()
-        if request.domain_source == "default" and request.domain == "R":
-            response.warnings = [
-                "Miền R đang là mặc định; đổi sang C nếu bài số phức.",
-                *response.warnings,
-            ]
+        # Không inject cảnh báo miền R mặc định — gây nhiễu UX production cho mọi bài.
         response.solution_ir = project_algebra_solution(request, response)
         if response.status == "unsupported":
             await log_nlp_taxonomy(

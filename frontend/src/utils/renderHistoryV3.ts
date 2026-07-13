@@ -5,13 +5,7 @@ export function decodeRenderHistoryDetail(value: unknown): RenderHistoryDetail {
   if (typeof detail.id !== 'string' || typeof detail.problem_text !== 'string') {
     throw new Error('Chi tiết lịch sử thiếu id hoặc problem_text.');
   }
-  if (detail.kind === 'math_scene_v2') {
-    record(detail.scene, 'Lịch sử v2 thiếu scene.');
-    record(detail.payload, 'Lịch sử v2 thiếu payload.');
-    if (!Array.isArray(detail.warnings)) throw new Error('Lịch sử v2 có warnings không hợp lệ.');
-    return detail as unknown as RenderHistoryDetail;
-  }
-  if (detail.kind !== 'math_scene_v3') throw new Error('Lịch sử có kind không được hỗ trợ.');
+  if (detail.kind !== 'math_scene_v3') throw new Error('Chỉ hỗ trợ lịch sử Scene v3.');
 
   const workspace = record(detail.workspace, 'Lịch sử v3 thiếu workspace.');
   const scene = record(workspace.scene, 'Workspace v3 thiếu scene.');

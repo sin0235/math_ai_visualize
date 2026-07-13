@@ -140,14 +140,10 @@ def attach_replayed_proof(
     if replay.accepted and replay.plan is not None:
         result.proof_plan = replay.plan.model_dump(mode="json")
         return result
+    # Keep a correct deterministic answer when replay fails; only attach advisory noise.
     reason = replay.reason or "Proof không replay được."
-    return SolverResult(
-        result.question,
-        "Không đủ dữ kiện",
-        [],
-        [*result.warnings, reason],
-        confidence="insufficient",
-        method=method,
-        used_facts=result.used_facts,
-        data_issues=[reason],
-    )
+    if reason not in result.warnings:
+        result.warnings = [*result.warnings, f"Proof plan chưa replay được: {reason}"]
+    if reason not in result.data_issues:
+        result.data_issues = [*result.data_issues, reason]
+    return result

@@ -34,6 +34,7 @@ Topic = Literal[
     "function_graph",
     "conic",
     "vector_2d",
+    "plane_geometry",
     "solid_geometry",
     "coordinate_3d",
     "unknown",

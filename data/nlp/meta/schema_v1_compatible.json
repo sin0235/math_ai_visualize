@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Math AI Renderer Corpus v1-compatible record",
+  "type": "object",
+  "required": [
+    "case_id",
+    "target",
+    "input",
+    "expected",
+    "tags"
+  ],
+  "properties": {
+    "case_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "target": {
+      "type": "string",
+      "enum": [
+        "algebra",
+        "geometry_solve",
+        "render",
+        "analyzer",
+        "ocr"
+      ]
+    },
+    "input": {
+      "type": "object",
+      "required": [
+        "text"
+      ],
+      "properties": {
+        "text": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "expected": {
+      "type": "object",
+      "required": [
+        "domain",
+        "topic",
+        "task",
+        "canonical",
+        "entities",
+        "constraints",
+        "status"
+      ],
+      "properties": {
+        "domain": {
+          "type": "string"
+        },
+        "topic": {
+          "type": "string"
+        },
+        "task": {
+          "type": "string"
+        },
+        "canonical": {
+          "type": "string"
+        },
+        "entities": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "constraints": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "accepted",
+            "needs_confirmation",
+            "unsupported",
+            "abstained"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": false
+}

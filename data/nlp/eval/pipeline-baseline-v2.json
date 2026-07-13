@@ -1,0 +1,186 @@
+{
+  "case_count": 19431,
+  "corpus": "v2.jsonl",
+  "schema_version": 1,
+  "overall": {
+    "case_count": 19431,
+    "intent_macro_f1": 0.205281,
+    "canonical_exact_match": 0.07311,
+    "canonical_semantic_match": 0.07311,
+    "entity_f1": 0.311019,
+    "constraint_f1": 0.046316,
+    "unsupported_recall": 0.309804,
+    "abstention_precision": 0.129877,
+    "brier_score": 0.253558,
+    "ece_10": 0.200006
+  },
+  "targets": {
+    "algebra": {
+      "case_count": 10488,
+      "intent_macro_f1": 0.187874,
+      "canonical_exact_match": 0.120637,
+      "canonical_semantic_match": 0.120637,
+      "entity_f1": 0.503261,
+      "constraint_f1": 0.0,
+      "unsupported_recall": 0.013158,
+      "abstention_precision": 0.070601,
+      "brier_score": 0.247895,
+      "ece_10": 0.223916
+    },
+    "analyzer": {
+      "case_count": 1291,
+      "intent_macro_f1": 0.386939,
+      "canonical_exact_match": 0.000776,
+      "canonical_semantic_match": 0.000776,
+      "entity_f1": 0.004392,
+      "constraint_f1": 0.0,
+      "unsupported_recall": 0.0,
+      "abstention_precision": 0.069984,
+      "brier_score": 0.317746,
+      "ece_10": 0.393571
+    },
+    "geometry_solve": {
+      "case_count": 2882,
+      "intent_macro_f1": 0.227219,
+      "canonical_exact_match": 0.004174,
+      "canonical_semantic_match": 0.004174,
+      "entity_f1": 0.193096,
+      "constraint_f1": 0.063168,
+      "unsupported_recall": 0.509804,
+      "abstention_precision": 0.094823,
+      "brier_score": 0.337022,
+      "ece_10": 0.322953
+    },
+    "ocr": {
+      "case_count": 3075,
+      "intent_macro_f1": 0.112429,
+      "canonical_exact_match": 0.045913,
+      "canonical_semantic_match": 0.045913,
+      "entity_f1": 0.290002,
+      "constraint_f1": 0.0,
+      "unsupported_recall": 1.0,
+      "abstention_precision": 0.423706,
+      "brier_score": 0.266344,
+      "ece_10": 0.252898
+    },
+    "render": {
+      "case_count": 1695,
+      "intent_macro_f1": 0.162898,
+      "canonical_exact_match": 0.0,
+      "canonical_semantic_match": 0.0,
+      "entity_f1": 0.003675,
+      "constraint_f1": 0.013793,
+      "unsupported_recall": 0.509804,
+      "abstention_precision": 0.070513,
+      "brier_score": 0.074592,
+      "ece_10": 0.12987
+    }
+  },
+  "geometry_subtypes": {
+    "analyze": {
+      "case_count": 13,
+      "entity_f1": 0.0,
+      "goal_exact_match": 0.0
+    },
+    "angle": {
+      "case_count": 148,
+      "entity_f1": 0.018809,
+      "goal_exact_match": 0.006757
+    },
+    "arc_length": {
+      "case_count": 38,
+      "entity_f1": 0.0,
+      "goal_exact_match": 0.0
+    },
+    "area": {
+      "case_count": 92,
+      "entity_f1": 0.042553,
+      "goal_exact_match": 0.021739
+    },
+    "circle_metric": {
+      "case_count": 1,
+      "entity_f1": 1.0,
+      "goal_exact_match": 1.0
+    },
+    "circumference": {
+      "case_count": 22,
+      "entity_f1": 0.0,
+      "goal_exact_match": 0.0
+    },
+    "classify": {
+      "case_count": 15,
+      "entity_f1": 0.0,
+      "goal_exact_match": 0.0
+    },
+    "distance": {
+      "case_count": 202,
+      "entity_f1": 0.479401,
+      "goal_exact_match": 0.311881
+    },
+    "equation": {
+      "case_count": 751,
+      "entity_f1": 0.304212,
+      "goal_exact_match": 0.0
+    },
+    "inequality": {
+      "case_count": 109,
+      "entity_f1": 0.0,
+      "goal_exact_match": 0.0
+    },
+    "lateral_area": {
+      "case_count": 54,
+      "entity_f1": 0.0,
+      "goal_exact_match": 0.0
+    },
+    "perimeter": {
+      "case_count": 60,
+      "entity_f1": 0.032787,
+      "goal_exact_match": 0.016667
+    },
+    "proof": {
+      "case_count": 71,
+      "entity_f1": 0.171717,
+      "goal_exact_match": 0.014085
+    },
+    "pythagoras": {
+      "case_count": 1,
+      "entity_f1": 1.0,
+      "goal_exact_match": 1.0
+    },
+    "quadrilateral_metric": {
+      "case_count": 1,
+      "entity_f1": 1.0,
+      "goal_exact_match": 1.0
+    },
+    "solve": {
+      "case_count": 543,
+      "entity_f1": 0.088129,
+      "goal_exact_match": 0.0
+    },
+    "triangle_congruence": {
+      "case_count": 1,
+      "entity_f1": 1.0,
+      "goal_exact_match": 1.0
+    },
+    "triangle_similarity": {
+      "case_count": 1,
+      "entity_f1": 1.0,
+      "goal_exact_match": 1.0
+    },
+    "unknown": {
+      "case_count": 93,
+      "entity_f1": 1.0,
+      "goal_exact_match": 0.27957
+    },
+    "vector": {
+      "case_count": 281,
+      "entity_f1": 0.526978,
+      "goal_exact_match": 0.021352
+    },
+    "volume": {
+      "case_count": 385,
+      "entity_f1": 0.007797,
+      "goal_exact_match": 0.005195
+    }
+  }
+}

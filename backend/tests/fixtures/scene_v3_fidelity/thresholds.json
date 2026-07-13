@@ -1,0 +1,8 @@
+{
+  "min_cases": 30,
+  "min_pipeline_pass_rate": 0.95,
+  "min_can_project_match_rate": 0.95,
+  "min_solve_accuracy": 0.9,
+  "max_unexpected_issue_rate": 0.05,
+  "require_positive_and_negative": true
+}

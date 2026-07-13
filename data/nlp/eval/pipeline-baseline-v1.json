@@ -1,0 +1,17 @@
+{
+  "case_count": 19521,
+  "corpus": "v2.jsonl",
+  "schema_version": 1,
+  "overall": {
+    "case_count": 19521,
+    "intent_macro_f1": 0.204783,
+    "canonical_exact_match": 0.073158,
+    "canonical_semantic_match": 0.073158,
+    "entity_f1": 0.316622,
+    "constraint_f1": 0.045961,
+    "unsupported_recall": 0.309804,
+    "abstention_precision": 0.130416,
+    "brier_score": 0.252852,
+    "ece_10": 0.199191
+  }
+}

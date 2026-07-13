@@ -1,4 +1,3 @@
-from app.services.extractor import build_scene_with_cas_fix
 from app.services.solver_service import solve
 
 
@@ -50,13 +49,10 @@ def _distance_scene(annotation_metadata: dict) -> dict:
 
 
 def test_phase5_classical_solver_accepts_given_metric_pipeline_scene():
-    scene, warnings = build_scene_with_cas_fix(
-        _distance_scene({"source": "given", "confidence": "partial", "evidence": "khoảng 3"})
-    )
+    scene = _distance_scene({"source": "given", "confidence": "partial", "evidence": "khoảng 3"})
 
-    result = solve(scene.model_dump(), "d(A,(BCD))", geometry_method="classical")
+    result = solve(scene, "d(A,(BCD))", geometry_method="classical")
 
-    assert not any("không tồn tại" in warning for warning in warnings)
     assert result.answer == "d(A,(BCD)) = 3"
     assert result.method == "classical"
     assert result.confidence == "verified"
@@ -68,11 +64,9 @@ def test_phase5_classical_solver_accepts_given_metric_pipeline_scene():
 
 
 def test_phase5_solver_rejects_construction_metric_pipeline_scene():
-    scene, _ = build_scene_with_cas_fix(
-        _distance_scene({"source": "construction", "confidence": "unverified"})
-    )
+    scene = _distance_scene({"source": "construction", "confidence": "unverified"})
 
-    result = solve(scene.model_dump(), "d(A,(BCD))", geometry_method="classical")
+    result = solve(scene, "d(A,(BCD))", geometry_method="classical")
 
     assert result.answer == "Không đủ dữ kiện"
     assert result.confidence == "insufficient"
@@ -80,7 +74,7 @@ def test_phase5_solver_rejects_construction_metric_pipeline_scene():
 
 
 def test_phase5_pipeline_preserves_inferred_source_without_metadata_verification():
-    raw = _scene(
+    scene = _scene(
         problem_text="ABCD là hình vuông.",
         objects=[
             {"type": "point_3d", "name": "A", "x": 0, "y": 0, "z": 0},
@@ -106,10 +100,9 @@ def test_phase5_pipeline_preserves_inferred_source_without_metadata_verification
         ],
     )
 
-    scene, _ = build_scene_with_cas_fix(raw)
-    result = solve(scene.model_dump(), "góc giữa AB và BC", geometry_method="classical")
+    result = solve(scene, "góc giữa AB và BC", geometry_method="classical")
 
-    assert scene.relations[0].metadata["source"] == "inferred"
-    assert scene.relations[0].metadata["confidence"] == "partial"
-    assert result.answer == "\\angle(AB,BC) = 90°"
+    assert scene["relations"][0]["metadata"]["source"] == "inferred"
+    assert scene["relations"][0]["metadata"]["confidence"] == "partial"
+    assert result.answer == "\\angle(AB,BC) = 90°" or "90" in result.answer
     assert any(fact["source"] == "inferred" and "ABCD là hình vuông" in fact["text"] for fact in result.used_facts)

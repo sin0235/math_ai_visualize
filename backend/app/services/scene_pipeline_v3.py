@@ -44,7 +44,18 @@ class ScenePipelineV3Result:
 
     @property
     def can_project(self) -> bool:
-        return self.projection is not None and not any(issue.severity == "error" and issue.stage in {"structure", "topology", "project"} for issue in self.issues)
+        """Fail-closed: topology, projection, and failed constraints block projection.
+
+        Unverifiable/unsupported relations remain warnings and may still project
+        under needs_confirmation status.
+        """
+        if self.projection is None:
+            return False
+        return not any(
+            issue.severity == "error"
+            and issue.stage in {"structure", "topology", "verify", "project"}
+            for issue in self.issues
+        )
 
 
 def run_scene_pipeline_v3(scene: MathSceneV3) -> ScenePipelineV3Result:

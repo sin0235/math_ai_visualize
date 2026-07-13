@@ -12,10 +12,21 @@ declare global {
 type Vec3 = { x: number; y: number; z: number };
 type GraphViewBounds = { left: number; right: number; bottom: number; top: number };
 
+/** Lightweight point list from RenderProjectionV3 — preferred over full MathScene. */
+export type GeoGebraPoint = {
+  name: string;
+  x: number;
+  y: number;
+  z?: number;
+};
+
 interface GeoGebraViewProps {
   commands: string[];
   renderer: Extract<Renderer, 'geogebra_2d' | 'geogebra_3d'>;
-  scene: MathScene;
+  /** Optional full scene (function analyzer). Prefer `points` for Scene v3 workspace. */
+  scene?: MathScene;
+  /** Projection points for Scene v3 / GeoGebra without legacy MathScene bridge. */
+  points?: GeoGebraPoint[];
   view: SceneView;
   viewBounds?: GraphViewBounds;
   objectVisibility?: Readonly<Record<string, boolean>>;
@@ -99,7 +110,7 @@ function resetGeoGebraLoader() {
   geogebraLoadPromise = null;
 }
 
-export function GeoGebraView({ commands, renderer, scene, view, viewBounds, objectVisibility, onPointChange, onStatusChange, embedded = false }: GeoGebraViewProps) {
+export function GeoGebraView({ commands, renderer, scene, points, view, viewBounds, objectVisibility, onPointChange, onStatusChange, embedded = false }: GeoGebraViewProps) {
   const rawId = useId();
   const appletId = `ggb-${rawId.replace(/[^a-zA-Z0-9]/g, '')}`;
   const appName = renderer === 'geogebra_3d' ? '3d' : 'classic';
@@ -108,7 +119,8 @@ export function GeoGebraView({ commands, renderer, scene, view, viewBounds, obje
   const syncTimerRef = useRef<number | null>(null);
   const applyingCommandsRef = useRef(false);
   const commandSignature = useMemo(() => commands.join('\n'), [commands]);
-  const editablePointNames = useMemo(() => new Set(scene.objects.filter((obj) => obj.type === 'point_2d' || obj.type === 'point_3d').map((obj) => obj.name)), [scene.objects]);
+  const geometryPoints = useMemo(() => resolveGeometryPoints(points, scene), [points, scene]);
+  const editablePointNames = useMemo(() => new Set(geometryPoints.map((point) => point.name)), [geometryPoints]);
   const [apiReady, setApiReady] = useState(false);
   const [status, setStatus] = useState<LoadStatus>('loading');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -207,14 +219,14 @@ export function GeoGebraView({ commands, renderer, scene, view, viewBounds, obje
     if (!apiReady || !apiRef.current) return;
     const api = apiRef.current;
     applyingCommandsRef.current = true;
-    const failures = applyCommands(api, commands, view, scene, renderer === 'geogebra_3d', viewBounds);
+    const failures = applyCommands(api, commands, view, geometryPoints, scene, renderer === 'geogebra_3d', viewBounds);
     requestAnimationFrame(() => resizeAppletToContainer(api, containerRef.current));
     window.setTimeout(() => {
       applyingCommandsRef.current = false;
     }, 0);
     setCommandErrors(failures);
     setStatus(failures.length > 0 ? 'error' : 'ready');
-  }, [apiReady, commandSignature, commands, renderer, scene, view.show_axes, view.show_grid, viewBounds?.bottom, viewBounds?.left, viewBounds?.right, viewBounds?.top]);
+  }, [apiReady, commandSignature, commands, geometryPoints, renderer, scene, view.show_axes, view.show_grid, viewBounds?.bottom, viewBounds?.left, viewBounds?.right, viewBounds?.top]);
 
   useEffect(() => {
     const api = apiRef.current;
@@ -252,11 +264,11 @@ export function GeoGebraView({ commands, renderer, scene, view, viewBounds, obje
       return;
     }
     try {
-      const current = scene.objects.find((obj) => (obj.type === 'point_2d' || obj.type === 'point_3d') && obj.name === name);
+      const current = geometryPoints.find((point) => point.name === name);
       if (!current) return;
       const x = api.getXcoord(name);
       const y = api.getYcoord(name);
-      const z = current.type === 'point_3d' ? api.getZcoord?.(name) ?? current.z : 0;
+      const z = current.z != null ? api.getZcoord?.(name) ?? current.z : 0;
       if (![x, y, z].every(Number.isFinite)) return;
       onPointChange?.(name, { x, y, z });
       setSyncMessage(`Đã đồng bộ điểm ${name}.`);
@@ -332,7 +344,25 @@ function resizeAppletToContainer(api: GeoGebraApi | null, container: HTMLDivElem
   api.setHeight?.(height);
 }
 
-function applyCommands(api: GeoGebraApi, commands: string[], view: SceneView, scene: MathScene, is3d: boolean, viewBounds?: GraphViewBounds) {
+function resolveGeometryPoints(points: GeoGebraPoint[] | undefined, scene: MathScene | undefined): GeoGebraPoint[] {
+  if (points?.length) return points;
+  if (!scene) return [];
+  return scene.objects.flatMap((obj) => {
+    if (obj.type === 'point_2d') return [{ name: obj.name, x: obj.x, y: obj.y }];
+    if (obj.type === 'point_3d') return [{ name: obj.name, x: obj.x, y: obj.y, z: obj.z }];
+    return [];
+  });
+}
+
+function applyCommands(
+  api: GeoGebraApi,
+  commands: string[],
+  view: SceneView,
+  points: GeoGebraPoint[],
+  scene: MathScene | undefined,
+  is3d: boolean,
+  viewBounds?: GraphViewBounds,
+) {
   const failures: string[] = [];
   try {
     api.reset?.();
@@ -356,7 +386,7 @@ function applyCommands(api: GeoGebraApi, commands: string[], view: SceneView, sc
 
   if (!is3d) {
     try {
-      fit2dView(api, scene, viewBounds);
+      fit2dView(api, points, scene, viewBounds);
     } catch (caught) {
       const detail = caught instanceof Error ? caught.message : 'Không rõ lỗi';
       failures.push(`Auto-fit view: ${detail}`);
@@ -372,7 +402,12 @@ function isSideEffectCommand(command: string) {
   return /^\s*(Set[A-Za-z]+|ShowLabel)\s*\(/i.test(command);
 }
 
-function fit2dView(api: GeoGebraApi, scene: MathScene, viewBounds?: GraphViewBounds) {
+function fit2dView(
+  api: GeoGebraApi,
+  points: GeoGebraPoint[],
+  scene: MathScene | undefined,
+  viewBounds?: GraphViewBounds,
+) {
   if (!api.setCoordSystem) return;
   if (viewBounds && [viewBounds.left, viewBounds.right, viewBounds.bottom, viewBounds.top].every(Number.isFinite)
     && viewBounds.left < viewBounds.right && viewBounds.bottom < viewBounds.top) {
@@ -384,24 +419,29 @@ function fit2dView(api: GeoGebraApi, scene: MathScene, viewBounds?: GraphViewBou
   const max = { x: -Infinity, y: -Infinity };
   let hasGeometry = false;
 
-  // 1. Points
-  scene.objects.forEach(obj => {
-    if (obj.type === 'point_2d') {
-      min.x = Math.min(min.x, obj.x);
-      max.x = Math.max(max.x, obj.x);
-      min.y = Math.min(min.y, obj.y);
-      max.y = Math.max(max.y, obj.y);
-      hasGeometry = true;
-    } else if (obj.type === 'circle_2d') {
-      const center = scene.objects.find(o => o.type === 'point_2d' && o.name === obj.center) as any;
-      if (center && obj.radius != null) {
-        min.x = Math.min(min.x, center.x - obj.radius);
-        max.x = Math.max(max.x, center.x + obj.radius);
-        min.y = Math.min(min.y, center.y - obj.radius);
-        max.y = Math.max(max.y, center.y + obj.radius);
-        hasGeometry = true;
-      }
-    }
+  points.forEach((point) => {
+    min.x = Math.min(min.x, point.x);
+    max.x = Math.max(max.x, point.x);
+    min.y = Math.min(min.y, point.y);
+    max.y = Math.max(max.y, point.y);
+    hasGeometry = true;
+  });
+
+  // Circles still come from full MathScene (function analyzer path).
+  scene?.objects.forEach((obj) => {
+    if (obj.type !== 'circle_2d' || obj.radius == null) return;
+    const centerFromPoints = points.find((point) => point.name === obj.center);
+    const centerFromScene = scene.objects.find((item) => item.type === 'point_2d' && item.name === obj.center);
+    const center = centerFromPoints
+      ?? (centerFromScene && centerFromScene.type === 'point_2d'
+        ? { name: centerFromScene.name, x: centerFromScene.x, y: centerFromScene.y }
+        : null);
+    if (!center) return;
+    min.x = Math.min(min.x, center.x - obj.radius);
+    max.x = Math.max(max.x, center.x + obj.radius);
+    min.y = Math.min(min.y, center.y - obj.radius);
+    max.y = Math.max(max.y, center.y + obj.radius);
+    hasGeometry = true;
   });
 
   if (!hasGeometry) {
@@ -412,6 +452,6 @@ function fit2dView(api: GeoGebraApi, scene: MathScene, viewBounds?: GraphViewBou
   const width = Math.max(max.x - min.x, 1);
   const height = Math.max(max.y - min.y, 1);
   const padding = Math.max(width, height) * 0.3 + 0.5;
-  
+
   api.setCoordSystem(min.x - padding, max.x + padding, min.y - padding, max.y + padding);
 }

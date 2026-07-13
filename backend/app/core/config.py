@@ -10,6 +10,8 @@ from app.schemas.scene import RuntimeSettings
 class Settings(BaseSettings):
     app_name: str = "AI Math Renderer"
     environment: Literal["development", "test", "production"] = "development"
+    # Geometry render must never silently ship mock figures in production.
+    allow_render_mock: bool = False
     cors_origins: list[str] = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
@@ -113,9 +115,6 @@ class Settings(BaseSettings):
     register_ip_daily_limit: int = 20
     allow_missing_origin_for_cookie_mutations: bool = True
     trusted_proxy_ips: list[str] = []
-    cas_repair_enabled: bool = False
-    cas_repair_max_iterations: int = 2
-    cas_repair_min_severity: Literal["warning", "error"] = "warning"
     advisory_enabled: bool = True
     advisory_include_debug_signals: bool = False
     local_ocr_enabled: bool = True
@@ -140,6 +139,9 @@ class Settings(BaseSettings):
     algebra_circuit_open_seconds: float = 60.0
     dev_bypass_auth: bool = False
     user_secret_encryption_key: str | None = None
+    # Prompt-injection intent gate: off | log (metrics only) | enforce (block).
+    # Default enforce after soak; set PROMPT_INJECTION_GATE_MODE=log to observe only.
+    prompt_injection_gate_mode: Literal["off", "log", "enforce"] = "enforce"
 
     model_config = SettingsConfigDict(env_file=(".env", "backend/.env"), env_file_encoding="utf-8", extra="ignore")
 

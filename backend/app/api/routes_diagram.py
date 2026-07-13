@@ -46,6 +46,14 @@ async def problem_variants(
     await enforce_render_access(db, user)
     byok_used = False
     try:
+        from app.core.config import get_settings as _get_settings
+        from app.services.prompt_security import enforce_prompt_injection_gate
+
+        if request.original_problem:
+            enforce_prompt_injection_gate(
+                request.original_problem,
+                mode=_get_settings().prompt_injection_gate_mode,
+            )
         committed = await load_committed_scene_v3(db, user.id, request.scene_ref)
         scene_input = scene_v3_to_variants_input(committed.result.scene)
         settings = await resolve_effective_settings(db, request.runtime_settings)

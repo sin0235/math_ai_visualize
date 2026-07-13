@@ -33,6 +33,6 @@ assert.throws(
   })),
   /Projection revision không khớp/,
 );
-assert.throws(() => decodeRenderHistoryDetail({ id: 'legacy', problem_text: 'x', kind: 'unknown' }), /kind không được hỗ trợ/);
+assert.throws(() => decodeRenderHistoryDetail({ id: 'legacy', problem_text: 'x', kind: 'unknown' }), /Chỉ hỗ trợ lịch sử Scene v3/);
 
 console.log('render history v3 decoder: ok');

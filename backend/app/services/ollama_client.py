@@ -4,10 +4,11 @@ import time
 import httpx
 
 from app.core.config import Settings
-from app.services.ai_prompt import REASONING_SYSTEM_PROMPT, SCENE_EXTRACTION_SYSTEM_PROMPT, build_reasoning_prompt, build_scene_extraction_prompt
+from app.services.ai_prompt import REASONING_SYSTEM_PROMPT, SCENE_EXTRACTION_V3_SYSTEM_PROMPT, build_reasoning_prompt, build_scene_extraction_prompt
 from app.services.chat_response import extract_chat_message_content
 from app.services.openrouter_client import OCR_SYSTEM_PROMPT, _strip_text_fences
 from app.services.provider_logging import chat_message_input_chars, log_ocr_summary, log_provider_request, log_provider_response, log_scene_summary
+from app.services.prompt_security import parse_llm_json_dict, secure_system_prompt
 
 
 class OllamaClient:
@@ -23,11 +24,20 @@ class OllamaClient:
         reasoning_layer: str = "off",
         reasoning_plan: dict | None = None,
         system_prompt: str | None = None,
+        nlp_hints: dict | None = None,
+        user_prompt: str | None = None,
+        schema_version: str = "3.0",
     ) -> dict:
         base_url = self.settings.ollama_base_url.rstrip("/")
         if _uses_openai_compatible_api(base_url):
-            return await self._extract_scene_json_openai_compatible(base_url, problem_text, grade, reasoning_layer, reasoning_plan, system_prompt=system_prompt)
-        return await self._extract_scene_json_local(base_url, problem_text, grade, reasoning_layer, reasoning_plan, system_prompt=system_prompt)
+            return await self._extract_scene_json_openai_compatible(
+                base_url, problem_text, grade, reasoning_layer, reasoning_plan,
+                system_prompt=system_prompt, nlp_hints=nlp_hints, user_prompt=user_prompt, schema_version=schema_version,
+            )
+        return await self._extract_scene_json_local(
+            base_url, problem_text, grade, reasoning_layer, reasoning_plan,
+            system_prompt=system_prompt, nlp_hints=nlp_hints, user_prompt=user_prompt, schema_version=schema_version,
+        )
 
     async def _extract_scene_json_local(
         self,
@@ -37,12 +47,15 @@ class OllamaClient:
         reasoning_layer: str,
         reasoning_plan: dict | None = None,
         system_prompt: str | None = None,
+        nlp_hints: dict | None = None,
+        user_prompt: str | None = None,
+        schema_version: str = "3.0",
     ) -> dict:
         headers = {"Content-Type": "application/json"}
         if self.settings.ollama_api_key:
             headers["Authorization"] = f"Bearer {self.settings.ollama_api_key}"
 
-        sys_prompt = system_prompt or SCENE_EXTRACTION_SYSTEM_PROMPT
+        sys_prompt = secure_system_prompt(system_prompt or SCENE_EXTRACTION_V3_SYSTEM_PROMPT)
 
         payload = {
             "model": self.model,
@@ -50,7 +63,7 @@ class OllamaClient:
             "format": "json",
             "messages": [
                 {"role": "system", "content": sys_prompt},
-                {"role": "user", "content": build_scene_extraction_prompt(problem_text, grade, reasoning_layer, reasoning_plan=reasoning_plan)},
+                {"role": "user", "content": user_prompt or build_scene_extraction_prompt(problem_text, grade, reasoning_layer, reasoning_plan=reasoning_plan, nlp_hints=nlp_hints, schema_version=schema_version)},
             ],
             "options": {"temperature": 0.1},
         }
@@ -76,7 +89,7 @@ class OllamaClient:
             raise RuntimeError("Ollama response không đúng định dạng message.content") from error
         if not content.strip():
             raise RuntimeError("Ollama response message.content không có nội dung")
-        scene_json = json.loads(_strip_json_fences(content))
+        scene_json = parse_llm_json_dict(content, task="scene")
         log_scene_summary(self.provider_id, scene_json)
         return scene_json
 
@@ -88,17 +101,20 @@ class OllamaClient:
         reasoning_layer: str,
         reasoning_plan: dict | None = None,
         system_prompt: str | None = None,
+        nlp_hints: dict | None = None,
+        user_prompt: str | None = None,
+        schema_version: str = "3.0",
     ) -> dict:
         if not self.settings.ollama_api_key:
             raise RuntimeError("OLLAMA_API_KEY chưa được cấu hình cho Ollama cloud.")
 
-        sys_prompt = system_prompt or SCENE_EXTRACTION_SYSTEM_PROMPT
+        sys_prompt = secure_system_prompt(system_prompt or SCENE_EXTRACTION_V3_SYSTEM_PROMPT)
 
         payload = {
             "model": self.model,
             "messages": [
                 {"role": "system", "content": sys_prompt},
-                {"role": "user", "content": build_scene_extraction_prompt(problem_text, grade, reasoning_layer, reasoning_plan=reasoning_plan)},
+                {"role": "user", "content": user_prompt or build_scene_extraction_prompt(problem_text, grade, reasoning_layer, reasoning_plan=reasoning_plan, nlp_hints=nlp_hints, schema_version=schema_version)},
             ],
             "temperature": 0.1,
             "response_format": {"type": "json_object"},
@@ -129,7 +145,7 @@ class OllamaClient:
             raise RuntimeError("Ollama cloud response không đúng định dạng choices[0].message.content") from error
         if not content.strip():
             raise RuntimeError("Ollama cloud response message.content không có nội dung")
-        scene_json = json.loads(_strip_json_fences(content))
+        scene_json = parse_llm_json_dict(content, task="scene")
         log_scene_summary(self.provider_id, scene_json)
         return scene_json
 
@@ -230,7 +246,7 @@ class OllamaClient:
         if self.settings.ollama_api_key:
             headers["Authorization"] = f"Bearer {self.settings.ollama_api_key}"
 
-        sys_prompt = system_prompt or REASONING_SYSTEM_PROMPT
+        sys_prompt = secure_system_prompt(system_prompt or REASONING_SYSTEM_PROMPT)
 
         payload = {
             "model": self.model,
@@ -261,13 +277,13 @@ class OllamaClient:
             content = extract_chat_message_content(response.json()["message"])
         except (KeyError, TypeError, ValueError) as error:
             raise RuntimeError("Ollama reasoning response không đúng định dạng") from error
-        return json.loads(_strip_json_fences(content))
+        return parse_llm_json_dict(content, task="reasoning")
 
     async def _reason_openai_compatible(self, base_url: str, problem_text: str, grade: int | None, system_prompt: str | None = None) -> dict:
         if not self.settings.ollama_api_key:
             raise RuntimeError("OLLAMA_API_KEY chưa được cấu hình cho Ollama cloud.")
 
-        sys_prompt = system_prompt or REASONING_SYSTEM_PROMPT
+        sys_prompt = secure_system_prompt(system_prompt or REASONING_SYSTEM_PROMPT)
 
         payload = {
             "model": self.model,
@@ -301,7 +317,7 @@ class OllamaClient:
             content = extract_chat_message_content(response.json()["choices"][0]["message"])
         except (KeyError, IndexError, TypeError, ValueError) as error:
             raise RuntimeError("Ollama cloud reasoning response không đúng định dạng") from error
-        return json.loads(_strip_json_fences(content))
+        return parse_llm_json_dict(content, task="reasoning")
 
 
 def _uses_openai_compatible_api(base_url: str) -> bool:
