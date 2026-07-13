@@ -123,18 +123,13 @@ export function AlgebraInput({
 
   return (
     <section className="algebra-input-panel">
-      <details
-        className="algebra-input-disclosure"
-        open={expanded}
-        onToggle={(event) => onExpandedChange(event.currentTarget.open)}
-      >
-        <summary>
+      <div className="algebra-input-disclosure">
+        <header className="algebra-input-header">
           <span className="algebra-panel-heading">
             <span>Thiết lập bài toán</span>
             <strong>Nhập và cấu hình</strong>
           </span>
-          <span className="algebra-disclosure-action">{expanded ? 'Ẩn' : 'Mở'}</span>
-        </summary>
+        </header>
         <div className="algebra-input-disclosure-content">
 
       <div className="algebra-input-section">
@@ -307,7 +302,7 @@ export function AlgebraInput({
         {loading ? 'Đang giải...' : (inputMode === 'natural' || useAiExtraction ? 'Tiếp theo: xác nhận' : 'Giải bài')}
       </button>
         </div>
-      </details>
+      </div>
     </section>
   );
 }

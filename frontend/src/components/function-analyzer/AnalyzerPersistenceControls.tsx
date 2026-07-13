@@ -145,9 +145,15 @@ export function AnalyzerPersistenceControls({
   }
 
   return (
-    <section ref={sectionRef} className="fa2-actions" aria-label="Thao tác với kết quả">
-      <div className="fa2-action-bar">
-        <button type="button" className="sp-btn-secondary" onClick={() => void saveCurrent()} disabled={disabled || busy}>Lưu</button>
+    <section ref={sectionRef} className="fa2-actions" aria-label="Lưu và chia sẻ kết quả">
+      <details className="fa2-actions-disclosure">
+        <summary>
+          <span>Lưu và chia sẻ</span>
+          <small>Lịch sử, xuất file và công cụ khác</small>
+        </summary>
+        <div className="fa2-action-bar">
+          <button type="button" className="sp-btn-secondary" onClick={() => void saveCurrent()} disabled={disabled || busy}>Lưu</button>
+          <button type="button" className="sp-btn-secondary" onClick={() => window.print()}>In</button>
 
         <details className="fa2-action-menu" open={openMenu === 'history'} onToggle={(event) => syncMenu('history', event.currentTarget.open)}>
           <summary>Lịch sử</summary>
@@ -225,7 +231,8 @@ export function AnalyzerPersistenceControls({
             <label className="fa2-pin-toggle"><input type="checkbox" checked={pinned} onChange={(event) => setPinned(event.target.checked)} /> Ghim khi lưu</label>
           </div>
         </details>
-      </div>
+        </div>
+      </details>
       {message && <div className="fa2-action-message" role="status">{message}</div>}
     </section>
   );

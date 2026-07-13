@@ -1,6 +1,7 @@
 import { useEffect, useId, useState } from 'react';
 import type { AnalyzeLineMode, AnalyzeTransformType } from '../../api/client';
 import { TRANSFORMS } from './constants';
+import { KatexSpan } from '../KatexSpan';
 
 function DraftNumber({
   label,
@@ -60,7 +61,7 @@ function SliderNumber({ label, value, min, max, step, disabled, onChange }: { la
 
   return (
     <div className="fa2-slider-row">
-      <label>{label} = {formatSliderValue(value)}</label>
+      <label><KatexSpan tex={`${sliderSymbol(label)}=${formatSliderValue(value)}`} /></label>
       <input aria-label={`${label} slider`} type="range" min={min} max={max} step={step} value={value} disabled={disabled} onChange={(event) => onChange(Number(event.target.value))} />
       <input
         className="fa2-mini-input"
@@ -154,8 +155,8 @@ export function AnalyzerToolControls({
   return (
     <div className="fa2-tools-card">
       <div className="fa2-tool-strip" role="group" aria-label="Công cụ khảo sát">
-        <button type="button" className={`fa2-tool-pill ${enableInterval ? 'is-active' : ''}`} onClick={() => toggleTool('interval')} disabled={disabled}>GTLN/GTNN</button>
-        <button type="button" className={`fa2-tool-pill ${enableLine ? 'is-active' : ''}`} onClick={() => toggleTool('line')} disabled={disabled}>Đường thẳng</button>
+        <button type="button" className={`fa2-tool-pill ${enableInterval ? 'is-active' : ''}`} onClick={() => toggleTool('interval')} disabled={disabled}>Trên khoảng</button>
+        <button type="button" className={`fa2-tool-pill ${enableLine ? 'is-active' : ''}`} onClick={() => toggleTool('line')} disabled={disabled}>Với đường thẳng</button>
         <button type="button" className={`fa2-tool-pill ${enableTransform ? 'is-active' : ''}`} onClick={() => toggleTool('transform')} disabled={disabled}>Biến đổi</button>
       </div>
 
@@ -200,13 +201,13 @@ export function AnalyzerToolControls({
             <div className="fa2-tool-stack">
               <div className="fa2-tool-row">
                 <span className="fa2-tool-label">Chế độ</span>
-                <select className="fa2-mini-input" value={lineMode} onChange={(e) => onLineModeChange(e.target.value as AnalyzeLineMode)} disabled={disabled} style={{ flex: 1 }}>
-                  <option value="intersect">Tương giao y = kx + b</option>
-                  <option value="tangent_at">Tiếp tuyến tại x0</option>
-                  <option value="tangent_at_point">Tiếp tuyến tại điểm P thuộc đồ thị</option>
-                  <option value="normal_at">Pháp tuyến tại x0</option>
-                  <option value="tangent_parallel">Tiếp tuyến song song đường có hệ số k</option>
-                  <option value="tangent_perpendicular">Tiếp tuyến vuông góc đường có hệ số k</option>
+                <select className="fa2-mini-input" value={lineMode} onChange={(e) => onLineModeChange(e.target.value as AnalyzeLineMode)} disabled={disabled}>
+                  <option value="intersect">Tìm giao điểm</option>
+                  <option value="tangent_at">Tiếp tuyến tại hoành độ</option>
+                  <option value="tangent_at_point">Tiếp tuyến tại điểm thuộc đồ thị</option>
+                  <option value="normal_at">Pháp tuyến tại hoành độ</option>
+                  <option value="tangent_parallel">Tiếp tuyến song song đường đã cho</option>
+                  <option value="tangent_perpendicular">Tiếp tuyến vuông góc đường đã cho</option>
                   <option value="tangent_through_point">Tiếp tuyến đi qua điểm P</option>
                 </select>
               </div>
@@ -265,6 +266,15 @@ export function AnalyzerToolControls({
 
 function requiresTransformValue(type: AnalyzeTransformType) {
   return ['vertical_shift', 'horizontal_shift', 'vertical_scale', 'horizontal_scale'].includes(type);
+}
+
+function sliderSymbol(label: string) {
+  return {
+    x0: 'x_0',
+    xP: 'x_P',
+    yP: 'y_P',
+    'k tham chiếu': 'k',
+  }[label] ?? label;
 }
 
 function formatSliderValue(value: number) {

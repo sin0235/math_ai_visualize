@@ -9,12 +9,10 @@ import {
   listAlgebraHistory,
   solveAlgebra,
   type AlgebraDomainSource,
-  type AlgebraExpressionAction,
   type AlgebraHistoryItem as ServerHistoryItem,
   type AlgebraInputFormat,
   type AlgebraHandoffPayload,
   type AlgebraInterval,
-  type AlgebraSolveRequest,
   type AlgebraSolveResponse,
   type AlgebraTopic,
 } from '../api/client';
@@ -129,6 +127,10 @@ export function AlgebraSolverPage() {
 
   async function requestConfirmIfNeeded() {
     if (!payloadInput || loading || submitLockRef.current) return;
+    if ((inputMode === 'math' || !useAiExtraction) && !sequenceInput) {
+      await runSolve();
+      return;
+    }
     setError('');
     const accepted = await preflight.check({
       text: payloadInput,
@@ -137,7 +139,7 @@ export function AlgebraSolverPage() {
       input_format: sequenceInput ? 'structured' : inputFormat,
       context: { topic: payloadTopic, domain, variables: variableList },
     });
-    if (accepted) await runSolve(accepted);
+    if (accepted) await runSolve();
   }
 
   function cancelSolve() {
@@ -145,9 +147,8 @@ export function AlgebraSolverPage() {
     abortRef.current = null;
   }
 
-  async function runSolve(confirmed: { candidate: InterpretationCandidate; response: InterpretationResponse }) {
+  async function runSolve(_confirmed?: { candidate: InterpretationCandidate; response: InterpretationResponse }) {
     if (!payloadInput || loading || submitLockRef.current) return;
-    const canonical = algebraCanonicalPayload(confirmed.candidate, confirmed.response);
     submitLockRef.current = true;
     preflight.reset();
     setLoading(true);
@@ -156,12 +157,12 @@ export function AlgebraSolverPage() {
     abortRef.current = controller;
     try {
       const response = await solveAlgebra({
-        input: canonical.input,
-        input_format: canonical.input_format,
-        topic: canonical.topic,
-        domain: canonical.domain,
+        input: payloadInput,
+        input_format: sequenceInput ? 'structured' : inputFormat,
+        topic: payloadTopic,
+        domain,
         domain_source: domainSource,
-        variables: canonical.variables,
+        variables: variableList,
         angle_unit: angleUnit,
         interval: intervalPayload,
         save_history: true,
@@ -338,47 +339,6 @@ export function AlgebraSolverPage() {
       </div>
     </section>
   );
-}
-
-function algebraCanonicalPayload(
-  candidate: InterpretationCandidate,
-  response: InterpretationResponse,
-): Pick<AlgebraSolveRequest, 'input' | 'input_format' | 'topic' | 'expression_action' | 'variables' | 'domain'> {
-  const payload = candidate.canonical_payload ?? {};
-  const input = typeof payload.input === 'string'
-    ? payload.input
-    : candidate.canonical_text?.trim() || response.normalized_text;
-  const inputFormat = ['auto', 'plain', 'latex', 'structured'].includes(String(payload.input_format))
-    ? payload.input_format as AlgebraInputFormat
-    : 'plain';
-  const topic = isAlgebraTopic(payload.topic) ? payload.topic : 'auto';
-  const expressionAction = isAlgebraExpressionAction(payload.expression_action) ? payload.expression_action : null;
-  const canonicalDomain = ['R', 'C', 'N', 'Z'].includes(String(payload.domain))
-    ? payload.domain as AlgebraDomain
-    : 'R';
-  const canonicalVariables = Array.isArray(payload.variables)
-    ? payload.variables.filter((value): value is string => typeof value === 'string')
-    : [];
-  return {
-    input,
-    input_format: inputFormat,
-    topic,
-    expression_action: expressionAction,
-    variables: canonicalVariables,
-    domain: canonicalDomain,
-  };
-}
-
-function isAlgebraExpressionAction(value: unknown): value is AlgebraExpressionAction {
-  return ['simplify', 'expand', 'factor'].includes(String(value));
-}
-
-function isAlgebraTopic(value: unknown): value is AlgebraTopic {
-  return [
-    'auto', 'arithmetic', 'expression', 'equation', 'inequality', 'exponential_log', 'trigonometry', 'complex', 'sequence',
-    'combinatorics_probability', 'statistics', 'system', 'parameter', 'calculus_derivative',
-    'calculus_derivative_by_definition', 'calculus_limit', 'calculus_continuous_at', 'calculus_integral',
-  ].includes(String(value));
 }
 
 function sequenceInputFromDraft(draft: SequenceDraft) {

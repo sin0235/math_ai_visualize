@@ -5,6 +5,7 @@ export interface ApiErrorMetadata {
   correlationId?: string;
   stage?: string;
   retryable?: boolean;
+  retryAfterSeconds?: number;
 }
 
 export class ApiError extends Error {
@@ -13,6 +14,7 @@ export class ApiError extends Error {
   correlationId?: string;
   stage?: string;
   retryable?: boolean;
+  retryAfterSeconds?: number;
 
   constructor(message: string, details: string[] = [], metadata: ApiErrorMetadata = {}) {
     super(message);
@@ -22,10 +24,11 @@ export class ApiError extends Error {
     this.correlationId = metadata.correlationId;
     this.stage = metadata.stage;
     this.retryable = metadata.retryable;
+    this.retryAfterSeconds = metadata.retryAfterSeconds;
   }
 }
 
-export const API_BASE_URL = normalizeApiBaseUrl(import.meta.env.VITE_API_BASE_URL);
+export const API_BASE_URL = normalizeApiBaseUrl(import.meta.env?.VITE_API_BASE_URL);
 
 export function apiUrl(path: string) {
   return `${API_BASE_URL}${path}`;
@@ -113,13 +116,22 @@ export async function parseApiError(response: Response, fallbackMessage: string)
 
   try {
     const parsed = JSON.parse(body) as { detail?: unknown };
-    const parsedDetail = parseDetail(parsed.detail);
+    const parsedDetail = parseDetail(parsed.detail, retryAfterSeconds(response.headers.get('Retry-After')));
     if (parsedDetail) return parsedDetail;
   } catch {
     // Keep raw text fallback.
   }
 
   return new ApiError(body.trim() || fallbackMessage);
+}
+
+function retryAfterSeconds(value: string | null): number | undefined {
+  if (!value) return undefined;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds > 0) return Math.ceil(seconds);
+  const retryAt = Date.parse(value);
+  if (Number.isNaN(retryAt)) return undefined;
+  return Math.max(1, Math.ceil((retryAt - Date.now()) / 1000));
 }
 
 function looksLikeHtml(body: string) {
@@ -139,7 +151,7 @@ function gatewayHtmlApiError(statusCode: number, fallbackMessage: string) {
   return new ApiError(fallbackMessage);
 }
 
-function parseDetail(detail: unknown): ApiError | null {
+function parseDetail(detail: unknown, retryAfter?: number): ApiError | null {
   if (typeof detail === 'string') return new ApiError(detail);
   if (Array.isArray(detail)) {
     return new ApiError(detail.map((item) => {
@@ -160,8 +172,7 @@ function parseDetail(detail: unknown): ApiError | null {
       retryable?: unknown;
     };
     const codeValue = typeof data.code === 'string' ? data.code : undefined;
-    const code = codeValue ? `[${codeValue}] ` : '';
-    const message = typeof data.message === 'string' ? `${code}${data.message}` : JSON.stringify(detail);
+    const message = typeof data.message === 'string' ? data.message : JSON.stringify(detail);
     const detailValues = [data.hint, data.suggestions, data.attempts];
     if (!codeValue?.startsWith('ANALYZER_')) detailValues.push(data.debug_message);
     const details = detailValues.flatMap((value) => {
@@ -174,6 +185,7 @@ function parseDetail(detail: unknown): ApiError | null {
       correlationId: typeof data.correlation_id === 'string' ? data.correlation_id : undefined,
       stage: typeof data.stage === 'string' ? data.stage : undefined,
       retryable: typeof data.retryable === 'boolean' ? data.retryable : undefined,
+      retryAfterSeconds: retryAfter,
     });
   }
   return null;

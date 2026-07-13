@@ -221,14 +221,14 @@ export function AnalyzerInput({
                   onChange={(event) => onParameterModeChange(event.target.value as '' | 'symbolic' | 'substitute')}
                 >
                   <option value="">Chọn chế độ</option>
-                  <option value="symbolic">Phân tích symbolic theo case</option>
-                  <option value="substitute">Thay giá trị exact</option>
+                  <option value="symbolic">Phân tích theo từng trường hợp</option>
+                  <option value="substitute">Thay giá trị chính xác</option>
                 </select>
               </label>
               {parameterMode === 'substitute' && (
                 <div className="fa2-parameter-value-controls">
                   <label>
-                    Giá trị exact của m
+                    <span>Giá trị chính xác của <KatexSpan tex="m" /></span>
                     <input
                       type="text"
                       value={parameterValue}
@@ -278,7 +278,7 @@ export function AnalyzerInput({
                       disabled={!parameterRangeValid}
                     />
                   </label>
-                  <small>Slider chỉ gợi ý; giá trị exact nhập tay không bị giới hạn.</small>
+                  <small>Thanh trượt chỉ gợi ý; giá trị chính xác nhập tay không bị giới hạn.</small>
                 </div>
               )}
             </fieldset>

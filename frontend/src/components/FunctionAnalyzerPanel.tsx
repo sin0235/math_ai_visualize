@@ -17,6 +17,7 @@ export function FunctionAnalyzerPanel({ initialExpression = '', onOpenGuide }: F
   const preflight = useInterpretationPreflight();
   const pendingOcrRef = useRef(false);
   const disabled = analyzer.analysisState !== 'current' || analyzer.loading || analyzer.ocrLoading;
+  const toolDisabled = disabled || analyzer.toolCooldownSeconds > 0;
 
   async function requestAnalyze(fromOcr: boolean) {
     const text = analyzer.expression.trim();
@@ -66,18 +67,6 @@ export function FunctionAnalyzerPanel({ initialExpression = '', onOpenGuide }: F
         onConfirm={(confirmed) => runConfirmedAnalysis(confirmed)}
       />
 
-      {analyzer.sessionResult && (
-        <AnalyzerPersistenceControls
-          result={analyzer.sessionResult}
-          profile={analyzer.curriculumProfile}
-          graphWindow={analyzer.historyWindow}
-          tools={analyzer.historyTools}
-          disabled={disabled}
-          onProfileChange={analyzer.setCurriculumProfile}
-          onOpenHistory={analyzer.openHistoryItem}
-        />
-      )}
-
       <section className="fa2-results-panel" aria-label="Kết quả khảo sát">
         {analyzer.loading ? <AnalyzerLoadingResult /> : analyzer.result ? (
           <AnalyzerResult
@@ -104,7 +93,7 @@ export function FunctionAnalyzerPanel({ initialExpression = '', onOpenGuide }: F
                 transformValue={analyzer.transformValue}
                 isAnimatingTransform={analyzer.isAnimatingTransform}
                 animationFps={analyzer.animationFps}
-                disabled={disabled}
+                disabled={toolDisabled}
                 onSelectTool={analyzer.selectTool}
                 onIntervalAChange={(value) => { analyzer.setIntervalA(value); analyzer.scheduleToolAnalyze({ intervalA: value, enableInterval: true }); }}
                 onIntervalBChange={(value) => { analyzer.setIntervalB(value); analyzer.scheduleToolAnalyze({ intervalB: value, enableInterval: true }); }}
@@ -124,6 +113,18 @@ export function FunctionAnalyzerPanel({ initialExpression = '', onOpenGuide }: F
           />
         ) : <EmptyAnalyzerResult />}
       </section>
+
+      {analyzer.sessionResult && (
+        <AnalyzerPersistenceControls
+          result={analyzer.sessionResult}
+          profile={analyzer.curriculumProfile}
+          graphWindow={analyzer.historyWindow}
+          tools={analyzer.historyTools}
+          disabled={disabled}
+          onProfileChange={analyzer.setCurriculumProfile}
+          onOpenHistory={analyzer.openHistoryItem}
+        />
+      )}
     </div>
   );
 }

@@ -82,6 +82,8 @@ def _detect_format(raw: str, requested: str) -> str:
 
 
 def _canonical_from_natural_language(raw: str) -> str:
+    if is_structured_algebra_input(raw):
+        return raw
     structured = _structured_from_natural_language(raw)
     if structured:
         return structured
@@ -177,12 +179,13 @@ def _structured_from_natural_language(raw: str) -> str | None:
 
 
 def _calculus_template_from_text(text: str, plain: str) -> str | None:
-    cleaned = _replace_vietnamese_math_words(text)
+    cleaned = _strip_intent_phrases(_replace_vietnamese_math_words(text))
     if "dao ham" in plain or "đạo hàm" in text.lower():
         derivative_sum = _derivative_sum_template(text)
         if derivative_sum:
             return derivative_sum
         expression = re.sub(r"(?i)^\s*(dao ham|đạo hàm|tinh dao ham|tính đạo hàm|tim dao ham|tìm đạo hàm)\s*", "", plain if "dao ham" in plain else cleaned).strip()
+        expression = re.sub(r"(?i)^\s*(?:cua|của|of)\s+", "", expression).strip()
         expression = _clean_canonical(expression or cleaned)
         if expression:
             return f"derivative(expr={expression},var=x)"
@@ -190,6 +193,7 @@ def _calculus_template_from_text(text: str, plain: str) -> str | None:
         target = re.search(r"(?:x\s*(?:toi|tới|->|→)\s*)(-?\d+|oo|\+?∞|-∞)", plain)
         point = target.group(1).replace("∞", "oo") if target else "0"
         expression = re.sub(r"(?i)^\s*(gioi han|giới hạn|lim|tinh gioi han|tính giới hạn)\s*", "", cleaned).strip()
+        expression = re.sub(r"(?i)^\s*(?:cua|của|of)\s+", "", expression).strip()
         expression = re.sub(
             r"(?i)^\s*(?:lim\s*)?x\s*(?:toi|tới|->|→)\s*(?:-?\d+|oo|\+?∞|-∞)\s*",
             "",
@@ -202,6 +206,7 @@ def _calculus_template_from_text(text: str, plain: str) -> str | None:
     if "tich phan" in plain or "tích phân" in text.lower():
         bounds = re.search(r"(?:tu|từ)\s*(-?\d+)\s*(?:den|đến)\s*(-?\d+)", plain)
         expression = re.sub(r"(?i)^\s*(tich phan|tích phân|tinh tich phan|tính tích phân|nguyen ham|nguyên hàm)\s*", "", cleaned).strip()
+        expression = re.sub(r"(?i)^\s*(?:cua|của|of)\s+", "", expression).strip()
         expression = re.split(r"(?i)\s+(?:tu|từ)\s*-?\d+\s*(?:den|đến)\s*-?\d+", expression)[0]
         expression = _clean_canonical(expression)
         if expression and bounds:

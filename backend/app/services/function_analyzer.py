@@ -833,7 +833,7 @@ def analyze_function(
 
     try:
         with analyzer_stage_timeout("range"):
-            rng = function_range(f, x, S.Reals)
+            rng = function_range(simplify(f), x, S.Reals)
         result["range"] = str(rng)
         result["range_latex"] = latex(rng)
         _record_stage_ok(result, "range")

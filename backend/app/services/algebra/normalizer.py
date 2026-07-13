@@ -468,8 +468,9 @@ def _replace_latex_commands(text: str) -> str:
 
 
 def _normalize_function_parentheses(text: str) -> str:
-    for name in ("sin", "cos", "tan", "cot", "asin", "acos", "atan", "acot", "arcsin", "arccos", "arctan", "arccot", "log", "sqrt", "Abs", "abs"):
+    for name in ("sin", "cos", "tan", "cot", "asin", "acos", "atan", "acot", "arcsin", "arccos", "arctan", "arccot", "log", "ln", "sqrt", "Abs", "abs"):
         text = re.sub(rf"\b{name}\s+([A-Za-z0-9.]+)", rf"{name}(\1)", text)
+        text = re.sub(rf"\b{name}([A-Za-z])\b", rf"{name}(\1)", text)
     return text
 
 

@@ -513,9 +513,10 @@ def _raw_problem(
 ) -> ParsedAlgebraProblem:
     raw_vars = list(variables) if variables else ["x"]
     symbols = [sp.Symbol(name, real=(domain != "C")) for name in raw_vars]
+    from app.services.algebra.normalizer import normalize_algebra_input
     return ParsedAlgebraProblem(
         raw_input=canonical_input,
-        normalized_input=canonical_input.strip().replace("^", "**"),
+        normalized_input=normalize_algebra_input(canonical_input),
         topic=topic,
         variable=symbols[0],
         variables=symbols,

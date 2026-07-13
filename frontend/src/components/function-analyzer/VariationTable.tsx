@@ -2,6 +2,7 @@ import { Fragment, useEffect, useId, useRef, useState, type CSSProperties } from
 import type { AnalyzeResponse, VariationNodeV2, VariationSegmentV2, VariationTableV2 } from '../../api/client';
 import { KatexSpan, sympyToLatex } from '../KatexSpan';
 import { SvgIcon } from './icons';
+import { analyzerStatusLabel } from './analyzerPresentation';
 
 export function VariationTable({
   rows,
@@ -108,7 +109,7 @@ function VariationSemanticTable({ table }: { table: VariationTableV2 }) {
             <td>{segment.left} đến {segment.right}</td>
             <td>{segment.derivative_sign}</td>
             <td>{directionLabel(segment.direction)}</td>
-            <td>{segment.verification}</td>
+            <td>{analyzerStatusLabel(segment.verification)}</td>
           </tr>
         ))}
       </tbody>
