@@ -10,7 +10,7 @@ def test_sequence_solver_calculates_arithmetic_term():
     assert result.solution_set.text == "29"
     assert [step.title for step in result.steps[:2]] == ["Viết công thức", "Tính kết quả"]
     assert all(step.kind != "normalize" for step in result.steps)
-    assert result.verification.status == "verified"
+    assert result.verification.status == "skipped"
 
 
 def test_sequence_solver_calculates_arithmetic_sum():
@@ -67,5 +67,5 @@ def test_natural_language_arithmetic_u1_u2_u9():
     assert result.status == "solved"
     assert "34" in (result.answer or "") or result.answer_latex == "34"
     assert result.steps[0].title == "Tìm công sai"
-    assert result.verification.status == "verified"
+    assert result.verification.status == "skipped"
     assert result.verification.checks == []

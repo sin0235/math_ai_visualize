@@ -60,7 +60,8 @@ def parse_provider_model_ref(value: str | None, *, allow_legacy_slash: bool = Fa
 def canonical_provider_id(provider: str | None) -> str | None:
     if provider is None:
         return None
-    return provider.strip()
+    normalized = provider.strip().lower()
+    return normalized or None
 
 
 def normalize_provider_defaults(value: dict | None) -> dict | None:

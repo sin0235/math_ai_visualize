@@ -37,8 +37,10 @@ def test_solve_point_point_distance_exact_radical():
 
     result = solve(scene, "d(A,B)")
 
-    assert result.answer == "d(A,B) = 1.732051"
+    # Prefer exact radical form over float rounding for the answer line.
+    assert result.answer == "d(A,B) = \\sqrt{3}"
     assert result.steps[2].result_latex == "\\sqrt{3}"
+    assert "√(3)" in result.steps[2].explanation or "√3" in result.steps[2].explanation.replace(" ", "")
 
 
 def test_solve_point_line_distance(scene):

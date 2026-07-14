@@ -57,8 +57,8 @@ export function FunctionGraph({ result }: { result: AnalyzeResponse }) {
   const secondDerivativeExpression = result.second_derivative?.trim() || null;
   const geogebraCommands = useMemo(() => [
     ...result.geogebra_commands,
-    ...(derivativeExpression ? graphOverlayCommands('fPrime', derivativeExpression, '#2563eb') : []),
-    ...(secondDerivativeExpression ? graphOverlayCommands('fSecond', secondDerivativeExpression, '#7c3aed', 1) : []),
+    ...(derivativeExpression ? graphOverlayCommands('fPrime', derivativeExpression, '#525252') : []),
+    ...(secondDerivativeExpression ? graphOverlayCommands('fSecond', secondDerivativeExpression, '#737373', 1) : []),
   ], [derivativeExpression, result.geogebra_commands, secondDerivativeExpression]);
   const geogebraObjectVisibility = useMemo(() => ({
     ...(derivativeExpression ? { fPrime: showDerivative } : {}),
@@ -675,11 +675,11 @@ function safeFileName(expression: string) {
 }
 
 const GRAPH_EXPORT_STYLE = `
-.fa2-graph-bg{fill:#fff;stroke:#d1d5db}.fa2-graph-grid{stroke:#e5e7eb}.fa2-graph-axis{stroke:#64748b;stroke-width:1.5}
-.fa2-graph-path{fill:none;stroke:#111827;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}.fa2-graph-asymptote{stroke:#dc2626;stroke-width:1.5;stroke-dasharray:7 5}
-.fa2-graph-interval-highlight{fill:rgba(14,116,144,.1);stroke:#0e7490}.fa2-graph-overlay{fill:none;stroke-width:2}.fa2-graph-derivative{stroke:#2563eb}.fa2-graph-second-derivative{stroke:#7c3aed;stroke-dasharray:5 4}.fa2-graph-tool-line{stroke:#ea580c;stroke-dasharray:8 4}
-.fa2-graph-endpoint{stroke:#111827;stroke-width:2}.fa2-graph-endpoint.is-open{fill:#fff}.fa2-graph-endpoint.is-closed{fill:#111827}
-.fa2-graph-point{fill:#334155;stroke:#fff;stroke-width:2}.fa2-graph-label,.fa2-graph-tick,.fa2-graph-trace text{fill:#334155;font-family:monospace;font-size:11px}.fa2-graph-trace line{stroke:#64748b;stroke-dasharray:3 3}.fa2-graph-trace circle{fill:#111827}
+.fa2-graph-bg{fill:#fff;stroke:#c9c9c2}.fa2-graph-grid{stroke:#e3e3df}.fa2-graph-axis{stroke:#737373;stroke-width:1.5}
+.fa2-graph-path{fill:none;stroke:#111111;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}.fa2-graph-asymptote{stroke:#dc2626;stroke-width:1.5;stroke-dasharray:7 5}
+.fa2-graph-interval-highlight{fill:rgba(17,17,17,.08);stroke:#525252}.fa2-graph-overlay{fill:none;stroke-width:2}.fa2-graph-derivative{stroke:#525252}.fa2-graph-second-derivative{stroke:#737373;stroke-dasharray:5 4}.fa2-graph-tool-line{stroke:#92400e;stroke-dasharray:8 4}
+.fa2-graph-endpoint{stroke:#111111;stroke-width:2}.fa2-graph-endpoint.is-open{fill:#fff}.fa2-graph-endpoint.is-closed{fill:#111111}
+.fa2-graph-point{fill:#525252;stroke:#fff;stroke-width:2}.fa2-graph-label,.fa2-graph-tick,.fa2-graph-trace text{fill:#525252;font-family:monospace;font-size:11px}.fa2-graph-trace line{stroke:#737373;stroke-dasharray:3 3}.fa2-graph-trace circle{fill:#111111}
 `;
 
 class RendererErrorBoundary extends Component<{
@@ -974,5 +974,4 @@ function plotSpecialPoints(
     return { ...point, labelX, labelY, anchor: selected.anchor, popoverX, popoverY, popoverWidth };
   });
 }
-
 

@@ -55,7 +55,18 @@ export function RendererPanelV3({
     [projection?.object_names],
   );
 
-  if (!response || !projection) return <div className="renderer-frame"><div className="empty-state">Chưa có projection v3.</div></div>;
+  if (!response || !projection) {
+    return (
+      <div className="renderer-frame">
+        <div className="empty-state" role="status">
+          <div className="empty-state-content">
+            <h2>Chưa có hình dựng</h2>
+            <p>Nhập đề bài, dán ảnh hoặc chọn đề mẫu để bắt đầu dựng hình.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
   // Keep canvas clean; confirmation is handled via toast + workspace banner.
   const trustLabels: string[] = [];
 

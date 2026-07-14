@@ -174,7 +174,8 @@ def _attach_verification(scene: MathSceneV3, results: tuple[ConstraintResultV3, 
 def _verification_issue(result: ConstraintResultV3) -> PipelineIssueV3 | None:
     if result.status == "verified":
         return None
-    if result.status == "failed":
+    # Hard failures (failed residual or verifier exception) block projection.
+    if result.status in {"failed", "error"}:
         return PipelineIssueV3(
             stage="verify",
             code="CONSTRAINT_FAILED",
@@ -193,8 +194,10 @@ def _verification_issue(result: ConstraintResultV3) -> PipelineIssueV3 | None:
 
 def _pipeline_status(results: tuple[ConstraintResultV3, ...]) -> PipelineStatus:
     statuses = {result.status for result in results}
+    # Hard constraint failures are "failed", not "partially_verified" (which
+    # sounded partially OK and left workspaces unconfirmable for solve/export).
     if "failed" in statuses or "error" in statuses:
-        return "partially_verified"
+        return "failed"
     if statuses.intersection({"unsupported", "unverifiable"}):
         return "needs_confirmation"
     return "verified"

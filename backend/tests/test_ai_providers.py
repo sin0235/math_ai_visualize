@@ -164,25 +164,32 @@ async def test_nvidia_adapter_lists_models_with_capabilities(monkeypatch):
 
 
 @pytest.mark.anyio
-async def test_router9_adapter_combines_all_model_kinds_and_deduplicates(monkeypatch):
-    calls: list[str] = []
-    models_by_path = {
-        "/models": [{"id": "router/text"}, {"id": "router/vision", "capabilities": {"vision": True}}],
-        "/models/image": [{"id": "router/image"}],
-        "/models/tts": [{"id": "router/tts"}],
-        "/models/stt": [],
-        "/models/embedding": [{"id": "router/embedding"}],
-        "/models/image-to-text": [{"id": "router/vision", "capabilities": {"vision": True}}],
-        "/models/web": [],
-    }
+async def test_router9_adapter_lists_all_paginated_llm_models_only(monkeypatch):
+    calls: list[tuple[str, dict[str, str] | None]] = []
 
     async def fake_get_openai_models(provider, headers, normalized_base, params=None, url=None):
         assert provider == "router9"
         assert headers["Authorization"] == "Bearer router-secret"
-        assert params is None
         path = url.removeprefix(normalized_base)
-        calls.append(path)
-        return httpx.Response(200, json={"object": "list", "data": models_by_path[path]})
+        calls.append((path, params))
+        assert path == "/models"
+        if params is None:
+            return httpx.Response(200, json={
+                "object": "list",
+                "data": [
+                    {"id": "vendor/model-without-capability"},
+                    {"id": "router/vision", "capabilities": {"vision": True}},
+                ],
+                "next_cursor": "page-2",
+            })
+        assert params == {"cursor": "page-2"}
+        return httpx.Response(200, json={
+            "object": "list",
+            "data": [
+                {"id": "router/reasoning", "supported_parameters": ["thinking"]},
+                {"id": "router/vision", "capabilities": {"vision": True}},
+            ],
+        })
 
     monkeypatch.setattr("app.services.ai_providers._get_openai_models", fake_get_openai_models)
 
@@ -192,13 +199,16 @@ async def test_router9_adapter_combines_all_model_kinds_and_deduplicates(monkeyp
         router9_base_url="https://router.example/v1",
     ))
 
-    assert calls == list(models_by_path)
-    assert [model.id for model in result.models] == [
-        "router/embedding",
-        "router/image",
-        "router/text",
-        "router/tts",
-        "router/vision",
+    assert calls == [
+        ("/models", None),
+        ("/models", {"cursor": "page-2"}),
     ]
-    assert result.models[-1].endpoint_metadata["service_kind"] == "image-to-text"
+    assert [model.id for model in result.models] == [
+        "router/reasoning",
+        "router/vision",
+        "vendor/model-without-capability",
+    ]
+    assert all(model.endpoint_metadata["service_kind"] == "llm" for model in result.models)
+    assert result.models[0].supports_thinking is True
+    assert result.models[1].supports_vision is True
     assert result.warnings == []

@@ -5,7 +5,23 @@ from app.api import routes_ai_models
 from app.schemas.scene import AiModelInfo
 from app.services.ai_fallback import explicit_model_for_provider
 from app.services.ai_providers import ModelListResult
-from app.services.model_provider import canonicalize_fallback_models, canonicalize_legacy_model_ref, canonicalize_model_ref, normalize_provider_defaults, resolve_ocr_provider
+from app.services.model_provider import (
+    CANONICAL_PROVIDERS,
+    canonicalize_fallback_models,
+    canonicalize_legacy_model_ref,
+    canonicalize_model_ref,
+    canonical_provider_id,
+    normalize_provider_defaults,
+    resolve_ocr_provider,
+)
+
+
+def test_canonical_provider_id_normalizes_case_and_whitespace():
+    assert canonical_provider_id("  OpenRouter ") == "openrouter"
+    assert canonical_provider_id("ROUTER9") == "router9"
+    assert canonical_provider_id("openrouter") in CANONICAL_PROVIDERS
+    assert canonical_provider_id("   ") is None
+    assert canonical_provider_id(None) is None
 
 
 def test_canonicalize_model_ref_strips_matching_provider_prefix():

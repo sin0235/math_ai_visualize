@@ -115,3 +115,136 @@ def test_registry_rejects_wrong_operand_shape_and_dimension():
 
     assert any("dimension=2d" in error for error in errors)
     assert any("kind=planar" in error for error in errors)
+
+
+def test_three_point_angle_verifies_obtuse_without_abs_fold():
+    # A at origin, B along +x, C in second quadrant so angle at A is 120°.
+    scene = make_scene(
+        [
+            point("a", 0, 0),
+            point("b", 1, 0),
+            point("c", -0.5, 0.86602540378),
+        ],
+        [
+            relation(
+                "r_angle",
+                "angle",
+                [
+                    operand("arm1", "b", "point"),
+                    operand("vertex", "a", "point"),
+                    operand("arm2", "c", "point"),
+                ],
+                args={"degrees": 120},
+            ),
+        ],
+    )
+
+    result = verify_constraints(scene)[0]
+
+    assert result.status == "verified"
+    assert result.evidence["vertex_id"] == "a"
+    assert result.evidence["actual_degrees"] == pytest.approx(120.0, abs=0.5)
+
+
+def test_three_point_angle_prefers_middle_operand_as_vertex():
+    # Ordered A-B-C with right angle at B; wrong best-of-3 would pick another vertex.
+    scene = make_scene(
+        [
+            point("a", 0, 0),
+            point("b", 1, 0),
+            point("c", 1, 1),
+        ],
+        [
+            relation(
+                "r_angle",
+                "angle",
+                [
+                    operand("p1", "a", "point"),
+                    operand("p2", "b", "point"),
+                    operand("p3", "c", "point"),
+                ],
+                args={"degrees": 90},
+            ),
+        ],
+    )
+
+    result = verify_constraints(scene)[0]
+
+    assert result.status == "verified"
+    assert result.evidence["vertex_id"] == "b"
+
+
+def test_three_point_midpoint_prefers_last_operand_not_best_of_three():
+    # Only C is midpoint of A,B. Prefer last operand (A,B,C convention).
+    scene = make_scene(
+        [
+            point("a", 0, 0),
+            point("b", 4, 0),
+            point("c", 2, 0),
+        ],
+        [
+            relation(
+                "r_mid",
+                "midpoint",
+                [
+                    operand("p1", "a", "point"),
+                    operand("p2", "b", "point"),
+                    operand("p3", "c", "point"),
+                ],
+            ),
+        ],
+    )
+
+    result = verify_constraints(scene)[0]
+
+    assert result.status == "verified"
+    assert result.evidence["midpoint_id"] == "c"
+
+
+def test_three_point_midpoint_fails_when_preferred_is_wrong_and_ambiguous():
+    # Equilateral-like: each point is midpoint of the other two? Not true.
+    # A is midpoint of B,C so best-of-3 would pass if preferred last fails.
+    scene = make_scene(
+        [
+            point("a", 1, 0),
+            point("b", 0, 0),
+            point("c", 2, 0),
+        ],
+        [
+            relation(
+                "r_mid",
+                "midpoint",
+                [
+                    operand("p1", "b", "point"),
+                    operand("p2", "c", "point"),
+                    operand("p3", "a", "point"),  # preferred last = a, which IS midpoint
+                ],
+            ),
+        ],
+    )
+    ok = verify_constraints(scene)[0]
+    assert ok.status == "verified"
+    assert ok.evidence["midpoint_id"] == "a"
+
+    # Preferred last is B, but only A is midpoint → unique fallback should still verify A.
+    scene_fallback = make_scene(
+        [
+            point("a", 1, 0),
+            point("b", 0, 0),
+            point("c", 2, 0),
+        ],
+        [
+            relation(
+                "r_mid",
+                "midpoint",
+                [
+                    operand("p1", "a", "point"),
+                    operand("p2", "c", "point"),
+                    operand("p3", "b", "point"),  # preferred last = b, not midpoint
+                ],
+            ),
+        ],
+    )
+    fallback = verify_constraints(scene_fallback)[0]
+    assert fallback.status == "verified"
+    assert fallback.evidence["midpoint_id"] == "a"

@@ -123,6 +123,8 @@ def attach_replayed_proof(
     task: str,
     method: str,
 ) -> SolverResult:
+    if result.proof_plan is not None:
+        return result
     if not result.used_theorems or result.answer in {"Không xác định", "Không đủ dữ kiện"}:
         return result
     from app.services.geometry.proof_search import build_and_replay_proof_plan

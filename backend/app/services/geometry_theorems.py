@@ -49,6 +49,34 @@ THEOREMS: dict[str, TheoremSpec] = {
             11,
         ),
         TheoremSpec(
+            "construction.point_on_plane.affine_combination",
+            "Điểm thuộc mặt phẳng theo tổ hợp affine",
+            "Một điểm biểu diễn được từ một điểm gốc cộng tổ hợp tuyến tính của hai phương không song song trong mặt phẳng thì thuộc mặt phẳng đó.",
+            11,
+            cost=2,
+        ),
+        TheoremSpec(
+            "relation.perpendicular.orthogonal_frame_dot",
+            "Tiêu chuẩn tích vô hướng bằng không",
+            "Trong một hệ phương đôi một vuông góc đã kiểm chứng, hai vector có tích vô hướng bằng không thì hai đường mang chúng vuông góc.",
+            10,
+            cost=2,
+        ),
+        TheoremSpec(
+            "perpendicular.line_plane.two_intersecting_lines",
+            "Đường thẳng vuông góc với mặt phẳng",
+            "Đường thẳng vuông góc với hai đường thẳng cắt nhau nằm trong một mặt phẳng thì vuông góc với mặt phẳng đó.",
+            11,
+            cost=2,
+        ),
+        TheoremSpec(
+            "metric.orthogonal_frame.segment_length",
+            "Độ dài trong ba phương đôi một vuông góc",
+            "Bình phương độ dài một đoạn bằng tổng bình phương ba thành phần theo ba phương đôi một vuông góc.",
+            10,
+            cost=2,
+        ),
+        TheoremSpec(
             "angle.line_line.perpendicular",
             "Góc giữa hai đường vuông góc",
             "Hai đường thẳng vuông góc tạo với nhau một góc 90°.",
@@ -166,6 +194,23 @@ _THEOREM_CONTRACTS: dict[str, dict[str, object]] = {
     "perpendicular.line_plane.implies_line": {
         "premises": (PremiseSpec("perpendicular_line_plane"), PremiseSpec("point_on_plane")),
         "conclusion": "perpendicular_lines",
+    },
+    "construction.point_on_plane.affine_combination": {
+        "premises": (PremiseSpec("orthogonal_frame|derived_orthogonal_frame"),),
+        "conclusion": "point_on_plane",
+        "construction": ("add_point", "connect_points"),
+    },
+    "relation.perpendicular.orthogonal_frame_dot": {
+        "premises": (PremiseSpec("orthogonal_frame|derived_orthogonal_frame"),),
+        "conclusion": "perpendicular_lines",
+    },
+    "perpendicular.line_plane.two_intersecting_lines": {
+        "premises": (PremiseSpec("perpendicular_lines", 2), PremiseSpec("point_on_plane")),
+        "conclusion": "perpendicular_line_plane",
+    },
+    "metric.orthogonal_frame.segment_length": {
+        "premises": (PremiseSpec("orthogonal_frame|derived_orthogonal_frame"),),
+        "conclusion": "segment_length",
     },
     "angle.line_line.perpendicular": {
         "premises": (PremiseSpec("perpendicular_lines"),),

@@ -22,112 +22,8 @@ function normalizeSolverLatex(input?: string | null): string {
   return normalizeLatexForKatex(input).replace(/°/g, '^\\circ');
 }
 
-function normalizeSolverQuestionInput(input: string): string {
-  // Keep FE pre-normalize light; authoritative normalization is backend geometry.parser.
-  let question = input
-    .trim()
-    .replace(/[\u200B-\u200D\uFEFF]/g, '')
-    .replace(/[（）]/g, (char) => (char === '（' ? '(' : ')'))
-    .replace(/[，、]/g, ',')
-    .replace(/[−–—]/g, '-')
-    .replace(/[✕*]/g, '×')
-    .replace(/[·•]/g, '.')
-    .replace(/\s+/g, ' ');
-  for (let i = 0; i < 4; i += 1) {
-    const next = question.replace(/\(\(([^()]+)\)\)/g, '($1)');
-    if (next === question) break;
-    question = next;
-  }
-  // Prefer metric sentence from long problem paste
-  const metricChunks = question
-    .split(/(?<=[.?!\n])\s+|(?=Cho\s+hình)|(?=Gọi\b)/i)
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .filter((part) => /khoảng\s+cách|khoang\s+cach|\bd\s*\(|diện\s+tích|thể\s+tích|góc\b/i.test(part));
-  if (metricChunks.length > 0) {
-    metricChunks.sort((a, b) => Number(a.length > 160) - Number(b.length > 160) || a.length - b.length);
-    question = metricChunks[0];
-  }
-  question = question.replace(/\b(?:diem|điểm)\s*\(\s*([A-Za-z](?:[0-9]+|')?)\s*\)/gi, 'điểm $1');
-  question = question.replace(
-    /\b(?:k\/c|kc|khoang\s+cach|khoảng\s+cách)\s+(?:tu|từ|from)?\s*(?:diem|điểm)?\s*([A-Za-z](?:[0-9]+|')?)\s+(?:den|đến|toi|tới|to)?\s*(?:mp|mat\s+phang|mặt\s+phẳng)?\s*(\([A-Za-z0-9'\s.]+\)|[A-Za-z](?:\s*[A-Za-z0-9']\s*){1,})/gi,
-    (_, point: string, target: string) => `d(${point.toUpperCase()},${normalizeDistanceTargetText(target)})`,
-  );
-  if (!/\bd\s*\(/i.test(question)) {
-    question = question.replace(/\b(?:k\/c|kc|khoang\s+cach|khoảng\s+cách)\b/gi, 'd');
-    question = question.replace(/\b(?:den|đến|toi|tới|tu|từ|cua|của)\b/gi, ' ');
-  }
-  question = question.replace(/\b(?:mp|mat\s+phang|mặt\s+phẳng)\s+([A-Za-z](?:\s*[A-Za-z0-9']\s*){2,})/gi, (_, value: string) => `(${compactPointSequenceText(value)})`);
-  question = question.replace(/\b(?:dien\s+tich|diện\s+tích)\s+([A-Za-z](?:\s*[A-Za-z0-9']\s*){2,})/gi, (_, value: string) => `S(${compactPointSequenceText(value)})`);
-  question = question.replace(/\b(?:the\s+tich|thể\s+tích)\s+([A-Za-z][A-Za-z0-9']*(?:\s*\.\s*)?[A-Za-z](?:\s*[A-Za-z0-9']\s*){2,})/gi, (_, value: string) => `V(${compactSolidText(value)})`);
-  question = question.replace(/\b([dDsSvV])\s*\(/g, (_, name: string) => `${name.toLowerCase() === 'd' ? 'd' : name.toUpperCase()}(`);
-  question = normalizeParenthesizedGeometry(question);
-  question = question.replace(/\bd\s+(?:diem|điểm)?\s*([A-Za-z](?:[0-9]+|')?)\s+(?:mp|mat\s+phang|mặt\s+phẳng)?\s*(\([A-Za-z0-9'\s.]+\)|[A-Za-z](?:\s*[A-Za-z0-9']\s*){1,})/gi, (_, point: string, target: string) => `d(${point.toUpperCase()},${normalizeDistanceTargetText(target)})`);
-  question = question.replace(/\s+/g, ' ').trim();
-  const pure = question.match(/\b([dDsSpPvV])\(([^()]*(?:\([^()]*\)[^()]*)*)\)/);
-  if (pure) {
-    const name = pure[1];
-    return `${name.toLowerCase() === 'd' ? 'd' : name.toUpperCase()}(${pure[2]})`;
-  }
-  return question.replace(/\bgoc\b/gi, 'góc');
-}
-
-function compactPointSequenceText(value: string): string {
-  return Array.from(value.matchAll(/[A-Za-z](?:[0-9]+|')?/g)).map((match) => match[0].toUpperCase()).join('');
-}
-
-function normalizeDistanceTargetText(value: string): string {
-  const target = value.trim();
-  if (target.startsWith('(') && target.endsWith(')')) return `(${compactPointSequenceText(target.slice(1, -1))})`;
-  return compactPointSequenceText(target);
-}
-
-function compactSolidText(value: string): string {
-  const cleaned = value.trim().replace(/\s+/g, '');
-  if (cleaned.includes('.')) {
-    const [left, right] = cleaned.split('.', 2);
-    return `${compactPointSequenceText(left)}.${compactPointSequenceText(right)}`;
-  }
-  const compact = compactPointSequenceText(value);
-  return compact.length >= 4 ? `${compact[0]}.${compact.slice(1)}` : compact;
-}
-
-function normalizeParenthesizedGeometry(input: string): string {
-  let output = '';
-  let index = 0;
-  while (index < input.length) {
-    if (input[index] !== '(') {
-      output += input[index];
-      index += 1;
-      continue;
-    }
-    const end = findMatchingParen(input, index);
-    if (end === -1) {
-      output += input[index];
-      index += 1;
-      continue;
-    }
-    let inner = normalizeParenthesizedGeometry(input.slice(index + 1, end));
-    if (/^[A-Za-z0-9'\s.]+$/.test(inner)) {
-      inner = inner.includes('.') ? compactSolidText(inner) : compactPointSequenceText(inner);
-    }
-    output += `(${inner})`;
-    index = end + 1;
-  }
-  return output;
-}
-
-function findMatchingParen(input: string, openIndex: number): number {
-  let depth = 0;
-  for (let index = openIndex; index < input.length; index += 1) {
-    if (input[index] === '(') depth += 1;
-    if (input[index] === ')') {
-      depth -= 1;
-      if (depth === 0) return index;
-    }
-  }
-  return -1;
-}
+// Question normalization is authoritative on the backend (geometry.parser).
+// FE only trims and uses NLP canonical text when the user accepts preflight.
 
 function normalizeComparableText(input?: string | null): string {
   return (input ?? '')
@@ -136,23 +32,65 @@ function normalizeComparableText(input?: string | null): string {
     .toLowerCase();
 }
 
-function normalizeExplanationText(
-  explanation: string,
-  hasFormula: boolean,
-  hasSubstitution: boolean,
-): string {
-  let text = explanation.trim();
+/**
+ * Soft-clean step prose: convert common LaTeX to unicode/readable text instead of
+ * deleting commands (which left "Lập , , pháp tuyến \\" on distance cards).
+ */
+function normalizeExplanationText(explanation: string): string {
+  let text = (explanation || '').trim();
   if (!text) return text;
-  if ((hasFormula || hasSubstitution) && text.includes('\\')) {
-    // Remove inline latex-heavy expression from prose when formula blocks exist.
-    text = text.replace(/\b[A-Za-z][A-Za-z0-9(),.\s]*=\s*\\[a-zA-Z][^.]*(?:\.)?/g, '').trim();
-    // Remove any remaining standalone LaTeX fragments (e.g. "\frac{...}{...}").
-    text = text
-      .replace(/\\[a-zA-Z]+(?:\{[^{}]*\}|\[[^\]]*\]|\([^)]*\)|\s|[^\s.,;:!?])*/g, ' ')
-      .replace(/[{}]/g, ' ');
-    text = text.replace(/\s{2,}/g, ' ').replace(/\.\s*\./g, '.').trim();
+  if (!text.includes('\\')) return text;
+
+  // Structural math first (repeat for light nesting).
+  for (let i = 0; i < 6; i += 1) {
+    const next = text
+      .replace(/\\sqrt\{([^{}]+)\}/g, '√($1)')
+      .replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, '($1)/($2)');
+    if (next === text) break;
+    text = next;
   }
+  text = text
+    .replace(/\\overrightarrow\{([^{}]+)\}/g, 'vector $1')
+    .replace(/\\vec\s*\{([^{}]+)\}/g, '$1')
+    .replace(/\\vec\s*([A-Za-z])/g, '$1')
+    .replace(/\\angle\(([^)]+)\)/g, 'góc($1)')
+    .replace(/\\(?:left|right)\\?([|()[\]])/g, '$1')
+    .replace(/\\\|/g, '||')
+    .replace(/\\times/g, '×')
+    .replace(/\\cdot/g, '·')
+    .replace(/\\pm/g, '±')
+    .replace(/\\approx/g, '≈')
+    .replace(/\\le/g, '≤')
+    .replace(/\\ge/g, '≥')
+    .replace(/\\ne/g, '≠')
+    .replace(/\\infty/g, '∞')
+    .replace(/\\pi/g, 'π')
+    .replace(/\\[,;!\s]/g, ' ')
+    .replace(/\\[a-zA-Z]+\s*\{([^{}]*)\}/g, '$1')
+    .replace(/\\[a-zA-Z]+/g, ' ')
+    .replace(/[{}]/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\.\s*\./g, '.')
+    .trim();
   return text;
+}
+
+function AnswerValue({ answer }: { answer: string }) {
+  const match = answer.match(/^(.+?)\s*=\s*(.+)$/s);
+  if (match) {
+    const [, left, right] = match;
+    if (/\\[a-zA-Z]+|√|π|∞/.test(right)) {
+      return (
+        <>
+          {left.trim()} = <KatexSpan tex={normalizeSolverLatex(right)} />
+        </>
+      );
+    }
+  }
+  if (/\\[a-zA-Z]+/.test(answer)) {
+    return <KatexSpan tex={normalizeSolverLatex(answer)} />;
+  }
+  return <>{answer}</>;
 }
 
 function buildExamples(scene: MathSceneV3) {
@@ -357,7 +295,9 @@ export function SolverPanel({ workspace, runtimeSettings, onHighlight, onToast }
         <div className="sp-result">
           <div className="sp-answer">
             <span className="sp-answer-label">Kết quả</span>
-            <span className="sp-answer-value">{result.answer}</span>
+            <span className="sp-answer-value">
+              <AnswerValue answer={result.answer} />
+            </span>
           </div>
 
           {result.steps.length > 0 && (
@@ -478,7 +418,8 @@ function SolverStepItem({
   const substitutionComparable = normalizeComparableText(substitutionLatex);
   const showFormula = Boolean(formulaLatex) && formulaComparable !== explanationComparable;
   const showSubstitution = Boolean(substitutionLatex) && substitutionComparable !== explanationComparable && substitutionComparable !== formulaComparable;
-  const explanationText = normalizeExplanationText(step.explanation, showFormula, showSubstitution);
+  // Always soft-convert residual LaTeX; do not delete command tokens (avoids "Lập , ,").
+  const explanationText = normalizeExplanationText(step.explanation);
 
   return (
     <div

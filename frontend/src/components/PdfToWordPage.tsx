@@ -538,7 +538,7 @@ function SummaryCell({ label, value }: { label: string; value: string }) {
 }
 
 function ArtifactPreview({ preview, onClose }: { preview: Exclude<PreviewState, null>; onClose: () => void }) {
-  const srcDoc = preview.html ? `<!doctype html><meta charset="utf-8"><style>body{font-family:Arial,sans-serif;line-height:1.5;padding:16px;color:#111827}table{border-collapse:collapse;width:100%}td,th{border:1px solid #d1d5db;padding:4px 6px}</style>${preview.html}` : '';
+  const srcDoc = preview.html ? `<!doctype html><meta charset="utf-8"><style>body{font-family:"Segoe UI",system-ui,sans-serif;line-height:1.5;padding:16px;color:#111111}table{border-collapse:collapse;width:100%}td,th{border:1px solid #e3e3df;padding:4px 6px}</style>${preview.html}` : '';
   return (
     <div className="pdf-word-artifact-preview">
       <div className="pdf-word-preview-head">

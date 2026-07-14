@@ -72,6 +72,8 @@ class GeometryFactGraph:
 def build_geometry_fact_graph(scene: dict[str, Any]) -> GeometryFactGraph:
     facts: list[GeometryFact] = []
     object_index = _object_index(scene)
+    facts.extend(_problem_structure_facts(scene))
+    facts.extend(_problem_midpoint_facts(scene))
     for index, annotation in enumerate(scene.get("annotations") or []):
         if isinstance(annotation, dict):
             fact = _annotation_fact(annotation, index)
@@ -100,6 +102,98 @@ def build_geometry_fact_graph(scene: dict[str, Any]) -> GeometryFactGraph:
                     metadata=obj.get("metadata") if isinstance(obj.get("metadata"), dict) else {},
                 ))
     return GeometryFactGraph(facts)
+
+
+def _problem_structure_facts(scene: dict[str, Any]) -> list[GeometryFact]:
+    """Chuẩn hóa cấu trúc khối được nêu trực tiếp trong đề, không đọc tọa độ render."""
+    text = str(scene.get("problem_text") or "")
+    signature = re.search(
+        r"(?:hình|hinh)\s+(?:lập|lap)\s+(?:phương|phuong)\s*\(?\s*([A-Za-z]{4})\s*\.\s*([A-Za-z]{4})\s*\)?",
+        text,
+        flags=re.IGNORECASE,
+    )
+    structure = "cube"
+    if signature is None:
+        signature = re.search(
+            r"(?:(?:hình|hinh)\s+)?(?:hộp|hop)\s+(?:chữ|chu)\s+(?:nhật|nhat)\s*\(?\s*([A-Za-z]{4})\s*\.\s*([A-Za-z]{4})\s*\)?",
+            text,
+            flags=re.IGNORECASE,
+        )
+        structure = "rectangular_cuboid"
+    if signature is None:
+        return []
+    base = tuple(signature.group(1).upper())
+    top = tuple(signature.group(2).upper())
+    if structure == "cube":
+        side_match = re.search(
+            r"(?:cạnh|canh)(?:\s+(?:có|co)\s+(?:độ|do)\s+(?:dài|dai))?\s*(?:(?:bằng|bang)|=)?\s*\(?\s*(\d+(?:[.,]\d+)?)\s*\)?",
+            text,
+            flags=re.IGNORECASE,
+        )
+        side = side_match.group(1).replace(",", ".") if side_match is not None else None
+        axis_lengths = (side, side, side) if side is not None else ()
+    else:
+        axis_edges = ((base[0], base[1]), (base[0], base[3]), (base[0], top[0]))
+        parsed_lengths = tuple(_problem_edge_length(scene, edge) for edge in axis_edges)
+        axis_lengths = parsed_lengths if all(parsed_lengths) else ()
+    structure_name = "hình lập phương" if structure == "cube" else "hình hộp chữ nhật"
+    return [GeometryFact(
+        id=f"problem:orthogonal-frame:{''.join(base)}:{''.join(top)}",
+        type="orthogonal_frame",
+        args={
+            "base": base,
+            "top": top,
+            "axis_lengths": axis_lengths,
+            "structure": structure,
+        },
+        source="given",
+        text=(
+            f"{''.join(base)}.{''.join(top)} là {structure_name} có ba phương cạnh đôi một vuông góc"
+            + (f" với độ dài {', '.join(axis_lengths)}." if axis_lengths else ".")
+        ),
+        metadata={"source": "given", "evidence": signature.group(0)},
+    )]
+
+
+def _problem_edge_length(scene: dict[str, Any], edge: tuple[str, str]) -> str | None:
+    target = set(edge)
+    for annotation in scene.get("annotations") or []:
+        if not isinstance(annotation, dict) or annotation.get("type") != "length":
+            continue
+        annotated_edge = parse_edge_token(str(annotation.get("target") or ""))
+        label = annotation.get("label")
+        if annotated_edge and set(annotated_edge) == target and isinstance(label, str) and label.strip():
+            return label.strip().replace(",", ".")
+    text = str(scene.get("problem_text") or "")
+    edge_name = "".join(edge)
+    match = re.search(
+        rf"\b{re.escape(edge_name)}\s*(?:(?:bằng|bang)|=)\s*\(?\s*(\d+(?:[.,]\d+)?)\s*\)?",
+        text,
+        flags=re.IGNORECASE,
+    )
+    return match.group(1).replace(",", ".") if match is not None else None
+
+
+def _problem_midpoint_facts(scene: dict[str, Any]) -> list[GeometryFact]:
+    """Lấy premise trung điểm được phát biểu rõ trong đề, độc lập với relation do renderer sinh."""
+    text = str(scene.get("problem_text") or "")
+    pattern = re.compile(
+        r"(?:gọi|goi)?\s*\(?\s*([A-Za-z])\s*\)?\s+(?:là|la)\s+trung\s+(?:điểm|diem)"
+        r"(?:\s+(?:của|cua))?\s*(?:(?:đoạn|doan)\s+(?:thẳng|thang))?\s*\(?\s*([A-Za-z])\s*-?\s*([A-Za-z])\s*\)?",
+        flags=re.IGNORECASE,
+    )
+    facts: list[GeometryFact] = []
+    for match in pattern.finditer(text):
+        point, first, second = (group.upper() for group in match.groups())
+        facts.append(GeometryFact(
+            id=f"problem:midpoint:{point}:{first}{second}",
+            type="midpoint",
+            args={"point": point, "segment": (first, second)},
+            source="given",
+            text=f"{point} là trung điểm của {first}{second}.",
+            metadata={"source": "given", "evidence": match.group(0)},
+        ))
+    return facts
 
 
 def _annotation_fact(annotation: dict[str, Any], index: int) -> GeometryFact | None:

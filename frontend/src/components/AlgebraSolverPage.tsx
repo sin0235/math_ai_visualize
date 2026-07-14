@@ -6,7 +6,9 @@ import {
   deleteAlgebraHistory,
   getAlgebraHistory,
   listAlgebraHistory,
+  ocrImageByUploadId,
   solveAlgebra,
+  uploadOcrImage,
   type AlgebraDomainSource,
   type AlgebraHistoryItem as ServerHistoryItem,
   type AlgebraInputFormat,
@@ -52,6 +54,8 @@ export function AlgebraSolverPage({
   const [solvedFingerprint, setSolvedFingerprint] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [ocrLoading, setOcrLoading] = useState(false);
+  const [ocrError, setOcrError] = useState<string | null>(null);
   const [inputExpanded, setInputExpanded] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const preflight = useInterpretationPreflight();
@@ -60,6 +64,8 @@ export function AlgebraSolverPage({
   const [historySource, setHistorySource] = useState<'local' | 'server'>('local');
   const submitLockRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
+  const ocrInFlightRef = useRef(false);
+  const DEFAULT_OCR_MAX_MB = 10;
   const [sequenceDraft, setSequenceDraft] = useState<SequenceDraft>({
     kind: 'arithmetic',
     target: 'term',
@@ -216,6 +222,81 @@ export function AlgebraSolverPage({
     preflight.reset();
   }
 
+  async function handleOcrClipboardImage() {
+    if (!navigator.clipboard?.read) {
+      const message = 'Trình duyệt chưa hỗ trợ đọc ảnh từ clipboard.';
+      setOcrError(message);
+      onToast?.('OCR thất bại', message, 'error');
+      return;
+    }
+    try {
+      const clipboardItems = await navigator.clipboard.read();
+      for (const item of clipboardItems) {
+        const imageType = item.types.find((type) => type.startsWith('image/'));
+        if (!imageType) continue;
+        const blob = await item.getType(imageType);
+        await handleOcrImage(new File([blob], 'clipboard-image.png', { type: imageType }));
+        return;
+      }
+      const message = 'Clipboard hiện không có ảnh để OCR.';
+      setOcrError(message);
+      onToast?.('OCR thất bại', message, 'error');
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : 'Không đọc được ảnh từ clipboard.';
+      setOcrError(message);
+      onToast?.('OCR thất bại', message, 'error');
+    }
+  }
+
+  async function handleOcrImage(file: File) {
+    if (ocrInFlightRef.current || loading) return;
+    if (!file.type.startsWith('image/')) {
+      const message = 'File OCR phải là ảnh.';
+      setOcrError(message);
+      onToast?.('OCR thất bại', message, 'error');
+      return;
+    }
+    const maxBytes = DEFAULT_OCR_MAX_MB * 1024 * 1024;
+    if (file.size > maxBytes) {
+      const message = `Ảnh OCR vượt quá giới hạn ${DEFAULT_OCR_MAX_MB}MB.`;
+      setOcrError(message);
+      onToast?.('OCR thất bại', message, 'error');
+      return;
+    }
+
+    ocrInFlightRef.current = true;
+    setOcrLoading(true);
+    setOcrError(null);
+    try {
+      const uploaded = await uploadOcrImage(file);
+      const response = await ocrImageByUploadId(uploaded.file_id);
+      const text = (response.text || '').trim();
+      if (!text) {
+        const message = 'OCR không đọc được chữ trong ảnh. Hãy chụp rõ hơn hoặc gõ tay.';
+        setOcrError(message);
+        onToast?.('OCR thất bại', message, 'warning');
+        return;
+      }
+      setInput(text);
+      setInputMode('natural');
+      setInputFormat('auto');
+      setUseAiExtraction(true);
+      preflight.reset();
+      onToast?.('OCR xong', 'Đã điền đề từ ảnh. Kiểm tra rồi bấm Giải bài.', 'info');
+    } catch (caught) {
+      const message = caught instanceof ApiError
+        ? caught.message
+        : caught instanceof Error
+          ? caught.message
+          : 'Không thể OCR ảnh đề bài.';
+      setOcrError(message);
+      onToast?.('OCR thất bại', message, 'error');
+    } finally {
+      ocrInFlightRef.current = false;
+      setOcrLoading(false);
+    }
+  }
+
   function handleDomainChange(value: AlgebraDomain) {
     setDomain(value);
     setDomainSource('user');
@@ -264,9 +345,11 @@ export function AlgebraSolverPage({
           intervalClosedStart={intervalClosedStart}
           intervalClosedEnd={intervalClosedEnd}
           loading={loading}
+          ocrLoading={ocrLoading}
+          ocrError={ocrError}
           expanded={inputExpanded}
           onExpandedChange={setInputExpanded}
-          onInputChange={(value) => { setInput(value); preflight.reset(); }}
+          onInputChange={(value) => { setInput(value); setOcrError(null); preflight.reset(); }}
           onTopicChange={(value) => { setTopic(value); preflight.reset(); }}
           onDomainChange={handleDomainChange}
           onVariablesChange={(value) => { setVariables(value); preflight.reset(); }}
@@ -278,6 +361,8 @@ export function AlgebraSolverPage({
           onIntervalClosedEndChange={(value) => { setIntervalClosedEnd(value); preflight.reset(); }}
           sequenceDraft={sequenceDraft}
           onSequenceDraftChange={(value) => { setSequenceDraft(value); preflight.reset(); }}
+          onOcrImage={(file) => { void handleOcrImage(file); }}
+          onOcrClipboardImage={() => { void handleOcrClipboardImage(); }}
           onSubmit={requestConfirmIfNeeded}
         />
         <div className="algebra-result-wrap">
