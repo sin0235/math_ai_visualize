@@ -17,7 +17,6 @@ from typing import Any, Iterator
 
 from pydantic import ValidationError
 
-from app.core.config import Settings
 from app.db.session import DatabaseClient
 from app.schemas.scene import AdvancedRenderSettings, RuntimeSettings
 from app.schemas.scene_v3 import MathSceneV3
@@ -51,6 +50,11 @@ from app.services.model_registry import (
     resolve_task_profile,
 )
 from app.services.scene_pipeline_v3 import PipelineIssueV3
+from app.services.scene_fidelity_v3 import (
+    complete_standard_solid_topology,
+    repair_standard_solid_references,
+    validate_scene_fidelity,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -117,6 +121,7 @@ def normalize_scene_v3_json(raw: dict[str, Any], *, problem_text: str, grade: in
         data["view"] = {"dimension": dim, "show_axes": True, "show_grid": True, "show_coordinates": False}
     if not isinstance(data.get("interpretation"), dict):
         data["interpretation"] = {}
+    data["interpretation"] = _normalize_interpretation_v3(data["interpretation"])
     audit = data.get("audit") if isinstance(data.get("audit"), dict) else {}
     audit.setdefault("created_by", "ai")
     data["audit"] = audit
@@ -153,6 +158,16 @@ def normalize_scene_v3_json(raw: dict[str, Any], *, problem_text: str, grade: in
     data["construction_steps"] = _normalize_construction_steps_v3(data.get("construction_steps") or [])
 
     return data
+
+
+def _normalize_interpretation_v3(raw: dict[str, Any]) -> dict[str, Any]:
+    """Giữ lại scalar do LLM trả về nhưng đưa về contract values dạng object."""
+    interpretation = dict(raw)
+    values = interpretation.get("values")
+    if not isinstance(values, list):
+        values = []
+    interpretation["values"] = [item if isinstance(item, dict) else {"value": item} for item in values]
+    return interpretation
 
 
 def _normalize_parameters_v3(raw: Any) -> list[dict[str, Any]]:
@@ -217,7 +232,14 @@ def _normalize_construction_steps_v3(raw: Any) -> list[dict[str, Any]]:
 
 def parse_math_scene_v3(raw: dict[str, Any], *, problem_text: str, grade: int | None) -> MathSceneV3:
     normalized = normalize_scene_v3_json(raw, problem_text=problem_text, grade=grade)
-    return MathSceneV3.model_validate(normalized)
+    repaired = repair_standard_solid_references(normalized, problem_text=problem_text)
+    scene = MathSceneV3.model_validate(repaired)
+    scene = complete_standard_solid_topology(scene)
+    fidelity_issues = validate_scene_fidelity(scene)
+    if fidelity_issues:
+        details = "; ".join(f"{issue.code}: {issue.message}" for issue in fidelity_issues)
+        raise ValueError(f"Scene fidelity không đạt: {details}")
+    return scene
 
 
 def extract_scene_v3_mock(problem_text: str, grade: int | None = None) -> MathSceneV3:

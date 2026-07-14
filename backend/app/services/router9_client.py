@@ -10,8 +10,12 @@ from app.services.ai_prompt import REASONING_SYSTEM_PROMPT, SCENE_EXTRACTION_V3_
 from app.services.chat_response import extract_chat_message_content
 from app.services.openrouter_client import OCR_SYSTEM_PROMPT
 from app.services.model_scan import CAPABILITY_KEYS, _extract_capabilities
-from app.services.provider_logging import chat_message_input_chars, format_provider_error, log_ocr_summary, log_provider_http_error, log_provider_request, log_provider_response, log_scene_summary
+from app.services.provider_logging import chat_message_input_chars, format_provider_error, log_ocr_summary, log_provider_http_error, log_provider_parse_error, log_provider_request, log_provider_response, log_scene_summary
 from app.services.prompt_security import parse_llm_json_dict, secure_system_prompt
+
+
+def _parse_error_message(error: json.JSONDecodeError | RuntimeError) -> str:
+    return getattr(error, "msg", str(error)) or error.__class__.__name__
 
 
 class Router9Client:
@@ -97,8 +101,9 @@ class Router9Client:
             log_scene_summary("9router", scene_json)
             return scene_json
         except (json.JSONDecodeError, RuntimeError) as error:
-            log_provider_parse_error("9router", "scene", self.model, f"invalid_json: {error.msg}", response_chars=len(content))
-            raise RuntimeError(f"9router trả về JSON không hợp lệ: {error.msg}") from error
+            message = _parse_error_message(error)
+            log_provider_parse_error("9router", "scene", self.model, f"invalid_json: {message}", response_chars=len(content))
+            raise RuntimeError(f"9router trả về JSON không hợp lệ: {message}") from error
 
     async def reason_about_problem(self, problem_text: str, grade: int | None = None, system_prompt: str | None = None) -> dict:
         """Task 1: Analyze the problem and return a structured reasoning plan."""
@@ -130,8 +135,9 @@ class Router9Client:
         try:
             return parse_llm_json_dict(content, task="reasoning")
         except (json.JSONDecodeError, RuntimeError) as error:
-            log_provider_parse_error("9router", "reasoning", self.model, f"invalid_json: {error.msg}", response_chars=len(content))
-            raise RuntimeError(f"9router reasoning JSON không hợp lệ: {error.msg}") from error
+            message = _parse_error_message(error)
+            log_provider_parse_error("9router", "reasoning", self.model, f"invalid_json: {message}", response_chars=len(content))
+            raise RuntimeError(f"9router reasoning JSON không hợp lệ: {message}") from error
 
     async def ocr_image(self, image_data_url: str, model: str | None = None, system_prompt: str | None = None, user_text: str = "Trích xuất nguyên văn đề toán trong ảnh.") -> str:
         if not _api_key(self.settings):
