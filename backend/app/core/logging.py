@@ -101,7 +101,11 @@ def configure_logging() -> None:
                 "app": {"level": "INFO", "propagate": True},
                 "app.services.ai_providers": {"level": "INFO", "propagate": True},
                 "httpx": {"level": "WARNING", "propagate": True},
-                "uvicorn.access": {"level": "INFO", "propagate": True},
+                "uvicorn.access": {
+                    "handlers": ["console"],
+                    "level": "INFO",
+                    "propagate": False,
+                },
             },
         }
     )
