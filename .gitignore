@@ -49,6 +49,7 @@ Thumbs.db
 .vscode/
 .idea/
 .gstack/
+.superpowers/
 
 # Local data trees; re-include NLP corpus/eval under data/nlp/
 data/*
