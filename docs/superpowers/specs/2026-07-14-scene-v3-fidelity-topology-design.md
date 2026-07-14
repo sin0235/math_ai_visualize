@@ -51,7 +51,10 @@ problem_text + NLP hints + reasoning plan
 Scene v3 fidelity prompt
     |
     v
-raw JSON normalization + schema/reference validation
+raw normalization + safe pre-validation topology repair
+    |
+    v
+schema/reference validation
     |
     v
 StandardSolidTopologyCompleter
@@ -95,7 +98,12 @@ Tạo module nội bộ có interface tương đương:
 complete_standard_solid_topology(scene: MathSceneV3) -> TopologyCompletionResult
 ```
 
-Module nhận diện ký hiệu khối chuẩn từ `problem_text` và đối chiếu với label point duy nhất trong scene. Chỉ khi toàn bộ đỉnh bắt buộc tồn tại và mapping không mơ hồ, module mới tạo object còn thiếu.
+Module có hai entry point dùng chung một topology registry:
+
+- pre-validation repair nhận raw dict, chỉ tạo segment bị relation tham chiếu thiếu khi ID/label hai đầu mút ánh xạ duy nhất vào một cạnh chuẩn;
+- post-validation completion nhận `MathSceneV3`, bổ sung toàn bộ segment/face hiển thị còn thiếu.
+
+Registry nhận diện ký hiệu khối chuẩn từ `problem_text` và đối chiếu với label point duy nhất trong scene. Chỉ khi toàn bộ đỉnh bắt buộc tồn tại và mapping không mơ hồ, module mới tạo object còn thiếu.
 
 Topology hỗ trợ đợt đầu:
 
@@ -147,13 +155,14 @@ Issue retryable như `SOLID_TOPOLOGY_INCOMPLETE` hoặc `SOLID_APPEARANCE_INCOMP
 ## 5. Data flow và xử lý lỗi
 
 1. Provider trả JSON.
-2. Normalizer xử lý sai lệch shape có thể sửa mà không đổi nghĩa, như scalar trong `interpretation.values`.
-3. Pydantic bảo vệ schema và reference integrity.
-4. Topology completer bổ sung object hiển thị xác định được.
-5. Fidelity gate kiểm tra độ đầy đủ.
-6. Geometry pipeline xác minh relation và projection.
+2. Raw normalizer xử lý sai lệch shape có thể sửa mà không đổi nghĩa, như scalar trong `interpretation.values` và màu face bị bỏ trống.
+3. Pre-validation topology repair chỉ bổ sung segment bị tham chiếu thiếu khi cạnh đó thuộc topology chuẩn đã xác nhận.
+4. Pydantic bảo vệ schema và reference integrity.
+5. Post-validation topology completer bổ sung object hiển thị xác định được.
+6. Fidelity gate kiểm tra độ đầy đủ.
+7. Geometry pipeline xác minh relation và projection.
 
-Nếu bước 3 thất bại do missing reference, extractor chỉ sửa cục bộ trước validation khi missing object là segment thuộc topology chuẩn đã xác nhận. Các missing reference khác tiếp tục fail và fallback.
+Missing reference không thỏa quy tắc pre-validation repair tiếp tục fail và fallback. Không bắt `ValidationError` rồi bỏ relation để làm scene hợp lệ.
 
 Mọi lỗi provider parse phải giữ nguyên nguyên nhân gốc; logging không được tạo `NameError` hoặc che lỗi JSON thật.
 
