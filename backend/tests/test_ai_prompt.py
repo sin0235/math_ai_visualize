@@ -4,19 +4,22 @@ Production extract/repair uses SCENE_EXTRACTION_V3_SYSTEM_PROMPT (and
 get_system_prompts defaults to V3). These gates protect that path.
 """
 
+import json
+
 import pytest
 
 from app.schemas.ai_reasoning import SceneReasoningPlan
+from app.schemas.scene_v3 import MathSceneV3
 from app.services.ai_prompt import (
     DEFAULT_SCENE_EXTRACTION_SYSTEM_PROMPT,
     REASONING_SYSTEM_PROMPT,
     SCENE_EXTRACTION_V3_SYSTEM_PROMPT,
     SYSTEM_PROMPT_SECURITY_PREFIX,
-    SYSTEM_PROMPT_SECURITY_SUFFIX,
     _secure_system_prompt,
     build_reasoning_prompt,
     build_scene_extraction_prompt,
 )
+from app.services.prompt_security import SYSTEM_PROMPT_SECURITY_SUFFIX
 
 
 # ---------------------------------------------------------------------------
@@ -76,6 +79,39 @@ def test_scene_v3_prompt_requires_stable_ids_and_typed_operands():
 def test_scene_v3_prompt_mentions_immutable_problem_text():
     text = SCENE_EXTRACTION_V3_SYSTEM_PROMPT.lower()
     assert "nguyên văn" in text or "không sửa" in text or "immutable" in text
+
+
+@pytest.mark.parametrize("snippet", [
+    "8 đỉnh, 12 segment, 6 face",
+    "3n segment, n+2 face",
+    "2n segment, n+1 face",
+    "Các mặt kề nhau phải khác màu",
+    "Danh sách point KHÔNG phải một khối hoàn chỉnh",
+    "Self-check nội bộ",
+    "seg_cd",
+    "face_left",
+])
+def test_scene_v3_prompt_restores_geometry_fidelity_rules(snippet: str):
+    assert snippet in SCENE_EXTRACTION_V3_SYSTEM_PROMPT
+
+
+def test_scene_v3_schema_sample_does_not_teach_known_missing_references():
+    text = SCENE_EXTRACTION_V3_SYSTEM_PROMPT
+    schema_sample = text.split("I. Contract", maxsplit=1)[0]
+    assert '"ref_id":"pt_m"' not in schema_sample
+    assert '"ref_id":"seg_sa"' not in schema_sample
+    assert '"point_ids":["pt_a","pt_b","pt_c","pt_d"]' not in schema_sample
+
+
+def test_scene_v3_box_example_is_valid_and_topologically_complete():
+    marker = "Ví dụ đầy đủ — hình hộp chữ nhật ABCD.A'B'C'D':\n"
+    example = SCENE_EXTRACTION_V3_SYSTEM_PROMPT.split(marker, maxsplit=1)[1].splitlines()[0]
+
+    scene = MathSceneV3.model_validate(json.loads(example))
+
+    assert sum(obj.type == "segment" for obj in scene.objects) == 12
+    assert sum(obj.type == "face" for obj in scene.objects) == 6
+    assert len({obj.color for obj in scene.objects if obj.type == "face"}) == 6
 
 
 # ---------------------------------------------------------------------------

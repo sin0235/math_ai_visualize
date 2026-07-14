@@ -58,6 +58,26 @@ def test_parse_fills_missing_ids_and_preserves_problem_text():
     assert all(obj.id for obj in scene.objects)
 
 
+def test_parse_wraps_scalar_interpretation_values_without_losing_data():
+    scene = parse_math_scene_v3(
+        {
+            "topic": "solid_geometry",
+            "renderer": "threejs_3d",
+            "objects": [],
+            "view": {"dimension": "3d"},
+            "interpretation": {"values": [18, {"name": "edge", "value": 3}]},
+            "audit": {"created_by": "test"},
+        },
+        problem_text="Cho hình có thể tích 18.",
+        grade=11,
+    )
+
+    assert scene.interpretation.values == [
+        {"value": 18},
+        {"name": "edge", "value": 3},
+    ]
+
+
 def test_native_midpoint_relation_contract_passes():
     scene = parse_math_scene_v3(
         {
@@ -169,3 +189,75 @@ async def test_extract_scene_v3_fails_closed_without_mock(monkeypatch):
             tier="tier1",
             advanced_settings=AdvancedRenderSettings(reasoning_layer="off"),
         )
+
+
+@pytest.mark.anyio
+async def test_extract_scene_v3_falls_back_when_first_candidate_has_ambiguous_solid(monkeypatch):
+    from app.core.config import Settings
+    from app.schemas.scene import AdvancedRenderSettings
+    from app.services.model_registry import registry_from_settings
+
+    settings = Settings(_env_file=None, allow_render_mock=False, database_backend="sqlite")
+
+    class _Candidate:
+        provider_id = "openrouter"
+
+        def __init__(self, model_id: str):
+            self.model_id = model_id
+
+    async def fake_settings(*_args, **_kwargs):
+        return settings
+
+    async def fake_registry(*_args, **_kwargs):
+        return registry_from_settings(settings)
+
+    async def fake_prompts(*_args, **_kwargs):
+        return "sys", "reason"
+
+    async def fake_extract(*_args, preferred_ai_model=None, **_kwargs):
+        if preferred_ai_model == "bad-model":
+            return {
+                "topic": "solid_geometry",
+                "renderer": "threejs_3d",
+                "objects": [
+                    {"id": "pt_x", "type": "point_3d", "label": "X", "x": 0, "y": 0, "z": 0},
+                ],
+                "view": {"dimension": "3d"},
+                "audit": {"created_by": "test"},
+            }
+        return {
+            "topic": "solid_geometry",
+            "renderer": "threejs_3d",
+            "objects": [
+                {
+                    "id": f"pt_{label.lower()}",
+                    "type": "point_3d",
+                    "label": label,
+                    "x": index % 4,
+                    "y": index // 4,
+                    "z": (index // 2) % 2,
+                }
+                for index, label in enumerate("ABCDEFGH")
+            ],
+            "view": {"dimension": "3d"},
+            "audit": {"created_by": "test"},
+        }
+
+    monkeypatch.setattr("app.services.extractor_v3.resolve_effective_settings", fake_settings)
+    monkeypatch.setattr("app.services.extractor_v3.load_model_registry", fake_registry)
+    monkeypatch.setattr("app.services.extractor_v3.get_system_prompts", fake_prompts)
+    monkeypatch.setattr(
+        "app.services.extractor_v3.resolve_render_tier_candidates",
+        lambda *_args, **_kwargs: [_Candidate("bad-model"), _Candidate("good-model")],
+    )
+    monkeypatch.setattr("app.services.extractor_v3._extract_with_provider", fake_extract)
+
+    result = await extract_scene_v3(
+        "Cho một hình hộp chữ nhật.",
+        tier="tier2",
+        advanced_settings=AdvancedRenderSettings(reasoning_layer="off"),
+    )
+
+    assert result.model == "good-model"
+    assert len(result.attempts) == 1
+    assert "SOLID_TOPOLOGY_AMBIGUOUS" in result.attempts[0].message
