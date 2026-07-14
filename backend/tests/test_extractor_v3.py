@@ -78,6 +78,75 @@ def test_parse_wraps_scalar_interpretation_values_without_losing_data():
     ]
 
 
+def test_parse_converts_unknown_distance_goal_to_render_only_measurement():
+    scene = parse_math_scene_v3(
+        {
+            "topic": "solid_geometry",
+            "renderer": "threejs_3d",
+            "objects": [
+                {"id": "pt_m", "type": "point_3d", "label": "M", "x": 0, "y": 2, "z": 0},
+                {"id": "pt_p", "type": "point_3d", "label": "P", "x": 0, "y": 0, "z": 0},
+                {"id": "pt_f", "type": "point_3d", "label": "F", "x": 1, "y": 0, "z": 0},
+                {"id": "pt_b", "type": "point_3d", "label": "B", "x": 0, "y": 0, "z": 1},
+                {"id": "plane_pfb", "type": "plane", "label": "PFB", "point_ids": ["pt_p", "pt_f", "pt_b"]},
+            ],
+            "relations": [{
+                "id": "rel_distance_m_plane_pfb",
+                "type": "distance",
+                "operands": [
+                    {"role": "point", "ref_id": "pt_m", "ref_kind": "point"},
+                    {"role": "plane", "ref_id": "plane_pfb", "ref_kind": "plane"},
+                ],
+                "args": {},
+                "source": "ai_inferred",
+            }],
+            "view": {"dimension": "3d"},
+            "audit": {"created_by": "test"},
+        },
+        problem_text="Tính khoảng cách từ M đến mặt phẳng (PFB).",
+        grade=11,
+    )
+
+    assert scene.relations == []
+    assert len(scene.derived_facts) == 1
+    goal = scene.derived_facts[0]
+    assert goal.kind == "measurement"
+    assert goal.provenance == "render_only"
+    assert goal.source_ids == ["pt_m", "plane_pfb"]
+    assert goal.value["quantity"] == "distance"
+    result = run_scene_pipeline_v3(scene)
+    assert result.status == "verified"
+    assert result.can_project
+
+
+def test_parse_rejects_given_distance_without_expected_value():
+    with pytest.raises(ValueError, match=r"rel_distance_given cần args\.value"):
+        parse_math_scene_v3(
+            {
+                "topic": "coordinate_2d",
+                "renderer": "geogebra_2d",
+                "objects": [
+                    {"id": "pt_a", "type": "point_2d", "label": "A", "x": 0, "y": 0},
+                    {"id": "pt_b", "type": "point_2d", "label": "B", "x": 3, "y": 0},
+                ],
+                "relations": [{
+                    "id": "rel_distance_given",
+                    "type": "distance",
+                    "operands": [
+                        {"role": "first", "ref_id": "pt_a", "ref_kind": "point"},
+                        {"role": "second", "ref_id": "pt_b", "ref_kind": "point"},
+                    ],
+                    "args": {},
+                    "source": "given",
+                }],
+                "view": {"dimension": "2d"},
+                "audit": {"created_by": "test"},
+            },
+            problem_text="Cho AB có độ dài xác định.",
+            grade=10,
+        )
+
+
 def test_native_midpoint_relation_contract_passes():
     scene = parse_math_scene_v3(
         {
