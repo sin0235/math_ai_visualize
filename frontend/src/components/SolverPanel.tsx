@@ -6,7 +6,7 @@ import type { RuntimeSettings } from '../types/settings';
 import type { MathSceneV3, SceneWorkspaceResponseV3 } from '../types/sceneV3';
 import { isDocumentHidden, showBrowserNotify } from '../utils/browserNotify';
 import { buildSolverNotice } from '../utils/solverNotice';
-import { KatexSpan, normalizeLatexForKatex, sympyToLatex } from './KatexSpan';
+import { KatexSpan, MixedTextRenderer, normalizeLatexForKatex, sympyToLatex } from './KatexSpan';
 
 type ToastKind = 'error' | 'warning' | 'info';
 
@@ -368,6 +368,34 @@ function SolverStepItem({
   const showFormula = Boolean(formulaLatex) && formulaComparable !== explanationComparable;
   const showSubstitution = Boolean(substitutionLatex) && substitutionComparable !== explanationComparable && substitutionComparable !== formulaComparable;
   // Always soft-convert residual LaTeX; do not delete command tokens (avoids "Lập , ,").
+function formatMultiLineMath(tex: string): string {
+  if (!tex) return tex;
+  if (tex.includes('\\\\') || tex.includes('\\begin{')) return tex;
+  
+  const parts: string[] = [];
+  let current = '';
+  let depth = 0;
+  for (let i = 0; i < tex.length; i++) {
+    const char = tex[i];
+    if (char === '(' || char === '[' || char === '{') depth++;
+    else if (char === ')' || char === ']' || char === '}') depth--;
+    if (depth < 0) depth = 0;
+    
+    if (char === ',' && depth === 0) {
+      parts.push(current);
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  if (current) parts.push(current);
+  
+  const cleanParts = parts.map(p => p.trim()).filter(Boolean);
+  if (cleanParts.length <= 1) return tex;
+  
+  return `\\begin{gathered} ${cleanParts.join(' \\\\ ')} \\end{gathered}`;
+}
+
   const explanationText = normalizeExplanationText(step.explanation);
 
   return (
@@ -389,23 +417,22 @@ function SolverStepItem({
             </span>
           )}
         </div>
-        {explanationText && <p className="sp-step-text">{explanationText}</p>}
-        {Boolean(step.claim || step.theorem || step.depends_on?.length) && (
+        {explanationText && <p className="sp-step-text"><MixedTextRenderer text={explanationText} /></p>}
+        {Boolean(step.claim || step.theorem) && (
           <div className="sp-step-proof-note">
-            {step.claim && <p><strong>Luận điểm:</strong> {step.claim}</p>}
-            {step.theorem && <p><strong>Định lý dùng:</strong> {step.theorem}</p>}
-            {step.depends_on && step.depends_on.length > 0 && <p><strong>Phụ thuộc:</strong> {step.depends_on.join(', ')}</p>}
+            {step.claim && <p><strong>Luận điểm:</strong> <MixedTextRenderer text={step.claim} /></p>}
+            {step.theorem && <p><strong>Định lý dùng:</strong> <MixedTextRenderer text={step.theorem} /></p>}
           </div>
         )}
         {showFormula && (
           <div className="sp-step-formula">
-            <KatexSpan tex={formulaLatex} className="sp-step-formula-math" />
+            <KatexSpan tex={formatMultiLineMath(formulaLatex)} display className="sp-step-formula-math" />
           </div>
         )}
         {showSubstitution && (
-          <div className="sp-step-formula">
+          <div className="sp-step-formula" style={{ flexDirection: 'column' }}>
             <span className="sp-step-formula-label">Thế số:</span>
-            <KatexSpan tex={substitutionLatex} className="sp-step-formula-math" />
+            <KatexSpan tex={formatMultiLineMath(substitutionLatex)} display className="sp-step-formula-math" />
           </div>
         )}
         {resultLatex && (

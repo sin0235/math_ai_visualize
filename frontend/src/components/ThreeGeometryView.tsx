@@ -1439,8 +1439,30 @@ function perpendicularAxis(normal: Vec3): Vec3 {
   return normalize(cross(normal, axis));
 }
 
-function polygonGeometry(vertices: Vec3[]): THREE.BufferGeometry | null {
-  if (vertices.length < 3) return null;
+function orderVerticesCCW(vertices: Vec3[]): Vec3[] {
+  if (vertices.length <= 3) return vertices;
+  const center = centroid(vertices);
+  const normal = planeNormal(vertices);
+  if (length(normal) < 1e-9) return vertices;
+
+  let u = normalize(sub(vertices[0], center));
+  if (length(u) < 1e-9) {
+    u = normalize(sub(vertices[1], center));
+  }
+  const v = normalize(cross(normal, u));
+
+  return [...vertices].sort((a, b) => {
+    const da = sub(a, center);
+    const db = sub(b, center);
+    const angA = Math.atan2(dot(da, v), dot(da, u));
+    const angB = Math.atan2(dot(db, v), dot(db, u));
+    return angA - angB;
+  });
+}
+
+function polygonGeometry(rawVertices: Vec3[]): THREE.BufferGeometry | null {
+  if (rawVertices.length < 3) return null;
+  const vertices = orderVerticesCCW(rawVertices);
   const geometry = new THREE.BufferGeometry();
   const first = vertices[0];
   const positions: number[] = [];
