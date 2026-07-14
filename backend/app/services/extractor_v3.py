@@ -55,6 +55,10 @@ from app.services.scene_fidelity_v3 import (
     repair_standard_solid_references,
     validate_scene_fidelity,
 )
+from app.services.scene_goal_visualization_v3 import (
+    complete_metric_goal_visualizations,
+    reserved_annotation_metadata_key,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -144,6 +148,9 @@ def normalize_scene_v3_json(raw: dict[str, Any], *, problem_text: str, grade: in
         if isinstance(ann, dict) and not ann.get("id"):
             ann["id"] = f"ann_{index}_{uuid.uuid4().hex[:8]}"
         if isinstance(ann, dict):
+            metadata = ann.get("metadata") if isinstance(ann.get("metadata"), dict) else {}
+            metadata.pop(reserved_annotation_metadata_key(), None)
+            ann["metadata"] = metadata
             ann.setdefault("provenance", "render_only")
             # Accept legacy target string → target_ids.
             if "target_ids" not in ann and ann.get("target"):
@@ -340,6 +347,7 @@ def parse_math_scene_v3(raw: dict[str, Any], *, problem_text: str, grade: int | 
     repaired = repair_standard_solid_references(normalized, problem_text=problem_text)
     scene = MathSceneV3.model_validate(repaired)
     scene = complete_standard_solid_topology(scene)
+    scene = complete_metric_goal_visualizations(scene)
     fidelity_issues = validate_scene_fidelity(scene)
     if fidelity_issues:
         details = "; ".join(f"{issue.code}: {issue.message}" for issue in fidelity_issues)

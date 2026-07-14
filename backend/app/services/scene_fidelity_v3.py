@@ -72,7 +72,7 @@ def complete_standard_solid_topology(scene: MathSceneV3) -> MathSceneV3:
     if not _has_unique_vertices(topology, points):
         return scene
 
-    objects = list(scene.objects)
+    objects = _normalize_standard_solid_appearance(list(scene.objects), topology, points)
     used_ids = {obj.id for obj in objects}
     existing_edges = {
         frozenset(obj.point_ids)
@@ -119,6 +119,49 @@ def complete_standard_solid_topology(scene: MathSceneV3) -> MathSceneV3:
         existing_faces.add(key)
 
     return scene.model_copy(update={"objects": _spread_ai_face_colors(objects)})
+
+
+def _normalize_standard_solid_appearance(
+    objects: list[Any],
+    topology: SolidTopology,
+    points: dict[str, str],
+) -> list[Any]:
+    edge_keys = {
+        frozenset((points[start], points[end]))
+        for start, end in topology.edges
+    }
+    face_palette = {
+        frozenset(points[label] for label in labels): FACE_PALETTE[index % len(FACE_PALETTE)]
+        for index, labels in enumerate(topology.faces)
+    }
+    normalized: list[Any] = []
+    for obj in objects:
+        if _style_is_user_owned(obj):
+            normalized.append(obj)
+            continue
+        if isinstance(obj, SegmentV3) and frozenset(obj.point_ids) in edge_keys:
+            normalized.append(obj.model_copy(update={
+                "hidden": False,
+                "color": SOLID_EDGE_COLOR,
+                "line_width": 2.0,
+                "style": "solid",
+            }))
+            continue
+        if isinstance(obj, FaceV3):
+            color = face_palette.get(frozenset(obj.point_ids))
+            if color is not None and obj.metadata.get("role") not in {"section", "cross_section"}:
+                normalized.append(obj.model_copy(update={"color": color, "opacity": 0.14}))
+                continue
+        normalized.append(obj)
+    return normalized
+
+
+def _style_is_user_owned(obj: Any) -> bool:
+    return bool(
+        getattr(obj, "locked", False)
+        or getattr(obj, "user_edited", False)
+        or getattr(obj, "source", None) in {"user_created", "user_edited"}
+    )
 
 
 def validate_scene_fidelity(scene: MathSceneV3) -> tuple[FidelityIssue, ...]:

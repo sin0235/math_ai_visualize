@@ -30,6 +30,7 @@ from app.schemas.scene_v3 import (
     Vector3DV3,
 )
 from app.services.geometry_kernel import build_geometry_index
+from app.services.scene_goal_visualization_v3 import reserved_annotation_metadata_key
 
 
 _SAFE_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
@@ -50,7 +51,8 @@ def build_render_projection_v3(scene: MathSceneV3) -> RenderProjectionV3:
     _validate_renderer_objects(scene)
     geometry = build_geometry_index(scene)
     object_names = _object_names(scene)
-    visible = lambda obj: not bool(obj.metadata.get("tree_hidden"))
+    def visible(obj) -> bool:
+        return not bool(obj.metadata.get("tree_hidden"))
     point_items = [
         ProjectionPointV3(
             object_id=obj.id,
@@ -133,7 +135,7 @@ def build_render_projection_v3(scene: MathSceneV3) -> RenderProjectionV3:
             color=obj.color,
             opacity=obj.opacity,
             visible=visible(obj),
-            extent=infinite_extent if isinstance(obj, PlaneV3) else None,
+            extent=None,
             show_normal=obj.show_normal if isinstance(obj, PlaneV3) else False,
         )
         for obj in scene.objects
@@ -206,7 +208,8 @@ def _object_names(scene: MathSceneV3) -> dict[str, str]:
 def _project_annotation(scene, annotation, object_names: dict[str, str]) -> ProjectionAnnotationV3 | None:
     if any(target_id not in object_names for target_id in annotation.target_ids):
         return None
-    if annotation.type in _SEMANTIC_ANNOTATIONS and annotation.provenance != "given":
+    backend_render_safe = annotation.metadata.get(reserved_annotation_metadata_key()) is True
+    if annotation.type in _SEMANTIC_ANNOTATIONS and annotation.provenance != "given" and not backend_render_safe:
         relation = next((item for item in scene.relations if item.id == annotation.relation_id), None)
         if relation is None or relation.verification is None or relation.verification.status != "verified":
             return None

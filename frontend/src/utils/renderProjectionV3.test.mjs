@@ -23,6 +23,17 @@ const projection = {
     line_width: 2,
     style: 'solid',
     extent: null,
+  }, {
+    object_id: 'hidden-segment',
+    name: 'hidden-segment',
+    kind: 'segment',
+    point_ids: ['p1', 'p2'],
+    positions: [[0, 0, 0], [2, 0, 0]],
+    visible: false,
+    color: '#000000',
+    line_width: 2,
+    style: 'solid',
+    extent: null,
   }],
   circles: [],
   functions: [],
@@ -47,6 +58,7 @@ assert.deepEqual(Object.keys(scene.points), ['p1', 'p2']);
 assert.equal(scene.points.p1.object_id, 'p1');
 assert.equal(scene.points.p1.label, 'Điểm A');
 assert.deepEqual(scene.segments[0].points, ['p1', 'p2']);
+assert.equal(scene.segments.length, 1);
 assert.equal(scene.annotations[0].target, 'p1-p2');
 assert.equal(scene.annotations[0].metadata.relation_id, 'r1');
 assert.deepEqual(scene.relations, []);

@@ -6,6 +6,7 @@ import type { ComponentProps, ReactNode } from 'react';
 import * as THREE from 'three';
 
 import type { Annotation, ThreeScene } from '../types/scene';
+import { segmentAppearance } from '../utils/threeGeometryAppearance';
 
 export type ThreeSceneImageCapture = (mimeType: 'image/png' | 'image/jpeg') => Promise<Blob>;
 
@@ -101,7 +102,7 @@ export function ThreeGeometryView({ scene, interaction, embedded = false, highli
   const content = (
     <HighlightContext.Provider value={highlightedObjects}>
     <div className="three-view">
-      <Canvas gl={{ preserveDrawingBuffer: true }} camera={{ position: [5, 4, 6], fov: 48 }} className="three-canvas" style={{ display: 'block' }}>
+      <Canvas dpr={[1, 2]} gl={{ antialias: true, preserveDrawingBuffer: true }} camera={{ position: [5, 4, 6], fov: 48 }} className="three-canvas" style={{ display: 'block' }}>
         <SceneImageCaptureBridge onReady={onImageCaptureReady} />
         <CameraFit resetKey={cameraResetKey} />
         <color attach="background" args={["#f6f6f4"]} />
@@ -427,8 +428,16 @@ function Planes({ scene }: ThreeGeometryViewProps) {
         const labelPos = add(center, scale(normal, 0.22));
         return (
           <group key={plane.name ?? plane.points.join('-')}>
-            <mesh geometry={geometry}>
-              <meshStandardMaterial color={plane.color} opacity={Math.min(plane.opacity, 0.18)} transparent side={THREE.DoubleSide} depthWrite={false} />
+            <mesh geometry={geometry} renderOrder={-2}>
+              <meshBasicMaterial
+                color={plane.color}
+                opacity={Math.min(plane.opacity, 0.1)}
+                transparent
+                side={THREE.DoubleSide}
+                depthWrite={false}
+                polygonOffset
+                polygonOffsetFactor={2}
+              />
             </mesh>
             {plane.name && (
               <LabelText position={[labelPos.x, labelPos.y, labelPos.z]} fontSize={0.2} color={plane.color} anchorX="center" anchorY="middle" fontWeight={700}>
@@ -450,8 +459,16 @@ function Faces({ scene }: ThreeGeometryViewProps) {
         const geometry = polygonGeometry(vertices);
         if (!geometry) return null;
         return (
-          <mesh key={face.name ?? face.points.join('-')} geometry={geometry}>
-            <meshStandardMaterial color={face.color} opacity={face.opacity} transparent side={THREE.DoubleSide} depthWrite={false} />
+          <mesh key={face.name ?? face.points.join('-')} geometry={geometry} renderOrder={-1}>
+            <meshBasicMaterial
+              color={face.color}
+              opacity={face.opacity >= 0.45 ? Math.min(face.opacity, 0.64) : Math.min(face.opacity, 0.16)}
+              transparent
+              side={THREE.DoubleSide}
+              depthWrite={false}
+              polygonOffset
+              polygonOffsetFactor={1}
+            />
           </mesh>
         );
       })}
@@ -636,14 +653,8 @@ function Segments({ scene, frame, interaction }: ThreeGeometryViewProps & { fram
         if (!start || !end) return null;
         const dynamicHidden = hiddenEdges.has(edgeKey(startName, endName));
         // Cạnh thuộc khối → quyết định bằng góc nhìn; cạnh phụ trợ → tôn trọng style của LLM
-        const styleDashed = segment.style === 'dashed' || segment.style === 'dotted';
-        const dashed = dynamicHidden || styleDashed;
         const isHighlighted = highlighted.includes(startName) && highlighted.includes(endName);
-        const baseColor = segment.color ?? (dynamicHidden ? '#8b95a7' : '#111111');
-        const color = isHighlighted ? '#f97316' : baseColor;
-        const lineWidth = isHighlighted
-          ? Math.max(segment.line_width ?? 3, 6)
-          : (interaction ? Math.max(segment.line_width ?? 3, 5) : segment.line_width ?? 3);
+        const appearance = segmentAppearance(segment, dynamicHidden, isHighlighted);
         return (
           <Line
             key={`${startName}-${endName}-${index}`}
@@ -651,11 +662,14 @@ function Segments({ scene, frame, interaction }: ThreeGeometryViewProps & { fram
               [start.x, start.y, start.z],
               [end.x, end.y, end.z],
             ]}
-            color={color}
-            dashed={dashed}
-            dashSize={segment.style === 'dotted' ? 0.04 : 0.12}
-            gapSize={segment.style === 'dotted' ? 0.08 : 0.08}
-            lineWidth={lineWidth}
+            color={appearance.color}
+            dashed={appearance.dashed}
+            dashSize={appearance.dashSize}
+            gapSize={appearance.gapSize}
+            lineWidth={appearance.lineWidth}
+            opacity={appearance.opacity}
+            transparent={appearance.opacity < 1}
+            renderOrder={3}
             onClick={(event) => {
               if (interaction?.mode !== 'project_to_segment') return;
               event.stopPropagation();
@@ -1358,7 +1372,7 @@ function metadataNumber(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
 
-function expandedPlaneVertices(anchors: Vec3[], allPoints: Vec3[], extent?: number | null): Vec3[] {
+function expandedPlaneVertices(anchors: Vec3[], allPoints: Vec3[], _extent?: number | null): Vec3[] {
   if (anchors.length < 3) return anchors;
   const origin = centroid(anchors);
   const normal = planeNormal(anchors);
@@ -1368,15 +1382,6 @@ function expandedPlaneVertices(anchors: Vec3[], allPoints: Vec3[], extent?: numb
   if (length(u) < 1e-9) u = perpendicularAxis(normal);
   let v = normalize(cross(normal, u));
   if (length(v) < 1e-9) return anchors;
-  if (extent && Number.isFinite(extent) && extent > 0) {
-    return [
-      add(origin, add(scale(u, -extent), scale(v, -extent))),
-      add(origin, add(scale(u, extent), scale(v, -extent))),
-      add(origin, add(scale(u, extent), scale(v, extent))),
-      add(origin, add(scale(u, -extent), scale(v, extent))),
-    ];
-  }
-
   const projected = allPoints.map((point) => {
     const relative = sub(point, origin);
     return { u: dot(relative, u), v: dot(relative, v) };
@@ -1392,7 +1397,7 @@ function expandedPlaneVertices(anchors: Vec3[], allPoints: Vec3[], extent?: numb
   const maxV = Math.max(...pointsToCover.map((point) => point.v), ...anchorProjected.map((point) => point.v));
   const spanU = Math.max(maxU - minU, 1);
   const spanV = Math.max(maxV - minV, 1);
-  const pad = Math.max(spanU, spanV) * 0.18;
+  const pad = Math.max(spanU, spanV) * 0.1;
 
   return [
     add(origin, add(scale(u, minU - pad), scale(v, minV - pad))),
