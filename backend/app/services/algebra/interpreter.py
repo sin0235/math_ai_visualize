@@ -70,9 +70,14 @@ def interpret_algebra_input(request: AlgebraSolveRequest) -> AlgebraInputInterpr
 def _detect_format(raw: str, requested: str) -> str:
     if requested == "structured":
         return "structured"
-    if requested == "latex" or _LATEX_HINT_RE.search(raw):
+    if requested == "latex":
         return "latex"
     has_vi = bool(re.search(r"[À-ỹ]", raw)) or bool(re.search(r"\b(giai|giải|tim|tìm|phuong|phương|bat|bất|he|hệ|nghiem|nghiệm|to hop|tổ hợp|chinh hop|chỉnh hợp|cap so|cấp số|day|dãy|so hang|số hạng|cong sai|công sai|cong boi|công bội|tham so|tham số|giai thua|giai thừa|dao ham|đạo hàm|gioi han|giới hạn|tich phan|tích phân|khai trien|khai triển|phan tich|phân tích|thu gon|thu gọn|rut gon|rút gọn)\b", raw, re.IGNORECASE))
+    has_latex = bool(_LATEX_HINT_RE.search(raw))
+    if has_latex:
+        # LaTeX pha văn bản vẫn giữ contract cũ, trừ goal hai bước mà parser
+        # xác định chắc chắn cần cả phần mô tả tự nhiên lẫn công thức.
+        return "mixed" if has_vi and _derivative_equation_template(raw) else "latex"
     has_math = bool(_RELATION_RE.search(raw) or re.search(r"[\^*/()]|[a-zA-Z]\d|\d[a-zA-Z]", raw))
     if has_vi and has_math:
         return "mixed"
@@ -179,6 +184,9 @@ def _structured_from_natural_language(raw: str) -> str | None:
 
 
 def _calculus_template_from_text(text: str, plain: str) -> str | None:
+    derivative_equation = _derivative_equation_template(text)
+    if derivative_equation:
+        return derivative_equation
     cleaned = _strip_intent_phrases(_replace_vietnamese_math_words(text))
     if "dao ham" in plain or "đạo hàm" in text.lower():
         derivative_sum = _derivative_sum_template(text)
@@ -214,6 +222,35 @@ def _calculus_template_from_text(text: str, plain: str) -> str | None:
         if expression:
             return f"integral(expr={expression},var=x)"
     return None
+
+
+def _derivative_equation_template(text: str) -> str | None:
+    """Trích xuất bài cho f(x) rồi yêu cầu giải f'(x)=k.
+
+    Chỉ dựng canonical goal; phép đạo hàm và giải nghiệm vẫn do mathcore thực hiện.
+    """
+    target = re.search(
+        r"\b([A-Za-z])\s*'\s*\(\s*([A-Za-z])\s*\)\s*=\s*(.+?)"
+        r"(?=\s*(?:là\s+gì|la\s+gi|bằng\s+bao\s+nhiêu|bang\s+bao\s+nhieu|[?;]|$))",
+        text,
+        re.IGNORECASE,
+    )
+    if not target:
+        return None
+    function_name, variable, rhs = target.groups()
+    prefix = text[:target.start()]
+    definition = re.search(
+        rf"\b{re.escape(function_name)}\s*\(\s*{re.escape(variable)}\s*\)\s*=\s*([^,;]+)",
+        prefix,
+        re.IGNORECASE,
+    )
+    if not definition:
+        return None
+    expression = _clean_canonical(definition.group(1))
+    normalized_rhs = _clean_canonical(rhs)
+    if not expression or not normalized_rhs:
+        return None
+    return f"derivative_equation(expr={expression},var={variable},rhs={normalized_rhs})"
 
 
 def _derivative_sum_template(text: str) -> str | None:
@@ -550,7 +587,7 @@ def _detect_topic(raw: str, normalized: str) -> str:
         "quadratic_same_sign_roots(",
     )):
         return "parameter"
-    if normalized.startswith(("derivative(", "derivative_sum(")):
+    if normalized.startswith(("derivative(", "derivative_equation(", "derivative_sum(")):
         return "calculus_derivative"
     if normalized.startswith("limit("):
         return "calculus_limit"

@@ -106,3 +106,22 @@ def test_algebra_solve_route_handles_mixed_integral_without_internal_error(route
         "Ghép các nguyên hàm thành phần",
     ]
     assert len(payload["steps"][1]["sub_steps"]) == 3
+
+
+def test_algebra_solve_route_handles_derivative_equation_in_vietnamese_latex(route_client):
+    response = route_client.post(
+        "/api/algebra/solve",
+        json={
+            "input": (
+                r"Câu 2: Cho hàm số f(x)=\frac{1}{3}x^3-2x^2+3x+8, "
+                r"nghiệm của phương trình f'(x)=0 là gì"
+            ),
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "solved"
+    assert payload["problem_type"] == "solve_derivative_equation"
+    assert [value["text"] for value in payload["solution_set"]["values"]] == ["1", "3"]
+    assert payload["verification"]["status"] == "verified"

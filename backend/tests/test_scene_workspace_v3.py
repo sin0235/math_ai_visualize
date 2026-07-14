@@ -166,11 +166,59 @@ def test_problem_render_v3_creates_committed_workspace(tmp_path, monkeypatch):
         response = TestClient(app).post("/api/render/v3", json={"problem_text": "Dựng AB", "tier": "tier1"})
         assert response.status_code == 201
         payload = response.json()
-        assert payload["scene"]["scene_id"] == "problem-render-v3"
-        assert payload["projection"]["scene_id"] == "problem-render-v3"
-        stored = asyncio.run(SceneWorkspaceRepository(db).find_for_user(USER.id, "problem-render-v3"))
+        scene_id = payload["scene"]["scene_id"]
+        assert scene_id.startswith("scene_")
+        assert scene_id != "problem-render-v3"
+        assert payload["projection"]["scene_id"] == scene_id
+        stored = asyncio.run(SceneWorkspaceRepository(db).find_for_user(USER.id, scene_id))
         assert stored is not None
         assert stored.scene.revision == 1
+    finally:
+        app.dependency_overrides.clear()
+        asyncio.run(db.close())
+
+
+def test_problem_render_v3_repeated_request_creates_distinct_workspaces(tmp_path, monkeypatch):
+    db = asyncio.run(initialized_db(tmp_path / "problem-render-v3-repeat.db"))
+    problem_scene = scene().model_copy(update={"scene_id": "model-stable-id"})
+
+    async def active_user():
+        return USER
+
+    async def database():
+        return db
+
+    async def trusted_origin():
+        return None
+
+    async def no_op(*_args, **_kwargs):
+        return None
+
+    async def no_byok(*_args, **_kwargs):
+        return None
+
+    async def build_result(*_args, **_kwargs):
+        return run_scene_pipeline_v3(problem_scene)
+
+    app.dependency_overrides[require_active_user] = active_user
+    app.dependency_overrides[get_database] = database
+    app.dependency_overrides[require_trusted_origin] = trusted_origin
+    monkeypatch.setattr("app.api.routes_render.enforce_rate_limit", no_op)
+    monkeypatch.setattr("app.api.routes_render.enforce_render_access", no_op)
+    monkeypatch.setattr("app.api.routes_render.resolve_byok_ai_config", no_byok)
+    monkeypatch.setattr("app.api.routes_render.build_problem_render_result_v3", build_result)
+    try:
+        client = TestClient(app)
+        first = client.post("/api/render/v3", json={"problem_text": "Dựng AB", "tier": "tier1"})
+        second = client.post("/api/render/v3", json={"problem_text": "Dựng AB", "tier": "tier1"})
+
+        assert first.status_code == 201
+        assert second.status_code == 201
+        first_id = first.json()["scene"]["scene_id"]
+        second_id = second.json()["scene"]["scene_id"]
+        assert first_id != second_id
+        assert asyncio.run(SceneWorkspaceRepository(db).find_for_user(USER.id, first_id)) is not None
+        assert asyncio.run(SceneWorkspaceRepository(db).find_for_user(USER.id, second_id)) is not None
     finally:
         app.dependency_overrides.clear()
         asyncio.run(db.close())

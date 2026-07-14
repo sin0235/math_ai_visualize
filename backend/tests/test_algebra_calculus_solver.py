@@ -56,6 +56,23 @@ def test_calculus_interpreter_detects_vietnamese_natural_inputs():
     assert logarithmic_integral.normalized_input == "integral(expr=x*ln(x),var=x,a=1,b=2)"
 
 
+def test_calculus_solves_derivative_equation_from_mixed_vietnamese_latex_input():
+    raw = (
+        r"Câu 2: Cho hàm số f(x)=\frac{1}{3}x^3-2x^2+3x+8, "
+        r"nghiệm của phương trình f'(x) = 0 là gì"
+    )
+
+    result = solve_algebra(AlgebraSolveRequest(input=raw))
+
+    assert result.status == "solved"
+    assert result.topic == "calculus_derivative"
+    assert result.problem_type == "solve_derivative_equation"
+    assert result.normalized_input.startswith("derivative_equation(")
+    assert [value.text for value in result.solution_set.values] == ["1", "3"]
+    assert result.verification.status == "verified"
+    assert "Lập phương trình đạo hàm" in [step.title for step in result.steps]
+
+
 def test_calculus_preserves_ln_and_treats_bare_log_as_base_ten():
     natural = solve_algebra(AlgebraSolveRequest(input="tính tích phân của x*ln(x)"))
     decimal = solve_algebra(AlgebraSolveRequest(input="tính tích phân của x*log(x)"))

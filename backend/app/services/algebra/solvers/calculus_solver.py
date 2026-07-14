@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import sympy as sp
 
@@ -41,6 +41,8 @@ def solve_calculus(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
         return _solve_derivative_sum(problem, template)
     if template.kind == "calculus_derivative":
         return _solve_derivative(problem, template)
+    if template.kind == "calculus_derivative_equation":
+        return _solve_derivative_equation(problem, template)
     if template.kind == "calculus_derivative_by_definition":
         return _solve_derivative_by_definition(problem, template)
     if template.kind == "calculus_limit":
@@ -149,6 +151,62 @@ def _solve_derivative(problem: ParsedAlgebraProblem, template: CalculusTemplate)
         verification=verification,
         warnings=[] if verification.status == "verified" else ["Đạo hàm chỉ được kiểm chứng một phần (symbolic/numeric)."],
     )
+
+
+def _solve_derivative_equation(problem: ParsedAlgebraProblem, template: CalculusTemplate) -> AlgebraSolveResponse:
+    derivative = sp.simplify(sp.diff(template.expression, template.variable, template.order))
+    if isinstance(derivative, sp.Derivative) or derivative.has(sp.Derivative):
+        return _unsupported(problem, "calculus_derivative", "SymPy chưa rút gọn được đạo hàm để lập phương trình.")
+    rhs = template.target if template.target is not None else sp.Integer(0)
+    relation = sp.Eq(derivative, rhs, evaluate=False)
+    equation_problem = replace(
+        problem,
+        raw_input=sp.sstr(relation),
+        normalized_input=f"{sp.sstr(derivative)}={sp.sstr(rhs)}",
+        topic="equation",
+        relation=relation,
+        relations=[relation],
+        expression=None,
+        variable=template.variable,
+        variables=[template.variable],
+    )
+
+    from app.services.algebra.solvers.equation_solver import solve_equation
+
+    response = solve_equation(equation_problem)
+    derivative_template = replace(template, kind="calculus_derivative")
+    calculus_steps = derivative_steps(
+        derivative_template.expression,
+        derivative_template.variable,
+        derivative,
+        derivative_template.order,
+    )
+    calculus_steps.append(AlgebraSolveStep(
+        index=len(calculus_steps) + 1,
+        title="Lập phương trình đạo hàm",
+        explanation="Thay biểu thức đạo hàm vừa tính vào điều kiện của đề.",
+        goal="Đưa yêu cầu f'(x) bằng giá trị đã cho về phương trình theo x.",
+        rule="Điều kiện đạo hàm",
+        before_latex=rf"f'\left({algebra_latex(template.variable)}\right)={algebra_latex(rhs)}",
+        after_latex=algebra_latex(relation),
+        kind="transform",
+        confidence="verified",
+    ))
+    equation_steps = [
+        step.model_copy(update={"index": len(calculus_steps) + offset})
+        for offset, step in enumerate(response.steps, start=1)
+    ]
+    response.input = problem.raw_input
+    response.normalized_input = problem.normalized_input
+    response.topic = "calculus_derivative"
+    response.problem_type = "solve_derivative_equation"
+    response.steps = [*calculus_steps, *equation_steps]
+    response.milestones = [
+        f"Hàm số: f({algebra_latex(template.variable)})={algebra_latex(template.expression)}",
+        f"Đạo hàm: f'({algebra_latex(template.variable)})={algebra_latex(derivative)}",
+        *response.milestones,
+    ]
+    return response
 
 
 def _solve_limit(problem: ParsedAlgebraProblem, template: CalculusTemplate) -> AlgebraSolveResponse:
@@ -702,7 +760,7 @@ def _is_indeterminate_zero_over_zero(expression: sp.Expr, variable: sp.Symbol, p
 
 
 def _parse_template(text: str, topic: str, default_variable: sp.Symbol) -> CalculusTemplate:
-    match = re.fullmatch(r"(derivative|derivative_sum|derivative_by_definition|limit|integral|continuous_at)\((.*)\)", text.strip())
+    match = re.fullmatch(r"(derivative|derivative_equation|derivative_sum|derivative_by_definition|limit|integral|continuous_at)\((.*)\)", text.strip())
     if not match:
         raise ValueError("Dùng dạng derivative(expr=...,var=x), limit(expr=...,var=x,to=...), hoặc integral(expr=...,var=x).")
     name, args_text = match.groups()
@@ -755,6 +813,15 @@ def _parse_template(text: str, topic: str, default_variable: sp.Symbol) -> Calcu
         if order < 1 or order > 5:
             raise ValueError("order đạo hàm cần nằm trong 1..5.")
         return CalculusTemplate(kind="calculus_derivative", expression=expression, variable=variable, order=order)
+    if name == "derivative_equation":
+        rhs = _safe_expr(args.get("rhs", "0"), required=True, field="rhs")
+        assert rhs is not None
+        return CalculusTemplate(
+            kind="calculus_derivative_equation",
+            expression=expression,
+            variable=variable,
+            target=rhs,
+        )
     if name == "derivative_by_definition":
         point = _safe_expr(args.get("at"), field="at")
         return CalculusTemplate(kind="calculus_derivative_by_definition", expression=expression, variable=variable, point=point)

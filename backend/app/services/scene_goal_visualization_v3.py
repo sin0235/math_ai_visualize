@@ -14,19 +14,94 @@ from app.schemas.scene_v3 import (
 )
 from app.services.geometry_kernel import build_geometry_index
 from app.services.geometry_kernel.primitives import distance, project_point_to_plane
+from app.services.geometry.parser import parse_point_plane_distance_goal
 
 
-_GOAL_COLOR = "#7c3aed"
+_GOAL_COLOR = "#0f766e"
+_GOAL_PLANE_COLOR = "#f59e0b"
 _RESERVED_METADATA_KEY = "_backend_render_safe"
 
 
 def complete_metric_goal_visualizations(scene: MathSceneV3) -> MathSceneV3:
     """Dựng minh họa xác định cho goal định lượng mà không tạo thêm constraint."""
-    result = scene
-    for fact in scene.derived_facts:
+    result = _ensure_problem_point_plane_distance_goal(scene)
+    for fact in result.derived_facts:
         if _is_distance_goal(fact):
             result = _complete_point_plane_distance(result, fact)
     return result
+
+
+def _ensure_problem_point_plane_distance_goal(scene: MathSceneV3) -> MathSceneV3:
+    parsed = parse_point_plane_distance_goal(scene.problem_text)
+    if parsed is None:
+        return scene
+    point_label, plane_labels = parsed
+    points_by_label = _unique_points_by_label(scene)
+    point = points_by_label.get(_normalize_label(point_label))
+    plane_points = [points_by_label.get(_normalize_label(label)) for label in plane_labels]
+    if not isinstance(point, Point3DV3) or any(not isinstance(item, Point3DV3) for item in plane_points):
+        return scene
+    resolved_plane_points = [item for item in plane_points if isinstance(item, Point3DV3)]
+
+    target_ids = [item.id for item in resolved_plane_points]
+    target_key = frozenset(target_ids)
+    planar = next(
+        (
+            obj
+            for obj in scene.objects
+            if isinstance(obj, (PlaneV3, FaceV3)) and frozenset(obj.point_ids) == target_key
+        ),
+        None,
+    )
+    objects = list(scene.objects)
+    used_ids = _scene_ids(scene)
+    plane_label = "".join(plane_labels)
+    if planar is None:
+        planar = FaceV3(
+            id=_unique_id(f"goal_plane_{_slug(plane_label)}", used_ids),
+            label=plane_label,
+            point_ids=target_ids,
+            color=_GOAL_PLANE_COLOR,
+            opacity=0.5,
+            source="construction",
+            metadata={"visualization_role": "distance_goal_plane"},
+        )
+        objects.append(planar)
+    elif not _style_is_user_owned(planar):
+        styled = planar.model_copy(update={
+            "label": plane_label,
+            "color": _GOAL_PLANE_COLOR,
+            "opacity": 0.5 if isinstance(planar, FaceV3) else 0.24,
+            "metadata": {**planar.metadata, "visualization_role": "distance_goal_plane"},
+        })
+        objects = [styled if obj.id == planar.id else obj for obj in objects]
+        planar = styled
+
+    facts = list(scene.derived_facts)
+    existing = next(
+        (
+            fact
+            for fact in facts
+            if _is_distance_goal(fact)
+            and point.id in fact.source_ids
+            and planar.id in fact.source_ids
+        ),
+        None,
+    )
+    if existing is None:
+        facts.append(DerivedFactV3(
+            id=_unique_id(f"goal_distance_{_slug(point_label)}_{_slug(plane_label)}", used_ids),
+            kind="measurement",
+            source_ids=[point.id, planar.id],
+            value={
+                "role": "goal",
+                "quantity": "distance",
+                "point_label": point_label,
+                "plane_label": plane_label,
+            },
+            provenance="render_only",
+        ))
+    return scene.model_copy(update={"objects": objects, "derived_facts": facts})
 
 
 def reserved_annotation_metadata_key() -> str:
@@ -90,12 +165,25 @@ def _complete_point_plane_distance(scene: MathSceneV3, fact: DerivedFactV3) -> M
             point_ids=(point.id, foot.id),
             hidden=False,
             color=_GOAL_COLOR,
-            line_width=2.5,
+            line_width=3,
             style="dashed",
             source="construction",
             metadata={"visualization_role": "distance_goal", "goal_fact_id": fact.id},
         )
         objects.append(connector)
+    elif not _style_is_user_owned(connector):
+        connector = connector.model_copy(update={
+            "hidden": False,
+            "color": _GOAL_COLOR,
+            "line_width": 3,
+            "style": "dashed",
+            "metadata": {
+                **connector.metadata,
+                "visualization_role": "distance_goal",
+                "goal_fact_id": fact.id,
+            },
+        })
+        objects = [connector if obj.id == connector.id else obj for obj in objects]
 
     annotations = list(scene.annotations)
     safe_metadata = {
@@ -176,7 +264,44 @@ def _plane_arm_point(planar: PlaneV3 | FaceV3, foot_id: str) -> str | None:
 def _distance_label(point: Point2DV3 | Point3DV3, planar: PlaneV3 | FaceV3) -> str:
     point_label = point.label or point.id
     plane_label = planar.label or planar.id
-    return f"d({point_label}, ({plane_label}))"
+    return f"d({point_label},({plane_label}))"
+
+
+def _unique_points_by_label(scene: MathSceneV3) -> dict[str, Point2DV3 | Point3DV3]:
+    points: dict[str, Point2DV3 | Point3DV3] = {}
+    duplicates: set[str] = set()
+    for obj in scene.objects:
+        if not isinstance(obj, (Point2DV3, Point3DV3)) or not obj.label:
+            continue
+        label = _normalize_label(obj.label)
+        if label in points:
+            duplicates.add(label)
+        else:
+            points[label] = obj
+    for label in duplicates:
+        points.pop(label, None)
+    return points
+
+
+def _normalize_label(label: str) -> str:
+    return label.strip().upper().replace("’", "'").replace("′", "'")
+
+
+def _scene_ids(scene: MathSceneV3) -> set[str]:
+    return {
+        *(obj.id for obj in scene.objects),
+        *(relation.id for relation in scene.relations),
+        *(annotation.id for annotation in scene.annotations),
+        *(fact.id for fact in scene.derived_facts),
+    }
+
+
+def _style_is_user_owned(obj) -> bool:
+    return bool(
+        getattr(obj, "locked", False)
+        or getattr(obj, "user_edited", False)
+        or getattr(obj, "source", None) in {"user_created", "user_edited"}
+    )
 
 
 def _unique_id(preferred: str, used_ids: set[str]) -> str:

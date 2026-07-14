@@ -471,9 +471,14 @@ def _resolve_requested_topic(requested_topic: str, detected_topic: str, canonica
     if detected_topic in {"auto", requested_topic}:
         return requested_topic
     normalized = normalize_algebra_input(canonical_input)
-    if requested_topic in _CALCULUS_PREFIX_BY_TOPIC and not normalized.startswith(_CALCULUS_PREFIX_BY_TOPIC[requested_topic]):
+    calculus_prefixes = {
+        "calculus_derivative": ("derivative(", "derivative_equation(", "derivative_sum("),
+        "calculus_limit": ("limit(",),
+        "calculus_integral": ("integral(",),
+    }
+    if requested_topic in calculus_prefixes and not normalized.startswith(calculus_prefixes[requested_topic]):
         return detected_topic
-    if detected_topic in _CALCULUS_PREFIX_BY_TOPIC and normalized.startswith(_CALCULUS_PREFIX_BY_TOPIC[detected_topic]):
+    if detected_topic in calculus_prefixes and normalized.startswith(calculus_prefixes[detected_topic]):
         return detected_topic
     if requested_topic in _STRONG_FORMULA_TOPICS and detected_topic in _STRONG_FORMULA_TOPICS:
         return detected_topic

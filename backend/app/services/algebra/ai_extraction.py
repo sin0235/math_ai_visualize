@@ -39,6 +39,7 @@ Quy tắc:
    - cấp số: arithmetic(u1=2,d=3,n=10) hoặc arithmetic(u1=2,u2=5,n=10), arithmetic_sum(...), geometric(u1=2,q=3,n=5) hoặc geometric(u1=2,u2=6,n=5), geometric_sum(...)
    - tham số: quadratic_double_root(a=1,b=-2*m,c=1,var=x,param=m), quadratic_has_two_roots(...), quadratic_has_real_root(...), quadratic_no_real_root(...), quadratic_positive_all(...)
    - giải tích: derivative(expr=x^2,var=x), derivative_by_definition(expr=x^2,var=x,at=2), limit(expr=(x^2-1)/(x-1),var=x,to=1), continuous_at(expr=Piecewise((x^2,x>=1),(2*x-1,x<1)),var=x,at=1), integral(expr=2*x,var=x,a=0,b=1)
+   - giải phương trình đạo hàm: derivative_equation(expr=x^3-2*x^2+3*x+8,var=x,rhs=0)
 4. Nếu đề hỏi "tìm m để phương trình bậc hai có nghiệm kép", dùng quadratic_double_root.
 5. Nếu đề hỏi "có hai nghiệm phân biệt", dùng quadratic_has_two_roots.
 6. Nếu đề hỏi "có nghiệm thực", dùng quadratic_has_real_root.
@@ -49,6 +50,8 @@ Quy tắc:
 11. Nếu không chắc topic/variables/domain: ghi rõ trong warnings.
    Không bịa field để ghi đè lựa chọn người dùng; server sẽ merge và giữ field user đã chọn.
    Chỉ điền các field còn auto/thiếu. Ưu tiên cảnh báo hơn đoán mò.
+12. Khi đề cho f(x) và hỏi nghiệm của f'(x)=k, dùng derivative_equation với expr là f(x), rhs là k, topic calculus_derivative.
+    KHÔNG tự tính f'(x), vì mathcore sẽ tự đạo hàm rồi giải và kiểm chứng nghiệm.
 """.strip()
 
 ALGEBRA_EXTRACTION_SYSTEM_PROMPT = secure_system_prompt(_ALGEBRA_EXTRACTION_TASK, output_mode="json")

@@ -6,6 +6,7 @@ from typing import Literal
 from app.schemas.render_projection_v3 import RenderProjectionV3
 from app.schemas.scene_v3 import ConstraintResultV3, MathSceneV3, SceneObjectV3
 from app.services.geometry_kernel import build_constraint_graph, build_geometry_index, verify_constraints
+from app.services.geometry.parser import parse_angle_goal, parse_point_plane_distance_goal
 from app.services.relation_registry import validate_v3_relation_operands
 from app.services.render_projection_v3 import ProjectionError, build_render_projection_v3
 
@@ -19,6 +20,7 @@ PipelineErrorCode = Literal[
     "CONSTRAINT_FAILED",
     "CONSTRAINT_UNVERIFIABLE",
     "REPAIR_CONFIRMATION_REQUIRED",
+    "GOAL_VISUALIZATION_UNRESOLVED",
     "RENDERER_UNSUPPORTED",
 ]
 PipelineStatus = Literal["verified", "partially_verified", "needs_confirmation", "failed"]
@@ -73,7 +75,8 @@ def run_scene_pipeline_v3(scene: MathSceneV3) -> ScenePipelineV3Result:
     verification = verify_constraints(scene, index)
     verification_issues = tuple(issue for result in verification if (issue := _verification_issue(result)) is not None)
     verified_scene = _attach_verification(scene, verification)
-    issues = (*topology_issues, *verification_issues)
+    goal_issues = validate_goal_visualizations(scene)
+    issues = (*topology_issues, *goal_issues, *verification_issues)
     status = _pipeline_status(verification)
     try:
         projection = build_render_projection_v3(verified_scene)
@@ -99,6 +102,27 @@ def run_scene_pipeline_v3(scene: MathSceneV3) -> ScenePipelineV3Result:
         issues=issues,
         requires_user_confirmation=status != "verified",
         projection=projection,
+    )
+
+
+def validate_goal_visualizations(scene: MathSceneV3) -> tuple[PipelineIssueV3, ...]:
+    roles = {
+        str(annotation.metadata.get("visualization_role") or "")
+        for annotation in scene.annotations
+    }
+    missing: list[str] = []
+    if parse_point_plane_distance_goal(scene.problem_text) is not None and "distance_goal" not in roles:
+        missing.append("khoảng cách điểm–mặt phẳng")
+    if parse_angle_goal(scene.problem_text) is not None and "angle_goal" not in roles:
+        missing.append("góc giữa các thành phần")
+    return tuple(
+        PipelineIssueV3(
+            stage="derive",
+            code="GOAL_VISUALIZATION_UNRESOLVED",
+            message=f"Chưa dựng được construction an toàn cho goal {goal} từ các object hiện có.",
+            severity="warning",
+        )
+        for goal in missing
     )
 
 

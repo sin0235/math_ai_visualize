@@ -1,6 +1,6 @@
 """NLP normalization for geometry solver questions (Vietnamese natural language)."""
 
-from app.services.geometry.parser import normalize_solver_question
+from app.services.geometry.parser import normalize_solver_question, parse_angle_goal, parse_point_plane_distance_goal
 from app.services.solver_service import solve
 
 
@@ -13,6 +13,22 @@ def test_normalize_distance_point_to_plane_vietnamese():
     ]
     for text in cases:
         assert normalize_solver_question(text) == "d(M,(PFB))", text
+
+
+def test_parse_point_plane_distance_goal_from_full_problem():
+    full = (
+        "Cho hình lập phương ABCD.MNPQ cạnh 8. F là trung điểm CD. "
+        "Khoảng cách từ điểm (M) đến mặt phẳng ((PFB)) bằng bao nhiêu?"
+    )
+
+    assert parse_point_plane_distance_goal(full) == ("M", ("P", "F", "B"))
+
+
+def test_parse_angle_goal_component_types():
+    assert parse_angle_goal("Góc ABC bằng bao nhiêu?").kind == "point_angle"
+    assert parse_angle_goal("Tính góc giữa hai đường thẳng AB và CD.").kind == "line_line"
+    assert parse_angle_goal("Tính góc giữa MN và mặt phẳng (PFB).").kind == "line_plane"
+    assert parse_angle_goal("Tính góc giữa hai mặt phẳng (ABC) và (PFB).").kind == "plane_plane"
 
 
 def test_normalize_extracts_metric_from_full_problem_text():

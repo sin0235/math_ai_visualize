@@ -84,14 +84,17 @@ function AlgebraStepCard({ step, isSubStep }: { step: AlgebraSolveStep, isSubSte
         {isExpanded && (
           <div id={detailId}>
             {hasPedagogy && (
-              <dl className="algebra-step-pedagogy" aria-label={`Chi tiết sư phạm của bước ${step.index}`}>
-                {pedagogy.map(([label, value]) => (
-                  <div key={label}>
-                    <dt>{label}</dt>
-                    <dd><MixedTextRenderer text={value} /></dd>
-                  </div>
-                ))}
-              </dl>
+              <details className="algebra-step-pedagogy-details">
+                <summary className="algebra-step-pedagogy-summary">Phân tích sư phạm</summary>
+                <dl className="algebra-step-pedagogy" aria-label={`Chi tiết sư phạm của bước ${step.index}`}>
+                  {pedagogy.map(([label, value]) => (
+                    <div key={label}>
+                      <dt>{label}</dt>
+                      <dd><MixedTextRenderer text={value} /></dd>
+                    </div>
+                  ))}
+                </dl>
+              </details>
             )}
             {hasSubSteps && (
               <div className="algebra-nested-steps">

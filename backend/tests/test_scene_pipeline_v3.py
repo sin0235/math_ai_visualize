@@ -151,3 +151,15 @@ def test_pipeline_verifier_error_is_hard_failure_not_soft_warning(monkeypatch):
         issue.code == "CONSTRAINT_FAILED" and issue.severity == "error"
         for issue in result.issues
     )
+
+
+def test_pipeline_warns_when_explicit_goal_cannot_be_visualized():
+    scene = make_line_plane_scene().model_copy(update={
+        "problem_text": "Khoảng cách từ M đến mặt phẳng (PFB) bằng bao nhiêu?",
+    })
+
+    result = run_scene_pipeline_v3(scene)
+
+    assert result.status == "verified"
+    assert result.can_project
+    assert any(issue.code == "GOAL_VISUALIZATION_UNRESOLVED" for issue in result.issues)

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 
-import { faceOpacity, segmentAppearance } from './threeGeometryAppearance.ts';
+import { faceOpacity, planeOpacity, segmentAppearance } from './threeGeometryAppearance.ts';
 
 const visible = segmentAppearance({ color: '#1d3557', line_width: 2, style: 'solid' }, false, false);
 assert.deepEqual(visible, {
@@ -31,5 +31,7 @@ assert.equal(highlighted.lineWidth, 4);
 assert.equal(faceOpacity(0.14), 0.2);
 assert.equal(faceOpacity(0.24), 0.24);
 assert.equal(faceOpacity(0.6), 0.6);
+assert.ok(Math.abs(planeOpacity(0.16) - 0.088) < 1e-12);
+assert.equal(planeOpacity(0.24), 0.24);
 
 console.log('three geometry appearance: ok');

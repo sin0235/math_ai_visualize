@@ -4,6 +4,7 @@ import logging
 from dataclasses import replace
 from datetime import UTC, datetime
 from sqlite3 import IntegrityError
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Request, status
 
@@ -36,6 +37,16 @@ logger = logging.getLogger("app.services.ai_providers")
 
 RENDER_TIMEOUT_SECONDS = 310
 RENDER_AI_USAGE_EVENT_TYPES = ["algebra_ai", "problem_variants", "solver_ai"]
+
+
+def _assign_new_render_identity(result):
+    """Cấp identity persistence mới cho mỗi lượt render từ đề bài."""
+    scene_id = f"scene_{uuid4().hex}"
+    scene = result.scene.model_copy(update={"scene_id": scene_id, "revision": 1})
+    projection = result.projection
+    if projection is not None:
+        projection = projection.model_copy(update={"scene_id": scene_id, "revision": 1})
+    return replace(result, scene=scene, projection=projection)
 
 
 async def _run_render_nlp(
@@ -346,6 +357,7 @@ async def render_problem_v3(
                     "Sửa tọa độ hoặc quan hệ mâu thuẫn trong đề, rồi dựng lại.",
                 ],
             )
+        result = _assign_new_render_identity(result)
         # Fail-closed trust: only fully verified scenes are auto-trusted for solve/export.
         response = workspace_response_v3(result, trusted_for_downstream=result.status == "verified")
         try:

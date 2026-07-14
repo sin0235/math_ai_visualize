@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-import asyncio
 import html as html_lib
 import re
 from typing import Any
@@ -411,31 +410,79 @@ async def _fetch_nvidia_preview_model_slugs() -> tuple[set[str], str | None]:
     from app.services.http_pool import TIMEOUT_MODELS, get_client
 
     client = get_client(NVIDIA_BUILD_BASE_URL, TIMEOUT_MODELS)
-    urls = [f"{NVIDIA_PREVIEW_MODELS_URL}&page={page}" for page in range(1, 5)]
-    responses = await asyncio.gather(*(client.get(url, timeout=TIMEOUT_MODELS) for url in urls), return_exceptions=True)
     slugs: set[str] = set()
     failures = 0
-    for response in responses:
-        if isinstance(response, Exception):
+    next_page = 1
+    total_pages = 1
+    seen_pages: set[int] = set()
+    while next_page not in seen_pages:
+        seen_pages.add(next_page)
+        url = _nvidia_preview_catalog_url(next_page)
+        try:
+            response = await client.get(url, headers={"RSC": "1"}, timeout=TIMEOUT_MODELS)
+        except Exception:
             failures += 1
-            continue
+            break
         if response.status_code >= 400:
             failures += 1
-            continue
-        slugs.update(_parse_nvidia_preview_slugs(response.text))
+            break
+        page_slugs, parsed_total_pages = _parse_nvidia_preview_catalog_page(response.text)
+        if not page_slugs or (next_page > 1 and page_slugs <= slugs):
+            failures += 1
+            break
+        slugs.update(page_slugs)
+        total_pages = max(total_pages, parsed_total_pages or 1)
+        if next_page >= total_pages:
+            break
+        next_page += 1
     warning = None
-    if failures and not slugs:
-        warning = "Không đọc được NVIDIA Free Endpoint catalog; chỉ dùng metadata trong /v1/models để lọc."
+    if failures:
+        warning = (
+            "Không đọc được NVIDIA Free Endpoint catalog; chỉ dùng metadata trong /v1/models để lọc."
+            if not slugs
+            else "Không đọc đủ NVIDIA Free Endpoint catalog; kết quả scan có thể thiếu model Free Endpoint không có metadata."
+        )
     return slugs, warning
 
 
-def _parse_nvidia_preview_slugs(html: str) -> set[str]:
+def _nvidia_preview_catalog_url(page: int) -> str:
+    return f"{NVIDIA_PREVIEW_MODELS_URL}&page={page}&_rsc=1"
+
+
+def _parse_nvidia_preview_catalog_page(content: str) -> tuple[set[str], int | None]:
+    slugs = _parse_nvidia_preview_result_slugs(content)
+    if not slugs:
+        slugs = _parse_nvidia_preview_link_slugs(content)
+    return slugs, _parse_nvidia_preview_total_pages(content)
+
+
+def _parse_nvidia_preview_result_slugs(content: str) -> set[str]:
+    slugs: set[str] = set()
+    for resource_id in re.findall(r'"resourceId"\s*:\s*"([^"/]+/[^"/]+)"', content):
+        slugs.add(_normalize_nvidia_catalog_slug(resource_id.rsplit("/", 1)[-1]))
+    return {slug for slug in slugs if slug}
+
+
+def _parse_nvidia_preview_link_slugs(html: str) -> set[str]:
     slugs: set[str] = set()
     for href in re.findall(r'href="/([^"/?#]+/[^"/?#]+)"', html):
         if href.startswith("explore/"):
             continue
-        slugs.add(html_lib.unescape(href.rsplit("/", 1)[-1]).strip().lower())
+        slug = _normalize_nvidia_catalog_slug(href.rsplit("/", 1)[-1])
+        if slug:
+            slugs.add(slug)
     return slugs
+
+
+def _parse_nvidia_preview_total_pages(content: str) -> int | None:
+    match = re.search(r'"resultPageTotal"\s*:\s*(\d+)', content)
+    if not match:
+        return None
+    return int(match.group(1))
+
+
+def _normalize_nvidia_catalog_slug(slug: str) -> str:
+    return html_lib.unescape(slug).strip().lower()
 
 
 def _filter_nvidia_free_endpoint_models(models: list[AiModelInfo], preview_slugs: set[str]) -> list[AiModelInfo]:
@@ -454,7 +501,11 @@ def _filter_nvidia_free_endpoint_models(models: list[AiModelInfo], preview_slugs
 def _nvidia_model_matches_preview_catalog(model_id: str, preview_slugs: set[str]) -> bool:
     normalized = model_id.strip().lower()
     tail = normalized.rsplit("/", 1)[-1]
-    return tail in preview_slugs or normalized in preview_slugs
+    return _nvidia_slug_matches(tail, preview_slugs) or _nvidia_slug_matches(normalized, preview_slugs)
+
+
+def _nvidia_slug_matches(value: str, preview_slugs: set[str]) -> bool:
+    return value in preview_slugs or value.replace(".", "_") in preview_slugs or value.replace("_", ".") in preview_slugs
 
 
 def _model_info(provider: str, model_id: str, item: dict[str, Any], detected: CapabilityResult, label: str | None = None, owned_by: str | None = None) -> AiModelInfo:
