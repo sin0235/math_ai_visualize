@@ -79,6 +79,65 @@ def test_parse_wraps_scalar_interpretation_values_without_losing_data():
     ]
 
 
+def test_parse_soft_repairs_ai_relation_and_render_annotation_references():
+    scene = parse_math_scene_v3(
+        {
+            "topic": "coordinate_2d",
+            "renderer": "geogebra_2d",
+            "objects": [{"id": "pt_a", "type": "point_2d", "label": "A", "x": 0, "y": 0}],
+            "relations": [
+                {
+                    "id": "rel_dangling",
+                    "type": "midpoint",
+                    "operands": [{"role": "point", "ref_id": "ghost", "ref_kind": "point"}],
+                    "source": "ai_inferred",
+                },
+                {
+                    "id": "rel_kind",
+                    "type": "on_line",
+                    "operands": [{"role": "point", "ref_id": "pt_a", "ref_kind": "segment"}],
+                    "source": "ai_inferred",
+                },
+            ],
+            "annotations": [
+                {"id": "ann_ghost", "type": "label", "target_ids": ["ghost"]},
+                {"id": "ann_a", "type": "label", "target_ids": ["pt_a"], "relation_id": "rel_dangling"},
+            ],
+            "view": {"dimension": "2d"},
+            "audit": {"created_by": "test"},
+        },
+        problem_text="Cho điểm A.",
+        grade=10,
+    )
+
+    assert [relation.id for relation in scene.relations] == ["rel_kind"]
+    assert scene.relations[0].operands[0].ref_kind == "point"
+    assert [annotation.id for annotation in scene.annotations] == ["ann_a"]
+    assert scene.annotations[0].relation_id is None
+    assert scene.annotations[0].provenance == "render_only"
+
+
+def test_parse_keeps_given_relation_reference_failure_strict():
+    with pytest.raises(ValueError, match="Relation rel_given tham chiếu ID không tồn tại"):
+        parse_math_scene_v3(
+            {
+                "topic": "coordinate_2d",
+                "renderer": "geogebra_2d",
+                "objects": [{"id": "pt_a", "type": "point_2d", "label": "A", "x": 0, "y": 0}],
+                "relations": [{
+                    "id": "rel_given",
+                    "type": "midpoint",
+                    "operands": [{"role": "point", "ref_id": "ghost", "ref_kind": "point"}],
+                    "source": "given",
+                }],
+                "view": {"dimension": "2d"},
+                "audit": {"created_by": "test"},
+            },
+            problem_text="Cho điểm A và quan hệ đã nêu.",
+            grade=10,
+        )
+
+
 def test_parse_converts_unknown_distance_goal_to_render_only_measurement():
     scene = parse_math_scene_v3(
         {

@@ -190,6 +190,49 @@ def test_metric_solver_preserves_symbolic_method_for_vietnamese_point_plane_ques
     assert set(result.steps[0].highlight_object_ids) == {"point-m", "point-p", "point-f", "point-b"}
 
 
+def test_metric_solver_returns_constructed_perpendicular_segment_without_fabricating_number():
+    scene = {
+        "problem_text": "Cho hình hộp và dựng H là hình chiếu của M lên (PFB).",
+        "topic": "solid_geometry",
+        "objects": [
+            {"object_id": "point-m", "type": "point_3d", "name": "M", "x": 2, "y": 1, "z": 0},
+            {"object_id": "point-p", "type": "point_3d", "name": "P", "x": 0, "y": 0, "z": 0},
+            {"object_id": "point-f", "type": "point_3d", "name": "F", "x": 1, "y": 0, "z": 0},
+            {"object_id": "point-b", "type": "point_3d", "name": "B", "x": 0, "y": 0, "z": 1},
+            {"object_id": "point-h", "type": "point_3d", "name": "H", "x": 0, "y": 1, "z": 0},
+        ],
+        "annotations": [{
+            "id": "goal-right-angle",
+            "type": "right_angle",
+            "target_ids": ["point-m", "point-h", "point-p"],
+            "target": "M-H-P",
+            "provenance": "render_only",
+            "metadata": {
+                "_backend_render_safe": True,
+                "visualization_role": "distance_goal",
+            },
+        }],
+    }
+
+    result = solve(scene, "Khoảng cách từ điểm (M) đến mặt phẳng ((PFB)) bằng bao nhiêu?")
+
+    assert result.answer == "d(M,(PFB)) = MH"
+    assert result.confidence == "verified"
+    assert result.warnings == []
+    assert [step.kind for step in result.steps] == [
+        "distance_point_plane_setup",
+        "distance_point_plane_result",
+    ]
+    assert result.steps[1].formula_latex == "d(M,(PFB))=MH"
+    assert set(result.steps[0].highlight_object_ids) == {
+        "point-m",
+        "point-p",
+        "point-f",
+        "point-b",
+        "point-h",
+    }
+
+
 def test_metric_guard_rejects_inconsistent_length_annotation():
     scene = {
         "problem_text": "Cho SA = 3 nhưng tọa độ không khớp.",

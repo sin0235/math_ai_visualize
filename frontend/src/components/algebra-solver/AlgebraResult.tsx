@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { downloadAlgebraPdf, type AlgebraSolveResponse, type AlgebraVerificationCheck } from '../../api/client';
 import { KatexSpan, MixedTextRenderer } from '../KatexSpan';
 import { AlgebraStepList } from './AlgebraStepList';
+import { visibleAlgebraWarnings } from '../../utils/algebraNotice';
 
 const ANALYZER_PREFILL_KEY = 'math_ai_analyzer_prefill';
 
@@ -307,7 +308,7 @@ function buildMarkdown(result: AlgebraSolveResponse): string {
   if (assumptions.length) {
     lines.push('', '## Giả thiết', ...assumptions.map((item) => `- ${item}`));
   }
-  const learnerWarnings = result.warnings.filter((item) => hasText(item) && !isRoutineInterpretationNotice(item));
+  const learnerWarnings = visibleAlgebraWarnings(result);
   if (learnerWarnings.length) {
     lines.push('', '## Cảnh báo', ...learnerWarnings.map((item) => `- ${item}`));
   }
@@ -351,15 +352,6 @@ function compactMeta(topic: string, problemType: string) {
 function hasText(value: string | null | undefined) {
   return typeof value === 'string' && value.trim().length > 0;
 }
-
-function isRoutineInterpretationNotice(value: string) {
-  return value.includes('Đã diễn giải đề tiếng Việt thành biểu thức chuẩn trước khi giải.')
-    || value.includes('Đầu vào gồm cả mô tả tự nhiên và ký hiệu toán; hệ thống ưu tiên phần biểu thức được trích xuất.')
-    || value.includes('Miền R đang là mặc định')
-    || value.includes('Đã dùng interpreter rule-based')
-    || value.includes('Đã diễn giải đề tiếng Việt');
-}
-
 
 function verificationCheckLabel(name: string) {
   const labels: Record<string, string> = {

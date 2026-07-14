@@ -88,3 +88,21 @@ def test_algebra_solve_route_returns_input_interpretation_for_vietnamese_query(r
     assert payload["status"] == "solved"
     assert payload["input_interpretation"]["detected_format"] == "mixed"
     assert payload["input_interpretation"]["canonical_input"] == "x^2-5*x+6=0"
+
+
+def test_algebra_solve_route_handles_mixed_integral_without_internal_error(route_client):
+    response = route_client.post(
+        "/api/algebra/solve",
+        json={"input": "tính tích phân của x*2 - 1/x + e**(x-1)"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "solved"
+    assert payload["verification"]["status"] == "verified"
+    assert [step["title"] for step in payload["steps"][:3]] == [
+        "Nhận dạng tích phân",
+        "Tách tích phân theo từng hạng tử",
+        "Ghép các nguyên hàm thành phần",
+    ]
+    assert len(payload["steps"][1]["sub_steps"]) == 3

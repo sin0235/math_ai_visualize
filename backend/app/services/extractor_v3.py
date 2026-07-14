@@ -52,6 +52,7 @@ from app.services.model_registry import (
 from app.services.scene_pipeline_v3 import PipelineIssueV3
 from app.services.scene_fidelity_v3 import (
     complete_standard_solid_topology,
+    repair_optional_scene_references,
     repair_standard_solid_references,
     validate_scene_fidelity,
 )
@@ -345,6 +346,7 @@ def _normalize_construction_steps_v3(raw: Any) -> list[dict[str, Any]]:
 def parse_math_scene_v3(raw: dict[str, Any], *, problem_text: str, grade: int | None) -> MathSceneV3:
     normalized = normalize_scene_v3_json(raw, problem_text=problem_text, grade=grade)
     repaired = repair_standard_solid_references(normalized, problem_text=problem_text)
+    repaired = repair_optional_scene_references(repaired)
     scene = MathSceneV3.model_validate(repaired)
     scene = complete_standard_solid_topology(scene)
     scene = complete_metric_goal_visualizations(scene)

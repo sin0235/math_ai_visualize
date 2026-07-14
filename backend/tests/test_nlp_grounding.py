@@ -111,6 +111,7 @@ async def test_algebra_ai_marks_fully_rejected_payload(monkeypatch):
     assert explained.steps == original_steps
     assert explained.realization_status == "ai_rejected"
     assert explained.realization_fallback_reason
+    assert explained.warnings == []
 
 
 def _geometry_result() -> SolverResult:
@@ -235,6 +236,7 @@ async def test_geometry_ai_marks_unknown_only_payload_rejected(monkeypatch):
     assert explained.steps == original_steps
     assert explained.realization_status == "ai_rejected"
     assert explained.realization_fallback_reason
+    assert explained.warnings == []
 
 
 @pytest.mark.anyio
@@ -252,3 +254,5 @@ async def test_geometry_explainer_failure_does_not_lower_math_confidence(monkeyp
     assert explained.realization_status == "fallback"
     assert explained.realization_fallback_reason == "provider unavailable"
     assert explained.grounding == original_plan.model_dump(mode="json")
+    assert explained.warnings == []
+    assert explained.data_issues == []

@@ -351,8 +351,8 @@ def _local_dict(variable_names: list[str], real: bool = True) -> dict[str, objec
         "arccos": sp.acos,
         "arctan": sp.atan,
         "arccot": sp.acot,
-        "log": sp.log,
-        "ln": sp.log,
+        "log": _decimal_log,
+        "ln": _natural_log,
         "exp": sp.exp,
         "Abs": sp.Abs,
         "abs": sp.Abs,
@@ -368,6 +368,27 @@ def _local_dict(variable_names: list[str], real: bool = True) -> dict[str, objec
         "i": sp.I,
     })
     return data
+
+
+def algebra_local_dict(variable_names: list[str], *, real: bool = True) -> dict[str, object]:
+    """Tạo allowlist dùng chung để mọi solver hiểu hàm và hằng số giống nhau."""
+
+    return _local_dict(variable_names, real=real)
+
+
+def _decimal_log(value: sp.Expr, base: sp.Expr | None = None) -> sp.Expr:
+    resolved_base = sp.Integer(10) if base is None else sp.sympify(base)
+    _validate_log_base(resolved_base)
+    return sp.log(value) / sp.log(resolved_base)
+
+
+def _natural_log(value: sp.Expr) -> sp.Expr:
+    return sp.log(value)
+
+
+def _validate_log_base(base: sp.Expr) -> None:
+    if base.is_number and (base.is_real is False or base.is_positive is False or base == 1):
+        raise AlgebraParseError("Cơ số logarit phải là số dương khác 1.")
 
 
 def _relation_topic(relation: sp.Relational) -> Literal["equation", "inequality"]:

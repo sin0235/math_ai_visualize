@@ -40,4 +40,13 @@ assert.equal(buildSolverNotice({
   warnings: [],
 }), null);
 
+assert.equal(buildSolverNotice({
+  question: 'd(A,B)',
+  answer: 'd(A,B) = 3',
+  steps: [],
+  confidence: 'verified',
+  warnings: ['Không gọi được LLM diễn giải, đang dùng lời giải deterministic: provider unavailable'],
+  data_issues: ['Grounding validation đã dùng fallback.'],
+}), null);
+
 console.log('solver notice: ok');
