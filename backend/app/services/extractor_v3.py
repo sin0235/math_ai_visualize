@@ -55,6 +55,10 @@ from app.services.scene_fidelity_v3 import (
     repair_standard_solid_references,
     validate_scene_fidelity,
 )
+from app.services.scene_goal_visualization_v3 import (
+    complete_metric_goal_visualizations,
+    reserved_annotation_metadata_key,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -139,10 +143,14 @@ def normalize_scene_v3_json(raw: dict[str, Any], *, problem_text: str, grade: in
             rel.setdefault("source", "ai_inferred")
             rel.setdefault("args", {})
             rel.setdefault("metadata", {})
+    data = _normalize_metric_goal_relations_v3(data)
     for index, ann in enumerate(data.get("annotations") or []):
         if isinstance(ann, dict) and not ann.get("id"):
             ann["id"] = f"ann_{index}_{uuid.uuid4().hex[:8]}"
         if isinstance(ann, dict):
+            metadata = ann.get("metadata") if isinstance(ann.get("metadata"), dict) else {}
+            metadata.pop(reserved_annotation_metadata_key(), None)
+            ann["metadata"] = metadata
             ann.setdefault("provenance", "render_only")
             # Accept legacy target string → target_ids.
             if "target_ids" not in ann and ann.get("target"):
@@ -168,6 +176,110 @@ def _normalize_interpretation_v3(raw: dict[str, Any]) -> dict[str, Any]:
         values = []
     interpretation["values"] = [item if isinstance(item, dict) else {"value": item} for item in values]
     return interpretation
+
+
+_METRIC_EXPECTED_ARGS = {
+    "distance": "value",
+    "angle": "degrees",
+    "ratio": "value",
+}
+
+
+def _normalize_metric_goal_relations_v3(data: dict[str, Any]) -> dict[str, Any]:
+    """Chuyển đại lượng cần tìm khỏi relation constraint nhưng vẫn giữ intent hiển thị."""
+    relations: list[Any] = list(data.get("relations") or [])
+    derived_facts: list[Any] = list(data.get("derived_facts") or [])
+    used_ids = {
+        str(item.get("id"))
+        for collection in (data.get("objects") or [], relations, data.get("annotations") or [], derived_facts)
+        for item in collection
+        if isinstance(item, dict) and item.get("id")
+    }
+    kept_relations: list[Any] = []
+    removed_relation_ids: set[str] = set()
+
+    for index, relation in enumerate(relations):
+        if not isinstance(relation, dict):
+            kept_relations.append(relation)
+            continue
+        relation_type = str(relation.get("type") or "").strip().lower()
+        expected_arg = _METRIC_EXPECTED_ARGS.get(relation_type)
+        if expected_arg is None:
+            kept_relations.append(relation)
+            continue
+        args = relation.get("args") if isinstance(relation.get("args"), dict) else {}
+        if relation_type == "angle" and "degrees" not in args and _is_metric_number(args.get("value")):
+            args = {**args, "degrees": args["value"]}
+            relation["args"] = args
+        if _is_metric_number(args.get(expected_arg)):
+            kept_relations.append(relation)
+            continue
+        source = str(relation.get("source") or "ai_inferred").strip().lower()
+        if source not in {"ai_inferred", "construction"}:
+            kept_relations.append(relation)
+            continue
+
+        relation_id = str(relation.get("id") or f"metric_{index}")
+        removed_relation_ids.add(relation_id)
+        fact_id = _unique_normalized_id(f"goal_{relation_id}", used_ids)
+        source_ids = list(dict.fromkeys(
+            str(operand.get("ref_id"))
+            for operand in relation.get("operands") or []
+            if isinstance(operand, dict) and operand.get("ref_id")
+        ))
+        derived_facts.append({
+            "id": fact_id,
+            "kind": "measurement",
+            "source_ids": source_ids,
+            "value": {
+                "role": "goal",
+                "quantity": relation_type,
+                "text": f"Đại lượng {relation_type} cần được tính từ đề bài.",
+            },
+            "provenance": "render_only",
+        })
+
+    data["relations"] = kept_relations
+    data["derived_facts"] = derived_facts
+    interpretation = data.get("interpretation")
+    if removed_relation_ids and isinstance(interpretation, dict):
+        interpretation["relation_ids"] = [
+            relation_id
+            for relation_id in interpretation.get("relation_ids") or []
+            if relation_id not in removed_relation_ids
+        ]
+    _validate_metric_relation_args_v3(kept_relations)
+    return data
+
+
+def _validate_metric_relation_args_v3(relations: list[Any]) -> None:
+    for relation in relations:
+        if not isinstance(relation, dict):
+            continue
+        relation_type = str(relation.get("type") or "").strip().lower()
+        expected_arg = _METRIC_EXPECTED_ARGS.get(relation_type)
+        if expected_arg is None:
+            continue
+        args = relation.get("args") if isinstance(relation.get("args"), dict) else {}
+        if not _is_metric_number(args.get(expected_arg)):
+            relation_id = str(relation.get("id") or relation_type)
+            raise ValueError(f"Relation {relation_id} cần args.{expected_arg}")
+
+
+def _is_metric_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _unique_normalized_id(preferred: str, used_ids: set[str]) -> str:
+    if preferred not in used_ids:
+        used_ids.add(preferred)
+        return preferred
+    suffix = 2
+    while f"{preferred}_{suffix}" in used_ids:
+        suffix += 1
+    result = f"{preferred}_{suffix}"
+    used_ids.add(result)
+    return result
 
 
 def _normalize_parameters_v3(raw: Any) -> list[dict[str, Any]]:
@@ -235,6 +347,7 @@ def parse_math_scene_v3(raw: dict[str, Any], *, problem_text: str, grade: int | 
     repaired = repair_standard_solid_references(normalized, problem_text=problem_text)
     scene = MathSceneV3.model_validate(repaired)
     scene = complete_standard_solid_topology(scene)
+    scene = complete_metric_goal_visualizations(scene)
     fidelity_issues = validate_scene_fidelity(scene)
     if fidelity_issues:
         details = "; ".join(f"{issue.code}: {issue.message}" for issue in fidelity_issues)

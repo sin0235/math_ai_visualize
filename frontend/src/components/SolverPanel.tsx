@@ -5,6 +5,7 @@ import { committedSceneRefV3, downstreamGateMessageV3 } from '../hooks/sceneWork
 import type { RuntimeSettings } from '../types/settings';
 import type { MathSceneV3, SceneWorkspaceResponseV3 } from '../types/sceneV3';
 import { isDocumentHidden, showBrowserNotify } from '../utils/browserNotify';
+import { buildSolverNotice } from '../utils/solverNotice';
 import { KatexSpan, normalizeLatexForKatex, sympyToLatex } from './KatexSpan';
 
 type ToastKind = 'error' | 'warning' | 'info';
@@ -328,38 +329,9 @@ function notifySolverSideChannel(
   result: SolveResponse,
   onToast?: (title: string, message: string, kind?: ToastKind, details?: string[]) => void,
 ) {
-  if (!onToast) return;
-  const confidence = result.confidence ?? 'verified';
-  const warnings = (result.warnings ?? [])
-    .map((item) => toLearnerIssue(item))
-    .filter((item) => item && !isInternalSolverNoise(item));
-  const dataIssues = (result.data_issues ?? [])
-    .map((item) => toLearnerIssue(item))
-    .filter((item) => item && !isInternalSolverNoise(item));
-  const details = [...dataIssues, ...warnings].slice(0, 6);
-
-  if (confidence === 'insufficient') {
-    onToast(
-      'Chưa đủ dữ kiện',
-      result.answer && result.answer !== 'Không đủ dữ kiện'
-        ? result.answer
-        : 'Hình hoặc câu hỏi chưa đủ để tính. Hãy bổ sung dữ kiện hoặc nêu rõ hơn.',
-      'warning',
-      details,
-    );
-    return;
-  }
-  if (confidence === 'partial') {
-    onToast(
-      'Kết quả gợi ý',
-      'Đã có đáp án nhưng còn điểm cần lưu ý.',
-      'warning',
-      details,
-    );
-    return;
-  }
-  if (details.length > 0) {
-    onToast('Lưu ý khi giải', details[0], 'warning', details.slice(1));
+  const notice = buildSolverNotice(result);
+  if (notice && onToast) {
+    onToast(notice.title, notice.message, notice.kind, notice.details);
     return;
   }
   // Clean success: panel has answer+steps; OS notify only when tab hidden.
@@ -371,29 +343,6 @@ function notifySolverSideChannel(
       tag: 'solve-done',
     });
   }
-}
-
-function isInternalSolverNoise(text: string) {
-  const value = text.toLowerCase();
-  return (
-    value.includes('d(a,b)')
-    || value.includes('s(abc)')
-    || value.includes('v(s.abcd)')
-    || value.includes('capability')
-    || value.includes('kiểm chứng')
-    || value.includes('verifier')
-    || value.includes('phạm vi')
-    || value.includes('đã kiểm')
-    || value.includes('chưa nhận diện được dạng bài. hãy thử hỏi cụ thể hơn')
-  );
-}
-
-function toLearnerIssue(text: string) {
-  if (!text.trim()) return '';
-  if (isInternalSolverNoise(text)) {
-    return 'Hãy nêu rõ đại lượng cần tìm (khoảng cách, góc, diện tích, thể tích, …) và các điểm/mặt liên quan.';
-  }
-  return text.trim();
 }
 
 

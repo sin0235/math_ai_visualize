@@ -395,8 +395,8 @@ I. Contract và reference integrity BẮT BUỘC:
 7. midpoint: operands = point (M) + segment (AB), hoặc 3 points (A,B,M) với ref_kind=point.
 8. perpendicular/parallel: 2 linear (segment/line/vector) HOẶC 1 linear + 1 planar (plane/face).
 9. equal_length: 2 linear. collinear: ≥3 points. coplanar: ≥4 points (3d). on_plane: point + planar.
-10. distance: 2 points HOẶC point+linear HOẶC point+planar; value trong args.value nếu đề cho.
-11. angle: 2 linear HOẶC 3 points (đỉnh ở giữa); degrees trong args.degrees nếu đề cho.
+10. distance: 2 points HOẶC point+linear HOẶC point+planar; CHỈ tạo relation distance khi đề đã cho giá trị số để kiểm chứng, bắt buộc đặt trong args.value. Nếu đề HỎI TÍNH khoảng cách chưa biết: KHÔNG tạo relation distance; hãy dựng chân chiếu/segment minh họa và để solver tính.
+11. angle: 2 linear HOẶC 3 points (đỉnh ở giữa); CHỈ tạo relation angle khi đề đã cho số đo, bắt buộc đặt trong args.degrees. Nếu đề hỏi góc chưa biết: chỉ dựng các cạnh/annotation minh họa, không tạo relation angle thiếu degrees.
 12. Hỗ trợ thêm: ratio (2 linear + args.ratio), point_on_segment, line_in_plane, parallel_planes, perpendicular_planes.
 13. problem_text = nguyên văn đề; NLP hints nếu có chỉ là gợi ý; khi mâu thuẫn ưu tiên nguyên văn.
 14. renderer geogebra_2d → chỉ point_2d; threejs_3d → chỉ point_3d.
@@ -432,6 +432,9 @@ IV. Màu và style:
 
 V. Quan hệ và annotation:
 - Relation lưu ý nghĩa hình học; annotation là ký hiệu người học nhìn thấy.
+- `distance`, `angle`, `ratio` là constraint định lượng để kiểm chứng dữ kiện đã biết, không phải goal. Không tạo các relation này khi giá trị đang là câu hỏi cần giải.
+- Nếu đề hỏi khoảng cách từ điểm M đến plane/face (ABC): bắt buộc tính hình chiếu vuông góc H của M lên mặt phẳng từ tọa độ đã chọn; tạo point H trước, segment MH color #7c3aed line_width 2 style="dashed", rồi right_angle target_ids=[id_M,id_H,id_A] với A là một điểm của mặt phẳng khác H. Thêm measurement cho segment MH với label ngắn `d(M, (ABC))`; tất cả là construction/render_only, không tạo distance relation thiếu args.value.
+- Nếu model chưa dựng đủ chân chiếu, backend sẽ hoàn thiện minh họa từ point và plane/face của goal; vì vậy phải giữ đúng hai object ID này trong intent/derived goal và không thay bằng chuỗi shorthand.
 - Chỉ ghi length/angle label khi giá trị xuất hiện trực tiếp trong đề. Không hiện số tự chọn để dựng hình.
 - Trung điểm: point + segment relation; thêm equal_marks cho hai nửa nếu có các segment tương ứng.
 - Vuông góc: relation dùng segment/line/plane objects; right_angle target point phải tồn tại.
@@ -452,7 +455,8 @@ VII. Self-check nội bộ trước khi xuất JSON, KHÔNG xuất phần kiểm
 5. Khối 3D không được chỉ gồm point; mọi cạnh thật là solid và visible.
 6. Các mặt kề nhau không cùng một màu; face opacity trong khoảng cho phép.
 7. renderer, dimension và loại point khớp nhau.
-8. Relation/annotation chỉ dùng object đã khai báo; tuyệt đối không tham chiếu ID dự định tạo nhưng chưa có.
+8. Nếu đề hỏi khoảng cách điểm–mặt phẳng: có point chân chiếu, segment khoảng cách nét đứt, measurement và right_angle; không có relation distance thiếu args.value.
+9. Relation/annotation chỉ dùng object đã khai báo; tuyệt đối không tham chiếu ID dự định tạo nhưng chưa có.
 
 Ví dụ đầy đủ — hình hộp chữ nhật ABCD.A'B'C'D':
 {"scene_id":"scene_box","schema_version":"3.0","revision":1,"problem_text":"Cho hình hộp chữ nhật ABCD.A'B'C'D'.","grade":11,"topic":"solid_geometry","renderer":"threejs_3d","objects":[{"id":"pt_a","type":"point_3d","label":"A","x":0,"y":0,"z":0},{"id":"pt_b","type":"point_3d","label":"B","x":4,"y":0,"z":0},{"id":"pt_c","type":"point_3d","label":"C","x":4,"y":0,"z":3},{"id":"pt_d","type":"point_3d","label":"D","x":0,"y":0,"z":3},{"id":"pt_a_prime","type":"point_3d","label":"A'","x":0,"y":2,"z":0},{"id":"pt_b_prime","type":"point_3d","label":"B'","x":4,"y":2,"z":0},{"id":"pt_c_prime","type":"point_3d","label":"C'","x":4,"y":2,"z":3},{"id":"pt_d_prime","type":"point_3d","label":"D'","x":0,"y":2,"z":3},{"id":"seg_ab","type":"segment","label":"AB","point_ids":["pt_a","pt_b"],"hidden":false,"color":"#1d3557","line_width":2,"style":"solid"},{"id":"seg_bc","type":"segment","label":"BC","point_ids":["pt_b","pt_c"],"hidden":false,"color":"#1d3557","line_width":2,"style":"solid"},{"id":"seg_cd","type":"segment","label":"CD","point_ids":["pt_c","pt_d"],"hidden":false,"color":"#1d3557","line_width":2,"style":"solid"},{"id":"seg_da","type":"segment","label":"DA","point_ids":["pt_d","pt_a"],"hidden":false,"color":"#1d3557","line_width":2,"style":"solid"},{"id":"seg_a_primeb_prime","type":"segment","label":"A'B'","point_ids":["pt_a_prime","pt_b_prime"],"hidden":false,"color":"#1d3557","line_width":2,"style":"solid"},{"id":"seg_b_primec_prime","type":"segment","label":"B'C'","point_ids":["pt_b_prime","pt_c_prime"],"hidden":false,"color":"#1d3557","line_width":2,"style":"solid"},{"id":"seg_c_primed_prime","type":"segment","label":"C'D'","point_ids":["pt_c_prime","pt_d_prime"],"hidden":false,"color":"#1d3557","line_width":2,"style":"solid"},{"id":"seg_d_primea_prime","type":"segment","label":"D'A'","point_ids":["pt_d_prime","pt_a_prime"],"hidden":false,"color":"#1d3557","line_width":2,"style":"solid"},{"id":"seg_aa_prime","type":"segment","label":"AA'","point_ids":["pt_a","pt_a_prime"],"hidden":false,"color":"#1d3557","line_width":2,"style":"solid"},{"id":"seg_bb_prime","type":"segment","label":"BB'","point_ids":["pt_b","pt_b_prime"],"hidden":false,"color":"#1d3557","line_width":2,"style":"solid"},{"id":"seg_cc_prime","type":"segment","label":"CC'","point_ids":["pt_c","pt_c_prime"],"hidden":false,"color":"#1d3557","line_width":2,"style":"solid"},{"id":"seg_dd_prime","type":"segment","label":"DD'","point_ids":["pt_d","pt_d_prime"],"hidden":false,"color":"#1d3557","line_width":2,"style":"solid"},{"id":"face_abcd","type":"face","label":"ABCD","point_ids":["pt_a","pt_b","pt_c","pt_d"],"color":"#5da9ff","opacity":0.16},{"id":"face_top","type":"face","label":"A'B'C'D'","point_ids":["pt_a_prime","pt_b_prime","pt_c_prime","pt_d_prime"],"color":"#ffb86b","opacity":0.16},{"id":"face_front","type":"face","label":"ABB'A'","point_ids":["pt_a","pt_b","pt_b_prime","pt_a_prime"],"color":"#ffd166","opacity":0.16},{"id":"face_right","type":"face","label":"BCC'B'","point_ids":["pt_b","pt_c","pt_c_prime","pt_b_prime"],"color":"#c9a0dc","opacity":0.16},{"id":"face_back","type":"face","label":"CDD'C'","point_ids":["pt_c","pt_d","pt_d_prime","pt_c_prime"],"color":"#7fcdbb","opacity":0.16},{"id":"face_left","type":"face","label":"DAA'D'","point_ids":["pt_d","pt_a","pt_a_prime","pt_d_prime"],"color":"#a8edea","opacity":0.16}],"relations":[],"annotations":[],"parameters":[],"view":{"dimension":"3d","show_axes":false,"show_grid":false,"show_coordinates":false},"interpretation":{"object_ids":[],"relation_ids":[],"values":[],"missing_data":[],"assumptions":[]},"construction_steps":[],"audit":{"created_by":"ai"}}
@@ -468,6 +472,7 @@ Nhiệm vụ: sửa scene để hết lỗi, giữ nguyên problem_text và inte
 - Đổi operands sang ref_id typed đúng ref_kind; không dùng shorthand AB.
 - Không xóa relation có bằng chứng trong đề chỉ để validator xanh.
 - Nếu đề là khối đa diện chuẩn, phải khôi phục đủ point, mọi segment cạnh thật và mọi face của khối.
+- Xóa relation distance/angle/ratio dùng như goal nếu thiếu giá trị bắt buộc; giữ các object/segment minh họa cho đại lượng cần tính.
 - Cạnh thật dùng hidden=false, style="solid"; chỉ đường phụ dùng dashed/dotted.
 - Các face kề nhau dùng màu khác nhau trong palette của extraction prompt, opacity 0.12-0.22.
 - Tự đếm lại topology: hộp 8/12/6; lăng trụ đáy n cạnh 2n/3n/(n+2); chóp n cạnh (n+1)/2n/(n+1); tứ diện 4/6/4.

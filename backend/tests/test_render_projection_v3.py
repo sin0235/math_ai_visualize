@@ -80,6 +80,20 @@ def test_three_projection_uses_stable_ids_and_bounds_include_sphere():
     assert projection.bounds.radius == 4
 
 
+def test_three_projection_leaves_plane_extent_to_local_frontend_fitting():
+    payload = scene_3d().model_dump(mode="json")
+    payload["objects"].extend([
+        {"id": "b", "type": "point_3d", "label": "B", "x": 0, "y": 1, "z": 0},
+        {"id": "c", "type": "point_3d", "label": "C", "x": 0, "y": 0, "z": 1},
+        {"id": "plane", "type": "plane", "point_ids": ["o", "b", "c"]},
+    ])
+
+    projection = build_render_projection_v3(MathSceneV3.model_validate(payload))
+    plane = next(surface for surface in projection.surfaces if surface.kind == "plane")
+
+    assert plane.extent is None
+
+
 def test_pipeline_attaches_verified_semantic_annotation_to_projection():
     payload = scene_2d().model_dump(mode="json")
     payload["relations"] = [{

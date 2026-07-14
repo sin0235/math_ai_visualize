@@ -14,6 +14,8 @@
     "test:scene-workspace": "node scripts/run-typescript-test.mjs src/hooks/sceneWorkspaceV3State.test.mjs",
     "test:scene-inspector": "node scripts/run-typescript-test.mjs src/components/sceneInspectorV3State.test.mjs",
     "test:render-projection": "node scripts/run-typescript-test.mjs src/utils/renderProjectionV3.test.mjs",
+    "test:three-appearance": "node scripts/run-typescript-test.mjs src/utils/threeGeometryAppearance.test.mjs",
+    "test:solver-notice": "node scripts/run-typescript-test.mjs src/utils/solverNotice.test.mjs",
     "test:render-history": "node scripts/run-typescript-test.mjs src/utils/renderHistoryV3.test.mjs",
     "test:math-input": "node scripts/run-typescript-test.mjs src/components/math-input/keyboardLayouts.test.mjs"
   },

@@ -136,11 +136,11 @@ def test_metric_solver_rejects_generic_solid_without_metric_evidence():
         "problem_text": "Cho hình chóp S.ABCD.",
         "topic": "solid_geometry",
         "objects": [
-            {"type": "point_3d", "name": "A", "x": 0, "y": 0, "z": 0},
-            {"type": "point_3d", "name": "B", "x": 1, "y": 0, "z": 0},
-            {"type": "point_3d", "name": "C", "x": 1, "y": 0, "z": 1},
-            {"type": "point_3d", "name": "D", "x": 0, "y": 0, "z": 1},
-            {"type": "point_3d", "name": "S", "x": 0, "y": 1, "z": 0},
+            {"object_id": "point-a", "type": "point_3d", "name": "A", "x": 0, "y": 0, "z": 0},
+            {"object_id": "point-b", "type": "point_3d", "name": "B", "x": 1, "y": 0, "z": 0},
+            {"object_id": "point-c", "type": "point_3d", "name": "C", "x": 1, "y": 0, "z": 1},
+            {"object_id": "point-d", "type": "point_3d", "name": "D", "x": 0, "y": 0, "z": 1},
+            {"object_id": "point-s", "type": "point_3d", "name": "S", "x": 0, "y": 1, "z": 0},
         ],
     }
 
@@ -150,6 +150,44 @@ def test_metric_solver_rejects_generic_solid_without_metric_evidence():
     assert "không dùng tọa độ minh họa" in result.warnings[-1]
     assert result.confidence == "insufficient"
     assert result.data_issues
+    assert [step.kind for step in result.steps] == [
+        "distance_point_plane_setup",
+        "distance_point_plane_formula",
+        "missing_metric_evidence",
+    ]
+    assert result.steps[1].formula_latex == (
+        r"d(S,(ABC))=\frac{|(\overrightarrow{AB}\times \overrightarrow{AC})\cdot \overrightarrow{AS}|}"
+        r"{\|\overrightarrow{AB}\times \overrightarrow{AC}\|}"
+    )
+    assert set(result.steps[0].highlight_object_ids) == {"point-a", "point-b", "point-c", "point-s"}
+
+
+def test_metric_solver_preserves_symbolic_method_for_vietnamese_point_plane_question():
+    scene = {
+        "problem_text": "Cho hình hộp, M là một đỉnh và (PFB) là mặt phẳng cần xét.",
+        "topic": "solid_geometry",
+        "objects": [
+            {"object_id": "point-m", "type": "point_3d", "name": "M", "x": 0, "y": 1, "z": 0},
+            {"object_id": "point-p", "type": "point_3d", "name": "P", "x": 0, "y": 0, "z": 0},
+            {"object_id": "point-f", "type": "point_3d", "name": "F", "x": 1, "y": 0, "z": 0},
+            {"object_id": "point-b", "type": "point_3d", "name": "B", "x": 0, "y": 0, "z": 1},
+        ],
+    }
+
+    result = solve(scene, "Khoảng cách từ điểm (M) đến mặt phẳng ((PFB))")
+
+    assert result.answer == "Không đủ dữ kiện"
+    assert result.confidence == "insufficient"
+    assert [step.kind for step in result.steps] == [
+        "distance_point_plane_setup",
+        "distance_point_plane_formula",
+        "missing_metric_evidence",
+    ]
+    assert result.steps[1].formula_latex == (
+        r"d(M,(PFB))=\frac{|(\overrightarrow{PF}\times \overrightarrow{PB})\cdot \overrightarrow{PM}|}"
+        r"{\|\overrightarrow{PF}\times \overrightarrow{PB}\|}"
+    )
+    assert set(result.steps[0].highlight_object_ids) == {"point-m", "point-p", "point-f", "point-b"}
 
 
 def test_metric_guard_rejects_inconsistent_length_annotation():

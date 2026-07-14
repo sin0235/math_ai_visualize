@@ -103,6 +103,51 @@ def test_completion_is_idempotent():
     assert [obj.id for obj in completed_again.objects] == [obj.id for obj in scene.objects]
 
 
+def test_completion_normalizes_ai_solid_edges_and_faces_but_preserves_user_style():
+    raw = _raw_solid("Cho hình hộp chữ nhật ABCD.EFGH.", tuple("ABCDEFGH"))
+    raw["objects"].extend([
+        {
+            "id": "seg_ab",
+            "type": "segment",
+            "point_ids": ["pt_a", "pt_b"],
+            "hidden": True,
+            "color": "#ff0000",
+            "line_width": 8,
+            "style": "dotted",
+        },
+        {
+            "id": "seg_bc_user",
+            "type": "segment",
+            "point_ids": ["pt_b", "pt_c"],
+            "hidden": True,
+            "color": "#00ff00",
+            "line_width": 7,
+            "style": "dashed",
+            "source": "user_edited",
+            "user_edited": True,
+        },
+        {
+            "id": "face_abcd",
+            "type": "face",
+            "point_ids": ["pt_a", "pt_b", "pt_c", "pt_d"],
+            "color": "#333333",
+            "opacity": 0.6,
+        },
+    ])
+
+    scene = parse_math_scene_v3(raw, problem_text=raw["problem_text"] if "problem_text" in raw else "Cho hình hộp chữ nhật ABCD.EFGH.", grade=11)
+    by_id = {obj.id: obj for obj in scene.objects}
+
+    assert by_id["seg_ab"].style == "solid"
+    assert by_id["seg_ab"].hidden is False
+    assert by_id["seg_ab"].color == "#1d3557"
+    assert by_id["seg_ab"].line_width == 2
+    assert by_id["seg_bc_user"].style == "dashed"
+    assert by_id["seg_bc_user"].hidden is True
+    assert by_id["face_abcd"].color == "#5da9ff"
+    assert by_id["face_abcd"].opacity == 0.14
+
+
 def test_ambiguous_standard_solid_fails_instead_of_guessing():
     with pytest.raises(ValueError, match="SOLID_TOPOLOGY_AMBIGUOUS"):
         parse_math_scene_v3(

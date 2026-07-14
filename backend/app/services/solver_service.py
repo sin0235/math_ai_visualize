@@ -36,7 +36,7 @@ from app.services.linalg import Vec3, cross as _cross, dot as _dot, norm as _nor
 from app.services.math_capabilities import resolve_geometry_capability
 from app.services.geometry.goals import infer_geometry_goal
 from app.services.plane_shape_solver import solve_plane_shape_metric
-from app.services.pythagoras_solver import PythagorasResult, solve_pythagoras
+from app.services.pythagoras_solver import solve_pythagoras
 from app.services.triangle_proof_solver import solve_triangle_proof
 from app.services.geometry.solution_builder import SolverResult, SolverStep, attach_replayed_proof
 from app.services.geometry.parser import normalize_solver_question
@@ -166,7 +166,7 @@ def solve(
 
     guard = None if capability_task in {"pythagoras", "quadrilateral_metric", "circle_metric"} else _metric_data_guard(scene_dict, q)
     if guard:
-        result = SolverResult(q, "Không đủ dữ kiện", [], [*warnings, guard])
+        result = _build_insufficient_metric_result(scene_dict, q, guard, warnings, method)
         _attach_highlight_object_ids(result, scene_dict)
         _apply_result_metadata(result, scene_dict, geometry_method)
         return result
@@ -324,6 +324,100 @@ def _metric_data_guard(scene_dict: dict, question: str) -> str | None:
     return (
         "Đề/scene hiện không có dữ kiện định lượng đã kiểm chứng cho đại lượng cần tính. "
         "Hệ thống không dùng tọa độ minh họa do AI tự chọn để kết luận số học."
+    )
+
+
+def _build_insufficient_metric_result(
+    scene_dict: dict,
+    question: str,
+    guard: str,
+    warnings: list[str],
+    method: str,
+) -> SolverResult:
+    parsed_distance = _parse_distance(question) if _DISTANCE_RE.search(question) else None
+    if parsed_distance is None or parsed_distance[0] != "point_plane":
+        return SolverResult(
+            question,
+            "Không đủ dữ kiện",
+            [],
+            [*warnings, guard],
+            confidence="insufficient",
+            method=method,
+        )
+
+    _, operands = parsed_distance
+    point, first, second, third = operands[:4]
+    highlight = [point, first, second, third]
+    plane = f"({first}{second}{third})"
+    if method == "classical":
+        steps = [
+            SolverStep(
+                1,
+                "Dựng chân đường vuông góc",
+                f"Gọi H là hình chiếu vuông góc của {point} lên mặt phẳng {plane}; khi đó khoảng cách cần tìm là {point}H.",
+                None,
+                None,
+                highlight,
+                kind="distance_point_plane_setup",
+            ),
+            SolverStep(
+                2,
+                "Xác định dữ kiện còn thiếu",
+                f"Cần thêm quan hệ độ dài hoặc tam giác vuông đã cho để tính chính xác {point}H; tọa độ dùng để dựng hình không được xem là dữ kiện đề bài.",
+                None,
+                None,
+                highlight,
+                kind="missing_metric_evidence",
+                depends_on=["1"],
+            ),
+        ]
+    else:
+        vector_first = f"\\overrightarrow{{{first}{second}}}"
+        vector_second = f"\\overrightarrow{{{first}{third}}}"
+        vector_point = f"\\overrightarrow{{{first}{point}}}"
+        normal = f"{vector_first}\\times {vector_second}"
+        formula = f"d({point},{plane})=\\frac{{|({normal})\\cdot {vector_point}|}}{{\\|{normal}\\|}}"
+        steps = [
+            SolverStep(
+                1,
+                "Lập vectơ pháp tuyến",
+                f"Từ ba điểm {first}, {second}, {third}, lập hai vectơ nằm trong mặt phẳng {plane} và lấy tích có hướng để được pháp tuyến.",
+                None,
+                None,
+                highlight,
+                kind="distance_point_plane_setup",
+                formula_latex=f"\\vec n={normal}",
+            ),
+            SolverStep(
+                2,
+                "Viết công thức khoảng cách",
+                f"Khoảng cách từ {point} đến {plane} được tính bằng hình chiếu của vectơ {first}{point} lên pháp tuyến.",
+                None,
+                None,
+                highlight,
+                kind="distance_point_plane_formula",
+                formula_latex=formula,
+                depends_on=["1"],
+            ),
+            SolverStep(
+                3,
+                "Xác định dữ kiện còn thiếu",
+                f"Cần tọa độ được cho trong đề hoặc các số đo/quan hệ đủ để suy ra tọa độ của {point}, {first}, {second}, {third}; tọa độ AI dùng để dựng hình không phải dữ kiện tính toán.",
+                None,
+                None,
+                highlight,
+                kind="missing_metric_evidence",
+                depends_on=["2"],
+            ),
+        ]
+
+    return SolverResult(
+        question,
+        "Không đủ dữ kiện",
+        steps,
+        [*warnings, guard],
+        confidence="insufficient",
+        method=method,
     )
 
 
@@ -1531,7 +1625,7 @@ def _classical_method_step(kind: str, highlight: list[str], question: str = "", 
         return SolverStep(
             2,
             "Kiểm tra quan hệ thẳng hàng",
-            f"Chọn một đường thẳng đi qua hai điểm đầu, rồi kiểm tra các điểm còn lại có cùng nằm trên đường thẳng đó hay không.",
+            "Chọn một đường thẳng đi qua hai điểm đầu, rồi kiểm tra các điểm còn lại có cùng nằm trên đường thẳng đó hay không.",
             None,
             None,
             highlight,
@@ -1541,7 +1635,7 @@ def _classical_method_step(kind: str, highlight: list[str], question: str = "", 
         return SolverStep(
             2,
             "Kiểm tra quan hệ đồng phẳng",
-            f"Chọn mặt phẳng đi qua ba điểm không thẳng hàng đầu tiên, rồi kiểm tra các điểm còn lại có thuộc mặt phẳng đó hay không.",
+            "Chọn mặt phẳng đi qua ba điểm không thẳng hàng đầu tiên, rồi kiểm tra các điểm còn lại có thuộc mặt phẳng đó hay không.",
             None,
             None,
             highlight,
@@ -1588,7 +1682,6 @@ def _classical_conclusion_text(
         angle_name = plane_plane_angle["angle_name"]
         return f"Vì góc phẳng nhị diện giữa ({first_plane}) và ({second_plane}) là góc {angle_name}, nên {answer}."
     if kind == "volume_pyramid" and pyramid_volume:
-        apex = pyramid_volume["apex"]
         base = pyramid_volume["base"]
         height_segment = pyramid_volume["height_segment"]
         height_label = pyramid_volume.get("height_label")

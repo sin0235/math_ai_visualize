@@ -16,7 +16,7 @@ export function threeSceneFromProjectionV3(projection: RenderProjectionV3): Thre
       },
     ])),
     segments: projection.linear
-      .filter((item) => item.kind === 'segment')
+      .filter((item) => item.kind === 'segment' && item.visible)
       .map((item) => ({
         object_id: item.object_id,
         points: item.point_ids,

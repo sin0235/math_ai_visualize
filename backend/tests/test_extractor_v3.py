@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.schemas.scene_v3 import MathSceneV3
+from app.schemas.scene_v3 import AnnotationV3, MathSceneV3, Point3DV3, SegmentV3
 from app.services.extractor_v3 import (
     extract_scene_v3,
     extract_scene_v3_mock,
@@ -10,6 +10,7 @@ from app.services.extractor_v3 import (
     parse_math_scene_v3,
 )
 from app.services.scene_pipeline_v3 import run_scene_pipeline_v3
+from app.services.scene_goal_visualization_v3 import complete_metric_goal_visualizations
 
 
 def test_mock_extracts_points_and_segment_native():
@@ -76,6 +77,134 @@ def test_parse_wraps_scalar_interpretation_values_without_losing_data():
         {"value": 18},
         {"name": "edge", "value": 3},
     ]
+
+
+def test_parse_converts_unknown_distance_goal_to_render_only_measurement():
+    scene = parse_math_scene_v3(
+        {
+            "topic": "solid_geometry",
+            "renderer": "threejs_3d",
+            "objects": [
+                {"id": "pt_m", "type": "point_3d", "label": "M", "x": 0.25, "y": 2, "z": 0.4},
+                {"id": "pt_p", "type": "point_3d", "label": "P", "x": 0, "y": 0, "z": 0},
+                {"id": "pt_f", "type": "point_3d", "label": "F", "x": 1, "y": 0, "z": 0},
+                {"id": "pt_b", "type": "point_3d", "label": "B", "x": 0, "y": 0, "z": 1},
+                {"id": "plane_pfb", "type": "plane", "label": "PFB", "point_ids": ["pt_p", "pt_f", "pt_b"]},
+            ],
+            "relations": [{
+                "id": "rel_distance_m_plane_pfb",
+                "type": "distance",
+                "operands": [
+                    {"role": "point", "ref_id": "pt_m", "ref_kind": "point"},
+                    {"role": "plane", "ref_id": "plane_pfb", "ref_kind": "plane"},
+                ],
+                "args": {},
+                "source": "ai_inferred",
+            }],
+            "view": {"dimension": "3d"},
+            "audit": {"created_by": "test"},
+        },
+        problem_text="Tính khoảng cách từ M đến mặt phẳng (PFB).",
+        grade=11,
+    )
+
+    assert scene.relations == []
+    assert len(scene.derived_facts) == 1
+    goal = scene.derived_facts[0]
+    assert goal.kind == "measurement"
+    assert goal.provenance == "render_only"
+    assert goal.source_ids == ["pt_m", "plane_pfb"]
+    assert goal.value["quantity"] == "distance"
+    foot = next(
+        obj
+        for obj in scene.objects
+        if isinstance(obj, Point3DV3) and obj.metadata.get("visualization_role") == "projection_foot"
+    )
+    assert foot.label == "H"
+    assert (foot.x, foot.y, foot.z) == pytest.approx((0.25, 0, 0.4))
+    connector = next(
+        obj
+        for obj in scene.objects
+        if isinstance(obj, SegmentV3) and obj.metadata.get("visualization_role") == "distance_goal"
+    )
+    assert connector.point_ids == ("pt_m", foot.id)
+    assert connector.style == "dashed"
+    assert connector.color == "#7c3aed"
+    goal_annotations = [
+        annotation
+        for annotation in scene.annotations
+        if annotation.metadata.get("visualization_role") == "distance_goal"
+    ]
+    assert {annotation.type for annotation in goal_annotations} == {"measurement", "right_angle"}
+    assert next(annotation for annotation in goal_annotations if annotation.type == "measurement").label == "d(M, (PFB))"
+    result = run_scene_pipeline_v3(scene)
+    assert result.status == "verified"
+    assert result.can_project
+    assert result.projection is not None
+    assert {annotation.type for annotation in result.projection.annotations} == {"measurement", "right_angle"}
+
+    completed_again = complete_metric_goal_visualizations(scene)
+    assert [obj.id for obj in completed_again.objects] == [obj.id for obj in scene.objects]
+    assert [annotation.id for annotation in completed_again.annotations] == [annotation.id for annotation in scene.annotations]
+
+
+def test_parse_strips_reserved_render_safe_flag_from_ai_annotation():
+    scene = parse_math_scene_v3(
+        {
+            "topic": "coordinate_2d",
+            "renderer": "geogebra_2d",
+            "objects": [
+                {"id": "pt_a", "type": "point_2d", "label": "A", "x": 0, "y": 0},
+                {"id": "pt_b", "type": "point_2d", "label": "B", "x": 1, "y": 0},
+                {"id": "seg_ab", "type": "segment", "point_ids": ["pt_a", "pt_b"]},
+            ],
+            "annotations": [{
+                "id": "ann_untrusted",
+                "type": "measurement",
+                "target_ids": ["seg_ab"],
+                "label": "giả",
+                "metadata": {"_backend_render_safe": True},
+            }],
+            "view": {"dimension": "2d"},
+            "audit": {"created_by": "test"},
+        },
+        problem_text="Cho đoạn AB.",
+        grade=10,
+    )
+
+    assert isinstance(scene.annotations[0], AnnotationV3)
+    assert "_backend_render_safe" not in scene.annotations[0].metadata
+    projection = run_scene_pipeline_v3(scene).projection
+    assert projection is not None
+    assert projection.annotations == []
+
+
+def test_parse_rejects_given_distance_without_expected_value():
+    with pytest.raises(ValueError, match=r"rel_distance_given cần args\.value"):
+        parse_math_scene_v3(
+            {
+                "topic": "coordinate_2d",
+                "renderer": "geogebra_2d",
+                "objects": [
+                    {"id": "pt_a", "type": "point_2d", "label": "A", "x": 0, "y": 0},
+                    {"id": "pt_b", "type": "point_2d", "label": "B", "x": 3, "y": 0},
+                ],
+                "relations": [{
+                    "id": "rel_distance_given",
+                    "type": "distance",
+                    "operands": [
+                        {"role": "first", "ref_id": "pt_a", "ref_kind": "point"},
+                        {"role": "second", "ref_id": "pt_b", "ref_kind": "point"},
+                    ],
+                    "args": {},
+                    "source": "given",
+                }],
+                "view": {"dimension": "2d"},
+                "audit": {"created_by": "test"},
+            },
+            problem_text="Cho AB có độ dài xác định.",
+            grade=10,
+        )
 
 
 def test_native_midpoint_relation_contract_passes():
