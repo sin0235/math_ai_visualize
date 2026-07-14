@@ -16,6 +16,34 @@ class RequestIdFilter(logging.Filter):
         return True
 
 
+class ReadinessAccessFilter(logging.Filter):
+    """Bỏ access log readiness thành công nhưng vẫn giữ lỗi và request khác."""
+
+    readiness_path = "/api/health/ready"
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.name != "uvicorn.access":
+            return True
+
+        method, path, status_code = self._access_fields(record)
+        return not (
+            method == "GET"
+            and path.partition("?")[0] == self.readiness_path
+            and status_code == 200
+        )
+
+    @staticmethod
+    def _access_fields(record: logging.LogRecord) -> tuple[str, str, int | None]:
+        args = record.args
+        if isinstance(args, tuple) and len(args) >= 5:
+            try:
+                status_code = int(args[4])
+            except (TypeError, ValueError):
+                status_code = None
+            return str(args[1]).upper(), str(args[2]), status_code
+        return "", "", None
+
+
 class JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         payload = {
@@ -47,6 +75,7 @@ def configure_logging() -> None:
             "disable_existing_loggers": False,
             "filters": {
                 "request_id": {"()": "app.core.logging.RequestIdFilter"},
+                "readiness_access": {"()": "app.core.logging.ReadinessAccessFilter"},
             },
             "formatters": {
                 "standard": {
@@ -61,7 +90,7 @@ def configure_logging() -> None:
                 "console": {
                     "class": "logging.StreamHandler",
                     "formatter": formatter_name,
-                    "filters": ["request_id"],
+                    "filters": ["request_id", "readiness_access"],
                 },
             },
             "root": {
