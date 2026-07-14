@@ -395,8 +395,8 @@ I. Contract và reference integrity BẮT BUỘC:
 7. midpoint: operands = point (M) + segment (AB), hoặc 3 points (A,B,M) với ref_kind=point.
 8. perpendicular/parallel: 2 linear (segment/line/vector) HOẶC 1 linear + 1 planar (plane/face).
 9. equal_length: 2 linear. collinear: ≥3 points. coplanar: ≥4 points (3d). on_plane: point + planar.
-10. distance: 2 points HOẶC point+linear HOẶC point+planar; value trong args.value nếu đề cho.
-11. angle: 2 linear HOẶC 3 points (đỉnh ở giữa); degrees trong args.degrees nếu đề cho.
+10. distance: 2 points HOẶC point+linear HOẶC point+planar; CHỈ tạo relation distance khi đề đã cho giá trị số để kiểm chứng, bắt buộc đặt trong args.value. Nếu đề HỎI TÍNH khoảng cách chưa biết: KHÔNG tạo relation distance; hãy dựng chân chiếu/segment minh họa và để solver tính.
+11. angle: 2 linear HOẶC 3 points (đỉnh ở giữa); CHỈ tạo relation angle khi đề đã cho số đo, bắt buộc đặt trong args.degrees. Nếu đề hỏi góc chưa biết: chỉ dựng các cạnh/annotation minh họa, không tạo relation angle thiếu degrees.
 12. Hỗ trợ thêm: ratio (2 linear + args.ratio), point_on_segment, line_in_plane, parallel_planes, perpendicular_planes.
 13. problem_text = nguyên văn đề; NLP hints nếu có chỉ là gợi ý; khi mâu thuẫn ưu tiên nguyên văn.
 14. renderer geogebra_2d → chỉ point_2d; threejs_3d → chỉ point_3d.
@@ -432,6 +432,7 @@ IV. Màu và style:
 
 V. Quan hệ và annotation:
 - Relation lưu ý nghĩa hình học; annotation là ký hiệu người học nhìn thấy.
+- `distance`, `angle`, `ratio` là constraint định lượng để kiểm chứng dữ kiện đã biết, không phải goal. Không tạo các relation này khi giá trị đang là câu hỏi cần giải.
 - Chỉ ghi length/angle label khi giá trị xuất hiện trực tiếp trong đề. Không hiện số tự chọn để dựng hình.
 - Trung điểm: point + segment relation; thêm equal_marks cho hai nửa nếu có các segment tương ứng.
 - Vuông góc: relation dùng segment/line/plane objects; right_angle target point phải tồn tại.
@@ -468,6 +469,7 @@ Nhiệm vụ: sửa scene để hết lỗi, giữ nguyên problem_text và inte
 - Đổi operands sang ref_id typed đúng ref_kind; không dùng shorthand AB.
 - Không xóa relation có bằng chứng trong đề chỉ để validator xanh.
 - Nếu đề là khối đa diện chuẩn, phải khôi phục đủ point, mọi segment cạnh thật và mọi face của khối.
+- Xóa relation distance/angle/ratio dùng như goal nếu thiếu giá trị bắt buộc; giữ các object/segment minh họa cho đại lượng cần tính.
 - Cạnh thật dùng hidden=false, style="solid"; chỉ đường phụ dùng dashed/dotted.
 - Các face kề nhau dùng màu khác nhau trong palette của extraction prompt, opacity 0.12-0.22.
 - Tự đếm lại topology: hộp 8/12/6; lăng trụ đáy n cạnh 2n/3n/(n+2); chóp n cạnh (n+1)/2n/(n+1); tứ diện 4/6/4.

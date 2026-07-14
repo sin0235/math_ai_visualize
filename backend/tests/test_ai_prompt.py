@@ -95,6 +95,12 @@ def test_scene_v3_prompt_restores_geometry_fidelity_rules(snippet: str):
     assert snippet in SCENE_EXTRACTION_V3_SYSTEM_PROMPT
 
 
+def test_scene_v3_prompt_does_not_treat_unknown_metric_goal_as_constraint():
+    text = SCENE_EXTRACTION_V3_SYSTEM_PROMPT
+    assert "KHÔNG tạo relation distance" in text
+    assert "không tạo relation angle thiếu degrees" in text
+
+
 def test_scene_v3_schema_sample_does_not_teach_known_missing_references():
     text = SCENE_EXTRACTION_V3_SYSTEM_PROMPT
     schema_sample = text.split("I. Contract", maxsplit=1)[0]
