@@ -44,8 +44,6 @@ def test_readiness_access_filter_preserves_non_access_logs() -> None:
     )
 
     assert ReadinessAccessFilter().filter(record)
-
-
 def test_configure_logging_attaches_filter_to_uvicorn_access_handler() -> None:
     configure_logging()
 
