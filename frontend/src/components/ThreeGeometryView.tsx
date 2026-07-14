@@ -6,7 +6,7 @@ import type { ComponentProps, ReactNode } from 'react';
 import * as THREE from 'three';
 
 import type { Annotation, ThreeScene } from '../types/scene';
-import { segmentAppearance } from '../utils/threeGeometryAppearance';
+import { faceOpacity, segmentAppearance } from '../utils/threeGeometryAppearance';
 
 export type ThreeSceneImageCapture = (mimeType: 'image/png' | 'image/jpeg') => Promise<Blob>;
 
@@ -431,7 +431,7 @@ function Planes({ scene }: ThreeGeometryViewProps) {
             <mesh geometry={geometry} renderOrder={-2}>
               <meshBasicMaterial
                 color={plane.color}
-                opacity={Math.min(plane.opacity, 0.1)}
+                opacity={Math.min(plane.opacity, 0.07)}
                 transparent
                 side={THREE.DoubleSide}
                 depthWrite={false}
@@ -462,7 +462,7 @@ function Faces({ scene }: ThreeGeometryViewProps) {
           <mesh key={face.name ?? face.points.join('-')} geometry={geometry} renderOrder={-1}>
             <meshBasicMaterial
               color={face.color}
-              opacity={face.opacity >= 0.45 ? Math.min(face.opacity, 0.64) : Math.min(face.opacity, 0.16)}
+              opacity={faceOpacity(face.opacity)}
               transparent
               side={THREE.DoubleSide}
               depthWrite={false}

@@ -64,6 +64,111 @@ def repair_standard_solid_references(raw: dict[str, Any], *, problem_text: str) 
     return data
 
 
+def repair_optional_scene_references(raw: dict[str, Any]) -> dict[str, Any]:
+    """Phục hồi lỗi tham chiếu trình bày mà không làm mềm dữ kiện do đề bài cung cấp."""
+    data = dict(raw)
+    object_kinds = {
+        str(item.get("id")): _raw_reference_kind(str(item.get("type") or ""))
+        for item in data.get("objects") or []
+        if isinstance(item, dict) and item.get("id")
+    }
+    object_ids = set(object_kinds)
+    kept_relations: list[Any] = []
+    removed_relation_ids: set[str] = set()
+    for relation in data.get("relations") or []:
+        if not isinstance(relation, dict):
+            continue
+        relation_id = str(relation.get("id") or "")
+        source = str(relation.get("source") or "ai_inferred").strip().lower()
+        can_soft_repair = source in {"ai_inferred", "construction"}
+        operands = relation.get("operands")
+        if not isinstance(operands, list) or not operands:
+            if can_soft_repair:
+                removed_relation_ids.add(relation_id)
+                continue
+            kept_relations.append(relation)
+            continue
+
+        missing_reference = any(
+            not isinstance(operand, dict)
+            or not operand.get("ref_id")
+            or str(operand.get("ref_id")) not in object_ids
+            for operand in operands
+        )
+        if missing_reference and can_soft_repair:
+            removed_relation_ids.add(relation_id)
+            continue
+
+        if can_soft_repair:
+            normalized_operands: list[Any] = []
+            for operand in operands:
+                if not isinstance(operand, dict):
+                    normalized_operands.append(operand)
+                    continue
+                normalized = dict(operand)
+                actual_kind = object_kinds.get(str(normalized.get("ref_id") or ""))
+                declared_kind = str(normalized.get("ref_kind") or "")
+                if actual_kind and declared_kind not in {"object", actual_kind}:
+                    normalized["ref_kind"] = actual_kind
+                normalized_operands.append(normalized)
+            relation = {**relation, "operands": normalized_operands}
+        kept_relations.append(relation)
+
+    relation_ids = {
+        str(item.get("id"))
+        for item in kept_relations
+        if isinstance(item, dict) and item.get("id")
+    }
+    kept_annotations: list[Any] = []
+    for annotation in data.get("annotations") or []:
+        if not isinstance(annotation, dict):
+            continue
+        target_ids = annotation.get("target_ids")
+        if not isinstance(target_ids, list) or not target_ids:
+            continue
+        if any(str(target_id) not in object_ids for target_id in target_ids):
+            continue
+        relation_id = annotation.get("relation_id")
+        if relation_id and str(relation_id) not in relation_ids:
+            annotation = {key: value for key, value in annotation.items() if key != "relation_id"}
+            annotation["provenance"] = "render_only"
+        kept_annotations.append(annotation)
+
+    data["relations"] = kept_relations
+    data["annotations"] = kept_annotations
+    interpretation = data.get("interpretation")
+    if isinstance(interpretation, dict):
+        interpretation["relation_ids"] = [
+            relation_id
+            for relation_id in interpretation.get("relation_ids") or []
+            if str(relation_id) in relation_ids
+        ]
+    for step in data.get("construction_steps") or []:
+        if isinstance(step, dict):
+            step["relation_ids"] = [
+                relation_id
+                for relation_id in step.get("relation_ids") or []
+                if str(relation_id) in relation_ids
+            ]
+    return data
+
+
+def _raw_reference_kind(object_type: str) -> str:
+    return {
+        "point_2d": "point",
+        "point_3d": "point",
+        "segment": "segment",
+        "line_2d": "line",
+        "line_3d": "line",
+        "vector_2d": "vector",
+        "vector_3d": "vector",
+        "circle_2d": "circle",
+        "face": "face",
+        "sphere": "sphere",
+        "plane": "plane",
+    }.get(object_type, "object")
+
+
 def complete_standard_solid_topology(scene: MathSceneV3) -> MathSceneV3:
     topology = _detect_topology(scene.problem_text, _scene_point_labels(scene))
     if topology is None:
@@ -90,7 +195,7 @@ def complete_standard_solid_topology(scene: MathSceneV3) -> MathSceneV3:
             point_ids=endpoints,
             hidden=False,
             color=SOLID_EDGE_COLOR,
-            line_width=2.0,
+            line_width=2.8,
             style="solid",
             source="construction",
             metadata={"topology_rule": topology.kind},
@@ -112,7 +217,7 @@ def complete_standard_solid_topology(scene: MathSceneV3) -> MathSceneV3:
             label="".join(labels),
             point_ids=point_ids,
             color=FACE_PALETTE[index % len(FACE_PALETTE)],
-            opacity=0.16,
+            opacity=0.22,
             source="construction",
             metadata={"topology_rule": topology.kind},
         ))
@@ -143,14 +248,14 @@ def _normalize_standard_solid_appearance(
             normalized.append(obj.model_copy(update={
                 "hidden": False,
                 "color": SOLID_EDGE_COLOR,
-                "line_width": 2.0,
+                "line_width": 2.8,
                 "style": "solid",
             }))
             continue
         if isinstance(obj, FaceV3):
             color = face_palette.get(frozenset(obj.point_ids))
             if color is not None and obj.metadata.get("role") not in {"section", "cross_section"}:
-                normalized.append(obj.model_copy(update={"color": color, "opacity": 0.14}))
+                normalized.append(obj.model_copy(update={"color": color, "opacity": 0.22}))
                 continue
         normalized.append(obj)
     return normalized

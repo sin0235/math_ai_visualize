@@ -449,7 +449,7 @@ def _replace_latex_commands(text: str) -> str:
         r"\\arccos": "acos",
         r"\\arctan": "atan",
         r"\\arccot": "acot",
-        r"\\ln": "log",
+        r"\\ln": "ln",
         r"\\log": "log",
         r"\\pi": "pi",
         r"\\infty": "oo",

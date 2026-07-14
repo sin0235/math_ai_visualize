@@ -29,6 +29,7 @@ import { ExportMenuItems } from './components/ExportMenu';
 import { ProblemVariantTool } from './components/DiagramTools';
 import { normalizeMineruBaseUrl } from './api/mineru';
 import { downstreamGateMessageV3 } from './hooks/sceneWorkspaceV3State';
+import { visibleWorkspaceIssues } from './utils/workspaceNotice';
 import type { AdvancedRenderSettings, Renderer } from './types/scene';
 import type { SceneWorkspaceResponseV3 } from './types/sceneV3';
 import { defaultRuntimeSettings, type RuntimeSettings, type SettingsDefaults } from './types/settings';
@@ -1316,11 +1317,7 @@ function notifyRenderSideChannel(
   notify: (title: string, message: string, details?: string[], kind?: 'error' | 'warning' | 'info') => void,
   onMaybeSoftPrompt?: () => void,
 ) {
-  const issues = (workspace.issues ?? [])
-    .filter((issue) => issue.severity === 'error' || issue.severity === 'warning')
-    .map((issue) => issue.message)
-    .filter(Boolean)
-    .slice(0, 6);
+  const issues = visibleWorkspaceIssues(workspace);
   if (workspace.status === 'failed') {
     notify('Dựng hình thất bại', issues[0] || 'Không dựng được hình từ đề này.', issues.slice(1), 'error');
     return;

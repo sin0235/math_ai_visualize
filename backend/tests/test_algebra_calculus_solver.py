@@ -56,6 +56,56 @@ def test_calculus_interpreter_detects_vietnamese_natural_inputs():
     assert logarithmic_integral.normalized_input == "integral(expr=x*ln(x),var=x,a=1,b=2)"
 
 
+def test_calculus_preserves_ln_and_treats_bare_log_as_base_ten():
+    natural = solve_algebra(AlgebraSolveRequest(input="tính tích phân của x*ln(x)"))
+    decimal = solve_algebra(AlgebraSolveRequest(input="tính tích phân của x*log(x)"))
+
+    assert natural.answer_latex == r"\frac{x^{2} \left(2 \ln{\left(x \right)} - 1\right)}{4}+C"
+    assert r"\ln{\left(x \right)}" in natural.steps[0].before_latex
+    assert r"\log_{10}{\left(x \right)}" in decimal.steps[0].before_latex
+    assert r"\log_{10}{\left(x \right)}" in decimal.answer_latex
+    assert r"\ln{\left(10 \right)}" in decimal.answer_latex
+    assert natural.warnings == decimal.warnings == []
+
+    natural_parts = natural.steps[1]
+    decimal_parts = decimal.steps[1]
+    assert natural_parts.title == decimal_parts.title == "Tích phân từng phần"
+    assert [step.title for step in natural_parts.sub_steps] == [
+        "Chọn u và dv",
+        "Tính du và v",
+        "Thế vào công thức từng phần",
+    ]
+    assert r"u=\ln{\left(x \right)}" in natural_parts.sub_steps[0].after_latex
+    assert r"u=\log_{10}{\left(x \right)}" in decimal_parts.sub_steps[0].after_latex
+    assert r"\ln{\left(10 \right)}" in decimal_parts.sub_steps[1].after_latex
+
+
+def test_calculus_integral_sum_handles_polynomial_rational_and_exponential_terms():
+    result = solve_algebra(AlgebraSolveRequest(input="tính tích phân của x*2 - 1/x + e**(x-1)"))
+
+    assert result.status == "solved"
+    assert result.verification.status == "verified"
+    assert result.answer_latex == r"x^{2} + e^{x - 1} - \ln{\left(x \right)}+C"
+    assert [step.title for step in result.steps[:3]] == [
+        "Nhận dạng tích phân",
+        "Tách tích phân theo từng hạng tử",
+        "Ghép các nguyên hàm thành phần",
+    ]
+    split = result.steps[1]
+    assert len(split.sub_steps) == 3
+    assert all(step.before_latex and step.after_latex for step in split.sub_steps)
+    assert "đạo hàm kết quả" in result.steps[2].check.lower()
+
+
+def test_calculus_derivative_uses_correct_decimal_log_factor():
+    result = solve_algebra(AlgebraSolveRequest(input="derivative(expr=log(x),var=x)"))
+
+    assert result.answer_latex == r"\frac{1}{x \ln{\left(10 \right)}}"
+    assert result.steps[0].before_latex == r"\log_{10}{\left(x \right)}"
+    assert result.verification.status == "verified"
+    assert result.warnings == []
+
+
 def test_calculus_interpreter_solves_vietnamese_integral_phrase_with_steps():
     result = solve_algebra(AlgebraSolveRequest(input="tìm tích phân của 2*x+1", topic="calculus_integral"))
 
@@ -63,7 +113,11 @@ def test_calculus_interpreter_solves_vietnamese_integral_phrase_with_steps():
     assert result.topic == "calculus_integral"
     assert result.normalized_input == "integral(expr=2*x+1,var=x)"
     assert result.answer_latex == r"x \left(x + 1\right)+C"
-    assert [step.title for step in result.steps[:2]] == ["Nhận dạng tích phân", "Tìm nguyên hàm"]
+    assert [step.title for step in result.steps[:3]] == [
+        "Nhận dạng tích phân",
+        "Tách tích phân theo từng hạng tử",
+        "Ghép các nguyên hàm thành phần",
+    ]
 
 
 def test_calculus_interpreter_does_not_double_wrap_structured_integral_with_bad_expr():
@@ -72,28 +126,6 @@ def test_calculus_interpreter_does_not_double_wrap_structured_integral_with_bad_
     assert result.status == "unsupported"
     assert result.normalized_input.startswith("integral(expr=")
     assert "integral(expr=integral" not in result.normalized_input
-
-
-def test_calculus_interpreter_solves_sum_from_given_derivatives_without_nested_wrapping():
-    input_text = (
-        "Cho các hàm số (y=f(x)) và (y=g(x)) có đạo hàm trên tập số thực "
-        "(\\mathbb{R}), thỏa mãn (f'(x)=x) và (g'(x)=x^2). "
-        "Đạo hàm của hàm số (y=f(x)+g(x)) là:"
-    )
-
-    result = solve_algebra(AlgebraSolveRequest(input=input_text))
-    replay = solve_algebra(AlgebraSolveRequest(input=result.normalized_input, input_format="structured"))
-
-    assert result.status == replay.status == "solved"
-    assert result.topic == replay.topic == "calculus_derivative"
-    assert result.normalized_input == "derivative_sum(functions=f|g,values=x|x**2,var=x)"
-    assert replay.normalized_input == result.normalized_input
-    assert result.answer_latex == replay.answer_latex == "x^{2} + x"
-    assert [step.title for step in result.steps[:3]] == [
-        "Dùng quy tắc đạo hàm của tổng",
-        "Thay các đạo hàm đã cho",
-        "Rút gọn kết quả",
-    ]
 
 
 def test_calculus_interpreter_solves_sum_from_given_derivatives_without_nested_wrapping():
@@ -130,7 +162,7 @@ def test_calculus_derivative_explains_logarithmic_differentiation():
     result = solve_algebra(AlgebraSolveRequest(input="derivative(expr=x^x,var=x)", topic="auto"))
 
     assert result.status == "solved"
-    assert result.answer_latex == r"x^{x} \left(\log{\left(x \right)} + 1\right)"
+    assert result.answer_latex == r"x^{x} \left(\ln{\left(x \right)} + 1\right)"
     assert any(step.method == "logarithmic_differentiation" for step in result.steps)
 
 

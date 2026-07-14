@@ -39,6 +39,26 @@ def test_normalizer_handles_latex_sqrt_and_trig_fraction():
     assert normalize_algebra_input(r"\sqrt{x+1}=2") == "sqrt(x+1)=2"
     assert normalize_algebra_input(r"\sqrt[3]{x+1}=2") == "root(x+1, 3)=2"
     assert normalize_algebra_input("lnx") == "ln(x)"
+    assert normalize_algebra_input(r"\ln(x)") == "ln(x)"
+    assert normalize_algebra_input(r"\log(x)") == "log(x)"
+
+
+def test_parser_distinguishes_natural_decimal_and_explicit_log_bases():
+    x = sp.Symbol("x", real=True)
+
+    natural = parse_algebra_problem("ln(x)").expression
+    decimal = parse_algebra_problem("log(x)").expression
+    binary = parse_algebra_problem("log(x,2)").expression
+
+    assert natural == sp.log(x)
+    assert decimal == sp.log(x) / sp.log(10)
+    assert binary == sp.log(x) / sp.log(2)
+
+
+@pytest.mark.parametrize("expression", ["log(x,1)", "log(x,0)", "log(x,-2)"])
+def test_parser_rejects_invalid_log_base(expression):
+    with pytest.raises(AlgebraParseError, match="Cơ số logarit phải là số dương khác 1"):
+        parse_algebra_problem(expression)
 
 
 def test_normalizer_handles_latex_cases_system():

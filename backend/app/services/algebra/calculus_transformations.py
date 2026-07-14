@@ -3,6 +3,7 @@ from __future__ import annotations
 import sympy as sp
 
 from app.schemas.algebra import AlgebraSolveStep
+from app.services.algebra.notation import algebra_latex, algebra_text
 
 
 def derivative_steps(expression: sp.Expr, variable: sp.Symbol, derivative: sp.Expr, order: int = 1) -> list[AlgebraSolveStep]:
@@ -38,11 +39,11 @@ def limit_steps(expression: sp.Expr, variable: sp.Symbol, point: sp.Expr, direct
         why="Giới hạn mô tả giá trị biểu thức tiến gần tới, không nhất thiết là giá trị tại điểm đó.",
         rule="Tính giới hạn",
         operation="Lấy giới hạn symbolic sau các bước biến đổi.",
-        before_latex=rf"\lim_{{{sp.latex(variable)}\to {sp.latex(point)}}}{sp.latex(expression)}",
-        after_latex=sp.latex(result),
+        before_latex=rf"\lim_{{{algebra_latex(variable)}\to {algebra_latex(point)}}}{algebra_latex(expression)}",
+        after_latex=algebra_latex(result),
         check="Có thể kiểm tra bằng thay các giá trị rất gần điểm tiến tới.",
-        result=sp.sstr(result),
-        result_latex=sp.latex(result),
+        result=algebra_text(result),
+        result_latex=algebra_latex(result),
         kind="solve",
         confidence="verified",
     ))
@@ -51,6 +52,11 @@ def limit_steps(expression: sp.Expr, variable: sp.Symbol, point: sp.Expr, direct
 
 def integral_steps(expression: sp.Expr, variable: sp.Symbol, antiderivative: sp.Expr, result: sp.Expr, lower: sp.Expr | None = None, upper: sp.Expr | None = None) -> list[AlgebraSolveStep]:
     steps = [_identify_integral_step(1, expression, variable)]
+    if expression.is_Add:
+        steps.extend(_sum_integral_steps(2, expression, variable, antiderivative))
+        if lower is not None and upper is not None:
+            steps.append(_definite_integral_step(len(steps) + 1, expression, variable, antiderivative, result, lower, upper))
+        return steps
     technique = (
         _trig_identity_integral_step(2, expression, variable, antiderivative)
         or _partial_fraction_integral_step(2, expression, variable, antiderivative)
@@ -76,12 +82,12 @@ def _identify_derivative_step(index: int, expression: sp.Expr, variable: sp.Symb
         why="Đạo hàm luôn gắn với một biến cụ thể.",
         rule="Ký hiệu đạo hàm",
         operation="Gọi f(x) là biểu thức đã cho.",
-        before_latex=sp.latex(expression),
-        after_latex=rf"f\left({sp.latex(variable)}\right)={sp.latex(expression)}",
+        before_latex=algebra_latex(expression),
+        after_latex=rf"f\left({algebra_latex(variable)}\right)={algebra_latex(expression)}",
         pitfall="Không nhầm biến lấy đạo hàm với tham số/hằng số.",
         check="Biểu thức sau khi đặt f(x) phải đúng với đề bài.",
-        expression=sp.sstr(expression),
-        expression_latex=sp.latex(expression),
+        expression=algebra_text(expression),
+        expression_latex=algebra_latex(expression),
         kind="transform",
         confidence="symbolic",
     )
@@ -102,11 +108,11 @@ def _derivative_rule_step(index: int, expression: sp.Expr, variable: sp.Symbol, 
             why="Không được đạo hàm riêng tử và mẫu rồi chia trực tiếp.",
             rule="(u/v)' = (u'v - uv')/v^2",
             operation="Đặt u là tử, v là mẫu, rồi áp dụng quy tắc thương.",
-            before_latex=sp.latex(expression),
-            after_latex=sp.latex(raw / denominator ** 2),
+            before_latex=algebra_latex(expression),
+            after_latex=algebra_latex(raw / denominator ** 2),
             pitfall="Dễ sai dấu ở hạng -u v'.",
             check="Mẫu sau đạo hàm phải là v^2.",
-            result_latex=sp.latex(derivative),
+            result_latex=algebra_latex(derivative),
             kind="transform",
             confidence="symbolic",
         )
@@ -122,11 +128,11 @@ def _derivative_rule_step(index: int, expression: sp.Expr, variable: sp.Symbol, 
             why="Dạng này không dùng trực tiếp quy tắc lũy thừa thông thường.",
             rule="ln y = v ln u",
             operation="Đặt y=u^v, lấy ln rồi đạo hàm hai vế.",
-            before_latex=sp.latex(expression),
-            after_latex=sp.latex(derivative),
+            before_latex=algebra_latex(expression),
+            after_latex=algebra_latex(derivative),
             pitfall="Không áp dụng (x^n)' khi số mũ cũng phụ thuộc x.",
             check="Kết quả phải chứa hệ số từ cả cơ số và số mũ.",
-            result_latex=sp.latex(derivative),
+            result_latex=algebra_latex(derivative),
             kind="transform",
             confidence="symbolic",
         )
@@ -142,11 +148,11 @@ def _derivative_rule_step(index: int, expression: sp.Expr, variable: sp.Symbol, 
             why="Khi f(x)=F(u(x)), cần nhân thêm u'(x).",
             rule="(F(u))' = F'(u)u'",
             operation="Xác định hàm ngoài và hàm trong rồi áp dụng quy tắc dây chuyền.",
-            before_latex=sp.latex(expression),
-            after_latex=sp.latex(sp.diff(expression, variable)),
+            before_latex=algebra_latex(expression),
+            after_latex=algebra_latex(sp.diff(expression, variable)),
             pitfall="Không quên nhân đạo hàm của biểu thức bên trong.",
             check="Nếu u=x thì công thức trở về đạo hàm cơ bản.",
-            result_latex=sp.latex(derivative),
+            result_latex=algebra_latex(derivative),
             kind="transform",
             confidence="symbolic",
         )
@@ -162,16 +168,16 @@ def _derivative_rule_step(index: int, expression: sp.Expr, variable: sp.Symbol, 
             why="Không được lấy đạo hàm từng thừa số rồi nhân lại.",
             rule="(uv)' = u'v + uv'",
             operation="Áp dụng quy tắc tích rồi rút gọn.",
-            before_latex=sp.latex(expression),
-            after_latex=sp.latex(sp.diff(expression, variable)),
+            before_latex=algebra_latex(expression),
+            after_latex=algebra_latex(sp.diff(expression, variable)),
             pitfall="Sai lầm thường gặp là viết (uv)' = u'v'.",
             check="Mỗi hạng tử giữ một thừa số chưa đạo hàm.",
-            result_latex=sp.latex(derivative),
+            result_latex=algebra_latex(derivative),
             kind="transform",
             confidence="symbolic",
         )
     if expression.is_Add:
-        after = " + ".join(sp.latex(sp.diff(term, variable)) for term in sp.Add.make_args(expression))
+        after = " + ".join(algebra_latex(sp.diff(term, variable)) for term in sp.Add.make_args(expression))
         return AlgebraSolveStep(
             index=index,
             title="Dùng quy tắc tổng",
@@ -183,10 +189,10 @@ def _derivative_rule_step(index: int, expression: sp.Expr, variable: sp.Symbol, 
             why="Quy tắc tổng cho phép xử lý từng hạng tử riêng.",
             rule="(u+v)' = u' + v'",
             operation="Lấy đạo hàm từng hạng tử rồi cộng lại.",
-            before_latex=sp.latex(expression),
+            before_latex=algebra_latex(expression),
             after_latex=after,
             check="Cộng các đạo hàm riêng phải ra đạo hàm của tổng.",
-            result_latex=sp.latex(derivative),
+            result_latex=algebra_latex(derivative),
             kind="transform",
             confidence="symbolic",
         )
@@ -201,10 +207,10 @@ def _derivative_rule_step(index: int, expression: sp.Expr, variable: sp.Symbol, 
         why="Biểu thức khớp với một công thức đạo hàm quen thuộc.",
         rule="Bảng đạo hàm",
         operation="Áp dụng công thức phù hợp rồi rút gọn.",
-        before_latex=sp.latex(expression),
-        after_latex=sp.latex(sp.diff(expression, variable)),
+        before_latex=algebra_latex(expression),
+        after_latex=algebra_latex(sp.diff(expression, variable)),
         check="Có thể kiểm tra lại bằng symbolic diff.",
-        result_latex=sp.latex(derivative),
+        result_latex=algebra_latex(derivative),
         kind="transform",
         confidence="symbolic",
     )
@@ -222,12 +228,12 @@ def _simplify_derivative_step(index: int, expression: sp.Expr, variable: sp.Symb
         why="Sau khi áp dụng quy tắc đạo hàm, biểu thức có thể còn chưa rút gọn.",
         rule="Rút gọn đại số",
         operation="Thu gọn các tích, tổng và lũy thừa.",
-        before_latex=sp.latex(sp.diff(expression, variable)),
-        after_latex=sp.latex(derivative),
+        before_latex=algebra_latex(sp.diff(expression, variable)),
+        after_latex=algebra_latex(derivative),
         pitfall="Không được rút gọn làm thay đổi miền xác định nếu bài yêu cầu xét miền.",
         check="Lấy đạo hàm lại bằng quy tắc hoặc kiểm tra symbolic để đối chiếu.",
-        result=sp.sstr(derivative),
-        result_latex=sp.latex(derivative),
+        result=algebra_text(derivative),
+        result_latex=algebra_latex(derivative),
         kind="solve",
         confidence="verified",
     )
@@ -241,7 +247,7 @@ def _higher_order_derivative_steps(expression: sp.Expr, variable: sp.Symbol, der
         steps.append(AlgebraSolveStep(
             index=len(steps) + 1,
             title=f"Tính đạo hàm lần {index}",
-            explanation=f"Lấy đạo hàm lần {index} theo {sp.sstr(variable)}.",
+            explanation=f"Lấy đạo hàm lần {index} theo {algebra_text(variable)}.",
             short_explanation=f"Đạo hàm lần {index}.",
             detail_level="standard",
             method="higher_order_derivative",
@@ -249,11 +255,11 @@ def _higher_order_derivative_steps(expression: sp.Expr, variable: sp.Symbol, der
             why="Đạo hàm cấp n được tính bằng cách lấy đạo hàm lặp lại n lần.",
             rule="Đạo hàm cấp cao",
             operation="Lấy đạo hàm của kết quả ở bước trước.",
-            before_latex=sp.latex(current),
-            after_latex=sp.latex(next_value),
+            before_latex=algebra_latex(current),
+            after_latex=algebra_latex(next_value),
             check="Kết quả bước này là đầu vào cho lần đạo hàm tiếp theo.",
-            result=sp.sstr(next_value),
-            result_latex=sp.latex(next_value),
+            result=algebra_text(next_value),
+            result_latex=algebra_latex(next_value),
             kind="solve",
             confidence="symbolic" if index < order else "verified",
         ))
@@ -269,9 +275,9 @@ def _direct_substitution(expression: sp.Expr, variable: sp.Symbol, point: sp.Exp
         if num_value == 0 and den_value == 0:
             return "0/0", r"\frac{0}{0}"
         if denominator != 1 and den_value == 0:
-            return f"{sp.sstr(num_value)}/0", rf"\frac{{{sp.latex(num_value)}}}{{0}}"
+            return f"{algebra_text(num_value)}/0", rf"\frac{{{algebra_latex(num_value)}}}{{0}}"
         direct = sp.simplify(expression.subs(variable, point))
-        return sp.sstr(direct), sp.latex(direct)
+        return algebra_text(direct), algebra_latex(direct)
     except Exception:
         return "không xác định", r"\text{không xác định}"
 
@@ -287,8 +293,8 @@ def _direct_limit_step(index: int, expression: sp.Expr, variable: sp.Symbol, poi
         goal="Nhận biết giới hạn trực tiếp hay dạng vô định.",
         why="Nếu thay trực tiếp ra giá trị xác định thì đó thường là giới hạn.",
         rule="Thay trực tiếp",
-        operation=f"Thay {sp.sstr(variable)} = {sp.sstr(point)} vào biểu thức.",
-        before_latex=rf"\lim_{{{sp.latex(variable)}\to {sp.latex(point)}}}{sp.latex(expression)}",
+        operation=f"Thay {algebra_text(variable)} = {algebra_text(point)} vào biểu thức.",
+        before_latex=rf"\lim_{{{algebra_latex(variable)}\to {algebra_latex(point)}}}{algebra_latex(expression)}",
         after_latex=direct[1],
         pitfall="Nếu gặp 0/0 hoặc oo/oo thì chưa được kết luận.",
         check="Kết quả thay trực tiếp phải xác định.",
@@ -320,11 +326,11 @@ def _cancel_limit_step(index: int, expression: sp.Expr, variable: sp.Symbol, poi
         why="Dạng 0/0 thường xuất hiện do tử và mẫu có nhân tử chung.",
         rule="Phân tích nhân tử và rút gọn",
         operation="Rút gọn phân thức rồi mới thay lại giá trị tiến tới.",
-        before_latex=sp.latex(expression),
-        after_latex=sp.latex(simplified),
+        before_latex=algebra_latex(expression),
+        after_latex=algebra_latex(simplified),
         pitfall="Chỉ rút gọn trong quá trình tính giới hạn, không kết luận giá trị hàm tại điểm đó.",
         check="Biểu thức rút gọn phải bằng biểu thức cũ trên vùng gần điểm đang xét.",
-        result_latex=sp.latex(simplified),
+        result_latex=algebra_latex(simplified),
         kind="transform",
         confidence="symbolic",
     )
@@ -356,11 +362,11 @@ def _conjugate_limit_step(index: int, expression: sp.Expr, variable: sp.Symbol, 
         why="Liên hợp dùng hằng đẳng thức (a-b)(a+b)=a^2-b^2 để làm mất căn.",
         rule="Nhân liên hợp",
         operation="Nhân cả tử và mẫu với biểu thức liên hợp.",
-        before_latex=sp.latex(expression),
-        after_latex=sp.latex(transformed),
+        before_latex=algebra_latex(expression),
+        after_latex=algebra_latex(transformed),
         pitfall="Phải nhân cả tử và mẫu để không đổi giá trị biểu thức gần điểm xét.",
         check="Biểu thức sau liên hợp phải tương đương biểu thức ban đầu khi mẫu khác 0.",
-        result_latex=sp.latex(transformed),
+        result_latex=algebra_latex(transformed),
         kind="transform",
         confidence="symbolic",
     )
@@ -381,11 +387,11 @@ def _trig_limit_step(index: int, expression: sp.Expr, variable: sp.Symbol, point
         why="Các giới hạn như sin(u)/u -> 1 là công cụ chuẩn cho giới hạn lượng giác.",
         rule=r"\lim_{u\to0}\frac{\sin u}{u}=1",
         operation="Rút gọn lượng giác và so sánh với giới hạn cơ bản.",
-        before_latex=sp.latex(expression),
-        after_latex=sp.latex(simplified),
+        before_latex=algebra_latex(expression),
+        after_latex=algebra_latex(simplified),
         pitfall="Phải đảm bảo biến phụ u cũng tiến về 0.",
         check="Sau biến đổi, từng nhân tử chuẩn phải có giới hạn xác định.",
-        result_latex=sp.latex(simplified),
+        result_latex=algebra_latex(simplified),
         kind="transform",
         confidence="symbolic",
     )
@@ -413,11 +419,11 @@ def _infinity_limit_step(index: int, expression: sp.Expr, variable: sp.Symbol, p
         why="Các hạng tử bậc thấp mất dần ảnh hưởng khi x tiến tới vô cực.",
         rule="So sánh bậc đa thức",
         operation="Chia cả tử và mẫu cho lũy thừa bậc cao nhất.",
-        before_latex=sp.latex(expression),
-        after_latex=sp.latex(transformed),
+        before_latex=algebra_latex(expression),
+        after_latex=algebra_latex(transformed),
         pitfall="Chọn sai bậc cao nhất sẽ cho kết quả sai.",
         check="Sau khi chia, các hạng chứa 1/x^k tiến về 0.",
-        result_latex=sp.latex(transformed),
+        result_latex=algebra_latex(transformed),
         kind="transform",
         confidence="symbolic",
     )
@@ -446,11 +452,11 @@ def _lhospital_step(index: int, expression: sp.Expr, variable: sp.Symbol, point:
         why="L'Hospital là kỹ thuật nâng cao cho các dạng vô định phù hợp.",
         rule="L'Hospital",
         operation="Lấy đạo hàm tử và đạo hàm mẫu rồi tính giới hạn mới.",
-        before_latex=sp.latex(expression),
-        after_latex=sp.latex(transformed),
+        before_latex=algebra_latex(expression),
+        after_latex=algebra_latex(transformed),
         pitfall="Chỉ dùng khi thỏa điều kiện dạng vô định và các đạo hàm tồn tại gần điểm xét.",
         check="Giới hạn mới phải tồn tại hoặc tiếp tục xử lý được.",
-        result_latex=sp.latex(transformed),
+        result_latex=algebra_latex(transformed),
         kind="transform",
         confidence="symbolic",
     )
@@ -468,11 +474,11 @@ def _identify_integral_step(index: int, expression: sp.Expr, variable: sp.Symbol
         why="Tích phân phải theo một biến cụ thể; các chữ khác được xem như hằng số.",
         rule="Ký hiệu tích phân",
         operation="Gọi biểu thức dưới dấu tích phân là f(x).",
-        before_latex=sp.latex(expression),
-        after_latex=rf"f\left({sp.latex(variable)}\right)={sp.latex(expression)}",
+        before_latex=algebra_latex(expression),
+        after_latex=rf"f\left({algebra_latex(variable)}\right)={algebra_latex(expression)}",
         check="Biểu thức f(x) phải đúng với đề bài.",
-        expression=sp.sstr(expression),
-        expression_latex=sp.latex(expression),
+        expression=algebra_text(expression),
+        expression_latex=algebra_latex(expression),
         kind="transform",
         confidence="symbolic",
     )
@@ -490,19 +496,99 @@ def _basic_integral_step(index: int, expression: sp.Expr, variable: sp.Symbol, a
         why="Tích phân xác định được tính bằng hiệu giá trị của nguyên hàm tại hai cận.",
         rule="Bảng nguyên hàm cơ bản",
         operation="Áp dụng quy tắc nguyên hàm và rút gọn.",
-        before_latex=rf"\int {sp.latex(expression)}\,d{sp.latex(variable)}",
-        after_latex=sp.latex(antiderivative),
+        before_latex=rf"\int {algebra_latex(expression)}\,d{algebra_latex(variable)}",
+        after_latex=algebra_latex(antiderivative),
         pitfall="Nguyên hàm không xác định phải có hằng số C.",
         check="Đạo hàm của nguyên hàm phải ra lại biểu thức ban đầu.",
-        result=sp.sstr(antiderivative),
-        result_latex=sp.latex(antiderivative),
+        result=algebra_text(antiderivative),
+        result_latex=algebra_latex(antiderivative),
         kind="solve",
         confidence="symbolic",
     )
 
 
+def _sum_integral_steps(
+    index: int,
+    expression: sp.Expr,
+    variable: sp.Symbol,
+    antiderivative: sp.Expr,
+) -> list[AlgebraSolveStep]:
+    terms = list(sp.Add.make_args(expression))
+    sub_steps: list[AlgebraSolveStep] = []
+    for sub_index, term in enumerate(terms, start=1):
+        term_antiderivative = sp.integrate(term, variable)
+        sub_steps.append(AlgebraSolveStep(
+            index=sub_index,
+            title=f"Tính nguyên hàm hạng tử {sub_index}",
+            explanation="Áp dụng bảng nguyên hàm hoặc đổi biến đơn giản cho riêng hạng tử này.",
+            short_explanation="Tính nguyên hàm từng hạng tử.",
+            detail_level="detailed",
+            method="sum_rule_term",
+            goal="Tính chính xác một thành phần của tổng.",
+            why="Tính từng hạng riêng giúp kiểm soát hệ số và dấu trước khi ghép kết quả.",
+            rule="Tính tuyến tính của tích phân",
+            operation="Giữ nguyên hệ số của hạng tử và áp dụng công thức nguyên hàm phù hợp.",
+            before_latex=rf"\int {algebra_latex(term)}\,d{algebra_latex(variable)}",
+            after_latex=algebra_latex(term_antiderivative),
+            pitfall="Phải giữ đúng dấu và hệ số của hạng tử ban đầu.",
+            check="Đạo hàm kết quả của hạng tử phải trả lại đúng hạng tử đó.",
+            expression=algebra_text(term),
+            expression_latex=algebra_latex(term),
+            result=algebra_text(term_antiderivative),
+            result_latex=algebra_latex(term_antiderivative),
+            kind="solve",
+            confidence="symbolic",
+        ))
+
+    separated = "+".join(
+        rf"\int {algebra_latex(term)}\,d{algebra_latex(variable)}"
+        for term in terms
+    )
+    split_step = AlgebraSolveStep(
+        index=index,
+        title="Tách tích phân theo từng hạng tử",
+        explanation="Dùng tính tuyến tính để biến tích phân của một tổng thành tổng các tích phân đơn giản hơn.",
+        short_explanation="Tách tổng thành các tích phân thành phần.",
+        detail_level="detailed",
+        method="sum_rule_integral",
+        goal="Đưa bài toán về các nguyên hàm cơ bản có thể xử lý độc lập.",
+        why="Tích phân là phép toán tuyến tính nên có thể tính riêng từng hạng tử rồi cộng lại.",
+        rule=r"\int (f+g)\,dx=\int f\,dx+\int g\,dx",
+        operation="Tách từng hạng tử cùng với dấu và hệ số tương ứng.",
+        before_latex=rf"\int {algebra_latex(expression)}\,d{algebra_latex(variable)}",
+        after_latex=separated,
+        pitfall="Không được làm mất dấu âm hoặc hệ số khi tách tổng.",
+        check="Cộng lại các biểu thức dưới dấu tích phân phải thu được biểu thức ban đầu.",
+        result_latex=separated,
+        kind="transform",
+        confidence="symbolic",
+        sub_steps=sub_steps,
+    )
+    combine_step = AlgebraSolveStep(
+        index=index + 1,
+        title="Ghép các nguyên hàm thành phần",
+        explanation="Cộng các kết quả vừa tính và rút gọn để thu được nguyên hàm của biểu thức ban đầu.",
+        short_explanation="Cộng và rút gọn các nguyên hàm.",
+        detail_level="detailed",
+        method="combine_integral_terms",
+        goal="Viết nguyên hàm cuối cùng ở dạng rõ ràng.",
+        why="Mỗi nguyên hàm thành phần đóng góp đúng một hạng vào kết quả chung.",
+        rule="Tính tuyến tính của tích phân",
+        operation="Cộng các nguyên hàm thành phần rồi thu gọn biểu thức.",
+        before_latex="+".join(algebra_latex(sp.integrate(term, variable)) for term in terms),
+        after_latex=algebra_latex(antiderivative),
+        pitfall="Chỉ cần một hằng số tích phân C cho kết quả cuối cùng.",
+        check="Lấy đạo hàm kết quả cuối phải thu lại toàn bộ biểu thức ban đầu.",
+        result=algebra_text(antiderivative),
+        result_latex=algebra_latex(antiderivative),
+        kind="solve",
+        confidence="symbolic",
+    )
+    return [split_step, combine_step]
+
+
 def _u_substitution_integral_step(index: int, expression: sp.Expr, variable: sp.Symbol, antiderivative: sp.Expr) -> AlgebraSolveStep | None:
-    for inner in sorted(_candidate_inner_functions(expression, variable), key=lambda item: len(sp.sstr(item)), reverse=True):
+    for inner in sorted(_candidate_inner_functions(expression, variable), key=lambda item: len(algebra_text(item)), reverse=True):
         if inner == variable:
             continue
         derivative = sp.diff(inner, variable)
@@ -523,12 +609,12 @@ def _u_substitution_integral_step(index: int, expression: sp.Expr, variable: sp.
                 why="Khi thấy đạo hàm của biểu thức bên trong xuất hiện bên ngoài, đổi biến giúp tính nhanh.",
                 rule="Đổi biến",
                 operation="Đặt u=f(x), du=f'(x)dx.",
-                before_latex=rf"\int {sp.latex(expression)}\,d{sp.latex(variable)}",
-                after_latex=rf"u={sp.latex(inner)},\quad du={sp.latex(derivative)}\,d{sp.latex(variable)}" + "\n" + sp.latex(antiderivative),
+                before_latex=rf"\int {algebra_latex(expression)}\,d{algebra_latex(variable)}",
+                after_latex=rf"u={algebra_latex(inner)},\quad du={algebra_latex(derivative)}\,d{algebra_latex(variable)}" + "\n" + algebra_latex(antiderivative),
                 pitfall="Phải đổi đủ vi phân dx theo du.",
                 check="Đạo hàm kết quả phải ra lại integrand ban đầu.",
-                result=sp.sstr(antiderivative),
-                result_latex=sp.latex(antiderivative),
+                result=algebra_text(antiderivative),
+                result_latex=algebra_latex(antiderivative),
                 kind="solve",
                 confidence="symbolic",
             )
@@ -543,25 +629,114 @@ def _integration_by_parts_step(index: int, expression: sp.Expr, variable: sp.Sym
     has_exp_log_trig = any(factor.has(sp.exp, sp.log, sp.sin, sp.cos) for factor in factors)
     if not has_poly or not has_exp_log_trig:
         return None
+    logarithmic_factors = [factor for factor in factors if factor.has(sp.log) and factor.has(variable)]
+    polynomial_factors = [factor for factor in factors if _is_polynomial_factor(factor, variable) and factor.has(variable)]
+    u = logarithmic_factors[0] if logarithmic_factors else (polynomial_factors[0] if polynomial_factors else None)
+    if u is None:
+        return None
+    if logarithmic_factors:
+        constant_log_scale = sp.Mul(*(
+            factor
+            for factor in factors
+            if factor.has(sp.log) and not factor.has(variable)
+        ))
+        if constant_log_scale != 1:
+            scaled_log = sp.simplify(u * constant_log_scale)
+            remaining = sp.simplify(expression / scaled_log)
+            if remaining.is_polynomial(variable):
+                u = scaled_log
+    dv = sp.simplify(expression / u)
+    du = sp.diff(u, variable)
+    v = sp.integrate(dv, variable)
+    if v.has(sp.Integral):
+        return None
+    remainder = sp.simplify(v * du)
+    assignments = (
+        rf"u={algebra_latex(u)},\quad dv={algebra_latex(dv)}\,d{algebra_latex(variable)}"
+    )
+    derivatives = (
+        rf"du={algebra_latex(du)}\,d{algebra_latex(variable)},\quad v={algebra_latex(v)}"
+    )
+    application = (
+        rf"{algebra_latex(u)}\cdot {algebra_latex(v)}"
+        rf"-\int {algebra_latex(remainder)}\,d{algebra_latex(variable)}"
+        rf"={algebra_latex(antiderivative)}"
+    )
     return AlgebraSolveStep(
         index=index,
         title="Tích phân từng phần",
         explanation="Tích phân là tích của đa thức với hàm mũ/log/lượng giác nên dùng từng phần.",
         short_explanation="Dùng công thức từng phần.",
-        detail_level="standard",
+        detail_level="detailed",
         method="integration_by_parts",
         goal="Giảm tích phân của tích hai hàm.",
         why="Chọn u là phần đa thức thường làm đạo hàm đơn giản dần.",
         rule=r"\int u\,dv=uv-\int v\,du",
-        operation="Chọn u và dv, tính du và v rồi áp dụng công thức.",
-        before_latex=rf"\int {sp.latex(expression)}\,d{sp.latex(variable)}",
-        after_latex=sp.latex(antiderivative),
+        operation=(
+            f"Chọn u = {algebra_text(u)}, dv = {algebra_text(dv)} d{algebra_text(variable)}; "
+            f"suy ra du = {algebra_text(du)} d{algebra_text(variable)}, v = {algebra_text(v)} rồi thế vào công thức."
+        ),
+        before_latex=rf"\int {algebra_latex(expression)}\,d{algebra_latex(variable)}",
+        after_latex=application,
         pitfall="Chọn u không phù hợp có thể làm tích phân phức tạp hơn.",
         check="Đạo hàm kết quả phải ra lại biểu thức ban đầu.",
-        result=sp.sstr(antiderivative),
-        result_latex=sp.latex(antiderivative),
+        result=algebra_text(antiderivative),
+        result_latex=algebra_latex(antiderivative),
         kind="solve",
         confidence="symbolic",
+        sub_steps=[
+            AlgebraSolveStep(
+                index=1,
+                title="Chọn u và dv",
+                explanation="Chọn phần sẽ lấy đạo hàm làm u và phần còn lại làm dv theo mức độ đơn giản sau biến đổi.",
+                detail_level="detailed",
+                method="integration_by_parts_choose",
+                goal="Tạo một tích phân mới đơn giản hơn tích phân ban đầu.",
+                why="Lựa chọn phù hợp làm du đơn giản và v tính được trực tiếp.",
+                rule="Quy tắc LIATE kết hợp bảng nguyên hàm",
+                operation=f"Đặt u = {algebra_text(u)} và dv = {algebra_text(dv)} d{algebra_text(variable)}.",
+                before_latex=rf"\int {algebra_latex(expression)}\,d{algebra_latex(variable)}",
+                after_latex=assignments,
+                check="Tích u·dv phải khôi phục đúng biểu thức dưới dấu tích phân.",
+                kind="transform",
+                confidence="symbolic",
+            ),
+            AlgebraSolveStep(
+                index=2,
+                title="Tính du và v",
+                explanation="Lấy đạo hàm u để có du, đồng thời lấy nguyên hàm của dv để có v.",
+                detail_level="detailed",
+                method="integration_by_parts_components",
+                goal="Chuẩn bị đủ bốn thành phần u, dv, du và v.",
+                why="Công thức từng phần cần cả đạo hàm của u và nguyên hàm của dv.",
+                rule=r"du=u'\,dx,\quad v=\int dv",
+                operation=f"Tính du = {algebra_text(du)} d{algebra_text(variable)} và v = {algebra_text(v)}.",
+                before_latex=assignments,
+                after_latex=derivatives,
+                check="Đạo hàm của v phải bằng hệ số của dv.",
+                kind="transform",
+                confidence="symbolic",
+            ),
+            AlgebraSolveStep(
+                index=3,
+                title="Thế vào công thức từng phần",
+                explanation="Thay u, v và du vào công thức, tính tích phân còn lại rồi rút gọn.",
+                detail_level="detailed",
+                method="integration_by_parts_apply",
+                goal="Hoàn tất phép tích phân từng phần.",
+                why="Tích phân còn lại đã đơn giản hơn và có thể tính bằng bảng nguyên hàm.",
+                rule=r"\int u\,dv=uv-\int v\,du",
+                operation="Tính uv, trừ tích phân của v·du và rút gọn.",
+                before_latex=r"\int u\,dv=uv-\int v\,du",
+                after_latex=application,
+                pitfall="Không quên dấu trừ trước tích phân v·du.",
+                check="Đạo hàm kết quả phải bằng integrand ban đầu.",
+                result=algebra_text(antiderivative),
+                result_latex=algebra_latex(antiderivative),
+                kind="solve",
+                confidence="symbolic",
+            ),
+        ],
     )
 
 
@@ -569,7 +744,12 @@ def _partial_fraction_integral_step(index: int, expression: sp.Expr, variable: s
     numerator, denominator = sp.fraction(sp.together(expression))
     if denominator == 1 or not denominator.has(variable):
         return None
-    apart = sp.apart(expression, variable)
+    if not numerator.is_polynomial(variable) or not denominator.is_polynomial(variable):
+        return None
+    try:
+        apart = sp.apart(expression, variable)
+    except (sp.PolynomialError, ValueError):
+        return None
     if sp.simplify(apart - expression) != 0 or apart == expression:
         return None
     return AlgebraSolveStep(
@@ -583,12 +763,12 @@ def _partial_fraction_integral_step(index: int, expression: sp.Expr, variable: s
         why="Mỗi phân thức đơn giản thường cho log hoặc lũy thừa quen thuộc.",
         rule="Partial fractions",
         operation="Dùng phân tích phân thức rồi tích phân từng hạng.",
-        before_latex=rf"\int {sp.latex(expression)}\,d{sp.latex(variable)}",
-        after_latex=sp.latex(apart) + "\n" + sp.latex(antiderivative),
+        before_latex=rf"\int {algebra_latex(expression)}\,d{algebra_latex(variable)}",
+        after_latex=algebra_latex(apart) + "\n" + algebra_latex(antiderivative),
         pitfall="Phải phân tích đúng mẫu số trước khi tách.",
         check="Cộng các phân thức sau tách phải ra phân thức ban đầu.",
-        result=sp.sstr(antiderivative),
-        result_latex=sp.latex(antiderivative),
+        result=algebra_text(antiderivative),
+        result_latex=algebra_latex(antiderivative),
         kind="solve",
         confidence="symbolic",
     )
@@ -616,12 +796,12 @@ def _trig_identity_integral_step(index: int, expression: sp.Expr, variable: sp.S
         why="Các lũy thừa lượng giác thường cần hạ bậc trước khi tích phân.",
         rule="Công thức hạ bậc",
         operation="Thay biểu thức bằng đồng nhất thức tương đương rồi lấy tích phân.",
-        before_latex=rf"\int {sp.latex(expression)}\,d{sp.latex(variable)}",
-        after_latex=rf"\int {sp.latex(rewritten)}\,d{sp.latex(variable)}" + "\n" + sp.latex(antiderivative),
+        before_latex=rf"\int {algebra_latex(expression)}\,d{algebra_latex(variable)}",
+        after_latex=rf"\int {algebra_latex(rewritten)}\,d{algebra_latex(variable)}" + "\n" + algebra_latex(antiderivative),
         pitfall="Không được quên hệ số 1/2 trong công thức hạ bậc.",
         check="Đạo hàm nguyên hàm phải ra lại biểu thức ban đầu.",
-        result=sp.sstr(antiderivative),
-        result_latex=sp.latex(antiderivative),
+        result=algebra_text(antiderivative),
+        result_latex=algebra_latex(antiderivative),
         kind="solve",
         confidence="symbolic",
     )
@@ -630,21 +810,21 @@ def _trig_identity_integral_step(index: int, expression: sp.Expr, variable: sp.S
 def _definite_integral_step(index: int, expression: sp.Expr, variable: sp.Symbol, antiderivative: sp.Expr, result: sp.Expr, lower: sp.Expr, upper: sp.Expr) -> AlgebraSolveStep:
     singularities = _integral_singularities(expression, variable, lower, upper)
     if singularities:
-        singular_latex = ", ".join(sp.latex(value) for value in singularities)
+        singular_latex = ", ".join(algebra_latex(value) for value in singularities)
         if len(singularities) == 1 and sp.simplify(singularities[0] - lower) == 0:
-            before_latex = rf"\lim_{{t\to {sp.latex(lower)}^+}}\int_t^{{{sp.latex(upper)}}}{sp.latex(expression)}\,d{sp.latex(variable)}"
-            after_latex = rf"\lim_{{t\to {sp.latex(lower)}^+}}\left({sp.latex(antiderivative.subs(variable, upper))}-\left({sp.latex(antiderivative.subs(variable, sp.Symbol('t')))}\right)\right)={sp.latex(result)}"
+            before_latex = rf"\lim_{{t\to {algebra_latex(lower)}^+}}\int_t^{{{algebra_latex(upper)}}}{algebra_latex(expression)}\,d{algebra_latex(variable)}"
+            after_latex = rf"\lim_{{t\to {algebra_latex(lower)}^+}}\left({algebra_latex(antiderivative.subs(variable, upper))}-\left({algebra_latex(antiderivative.subs(variable, sp.Symbol('t')))}\right)\right)={algebra_latex(result)}"
         elif len(singularities) == 1 and sp.simplify(singularities[0] - upper) == 0:
-            before_latex = rf"\lim_{{t\to {sp.latex(upper)}^-}}\int_{{{sp.latex(lower)}}}^t {sp.latex(expression)}\,d{sp.latex(variable)}"
-            after_latex = rf"\lim_{{t\to {sp.latex(upper)}^-}}\left({sp.latex(antiderivative.subs(variable, sp.Symbol('t')))}-\left({sp.latex(antiderivative.subs(variable, lower))}\right)\right)={sp.latex(result)}"
+            before_latex = rf"\lim_{{t\to {algebra_latex(upper)}^-}}\int_{{{algebra_latex(lower)}}}^t {algebra_latex(expression)}\,d{algebra_latex(variable)}"
+            after_latex = rf"\lim_{{t\to {algebra_latex(upper)}^-}}\left({algebra_latex(antiderivative.subs(variable, sp.Symbol('t')))}-\left({algebra_latex(antiderivative.subs(variable, lower))}\right)\right)={algebra_latex(result)}"
         else:
             point = singularities[0]
-            before_latex = rf"\int_{{{sp.latex(lower)}}}^{{{sp.latex(upper)}}}{sp.latex(expression)}\,d{sp.latex(variable)},\quad {sp.latex(variable)}={sp.latex(point)}"
-            after_latex = rf"\lim_{{t\to {sp.latex(point)}^-}}\int_{{{sp.latex(lower)}}}^t f({sp.latex(variable)})\,d{sp.latex(variable)}+\lim_{{t\to {sp.latex(point)}^+}}\int_t^{{{sp.latex(upper)}}} f({sp.latex(variable)})\,d{sp.latex(variable)}={sp.latex(result)}"
+            before_latex = rf"\int_{{{algebra_latex(lower)}}}^{{{algebra_latex(upper)}}}{algebra_latex(expression)}\,d{algebra_latex(variable)},\quad {algebra_latex(variable)}={algebra_latex(point)}"
+            after_latex = rf"\lim_{{t\to {algebra_latex(point)}^-}}\int_{{{algebra_latex(lower)}}}^t f({algebra_latex(variable)})\,d{algebra_latex(variable)}+\lim_{{t\to {algebra_latex(point)}^+}}\int_t^{{{algebra_latex(upper)}}} f({algebra_latex(variable)})\,d{algebra_latex(variable)}={algebra_latex(result)}"
         return AlgebraSolveStep(
             index=index,
             title="Xử lý tích phân suy rộng",
-            explanation=f"Biểu thức không xác định tại {sp.sstr(variable)} = {', '.join(sp.sstr(value) for value in singularities)}, nên phải tính bằng giới hạn một phía.",
+            explanation=f"Biểu thức không xác định tại {algebra_text(variable)} = {', '.join(algebra_text(value) for value in singularities)}, nên phải tính bằng giới hạn một phía.",
             short_explanation="Có điểm làm mẫu bằng 0 trong/cạnh khoảng, nên dùng giới hạn suy rộng.",
             detail_level="detailed",
             method="improper_integral",
@@ -656,8 +836,8 @@ def _definite_integral_step(index: int, expression: sp.Expr, variable: sp.Symbol
             after_latex=after_latex,
             pitfall="Nếu giới hạn một phía phân kỳ thì tích phân suy rộng phân kỳ.",
             check=f"Các điểm cần kiểm tra trong/cạnh khoảng: {singular_latex}.",
-            result=sp.sstr(result),
-            result_latex=sp.latex(result),
+            result=algebra_text(result),
+            result_latex=algebra_latex(result),
             kind="solve",
             confidence="verified",
         )
@@ -672,12 +852,12 @@ def _definite_integral_step(index: int, expression: sp.Expr, variable: sp.Symbol
         why="Giá trị tích phân từ a đến b bằng F(b) - F(a).",
         rule="Newton-Leibniz",
         operation="Lấy nguyên hàm tại cận trên trừ nguyên hàm tại cận dưới.",
-        before_latex=rf"\left[{sp.latex(antiderivative)}\right]_{{{sp.latex(lower)}}}^{{{sp.latex(upper)}}}",
-        after_latex=rf"{sp.latex(antiderivative.subs(variable, upper))}-{sp.latex(antiderivative.subs(variable, lower))}={sp.latex(result)}",
+        before_latex=rf"\left[{algebra_latex(antiderivative)}\right]_{{{algebra_latex(lower)}}}^{{{algebra_latex(upper)}}}",
+        after_latex=rf"{algebra_latex(antiderivative.subs(variable, upper))}-{algebra_latex(antiderivative.subs(variable, lower))}={algebra_latex(result)}",
         pitfall="Không đổi thứ tự cận trên và cận dưới.",
         check="Nếu đổi cận, kết quả phải đổi dấu.",
-        result=sp.sstr(result),
-        result_latex=sp.latex(result),
+        result=algebra_text(result),
+        result_latex=algebra_latex(result),
         kind="solve",
         confidence="verified",
     )

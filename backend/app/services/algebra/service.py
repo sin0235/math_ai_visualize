@@ -140,8 +140,6 @@ async def solve_algebra_with_optional_ai(
     # Preserve user text; normalized_input is what mathcore consumed.
     response.input = original_input
     response.normalized_input = solve_request.input
-    if nlp.warnings:
-        response.warnings = [*nlp.warnings, *response.warnings]
     if request.options.ai_explanation:
         response = await explain_algebra_response_with_ai(response, settings)
     return response
@@ -529,6 +527,4 @@ def _algebra_interval_to_set(interval: AlgebraInterval | None) -> tuple[sp.Set |
 def _with_interpretation(response: AlgebraSolveResponse, raw_input: str, interpretation) -> AlgebraSolveResponse:
     response.input = raw_input
     response.input_interpretation = interpretation
-    if interpretation.warnings:
-        response.warnings = [*interpretation.warnings, *response.warnings]
     return response

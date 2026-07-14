@@ -6,6 +6,7 @@ import sympy as sp
 
 from app.schemas.algebra import AlgebraSolveStep
 from app.services.algebra.formatting import solution_values
+from app.services.algebra.notation import algebra_latex, algebra_text
 from app.services.algebra.parser import ParsedAlgebraProblem
 
 
@@ -62,11 +63,11 @@ def _same_base_exponential_template(problem: ParsedAlgebraProblem, variable: sp.
             why="Nếu a > 0, a khác 1 và a^u = a^v thì u = v.",
             rule="Cùng cơ số",
             operation="Viết hai vế dưới dạng cùng cơ số rồi cho hai số mũ bằng nhau.",
-            before_latex=sp.latex(relation),
-            after_latex=sp.latex(exponent_equation),
+            before_latex=algebra_latex(relation),
+            after_latex=algebra_latex(exponent_equation),
             pitfall="Không dùng quy tắc này nếu cơ số không cùng nhau hoặc cơ số không hợp lệ.",
             check="Lũy thừa sau khi đổi cơ số phải đúng với hai vế ban đầu.",
-            result_latex=sp.latex(exponent_equation),
+            result_latex=algebra_latex(exponent_equation),
             kind="transform",
             confidence="symbolic",
         ),
@@ -81,11 +82,11 @@ def _same_base_exponential_template(problem: ParsedAlgebraProblem, variable: sp.
             why="Sau khi cùng cơ số, bài toán trở thành phương trình đại số đơn giản hơn.",
             rule="Giải phương trình đại số",
             operation="Giải phương trình giữa hai số mũ.",
-            before_latex=sp.latex(exponent_equation),
+            before_latex=algebra_latex(exponent_equation),
             after_latex=_values_latex(variable, values),
             pitfall="Nếu có điều kiện miền nghiệm, vẫn phải kiểm tra lại.",
             check="Thay nghiệm vào phương trình mũ ban đầu.",
-            result="; ".join(sp.sstr(value) for value in values or []),
+            result="; ".join(algebra_text(value) for value in values or []),
             result_latex=_values_latex(variable, values),
             kind="solve",
             confidence="symbolic",
@@ -138,14 +139,14 @@ def _linear_log_template(problem: ParsedAlgebraProblem, variable: sp.Symbol, sta
             why="Khi các biểu thức trong log dương, tổng/trừ/hệ số log có thể chuyển thành tích, thương hoặc lũy thừa bên trong log.",
             rule="Tính chất logarit",
             operation="Gộp các hạng log cùng cơ số và chuyển hằng số sang vế phải.",
-            before_latex=sp.latex(relation),
-            after_latex=sp.latex(sp.Eq(sp.log(combined_arg) / sp.log(base), log_rhs, evaluate=False)),
+            before_latex=algebra_latex(relation),
+            after_latex=algebra_latex(sp.Eq(sp.log(combined_arg) / sp.log(base), log_rhs, evaluate=False)),
             pitfall="Chỉ gộp log sau khi đã giữ điều kiện các biểu thức trong log lớn hơn 0.",
             check="Điều kiện xác định phải được dùng để lọc nghiệm sau khi giải.",
-            expression=sp.sstr(expression),
-            expression_latex=sp.latex(expression),
-            result=sp.sstr(combined_arg),
-            result_latex=sp.latex(combined_arg),
+            expression=algebra_text(expression),
+            expression_latex=algebra_latex(expression),
+            result=algebra_text(combined_arg),
+            result_latex=algebra_latex(combined_arg),
             kind="transform",
             confidence="symbolic",
         ),
@@ -160,14 +161,14 @@ def _linear_log_template(problem: ParsedAlgebraProblem, variable: sp.Symbol, sta
             why="log_a(F)=c tương đương F=a^c khi F>0, a>0 và a khác 1.",
             rule="Định nghĩa logarit",
             operation="Cho biểu thức trong log bằng lũy thừa của cơ số.",
-            before_latex=sp.latex(sp.Eq(sp.log(combined_arg) / sp.log(base), log_rhs, evaluate=False)),
-            after_latex=sp.latex(algebra_equation),
+            before_latex=algebra_latex(sp.Eq(sp.log(combined_arg) / sp.log(base), log_rhs, evaluate=False)),
+            after_latex=algebra_latex(algebra_equation),
             pitfall="Bước bỏ log chỉ cho nghiệm ứng viên; vẫn phải thử điều kiện log.",
             check="Thay nghiệm vào từng log ban đầu để kiểm tra.",
-            expression=sp.sstr(combined_arg),
-            expression_latex=sp.latex(combined_arg),
-            result=sp.sstr(algebra_equation.rhs),
-            result_latex=sp.latex(algebra_equation),
+            expression=algebra_text(combined_arg),
+            expression_latex=algebra_latex(combined_arg),
+            result=algebra_text(algebra_equation.rhs),
+            result_latex=algebra_latex(algebra_equation),
             kind="transform",
             confidence="symbolic",
         ),
@@ -182,11 +183,11 @@ def _linear_log_template(problem: ParsedAlgebraProblem, variable: sp.Symbol, sta
             why="Sau khi bỏ log, bài toán trở về phương trình đại số theo biến ban đầu.",
             rule="Giải phương trình đại số",
             operation="Giải phương trình thu được và giữ các nghiệm thỏa đề gốc.",
-            before_latex=sp.latex(algebra_equation),
+            before_latex=algebra_latex(algebra_equation),
             after_latex=_values_latex(variable, values),
             pitfall="Nghiệm làm biểu thức trong log không dương phải bị loại.",
             check="Đối chiếu từng nghiệm với điều kiện xác định của log.",
-            result="; ".join(sp.sstr(value) for value in values or []),
+            result="; ".join(algebra_text(value) for value in values or []),
             result_latex=_values_latex(variable, values),
             kind="solve",
             confidence="symbolic",
@@ -202,11 +203,11 @@ def _linear_log_template(problem: ParsedAlgebraProblem, variable: sp.Symbol, sta
             why="Logarit chỉ xác định khi biểu thức bên trong lớn hơn 0.",
             rule="Thay lại nghiệm",
             operation="Thay từng nghiệm ứng viên vào phương trình ban đầu.",
-            before_latex=sp.latex(relation),
+            before_latex=algebra_latex(relation),
             after_latex=_values_latex(variable, values),
             pitfall="Không được chỉ giải phương trình sau khi bỏ log rồi kết luận.",
             check="Mọi nghiệm cuối cùng phải làm từng log có nghĩa.",
-            result="; ".join(sp.sstr(value) for value in values or []),
+            result="; ".join(algebra_text(value) for value in values or []),
             result_latex=_values_latex(variable, values),
             kind="verify",
             confidence="verified",
@@ -249,11 +250,11 @@ def _single_exponential_log_template(problem: ParsedAlgebraProblem, variable: sp
                 why="Nếu a^u = b với a > 0, a khác 1 và b > 0 thì u = log(b)/log(a).",
                 rule="Logarit hai vế",
                 operation="Dùng công thức a^u=b tương đương u=log(b)/log(a).",
-                before_latex=sp.latex(relation),
-                after_latex=sp.latex(log_equation),
+                before_latex=algebra_latex(relation),
+                after_latex=algebra_latex(log_equation),
                 pitfall="Chỉ lấy log hai vế khi hai vế dương.",
                 check="Thay nghiệm vào phương trình mũ ban đầu.",
-                result_latex=sp.latex(log_equation),
+                result_latex=algebra_latex(log_equation),
                 kind="transform",
                 confidence="symbolic",
             ),
@@ -268,11 +269,11 @@ def _single_exponential_log_template(problem: ParsedAlgebraProblem, variable: sp
                 why="Bài toán đã trở thành phương trình đại số/log đơn giản theo biến.",
                 rule="Giải phương trình",
                 operation="Giải phương trình số mũ đã hạ xuống.",
-                before_latex=sp.latex(log_equation),
+                before_latex=algebra_latex(log_equation),
                 after_latex=_values_latex(variable, values),
                 pitfall="Nếu kết quả là log, nên giữ dạng chính xác thay vì làm tròn sớm.",
                 check="Thay nghiệm vào phương trình ban đầu để kiểm tra.",
-                result="; ".join(sp.sstr(value) for value in values or []),
+                result="; ".join(algebra_text(value) for value in values or []),
                 result_latex=_values_latex(variable, values),
                 kind="solve",
                 confidence="symbolic",
@@ -308,12 +309,12 @@ def _exponential_substitution_template(problem: ParsedAlgebraProblem, variable: 
     solution_set = sp.FiniteSet(*x_values) if x_values else sp.EmptySet
     values = solution_values(solution_set)
     back_lines = [
-        rf"{sp.latex(t)}={sp.latex(value)}\Rightarrow {sp.latex(base)}^{{{sp.latex(variable)}}}={sp.latex(value)}\Rightarrow {sp.latex(variable)}={sp.latex(sp.simplify(sp.log(value) / sp.log(base)))}"
+        rf"{algebra_latex(t)}={algebra_latex(value)}\Rightarrow {algebra_latex(base)}^{{{algebra_latex(variable)}}}={algebra_latex(value)}\Rightarrow {algebra_latex(variable)}={algebra_latex(sp.simplify(sp.log(value) / sp.log(base)))}"
         for value in positive_t_values
     ]
-    substitution_equation_latex = rf"{sp.latex(t)}={sp.latex(base)}^{{{sp.latex(variable)}}},\quad {sp.latex(t)}>0"
+    substitution_equation_latex = rf"{algebra_latex(t)}={algebra_latex(base)}^{{{algebra_latex(variable)}}},\quad {algebra_latex(t)}>0"
     if denominator != 1:
-        substitution_equation_latex += "\n" + rf"{sp.latex(denominator)}\ne0\quad\text{{đúng vì }}{sp.latex(t)}>0"
+        substitution_equation_latex += "\n" + rf"{algebra_latex(denominator)}\ne0\quad\text{{đúng vì }}{algebra_latex(t)}>0"
     return ExpLogTemplateResult(
         solution_set=solution_set,
         values=values,
@@ -321,22 +322,22 @@ def _exponential_substitution_template(problem: ParsedAlgebraProblem, variable: 
             AlgebraSolveStep(
                 index=start_index,
                 title="Đặt ẩn phụ",
-                explanation=f"Phương trình có các lũy thừa của {sp.sstr(base)}^x nên đặt t = {sp.sstr(base)}^x.",
-                short_explanation=f"Đặt t = {sp.sstr(base)}^x, với t > 0.",
+                explanation=f"Phương trình có các lũy thừa của {algebra_text(base)}^x nên đặt t = {algebra_text(base)}^x.",
+                short_explanation=f"Đặt t = {algebra_text(base)}^x, với t > 0.",
                 detail_level="brief",
                 method="exponential_substitution",
                 goal="Đưa phương trình mũ về phương trình đại số theo t.",
                 why="Các biểu thức như a^(2x), a^x hoặc a^(-x) đều viết được theo t = a^x.",
                 rule="Đặt t = a^x",
                 operation="Thay a^x bằng t, a^(-x) bằng 1/t, rồi khử mẫu nếu cần.",
-                before_latex=sp.latex(relation),
-                after_latex=substitution_equation_latex + "\n" + sp.latex(sp.Eq(poly.as_expr(), 0, evaluate=False)),
+                before_latex=algebra_latex(relation),
+                after_latex=substitution_equation_latex + "\n" + algebra_latex(sp.Eq(poly.as_expr(), 0, evaluate=False)),
                 pitfall="Không được quên t > 0 vì a^x luôn dương.",
                 check="Thay t = a^x ngược lại phải ra phương trình ban đầu.",
-                expression=sp.sstr(expression),
-                expression_latex=sp.latex(expression),
-                result=sp.sstr(poly.as_expr()),
-                result_latex=sp.latex(sp.Eq(poly.as_expr(), 0, evaluate=False)),
+                expression=algebra_text(expression),
+                expression_latex=algebra_latex(expression),
+                result=algebra_text(poly.as_expr()),
+                result_latex=algebra_latex(sp.Eq(poly.as_expr(), 0, evaluate=False)),
                 kind="transform",
                 confidence="symbolic",
             ),
@@ -351,11 +352,11 @@ def _exponential_substitution_template(problem: ParsedAlgebraProblem, variable: 
                 why="Sau khi đặt ẩn phụ, phương trình mũ đã trở thành phương trình đại số quen thuộc.",
                 rule="Giải phương trình theo t",
                 operation="Giải phương trình theo t và lọc điều kiện t > 0.",
-                before_latex=sp.latex(sp.Eq(poly.as_expr(), 0, evaluate=False)),
+                before_latex=algebra_latex(sp.Eq(poly.as_expr(), 0, evaluate=False)),
                 after_latex=_values_latex(t, positive_t_values),
                 pitfall="Giá trị t không dương không thể bằng a^x.",
                 check="Mỗi giá trị t giữ lại phải lớn hơn 0.",
-                result="; ".join(sp.sstr(value) for value in positive_t_values),
+                result="; ".join(algebra_text(value) for value in positive_t_values),
                 result_latex=_values_latex(t, positive_t_values),
                 kind="solve",
                 confidence="symbolic",
@@ -371,11 +372,11 @@ def _exponential_substitution_template(problem: ParsedAlgebraProblem, variable: 
                 why="Bài toán hỏi x, nên không dừng ở nghiệm của t.",
                 rule="Thay ngược ẩn phụ",
                 operation="Giải a^x = t bằng x = log(t)/log(a).",
-                before_latex=rf"{sp.latex(t)}={sp.latex(base)}^{{{sp.latex(variable)}}}",
+                before_latex=rf"{algebra_latex(t)}={algebra_latex(base)}^{{{algebra_latex(variable)}}}",
                 after_latex="\n".join(back_lines + [_values_latex(variable, values)]),
                 pitfall="Nếu t không phải lũy thừa đẹp của cơ số, nghiệm được viết bằng log.",
                 check="Thay nghiệm x vào phương trình ban đầu.",
-                result="; ".join(sp.sstr(value) for value in values or []),
+                result="; ".join(algebra_text(value) for value in values or []),
                 result_latex=_values_latex(variable, values),
                 kind="solve",
                 confidence="symbolic",
@@ -472,7 +473,7 @@ def _replace_base_power(expression: sp.Expr, variable: sp.Symbol, base: sp.Expr,
             _exp_to_t,
         )
 
-    for power in sorted(replaced.atoms(sp.Pow), key=lambda item: len(sp.sstr(item.exp)), reverse=True):
+    for power in sorted(replaced.atoms(sp.Pow), key=lambda item: len(algebra_text(item.exp)), reverse=True):
         if not power.exp.has(variable):
             continue
         ratio = _base_power_ratio(power.base, base)
@@ -556,4 +557,4 @@ def _is_positive(value: sp.Expr) -> bool:
 def _values_latex(variable: sp.Symbol, values: list[sp.Expr] | None) -> str:
     if not values:
         return r"S=\varnothing"
-    return r"S=\left\{" + ", ".join(sp.latex(value) for value in values) + r"\right\}"
+    return r"S=\left\{" + ", ".join(algebra_latex(value) for value in values) + r"\right\}"

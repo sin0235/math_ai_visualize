@@ -25,6 +25,7 @@ import {
   type AlgebraHistoryItem,
 } from './algebra-solver/algebraHistory';
 import { isDocumentHidden, showBrowserNotify } from '../utils/browserNotify';
+import { buildAlgebraNotice } from '../utils/algebraNotice';
 
 type AlgebraDomain = 'R' | 'C' | 'N' | 'Z';
 export type IntervalPreset = '' | 'unit_circle' | 'custom';
@@ -503,41 +504,13 @@ function notifyAlgebraSideChannel(
   onToast?: (title: string, message: string, kind?: ToastKind, details?: string[]) => void,
 ) {
   if (!onToast) return;
-  const routine = (value: string) => (
-    value.includes('Đã diễn giải đề tiếng Việt')
-    || value.includes('Đầu vào gồm cả mô tả tự nhiên')
-    || value.includes('Miền R đang là mặc định')
-    || value.includes('rule-based')
-    || value.includes('NLP:')
-    || value.includes('mathcore')
-  );
-  const warnings = (result.warnings || []).filter((item) => item.trim() && !routine(item));
-  const errors = (result.errors || []).filter((item) => item.trim());
-  if (result.status === 'error' || result.status === 'unsupported') {
-    onToast(
-      result.status === 'unsupported' ? 'Chưa hỗ trợ dạng này' : 'Không giải được',
-      result.answer || errors[0] || 'Không thể giải bài này.',
-      result.status === 'unsupported' ? 'warning' : 'error',
-      [...errors, ...warnings].slice(0, 5),
-    );
-    return;
-  }
-  const details = [...warnings, ...errors].slice(0, 6);
-  if (details.length > 0) {
-    onToast('Lưu ý khi giải', details[0], 'warning', details.slice(1));
-  }
-  const failedChecks = (result.verification?.checks || []).filter((check) => check.status === 'fail' || check.status === 'warn');
-  if (result.verification?.status === 'failed' || failedChecks.length > 0) {
-    onToast(
-      'Cần rà lại kết quả',
-      failedChecks[0]?.detail || 'Một số kiểm tra lời giải chưa đạt.',
-      'warning',
-      failedChecks.slice(0, 4).map((check) => check.detail || check.name).filter(Boolean),
-    );
+  const notice = buildAlgebraNotice(result);
+  if (notice) {
+    onToast(notice.title, notice.message, notice.kind, notice.details);
     return;
   }
   // Clean solved: OS notify only when tab is hidden.
-  if (result.status === 'solved' && (result.steps?.length || 0) > 0 && details.length === 0 && isDocumentHidden()) {
+  if (result.status === 'solved' && (result.steps?.length || 0) > 0 && isDocumentHidden()) {
     showBrowserNotify({
       title: 'Đã giải xong',
       body: (result.answer || 'Có lời giải từng bước.').slice(0, 120),

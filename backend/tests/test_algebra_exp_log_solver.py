@@ -90,7 +90,7 @@ def test_exp_log_solver_uses_log_both_sides_for_single_exponential():
     result = solve_algebra(AlgebraSolveRequest(input="3^x=10"))
 
     assert result.status == "solved"
-    assert {value.text for value in result.solution_set.values} == {"log(10)/log(3)"}
+    assert {value.text for value in result.solution_set.values} == {"log_3(10)"}
     assert result.steps[0].title == "Lấy log hai vế"
     assert result.steps[0].method == "log_both_sides"
 
@@ -100,7 +100,7 @@ def test_exp_log_solver_accepts_lowercase_e_as_euler():
 
     assert result.status == "solved"
     assert result.topic == "exponential_log"
-    assert {value.text for value in result.solution_set.values} == {"log(5)"}
+    assert {value.text for value in result.solution_set.values} == {"ln(5)"}
     assert result.steps[0].method == "log_both_sides"
 
 
@@ -109,7 +109,7 @@ def test_exp_log_solver_accepts_uppercase_E_without_stealing_variable():
 
     assert result.status == "solved"
     assert result.topic == "exponential_log"
-    assert {value.text for value in result.solution_set.values} == {"log(5)"}
+    assert {value.text for value in result.solution_set.values} == {"ln(5)"}
     assert result.input_interpretation is not None
     assert result.input_interpretation.variables == ["x"]
 
@@ -127,7 +127,7 @@ def test_exp_log_solver_substitutes_quadratic_in_exp():
     result = solve_algebra(AlgebraSolveRequest(input="exp(2*x)-3*exp(x)+2=0"))
 
     assert result.status == "solved"
-    assert {value.text for value in result.solution_set.values} == {"0", "log(2)"}
+    assert {value.text for value in result.solution_set.values} == {"0", "ln(2)"}
     assert result.steps[0].method == "exponential_substitution"
 
 
@@ -139,3 +139,11 @@ def test_exp_log_domain_filters_spurious_root():
     assert {value.text for value in result.solution_set.values} == {"2"}
     assert any("Thử lại điều kiện log" in (step.title or "") for step in result.steps)
     assert any("1" in a and "infty" in a for a in result.assumptions)
+
+
+def test_exp_log_solver_treats_bare_log_as_base_ten():
+    result = solve_algebra(AlgebraSolveRequest(input="log(x)=2"))
+
+    assert result.status == "solved"
+    assert {value.text for value in result.solution_set.values} == {"100"}
+    assert result.steps[1].before_latex == r"\log_{10}{\left(x \right)} = 2"

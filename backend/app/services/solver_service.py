@@ -347,8 +347,43 @@ def _build_insufficient_metric_result(
 
     _, operands = parsed_distance
     point, first, second, third = operands[:4]
-    highlight = [point, first, second, third]
+    foot = _backend_distance_goal_foot(scene_dict, point, {first, second, third})
+    highlight = [point, first, second, third, *([foot] if foot else [])]
     plane = f"({first}{second}{third})"
+    if foot:
+        segment = f"{point}{foot}"
+        steps = [
+            SolverStep(
+                1,
+                "Xác định đoạn vuông góc",
+                f"{foot} là chân đường vuông góc từ {point} xuống mặt phẳng {plane}, nên {segment} vuông góc với {plane}.",
+                None,
+                None,
+                highlight,
+                kind="distance_point_plane_setup",
+                formula_latex=rf"{segment}\perp {plane},\quad {foot}\in {plane}",
+            ),
+            SolverStep(
+                2,
+                "Kết luận khoảng cách",
+                f"Theo định nghĩa khoảng cách từ một điểm đến mặt phẳng, khoảng cách cần tìm chính là độ dài đoạn {segment}.",
+                None,
+                None,
+                highlight,
+                kind="distance_point_plane_result",
+                formula_latex=rf"d({point},{plane})={segment}",
+                depends_on=["1"],
+            ),
+        ]
+        return SolverResult(
+            question,
+            f"d({point},{plane}) = {segment}",
+            steps,
+            warnings,
+            confidence="verified",
+            method=method,
+        )
+
     if method == "classical":
         steps = [
             SolverStep(
@@ -419,6 +454,28 @@ def _build_insufficient_metric_result(
         confidence="insufficient",
         method=method,
     )
+
+
+def _backend_distance_goal_foot(scene_dict: dict, point: str, plane_points: set[str]) -> str | None:
+    names_by_id = {
+        str(obj.get("object_id") or obj.get("id")): str(obj.get("name") or obj.get("label") or obj.get("object_id") or obj.get("id"))
+        for obj in scene_dict.get("objects", [])
+        if isinstance(obj, dict) and (obj.get("object_id") or obj.get("id"))
+    }
+    for annotation in scene_dict.get("annotations", []):
+        if not isinstance(annotation, dict) or annotation.get("type") != "right_angle":
+            continue
+        metadata = annotation.get("metadata") if isinstance(annotation.get("metadata"), dict) else {}
+        if metadata.get("_backend_render_safe") is not True or metadata.get("visualization_role") != "distance_goal":
+            continue
+        target_ids = annotation.get("target_ids") if isinstance(annotation.get("target_ids"), list) else []
+        targets = [names_by_id.get(str(target_id), str(target_id)) for target_id in target_ids]
+        if len(targets) < 3:
+            target = str(annotation.get("target") or "")
+            targets = [part for part in target.split("-") if part]
+        if len(targets) >= 3 and targets[0] == point and targets[2] in plane_points:
+            return targets[1]
+    return None
 
 
 def _metric_evidence_status(scene_dict: dict, question: str) -> str:
