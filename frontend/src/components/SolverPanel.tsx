@@ -263,7 +263,7 @@ export function SolverPanel({ workspace, runtimeSettings, onHighlight, onToast }
             onKeyDown={(event) => {
               if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') void requestSolve();
             }}
-            rows={4}
+            rows={5}
             maxLength={2000}
             disabled={loading}
             placeholder="Ví dụ: Tính khoảng cách từ A đến mặt phẳng (BCD)"

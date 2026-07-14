@@ -126,7 +126,9 @@ def _problem_structure_facts(scene: dict[str, Any]) -> list[GeometryFact]:
     top = tuple(signature.group(2).upper())
     if structure == "cube":
         side_match = re.search(
-            r"(?:cạnh|canh)(?:\s+(?:có|co)\s+(?:độ|do)\s+(?:dài|dai))?\s*(?:(?:bằng|bang)|=)?\s*\(?\s*(\d+(?:[.,]\d+)?)\s*\)?",
+            r"(?:cạnh|canh)"
+            r"(?:\s+(?:(?:có|co)\s+(?:độ|do)\s+)?(?:dài|dai))?"
+            r"\s*(?:(?:bằng|bang|là|la)|=)?\s*\(?\s*(\d+(?:[.,]\d+)?)\s*\)?",
             text,
             flags=re.IGNORECASE,
         )

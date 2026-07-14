@@ -162,6 +162,23 @@ def solve(
             _apply_result_metadata(classical_result, scene_dict, method)
             return classical_result
 
+    if method == "oxyz" and capability_task == "distance":
+        from app.services.geometry.coordinate_point_plane import solve_coordinate_point_plane_from_facts
+
+        coordinate_result = solve_coordinate_point_plane_from_facts(
+            scene_dict,
+            q,
+            warnings,
+            precision_text=question,
+        )
+        has_existing_metric_evidence = _metric_evidence_status(scene_dict, q) == "ok"
+        if coordinate_result is not None and (
+            coordinate_result.answer != "Không đủ dữ kiện" or not has_existing_metric_evidence
+        ):
+            _attach_highlight_object_ids(coordinate_result, scene_dict)
+            _apply_result_metadata(coordinate_result, scene_dict, method)
+            return coordinate_result
+
     pts = _point_map(scene_dict)
 
     guard = None if capability_task in {"pythagoras", "quadrilateral_metric", "circle_metric"} else _metric_data_guard(scene_dict, q)
@@ -2004,7 +2021,22 @@ def _relevant_scene_facts(scene_dict: dict, highlight: list[str]) -> list[str]:
 
 def _solver_used_facts(scene_dict: dict, highlight: list[str], result: SolverResult) -> list[dict[str, str]]:
     names = set(highlight)
-    facts: list[dict[str, str]] = []
+    facts: list[dict[str, str]] = list(result.used_facts)
+
+    referenced_ids = {
+        relation_id
+        for step in result.steps
+        for relation_id in step.relation_ids
+        if relation_id
+    }
+    if referenced_ids:
+        from app.services.geometry_facts import build_geometry_fact_graph
+
+        for fact in build_geometry_fact_graph(scene_dict).facts:
+            if fact.id not in referenced_ids:
+                continue
+            source = "given" if fact.source == "given" else "verified" if fact.trusted else "inferred"
+            facts.append({"source": source, "text": fact.text})
 
     for ann in scene_dict.get("annotations", []):
         if not isinstance(ann, dict):

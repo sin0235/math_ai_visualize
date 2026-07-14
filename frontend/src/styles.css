@@ -272,6 +272,7 @@ select {
 .app-shell:has(.csim-page),
 .app-shell:has(.gglab-page) {
   display: grid;
+  padding-top: 0;
 }
 
 .app-shell:has(.gglab-page) {
@@ -5400,31 +5401,46 @@ button:disabled {
 
 .tool-mode-button {
   display: grid;
-  gap: 2px;
+  gap: 4px;
   text-align: left;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
   background: var(--paper);
   color: var(--ink-2);
-  padding: 9px 10px;
+  padding: 12px 14px;
   cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.tool-mode-button:hover {
+  border-color: var(--ink-4);
+  background: var(--surface);
+}
+
+.tool-mode-button strong {
+  font-weight: 650;
+  font-size: 14px;
 }
 
 .tool-mode-button span {
   color: var(--ink-4);
-  font-size: var(--font-size-caption);
-  line-height: 1.25;
+  font-size: 13px;
+  line-height: 1.35;
 }
 
 .tool-mode-button.active {
-  border-color: var(--ink);
-  background: var(--surface);
-  color: var(--ink);
+  border-color: var(--primary);
+  background: var(--primary-bg);
+  color: var(--primary-dark);
+  box-shadow: 0 0 0 1px var(--primary);
 }
 
-.tool-mode-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
+.tool-mode-button.active strong {
+  color: var(--primary-dark);
+}
+
+.tool-mode-button.active span {
+  color: var(--primary);
 }
 
 .editor-grid {
@@ -5523,20 +5539,27 @@ button:disabled {
 
 .scene-editor-tabs button {
   flex: 0 0 auto;
-  min-height: 32px;
+  min-height: 30px;
   border: 1px solid var(--line);
   border-radius: var(--radius-pill);
-  padding: 0 11px;
+  padding: 0 12px;
   background: var(--paper);
   color: var(--ink-4);
-  font-size: var(--font-size-caption);
-  font-weight: 850;
+  font-size: 13px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.scene-editor-tabs button:hover {
+  background: var(--surface);
+  color: var(--ink-2);
 }
 
 .scene-editor-tabs button.active {
   border-color: var(--ink);
   background: var(--ink);
-  color: var(--accent-fg);
+  color: var(--paper);
 }
 
 .scene-editor-form-stack {
@@ -7516,6 +7539,7 @@ pre {
 #solver-submit-btn {
   background: transparent;
   color: var(--ink);
+  border: 1px solid var(--line-2);
 }
 
 #fa-submit-btn {
@@ -15639,6 +15663,7 @@ button.analyzer-guide-label:hover {
 .sim-library-page,
 .sim-workspace-page {
   display: grid;
+  align-content: start;
   width: 100%;
   min-height: 0;
   color: var(--ink-2);
@@ -18051,6 +18076,9 @@ button.analyzer-guide-label:hover {
 .fa2-control-panel {
   display: grid;
   gap: 12px;
+  max-width: 1240px;
+  margin: 0 auto;
+  width: 100%;
   border: 0;
   border-bottom: 1px solid var(--line);
   padding: 0 0 14px;
@@ -18083,6 +18111,9 @@ button.analyzer-guide-label:hover {
 }
 
 .fa2-results-panel {
+  max-width: 1240px;
+  margin: 0 auto;
+  width: 100%;
   min-height: 420px;
 }
 
@@ -18574,10 +18605,15 @@ button.analyzer-guide-label:hover {
   text-align: left;
 }
 
+.scene-editor-v3-toggle .field-hint {
+  font-size: 12px;
+  opacity: 0.8;
+}
+
 .scene-editor-v3-toggle > span:first-child,
 .scene-editor-v3-parameters {
   display: grid;
-  gap: 8px;
+  gap: 4px;
 }
 
 .scene-editor-v3-content {
@@ -18599,15 +18635,17 @@ button.analyzer-guide-label:hover {
 .scene-inspector-v3-verification,
 .scene-inspector-v3-issue {
   display: grid;
-  gap: 10px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  padding: 12px;
+  gap: 12px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  padding: 14px;
+  background: var(--paper);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.02);
 }
 
 .scene-inspector-v3-object.selected {
-  border-color: var(--ink);
-  box-shadow: 0 0 0 1px var(--ink);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary);
 }
 
 .scene-inspector-v3-object-main {
@@ -18641,25 +18679,51 @@ button.analyzer-guide-label:hover {
   text-overflow: ellipsis;
 }
 
-.scene-inspector-v3 dl,
-.scene-inspector-v3 dl div,
+.scene-inspector-v3 dl {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border-radius: 6px;
+}
+
+.scene-inspector-v3 dl div {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.scene-editor-v3 .secondary-button {
+  padding: 6px 12px;
+  font-size: 13px;
+  border-radius: 6px;
+  min-height: 30px;
+  font-weight: 550;
+  transition: all 0.15s ease;
+}
+
 .scene-inspector-v3-actions,
 .scene-inspector-v3-proposal div {
   display: flex;
   gap: 8px;
 }
 
-.scene-inspector-v3 dl {
-  flex-wrap: wrap;
-  margin: 0;
-}
-
 .scene-inspector-v3 dt {
   color: var(--ink-4);
+  font-size: 13px;
+  white-space: nowrap;
 }
 
 .scene-inspector-v3 dd {
   margin: 0;
+  font-size: 13px;
+  font-family: var(--font-mono);
+  color: var(--ink-2);
+  text-align: right;
+  word-break: break-all;
 }
 
 .scene-inspector-v3 pre {
@@ -19616,7 +19680,7 @@ iframe {
 .solver-vietnamese-input textarea {
   width: 100%;
   resize: vertical;
-  min-height: 80px;
+  min-height: 120px;
   max-height: 240px;
   padding: 12px;
   border: 1px solid var(--line);

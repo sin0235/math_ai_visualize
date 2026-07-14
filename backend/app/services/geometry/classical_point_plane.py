@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-import re
 from typing import Any
 
 import sympy as sp
@@ -15,29 +13,15 @@ from app.schemas.geometry_reasoning import (
     VerificationEvidence,
 )
 from app.services.geometry.proof_search import replay_proof_plan
+from app.services.geometry.orthogonal_frame import (
+    OrthogonalFrame,
+    ProjectionData,
+    exact_expr,
+    parse_point_plane_goal,
+    resolve_point_plane_frame,
+)
 from app.services.geometry.solution_builder import SolverResult, SolverStep
 from app.services.geometry_facts import GeometryFact, GeometryFactGraph, build_geometry_fact_graph, point_on_plane
-
-
-MAX_FRAME_FACTS = 8
-MAX_DERIVED_POINTS = 64
-
-
-@dataclass(frozen=True)
-class OrthogonalFrame:
-    fact: GeometryFact
-    points: dict[str, sp.Matrix]
-    axis_lengths: tuple[sp.Expr, sp.Expr, sp.Expr]
-
-
-@dataclass(frozen=True)
-class ProjectionData:
-    foot: sp.Matrix
-    alpha: sp.Expr
-    beta: sp.Expr
-    distance: sp.Expr
-    first_direction_point: str
-    second_direction_point: str
 
 
 def solve_classical_point_plane(
@@ -45,7 +29,7 @@ def solve_classical_point_plane(
     question: str,
     warnings: list[str] | None = None,
 ) -> SolverResult | None:
-    goal = _parse_goal(question)
+    goal = parse_point_plane_goal(question)
     if goal is None:
         return None
     source, plane = goal
@@ -55,82 +39,30 @@ def solve_classical_point_plane(
     if direct is not None:
         return direct
 
-    declared_frames = [
-        fact
-        for fact in graph.facts
-        if fact.trusted and fact.type in {"orthogonal_frame", "derived_orthogonal_frame"}
-    ]
-    frames = _orthogonal_frames(graph)
-    if not frames:
-        if declared_frames:
-            return SolverResult(
-                question,
-                "Không đủ dữ kiện",
-                [],
-                [
-                    *(warnings or []),
-                    "Missing premise độ dài ba phương của khung vuông góc để tính khoảng cách.",
-                ],
-                confidence="insufficient",
-                method="classical",
-            )
-        return None
-
-    relevant_frame_seen = False
-    missing: set[str] = set()
-    for frame in frames[:MAX_FRAME_FACTS]:
-        points, point_fact_ids = _derive_named_points(frame, graph)
-        if source not in frame.points:
-            continue
-        relevant_frame_seen = True
-        unknown = [name for name in plane if name not in points]
-        if unknown:
-            missing.update(unknown)
-            continue
-        projection = _project_to_plane(points, source, plane)
-        if projection is None:
-            continue
+    resolution = resolve_point_plane_frame(graph, source, plane)
+    if resolution.solution is not None:
+        solution = resolution.solution
         return _build_frame_result(
             question,
             source,
             plane,
-            frame,
-            projection,
-            [fact for fact in graph.by_type("midpoint") if fact.id in point_fact_ids],
+            solution.frame,
+            solution.projection,
+            list(solution.construction_facts),
             warnings or [],
         )
-
-    if relevant_frame_seen:
-        detail = ", ".join(sorted(missing))
-        reason = (
-            f"Missing premise midpoint/incidence để xác định điểm {detail} trong mặt phẳng đích."
-            if detail
-            else "Missing premise để dựng và kiểm chứng chân đường vuông góc trong mặt phẳng đích."
-        )
+    if resolution.declared_frame_seen and resolution.reason and (
+        resolution.relevant_frame_seen or "độ dài ba phương" in resolution.reason
+    ):
         return SolverResult(
             question,
             "Không đủ dữ kiện",
             [],
-            [*(warnings or []), reason],
+            [*(warnings or []), resolution.reason],
             confidence="insufficient",
             method="classical",
         )
     return None
-
-
-def _parse_goal(question: str) -> tuple[str, tuple[str, str, str]] | None:
-    match = re.fullmatch(
-        r"d\(\s*([A-Za-z](?:[0-9]+|')?)\s*,\s*\(\s*([A-Za-z](?:[0-9]+|')?[A-Za-z0-9']*)\s*\)\s*\)",
-        question.strip(),
-        flags=re.IGNORECASE,
-    )
-    if match is None:
-        return None
-    source = match.group(1).upper()
-    plane_points = tuple(item.upper() for item in re.findall(r"[A-Za-z](?:[0-9]+|')?", match.group(2)))
-    if len(plane_points) != 3:
-        return None
-    return source, (plane_points[0], plane_points[1], plane_points[2])
 
 
 def _solve_direct_height(
@@ -154,7 +86,7 @@ def _solve_direct_height(
         length_fact = graph.length_fact(source, foot)
         if length_fact is None:
             continue
-        value = _exact_expr(length_fact.args.get("label"))
+        value = exact_expr(length_fact.args.get("label"))
         if value is None:
             continue
         result_latex = sp.latex(sp.simplify(value))
@@ -211,99 +143,6 @@ def _solve_direct_height(
             ],
         )
     return None
-
-
-def _orthogonal_frames(graph: GeometryFactGraph) -> list[OrthogonalFrame]:
-    frames: list[OrthogonalFrame] = []
-    for fact in graph.facts:
-        if not fact.trusted or fact.type not in {"orthogonal_frame", "derived_orthogonal_frame"}:
-            continue
-        base = _labels(fact.args.get("base"))
-        top = _labels(fact.args.get("top"))
-        raw_lengths = fact.args.get("axis_lengths")
-        if len(base) != 4 or len(top) != 4 or not isinstance(raw_lengths, tuple | list) or len(raw_lengths) != 3:
-            continue
-        lengths = tuple(_exact_expr(value) for value in raw_lengths)
-        if any(value is None or value <= 0 for value in lengths):
-            continue
-        lx, ly, lz = lengths
-        assert lx is not None and ly is not None and lz is not None
-        points = {
-            base[0]: sp.Matrix([0, 0, 0]),
-            base[1]: sp.Matrix([lx, 0, 0]),
-            base[2]: sp.Matrix([lx, ly, 0]),
-            base[3]: sp.Matrix([0, ly, 0]),
-            top[0]: sp.Matrix([0, 0, lz]),
-            top[1]: sp.Matrix([lx, 0, lz]),
-            top[2]: sp.Matrix([lx, ly, lz]),
-            top[3]: sp.Matrix([0, ly, lz]),
-        }
-        frames.append(OrthogonalFrame(fact, points, (lx, ly, lz)))
-    return frames
-
-
-def _derive_named_points(frame: OrthogonalFrame, graph: GeometryFactGraph) -> tuple[dict[str, sp.Matrix], set[str]]:
-    points = dict(frame.points)
-    used_fact_ids: set[str] = set()
-    midpoint_facts = graph.by_type("midpoint")
-    changed = True
-    while changed and len(points) < MAX_DERIVED_POINTS:
-        changed = False
-        for fact in midpoint_facts:
-            point = str(fact.args.get("point") or "")
-            segment = fact.args.get("segment")
-            if not point or point in points or not isinstance(segment, tuple) or len(segment) != 2:
-                continue
-            first, second = segment
-            if first not in points or second not in points:
-                continue
-            points[point] = sp.simplify((points[first] + points[second]) / 2)
-            used_fact_ids.add(fact.id)
-            changed = True
-    return points, used_fact_ids
-
-
-def _project_to_plane(
-    points: dict[str, sp.Matrix],
-    source: str,
-    plane: tuple[str, str, str],
-) -> ProjectionData | None:
-    origin, second, third = (points[name] for name in plane)
-    first_direction = second - origin
-    second_direction = third - origin
-    gram = sp.Matrix([
-        [first_direction.dot(first_direction), first_direction.dot(second_direction)],
-        [first_direction.dot(second_direction), second_direction.dot(second_direction)],
-    ])
-    if sp.simplify(gram.det()) == 0:
-        return None
-    offset = points[source] - origin
-    rhs = sp.Matrix([offset.dot(first_direction), offset.dot(second_direction)])
-    alpha, beta = (sp.simplify(value) for value in gram.inv() * rhs)
-    foot = sp.simplify(origin + alpha * first_direction + beta * second_direction)
-    height = sp.simplify(points[source] - foot)
-    if sp.simplify(height.dot(first_direction)) != 0 or sp.simplify(height.dot(second_direction)) != 0:
-        return None
-    distance = sp.simplify(sp.sqrt(height.dot(height)))
-    if distance.has(sp.nan, sp.zoo) or distance.is_real is False:
-        return None
-
-    candidates: list[tuple[str, sp.Matrix]] = []
-    for name in plane:
-        direction = sp.simplify(points[name] - foot)
-        if direction.dot(direction) != 0:
-            candidates.append((name, direction))
-    selected: tuple[str, str] | None = None
-    for index, (first_name, first_vector) in enumerate(candidates):
-        for second_name, second_vector in candidates[index + 1:]:
-            if first_vector.cross(second_vector).dot(first_vector.cross(second_vector)) != 0:
-                selected = first_name, second_name
-                break
-        if selected:
-            break
-    if selected is None:
-        return None
-    return ProjectionData(foot, alpha, beta, distance, selected[0], selected[1])
 
 
 def _build_frame_result(
@@ -607,23 +446,6 @@ def _fact_objects(fact: GeometryFact) -> list[str]:
         elif isinstance(value, tuple | list):
             result.extend(str(item) for item in value)
     return list(dict.fromkeys(result))[:12]
-
-
-def _exact_expr(value: Any) -> sp.Expr | None:
-    text = str(value or "").strip().replace(",", ".")
-    matches = re.findall(r"[-+]?\d+(?:\.\d+)?(?:/\d+)?", text)
-    if not matches:
-        return None
-    try:
-        return sp.Rational(matches[-1])
-    except (TypeError, ValueError, ZeroDivisionError):
-        return None
-
-
-def _labels(value: Any) -> tuple[str, ...]:
-    if not isinstance(value, tuple | list):
-        return ()
-    return tuple(str(item).strip().upper() for item in value if str(item).strip())
 
 
 def _auxiliary_name(used: set[str]) -> str:

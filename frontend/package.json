@@ -10,6 +10,7 @@
     "test:simulation": "node scripts/run-simulation-baseline.mjs",
     "test:analyzer-values": "node scripts/run-typescript-test.mjs src/components/function-analyzer/graphValues.test.mjs",
     "test:analyzer-presentation": "node scripts/run-typescript-test.mjs src/components/function-analyzer/analyzerPresentation.test.mjs",
+    "test:analyzer-appearance": "node src/components/function-analyzer/functionAnalyzerAppearance.test.mjs",
     "test:api-core": "node scripts/run-typescript-test.mjs src/api/core.test.mjs",
     "test:scene-workspace": "node scripts/run-typescript-test.mjs src/hooks/sceneWorkspaceV3State.test.mjs",
     "test:scene-inspector": "node scripts/run-typescript-test.mjs src/components/sceneInspectorV3State.test.mjs",
