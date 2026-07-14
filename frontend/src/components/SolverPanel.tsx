@@ -337,8 +337,8 @@ function notifySolverSideChannel(
   // Clean success: panel has answer+steps; OS notify only when tab hidden.
   if (result.steps.length > 0 && isDocumentHidden()) {
     showBrowserNotify({
-      title: 'Đã giải xong',
-      body: (result.answer || 'Có lời giải từng bước.').slice(0, 120),
+      title: 'Hoàn tất giải toán',
+      body: 'Đã tìm được lời giải chi tiết. Nhấn vào đây để xem các bước giải cụ thể.',
       kind: 'info',
       tag: 'solve-done',
     });
