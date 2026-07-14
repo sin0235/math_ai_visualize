@@ -74,7 +74,8 @@ def test_render_v3_returns_workspace(monkeypatch):
         assert response.status_code == 201, response.text
         body = response.json()
         assert body["scene"]["schema_version"] == "3.0"
-        assert body["projection"]["scene_id"] == "route-v3"
+        assert body["scene"]["scene_id"].startswith("scene_")
+        assert body["projection"]["scene_id"] == body["scene"]["scene_id"]
     finally:
         app.dependency_overrides.clear()
 

@@ -59,6 +59,7 @@ _STRUCTURED_PREFIXES = (
     "quadratic_opposite_sign_roots(",
     "quadratic_same_sign_roots(",
     "derivative(",
+    "derivative_equation(",
     "derivative_sum(",
     "limit(",
     "integral(",

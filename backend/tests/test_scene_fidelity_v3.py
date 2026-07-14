@@ -39,7 +39,13 @@ def test_box_points_are_completed_to_twelve_edges_and_six_colored_faces():
     faces = [obj for obj in scene.objects if isinstance(obj, FaceV3)]
     assert len(segments) == 12
     assert len(faces) == 6
-    assert len({face.color for face in faces}) == 6
+    assert 3 <= len({face.color for face in faces}) <= 4
+    assert all(
+        first.color != second.color
+        for index, first in enumerate(faces)
+        for second in faces[index + 1:]
+        if len(set(first.point_ids).intersection(second.point_ids)) >= 2
+    )
     assert all(segment.style == "solid" and not segment.hidden for segment in segments)
     assert all(obj.source == "construction" for obj in [*segments, *faces])
 
@@ -144,7 +150,7 @@ def test_completion_normalizes_ai_solid_edges_and_faces_but_preserves_user_style
     assert by_id["seg_ab"].line_width == 2.8
     assert by_id["seg_bc_user"].style == "dashed"
     assert by_id["seg_bc_user"].hidden is True
-    assert by_id["face_abcd"].color == "#5da9ff"
+    assert by_id["face_abcd"].color == "#dbe4ee"
     assert by_id["face_abcd"].opacity == 0.22
 
 

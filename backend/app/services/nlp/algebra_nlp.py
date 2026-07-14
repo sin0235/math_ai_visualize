@@ -78,13 +78,14 @@ async def resolve_algebra_nlp(
             from app.services.algebra.service import _preserve_explicit_request_contract
 
             extracted = _preserve_explicit_request_contract(request, extracted)
+            extracted, goal_warning = _preserve_deterministic_composite_goal(request, extracted)
             if _is_mathcore_ready_text(extracted.input) and not _still_natural_prose(extracted.input):
                 return AlgebraNlpResult(
                     original_input=original,
                     request=extracted,
                     source="llm",
                     confidence=0.86,
-                    warnings=_internal_warnings(extract_warnings),
+                    warnings=_internal_warnings([*extract_warnings, *([goal_warning] if goal_warning else [])]),
                     used_llm=True,
                 )
             # LLM returned something that still looks like prose / unusable.
@@ -131,6 +132,19 @@ def _rule_based_request(request: AlgebraSolveRequest) -> AlgebraSolveRequest:
             "expression_action": request.expression_action or interpretation.expression_action,
         }
     )
+
+
+def _preserve_deterministic_composite_goal(
+    original: AlgebraSolveRequest,
+    extracted: AlgebraSolveRequest,
+) -> tuple[AlgebraSolveRequest, str | None]:
+    """Không để extraction làm mất mục tiêu hai bước đã hiện rõ trong đề."""
+    rule_based = _rule_based_request(original)
+    canonical = normalize_algebra_input(rule_based.input)
+    extracted_canonical = normalize_algebra_input(extracted.input)
+    if canonical.startswith("derivative_equation(") and not extracted_canonical.startswith("derivative_equation("):
+        return rule_based, "Giữ mục tiêu giải phương trình đạo hàm đã xác định trực tiếp từ đề."
+    return extracted, None
 
 
 def _is_already_mathcore_ready(request: AlgebraSolveRequest) -> bool:

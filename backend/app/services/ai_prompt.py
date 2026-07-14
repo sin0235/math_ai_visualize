@@ -366,6 +366,7 @@ Mẫu MathSceneV3 tối thiểu TỰ NHẤT QUÁN:
   ],
   "relations": [],
   "annotations": [],
+  "derived_facts": [],
   "parameters": [],
   "view": {"dimension":"2d","show_axes":true,"show_grid":true,"show_coordinates":false},
   "interpretation": {"object_ids":[],"relation_ids":[],"values":[],"missing_data":[],"assumptions":[]},
@@ -387,6 +388,7 @@ Object signatures được phép:
 
 I. Contract và reference integrity BẮT BUỘC:
 1. Mọi object/relation/annotation phải có `id` duy nhất (stable string, không rỗng).
+   `scene_id` trong output AI chỉ là placeholder; server luôn cấp identity mới cho mỗi lượt render.
 2. Point dùng `label` để hiển thị (A, B, M…); identity là `id`, KHÔNG dùng label làm ref.
 3. Segment/line/vector/face/plane PHẢI là object riêng với id; quan hệ chỉ tham chiếu object id.
 4. Relation.operands luôn typed: mỗi operand có role, ref_id, ref_kind ∈ {point,segment,line,vector,circle,face,sphere,plane,object}.
@@ -413,6 +415,7 @@ II. Tọa độ và dữ kiện:
 
 III. Topology và độ đầy đủ hình vẽ (RẤT QUAN TRỌNG):
 - Danh sách point KHÔNG phải một khối hoàn chỉnh. Mọi khối đa diện phải có đủ point + segment cạnh thật + face mặt hữu hạn.
+- Không được để hai đỉnh cần nối theo định nghĩa khối chỉ tồn tại như point rời. Sau khi liệt kê đỉnh, phải duyệt topology và tạo từng segment nối đúng hai point IDs.
 - Hình hộp/lập phương: 8 đỉnh, 12 segment, 6 face.
 - Lăng trụ đáy n cạnh: 2n đỉnh, 3n segment, n+2 face.
 - Hình chóp đáy n cạnh: n+1 đỉnh, 2n segment, n+1 face.
@@ -424,17 +427,24 @@ III. Topology và độ đầy đủ hình vẽ (RẤT QUAN TRỌNG):
 - Chỉ đường phụ như đường cao, hình chiếu, pháp tuyến, tiệm cận dùng style="dashed" hoặc "dotted".
 
 IV. Màu và style:
-- Dùng màu hex. Cạnh chính #1d3557, đường phụ #8b95a7 hoặc #7c3aed, đối tượng nhấn mạnh #f97316.
-- Các mặt kề nhau phải khác màu. Phân lần lượt palette: #5da9ff, #ffb86b, #ffd166, #c9a0dc, #7fcdbb, #a8edea.
+- Dùng màu hex. Cạnh chính #1d3557, cạnh khuất #748094, đường phụ #0f766e, đối tượng nhấn mạnh #f59e0b.
+- Các mặt kề nhau phải khác màu nhưng không dùng màu rực cạnh tranh. Graph-coloring bằng palette slate-blue #dbe4ee, #cbd8e6, #b9c9db, #a8bbd1; mặt không kề nhau được tái sử dụng màu.
 - Face thường opacity 0.12-0.22. Không tô toàn bộ khối một màu mặc định.
-- Thiết diện dùng #f97316 opacity 0.58-0.68; viền thiết diện là segment #e63946 line_width 3; mặt phẳng cắt dùng plane #a8edea opacity 0.20-0.28.
+- Thiết diện dùng #f97316 opacity 0.58-0.68; viền thiết diện là segment #e63946 line_width 3; mặt phẳng cắt dùng plane #a8edea opacity 0.20-0.28. Không dùng màu mặt khối cho mặt cắt.
+- Mặt phẳng được hỏi trong goal dùng #f59e0b; đoạn khoảng cách/hình chiếu dùng #0f766e dashed line_width 3; annotation goal dùng cùng màu với construction tương ứng.
 - Segment cạnh chính line_width 2; cạnh/đường cần nhấn mạnh line_width 3.
 
 V. Quan hệ và annotation:
 - Relation lưu ý nghĩa hình học; annotation là ký hiệu người học nhìn thấy.
+- Trước khi tạo JSON, lập hai inventory nội bộ và KHÔNG xuất inventory: (a) GIVEN gồm mọi điểm/cạnh/mặt/quan hệ/giá trị đề mô tả; (b) GOAL gồm đúng đại lượng sau các từ hỏi, tính, tìm, chứng minh. Scene phải biểu diễn được cả GIVEN và GOAL, không chỉ dựng khối nền.
 - `distance`, `angle`, `ratio` là constraint định lượng để kiểm chứng dữ kiện đã biết, không phải goal. Không tạo các relation này khi giá trị đang là câu hỏi cần giải.
-- Nếu đề hỏi khoảng cách từ điểm M đến plane/face (ABC): bắt buộc tính hình chiếu vuông góc H của M lên mặt phẳng từ tọa độ đã chọn; tạo point H trước, segment MH color #7c3aed line_width 2 style="dashed", rồi right_angle target_ids=[id_M,id_H,id_A] với A là một điểm của mặt phẳng khác H. Thêm measurement cho segment MH với label ngắn `d(M, (ABC))`; tất cả là construction/render_only, không tạo distance relation thiếu args.value.
+- Nếu đề hỏi khoảng cách từ điểm M đến plane/face (ABC): bắt buộc tạo riêng face/plane có chính các point IDs A,B,C; tính hình chiếu vuông góc H của M lên mặt phẳng từ tọa độ đã chọn; tạo point H trước, segment MH color #0f766e line_width 3 style="dashed", rồi right_angle target_ids=[id_M,id_H,id_A] với A là một điểm của mặt phẳng khác H. Thêm measurement cho segment MH với label ngắn `d(M,(ABC))`; tất cả là construction/render_only, không tạo distance relation thiếu args.value và không ghi đáp số tự suy ra.
 - Nếu model chưa dựng đủ chân chiếu, backend sẽ hoàn thiện minh họa từ point và plane/face của goal; vì vậy phải giữ đúng hai object ID này trong intent/derived goal và không thay bằng chuỗi shorthand.
+- Nếu đề hỏi góc ABC: bảo đảm hai arm BA, BC tồn tại và thêm angle target_ids=[id_A,id_B,id_C].
+- Nếu hỏi góc hai đường: hai đường phải có object/segment riêng. Nếu không giao nhau tại điểm đã có, dựng một tia song song tịnh tiến để hai arm chung đỉnh rồi mới thêm angle.
+- Nếu hỏi góc đường-mặt: vẽ hình chiếu của đường lên mặt phẳng và đánh dấu góc giữa đường với hình chiếu; mặt phẳng mục tiêu phải có face/plane riêng.
+- Nếu hỏi góc hai mặt phẳng: vẽ giao tuyến, trong mỗi mặt dựng một arm vuông góc giao tuyến tại cùng điểm, rồi đánh dấu góc giữa hai arm.
+- Goal góc chưa biết chỉ có label ký hiệu như `∠ABC`, `∠(SA,(ABCD))`; không tự ghi số đo. Mọi angle/right_angle phải có đúng ba point IDs [arm1, vertex, arm2] tồn tại.
 - Chỉ ghi length/angle label khi giá trị xuất hiện trực tiếp trong đề. Không hiện số tự chọn để dựng hình.
 - Trung điểm: point + segment relation; thêm equal_marks cho hai nửa nếu có các segment tương ứng.
 - Vuông góc: relation dùng segment/line/plane objects; right_angle target point phải tồn tại.
@@ -456,11 +466,34 @@ VII. Self-check nội bộ trước khi xuất JSON, KHÔNG xuất phần kiểm
 6. Các mặt kề nhau không cùng một màu; face opacity trong khoảng cho phép.
 7. renderer, dimension và loại point khớp nhau.
 8. Nếu đề hỏi khoảng cách điểm–mặt phẳng: có point chân chiếu, segment khoảng cách nét đứt, measurement và right_angle; không có relation distance thiếu args.value.
-9. Relation/annotation chỉ dùng object đã khai báo; tuyệt đối không tham chiếu ID dự định tạo nhưng chưa có.
+9. Nếu đề hỏi góc: có đủ hai thành phần được hỏi, construction đưa về hai arm chung đỉnh và angle annotation hợp lệ; không có relation angle thiếu args.degrees.
+10. Đối chiếu GIVEN/GOAL nội bộ: mọi dữ kiện trực quan quan trọng và đại lượng được hỏi đều có object/relation/annotation/derived_fact tương ứng.
+11. Relation/annotation chỉ dùng object đã khai báo; tuyệt đối không tham chiếu ID dự định tạo nhưng chưa có.
 
 Ví dụ đầy đủ — hình hộp chữ nhật ABCD.A'B'C'D':
 {"scene_id":"scene_box","schema_version":"3.0","revision":1,"problem_text":"Cho hình hộp chữ nhật ABCD.A'B'C'D'.","grade":11,"topic":"solid_geometry","renderer":"threejs_3d","objects":[{"id":"pt_a","type":"point_3d","label":"A","x":0,"y":0,"z":0},{"id":"pt_b","type":"point_3d","label":"B","x":4,"y":0,"z":0},{"id":"pt_c","type":"point_3d","label":"C","x":4,"y":0,"z":3},{"id":"pt_d","type":"point_3d","label":"D","x":0,"y":0,"z":3},{"id":"pt_a_prime","type":"point_3d","label":"A'","x":0,"y":2,"z":0},{"id":"pt_b_prime","type":"point_3d","label":"B'","x":4,"y":2,"z":0},{"id":"pt_c_prime","type":"point_3d","label":"C'","x":4,"y":2,"z":3},{"id":"pt_d_prime","type":"point_3d","label":"D'","x":0,"y":2,"z":3},{"id":"seg_ab","type":"segment","label":"AB","point_ids":["pt_a","pt_b"],"hidden":false,"color":"#1d3557","line_width":2,"style":"solid"},{"id":"seg_bc","type":"segment","label":"BC","point_ids":["pt_b","pt_c"],"hidden":false,"color":"#1d3557","line_width":2,"style":"solid"},{"id":"seg_cd","type":"segment","label":"CD","point_ids":["pt_c","pt_d"],"hidden":false,"color":"#1d3557","line_width":2,"style":"solid"},{"id":"seg_da","type":"segment","label":"DA","point_ids":["pt_d","pt_a"],"hidden":false,"color":"#1d3557","line_width":2,"style":"solid"},{"id":"seg_a_primeb_prime","type":"segment","label":"A'B'","point_ids":["pt_a_prime","pt_b_prime"],"hidden":false,"color":"#1d3557","line_width":2,"style":"solid"},{"id":"seg_b_primec_prime","type":"segment","label":"B'C'","point_ids":["pt_b_prime","pt_c_prime"],"hidden":false,"color":"#1d3557","line_width":2,"style":"solid"},{"id":"seg_c_primed_prime","type":"segment","label":"C'D'","point_ids":["pt_c_prime","pt_d_prime"],"hidden":false,"color":"#1d3557","line_width":2,"style":"solid"},{"id":"seg_d_primea_prime","type":"segment","label":"D'A'","point_ids":["pt_d_prime","pt_a_prime"],"hidden":false,"color":"#1d3557","line_width":2,"style":"solid"},{"id":"seg_aa_prime","type":"segment","label":"AA'","point_ids":["pt_a","pt_a_prime"],"hidden":false,"color":"#1d3557","line_width":2,"style":"solid"},{"id":"seg_bb_prime","type":"segment","label":"BB'","point_ids":["pt_b","pt_b_prime"],"hidden":false,"color":"#1d3557","line_width":2,"style":"solid"},{"id":"seg_cc_prime","type":"segment","label":"CC'","point_ids":["pt_c","pt_c_prime"],"hidden":false,"color":"#1d3557","line_width":2,"style":"solid"},{"id":"seg_dd_prime","type":"segment","label":"DD'","point_ids":["pt_d","pt_d_prime"],"hidden":false,"color":"#1d3557","line_width":2,"style":"solid"},{"id":"face_abcd","type":"face","label":"ABCD","point_ids":["pt_a","pt_b","pt_c","pt_d"],"color":"#5da9ff","opacity":0.16},{"id":"face_top","type":"face","label":"A'B'C'D'","point_ids":["pt_a_prime","pt_b_prime","pt_c_prime","pt_d_prime"],"color":"#ffb86b","opacity":0.16},{"id":"face_front","type":"face","label":"ABB'A'","point_ids":["pt_a","pt_b","pt_b_prime","pt_a_prime"],"color":"#ffd166","opacity":0.16},{"id":"face_right","type":"face","label":"BCC'B'","point_ids":["pt_b","pt_c","pt_c_prime","pt_b_prime"],"color":"#c9a0dc","opacity":0.16},{"id":"face_back","type":"face","label":"CDD'C'","point_ids":["pt_c","pt_d","pt_d_prime","pt_c_prime"],"color":"#7fcdbb","opacity":0.16},{"id":"face_left","type":"face","label":"DAA'D'","point_ids":["pt_d","pt_a","pt_a_prime","pt_d_prime"],"color":"#a8edea","opacity":0.16}],"relations":[],"annotations":[],"parameters":[],"view":{"dimension":"3d","show_axes":false,"show_grid":false,"show_coordinates":false},"interpretation":{"object_ids":[],"relation_ids":[],"values":[],"missing_data":[],"assumptions":[]},"construction_steps":[],"audit":{"created_by":"ai"}}
 """.strip()
+
+
+def _normalize_v3_box_example_palette(prompt: str) -> str:
+    marker = "Ví dụ đầy đủ — hình hộp chữ nhật ABCD.A'B'C'D':\n"
+    prefix, separator, example = prompt.partition(marker)
+    if not separator:
+        return prompt
+    replacements = {
+        "#5da9ff": "#dbe4ee",
+        "#ffb86b": "#cbd8e6",
+        "#ffd166": "#b9c9db",
+        "#c9a0dc": "#a8bbd1",
+        "#7fcdbb": "#dbe4ee",
+        "#a8edea": "#cbd8e6",
+    }
+    for old, new in replacements.items():
+        example = example.replace(old, new)
+    return prefix + separator + example
+
+
+SCENE_EXTRACTION_V3_SYSTEM_PROMPT = _normalize_v3_box_example_palette(SCENE_EXTRACTION_V3_SYSTEM_PROMPT)
 
 
 SCENE_REPAIR_V3_SYSTEM_PROMPT = SYSTEM_PROMPT_SECURITY_PREFIX + "\n\n" + """
@@ -475,6 +508,8 @@ Nhiệm vụ: sửa scene để hết lỗi, giữ nguyên problem_text và inte
 - Xóa relation distance/angle/ratio dùng như goal nếu thiếu giá trị bắt buộc; giữ các object/segment minh họa cho đại lượng cần tính.
 - Cạnh thật dùng hidden=false, style="solid"; chỉ đường phụ dùng dashed/dotted.
 - Các face kề nhau dùng màu khác nhau trong palette của extraction prompt, opacity 0.12-0.22.
+- Giữ phân cấp semantic: mặt khối slate-blue; mặt cắt cam/viền đỏ; mặt goal hổ phách; construction khoảng cách teal; không đổi tất cả về một palette.
+- Khôi phục construction và annotation cho goal khoảng cách/góc nếu object IDs resolve được; không xóa goal chỉ để scene hợp lệ.
 - Tự đếm lại topology: hộp 8/12/6; lăng trụ đáy n cạnh 2n/3n/(n+2); chóp n cạnh (n+1)/2n/(n+1); tứ diện 4/6/4.
 - Mọi ref_id phải tồn tại trong chính scene JSON được trả về.
 - Không quay về schema v2 (name/object_1/object_2).

@@ -6,7 +6,7 @@ from typing import Any, Iterable
 
 from app.schemas.scene_v3 import FaceV3, MathSceneV3, Point3DV3, SegmentV3
 
-FACE_PALETTE = ("#5da9ff", "#ffb86b", "#ffd166", "#c9a0dc", "#7fcdbb", "#a8edea")
+FACE_PALETTE = ("#dbe4ee", "#cbd8e6", "#b9c9db", "#a8bbd1")
 SOLID_EDGE_COLOR = "#1d3557"
 _VERTEX_RE = re.compile(r"[A-Z](?:['’′])?")
 _BOX_KEYWORD_RE = re.compile(r"\b(?:hình|khối)\s+(?:lập phương|hộp(?:\s+chữ nhật)?)\b", re.IGNORECASE)
@@ -178,6 +178,7 @@ def complete_standard_solid_topology(scene: MathSceneV3) -> MathSceneV3:
         return scene
 
     objects = _normalize_standard_solid_appearance(list(scene.objects), topology, points)
+    face_palette = _topology_face_palette(topology, points)
     used_ids = {obj.id for obj in objects}
     existing_edges = {
         frozenset(obj.point_ids)
@@ -207,7 +208,7 @@ def complete_standard_solid_topology(scene: MathSceneV3) -> MathSceneV3:
         for obj in objects
         if isinstance(obj, FaceV3)
     }
-    for index, labels in enumerate(topology.faces):
+    for labels in topology.faces:
         point_ids = [points[label] for label in labels]
         key = frozenset(point_ids)
         if key in existing_faces:
@@ -216,7 +217,7 @@ def complete_standard_solid_topology(scene: MathSceneV3) -> MathSceneV3:
             id=_unique_id(_preferred_face_id(labels), used_ids),
             label="".join(labels),
             point_ids=point_ids,
-            color=FACE_PALETTE[index % len(FACE_PALETTE)],
+            color=face_palette[frozenset(point_ids)],
             opacity=0.22,
             source="construction",
             metadata={"topology_rule": topology.kind},
@@ -235,10 +236,7 @@ def _normalize_standard_solid_appearance(
         frozenset((points[start], points[end]))
         for start, end in topology.edges
     }
-    face_palette = {
-        frozenset(points[label] for label in labels): FACE_PALETTE[index % len(FACE_PALETTE)]
-        for index, labels in enumerate(topology.faces)
-    }
+    face_palette = _topology_face_palette(topology, points)
     normalized: list[Any] = []
     for obj in objects:
         if _style_is_user_owned(obj):
@@ -489,6 +487,23 @@ def _unique_label_map(pairs: Iterable[tuple[str, str]]) -> dict[str, str]:
 
 def _has_unique_vertices(topology: SolidTopology, points: dict[str, str]) -> bool:
     return all(label in points for label in topology.vertex_labels)
+
+
+def _topology_face_palette(topology: SolidTopology, points: dict[str, str]) -> dict[frozenset[str], str]:
+    """Tô graph mặt: hai mặt chung một cạnh luôn khác màu."""
+    face_keys = [frozenset(points[label] for label in labels) for labels in topology.faces]
+    assigned: dict[frozenset[str], str] = {}
+    for face in face_keys:
+        unavailable = {
+            color
+            for other, color in assigned.items()
+            if len(face.intersection(other)) >= 2
+        }
+        color = next((candidate for candidate in FACE_PALETTE if candidate not in unavailable), None)
+        if color is None:
+            color = FACE_PALETTE[len(assigned) % len(FACE_PALETTE)]
+        assigned[face] = color
+    return assigned
 
 
 def _spread_ai_face_colors(objects: list[Any]) -> list[Any]:

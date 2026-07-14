@@ -105,18 +105,20 @@ def test_render_edit_solve_export_history_restore_v3(tmp_path, monkeypatch):
         rendered = client.post("/api/render/v3", json={"problem_text": "Cho A(0,0), B(2,0).", "tier": "tier1"})
         assert rendered.status_code == 201
         assert rendered.json()["trusted_for_downstream"] is True
+        rendered_scene_id = rendered.json()["scene"]["scene_id"]
+        assert rendered.json()["projection"]["scene_id"] == rendered_scene_id
 
         edited = client.post("/api/render/v3/commands", json={"command": {
             "type": "move_point",
             "command_id": "e2e-move-b",
-            "scene_id": "e2e-v3-scene",
+            "scene_id": rendered_scene_id,
             "base_revision": 1,
             "point_id": "b",
             "position": [3, 0, 0],
         }})
         assert edited.status_code == 200
         assert edited.json()["scene"]["revision"] == 2
-        scene_ref = {"scene_id": "e2e-v3-scene", "revision": 2}
+        scene_ref = {"scene_id": rendered_scene_id, "revision": 2}
 
         solved = client.post("/api/solve", json={
             "scene_ref": scene_ref,

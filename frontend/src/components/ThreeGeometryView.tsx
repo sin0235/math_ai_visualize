@@ -6,7 +6,7 @@ import type { ComponentProps, ReactNode } from 'react';
 import * as THREE from 'three';
 
 import type { Annotation, ThreeScene } from '../types/scene';
-import { faceOpacity, segmentAppearance } from '../utils/threeGeometryAppearance';
+import { faceOpacity, planeOpacity, segmentAppearance } from '../utils/threeGeometryAppearance';
 
 export type ThreeSceneImageCapture = (mimeType: 'image/png' | 'image/jpeg') => Promise<Blob>;
 
@@ -431,7 +431,7 @@ function Planes({ scene }: ThreeGeometryViewProps) {
             <mesh geometry={geometry} renderOrder={-2}>
               <meshBasicMaterial
                 color={plane.color}
-                opacity={Math.min(plane.opacity, 0.07)}
+                opacity={planeOpacity(plane.opacity)}
                 transparent
                 side={THREE.DoubleSide}
                 depthWrite={false}
@@ -458,18 +458,34 @@ function Faces({ scene }: ThreeGeometryViewProps) {
         const vertices = face.points.map((name) => scene.points[name]).filter(Boolean);
         const geometry = polygonGeometry(vertices);
         if (!geometry) return null;
+        const labelPosition = centroid(vertices);
+        const showSemanticLabel = Boolean(face.name) && face.opacity >= 0.45;
         return (
-          <mesh key={face.name ?? face.points.join('-')} geometry={geometry} renderOrder={-1}>
-            <meshBasicMaterial
-              color={face.color}
-              opacity={faceOpacity(face.opacity)}
-              transparent
-              side={THREE.DoubleSide}
-              depthWrite={false}
-              polygonOffset
-              polygonOffsetFactor={1}
-            />
-          </mesh>
+          <group key={face.name ?? face.points.join('-')}>
+            <mesh geometry={geometry} renderOrder={-1}>
+              <meshBasicMaterial
+                color={face.color}
+                opacity={faceOpacity(face.opacity)}
+                transparent
+                side={THREE.DoubleSide}
+                depthWrite={false}
+                polygonOffset
+                polygonOffsetFactor={1}
+              />
+            </mesh>
+            {showSemanticLabel && (
+              <LabelText
+                position={[labelPosition.x, labelPosition.y + 0.16, labelPosition.z]}
+                fontSize={0.2}
+                color={face.color}
+                anchorX="center"
+                anchorY="middle"
+                fontWeight={700}
+              >
+                ({face.name})
+              </LabelText>
+            )}
+          </group>
         );
       })}
     </>
@@ -1196,7 +1212,7 @@ function RightAngleMark({ ann, points }: { ann: Annotation; points: Record<strin
         [corner.x, corner.y, corner.z],
         [b.x, b.y, b.z],
       ]}
-      color="#e63946"
+      color={ann.color ?? '#e63946'}
       lineWidth={2}
     />
   );

@@ -47,7 +47,7 @@ def classify_algebra_problem(problem: ParsedAlgebraProblem) -> str:
             "quadratic_same_sign_roots(",
         )):
             return "parameter"
-        if normalized.startswith("derivative("):
+        if normalized.startswith(("derivative(", "derivative_equation(")):
             return "calculus_derivative"
         if normalized.startswith("limit("):
             return "calculus_limit"

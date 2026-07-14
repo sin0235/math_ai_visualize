@@ -1,9 +1,96 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 
 _POINT = r"[A-Za-z](?:[0-9]+|')?"
 _PLANE_BODY = r"[A-Za-z0-9'\s.]+"
+_POINT_TOKEN_RE = re.compile(r"[A-Z](?:[0-9]+|')?")
+
+
+@dataclass(frozen=True)
+class AngleGoal:
+    kind: str
+    components: tuple[tuple[str, ...], ...]
+    label: str
+
+
+def parse_point_plane_distance_goal(question: str) -> tuple[str, tuple[str, ...]] | None:
+    """Đọc goal d(point,(plane)) đã chuẩn hóa mà không suy diễn thêm dữ kiện."""
+    canonical = normalize_solver_question(question)
+    match = re.fullmatch(
+        rf"d\(\s*({_POINT})\s*,\s*\(([^()]+)\)\s*\)",
+        canonical,
+        flags=re.IGNORECASE,
+    )
+    if not match:
+        return None
+    point = match.group(1).upper()
+    plane_text = match.group(2).replace(" ", "").upper()
+    plane_points = tuple(_POINT_TOKEN_RE.findall(plane_text))
+    if len(plane_points) < 3 or "".join(plane_points) != plane_text:
+        return None
+    return point, plane_points
+
+
+def parse_angle_goal(question: str) -> AngleGoal | None:
+    """Nhận diện các goal góc phổ biến, chỉ trả token hình học tường minh."""
+    text = normalize_solver_question(question)
+    flags = re.IGNORECASE
+    plane_plane = re.search(
+        r"g[oó]c\s+gi[uữ]a\s+(?:hai\s+)?m[aặ]t\s+ph[aẳ]ng\s*\(([^()]+)\)\s+v[aà]\s*\(([^()]+)\)",
+        text,
+        flags,
+    )
+    if plane_plane:
+        first = _explicit_point_sequence(plane_plane.group(1), minimum=3)
+        second = _explicit_point_sequence(plane_plane.group(2), minimum=3)
+        if first and second:
+            return AngleGoal("plane_plane", (first, second), f"∠(({''.join(first)}),({''.join(second)}))")
+
+    line_plane = re.search(
+        r"g[oó]c\s+gi[uữ]a\s+(?:đ[uư][oờ]ng\s+th[aẳ]ng\s+)?"
+        r"([A-Za-z](?:[0-9]+|')?[A-Za-z](?:[0-9]+|')?)\s+v[aà]\s+"
+        r"(?:m[aặ]t\s+ph[aẳ]ng\s*)?\(([^()]+)\)",
+        text,
+        flags,
+    )
+    if line_plane:
+        line = _explicit_point_sequence(line_plane.group(1), minimum=2, maximum=2)
+        plane = _explicit_point_sequence(line_plane.group(2), minimum=3)
+        if line and plane:
+            return AngleGoal("line_plane", (line, plane), f"∠({''.join(line)},({''.join(plane)}))")
+
+    line_line = re.search(
+        r"g[oó]c\s+gi[uữ]a\s+(?:hai\s+)?(?:đ[uư][oờ]ng\s+th[aẳ]ng\s+)?"
+        r"([A-Za-z](?:[0-9]+|')?[A-Za-z](?:[0-9]+|')?)\s+v[aà]\s+"
+        r"([A-Za-z](?:[0-9]+|')?[A-Za-z](?:[0-9]+|')?)",
+        text,
+        flags,
+    )
+    if line_line:
+        first = _explicit_point_sequence(line_line.group(1), minimum=2, maximum=2)
+        second = _explicit_point_sequence(line_line.group(2), minimum=2, maximum=2)
+        if first and second:
+            return AngleGoal("line_line", (first, second), f"∠({''.join(first)},{''.join(second)})")
+
+    point_angle = re.search(r"g[oó]c\s+([A-Za-z](?:[0-9]+|')?){3}", text, flags)
+    if point_angle:
+        token = point_angle.group(0).split()[-1]
+        points = _explicit_point_sequence(token, minimum=3, maximum=3)
+        if points:
+            return AngleGoal("point_angle", (points,), f"∠{''.join(points)}")
+    return None
+
+
+def _explicit_point_sequence(value: str, *, minimum: int, maximum: int | None = None) -> tuple[str, ...] | None:
+    compact = value.replace(" ", "").upper()
+    points = tuple(_POINT_TOKEN_RE.findall(compact))
+    if "".join(points) != compact or len(points) < minimum:
+        return None
+    if maximum is not None and len(points) > maximum:
+        return None
+    return points
 
 
 def normalize_solver_question(question: str) -> str:

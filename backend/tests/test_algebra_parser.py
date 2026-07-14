@@ -104,6 +104,20 @@ def test_interpreter_converts_vietnamese_equation_to_canonical_input():
     assert interpretation.variables == ["x"]
 
 
+def test_interpreter_treats_vietnamese_with_latex_as_mixed_and_extracts_derivative_goal():
+    raw = (
+        r"Câu 2: Cho hàm số f(x)=\frac{1}{3}x^3-2x^2+3x+8, "
+        r"nghiệm của phương trình f'(x)=0 là gì"
+    )
+
+    interpretation = interpret_algebra_input(AlgebraSolveRequest(input=raw))
+
+    assert interpretation.detected_format == "mixed"
+    assert interpretation.topic_hint == "calculus_derivative"
+    assert interpretation.variables == ["x"]
+    assert interpretation.canonical_input.startswith("derivative_equation(")
+
+
 def test_interpreter_converts_vietnamese_inequality_to_canonical_input():
     interpretation = interpret_algebra_input(AlgebraSolveRequest(input="Tìm x thỏa mãn (x-1)/(x+2) nhỏ hơn 0"))
     assert interpretation.canonical_input == "(x-1)/(x+2)<0"

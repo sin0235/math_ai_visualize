@@ -60,6 +60,7 @@ from app.services.scene_goal_visualization_v3 import (
     complete_metric_goal_visualizations,
     reserved_annotation_metadata_key,
 )
+from app.services.scene_angle_goal_visualization_v3 import complete_angle_goal_visualization
 
 logger = logging.getLogger(__name__)
 
@@ -350,6 +351,7 @@ def parse_math_scene_v3(raw: dict[str, Any], *, problem_text: str, grade: int | 
     scene = MathSceneV3.model_validate(repaired)
     scene = complete_standard_solid_topology(scene)
     scene = complete_metric_goal_visualizations(scene)
+    scene = complete_angle_goal_visualization(scene)
     fidelity_issues = validate_scene_fidelity(scene)
     if fidelity_issues:
         details = "; ".join(f"{issue.code}: {issue.message}" for issue in fidelity_issues)

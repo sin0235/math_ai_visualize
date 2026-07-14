@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.schemas.scene_v3 import AnnotationV3, MathSceneV3, Point3DV3, SegmentV3
+from app.schemas.scene_v3 import AnnotationV3, FaceV3, MathSceneV3, Point3DV3, SegmentV3
 from app.services.extractor_v3 import (
     extract_scene_v3,
     extract_scene_v3_mock,
@@ -188,14 +188,15 @@ def test_parse_converts_unknown_distance_goal_to_render_only_measurement():
     )
     assert connector.point_ids == ("pt_m", foot.id)
     assert connector.style == "dashed"
-    assert connector.color == "#7c3aed"
+    assert connector.color == "#0f766e"
+    assert connector.line_width == 3
     goal_annotations = [
         annotation
         for annotation in scene.annotations
         if annotation.metadata.get("visualization_role") == "distance_goal"
     ]
     assert {annotation.type for annotation in goal_annotations} == {"measurement", "right_angle"}
-    assert next(annotation for annotation in goal_annotations if annotation.type == "measurement").label == "d(M, (PFB))"
+    assert next(annotation for annotation in goal_annotations if annotation.type == "measurement").label == "d(M,(PFB))"
     result = run_scene_pipeline_v3(scene)
     assert result.status == "verified"
     assert result.can_project
@@ -205,6 +206,83 @@ def test_parse_converts_unknown_distance_goal_to_render_only_measurement():
     completed_again = complete_metric_goal_visualizations(scene)
     assert [obj.id for obj in completed_again.objects] == [obj.id for obj in scene.objects]
     assert [annotation.id for annotation in completed_again.annotations] == [annotation.id for annotation in scene.annotations]
+
+
+def test_parse_builds_point_plane_distance_visuals_from_problem_without_ai_relation():
+    scene = parse_math_scene_v3(
+        {
+            "topic": "solid_geometry",
+            "renderer": "threejs_3d",
+            "objects": [
+                {"id": "pt_m", "type": "point_3d", "label": "M", "x": 0.25, "y": 2, "z": 0.4},
+                {"id": "pt_p", "type": "point_3d", "label": "P", "x": 0, "y": 0, "z": 0},
+                {"id": "pt_f", "type": "point_3d", "label": "F", "x": 1, "y": 0, "z": 0},
+                {"id": "pt_b", "type": "point_3d", "label": "B", "x": 0, "y": 0, "z": 1},
+            ],
+            "view": {"dimension": "3d"},
+            "audit": {"created_by": "test"},
+        },
+        problem_text="Khoảng cách từ điểm (M) đến mặt phẳng ((PFB)) bằng bao nhiêu?",
+        grade=11,
+    )
+
+    target = next(
+        obj for obj in scene.objects
+        if isinstance(obj, FaceV3) and obj.metadata.get("visualization_role") == "distance_goal_plane"
+    )
+    connector = next(
+        obj for obj in scene.objects
+        if isinstance(obj, SegmentV3) and obj.metadata.get("visualization_role") == "distance_goal"
+    )
+    assert target.label == "PFB"
+    assert target.point_ids == ["pt_p", "pt_f", "pt_b"]
+    assert target.color == "#f59e0b"
+    assert connector.color == "#0f766e"
+    assert {annotation.type for annotation in scene.annotations} == {"measurement", "right_angle"}
+
+
+def test_cube_midpoint_problem_preserves_full_solid_and_highlights_question_goal():
+    edge = 8.0
+    coordinates = {
+        "A": (0, 0, 0), "B": (edge, 0, 0), "C": (edge, 0, edge), "D": (0, 0, edge),
+        "M": (0, edge, 0), "N": (edge, edge, 0), "P": (edge, edge, edge), "Q": (0, edge, edge),
+        "F": (edge / 2, 0, edge),
+    }
+    scene = parse_math_scene_v3(
+        {
+            "topic": "solid_geometry",
+            "renderer": "threejs_3d",
+            "objects": [
+                {"id": f"pt_{label.lower()}", "type": "point_3d", "label": label, "x": xyz[0], "y": xyz[1], "z": xyz[2]}
+                for label, xyz in coordinates.items()
+            ],
+            "view": {"dimension": "3d", "show_axes": False, "show_grid": False},
+            "audit": {"created_by": "test"},
+        },
+        problem_text=(
+            "Cho hình lập phương ABCD.MNPQ có cạnh bằng 8. F là trung điểm của CD. "
+            "Khoảng cách từ điểm M đến mặt phẳng ((PFB)) bằng bao nhiêu?"
+        ),
+        grade=11,
+    )
+
+    solid_segments = [obj for obj in scene.objects if isinstance(obj, SegmentV3) and obj.metadata.get("topology_rule") == "box"]
+    solid_faces = [obj for obj in scene.objects if isinstance(obj, FaceV3) and obj.metadata.get("topology_rule") == "box"]
+    goal_face = next(obj for obj in scene.objects if isinstance(obj, FaceV3) and obj.metadata.get("visualization_role") == "distance_goal_plane")
+    goal_segment = next(obj for obj in scene.objects if isinstance(obj, SegmentV3) and obj.metadata.get("visualization_role") == "distance_goal")
+
+    assert len(solid_segments) == 12
+    assert len(solid_faces) == 6
+    assert all(
+        first.color != second.color
+        for index, first in enumerate(solid_faces)
+        for second in solid_faces[index + 1:]
+        if len(set(first.point_ids).intersection(second.point_ids)) >= 2
+    )
+    assert goal_face.point_ids == ["pt_p", "pt_f", "pt_b"]
+    assert goal_face.color == "#f59e0b"
+    assert goal_segment.color == "#0f766e"
+    assert next(annotation for annotation in scene.annotations if annotation.type == "measurement").label == "d(M,(PFB))"
 
 
 def test_parse_strips_reserved_render_safe_flag_from_ai_annotation():

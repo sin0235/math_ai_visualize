@@ -14,6 +14,7 @@ from app.services.ai_prompt import (
     DEFAULT_SCENE_EXTRACTION_SYSTEM_PROMPT,
     REASONING_SYSTEM_PROMPT,
     SCENE_EXTRACTION_V3_SYSTEM_PROMPT,
+    SCENE_REPAIR_V3_SYSTEM_PROMPT,
     SYSTEM_PROMPT_SECURITY_PREFIX,
     _secure_system_prompt,
     build_reasoning_prompt,
@@ -104,9 +105,23 @@ def test_scene_v3_prompt_does_not_treat_unknown_metric_goal_as_constraint():
 def test_scene_v3_prompt_restores_point_plane_distance_construction_from_v2():
     text = SCENE_EXTRACTION_V3_SYSTEM_PROMPT
     assert "hình chiếu vuông góc H" in text
-    assert 'segment MH color #7c3aed line_width 2 style="dashed"' in text
+    assert 'segment MH color #0f766e line_width 3 style="dashed"' in text
     assert "right_angle target_ids=[id_M,id_H,id_A]" in text
-    assert "d(M, (ABC))" in text
+    assert "d(M,(ABC))" in text
+
+
+@pytest.mark.parametrize("snippet", [
+    "GIVEN",
+    "GOAL",
+    "góc hai đường",
+    "góc đường-mặt",
+    "góc hai mặt phẳng",
+    "mặt cắt cam/viền đỏ",
+    "#dbe4ee",
+    "#0f766e",
+])
+def test_scene_v3_prompt_preserves_given_and_goal_visual_semantics(snippet: str):
+    assert snippet in SCENE_EXTRACTION_V3_SYSTEM_PROMPT or snippet in SCENE_REPAIR_V3_SYSTEM_PROMPT
 
 
 def test_scene_v3_schema_sample_does_not_teach_known_missing_references():
@@ -125,7 +140,9 @@ def test_scene_v3_box_example_is_valid_and_topologically_complete():
 
     assert sum(obj.type == "segment" for obj in scene.objects) == 12
     assert sum(obj.type == "face" for obj in scene.objects) == 6
-    assert len({obj.color for obj in scene.objects if obj.type == "face"}) == 6
+    face_colors = {obj.color for obj in scene.objects if obj.type == "face"}
+    assert 3 <= len(face_colors) <= 4
+    assert face_colors.issubset({"#dbe4ee", "#cbd8e6", "#b9c9db", "#a8bbd1"})
 
 
 # ---------------------------------------------------------------------------

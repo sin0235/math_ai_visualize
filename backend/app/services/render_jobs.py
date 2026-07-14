@@ -89,6 +89,7 @@ async def _execute_claimed_job(db: DatabaseClient, job: RenderJobRecord, setting
     from pydantic import ValidationError
 
     from app.api.routes_render import (
+        _assign_new_render_identity,
         _run_render_nlp,
         build_problem_render_result_v3,
         sanitize_request_dump,
@@ -146,6 +147,7 @@ async def _execute_claimed_job(db: DatabaseClient, job: RenderJobRecord, setting
             detail = "; ".join(f"[{issue.code}] {issue.message}" for issue in error_issues[:4])
             raise RuntimeError(detail or f"Scene v3 không vượt qua pipeline ({code}).")
 
+        result = _assign_new_render_identity(result)
         response = workspace_response_v3(result, trusted_for_downstream=result.status == "verified")
         duration_ms = int((time.perf_counter() - started) * 1000)
         try:

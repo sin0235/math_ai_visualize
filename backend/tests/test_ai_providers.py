@@ -2,7 +2,7 @@ import httpx
 import pytest
 
 from app.core.config import Settings
-from app.services.ai_providers import NvidiaAdapter, OpenRouterAdapter, get_provider_adapter, should_send_thinking_payload
+from app.services.ai_providers import NvidiaAdapter, OpenRouterAdapter, get_provider_adapter, should_send_thinking_payload, _parse_nvidia_preview_catalog_page
 from app.services.openrouter_client import OpenRouterClient
 
 
@@ -105,6 +105,28 @@ def test_nvidia_chat_payload_uses_provider_specific_thinking_param():
     assert payload["chat_template_kwargs"] == {"thinking": True}
 
 
+def test_nvidia_preview_catalog_parser_reads_rsc_page_resources():
+    slugs, total_pages = _parse_nvidia_preview_catalog_page('''
+        {"resultPageTotal":4,"resultTotal":76,"resources":[
+          {"resourceId":"org/page-three-model"},
+          {"resourceId":"org/cosmos-transfer2_5-2b"}
+        ]}
+    ''')
+
+    assert total_pages == 4
+    assert slugs == {"page-three-model", "cosmos-transfer2_5-2b"}
+
+
+def test_nvidia_preview_catalog_parser_falls_back_to_html_links():
+    slugs, total_pages = _parse_nvidia_preview_catalog_page('''
+        <a href="/nvidia/glm-5_2">glm</a>
+        <a href="/explore/discover">Explore</a>
+    ''')
+
+    assert total_pages is None
+    assert slugs == {"glm-5_2"}
+
+
 @pytest.mark.anyio
 async def test_openrouter_client_explicit_thinking_requires_known_capability(monkeypatch):
     payloads = []
@@ -139,6 +161,16 @@ async def test_nvidia_adapter_lists_models_with_capabilities(monkeypatch):
                 "supported_parameters": ["thinking"],
             },
             {
+                "id": "nvidia/page-three-model",
+                "owned_by": "nvidia",
+                "supported_parameters": ["temperature"],
+            },
+            {
+                "id": "nvidia/cosmos-transfer2.5-2b",
+                "owned_by": "nvidia",
+                "supported_parameters": ["temperature"],
+            },
+            {
                 "id": "nvidia/not-free",
                 "owned_by": "nvidia",
                 "supported_parameters": ["temperature"],
@@ -146,7 +178,7 @@ async def test_nvidia_adapter_lists_models_with_capabilities(monkeypatch):
         ]})
 
     monkeypatch.setattr("app.services.ai_providers._get_openai_models", fake_get_openai_models)
-    monkeypatch.setattr("app.services.ai_providers._fetch_nvidia_preview_model_slugs", lambda: _async_result(({"vision"}, None)))
+    monkeypatch.setattr("app.services.ai_providers._fetch_nvidia_preview_model_slugs", lambda: _async_result(({"vision", "page-three-model", "cosmos-transfer2_5-2b"}, None)))
 
     result = await get_provider_adapter("nvidia").list_models(Settings(_env_file=None, nvidia_api_key="nvidia-secret"))
 
@@ -154,13 +186,40 @@ async def test_nvidia_adapter_lists_models_with_capabilities(monkeypatch):
         "Đã bỏ 1 NVIDIA model không thuộc Free Endpoint. "
         "Nguồn lọc: https://build.nvidia.com/models?filters=nimType%3Anim_type_preview"
     ]
-    assert len(result.models) == 1
-    model = result.models[0]
-    assert model.id == "nvidia/vision"
+    assert len(result.models) == 3
+    by_id = {model.id: model for model in result.models}
+    assert "nvidia/cosmos-transfer2.5-2b" in by_id
+    model = by_id["nvidia/vision"]
     assert model.is_free_endpoint is True
     assert model.supports_thinking is True
     assert model.supports_vision is True
     assert model.endpoint_metadata["owned_by"] == "nvidia"
+    catalog_model = by_id["nvidia/page-three-model"]
+    assert catalog_model.is_free_endpoint is True
+    assert catalog_model.endpoint_metadata["nvidia_free_endpoint_source"] == "https://build.nvidia.com/models?filters=nimType%3Anim_type_preview"
+
+
+@pytest.mark.anyio
+async def test_nvidia_adapter_warns_when_preview_catalog_fails(monkeypatch):
+    async def fake_get_openai_models(provider, headers, normalized_base, params=None, url=None):
+        return httpx.Response(200, json={"data": [
+            {"id": "nvidia/metadata-free", "nimType": "nim_type_preview"},
+            {"id": "nvidia/catalog-only"},
+        ]})
+
+    monkeypatch.setattr("app.services.ai_providers._get_openai_models", fake_get_openai_models)
+    monkeypatch.setattr(
+        "app.services.ai_providers._fetch_nvidia_preview_model_slugs",
+        lambda: _async_result((set(), "Không đọc được NVIDIA Free Endpoint catalog; chỉ dùng metadata trong /v1/models để lọc.")),
+    )
+
+    result = await get_provider_adapter("nvidia").list_models(Settings(_env_file=None, nvidia_api_key="nvidia-secret"))
+
+    assert [model.id for model in result.models] == ["nvidia/metadata-free"]
+    assert result.warnings == [
+        "Không đọc được NVIDIA Free Endpoint catalog; chỉ dùng metadata trong /v1/models để lọc.",
+        "Đã bỏ 1 NVIDIA model không thuộc Free Endpoint. Nguồn lọc: metadata Free Endpoint/nim_type_preview",
+    ]
 
 
 @pytest.mark.anyio

@@ -18,6 +18,11 @@ export function faceOpacity(requested: number): number {
   return clamp(requested, 0.2, 0.28);
 }
 
+export function planeOpacity(requested: number): number {
+  if (requested >= 0.2) return clamp(requested, 0.14, 0.28);
+  return clamp(requested * 0.55, 0.06, 0.12);
+}
+
 export function segmentAppearance(
   segment: SegmentAppearanceInput,
   dynamicHidden: boolean,

@@ -87,3 +87,32 @@ def test_llm_failure_falls_back_rule_based(monkeypatch):
     assert result.source == "rule_based_fallback"
     assert "arithmetic" in result.canonical_input
     assert "n=9" in result.canonical_input or "n=9" in result.canonical_input.replace(" ", "")
+
+
+def test_llm_cannot_drop_explicit_derivative_equation_goal(monkeypatch):
+    async def incomplete_extract(problem_text, base_request, settings):
+        payload = AlgebraExtractionPayload(
+            input="derivative(expr=x^3/3-2*x^2+3*x+8,var=x)",
+            input_format="structured",
+            topic="calculus_derivative",
+            domain="R",
+        )
+        return merge_extraction_request(base_request, payload)
+
+    monkeypatch.setattr(ai_extraction, "extract_algebra_request_with_ai", incomplete_extract)
+    raw = (
+        r"Cho hàm số f(x)=\frac{1}{3}x^3-2x^2+3x+8, "
+        r"nghiệm của phương trình f'(x)=0 là gì"
+    )
+
+    result = asyncio.run(resolve_algebra_nlp(
+        AlgebraSolveRequest(
+            input=raw,
+            options=AlgebraSolveOptions(use_ai_extraction=True),
+        ),
+        Settings(),
+    ))
+
+    assert result.source == "llm"
+    assert result.canonical_input.startswith("derivative_equation(")
+    assert result.request.topic == "calculus_derivative"
