@@ -8300,7 +8300,7 @@ pre {
 
 /* Step right column: content */
 .sp-step-content { display: grid; gap: 12px; min-width: 0; padding-bottom: 8px; }
-.sp-step-head    { display: flex; align-items: flex-start; gap: 8px; flex-wrap: wrap; }
+.sp-step-head    { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .sp-step-title   { font-size: var(--font-size-body); font-weight: 800; color: var(--ink); flex: 1; line-height: 1.3; }
 .sp-step-tag {
   flex-shrink: 0;
