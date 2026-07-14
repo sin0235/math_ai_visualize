@@ -13,6 +13,11 @@ export interface SegmentAppearance {
   opacity: number;
 }
 
+export function faceOpacity(requested: number): number {
+  if (requested >= 0.45) return clamp(requested, 0.45, 0.68);
+  return clamp(requested, 0.2, 0.28);
+}
+
 export function segmentAppearance(
   segment: SegmentAppearanceInput,
   dynamicHidden: boolean,
@@ -34,17 +39,18 @@ export function segmentAppearance(
   }
   if (dynamicHidden) {
     return {
-      color: '#9aa4b2',
-      lineWidth: Math.min(requestedWidth, 1.4),
+      color: '#748094',
+      lineWidth: Math.min(Math.max(requestedWidth, 1.7), 2),
       dashed: true,
-      dashSize: 0.26,
-      gapSize: 0.16,
-      opacity: 0.62,
+      dashSize: 0.22,
+      gapSize: 0.13,
+      opacity: 0.78,
     };
   }
+  const primarySolid = !dashed && (!segment.color || segment.color.toLowerCase() === '#1d3557');
   return {
     color: segment.color ?? '#1d3557',
-    lineWidth: requestedWidth,
+    lineWidth: primarySolid ? Math.max(requestedWidth, 2.6) : requestedWidth,
     dashed,
     dashSize: dotted ? 0.05 : 0.18,
     gapSize: dotted ? 0.1 : 0.11,

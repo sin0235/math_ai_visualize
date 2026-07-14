@@ -13,7 +13,8 @@ from app.schemas.algebra import (
     AlgebraVerificationReport,
 )
 from app.services.algebra.calculus_transformations import derivative_steps, integral_steps, limit_steps
-from app.services.algebra.parser import AlgebraParseError, ParsedAlgebraProblem, parse_algebra_expr
+from app.services.algebra.notation import algebra_latex, algebra_text
+from app.services.algebra.parser import AlgebraParseError, ParsedAlgebraProblem, algebra_local_dict, parse_algebra_expr
 
 
 @dataclass(frozen=True)
@@ -54,11 +55,11 @@ def solve_calculus(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
 def _solve_derivative_sum(problem: ParsedAlgebraProblem, template: CalculusTemplate) -> AlgebraSolveResponse:
     derivative = sp.Add(*template.derivative_terms)
     names = template.function_names
-    variable_latex = sp.latex(template.variable)
+    variable_latex = algebra_latex(template.variable)
     function_sum = "+".join(f"{name}({variable_latex})" for name in names)
     derivative_sum = "+".join(f"{name}'({variable_latex})" for name in names)
-    given_sum = "+".join(sp.latex(term) for term in template.derivative_terms)
-    answer_latex = sp.latex(derivative)
+    given_sum = "+".join(algebra_latex(term) for term in template.derivative_terms)
+    answer_latex = algebra_latex(derivative)
     steps = [
         AlgebraSolveStep(
             index=1,
@@ -85,7 +86,7 @@ def _solve_derivative_sum(problem: ParsedAlgebraProblem, template: CalculusTempl
             explanation="Cộng các biểu thức đạo hàm thành phần.",
             before_latex=given_sum,
             after_latex=answer_latex,
-            result=sp.sstr(derivative),
+            result=algebra_text(derivative),
             result_latex=answer_latex,
             kind="solve",
             confidence="verified",
@@ -107,9 +108,9 @@ def _solve_derivative_sum(problem: ParsedAlgebraProblem, template: CalculusTempl
         topic="calculus_derivative",
         problem_type="differentiate_sum_from_given_derivatives",
         status="solved",
-        answer=f"Đạo hàm: {sp.sstr(derivative)}",
+        answer=f"Đạo hàm: {algebra_text(derivative)}",
         answer_latex=answer_latex,
-        solution_set=AlgebraSolutionSet(kind="expression", text=sp.sstr(derivative), latex=answer_latex),
+        solution_set=AlgebraSolutionSet(kind="expression", text=algebra_text(derivative), latex=answer_latex),
         steps=steps,
         milestones=[
             f"Quy tắc tổng: {derivative_sum}",
@@ -126,13 +127,13 @@ def _solve_derivative(problem: ParsedAlgebraProblem, template: CalculusTemplate)
     if isinstance(derivative, sp.Derivative) or derivative.has(sp.Derivative):
         return _unsupported(problem, "calculus_derivative", "SymPy chưa rút gọn được đạo hàm (Derivative unevaluated).")
     steps = derivative_steps(template.expression, template.variable, derivative, template.order)
-    answer = f"Đạo hàm: {sp.sstr(derivative)}"
+    answer = f"Đạo hàm: {algebra_text(derivative)}"
     verification = _verify_derivative(template.expression, template.variable, derivative, template.order)
     status = "solved" if verification.status in {"verified", "partially_verified"} else "partial"
-    steps.append(_calculus_conclusion_step(len(steps) + 1, "Kết luận đạo hàm", answer, sp.latex(derivative)))
+    steps.append(_calculus_conclusion_step(len(steps) + 1, "Kết luận đạo hàm", answer, algebra_latex(derivative)))
     milestones = [
-        f"Biểu thức gốc: f({sp.latex(template.variable)}) = {sp.latex(template.expression)}",
-        f"Kết quả đạo hàm: f'({sp.latex(template.variable)}) = {sp.latex(derivative)}"
+        f"Biểu thức gốc: f({algebra_latex(template.variable)}) = {algebra_latex(template.expression)}",
+        f"Kết quả đạo hàm: f'({algebra_latex(template.variable)}) = {algebra_latex(derivative)}"
     ]
     return AlgebraSolveResponse(
         input=problem.raw_input,
@@ -141,8 +142,8 @@ def _solve_derivative(problem: ParsedAlgebraProblem, template: CalculusTemplate)
         problem_type="differentiate_expression",
         status=status,
         answer=answer,
-        answer_latex=sp.latex(derivative),
-        solution_set=AlgebraSolutionSet(kind="expression", text=sp.sstr(derivative), latex=sp.latex(derivative)),
+        answer_latex=algebra_latex(derivative),
+        solution_set=AlgebraSolutionSet(kind="expression", text=algebra_text(derivative), latex=algebra_latex(derivative)),
         steps=steps,
         milestones=milestones,
         verification=verification,
@@ -166,8 +167,8 @@ def _solve_limit(problem: ParsedAlgebraProblem, template: CalculusTemplate) -> A
             problem_type="calculate_limit",
             status="partial",
             answer="Giới hạn không xác định (complex infinity / zoo).",
-            answer_latex=sp.latex(result),
-            solution_set=AlgebraSolutionSet(kind="expression", text="zoo", latex=sp.latex(result)),
+            answer_latex=algebra_latex(result),
+            solution_set=AlgebraSolutionSet(kind="expression", text="zoo", latex=algebra_latex(result)),
             verification=AlgebraVerificationReport(
                 status="partially_verified",
                 checks=[AlgebraVerificationCheck(name="limit_zoo", status="warn", detail="Kết quả zoo không được coi là giới hạn hữu hạn đã kiểm chứng.")],
@@ -176,14 +177,14 @@ def _solve_limit(problem: ParsedAlgebraProblem, template: CalculusTemplate) -> A
             warnings=["Kết quả zoo (complex infinity) chỉ báo một phần."],
         )
     steps = limit_steps(template.expression, template.variable, template.point, template.direction, result)
-    answer = f"Giới hạn: {sp.sstr(result)}"
+    answer = f"Giới hạn: {algebra_text(result)}"
     verification = _verify_limit(template.expression, template.variable, template.point, template.direction, result)
     status = "solved" if verification.status in {"verified", "partially_verified"} else "partial"
-    steps.append(_calculus_conclusion_step(len(steps) + 1, "Kết luận giới hạn", answer, sp.latex(result)))
+    steps.append(_calculus_conclusion_step(len(steps) + 1, "Kết luận giới hạn", answer, algebra_latex(result)))
     dir_str = "^+" if template.direction == "+" else "^-" if template.direction == "-" else ""
     milestones = [
-        f"Giới hạn cần tính: \\lim_{{{sp.latex(template.variable)}\\to {sp.latex(template.point)}{dir_str}}}{sp.latex(template.expression)}",
-        f"Kết quả: {sp.latex(result)}"
+        f"Giới hạn cần tính: \\lim_{{{algebra_latex(template.variable)}\\to {algebra_latex(template.point)}{dir_str}}}{algebra_latex(template.expression)}",
+        f"Kết quả: {algebra_latex(result)}"
     ]
     return AlgebraSolveResponse(
         input=problem.raw_input,
@@ -192,8 +193,8 @@ def _solve_limit(problem: ParsedAlgebraProblem, template: CalculusTemplate) -> A
         problem_type="calculate_limit",
         status=status,
         answer=answer,
-        answer_latex=sp.latex(result),
-        solution_set=AlgebraSolutionSet(kind="expression", text=sp.sstr(result), latex=sp.latex(result)),
+        answer_latex=algebra_latex(result),
+        solution_set=AlgebraSolutionSet(kind="expression", text=algebra_text(result), latex=algebra_latex(result)),
         steps=steps,
         milestones=milestones,
         verification=verification,
@@ -213,10 +214,10 @@ def _solve_integral(problem: ParsedAlgebraProblem, template: CalculusTemplate) -
         if template.target is not None:
             equation = sp.Eq(result, template.target, evaluate=False)
             solutions = sp.solve(equation, template.upper)
-            latex = sp.latex(equation)
+            latex = algebra_latex(equation)
             if solutions:
-                answer = f"Nghiệm: {sp.sstr(template.upper)} = {', '.join(sp.sstr(solution) for solution in solutions)}"
-                latex = rf"{sp.latex(template.upper)}={', '.join(sp.latex(solution) for solution in solutions)}"
+                answer = f"Nghiệm: {algebra_text(template.upper)} = {', '.join(algebra_text(solution) for solution in solutions)}"
+                latex = rf"{algebra_latex(template.upper)}={', '.join(algebra_latex(solution) for solution in solutions)}"
                 result = sp.FiniteSet(*solutions)
             else:
                 answer = "Không tìm được nghiệm symbolic cho phương trình tích phân."
@@ -226,25 +227,25 @@ def _solve_integral(problem: ParsedAlgebraProblem, template: CalculusTemplate) -
                 method=["sympy.integrate", "sympy.solve"],
             )
         else:
-            answer = f"Giá trị tích phân: {sp.sstr(result)}"
-            latex = sp.latex(result)
+            answer = f"Giá trị tích phân: {algebra_text(result)}"
+            latex = algebra_latex(result)
             verification = _verify_definite_integral(template.expression, template.variable, template.lower, template.upper, result, antiderivative)
     else:
         result = antiderivative
-        answer = f"Nguyên hàm: {sp.sstr(result)} + C"
-        latex = sp.latex(result) + "+C"
+        answer = f"Nguyên hàm: {algebra_text(result)} + C"
+        latex = algebra_latex(result) + "+C"
         verification = _verify_antiderivative(template.expression, template.variable, antiderivative)
     steps = integral_steps(template.expression, template.variable, antiderivative, result, template.lower, template.upper)
     status = "solved" if verification.status in {"verified", "partially_verified"} else "partial"
     steps.append(_calculus_conclusion_step(len(steps) + 1, "Kết luận tích phân", answer, latex))
     milestones = []
     if is_definite:
-        milestones.append(f"Tích phân xác định: \\int_{{{sp.latex(template.lower)}}}^{{{sp.latex(template.upper)}}} {sp.latex(template.expression)} d{sp.latex(template.variable)}")
-        milestones.append(f"Nguyên hàm: {sp.latex(antiderivative)}")
-        milestones.append(f"Kết quả: {sp.latex(result)}")
+        milestones.append(f"Tích phân xác định: \\int_{{{algebra_latex(template.lower)}}}^{{{algebra_latex(template.upper)}}} {algebra_latex(template.expression)} d{algebra_latex(template.variable)}")
+        milestones.append(f"Nguyên hàm: {algebra_latex(antiderivative)}")
+        milestones.append(f"Kết quả: {algebra_latex(result)}")
     else:
-        milestones.append(f"Nguyên hàm cần tìm: \\int {sp.latex(template.expression)} d{sp.latex(template.variable)}")
-        milestones.append(f"Kết quả: {sp.latex(antiderivative)} + C")
+        milestones.append(f"Nguyên hàm cần tìm: \\int {algebra_latex(template.expression)} d{algebra_latex(template.variable)}")
+        milestones.append(f"Kết quả: {algebra_latex(antiderivative)} + C")
 
     return AlgebraSolveResponse(
         input=problem.raw_input,
@@ -254,7 +255,7 @@ def _solve_integral(problem: ParsedAlgebraProblem, template: CalculusTemplate) -
         status=status,
         answer=answer,
         answer_latex=latex,
-        solution_set=AlgebraSolutionSet(kind="expression", text=sp.sstr(result), latex=latex),
+        solution_set=AlgebraSolutionSet(kind="expression", text=algebra_text(result), latex=latex),
         steps=steps,
         milestones=milestones,
         verification=verification,
@@ -270,7 +271,7 @@ def _verify_derivative(expression: sp.Expr, variable: sp.Symbol, derivative: sp.
         name="derivative_recompute",
         status="pass" if symbolic_ok else "fail",
         detail="Tính lại bằng cùng CAS chỉ là consistency replay; finite-difference mới là cross-check độc lập.",
-        latex=sp.latex(derivative),
+        latex=algebra_latex(derivative),
     ))
     numeric_ok = _numeric_derivative_check(expression, variable, derivative, order)
     checks.append(AlgebraVerificationCheck(
@@ -284,6 +285,8 @@ def _verify_derivative(expression: sp.Expr, variable: sp.Symbol, derivative: sp.
     ))
     if any(check.status == "fail" for check in checks):
         status = "failed"
+    elif all(check.status == "pass" for check in checks):
+        status = "verified"
     else:
         status = "partially_verified"
     return AlgebraVerificationReport(status=status, checks=checks, method=["solver_consistency_replay", "finite_difference"])
@@ -297,7 +300,7 @@ def _verify_antiderivative(expression: sp.Expr, variable: sp.Symbol, antiderivat
         name="integral_diff_back",
         status="pass" if symbolic_ok else "fail",
         detail="Kiểm chứng nguyên hàm bằng d/dx(F) - f → 0.",
-        latex=sp.latex(back),
+        latex=algebra_latex(back),
     ))
     if symbolic_ok:
         status = "verified"
@@ -331,7 +334,7 @@ def _verify_definite_integral(
             name="integral_newton_leibniz",
             status="pass" if ok else "warn",
             detail="Đối chiếu F(b)-F(a) với kết quả integrate xác định (giả định không kỳ dị trong khoảng).",
-            latex=sp.latex(newton),
+            latex=algebra_latex(newton),
         ))
     except Exception:
         checks.append(AlgebraVerificationCheck(
@@ -356,7 +359,7 @@ def _verify_limit(expression: sp.Expr, variable: sp.Symbol, point: sp.Expr, dire
         name="limit_recompute",
         status="pass" if symbolic_ok else "fail",
         detail="Tính lại bằng cùng CAS chỉ là consistency replay; numeric approach mới là cross-check độc lập.",
-        latex=sp.latex(result),
+        latex=algebra_latex(result),
     ))
     numeric_ok = _numeric_limit_sample(expression, variable, point, direction, result)
     checks.append(AlgebraVerificationCheck(
@@ -366,6 +369,8 @@ def _verify_limit(expression: sp.Expr, variable: sp.Symbol, point: sp.Expr, dire
     ))
     if any(check.status == "fail" for check in checks):
         status = "failed"
+    elif all(check.status == "pass" for check in checks):
+        status = "verified"
     else:
         status = "partially_verified"
     return AlgebraVerificationReport(status=status, checks=checks, method=["solver_consistency_replay", "numeric_approach"])
@@ -456,12 +461,12 @@ def _derivative_steps(template: CalculusTemplate, derivative: sp.Expr) -> list[A
             why="Đạo hàm luôn gắn với một biến cụ thể.",
             rule="Ký hiệu đạo hàm",
             operation="Gọi f(x) là biểu thức đã cho.",
-            before_latex=sp.latex(expression),
-            after_latex=rf"f\left({sp.latex(variable)}\right)={sp.latex(expression)}",
+            before_latex=algebra_latex(expression),
+            after_latex=rf"f\left({algebra_latex(variable)}\right)={algebra_latex(expression)}",
             pitfall="Không nhầm biến lấy đạo hàm với tham số/hằng số.",
             check="Biểu thức sau khi đặt f(x) phải đúng với đề bài.",
-            expression=sp.sstr(expression),
-            expression_latex=sp.latex(expression),
+            expression=algebra_text(expression),
+            expression_latex=algebra_latex(expression),
             kind="transform",
             confidence="symbolic",
         )
@@ -477,12 +482,12 @@ def _derivative_steps(template: CalculusTemplate, derivative: sp.Expr) -> list[A
         why="Sau khi áp dụng quy tắc đạo hàm, biểu thức có thể còn chưa rút gọn.",
         rule="Rút gọn đại số",
         operation="Thu gọn các tích, tổng và lũy thừa.",
-        before_latex=sp.latex(sp.diff(expression, variable, template.order)),
-        after_latex=sp.latex(derivative),
+        before_latex=algebra_latex(sp.diff(expression, variable, template.order)),
+        after_latex=algebra_latex(derivative),
         pitfall="Không được rút gọn làm thay đổi miền xác định nếu bài yêu cầu xét miền.",
         check="Lấy đạo hàm lại bằng quy tắc hoặc kiểm tra symbolic để đối chiếu.",
-        result=sp.sstr(derivative),
-        result_latex=sp.latex(derivative),
+        result=algebra_text(derivative),
+        result_latex=algebra_latex(derivative),
         kind="solve",
         confidence="verified",
     ))
@@ -501,10 +506,10 @@ def _derivative_rule_step(template: CalculusTemplate, derivative: sp.Expr, index
             why="Quy tắc tổng cho phép xử lý từng hạng tử riêng.",
             rule="(u+v)' = u' + v'",
             operation="Lấy đạo hàm từng hạng tử rồi cộng lại.",
-            before_latex=sp.latex(expression),
-            after_latex=" + ".join(sp.latex(sp.diff(term, variable)) for term in sp.Add.make_args(expression)),
+            before_latex=algebra_latex(expression),
+            after_latex=" + ".join(algebra_latex(sp.diff(term, variable)) for term in sp.Add.make_args(expression)),
             check="Cộng các đạo hàm riêng phải ra đạo hàm của tổng.",
-            result_latex=sp.latex(derivative),
+            result_latex=algebra_latex(derivative),
             kind="transform",
             confidence="symbolic",
         )
@@ -517,11 +522,11 @@ def _derivative_rule_step(template: CalculusTemplate, derivative: sp.Expr, index
             why="Không được lấy đạo hàm từng thừa số rồi nhân lại.",
             rule="(uv)' = u'v + uv'",
             operation="Áp dụng quy tắc tích rồi rút gọn.",
-            before_latex=sp.latex(expression),
-            after_latex=sp.latex(sp.diff(expression, variable)),
+            before_latex=algebra_latex(expression),
+            after_latex=algebra_latex(sp.diff(expression, variable)),
             pitfall="Sai lầm thường gặp là viết (uv)' = u'v'.",
             check="Mỗi hạng tử trong quy tắc tích phải giữ một thừa số chưa đạo hàm.",
-            result_latex=sp.latex(derivative),
+            result_latex=algebra_latex(derivative),
             kind="transform",
             confidence="symbolic",
         )
@@ -536,11 +541,11 @@ def _derivative_rule_step(template: CalculusTemplate, derivative: sp.Expr, index
             why="Khi f(x) = u(x)^n, cần nhân thêm u'(x).",
             rule="(u^n)' = n u^{n-1} u'",
             operation="Đặt u là biểu thức bên trong, lấy đạo hàm lũy thừa rồi nhân u'.",
-            before_latex=sp.latex(expression),
-            after_latex=rf"{sp.latex(exponent)}\left({sp.latex(inner)}\right)^{{{sp.latex(exponent - 1)}}}\cdot\left({sp.latex(sp.diff(inner, variable))}\right)",
+            before_latex=algebra_latex(expression),
+            after_latex=rf"{algebra_latex(exponent)}\left({algebra_latex(inner)}\right)^{{{algebra_latex(exponent - 1)}}}\cdot\left({algebra_latex(sp.diff(inner, variable))}\right)",
             pitfall="Không quên nhân đạo hàm của biểu thức bên trong.",
             check="Nếu u=x thì công thức trở về đạo hàm lũy thừa cơ bản.",
-            result_latex=sp.latex(derivative),
+            result_latex=algebra_latex(derivative),
             kind="transform",
             confidence="symbolic",
         )
@@ -553,8 +558,8 @@ def _limit_steps(template: CalculusTemplate, result: sp.Expr) -> list[AlgebraSol
     point = template.point
     direct = sp.simplify(expression.subs(variable, point))
     is_zero_over_zero = _is_indeterminate_zero_over_zero(expression, variable, point)
-    direct_text = "0/0" if is_zero_over_zero else sp.sstr(direct)
-    direct_latex = r"\frac{0}{0}" if is_zero_over_zero else sp.latex(direct)
+    direct_text = "0/0" if is_zero_over_zero else algebra_text(direct)
+    direct_latex = r"\frac{0}{0}" if is_zero_over_zero else algebra_latex(direct)
     steps = [
         AlgebraSolveStep(
             index=1,
@@ -563,8 +568,8 @@ def _limit_steps(template: CalculusTemplate, result: sp.Expr) -> list[AlgebraSol
             goal="Nhận biết giới hạn trực tiếp hay dạng vô định.",
             why="Nếu thay trực tiếp ra giá trị xác định thì đó thường là giới hạn.",
             rule="Thay trực tiếp",
-            operation=f"Thay {sp.sstr(variable)} = {sp.sstr(point)} vào biểu thức.",
-            before_latex=rf"\lim_{{{sp.latex(variable)}\to {sp.latex(point)}}}{sp.latex(expression)}",
+            operation=f"Thay {algebra_text(variable)} = {algebra_text(point)} vào biểu thức.",
+            before_latex=rf"\lim_{{{algebra_latex(variable)}\to {algebra_latex(point)}}}{algebra_latex(expression)}",
             after_latex=direct_latex,
             pitfall="Nếu gặp 0/0 hoặc oo/oo thì chưa được kết luận.",
             check="Kết quả thay trực tiếp phải xác định.",
@@ -584,11 +589,11 @@ def _limit_steps(template: CalculusTemplate, result: sp.Expr) -> list[AlgebraSol
             why="Dạng 0/0 thường xuất hiện do tử và mẫu có nhân tử chung.",
             rule="Phân tích nhân tử và rút gọn",
             operation="Rút gọn phân thức rồi mới thay lại giá trị tiến tới.",
-            before_latex=sp.latex(expression),
-            after_latex=sp.latex(simplified),
+            before_latex=algebra_latex(expression),
+            after_latex=algebra_latex(simplified),
             pitfall="Chỉ rút gọn trong quá trình tính giới hạn, không kết luận giá trị hàm tại điểm đó.",
             check="Biểu thức rút gọn phải bằng biểu thức cũ trên vùng gần điểm đang xét.",
-            result_latex=sp.latex(simplified),
+            result_latex=algebra_latex(simplified),
             kind="transform",
             confidence="symbolic",
         ))
@@ -600,11 +605,11 @@ def _limit_steps(template: CalculusTemplate, result: sp.Expr) -> list[AlgebraSol
         why="Giới hạn mô tả giá trị biểu thức tiến gần tới, không nhất thiết là giá trị tại điểm đó.",
         rule="Tính giới hạn",
         operation="Lấy giới hạn symbolic sau các bước biến đổi.",
-        before_latex=rf"\lim_{{{sp.latex(variable)}\to {sp.latex(point)}}}{sp.latex(expression)}",
-        after_latex=sp.latex(result),
+        before_latex=rf"\lim_{{{algebra_latex(variable)}\to {algebra_latex(point)}}}{algebra_latex(expression)}",
+        after_latex=algebra_latex(result),
         check="Có thể kiểm tra bằng thay các giá trị rất gần điểm tiến tới.",
-        result=sp.sstr(result),
-        result_latex=sp.latex(result),
+        result=algebra_text(result),
+        result_latex=algebra_latex(result),
         kind="solve",
         confidence="verified",
     ))
@@ -623,11 +628,11 @@ def _integral_steps(template: CalculusTemplate, antiderivative: sp.Expr, result:
             why="Tích phân phải theo một biến cụ thể; các chữ khác được xem như hằng số.",
             rule="Ký hiệu tích phân",
             operation="Gọi biểu thức dưới dấu tích phân là f(x).",
-            before_latex=sp.latex(expression),
-            after_latex=rf"f\left({sp.latex(variable)}\right)={sp.latex(expression)}",
+            before_latex=algebra_latex(expression),
+            after_latex=rf"f\left({algebra_latex(variable)}\right)={algebra_latex(expression)}",
             check="Biểu thức f(x) phải đúng với đề bài.",
-            expression=sp.sstr(expression),
-            expression_latex=sp.latex(expression),
+            expression=algebra_text(expression),
+            expression_latex=algebra_latex(expression),
             kind="transform",
             confidence="symbolic",
         ),
@@ -639,12 +644,12 @@ def _integral_steps(template: CalculusTemplate, antiderivative: sp.Expr, result:
             why="Tích phân xác định được tính bằng hiệu giá trị của nguyên hàm tại hai cận.",
             rule="Bảng nguyên hàm cơ bản",
             operation="Áp dụng quy tắc nguyên hàm và rút gọn.",
-            before_latex=rf"\int {sp.latex(expression)}\,d{sp.latex(variable)}",
-            after_latex=sp.latex(antiderivative),
+            before_latex=rf"\int {algebra_latex(expression)}\,d{algebra_latex(variable)}",
+            after_latex=algebra_latex(antiderivative),
             pitfall="Nguyên hàm không xác định phải có hằng số C.",
             check="Đạo hàm của nguyên hàm phải ra lại biểu thức ban đầu.",
-            result=sp.sstr(antiderivative),
-            result_latex=sp.latex(antiderivative),
+            result=algebra_text(antiderivative),
+            result_latex=algebra_latex(antiderivative),
             kind="solve",
             confidence="symbolic",
         ),
@@ -658,12 +663,12 @@ def _integral_steps(template: CalculusTemplate, antiderivative: sp.Expr, result:
             why="Giá trị tích phân từ a đến b bằng F(b) - F(a).",
             rule="Newton-Leibniz",
             operation="Lấy nguyên hàm tại cận trên trừ nguyên hàm tại cận dưới.",
-            before_latex=rf"\left[{sp.latex(antiderivative)}\right]_{{{sp.latex(template.lower)}}}^{{{sp.latex(template.upper)}}}",
-            after_latex=rf"{sp.latex(antiderivative.subs(variable, template.upper))}-{sp.latex(antiderivative.subs(variable, template.lower))}={sp.latex(result)}",
+            before_latex=rf"\left[{algebra_latex(antiderivative)}\right]_{{{algebra_latex(template.lower)}}}^{{{algebra_latex(template.upper)}}}",
+            after_latex=rf"{algebra_latex(antiderivative.subs(variable, template.upper))}-{algebra_latex(antiderivative.subs(variable, template.lower))}={algebra_latex(result)}",
             pitfall="Không đổi thứ tự cận trên và cận dưới.",
             check="Nếu đổi cận, kết quả phải đổi dấu.",
-            result=sp.sstr(result),
-            result_latex=sp.latex(result),
+            result=algebra_text(result),
+            result_latex=algebra_latex(result),
             kind="solve",
             confidence="verified",
         ))
@@ -702,7 +707,7 @@ def _parse_template(text: str, topic: str, default_variable: sp.Symbol) -> Calcu
         raise ValueError("Dùng dạng derivative(expr=...,var=x), limit(expr=...,var=x,to=...), hoặc integral(expr=...,var=x).")
     name, args_text = match.groups()
     args = _parse_args(args_text)
-    variable_name = args.get("var", sp.sstr(default_variable))
+    variable_name = args.get("var", algebra_text(default_variable))
     if not re.fullmatch(r"[A-Za-z]", variable_name):
         raise ValueError("var cần là tên biến một chữ cái.")
     variable = sp.Symbol(variable_name, real=True)
@@ -796,31 +801,10 @@ def _split_args(text: str) -> list[str]:
 
 
 def _local_dict(variable: sp.Symbol) -> dict[str, object]:
-    names = {"x", "y", "z", "t", "u", sp.sstr(variable)}
-    data: dict[str, object] = {name: sp.Symbol(name, real=True) for name in names}
-    data.update({
-        "sqrt": sp.sqrt,
-        "sin": sp.sin,
-        "cos": sp.cos,
-        "tan": sp.tan,
-        "cot": sp.cot,
-        "asin": sp.asin,
-        "acos": sp.acos,
-        "atan": sp.atan,
-        "acot": sp.acot,
-        "arcsin": sp.asin,
-        "arccos": sp.acos,
-        "arctan": sp.atan,
-        "arccot": sp.acot,
-        "log": sp.log,
-        "ln": sp.log,
-        "exp": sp.exp,
-        "pi": sp.pi,
-        "E": sp.E,
-        "oo": sp.oo,
-        "Piecewise": sp.Piecewise,
-    })
-    data[sp.sstr(variable)] = variable
+    names = {"x", "y", "z", "t", "u", algebra_text(variable)}
+    data = algebra_local_dict(sorted(names))
+    data["Piecewise"] = sp.Piecewise
+    data[algebra_text(variable)] = variable
     return data
 
 
@@ -842,8 +826,8 @@ def _solve_derivative_by_definition(problem: ParsedAlgebraProblem, template: Cal
         steps = [
             AlgebraSolveStep(
                 index=1,
-                title=f"Viết công thức đạo hàm bằng định nghĩa tại x = {sp.sstr(x0)}",
-                explanation=f"Đạo hàm của hàm số tại $x_0 = {sp.latex(x0)}$ được tính bằng giới hạn: $\\lim_{{{sp.latex(delta_x)}\\to 0}} \\frac{{f({sp.latex(x0)}+{sp.latex(delta_x)}) - f({sp.latex(x0)})}}{{{sp.latex(delta_x)}}}$",
+                title=f"Viết công thức đạo hàm bằng định nghĩa tại x = {algebra_text(x0)}",
+                explanation=f"Đạo hàm của hàm số tại $x_0 = {algebra_latex(x0)}$ được tính bằng giới hạn: $\\lim_{{{algebra_latex(delta_x)}\\to 0}} \\frac{{f({algebra_latex(x0)}+{algebra_latex(delta_x)}) - f({algebra_latex(x0)})}}{{{algebra_latex(delta_x)}}}$",
                 short_explanation="Dùng định nghĩa đạo hàm tại một điểm.",
                 detail_level="standard",
                 method="derivative_definition",
@@ -851,8 +835,8 @@ def _solve_derivative_by_definition(problem: ParsedAlgebraProblem, template: Cal
                 why="Định nghĩa đạo hàm là giới hạn của tỉ số gia số hàm số trên gia số đối số.",
                 rule="Đạo hàm bằng định nghĩa",
                 operation="Thay hàm số vào công thức giới hạn.",
-                after_latex=rf"f'({sp.latex(x0)}) = \lim_{{{sp.latex(delta_x)}\to 0}} \frac{{{sp.latex(f_x0_dx)} - \left({sp.latex(f_x0)}\right)}}{{{sp.latex(delta_x)}}}",
-                result_latex=sp.latex(ratio),
+                after_latex=rf"f'({algebra_latex(x0)}) = \lim_{{{algebra_latex(delta_x)}\to 0}} \frac{{{algebra_latex(f_x0_dx)} - \left({algebra_latex(f_x0)}\right)}}{{{algebra_latex(delta_x)}}}",
+                result_latex=algebra_latex(ratio),
                 kind="transform",
                 confidence="symbolic",
             )
@@ -863,11 +847,11 @@ def _solve_derivative_by_definition(problem: ParsedAlgebraProblem, template: Cal
             st.index = len(steps) + 1
             steps.append(st)
             
-        answer = f"f'({sp.sstr(x0)}) = {sp.sstr(result)}"
-        answer_latex = sp.latex(result)
+        answer = f"f'({algebra_text(x0)}) = {algebra_text(result)}"
+        answer_latex = algebra_latex(result)
         milestones = [
-            f"Hàm số: f({sp.latex(x)}) = {sp.latex(f_x)}",
-            f"Đạo hàm tại x_0 = {sp.latex(x0)}: {sp.latex(result)}"
+            f"Hàm số: f({algebra_latex(x)}) = {algebra_latex(f_x)}",
+            f"Đạo hàm tại x_0 = {algebra_latex(x0)}: {algebra_latex(result)}"
         ]
     else:
         f_x_dx = f_x.subs(x, x + delta_x)
@@ -879,7 +863,7 @@ def _solve_derivative_by_definition(problem: ParsedAlgebraProblem, template: Cal
             AlgebraSolveStep(
                 index=1,
                 title="Viết công thức đạo hàm bằng định nghĩa",
-                explanation=f"Đạo hàm của hàm số $f({sp.latex(x)})$ được tính bằng giới hạn: $\\lim_{{{sp.latex(delta_x)}\\to 0}} \\frac{{f({sp.latex(x)}+{sp.latex(delta_x)}) - f({sp.latex(x)})}}{{{sp.latex(delta_x)}}}$",
+                explanation=f"Đạo hàm của hàm số $f({algebra_latex(x)})$ được tính bằng giới hạn: $\\lim_{{{algebra_latex(delta_x)}\\to 0}} \\frac{{f({algebra_latex(x)}+{algebra_latex(delta_x)}) - f({algebra_latex(x)})}}{{{algebra_latex(delta_x)}}}$",
                 short_explanation="Dùng định nghĩa đạo hàm.",
                 detail_level="standard",
                 method="derivative_definition",
@@ -887,8 +871,8 @@ def _solve_derivative_by_definition(problem: ParsedAlgebraProblem, template: Cal
                 why="Định nghĩa đạo hàm là giới hạn của tỉ số gia số hàm số trên gia số đối số.",
                 rule="Đạo hàm bằng định nghĩa",
                 operation="Thay hàm số vào công thức giới hạn.",
-                after_latex=rf"f'({sp.latex(x)}) = \lim_{{{sp.latex(delta_x)}\to 0}} \frac{{{sp.latex(f_x_dx)} - \left({sp.latex(f_x)}\right)}}{{{sp.latex(delta_x)}}}",
-                result_latex=sp.latex(ratio),
+                after_latex=rf"f'({algebra_latex(x)}) = \lim_{{{algebra_latex(delta_x)}\to 0}} \frac{{{algebra_latex(f_x_dx)} - \left({algebra_latex(f_x)}\right)}}{{{algebra_latex(delta_x)}}}",
+                result_latex=algebra_latex(ratio),
                 kind="transform",
                 confidence="symbolic",
             )
@@ -899,11 +883,11 @@ def _solve_derivative_by_definition(problem: ParsedAlgebraProblem, template: Cal
             st.index = len(steps) + 1
             steps.append(st)
             
-        answer = f"f'({sp.sstr(x)}) = {sp.sstr(result)}"
-        answer_latex = sp.latex(result)
+        answer = f"f'({algebra_text(x)}) = {algebra_text(result)}"
+        answer_latex = algebra_latex(result)
         milestones = [
-            f"Hàm số: f({sp.latex(x)}) = {sp.latex(f_x)}",
-            f"Đạo hàm bằng định nghĩa: f'({sp.latex(x)}) = {sp.latex(result)}"
+            f"Hàm số: f({algebra_latex(x)}) = {algebra_latex(f_x)}",
+            f"Đạo hàm bằng định nghĩa: f'({algebra_latex(x)}) = {algebra_latex(result)}"
         ]
 
     # Independent check: definition result should match ordinary derivative.
@@ -918,7 +902,7 @@ def _solve_derivative_by_definition(problem: ParsedAlgebraProblem, template: Cal
         status="solved" if verification.status in {"verified", "partially_verified"} else "partial",
         answer=answer,
         answer_latex=answer_latex,
-        solution_set=AlgebraSolutionSet(kind="expression", text=sp.sstr(result), latex=sp.latex(result)),
+        solution_set=AlgebraSolutionSet(kind="expression", text=algebra_text(result), latex=algebra_latex(result)),
         steps=steps,
         milestones=milestones,
         verification=verification,
@@ -949,18 +933,18 @@ def _solve_continuous_at(problem: ParsedAlgebraProblem, template: CalculusTempla
     steps.append(
         AlgebraSolveStep(
             index=1,
-            title=f"Tính giá trị hàm số tại x = {sp.sstr(x0)}",
-            explanation=f"Thay $x = {sp.latex(x0)}$ vào hàm số để tìm $f({sp.latex(x0)})$. " + (f"Ta được $f({sp.latex(x0)}) = {sp.latex(f_x0)}$." if is_f_x0_defined else f"Hàm số không xác định tại $x = {sp.latex(x0)}$."),
-            short_explanation=f"Tính f({sp.latex(x0)}).",
+            title=f"Tính giá trị hàm số tại x = {algebra_text(x0)}",
+            explanation=f"Thay $x = {algebra_latex(x0)}$ vào hàm số để tìm $f({algebra_latex(x0)})$. " + (f"Ta được $f({algebra_latex(x0)}) = {algebra_latex(f_x0)}$." if is_f_x0_defined else f"Hàm số không xác định tại $x = {algebra_latex(x0)}$."),
+            short_explanation=f"Tính f({algebra_latex(x0)}).",
             detail_level="standard",
             method="continuous_eval",
             goal="Xác định f(x0).",
             why="Để hàm số liên tục tại điểm, giá trị hàm số tại đó phải tồn tại.",
             rule="Định nghĩa liên tục",
             operation="Thay x0 vào biểu thức.",
-            after_latex=rf"f({sp.latex(x0)}) = {sp.latex(f_x0)}" if is_f_x0_defined else r"\text{Không xác định}",
-            result=sp.sstr(f_x0) if is_f_x0_defined else "undefined",
-            result_latex=sp.latex(f_x0) if is_f_x0_defined else "undefined",
+            after_latex=rf"f({algebra_latex(x0)}) = {algebra_latex(f_x0)}" if is_f_x0_defined else r"\text{Không xác định}",
+            result=algebra_text(f_x0) if is_f_x0_defined else "undefined",
+            result_latex=algebra_latex(f_x0) if is_f_x0_defined else "undefined",
             kind="solve",
             confidence="verified",
         )
@@ -1006,8 +990,8 @@ def _solve_continuous_at(problem: ParsedAlgebraProblem, template: CalculusTempla
         steps.append(
             AlgebraSolveStep(
                 index=2,
-                title=f"Tính giới hạn trái tại x = {sp.sstr(x0)}",
-                explanation=f"Tính giới hạn của hàm số khi $x \\to {sp.latex(x0)}^-$. Kết quả: $\\lim_{{x \\to {sp.latex(x0)}^-}} f(x) = {sp.latex(lim_left)}$.",
+                title=f"Tính giới hạn trái tại x = {algebra_text(x0)}",
+                explanation=f"Tính giới hạn của hàm số khi $x \\to {algebra_latex(x0)}^-$. Kết quả: $\\lim_{{x \\to {algebra_latex(x0)}^-}} f(x) = {algebra_latex(lim_left)}$.",
                 short_explanation="Tính giới hạn trái.",
                 detail_level="standard",
                 method="limit_left",
@@ -1015,9 +999,9 @@ def _solve_continuous_at(problem: ParsedAlgebraProblem, template: CalculusTempla
                 why="Hàm phân nhánh cần tính giới hạn 2 bên.",
                 rule="Giới hạn",
                 operation="Lấy giới hạn.",
-                after_latex=rf"\lim_{{x \to {sp.latex(x0)}^-}} f(x) = {sp.latex(lim_left)}",
-                result=sp.sstr(lim_left),
-                result_latex=sp.latex(lim_left),
+                after_latex=rf"\lim_{{x \to {algebra_latex(x0)}^-}} f(x) = {algebra_latex(lim_left)}",
+                result=algebra_text(lim_left),
+                result_latex=algebra_latex(lim_left),
                 kind="solve",
                 confidence="verified",
             )
@@ -1025,8 +1009,8 @@ def _solve_continuous_at(problem: ParsedAlgebraProblem, template: CalculusTempla
         steps.append(
             AlgebraSolveStep(
                 index=3,
-                title=f"Tính giới hạn phải tại x = {sp.sstr(x0)}",
-                explanation=f"Tính giới hạn của hàm số khi $x \\to {sp.latex(x0)}^+$. Kết quả: $\\lim_{{x \\to {sp.latex(x0)}^+}} f(x) = {sp.latex(lim_right)}$.",
+                title=f"Tính giới hạn phải tại x = {algebra_text(x0)}",
+                explanation=f"Tính giới hạn của hàm số khi $x \\to {algebra_latex(x0)}^+$. Kết quả: $\\lim_{{x \\to {algebra_latex(x0)}^+}} f(x) = {algebra_latex(lim_right)}$.",
                 short_explanation="Tính giới hạn phải.",
                 detail_level="standard",
                 method="limit_right",
@@ -1034,9 +1018,9 @@ def _solve_continuous_at(problem: ParsedAlgebraProblem, template: CalculusTempla
                 why="Hàm phân nhánh cần tính giới hạn 2 bên.",
                 rule="Giới hạn",
                 operation="Lấy giới hạn.",
-                after_latex=rf"\lim_{{x \to {sp.latex(x0)}^+}} f(x) = {sp.latex(lim_right)}",
-                result=sp.sstr(lim_right),
-                result_latex=sp.latex(lim_right),
+                after_latex=rf"\lim_{{x \to {algebra_latex(x0)}^+}} f(x) = {algebra_latex(lim_right)}",
+                result=algebra_text(lim_right),
+                result_latex=algebra_latex(lim_right),
                 kind="solve",
                 confidence="verified",
             )
@@ -1050,7 +1034,7 @@ def _solve_continuous_at(problem: ParsedAlgebraProblem, template: CalculusTempla
                 AlgebraSolveStep(
                     index=4,
                     title="So sánh giới hạn 2 bên",
-                    explanation=f"Vì giới hạn trái ({sp.latex(lim_left)}) khác giới hạn phải ({sp.latex(lim_right)}) nên không tồn tại giới hạn của hàm số tại $x = {sp.latex(x0)}$.",
+                    explanation=f"Vì giới hạn trái ({algebra_latex(lim_left)}) khác giới hạn phải ({algebra_latex(lim_right)}) nên không tồn tại giới hạn của hàm số tại $x = {algebra_latex(x0)}$.",
                     short_explanation="Không tồn tại giới hạn.",
                     detail_level="standard",
                     method="compare_limits",
@@ -1068,7 +1052,7 @@ def _solve_continuous_at(problem: ParsedAlgebraProblem, template: CalculusTempla
                 AlgebraSolveStep(
                     index=4,
                     title="So sánh giới hạn 2 bên",
-                    explanation=f"Vì giới hạn trái bằng giới hạn phải và bằng ${sp.latex(lim_val)}$ nên $\\lim_{{x \\to {sp.latex(x0)}}} f(x) = {sp.latex(lim_val)}$.",
+                    explanation=f"Vì giới hạn trái bằng giới hạn phải và bằng ${algebra_latex(lim_val)}$ nên $\\lim_{{x \\to {algebra_latex(x0)}}} f(x) = {algebra_latex(lim_val)}$.",
                     short_explanation="Tồn tại giới hạn.",
                     detail_level="standard",
                     method="compare_limits",
@@ -1076,7 +1060,7 @@ def _solve_continuous_at(problem: ParsedAlgebraProblem, template: CalculusTempla
                     why="Giới hạn tồn tại khi 2 giới hạn một phía bằng nhau.",
                     rule="Sự tồn tại giới hạn",
                     operation="So sánh.",
-                    after_latex=rf"\lim_{{x \to {sp.latex(x0)}}} f(x) = {sp.latex(lim_val)}",
+                    after_latex=rf"\lim_{{x \to {algebra_latex(x0)}}} f(x) = {algebra_latex(lim_val)}",
                     kind="solve",
                     confidence="verified",
                 )
@@ -1095,15 +1079,15 @@ def _solve_continuous_at(problem: ParsedAlgebraProblem, template: CalculusTempla
     if not has_limit:
         answer = "Gián đoạn"
         answer_latex = r"\text{Gián đoạn}"
-        explanation = f"Vì hàm số không có giới hạn hữu hạn tại $x = {sp.latex(x0)}$ nên hàm số gián đoạn tại điểm này."
+        explanation = f"Vì hàm số không có giới hạn hữu hạn tại $x = {algebra_latex(x0)}$ nên hàm số gián đoạn tại điểm này."
     elif sp.simplify(lim_val - f_x0) == 0:
         answer = "Liên tục"
         answer_latex = r"\text{Liên tục}"
-        explanation = f"Vì $\\lim_{{x \\to {sp.latex(x0)}}} f(x) = f({sp.latex(x0)}) = {sp.latex(f_x0)}$ nên hàm số liên tục tại $x = {sp.latex(x0)}$."
+        explanation = f"Vì $\\lim_{{x \\to {algebra_latex(x0)}}} f(x) = f({algebra_latex(x0)}) = {algebra_latex(f_x0)}$ nên hàm số liên tục tại $x = {algebra_latex(x0)}$."
     else:
         answer = "Gián đoạn"
         answer_latex = r"\text{Gián đoạn}"
-        explanation = f"Vì $\\lim_{{x \\to {sp.latex(x0)}}} f(x) = {sp.latex(lim_val)} \\neq f({sp.latex(x0)}) = {sp.latex(f_x0)}$ nên hàm số gián đoạn tại $x = {sp.latex(x0)}$."
+        explanation = f"Vì $\\lim_{{x \\to {algebra_latex(x0)}}} f(x) = {algebra_latex(lim_val)} \\neq f({algebra_latex(x0)}) = {algebra_latex(f_x0)}$ nên hàm số gián đoạn tại $x = {algebra_latex(x0)}$."
         
     steps.append(_calculus_conclusion_step(len(steps) + 1, "Kết luận tính liên tục", explanation, answer_latex))
 
@@ -1135,8 +1119,8 @@ def _solve_continuous_at(problem: ParsedAlgebraProblem, template: CalculusTempla
     )
     
     milestones = [
-        f"Hàm số: f(x) = {sp.latex(f_x)}",
-        f"Xét tại x = {sp.latex(x0)}: {answer}"
+        f"Hàm số: f(x) = {algebra_latex(f_x)}",
+        f"Xét tại x = {algebra_latex(x0)}: {answer}"
     ]
 
     return AlgebraSolveResponse(

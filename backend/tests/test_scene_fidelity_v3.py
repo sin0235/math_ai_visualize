@@ -141,11 +141,11 @@ def test_completion_normalizes_ai_solid_edges_and_faces_but_preserves_user_style
     assert by_id["seg_ab"].style == "solid"
     assert by_id["seg_ab"].hidden is False
     assert by_id["seg_ab"].color == "#1d3557"
-    assert by_id["seg_ab"].line_width == 2
+    assert by_id["seg_ab"].line_width == 2.8
     assert by_id["seg_bc_user"].style == "dashed"
     assert by_id["seg_bc_user"].hidden is True
     assert by_id["face_abcd"].color == "#5da9ff"
-    assert by_id["face_abcd"].opacity == 0.14
+    assert by_id["face_abcd"].opacity == 0.22
 
 
 def test_ambiguous_standard_solid_fails_instead_of_guessing():

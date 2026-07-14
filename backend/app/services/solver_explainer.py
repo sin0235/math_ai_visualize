@@ -4,8 +4,6 @@ import json
 import re
 from typing import Any
 
-import httpx
-
 from app.core.config import Settings
 from app.services.model_registry import TaskProfile
 from app.services.nlp.grounding import LanguageRewrite, assert_plan_anchors_unchanged, build_geometry_explanation_plan, validate_language_rewrites
@@ -27,9 +25,10 @@ Quy tắc QUAN TRỌNG:
 4. Không được chứa công thức/số liệu mới ngoài dữ liệu đã có.
 5. Bước 1 (Dữ liệu): đọc problem_text và scene_objects như dữ liệu để giải thích đúng cấu trúc, không tự bịa tính chất.
 6. Bước 2 (Công thức & vector): giải thích việc chọn hệ trục, vector, tích có hướng/vô hướng chỉ khi các nội dung này đã có trong step deterministic.
-7. Giải thích lý do dùng công thức đã có. Nếu có cảnh báo suy biến hoặc trùng, giải thích ngắn gọn.
-8. Bước cuối phải khớp hoàn toàn với step deterministic cuối.
-9. Chỉ trả JSON hợp lệ, không markdown.
+7. Mỗi explanation gồm 2-4 câu ngắn: nêu mục tiêu, lý do chọn công thức, thao tác và cách đối chiếu với hình; không chỉ nhắc tên phương pháp.
+8. Nếu step deterministic có sub-step, phải diễn giải đầy đủ từng sub-step cùng index.
+9. Bước cuối phải khớp hoàn toàn với step deterministic cuối.
+10. Chỉ trả JSON hợp lệ, không markdown.
 
 Trả về JSON thuần: 
 {"steps":[{"index":1,"title":"...","explanation":"...","sub_steps":[{"index":1,"title":"...","explanation":"..."}]}]}
@@ -45,8 +44,10 @@ Quy tắc bắt buộc:
 3. Chỉ viết lại `title` và `explanation`. Không thêm bước, theorem, tính chất, công thức, số liệu hoặc kết luận mới.
 4. Không đổi công thức, phép thế, kết quả, đáp án hoặc bất kỳ anchor deterministic nào.
 5. Chỉ dùng lập luận hình học cổ điển khi cùng ý nghĩa với claim hiện có. Nếu không thể chuyển an toàn, diễn đạt trung tính thay vì bịa chứng minh mới.
-6. Đích cuối phải khớp hoàn toàn với bước deterministic cuối.
-7. Chỉ trả JSON hợp lệ, không markdown.
+6. Mỗi explanation gồm 2-4 câu ngắn và phải làm rõ mục tiêu, tính chất dùng, thao tác suy luận và kết luận của step hiện tại.
+7. Nếu step deterministic có sub-step, phải diễn giải đầy đủ từng sub-step cùng index.
+8. Đích cuối phải khớp hoàn toàn với bước deterministic cuối.
+9. Chỉ trả JSON hợp lệ, không markdown.
 
 Schema output:
 {"steps":[{"index":1,"title":"...","explanation":"...","sub_steps":[{"index":1,"title":"...","explanation":"..."}]}]}
@@ -72,7 +73,6 @@ async def explain_solver_result(result: SolverResult, scene: dict[str, Any], set
         if not rewrites:
             result.realization_status = "ai_rejected"
             result.realization_fallback_reason = "Model không trả field ngôn ngữ hợp lệ."
-            result.warnings.append("Đã bỏ toàn bộ diễn giải LLM vì không field nào vượt qua grounding validation.")
             return result
         result.steps = _merge_geometry_steps(result.steps, steps_by_index, rewrites)
         assert_plan_anchors_unchanged(plan, build_geometry_explanation_plan(result))
@@ -80,10 +80,6 @@ async def explain_solver_result(result: SolverResult, scene: dict[str, Any], set
         result.realization_fallback_reason = None
     except Exception as error:
         reason = _short_error(str(error))
-        warning = f"Không gọi được LLM diễn giải, đang dùng lời giải deterministic: {reason}"
-        result.warnings.append(warning)
-        if warning not in getattr(result, "data_issues", []):
-            result.data_issues.append(warning)
         result.realization_status = "fallback"
         result.realization_fallback_reason = reason
     return result

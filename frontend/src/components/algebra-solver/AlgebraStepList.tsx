@@ -14,10 +14,18 @@ export function AlgebraStepList({ steps, isSubStep = false }: { steps: AlgebraSo
 }
 
 function AlgebraStepCard({ step, isSubStep }: { step: AlgebraSolveStep, isSubStep: boolean }) {
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(!isSubStep && step.detail_level === 'detailed');
   const detailId = useId();
   const hasSubSteps = Boolean(step.sub_steps && step.sub_steps.length > 0);
-  const hasPedagogy = false;
+  const pedagogy = [
+    ['Mục tiêu', step.goal],
+    ['Vì sao', step.why],
+    ['Quy tắc', step.rule],
+    ['Thao tác', step.operation],
+    ['Lưu ý', step.pitfall],
+    ['Cách kiểm tra', step.check],
+  ].filter((item): item is [string, string] => hasText(item[1]));
+  const hasPedagogy = pedagogy.length > 0;
   const canExpand = hasSubSteps || hasPedagogy;
 
   return (
@@ -75,7 +83,16 @@ function AlgebraStepCard({ step, isSubStep }: { step: AlgebraSolveStep, isSubSte
 
         {isExpanded && (
           <div id={detailId}>
-
+            {hasPedagogy && (
+              <dl className="algebra-step-pedagogy" aria-label={`Chi tiết sư phạm của bước ${step.index}`}>
+                {pedagogy.map(([label, value]) => (
+                  <div key={label}>
+                    <dt>{label}</dt>
+                    <dd><MixedTextRenderer text={value} /></dd>
+                  </div>
+                ))}
+              </dl>
+            )}
             {hasSubSteps && (
               <div className="algebra-nested-steps">
                 <AlgebraStepList steps={step.sub_steps!} isSubStep={true} />

@@ -454,7 +454,9 @@ def _replace_vietnamese_math_words(text: str) -> str:
         (r"\bchia\b", "/"),
         (r"\bcộng\b|\bcong\b", "+"),
         (r"\btrừ\b|\btru\b", "-"),
-        (r"\blogarit\b|\bloga\b", "log"),
+        (r"\b(?:logarit|loga|lôgarit)\s+(?:tự nhiên|tu nhien)\b", "ln"),
+        (r"\b(?:logarit|loga|lôgarit)\s+(?:thập phân|thap phan)\b", "log"),
+        (r"\blogarit\b|\bloga\b|\blôgarit\b", "log"),
         (r"\bpi\b", "pi"),
     ]
     result = text
