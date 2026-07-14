@@ -1,7 +1,5 @@
 import asyncio
 import json
-import logging
-
 import httpx
 import pytest
 from fastapi.testclient import TestClient
@@ -210,6 +208,56 @@ def test_openrouter_runtime_preserves_reasoning_for_unknown_model_with_global_po
     )
 
     assert captured["payload"]["reasoning"] == {"enabled": True}
+
+
+def test_openrouter_invalid_json_reports_original_parse_error(monkeypatch):
+    captured = {}
+
+    async def fake_stream(*_args, **_kwargs):
+        return "not-json", len("not-json"), None
+
+    def fake_log_parse_error(provider, kind, model, message, **metadata):
+        captured.update(provider=provider, kind=kind, model=model, message=message, metadata=metadata)
+
+    monkeypatch.setattr("app.services.openrouter_client.collect_openai_chat_stream", fake_stream)
+    monkeypatch.setattr("app.services.openrouter_client.log_provider_parse_error", fake_log_parse_error)
+
+    with pytest.raises(RuntimeError, match="JSON không hợp lệ"):
+        asyncio.run(
+            OpenRouterClient(
+                Settings(_env_file=None, openrouter_api_key="secret"),
+                model="test-model",
+            ).extract_scene_json("Vẽ điểm A")
+        )
+
+    assert captured["provider"] == "openrouter"
+    assert captured["kind"] == "scene"
+    assert "invalid_json" in captured["message"]
+
+
+def test_router9_invalid_json_reports_original_parse_error(monkeypatch):
+    captured = {}
+
+    async def fake_post_chat(*_args, **_kwargs):
+        return httpx.Response(200, json={"choices": [{"message": {"content": "not-json"}}]})
+
+    def fake_log_parse_error(provider, kind, model, message, **metadata):
+        captured.update(provider=provider, kind=kind, model=model, message=message, metadata=metadata)
+
+    monkeypatch.setattr(Router9Client, "_post_chat", fake_post_chat)
+    monkeypatch.setattr("app.services.router9_client.log_provider_parse_error", fake_log_parse_error)
+
+    with pytest.raises(RuntimeError, match="JSON không hợp lệ"):
+        asyncio.run(
+            Router9Client(
+                Settings(_env_file=None, router9_api_key="secret"),
+                model="test-model",
+            ).extract_scene_json("Vẽ điểm A")
+        )
+
+    assert captured["provider"] == "9router"
+    assert captured["kind"] == "scene"
+    assert "invalid_json" in captured["message"]
 
 
 def test_openai_compat_recovers_non_json_sse_response(monkeypatch):

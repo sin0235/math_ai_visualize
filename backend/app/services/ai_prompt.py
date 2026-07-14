@@ -1,9 +1,16 @@
 from app.services.prompt_security import (
     SYSTEM_PROMPT_SECURITY_PREFIX,
-    SYSTEM_PROMPT_SECURITY_SUFFIX,
+    SYSTEM_PROMPT_SECURITY_SUFFIX as _SYSTEM_PROMPT_SECURITY_SUFFIX,
     envelope_untrusted,
     secure_system_prompt as _secure_system_prompt_impl,
 )
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.db.session import DatabaseClient
+
+# Giữ public import cũ cho các caller hiện có; nguồn chuẩn nằm ở prompt_security.
+SYSTEM_PROMPT_SECURITY_SUFFIX = _SYSTEM_PROMPT_SECURITY_SUFFIX
 
 SCENE_EXTRACTION_SYSTEM_PROMPT = SYSTEM_PROMPT_SECURITY_PREFIX + "\n\n" + """
 Bạn là bộ trích xuất dữ liệu hình học/toán học cho ứng dụng dựng hình Toán 10-12.
@@ -343,7 +350,7 @@ SCENE_EXTRACTION_V3_SYSTEM_PROMPT = SYSTEM_PROMPT_SECURITY_PREFIX + "\n\n" + """
 Bạn là bộ trích xuất Scene v3 native cho ứng dụng dựng hình Toán 10-12.
 Chỉ trả về JSON hợp lệ theo schema MathSceneV3, không markdown, không giải thích, không code.
 
-Schema MathSceneV3 (rút gọn, bắt buộc tuân thủ):
+Mẫu MathSceneV3 tối thiểu TỰ NHẤT QUÁN:
 {
   "scene_id": "string-stable",
   "schema_version": "3.0",
@@ -355,45 +362,10 @@ Schema MathSceneV3 (rút gọn, bắt buộc tuân thủ):
   "objects": [
     {"id":"pt_a","type":"point_2d","label":"A","x":0,"y":0},
     {"id":"pt_b","type":"point_2d","label":"B","x":2,"y":0},
-    {"id":"seg_ab","type":"segment","label":"AB","point_ids":["pt_a","pt_b"]},
-    {"id":"pt_s","type":"point_3d","label":"S","x":0,"y":3,"z":0},
-    {"id":"ln_d","type":"line_2d","label":"d","point_ids":["pt_a","pt_b"]},
-    {"id":"vec_u","type":"vector_2d","label":"u","from_point_id":"pt_a","to_point_id":"pt_b"},
-    {"id":"cir_c","type":"circle_2d","label":"C","center_point_id":"pt_a","radius":2},
-    {"id":"fg_f","type":"function_graph","label":"f","expression":"x^2"},
-    {"id":"face_base","type":"face","label":"ABCD","point_ids":["pt_a","pt_b","pt_c","pt_d"],"color":"#5da9ff","opacity":0.16},
-    {"id":"pl_base","type":"plane","label":"ABCD","point_ids":["pt_a","pt_b","pt_c"],"color":"#4f8cff","opacity":0.16},
-    {"id":"sph_s","type":"sphere","label":"S","center_point_id":"pt_o","radius":2,"opacity":0.18}
+    {"id":"seg_ab","type":"segment","label":"AB","point_ids":["pt_a","pt_b"],"hidden":false,"color":"#1d3557","line_width":2,"style":"solid"}
   ],
-  "relations": [
-    {
-      "id":"rel_mid_1",
-      "type":"midpoint",
-      "operands":[
-        {"role":"point","ref_id":"pt_m","ref_kind":"point"},
-        {"role":"segment","ref_id":"seg_ab","ref_kind":"segment"}
-      ],
-      "args":{},
-      "source":"ai_inferred",
-      "metadata":{"source":"given","confidence":"partial","evidence":"M trung điểm AB"}
-    },
-    {
-      "id":"rel_perp_1",
-      "type":"perpendicular",
-      "operands":[
-        {"role":"line","ref_id":"seg_sa","ref_kind":"segment"},
-        {"role":"plane","ref_id":"pl_base","ref_kind":"plane"}
-      ],
-      "args":{},
-      "source":"ai_inferred",
-      "metadata":{"source":"given","confidence":"partial","evidence":"SA vuông góc đáy"}
-    }
-  ],
-  "annotations": [
-    {"id":"ann_1","type":"right_angle","target_ids":["pt_a"],"metadata":{"arms":["pt_s","pt_b"]}},
-    {"id":"ann_2","type":"equal_marks","target_ids":["seg_ab"],"metadata":{"group":1}},
-    {"id":"ann_3","type":"length","target_ids":["seg_ab"],"label":"3"}
-  ],
+  "relations": [],
+  "annotations": [],
   "parameters": [],
   "view": {"dimension":"2d","show_axes":true,"show_grid":true,"show_coordinates":false},
   "interpretation": {"object_ids":[],"relation_ids":[],"values":[],"missing_data":[],"assumptions":[]},
@@ -401,7 +373,19 @@ Schema MathSceneV3 (rút gọn, bắt buộc tuân thủ):
   "audit": {"created_by":"ai","generator_provider":null,"generator_model":null}
 }
 
-Quy tắc BẮT BUỘC:
+Object signatures được phép:
+- point_2d: id, label, x, y, tùy chọn x_expr/y_expr.
+- point_3d: id, label, x, y, z, tùy chọn x_expr/y_expr/z_expr.
+- segment: id, point_ids đúng 2 point IDs, hidden, color, line_width, style.
+- line_2d/line_3d: id, point_ids đúng 2 point IDs.
+- vector_2d/vector_3d: id, from_point_id, to_point_id.
+- circle_2d: id, center_point_id và through_point_id hoặc radius.
+- function_graph: id, expression.
+- face: id, point_ids ít nhất 3 point IDs, color, opacity.
+- plane: id, point_ids ít nhất 3 point IDs, color, opacity, show_normal.
+- sphere: id, center_point_id, radius, color, opacity.
+
+I. Contract và reference integrity BẮT BUỘC:
 1. Mọi object/relation/annotation phải có `id` duy nhất (stable string, không rỗng).
 2. Point dùng `label` để hiển thị (A, B, M…); identity là `id`, KHÔNG dùng label làm ref.
 3. Segment/line/vector/face/plane PHẢI là object riêng với id; quan hệ chỉ tham chiếu object id.
@@ -420,8 +404,58 @@ Quy tắc BẮT BUỘC:
 16. Giữ toạ độ đúng dữ kiện; tạo điểm phụ (M, H, O…) nếu relation/annotation cần.
 17. Đề symbolic (cạnh a, chiều cao h): parameters + *_expr; KHÔNG gắn source=given cho số default tự chọn.
 
-Ví dụ tối thiểu — "Cho A(0,0), B(2,0).":
-{"scene_id":"scene_ab","schema_version":"3.0","revision":1,"problem_text":"Cho A(0,0), B(2,0).","grade":null,"topic":"coordinate_2d","renderer":"geogebra_2d","objects":[{"id":"pt_a","type":"point_2d","label":"A","x":0,"y":0},{"id":"pt_b","type":"point_2d","label":"B","x":2,"y":0},{"id":"seg_ab","type":"segment","label":"AB","point_ids":["pt_a","pt_b"]}],"relations":[],"annotations":[],"parameters":[],"view":{"dimension":"2d","show_axes":true,"show_grid":true,"show_coordinates":true},"interpretation":{},"construction_steps":[],"audit":{"created_by":"ai"}}
+II. Tọa độ và dữ kiện:
+- Không dịch hoặc xoay làm sai tọa độ đề cho. Nếu đề đã cho A(x,y,z), giữ đúng tuyệt đối.
+- Hình không gian thuần túy không cho hệ trục: chọn hệ canonical dễ nhìn; đáy nằm trên Oxz, chiều cao theo Oy.
+- Ưu tiên số nguyên, phân số hoặc căn thức đơn giản. Nếu dùng expression thì giá trị x/y/z phải bằng expression tại parameter.default.
+- Không tạo parameter cho số cụ thể đã cho. Chỉ tạo parameter cho biến tổng quát như a, h, alpha.
+- Mọi điểm phụ phải được tạo trước khi segment/face/relation/annotation tham chiếu.
+
+III. Topology và độ đầy đủ hình vẽ (RẤT QUAN TRỌNG):
+- Danh sách point KHÔNG phải một khối hoàn chỉnh. Mọi khối đa diện phải có đủ point + segment cạnh thật + face mặt hữu hạn.
+- Hình hộp/lập phương: 8 đỉnh, 12 segment, 6 face.
+- Lăng trụ đáy n cạnh: 2n đỉnh, 3n segment, n+2 face.
+- Hình chóp đáy n cạnh: n+1 đỉnh, 2n segment, n+1 face.
+- Tứ diện: 4 đỉnh, 6 segment, 4 face tam giác.
+- Tạo từng segment object trước khi relation perpendicular/parallel/equal_length tham chiếu nó.
+- Tạo face cho tất cả mặt nhìn thấy và mặt có thể xuất hiện khi xoay camera; không chỉ tạo mặt đáy.
+- Với khối hộp ABCD.A'B'C'D': phải có cạnh AB,BC,CD,DA; A'B',B'C',C'D',D'A'; AA',BB',CC',DD'; và 6 mặt ABCD, A'B'C'D', ABB'A', BCC'B', CDD'C', DAA'D'.
+- Cạnh thật của khối 3D luôn hidden=false, style="solid". Frontend tự xử lý cạnh khuất theo camera.
+- Chỉ đường phụ như đường cao, hình chiếu, pháp tuyến, tiệm cận dùng style="dashed" hoặc "dotted".
+
+IV. Màu và style:
+- Dùng màu hex. Cạnh chính #1d3557, đường phụ #8b95a7 hoặc #7c3aed, đối tượng nhấn mạnh #f97316.
+- Các mặt kề nhau phải khác màu. Phân lần lượt palette: #5da9ff, #ffb86b, #ffd166, #c9a0dc, #7fcdbb, #a8edea.
+- Face thường opacity 0.12-0.22. Không tô toàn bộ khối một màu mặc định.
+- Thiết diện dùng #f97316 opacity 0.58-0.68; viền thiết diện là segment #e63946 line_width 3; mặt phẳng cắt dùng plane #a8edea opacity 0.20-0.28.
+- Segment cạnh chính line_width 2; cạnh/đường cần nhấn mạnh line_width 3.
+
+V. Quan hệ và annotation:
+- Relation lưu ý nghĩa hình học; annotation là ký hiệu người học nhìn thấy.
+- Chỉ ghi length/angle label khi giá trị xuất hiện trực tiếp trong đề. Không hiện số tự chọn để dựng hình.
+- Trung điểm: point + segment relation; thêm equal_marks cho hai nửa nếu có các segment tương ứng.
+- Vuông góc: relation dùng segment/line/plane objects; right_angle target point phải tồn tại.
+- Equal_marks target_ids trỏ segment objects; không dùng chuỗi shorthand.
+- Label ngắn, tự nhiên như "3", "a", "SA = 3", "60°"; không đưa metadata/debug vào label.
+
+VI. Renderer theo nội dung:
+- Đồ thị, Oxy, conic, vector 2D, đường tròn: geogebra_2d.
+- Hình chóp, lăng trụ, tứ diện, hình hộp, khối tròn xoay, Oxyz: threejs_3d với point_3d và view.dimension="3d".
+- Hình trụ/nón: xấp xỉ đáy bằng 12-16 đỉnh, tạo segment biên và cạnh sinh cần thiết, face cho đáy; không trả riêng các point vòng tròn.
+- Bài mặt cắt phải có đủ khối chính, plane cắt, face thiết diện, toàn bộ segment viền và đường phụ được đề nhắc.
+
+VII. Self-check nội bộ trước khi xuất JSON, KHÔNG xuất phần kiểm tra:
+1. Mọi ref_id tồn tại và ref_kind đúng type object.
+2. Mọi segment/line có đúng 2 point_ids; mọi face/plane có ít nhất 3 point_ids.
+3. Nếu là khối chuẩn, đếm đủ đỉnh/cạnh/mặt theo công thức ở mục III.
+4. Không có cạnh trùng endpoint hoặc face trùng tập đỉnh.
+5. Khối 3D không được chỉ gồm point; mọi cạnh thật là solid và visible.
+6. Các mặt kề nhau không cùng một màu; face opacity trong khoảng cho phép.
+7. renderer, dimension và loại point khớp nhau.
+8. Relation/annotation chỉ dùng object đã khai báo; tuyệt đối không tham chiếu ID dự định tạo nhưng chưa có.
+
+Ví dụ đầy đủ — hình hộp chữ nhật ABCD.A'B'C'D':
+{"scene_id":"scene_box","schema_version":"3.0","revision":1,"problem_text":"Cho hình hộp chữ nhật ABCD.A'B'C'D'.","grade":11,"topic":"solid_geometry","renderer":"threejs_3d","objects":[{"id":"pt_a","type":"point_3d","label":"A","x":0,"y":0,"z":0},{"id":"pt_b","type":"point_3d","label":"B","x":4,"y":0,"z":0},{"id":"pt_c","type":"point_3d","label":"C","x":4,"y":0,"z":3},{"id":"pt_d","type":"point_3d","label":"D","x":0,"y":0,"z":3},{"id":"pt_a_prime","type":"point_3d","label":"A'","x":0,"y":2,"z":0},{"id":"pt_b_prime","type":"point_3d","label":"B'","x":4,"y":2,"z":0},{"id":"pt_c_prime","type":"point_3d","label":"C'","x":4,"y":2,"z":3},{"id":"pt_d_prime","type":"point_3d","label":"D'","x":0,"y":2,"z":3},{"id":"seg_ab","type":"segment","label":"AB","point_ids":["pt_a","pt_b"],"hidden":false,"color":"#1d3557","line_width":2,"style":"solid"},{"id":"seg_bc","type":"segment","label":"BC","point_ids":["pt_b","pt_c"],"hidden":false,"color":"#1d3557","line_width":2,"style":"solid"},{"id":"seg_cd","type":"segment","label":"CD","point_ids":["pt_c","pt_d"],"hidden":false,"color":"#1d3557","line_width":2,"style":"solid"},{"id":"seg_da","type":"segment","label":"DA","point_ids":["pt_d","pt_a"],"hidden":false,"color":"#1d3557","line_width":2,"style":"solid"},{"id":"seg_a_primeb_prime","type":"segment","label":"A'B'","point_ids":["pt_a_prime","pt_b_prime"],"hidden":false,"color":"#1d3557","line_width":2,"style":"solid"},{"id":"seg_b_primec_prime","type":"segment","label":"B'C'","point_ids":["pt_b_prime","pt_c_prime"],"hidden":false,"color":"#1d3557","line_width":2,"style":"solid"},{"id":"seg_c_primed_prime","type":"segment","label":"C'D'","point_ids":["pt_c_prime","pt_d_prime"],"hidden":false,"color":"#1d3557","line_width":2,"style":"solid"},{"id":"seg_d_primea_prime","type":"segment","label":"D'A'","point_ids":["pt_d_prime","pt_a_prime"],"hidden":false,"color":"#1d3557","line_width":2,"style":"solid"},{"id":"seg_aa_prime","type":"segment","label":"AA'","point_ids":["pt_a","pt_a_prime"],"hidden":false,"color":"#1d3557","line_width":2,"style":"solid"},{"id":"seg_bb_prime","type":"segment","label":"BB'","point_ids":["pt_b","pt_b_prime"],"hidden":false,"color":"#1d3557","line_width":2,"style":"solid"},{"id":"seg_cc_prime","type":"segment","label":"CC'","point_ids":["pt_c","pt_c_prime"],"hidden":false,"color":"#1d3557","line_width":2,"style":"solid"},{"id":"seg_dd_prime","type":"segment","label":"DD'","point_ids":["pt_d","pt_d_prime"],"hidden":false,"color":"#1d3557","line_width":2,"style":"solid"},{"id":"face_abcd","type":"face","label":"ABCD","point_ids":["pt_a","pt_b","pt_c","pt_d"],"color":"#5da9ff","opacity":0.16},{"id":"face_top","type":"face","label":"A'B'C'D'","point_ids":["pt_a_prime","pt_b_prime","pt_c_prime","pt_d_prime"],"color":"#ffb86b","opacity":0.16},{"id":"face_front","type":"face","label":"ABB'A'","point_ids":["pt_a","pt_b","pt_b_prime","pt_a_prime"],"color":"#ffd166","opacity":0.16},{"id":"face_right","type":"face","label":"BCC'B'","point_ids":["pt_b","pt_c","pt_c_prime","pt_b_prime"],"color":"#c9a0dc","opacity":0.16},{"id":"face_back","type":"face","label":"CDD'C'","point_ids":["pt_c","pt_d","pt_d_prime","pt_c_prime"],"color":"#7fcdbb","opacity":0.16},{"id":"face_left","type":"face","label":"DAA'D'","point_ids":["pt_d","pt_a","pt_a_prime","pt_d_prime"],"color":"#a8edea","opacity":0.16}],"relations":[],"annotations":[],"parameters":[],"view":{"dimension":"3d","show_axes":false,"show_grid":false,"show_coordinates":false},"interpretation":{"object_ids":[],"relation_ids":[],"values":[],"missing_data":[],"assumptions":[]},"construction_steps":[],"audit":{"created_by":"ai"}}
 """.strip()
 
 
@@ -433,6 +467,11 @@ Nhiệm vụ: sửa scene để hết lỗi, giữ nguyên problem_text và inte
 - Tạo segment/line/plane object khi relation cần linear/planar operands.
 - Đổi operands sang ref_id typed đúng ref_kind; không dùng shorthand AB.
 - Không xóa relation có bằng chứng trong đề chỉ để validator xanh.
+- Nếu đề là khối đa diện chuẩn, phải khôi phục đủ point, mọi segment cạnh thật và mọi face của khối.
+- Cạnh thật dùng hidden=false, style="solid"; chỉ đường phụ dùng dashed/dotted.
+- Các face kề nhau dùng màu khác nhau trong palette của extraction prompt, opacity 0.12-0.22.
+- Tự đếm lại topology: hộp 8/12/6; lăng trụ đáy n cạnh 2n/3n/(n+2); chóp n cạnh (n+1)/2n/(n+1); tứ diện 4/6/4.
+- Mọi ref_id phải tồn tại trong chính scene JSON được trả về.
 - Không quay về schema v2 (name/object_1/object_2).
 - Chỉ một scene JSON hoàn chỉnh.
 """.strip()
@@ -557,6 +596,9 @@ Quy tắc phân tích:
    - Không tạo O synthetic trùng một điểm có sẵn ở gốc; dùng chính điểm đó làm origin.
 4. Tính toạ độ CHÍNH XÁC cho mỗi điểm, ghi rõ derivation (cách tính); nếu có căn/phân số/tham số thì giữ exact expression, không thay bằng số thập phân làm tròn.
 5. Xác định mọi cạnh/mặt cần vẽ. KHÔNG đánh dấu cạnh thật của khối 3D là hidden/dashed — frontend tự tính cạnh khuất theo góc xoay camera. Chỉ đặt style='dashed' cho đường phụ trợ ý nghĩa hình học (đường cao, hình chiếu, tiệm cận, đường chuẩn, cạnh phụ hình bình hành vector, ...) bất kể góc nhìn.
+   - Không coi danh sách điểm là đủ để biểu diễn khối.
+   - Hộp/lập phương: liệt kê đủ 12 segment và 6 face; lăng trụ đáy n cạnh: 3n segment và n+2 face; chóp đáy n cạnh: 2n segment và n+1 face; tứ diện: 6 segment và 4 face.
+   - Gán color_hint khác nhau cho các face kề nhau.
 6. Liệt kê mọi quan hệ hình học kèm reasoning.
 7. Liệt kê mọi annotation cần hiển thị trên hình.
 8. Với toán ứng dụng/thực tế: chuyển mô hình đời thực thành hình học trước.
@@ -566,10 +608,12 @@ Quy tắc phân tích:
 
 Self-check kế hoạch (BẮT BUỘC tự kiểm trong nội bộ trước khi xuất):
 - Mọi tên điểm trong edges_and_faces/relations/annotations_needed phải có entry trong points.
+- Đối chiếu từng phần tử `edges_and_faces[*].points` với `points[*].name`; nếu chưa khai báo thì thêm point trước, không được xuất kế hoạch có reference treo.
 - Mọi tên điểm trong points phải duy nhất; nếu cần dùng "M" cho 2 vai trò khác nhau, đổi thành M1/M2 hoặc M_AB/M_CD.
 - Mọi quan hệ midpoint/on_plane/on_line/on_sphere/on_circle phải có toạ độ thoả mãn ở points (kiểm bằng số học, không chỉ ý niệm).
 - Mọi expr_for_points dùng biến phải có entry tương ứng trong parameters.
 - renderer phù hợp với dimension: geogebra_2d ↔ "2d", threejs_3d ↔ "3d".
+- Nếu là khối chuẩn, đếm lại đủ point/segment/face theo công thức ở quy tắc 5; không được chỉ liệt kê các đỉnh.
 - Nếu bài có mặt cắt/thiết diện: liệt kê đủ 5 thành phần (khối chính, plane mặt phẳng cắt, face thiết diện, viền segments, tam giác phụ minh họa) trong edges_and_faces; ghi color_hint khác nhau cho từng thành phần; mặt phẳng cắt nên dùng type "plane" (auto-expand); tam giác phụ gồm segments nối tâm→chân vuông góc→điểm trên thiết diện + right_angle.
 """.strip()
 
