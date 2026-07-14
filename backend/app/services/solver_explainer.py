@@ -177,13 +177,24 @@ def _payload(result: SolverResult, scene: dict[str, Any], *, method: str) -> dic
             if name not in highlight_names:
                 highlight_names.append(name)
 
-    relevant_coords = {name: point_coords[name] for name in highlight_names if name in point_coords}
+    uses_fact_driven_coordinates = any(step.kind == "coordinate_frame_setup" for step in result.steps)
+    relevant_coords = (
+        {}
+        if uses_fact_driven_coordinates
+        else {name: point_coords[name] for name in highlight_names if name in point_coords}
+    )
+    if uses_fact_driven_coordinates:
+        objects = [
+            {key: value for key, value in obj.items() if key not in {"x", "y", "z", "x_expr", "y_expr", "z_expr"}}
+            for obj in objects
+        ]
 
     return {
         "problem_text": scene.get("problem_text", ""),
         "question": result.question,
         "answer": result.answer,
         "warnings": result.warnings,
+        "coordinate_source": "trusted_problem_facts" if uses_fact_driven_coordinates else "scene",
         "point_coordinates": relevant_coords,
         "scene_objects": objects[:80],
         "steps": [step.to_dict() for step in result.steps],
