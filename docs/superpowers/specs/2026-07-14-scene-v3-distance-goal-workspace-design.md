@@ -18,7 +18,8 @@ Ví dụ regression chính là hình lập phương `ABCD.MNPQ`, `F` là trung �
 - Nhận diện goal khoảng cách điểm–mặt phẳng từ nguyên văn đề, độc lập với việc model có tạo relation hay không.
 - Bảo đảm canvas có mặt mục tiêu, chân chiếu, đoạn vuông góc, ký hiệu góc vuông và nhãn đại lượng.
 - Không hiển thị đáp số trên canvas. Solver tiếp tục chịu trách nhiệm tính và trình bày kết quả.
-- Giảm màu cạnh tranh: khối dùng nhóm màu trung tính hài hòa, mặt mục tiêu và đoạn khoảng cách có accent riêng.
+- Giảm màu cạnh tranh nhưng vẫn phân biệt được từng mặt: các mặt kề nhau dùng màu khác nhau trong một hệ hài hòa; mặt cắt/mặt mục tiêu và đoạn khoảng cách có accent riêng.
+- Thể hiện được cả dữ kiện đề mô tả và đại lượng đề hỏi: cạnh/mặt/quan hệ đã cho ở tầng nền, construction cho góc/khoảng cách ở tầng nhấn mạnh.
 - Giữ schema/public response hiện tại và không sửa style thuộc quyền sở hữu của người dùng.
 
 ## 3. Ngoài phạm vi
@@ -78,7 +79,20 @@ Opacity mặt khối giữ thấp và nhất quán. Mặt goal dùng hổ phách
 
 Không đổi màu object có `locked=true`, `user_edited=true` hoặc source `user_created`/`user_edited`. Mặt thiết diện/cross-section có role riêng tiếp tục dùng palette thiết diện hiện tại; goal styling không được ghi đè nó.
 
-Frontend giữ một accent chính cho goal và không thêm animation, gradient hoặc glow. `faceOpacity` phải tôn trọng hierarchy này thay vì nâng mọi face thường đến mức cạnh tranh với mặt goal.
+Frontend giữ một accent chính cho từng loại goal và không thêm animation, gradient hoặc glow. `faceOpacity` phải tôn trọng hierarchy này thay vì nâng mọi face thường đến mức cạnh tranh với mặt goal.
+
+Quy ước semantic:
+
+- mặt khối: bốn tông slate-blue được graph-coloring để mọi mặt kề nhau khác màu;
+- mặt cắt/thiết diện: cam đậm, opacity cao hơn mặt khối, viền đỏ rõ;
+- mặt phẳng đang được hỏi hoặc dùng cho distance/angle: hổ phách trong suốt;
+- khoảng cách/chân chiếu: teal nét đứt, measurement và right-angle cùng màu;
+- góc giữa hai đường: cung góc với hai arm nhìn thấy;
+- góc đường–mặt: vẽ hình chiếu của đường lên mặt phẳng rồi đánh dấu góc giữa đường và hình chiếu;
+- góc hai mặt phẳng: vẽ giao tuyến nếu xác định được và hai đoạn vuông góc giao tuyến trong từng mặt, sau đó đánh dấu góc giữa hai đoạn;
+- cạnh khuất của mặt khối: renderer quyết định theo camera và hiển thị slate xám nét đứt; cạnh construction không bị thuật toán cạnh khuất ghi đè tùy tiện.
+
+Mọi construction góc/khoảng cách chỉ được tạo khi operands resolve duy nhất và geometry không suy biến. Nếu chưa đủ căn cứ, scene giữ dữ kiện đã có và phát warning có cấu trúc thay vì bịa hình.
 
 ### 4.5. Prompt extraction và repair
 
@@ -90,6 +104,8 @@ Prompt vẫn phải hướng model đến output tốt để giảm công việc
 - Không tạo `distance relation` thiếu `args.value` và không hiển thị đáp số tự suy ra.
 - Dùng màu trung tính cho khối; chỉ face/plane mục tiêu và segment goal dùng accent.
 - Thêm một ví dụ v3 hoàn chỉnh theo schema cho goal khoảng cách điểm–mặt phẳng, có object IDs hợp lệ và self-check.
+- Với câu hỏi góc, phải giữ đúng hai thành phần được hỏi và dựng construction chuẩn theo loại line-line, line-plane hoặc plane-plane; không dùng annotation cung góc nếu chưa có hai arm hình học hợp lệ.
+- Self-check phải đối chiếu hai danh sách: dữ kiện/quan hệ xuất hiện trong đề và goal xuất hiện sau từ khóa hỏi/tính/chứng minh; scene chỉ hoàn thành khi cả hai đều có representation nhìn thấy hoặc issue giải thích vì sao không thể dựng.
 
 Repair prompt giữ cùng invariant để không xóa goal render-only khi sửa contract.
 
@@ -135,6 +151,7 @@ Mọi bước sau khi server cấp identity phải dùng cùng scene object đã
 
 - Appearance test phân biệt mặt khối thường, mặt goal và thiết diện.
 - Cạnh chính/cạnh khuất/segment goal giữ đúng màu, line width và dash.
+- Cung góc và construction line-plane/plane-plane có đủ arm, projection/intersection và metadata semantic.
 - Render projection giữ metadata/style cần thiết đến `ThreeGeometryView`.
 - Build và TypeScript type-check thành công.
 
@@ -149,6 +166,9 @@ Mọi bước sau khi server cấp identity phải dùng cùng scene object đã
 - Dựng lại cùng đề không còn trả `409 Scene workspace đã tồn tại`.
 - Hình lập phương hiển thị đủ cạnh và mặt khi xoay.
 - Mặt `(PFB)` là vùng màu nổi bật duy nhất; `MH`, ký hiệu vuông góc và `d(M,(PFB))` nhìn thấy rõ.
+- Các mặt kề nhau nhìn phân biệt; mặt cắt không lẫn với mặt khối; cạnh khuất đổi nét theo camera.
+- Với đề hỏi góc, canvas cho thấy đúng hai thành phần tạo góc và construction cần thiết; với đề hỏi khoảng cách, canvas cho thấy đoạn đại diện khoảng cách và chân vuông góc.
+- Dữ kiện hình học đề đã mô tả và mục tiêu đề hỏi đều có biểu diễn trực quan hoặc warning có cấu trúc, không bị bỏ âm thầm.
 - Canvas không hiện `2√6` hoặc đáp số khác.
 - Không có thay đổi public schema, không mất history/workspace cũ và không ghi đè style người dùng.
 - Test, build, type-check/lint phù hợp đều xanh hoặc phần không chạy được được báo chính xác.
