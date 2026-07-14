@@ -390,12 +390,11 @@ function SolverStepItem({
           )}
         </div>
         {explanationText && <p className="sp-step-text">{explanationText}</p>}
-        {(step.claim || step.theorem || step.depends_on?.length || step.relation_ids?.length) && (
+        {Boolean(step.claim || step.theorem || step.depends_on?.length) && (
           <div className="sp-step-proof-note">
             {step.claim && <p><strong>Luận điểm:</strong> {step.claim}</p>}
-            {step.theorem && <p><strong>Định lý dùng:</strong> {step.theorem}{step.theorem_id ? ` (${step.theorem_id})` : ''}</p>}
+            {step.theorem && <p><strong>Định lý dùng:</strong> {step.theorem}</p>}
             {step.depends_on && step.depends_on.length > 0 && <p><strong>Phụ thuộc:</strong> {step.depends_on.join(', ')}</p>}
-            {step.relation_ids && step.relation_ids.length > 0 && <p><strong>Quan hệ nguồn:</strong> {step.relation_ids.join(', ')}</p>}
           </div>
         )}
         {showFormula && (

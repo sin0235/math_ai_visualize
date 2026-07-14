@@ -35,9 +35,9 @@
 .fa2-control-panel,
 .fa2-results-panel {
   width: 100%;
-  max-width: 1240px;
+  max-width: 100%;
   min-width: 0;
-  margin-inline: auto;
+  margin-inline: 0;
 }
 
 .fa2-control-panel {
