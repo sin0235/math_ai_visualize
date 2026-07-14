@@ -102,10 +102,9 @@ export function ThreeGeometryView({ scene, interaction, embedded = false, highli
   const content = (
     <HighlightContext.Provider value={highlightedObjects}>
     <div className="three-view">
-      <Canvas dpr={[1, 2]} gl={{ antialias: true, preserveDrawingBuffer: true }} camera={{ position: [5, 4, 6], fov: 48 }} className="three-canvas" style={{ display: 'block' }}>
+      <Canvas dpr={[1, 2]} gl={{ antialias: true, preserveDrawingBuffer: true, alpha: true }} camera={{ position: [5, 4, 6], fov: 48 }} className="three-canvas" style={{ display: 'block' }}>
         <SceneImageCaptureBridge onReady={onImageCaptureReady} />
         <CameraFit resetKey={cameraResetKey} />
-        <color attach="background" args={["#f6f6f4"]} />
         <ambientLight intensity={0.7} />
         <directionalLight position={[6, 10, 6]} intensity={0.85} />
         <OrbitControls makeDefault target={[0, 0, 0]} enabled={controlsEnabled} mouseButtons={controlsMouseButtons} />
