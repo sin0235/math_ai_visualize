@@ -77,13 +77,17 @@ function normalizeExplanationText(explanation: string): string {
 }
 
 function AnswerValue({ answer }: { answer: string }) {
+  if (answer.includes('$')) {
+    return <MixedTextRenderer text={answer} />;
+  }
+
   const match = answer.match(/^(.+?)\s*=\s*(.+)$/s);
   if (match) {
     const [, left, right] = match;
     if (/\\[a-zA-Z]+|√|π|∞/.test(right)) {
       return (
         <>
-          {left.trim()} = <KatexSpan tex={normalizeSolverLatex(right)} />
+          <MixedTextRenderer text={left.trim()} /> = <KatexSpan tex={normalizeSolverLatex(right)} />
         </>
       );
     }
@@ -91,7 +95,7 @@ function AnswerValue({ answer }: { answer: string }) {
   if (/\\[a-zA-Z]+/.test(answer)) {
     return <KatexSpan tex={normalizeSolverLatex(answer)} />;
   }
-  return <>{answer}</>;
+  return <MixedTextRenderer text={answer} />;
 }
 
 function buildExamples(scene: MathSceneV3) {
@@ -410,7 +414,7 @@ function formatMultiLineMath(tex: string): string {
 
       <div className="sp-step-content" onClick={() => onStepClick(step)} style={{ cursor: 'pointer' }} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && onStepClick(step)}>
         <div className="sp-step-head">
-          <span className="sp-step-title">{step.title}</span>
+          <span className="sp-step-title"><MixedTextRenderer text={step.title} /></span>
           {step.highlight.length > 0 && (
             <span className="sp-step-tag" title="Các điểm được highlight">
               {step.highlight.join(' · ')}
