@@ -23,7 +23,6 @@ CAPABILITY_KEYS = (
     "per_request_limits",
 )
 OLLAMA_CAPABILITY_KEYS = ("details", "size", "digest", "modified_at")
-ROUTER9_MODEL_KIND_SLUGS: tuple[str | None, ...] = (None, "image", "tts", "stt", "embedding", "image-to-text", "web")
 THINKING_PARAMETERS = {"reasoning", "reasoning_effort", "thinking"}
 NVIDIA_BUILD_BASE_URL = "https://build.nvidia.com"
 NVIDIA_PREVIEW_MODELS_URL = f"{NVIDIA_BUILD_BASE_URL}/models?filters=nimType%3Anim_type_preview"
@@ -320,28 +319,7 @@ class Router9Adapter(OpenAIStyleAdapter):
         return settings.router9_api_key, settings.router9_base_url
 
     async def _fetch_models(self, headers: dict[str, str], normalized_base: str) -> tuple[list[AiModelInfo], list[str]]:
-        models: list[AiModelInfo] = []
-        warnings: list[str] = []
-        for kind in ROUTER9_MODEL_KIND_SLUGS:
-            try:
-                kind_models, kind_warnings = await self._fetch_model_kind(headers, normalized_base, kind)
-            except RuntimeError as error:
-                if kind is None:
-                    raise
-                warnings.append(f"Không thể quét catalog 9router loại {kind}: {error}")
-                continue
-            models.extend(kind_models)
-            warnings.extend(kind_warnings)
-        by_id = {model.id: model for model in models}
-        return sorted(by_id.values(), key=lambda model: model.id.lower()), warnings
-
-    async def _fetch_model_kind(
-        self,
-        headers: dict[str, str],
-        normalized_base: str,
-        kind: str | None,
-    ) -> tuple[list[AiModelInfo], list[str]]:
-        url = f"{normalized_base}/models" + (f"/{kind}" if kind else "")
+        url = f"{normalized_base}/models"
         models: list[AiModelInfo] = []
         warnings: list[str] = []
         params: dict[str, str] = {}
@@ -349,9 +327,8 @@ class Router9Adapter(OpenAIStyleAdapter):
         while True:
             response = await _get_openai_models(self.id, headers, normalized_base, params=params or None, url=url)
             parsed, page_warnings = self._parse_openai_style_models(response)
-            service_kind = kind or "llm"
             models.extend(
-                model.model_copy(update={"endpoint_metadata": {**model.endpoint_metadata, "service_kind": service_kind}})
+                model.model_copy(update={"endpoint_metadata": {**model.endpoint_metadata, "service_kind": "llm"}})
                 for model in parsed
             )
             warnings.extend(page_warnings)
@@ -364,7 +341,8 @@ class Router9Adapter(OpenAIStyleAdapter):
                 break
             seen_cursors.add(next_cursor)
             params = {"cursor": next_cursor}
-        return models, warnings
+        by_id = {model.id: model for model in models}
+        return sorted(by_id.values(), key=lambda model: model.id.lower()), warnings
 
 
 ADAPTERS: dict[str, ProviderAdapter] = {

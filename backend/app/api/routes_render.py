@@ -152,24 +152,9 @@ async def build_problem_render_result_v3(
         model = extraction.model
         degraded = extraction.degraded
 
-    # Always re-bind original user text (NLP must not rewrite source).
-    updates: dict = {"problem_text": original_text}
-    if request.grade is not None:
-        updates["grade"] = request.grade
-    if request.preferred_renderer is not None:
-        updates["renderer"] = request.preferred_renderer
-    scene = scene.model_copy(update=updates)
+    # Always re-bind original user text and request overrides (NLP must not rewrite source).
+    scene = _apply_render_request_overrides(scene, request, original_text=original_text)
     scene = _stamp_generator_audit(scene, provider, model)
-
-    view_updates: dict = {}
-    if request.advanced_settings.show_coordinates is not None:
-        view_updates["show_coordinates"] = request.advanced_settings.show_coordinates
-    if request.advanced_settings.show_axes is not None:
-        view_updates["show_axes"] = request.advanced_settings.show_axes
-    if request.advanced_settings.show_grid is not None:
-        view_updates["show_grid"] = request.advanced_settings.show_grid
-    if view_updates:
-        scene = scene.model_copy(update={"view": scene.view.model_copy(update=view_updates)})
 
     result = run_scene_pipeline_v3(scene)
 
@@ -189,7 +174,8 @@ async def build_problem_render_result_v3(
             byok_client=byok_client,
         )
         if repaired is not None:
-            repaired = repaired.model_copy(update={"problem_text": original_text})
+            # Re-apply the same request overrides after repair (renderer, view, grade).
+            repaired = _apply_render_request_overrides(repaired, request, original_text=original_text)
             repaired = _stamp_generator_audit(repaired, provider, model)
             result = run_scene_pipeline_v3(repaired)
             warnings.append("Đã chạy một lượt LLM repair Scene v3.")
@@ -231,6 +217,31 @@ async def build_problem_render_result_v3(
         requires_user_confirmation=True,
         status="needs_confirmation" if result.status == "verified" else result.status,
     )
+
+
+def _apply_render_request_overrides(scene, request: RenderRequest, *, original_text: str):
+    """Bind user problem text, grade, preferred renderer, and view flags onto a scene.
+
+    Used both after initial extract and after one-shot LLM repair so repair cannot
+    drop renderer/view overrides or reintroduce RENDERER_UNSUPPORTED.
+    """
+    updates: dict = {"problem_text": original_text}
+    if request.grade is not None:
+        updates["grade"] = request.grade
+    if request.preferred_renderer is not None:
+        updates["renderer"] = request.preferred_renderer
+    scene = scene.model_copy(update=updates)
+
+    view_updates: dict = {}
+    if request.advanced_settings.show_coordinates is not None:
+        view_updates["show_coordinates"] = request.advanced_settings.show_coordinates
+    if request.advanced_settings.show_axes is not None:
+        view_updates["show_axes"] = request.advanced_settings.show_axes
+    if request.advanced_settings.show_grid is not None:
+        view_updates["show_grid"] = request.advanced_settings.show_grid
+    if view_updates:
+        scene = scene.model_copy(update={"view": scene.view.model_copy(update=view_updates)})
+    return scene
 
 
 def _stamp_generator_audit(scene, provider: str | None, model: str | None):

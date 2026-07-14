@@ -600,9 +600,9 @@ function buildTransformCommands(baseCommands: string[], expression: string) {
   return [
     ...stripToolCommands(baseCommands),
     `h(x)=${expression}`,
-    'SetColor(f, "#94a3b8")',
+    'SetColor(f, "#737373")',
     'SetLineThickness(f, 2)',
-    'SetColor(h, "#111827")',
+    'SetColor(h, "#111111")',
     'SetLineThickness(h, 5)',
   ];
 }

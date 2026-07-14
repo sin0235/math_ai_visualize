@@ -50,7 +50,7 @@ async def load_committed_scene_v3(
                 "Scene cần được người dùng xác nhận trước khi dùng cho chức năng downstream.",
                 409,
             )
-        if result.status == "partially_verified":
+        if result.status in {"failed", "partially_verified"}:
             raise CommittedSceneError(
                 "CONSTRAINT_FAILED",
                 "Scene có ràng buộc chưa đạt kiểm chứng.",

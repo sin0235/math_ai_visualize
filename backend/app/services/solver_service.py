@@ -43,17 +43,63 @@ from app.services.geometry.parser import normalize_solver_question
 
 
 def _latex_to_plain_text(text: str) -> str:
-    cleaned = text
+    """Convert common LaTeX math to learner-readable plain text (keep radicals/fractions)."""
+    cleaned = text or ""
+    # Nested-friendly passes for structures we must not drop (√, fractions).
+    for _ in range(6):
+        updated = cleaned
+        updated = re.sub(r"\\sqrt\{([^{}]+)\}", r"√(\1)", updated)
+        updated = re.sub(r"\\frac\{([^{}]+)\}\{([^{}]+)\}", r"(\1)/(\2)", updated)
+        if updated == cleaned:
+            break
+        cleaned = updated
     cleaned = re.sub(r"\\overrightarrow\{([^{}]+)\}", r"vector \1", cleaned)
+    cleaned = re.sub(r"\\vec\s*\{([^{}]+)\}", r"\1", cleaned)
+    cleaned = re.sub(r"\\vec\s*([A-Za-z])", r"\1", cleaned)
     cleaned = re.sub(r"\\angle\(([^)]+)\)", r"góc(\1)", cleaned)
-    cleaned = re.sub(r"\\[a-zA-Z]+(?:\{[^{}]*\})*", " ", cleaned)
-    cleaned = cleaned.replace("{", " ").replace("}", " ")
+    cleaned = re.sub(r"\\(?:left|right)\\?([|()\[\]])", r"\1", cleaned)
+    cleaned = re.sub(r"\\\|", "||", cleaned)
+    cleaned = cleaned.replace(r"\times", "×").replace(r"\cdot", "·")
+    cleaned = cleaned.replace(r"\pm", "±").replace(r"\approx", "≈")
+    cleaned = cleaned.replace(r"\le", "≤").replace(r"\ge", "≥").replace(r"\ne", "≠")
+    cleaned = cleaned.replace(r"\infty", "∞").replace(r"\pi", "π")
+    cleaned = re.sub(r"\\[,;!\s]", " ", cleaned)
+    # Drop remaining commands; keep braced content when simple.
+    cleaned = re.sub(r"\\[a-zA-Z]+\s*\{([^{}]*)\}", r"\1", cleaned)
+    cleaned = re.sub(r"\\[a-zA-Z]+", " ", cleaned)
+    cleaned = cleaned.replace("{", "").replace("}", "")
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     return cleaned
 
 
 def _sanitize_explanation(text: str) -> str:
     return _latex_to_plain_text(text)
+
+
+def _format_metric_answer(label: str, calc: dict[str, Any]) -> str:
+    """Prefer exact LaTeX for numeric metrics; keep qualitative/text answers intact."""
+    unit = "°" if calc.get("unit") == "degrees" else ""
+    # Qualitative / construction answers (collinear, projection point, …) already complete.
+    preset = calc.get("answer")
+    if isinstance(preset, str) and preset.strip():
+        return preset.strip()
+    value = calc.get("result_value")
+    result_latex = calc.get("result_latex")
+    if isinstance(value, int | float):
+        if isinstance(result_latex, str) and result_latex.strip():
+            latex = result_latex.strip()
+            # Angle latex often ends with ^\\circ; normalize to a single ° for the answer line.
+            if unit or "\\circ" in latex:
+                latex = latex.replace("^\\circ", "°").replace("\\circ", "°")
+                if not latex.endswith("°") and unit:
+                    latex = f"{latex}{unit}"
+                return f"{label} = {latex}"
+            return f"{label} = {latex}{unit}"
+        return f"{label} = {_fmt(value, 6)}{unit}"
+    if isinstance(result_latex, str) and result_latex.strip():
+        return f"{label} = {result_latex.strip()}{unit}"
+    return f"{label} = ?"
+
 
 
 _DISTANCE_RE = re.compile(r"kho[aả]ng\s*c[áa]ch|distance|\bd\s*\(", re.IGNORECASE)
@@ -83,7 +129,6 @@ def solve(
     geometry_goal: dict[str, Any] | None = None,
     target_object_ids: list[str] | None = None,
 ) -> SolverResult:
-    pts = _point_map(scene_dict)
     warnings: list[str] = _scene_reliability_warnings(scene_dict)
     q = normalize_solver_question(question)
     method = geometry_method if geometry_method in {"oxyz", "classical"} else "oxyz"
@@ -107,6 +152,17 @@ def solve(
             confidence="insufficient",
             method=method,
         )
+
+    if method == "classical" and capability_task == "distance":
+        from app.services.geometry.classical_point_plane import solve_classical_point_plane
+
+        classical_result = solve_classical_point_plane(scene_dict, q, warnings)
+        if classical_result is not None:
+            _attach_highlight_object_ids(classical_result, scene_dict)
+            _apply_result_metadata(classical_result, scene_dict, method)
+            return classical_result
+
+    pts = _point_map(scene_dict)
 
     guard = None if capability_task in {"pythagoras", "quadrilateral_metric", "circle_metric"} else _metric_data_guard(scene_dict, q)
     if guard:
@@ -1009,13 +1065,8 @@ def _cross_check_warnings(calc: dict[str, Any], points: dict[str, Vec3] | None) 
 def _result_from_calculation(question: str, calc: dict[str, Any], points: dict[str, Vec3] | None = None) -> SolverResult:
     if calc["status"] != "ok":
         return SolverResult(question, "Không xác định", [], calc["warnings"])
-    unit = "°" if calc.get("unit") == "degrees" else ""
     warnings = [*calc["warnings"], *_pedagogical_warnings(calc), *_cross_check_warnings(calc, points)]
-    value = calc.get("result_value")
-    if isinstance(value, int | float):
-        answer = f"{calc['label']} = {_fmt(value, 6)}{unit}"
-    else:
-        answer = calc.get("answer") or f"{calc['label']} = {calc['result_latex']}"
+    answer = _format_metric_answer(str(calc["label"]), calc)
     return SolverResult(question, answer, _steps_from_calculation(calc, points), warnings)
 
 
@@ -1097,8 +1148,13 @@ def _build_step2_detail(calc: dict[str, Any], points: dict[str, Vec3] | None) ->
 def _steps_from_calculation(calc: dict[str, Any], points: dict[str, Vec3] | None = None) -> list[SolverStep]:
     highlight = calc["highlight"]
     label_plain = _latex_to_plain_text(str(calc["label"]))
-    result_latex = str(calc["result_latex"])
-    result_plain = _latex_to_plain_text(result_latex)
+    result_latex = str(calc.get("result_latex") or "")
+    result_plain = _latex_to_plain_text(result_latex) if result_latex else "?"
+    # Sanitize step-2 prose so raw \\overrightarrow / \\vec fragments never leak into the card body.
+    step2_detail = _sanitize_explanation(_build_step2_detail(calc, points))
+    step2_text = _sanitize_explanation(
+        f"Dùng công thức hình học không gian, rồi thay số theo tọa độ. {step2_detail}"
+    )
     return [
         SolverStep(
             1,
@@ -1112,7 +1168,7 @@ def _steps_from_calculation(calc: dict[str, Any], points: dict[str, Vec3] | None
         SolverStep(
             2,
             "Chọn công thức và thay số",
-            f"Dùng công thức hình học không gian deterministic, rồi thay số theo tọa độ. {_build_step2_detail(calc, points)}",
+            step2_text,
             calc["formula_latex"],
             None,
             highlight,

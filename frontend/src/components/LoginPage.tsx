@@ -357,43 +357,43 @@ function LoginGeometryIllustration() {
     <svg className="login-illustration" viewBox="0 0 600 420" role="img" aria-label="Scene dựng hình toán học từ AI">
       <defs>
         <linearGradient id={gridGradientId} x1="0" x2="1" y1="0" y2="1">
-          <stop offset="0" stopColor="#2563eb" stopOpacity="0.18" />
-          <stop offset="1" stopColor="#7c3aed" stopOpacity="0.08" />
+          <stop offset="0" stopColor="#f6f6f4" />
+          <stop offset="1" stopColor="#fbfbfa" />
         </linearGradient>
         <radialGradient id={glowId} cx="50%" cy="50%" r="50%">
-          <stop offset="0" stopColor="#60a5fa" stopOpacity="0.55" />
-          <stop offset="1" stopColor="#60a5fa" stopOpacity="0" />
+          <stop offset="0" stopColor="#737373" stopOpacity="0.22" />
+          <stop offset="1" stopColor="#737373" stopOpacity="0" />
         </radialGradient>
         <marker id={arrowId} markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
-          <path d="M0,0 L0,6 L9,3 z" fill="#2563eb" />
+          <path d="M0,0 L0,6 L9,3 z" fill="#111111" />
         </marker>
       </defs>
-      <rect x="24" y="24" width="552" height="348" rx="28" fill={`url(#${gridGradientId})`} stroke="#d4d4d4" />
+      <rect x="24" y="24" width="552" height="348" rx="28" fill={`url(#${gridGradientId})`} stroke="#c9c9c2" />
       {Array.from({ length: 9 }).map((_, index) => (
-        <path key={`login-grid-v-${index}`} d={`M${72 + index * 52} 56V340`} stroke="#cbd5e1" strokeWidth="1" strokeDasharray="5 8" />
+        <path key={`login-grid-v-${index}`} d={`M${72 + index * 52} 56V340`} stroke="#e3e3df" strokeWidth="1" strokeDasharray="5 8" />
       ))}
       {Array.from({ length: 6 }).map((_, index) => (
-        <path key={`login-grid-h-${index}`} d={`M56 ${84 + index * 46}H504`} stroke="#cbd5e1" strokeWidth="1" strokeDasharray="5 8" />
+        <path key={`login-grid-h-${index}`} d={`M56 ${84 + index * 46}H504`} stroke="#e3e3df" strokeWidth="1" strokeDasharray="5 8" />
       ))}
-      <path d="M72 318H500" stroke="#111827" strokeWidth="2" strokeLinecap="round" />
-      <path d="M92 338V72" stroke="#111827" strokeWidth="2" strokeLinecap="round" />
-      <circle cx="164" cy="286" r="54" fill="none" stroke="#2563eb" strokeWidth="4" />
-      <path d="M164 286L312 130L430 286Z" fill="rgba(37,99,235,0.08)" stroke="none" />
-      <path d="M164 286L430 286" stroke="#111827" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M312 130L430 286" stroke="#111827" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M312 130V286" stroke="#7c3aed" strokeWidth="3" strokeDasharray="8 9" />
-      <path d="M312 286h12v-12h-12z" fill="none" stroke="#111827" strokeWidth="2" strokeLinejoin="miter" />
-      <path d="M164 286L312 130" stroke="#f97316" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M356 180L456 116" stroke="#2563eb" strokeWidth="2" strokeLinecap="round" markerEnd={`url(#${arrowId})`} />
+      <path d="M72 318H500" stroke="#111111" strokeWidth="2" strokeLinecap="round" />
+      <path d="M92 338V72" stroke="#111111" strokeWidth="2" strokeLinecap="round" />
+      <circle cx="164" cy="286" r="54" fill="none" stroke="#525252" strokeWidth="4" />
+      <path d="M164 286L312 130L430 286Z" fill="rgba(17,17,17,0.06)" stroke="none" />
+      <path d="M164 286L430 286" stroke="#111111" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M312 130L430 286" stroke="#111111" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M312 130V286" stroke="#737373" strokeWidth="3" strokeDasharray="8 9" />
+      <path d="M312 286h12v-12h-12z" fill="none" stroke="#111111" strokeWidth="2" strokeLinejoin="miter" />
+      <path d="M164 286L312 130" stroke="#525252" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M356 180L456 116" stroke="#111111" strokeWidth="2" strokeLinecap="round" markerEnd={`url(#${arrowId})`} />
       <circle cx="312" cy="130" r="72" fill={`url(#${glowId})`} />
       {[[164, 286, 'A'], [312, 130, 'S'], [430, 286, 'B'], [312, 286, 'H']].map(([cx, cy, label]) => (
         <g key={label as string}>
-          <circle cx={cx as number} cy={cy as number} r="8" fill="#111827" />
-          <text x={(cx as number) + 12} y={(cy as number) - 12} fill="#111827" fontSize="20" fontWeight="700">{label}</text>
+          <circle cx={cx as number} cy={cy as number} r="8" fill="#111111" />
+          <text x={(cx as number) + 12} y={(cy as number) - 12} fill="#111111" fontSize="20" fontWeight="700">{label}</text>
         </g>
       ))}
-      <text x="112" y="98" fill="#475569" fontSize="18" fontWeight="700">Đề bài → Scene → Renderer</text>
-      <text x="352" y="350" fill="#475569" fontSize="16" fontWeight="400">GeoGebra + Three.js</text>
+      <text x="112" y="98" fill="#525252" fontSize="18" fontWeight="700">Đề bài → Scene → Renderer</text>
+      <text x="352" y="350" fill="#525252" fontSize="16" fontWeight="400">GeoGebra + Three.js</text>
     </svg>
   );
 }

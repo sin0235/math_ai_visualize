@@ -150,23 +150,43 @@ def _midpoint(relation: RelationV3, geometry: GeometryIndex) -> Residual:
         return Residual(residual, geometry.tolerance, {"point_id": point_ids[0], "segment_id": segment_ids[0], "expected": expected})
 
     # Dạng 3 điểm: E là trung điểm của A và B (thường AI gửi midpoint(A, B, E)).
-    # Kiểm tra: 1 trong 3 điểm có khoảng cách tới trung điểm của 2 điểm còn lại ≈ 0.
+    # Prefer explicit midpoint role; otherwise prefer last operand; only accept a
+    # unique in-tolerance candidate when falling back so mis-ordered operands fail.
     if len(point_ids) == 3:
-        pts = [geometry.point(pid) for pid in point_ids]
-        best_residual = float("inf")
-        best_evidence: dict = {}
-        for i in range(3):
-            others = [j for j in range(3) if j != i]
-            expected_mid = midpoint(pts[others[0]], pts[others[1]])
-            res = distance(pts[i], expected_mid)
-            if res < best_residual:
-                best_residual = res
-                best_evidence = {
-                    "midpoint_id": point_ids[i],
-                    "endpoint_ids": [point_ids[j] for j in others],
+        role_mid = next(
+            (
+                op.ref_id
+                for op in relation.operands
+                if op.ref_kind == "point" and op.role in {"midpoint", "mid", "result"}
+            ),
+            None,
+        )
+
+        def residual_for(mid_id: str) -> Residual:
+            others = [pid for pid in point_ids if pid != mid_id]
+            expected_mid = midpoint(geometry.point(others[0]), geometry.point(others[1]))
+            res = distance(geometry.point(mid_id), expected_mid)
+            return Residual(
+                res,
+                geometry.tolerance,
+                {
+                    "midpoint_id": mid_id,
+                    "endpoint_ids": others,
                     "expected": expected_mid,
-                }
-        return Residual(best_residual, geometry.tolerance, best_evidence)
+                },
+            )
+
+        preferred_id = role_mid if role_mid in point_ids else point_ids[-1]
+        preferred = residual_for(preferred_id)
+        if preferred.value <= preferred.tolerance or role_mid is not None:
+            return preferred
+
+        fits = [residual_for(pid) for pid in point_ids]
+        within = [item for item in fits if item.value <= item.tolerance]
+        if len(within) == 1:
+            return within[0]
+        # Ambiguous or none fit: keep preferred (last-operand) residual so trust fails closed.
+        return preferred
 
     raise ValueError(f"Relation {relation.id} cần (1 điểm + 1 đoạn) hoặc 3 điểm")
 
@@ -271,40 +291,77 @@ def _distance(relation: RelationV3, geometry: GeometryIndex) -> Residual:
     raise ValueError(f"Relation {relation.id} cần (2 điểm), (1 điểm + 1 đường) hoặc (1 điểm + 1 mặt phẳng)")
 
 
+def _angle_at_vertex(
+    vertex_id: str,
+    arm_ids: list[str],
+    expected_degrees: float,
+    geometry: GeometryIndex,
+) -> Residual:
+    """Interior three-point angle at vertex in [0°, 180°] (no abs-dot fold)."""
+    vertex = geometry.point(vertex_id)
+    others = [geometry.point(arm_id) for arm_id in arm_ids]
+    u1 = normalized(sub(others[0], vertex), geometry.tolerance)
+    u2 = normalized(sub(others[1], vertex), geometry.tolerance)
+    cosine = max(-1.0, min(1.0, dot(u1, u2)))
+    actual = degrees(acos(cosine))
+    residual = abs(actual - float(expected_degrees))
+    angular_degrees = degrees(geometry.policy.angular_tolerance)
+    return Residual(
+        residual,
+        angular_degrees,
+        {
+            "vertex_id": vertex_id,
+            "arm_ids": arm_ids,
+            "expected_degrees": expected_degrees,
+            "actual_degrees": actual,
+        },
+    )
+
+
 def _angle(relation: RelationV3, geometry: GeometryIndex) -> Residual:
     point_ids = _matching_ids(relation, "point")
 
-    # Dạng 3 điểm: góc tại đỉnh (giữa) tạo bởi 2 cạnh đến 2 điểm còn lại.
+    # Dạng 3 điểm: góc tại đỉnh tạo bởi 2 cạnh đến 2 điểm còn lại.
+    # Prefer role vertex / middle operand (angle A-B-C → B). Only fall back to a
+    # unique in-tolerance vertex when the preferred choice fails.
     if len(point_ids) == 3:
         expected = relation.args.get("degrees")
         if not isinstance(expected, (int, float)):
             raise ValueError(f"Relation {relation.id} thiếu args.degrees")
-        # Thử tất cả 3 hoán vị đỉnh, chọn đỉnh cho góc gần expected nhất.
-        pts = [geometry.point(pid) for pid in point_ids]
-        best_residual = float("inf")
-        best_evidence: dict = {}
-        for i in range(3):
-            vertex = pts[i]
-            others = [pts[j] for j in range(3) if j != i]
-            v1 = sub(others[0], vertex)
-            v2 = sub(others[1], vertex)
-            u1 = normalized(v1, geometry.tolerance)
-            u2 = normalized(v2, geometry.tolerance)
-            cosine = max(-1.0, min(1.0, abs(dot(u1, u2))))
-            actual = degrees(acos(cosine))
-            res = abs(actual - float(expected))
-            if res < best_residual:
-                best_residual = res
-                best_evidence = {
-                    "vertex_id": point_ids[i],
-                    "arm_ids": [point_ids[j] for j in range(3) if j != i],
-                    "expected_degrees": expected,
-                    "actual_degrees": actual,
-                }
-        angular_degrees = degrees(geometry.policy.angular_tolerance)
-        return Residual(best_residual, angular_degrees, best_evidence)
+        role_vertex = next(
+            (
+                op.ref_id
+                for op in relation.operands
+                if op.ref_kind == "point" and op.role in {"vertex", "apex", "at"}
+            ),
+            None,
+        )
+        preferred_vertex = role_vertex if role_vertex in point_ids else point_ids[1]
+        preferred = _angle_at_vertex(
+            preferred_vertex,
+            [pid for pid in point_ids if pid != preferred_vertex],
+            float(expected),
+            geometry,
+        )
+        if preferred.value <= preferred.tolerance or role_vertex is not None:
+            return preferred
 
-    # Dạng 2 đường/đoạn: góc giữa 2 vector hướng.
+        fits: list[Residual] = []
+        for vertex_id in point_ids:
+            candidate = _angle_at_vertex(
+                vertex_id,
+                [pid for pid in point_ids if pid != vertex_id],
+                float(expected),
+                geometry,
+            )
+            if candidate.value <= candidate.tolerance:
+                fits.append(candidate)
+        if len(fits) == 1:
+            return fits[0]
+        # Ambiguous or none: keep middle-operand residual (fail closed).
+        return preferred
+
+    # Dạng 2 đường/đoạn: góc không hướng giữa 2 vector → [0°, 90°].
     ids, directions = _line_directions(relation, geometry)
     expected = relation.args.get("degrees")
     if not isinstance(expected, (int, float)):

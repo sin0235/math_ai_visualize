@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { DragEvent, MouseEvent, useEffect, useMemo, useRef, useState } from 'react';
 
 import { getMathCapabilities, type AlgebraTopic, type MathCapabilityRegistry } from '../../api/client';
 import { KatexSpan } from '../KatexSpan';
@@ -36,6 +36,8 @@ export function AlgebraInput({
   intervalClosedStart,
   intervalClosedEnd,
   loading,
+  ocrLoading = false,
+  ocrError = null,
   expanded,
   onExpandedChange,
   onInputChange,
@@ -50,6 +52,8 @@ export function AlgebraInput({
   onIntervalClosedEndChange,
   sequenceDraft,
   onSequenceDraftChange,
+  onOcrImage,
+  onOcrClipboardImage,
   onSubmit,
 }: {
   input: string;
@@ -63,6 +67,8 @@ export function AlgebraInput({
   intervalClosedStart: boolean;
   intervalClosedEnd: boolean;
   loading: boolean;
+  ocrLoading?: boolean;
+  ocrError?: string | null;
   expanded: boolean;
   onExpandedChange: (expanded: boolean) => void;
   onInputChange: (value: string) => void;
@@ -77,10 +83,15 @@ export function AlgebraInput({
   onIntervalClosedEndChange: (value: boolean) => void;
   sequenceDraft: SequenceDraft;
   onSequenceDraftChange: (value: SequenceDraft) => void;
+  onOcrImage?: (file: File) => void;
+  onOcrClipboardImage?: () => void;
   onSubmit: () => void;
 }) {
   const [capabilityRegistry, setCapabilityRegistry] = useState<MathCapabilityRegistry | null>(null);
   const [capabilityError, setCapabilityError] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const busy = loading || ocrLoading;
   const suggestedTopic = suggestTopic(input);
   const topicOptions = capabilityRegistry?.ui.algebra_topics ?? [];
   const topicLabels = useMemo(
@@ -104,6 +115,40 @@ export function AlgebraInput({
     };
   }, []);
 
+  function pickImageFile(files: FileList | null) {
+    if (!onOcrImage) return;
+    const file = Array.from(files ?? []).find((item) => item.type.startsWith('image/'));
+    if (file) onOcrImage(file);
+  }
+
+  function handleDrop(event: DragEvent<HTMLElement>) {
+    event.preventDefault();
+    if (busy) return;
+    setDragActive(false);
+    pickImageFile(event.dataTransfer.files);
+  }
+
+  function handlePaste(event: React.ClipboardEvent<HTMLTextAreaElement>) {
+    if (busy || !onOcrImage) return;
+    const imageItem = Array.from(event.clipboardData.items).find((item) => item.type.startsWith('image/'));
+    const file = imageItem?.getAsFile();
+    if (!file) return;
+    event.preventDefault();
+    onOcrImage(file);
+  }
+
+  function handleTextAreaDoubleClick(event: MouseEvent<HTMLTextAreaElement>) {
+    if (input.trim() || busy || !onOcrImage) return;
+    event.preventDefault();
+    fileInputRef.current?.click();
+  }
+
+  function handleContextMenu(event: MouseEvent<HTMLTextAreaElement>) {
+    if (input.trim() || busy || !onOcrClipboardImage) return;
+    event.preventDefault();
+    onOcrClipboardImage();
+  }
+
   return (
     <section className="algebra-input-panel">
       <div className="algebra-panel-heading">
@@ -113,29 +158,80 @@ export function AlgebraInput({
       <div className="algebra-input-section">
         <div className="algebra-input-section-head"><span>01</span><strong>Đề bài</strong></div>
         {topic === 'sequence' && (
-          <SequenceBuilder draft={sequenceDraft} loading={loading} onChange={onSequenceDraftChange} />
+          <SequenceBuilder draft={sequenceDraft} loading={busy} onChange={onSequenceDraftChange} />
         )}
 
-        <label className="field-label algebra-vietnamese-input">
-          Nhập đề bằng tiếng Việt
-          <textarea
-            value={input}
-            onChange={(event) => onInputChange(event.target.value)}
-            onKeyDown={(event) => {
-              if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') onSubmit();
+        <div className="field-label algebra-vietnamese-input">
+          <span>Nhập đề bằng tiếng Việt</span>
+          <details className="ocr-actions-panel">
+            <summary>Nhập bằng ảnh / OCR</summary>
+            <div className="ocr-action-row" aria-label="Thao tác nhập bằng hình ảnh">
+              <button type="button" disabled={busy || !onOcrImage} onClick={() => fileInputRef.current?.click()}>
+                Tải ảnh đề bài
+              </button>
+              <button type="button" disabled={busy || !onOcrClipboardImage} onClick={() => onOcrClipboardImage?.()}>
+                Dán ảnh
+              </button>
+            </div>
+          </details>
+          <div
+            className={`textarea-wrap ocr-dropzone ${dragActive ? 'drag-active' : ''} ${!input.trim() ? 'empty' : ''}`}
+            onDragOver={(event) => {
+              event.preventDefault();
+              if (!busy) setDragActive(true);
             }}
-            rows={5}
-            maxLength={2000}
-            disabled={loading}
-            placeholder="Ví dụ: Tìm tích phân của 2*x+1; giải phương trình x^2 - 5x + 6 = 0"
-          />
+            onDragLeave={() => {
+              if (!busy) setDragActive(false);
+            }}
+            onDrop={handleDrop}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden-file-input"
+              aria-label="Tải ảnh đề bài để OCR"
+              title="Tải ảnh đề bài để OCR"
+              onChange={(event) => {
+                pickImageFile(event.target.files);
+                event.target.value = '';
+              }}
+            />
+            <textarea
+              value={input}
+              onChange={(event) => {
+                if (busy) return;
+                onInputChange(event.target.value);
+              }}
+              onKeyDown={(event) => {
+                if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') onSubmit();
+              }}
+              onPaste={handlePaste}
+              onDoubleClick={handleTextAreaDoubleClick}
+              onContextMenu={handleContextMenu}
+              rows={7}
+              maxLength={2000}
+              disabled={busy}
+              placeholder="Ví dụ: Tìm tích phân của 2*x+1; giải phương trình x^2 - 5x + 6 = 0"
+            />
+            {!busy && !input.trim() && (
+              <div className="ocr-empty-hint">Bạn có thể gõ đề, kéo-thả ảnh hoặc paste ảnh trực tiếp vào khung này.</div>
+            )}
+            {ocrError && <div className="ocr-error">{ocrError}</div>}
+            <div className="char-counter">{input.length}/2000 ký tự</div>
+            {busy && (
+              <div className="textarea-overlay" role="status" aria-live="polite">
+                <div className="textarea-overlay-text">{ocrLoading ? 'Đang đọc ảnh...' : 'Đang giải...'}</div>
+              </div>
+            )}
+          </div>
           <span className="algebra-ai-option-hint">
             Hệ thống dùng NLP và AI để hiểu đề tiếng Việt, sau đó solver kiểm chứng và dựng lời giải từng bước.
           </span>
-        </label>
+        </div>
 
         {suggestedTopic && topic !== suggestedTopic && (
-          <button type="button" className="algebra-topic-suggestion" onClick={() => onTopicChange(suggestedTopic)} disabled={loading}>
+          <button type="button" className="algebra-topic-suggestion" onClick={() => onTopicChange(suggestedTopic)} disabled={busy}>
             Gợi ý dạng bài: {topicLabels.get(suggestedTopic) ?? suggestedTopic}
           </button>
         )}
@@ -146,7 +242,7 @@ export function AlgebraInput({
         <div className="algebra-option-grid">
         <label className="field-label">
           Dạng bài
-          <select value={topic} onChange={(event) => onTopicChange(event.target.value as AlgebraTopic)} disabled={loading || !capabilityRegistry}>
+          <select value={topic} onChange={(event) => onTopicChange(event.target.value as AlgebraTopic)} disabled={busy || !capabilityRegistry}>
             <option value="auto">Tự nhận dạng</option>
             {topicOptions.map((option) => (
               <option
@@ -169,7 +265,7 @@ export function AlgebraInput({
             <span>Miền nghiệm</span>
             <KatexSpan tex={DOMAIN_TEX[domain]} />
           </span>
-          <select value={domain} onChange={(event) => onDomainChange(event.target.value as AlgebraDomain)} disabled={loading}>
+          <select value={domain} onChange={(event) => onDomainChange(event.target.value as AlgebraDomain)} disabled={busy}>
             <option value="R">Số thực (R)</option>
             <option value="C">Số phức (C)</option>
             <option value="N">Số tự nhiên (N)</option>
@@ -181,7 +277,7 @@ export function AlgebraInput({
           <select
             value={intervalPreset}
             onChange={(event) => onIntervalPresetChange(event.target.value as IntervalPreset)}
-            disabled={loading}
+            disabled={busy}
           >
             <option value="">Không giới hạn (miền đầy đủ)</option>
             <option value="unit_circle">Một vòng lượng giác</option>
@@ -193,7 +289,7 @@ export function AlgebraInput({
           <select
             value={angleUnit}
             onChange={(event) => onAngleUnitChange(event.target.value as AlgebraAngleUnit)}
-            disabled={loading}
+            disabled={busy}
           >
             <option value="radian">Radian</option>
             <option value="degree">Độ</option>
@@ -209,7 +305,7 @@ export function AlgebraInput({
               value={intervalStart}
               onChange={(event) => onIntervalStartChange(event.target.value)}
               placeholder="vd 0, -pi, -oo"
-              disabled={loading}
+              disabled={busy}
             />
           </label>
           <label className="field-label">
@@ -218,7 +314,7 @@ export function AlgebraInput({
               value={intervalEnd}
               onChange={(event) => onIntervalEndChange(event.target.value)}
               placeholder="vd 2*pi, pi/2, oo"
-              disabled={loading}
+              disabled={busy}
             />
           </label>
           <label className="field-label algebra-ai-option">
@@ -227,7 +323,7 @@ export function AlgebraInput({
                 type="checkbox"
                 checked={intervalClosedStart}
                 onChange={(event) => onIntervalClosedStartChange(event.target.checked)}
-                disabled={loading}
+                disabled={busy}
               />
               Đóng cận trái [
             </span>
@@ -238,7 +334,7 @@ export function AlgebraInput({
                 type="checkbox"
                 checked={intervalClosedEnd}
                 onChange={(event) => onIntervalClosedEndChange(event.target.checked)}
-                disabled={loading}
+                disabled={busy}
               />
               Đóng cận phải ]
             </span>
@@ -255,14 +351,14 @@ export function AlgebraInput({
           value={variables}
           onChange={(event) => onVariablesChange(event.target.value)}
           placeholder="x hoặc x,y hoặc z (để trống để tự nhận diện)"
-          disabled={loading}
+          disabled={busy}
         />
       </label>
 
       </div>
 
-      <button type="button" className="auth-primary-button algebra-submit" onClick={onSubmit} disabled={loading || (!input.trim() && topic !== 'sequence')}>
-        {loading ? 'Đang giải...' : 'Giải bài'}
+      <button type="button" className="auth-primary-button algebra-submit" onClick={onSubmit} disabled={busy || (!input.trim() && topic !== 'sequence')}>
+        {ocrLoading ? 'Đang đọc ảnh...' : loading ? 'Đang giải...' : 'Giải bài'}
       </button>
     </section>
   );

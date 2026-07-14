@@ -1032,9 +1032,20 @@ export default function App() {
                     </details>
                   </>
                 ) : (
-                  <div className="empty-render-stage panel">
-                    <strong>Chưa có Scene v3</strong>
-                    <p>Nhập đề và dựng hình để tạo workspace Scene v3. Pipeline render v2 đã được gỡ hoàn toàn.</p>
+                  <div className="empty-state" role="status">
+                    <div className="empty-state-content">
+                      <svg className="empty-state-graphic" viewBox="0 0 220 160" aria-hidden="true">
+                        <rect x="24" y="22" width="172" height="116" rx="18" fill="none" stroke="currentColor" strokeWidth="2" />
+                        <path d="M58 112L102 48L156 112Z" fill="none" stroke="currentColor" strokeWidth="3" strokeLinejoin="round" />
+                        <path d="M102 48L102 112" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="6 6" />
+                        <circle cx="58" cy="112" r="5" fill="currentColor" />
+                        <circle cx="102" cy="48" r="5" fill="currentColor" />
+                        <circle cx="156" cy="112" r="5" fill="currentColor" />
+                        <path d="M42 128H178" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                      </svg>
+                      <h2>Chưa có hình dựng</h2>
+                      <p>Nhập đề bài, dán ảnh hoặc chọn đề mẫu để bắt đầu dựng hình.</p>
+                    </div>
                   </div>
                 )}
               </div>

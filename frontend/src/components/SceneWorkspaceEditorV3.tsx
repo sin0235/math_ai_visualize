@@ -34,7 +34,9 @@ export function SceneWorkspaceEditorV3({
   const [placementDepth, setPlacementDepth] = useState(0);
   const [inspectorHighlightedObjectIds, setInspectorHighlightedObjectIds] = useState<string[]>([]);
   const [localError, setLocalError] = useState<string | null>(null);
-  const hydratedSceneId = useRef<string | null>(null);
+  // Key hydration on scene_id + revision so re-render/restore of the same problem
+  // (stable scene_id hash) still replaces the workspace when content changes.
+  const hydratedKey = useRef<string | null>(null);
   const parameterTimer = useRef<number | null>(null);
   const response = workspace.state.committed;
   const scene = response?.scene ?? null;
@@ -49,8 +51,9 @@ export function SceneWorkspaceEditorV3({
   ])), [constructionActions, highlightedObjectIds, inspectorHighlightedObjectIds]);
 
   useEffect(() => {
-    if (hydratedSceneId.current === initialResponse.scene.scene_id) return;
-    hydratedSceneId.current = initialResponse.scene.scene_id;
+    const key = `${initialResponse.scene.scene_id}:${initialResponse.scene.revision}`;
+    if (hydratedKey.current === key) return;
+    hydratedKey.current = key;
     workspace.hydrate(initialResponse);
   }, [initialResponse, workspace.hydrate]);
 

@@ -50,7 +50,5 @@ def test_solve_cube_distance_m_to_plane_pfb_from_vietnamese():
     }
     question = "Khoảng cách từ điểm M đến mặt phẳng (PFB) bằng bao nhiêu?"
     result = solve(scene, question)
-    assert result.answer.startswith("d(M,(PFB))")
-    # 9*sqrt(6) ≈ 22.045408
-    assert "22.045" in result.answer
+    assert result.answer == r"d(M,(PFB)) = 9 \sqrt{6}"
     assert result.steps

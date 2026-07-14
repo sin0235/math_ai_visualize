@@ -73,9 +73,9 @@ def solve_sequence(problem: ParsedAlgebraProblem) -> AlgebraSolveResponse:
         f"Kết quả: {calculation.result_latex}",
     ]
 
-    # Quiet production verification: status ok, no check/method noise.
+    # No symbolic checks ran for sequences — do not claim "verified".
     verification = AlgebraVerificationReport(
-        status="verified",
+        status="skipped",
         checks=[],
         method=[],
     )
