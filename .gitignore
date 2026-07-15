@@ -2,6 +2,7 @@
 .env
 .env.*
 .env_*
+.env-*
 !.env.example
 backend/.env
 backend/.env.*
