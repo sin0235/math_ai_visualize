@@ -378,13 +378,22 @@ Object signatures được phép:
 - point_2d: id, label, x, y, tùy chọn x_expr/y_expr.
 - point_3d: id, label, x, y, z, tùy chọn x_expr/y_expr/z_expr.
 - segment: id, point_ids đúng 2 point IDs, hidden, color, line_width, style.
-- line_2d/line_3d: id, point_ids đúng 2 point IDs.
-- vector_2d/vector_3d: id, from_point_id, to_point_id.
+- line_2d/line_3d: id, point_ids đúng 2 point IDs, hidden, color, line_width, style.
+- vector_2d/vector_3d: id, from_point_id, to_point_id, hidden, color, line_width, style.
 - circle_2d: id, center_point_id và through_point_id hoặc radius.
 - function_graph: id, expression.
 - face: id, point_ids ít nhất 3 point IDs, color, opacity.
 - plane: id, point_ids ít nhất 3 point IDs, color, opacity, show_normal.
 - sphere: id, center_point_id, radius, color, opacity.
+
+Collection signatures BẮT BUỘC, không tự đổi tên field:
+- relation: {"id":string,"type":string,"operands":[{"role":string,"ref_id":string,"ref_kind":"point"|"segment"|"line"|"vector"|"circle"|"face"|"sphere"|"plane"|"object"}],"args":{},"source":"given"|"ai_inferred"|"construction","verification":null,"metadata":{}}. Relation dùng `source`, CẤM field `provenance`.
+- annotation: {"id":string,"type":string,"target_ids":[object_id],"label":string|null,"color":string|null,"provenance":"given"|"verified"|"computed"|"render_only","relation_id":string|null,"metadata":{}}. Annotation dựng để minh họa dùng `render_only`, CẤM `construction`, `ai_inferred` và field boolean `render_only`.
+- derived_fact: {"id":string,"kind":"intersection"|"measurement"|"annotation"|"display_edge"|"normal_vector","source_ids":[object_or_relation_id],"value":{},"provenance":"given"|"verified"|"computed"|"render_only","relation_id":string|null}. CẤM `text`, `statement`, `source`, `object_ids` ở root; nội dung chữ đặt trong `value.text`. Nếu không có derived fact đúng schema thì trả `derived_facts: []`.
+- parameter: {"id":string,"name":string,"label":string|null,"min":number,"max":number,"default":number,"step":number>0}.
+- construction_step: {"id":string,"description":string,"object_ids":[object_id],"relation_ids":[relation_id]}.
+- interpretation: {"object_ids":[object_id],"relation_ids":[relation_id],"values":[object],"missing_data":[string],"assumptions":[string]}.
+- audit: {"created_by":"ai","generator_provider":string|null,"generator_model":string|null,"generator_prompt_version":string|null,"migrated_from":string|null,"updated_at":string|null}.
 
 I. Contract và reference integrity BẮT BUỘC:
 1. Mọi object/relation/annotation phải có `id` duy nhất (stable string, không rỗng).
@@ -399,7 +408,7 @@ I. Contract và reference integrity BẮT BUỘC:
 9. equal_length: 2 linear. collinear: ≥3 points. coplanar: ≥4 points (3d). on_plane: point + planar.
 10. distance: 2 points HOẶC point+linear HOẶC point+planar; CHỈ tạo relation distance khi đề đã cho giá trị số để kiểm chứng, bắt buộc đặt trong args.value. Nếu đề HỎI TÍNH khoảng cách chưa biết: KHÔNG tạo relation distance; hãy dựng chân chiếu/segment minh họa và để solver tính.
 11. angle: 2 linear HOẶC 3 points (đỉnh ở giữa); CHỈ tạo relation angle khi đề đã cho số đo, bắt buộc đặt trong args.degrees. Nếu đề hỏi góc chưa biết: chỉ dựng các cạnh/annotation minh họa, không tạo relation angle thiếu degrees.
-12. Hỗ trợ thêm: ratio (2 linear + args.ratio), point_on_segment, line_in_plane, parallel_planes, perpendicular_planes.
+12. Hỗ trợ thêm: ratio (2 linear + args.ratio), point_on_segment, line_through_points (1 linear + đúng 2 point), line_in_plane, parallel_planes, perpendicular_planes.
 13. problem_text = nguyên văn đề; NLP hints nếu có chỉ là gợi ý; khi mâu thuẫn ưu tiên nguyên văn.
 14. renderer geogebra_2d → chỉ point_2d; threejs_3d → chỉ point_3d.
 15. Mọi ref_id trong objects/relations/annotations phải trỏ object đã khai báo.
@@ -463,7 +472,7 @@ VI.a. Quy trình suy luận bắt buộc (thực hiện nội bộ, không xuấ
 3. Chọn hệ tọa độ canonical; kiểm tra từng tọa độ với dữ kiện trước khi tạo object.
 4. Tạo toàn bộ point và stable object id trước, sau đó tạo segment/line/vector/face/plane, cuối cùng mới tạo relation/annotation.
 5. Hoàn thiện topology khối trước khi thêm construction cho goal; không coi danh sách point là hình hoàn chỉnh.
-6. Gắn provenance cho từng dữ kiện và tách rõ `given`, `inferred`, `construction`, `render_only`.
+6. Gắn nguồn đúng collection: object/relation dùng `source` (`given`, `ai_inferred`, `construction`); annotation/derived_fact dùng `provenance` (`given`, `verified`, `computed`, `render_only`). Không dùng `inferred` làm giá trị output và không dùng `construction` cho annotation/derived_fact.
 7. Chạy self-check về reference, topology, tọa độ, exact expression, renderer và tính đầy đủ thị giác; nếu không đủ dữ kiện thì ghi assumption thay vì đoán.
 
 VI.b. Bất biến chống scene hợp schema nhưng sai hình học:
@@ -537,6 +546,9 @@ Nhiệm vụ: sửa scene để hết lỗi, giữ nguyên problem_text và inte
 - Tự đếm lại topology: hộp 8/12/6; lăng trụ đáy n cạnh 2n/3n/(n+2); chóp n cạnh (n+1)/2n/(n+1); tứ diện 4/6/4.
 - Mọi ref_id phải tồn tại trong chính scene JSON được trả về.
 - Không quay về schema v2 (name/object_1/object_2).
+- Relation dùng `source`, không dùng `provenance`; annotation/derived_fact dùng `provenance`, không dùng `source`.
+- Derived fact phải có `kind`, `source_ids`, `value`, `provenance`; nội dung chữ đặt trong `value.text`, không dùng root `text`/`statement`/`object_ids`.
+- Annotation construction dùng `provenance="render_only"`, không dùng `provenance="construction"` hoặc field boolean `render_only`.
 - Chỉ một scene JSON hoàn chỉnh.
 """.strip()
 
@@ -616,7 +628,7 @@ Schema kế hoạch dựng hình:
   ],
   "relations": [
     {
-      "type": "perpendicular" | "equal_length" | "parallel" | "midpoint" | "tangent" | "intersection" | "collinear" | "coplanar" | "on_line" | "on_plane" | "on_sphere" | "on_circle" | "distance" | "angle",
+      "type": "perpendicular" | "equal_length" | "parallel" | "midpoint" | "tangent" | "intersection" | "collinear" | "coplanar" | "on_line" | "line_through_points" | "on_plane" | "on_sphere" | "on_circle" | "distance" | "angle",
       "objects": [string],
       "value": number | null,
       "reasoning": string

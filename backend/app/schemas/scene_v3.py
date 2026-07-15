@@ -72,25 +72,39 @@ class SegmentV3(SceneObjectBaseV3):
 class Line2DV3(SceneObjectBaseV3):
     type: Literal["line_2d"] = "line_2d"
     point_ids: tuple[str, str]
+    hidden: bool = False
+    color: str | None = None
+    line_width: float | None = None
+    style: Literal["solid", "dashed", "dotted"] | None = None
 
 
 class Line3DV3(SceneObjectBaseV3):
     type: Literal["line_3d"] = "line_3d"
     point_ids: tuple[str, str]
+    hidden: bool = False
     color: str = "#1d3557"
+    line_width: float | None = None
+    style: Literal["solid", "dashed", "dotted"] | None = None
 
 
 class Vector2DV3(SceneObjectBaseV3):
     type: Literal["vector_2d"] = "vector_2d"
     from_point_id: str
     to_point_id: str
+    hidden: bool = False
+    color: str | None = None
+    line_width: float | None = None
+    style: Literal["solid", "dashed", "dotted"] | None = None
 
 
 class Vector3DV3(SceneObjectBaseV3):
     type: Literal["vector_3d"] = "vector_3d"
     from_point_id: str
     to_point_id: str
+    hidden: bool = False
     color: str = "#7c3aed"
+    line_width: float | None = None
+    style: Literal["solid", "dashed", "dotted"] | None = None
 
 
 class Circle2DV3(SceneObjectBaseV3):
@@ -285,6 +299,12 @@ class MathSceneV3(V3Model):
                 raise ValueError(f"Annotation {annotation.id} tham chiếu ID không tồn tại: {sorted(missing)}")
             if annotation.relation_id and annotation.relation_id not in relation_id_set:
                 raise ValueError(f"Annotation {annotation.id} tham chiếu relation không tồn tại")
+        for fact in self.derived_facts:
+            missing = set(fact.source_ids) - object_id_set - relation_id_set
+            if missing:
+                raise ValueError(f"Derived fact {fact.id} tham chiếu ID không tồn tại: {sorted(missing)}")
+            if fact.relation_id and fact.relation_id not in relation_id_set:
+                raise ValueError(f"Derived fact {fact.id} tham chiếu relation không tồn tại")
         return self
 
 

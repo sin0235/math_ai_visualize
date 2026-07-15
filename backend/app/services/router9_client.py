@@ -98,7 +98,7 @@ class Router9Client:
             raise RuntimeError("9router không trả về nội dung JSON trong choices[0].message.content.")
         try:
             scene_json = parse_llm_json_dict(content, task="scene")
-            log_scene_summary("9router", scene_json)
+            log_scene_summary("9router", scene_json, model=self.model)
             return scene_json
         except (json.JSONDecodeError, RuntimeError) as error:
             message = _parse_error_message(error)

@@ -90,7 +90,7 @@ class OllamaClient:
         if not content.strip():
             raise RuntimeError("Ollama response message.content không có nội dung")
         scene_json = parse_llm_json_dict(content, task="scene")
-        log_scene_summary(self.provider_id, scene_json)
+        log_scene_summary(self.provider_id, scene_json, model=payload["model"])
         return scene_json
 
     async def _extract_scene_json_openai_compatible(
@@ -146,7 +146,7 @@ class OllamaClient:
         if not content.strip():
             raise RuntimeError("Ollama cloud response message.content không có nội dung")
         scene_json = parse_llm_json_dict(content, task="scene")
-        log_scene_summary(self.provider_id, scene_json)
+        log_scene_summary(self.provider_id, scene_json, model=payload["model"])
         return scene_json
 
     async def ocr_image(self, image_data_url: str, model: str | None = None, system_prompt: str | None = None, user_text: str = "Trích xuất nguyên văn đề toán trong ảnh.") -> str:

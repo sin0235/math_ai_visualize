@@ -68,6 +68,30 @@ _POINT_2D_RE = re.compile(r"([A-Z])\s*\(\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d
 _POINT_3D_RE = re.compile(
     r"([A-Z])\s*\(\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\)"
 )
+_RELATION_SOURCE_ALIASES = {
+    "given": "given",
+    "construction": "construction",
+    "render_only": "construction",
+    "inferred": "ai_inferred",
+    "ai_inferred": "ai_inferred",
+    "computed": "ai_inferred",
+    "verified": "ai_inferred",
+    "user_created": "user_created",
+}
+_DERIVED_PROVENANCE_ALIASES = {
+    "given": "given",
+    "verified": "verified",
+    "computed": "computed",
+    "inferred": "computed",
+    "ai_inferred": "computed",
+    "construction": "render_only",
+    "render_only": "render_only",
+}
+_ANNOTATION_PROVENANCE_ALIASES = {
+    **_DERIVED_PROVENANCE_ALIASES,
+    "inferred": "render_only",
+    "ai_inferred": "render_only",
+}
 
 
 @dataclass(frozen=True)
@@ -101,6 +125,133 @@ def _secure_repair_prompt() -> str:
 def _stable_scene_id(problem_text: str) -> str:
     digest = hashlib.sha256(problem_text.encode("utf-8")).hexdigest()[:12]
     return f"scene_{digest}"
+
+
+def _compat_value(value: Any, mapping: dict[str, str], *, path: str) -> str:
+    key = value.strip().lower() if isinstance(value, str) else ""
+    if key not in mapping:
+        raise ValueError(f"{path} có giá trị compatibility không hỗ trợ: {value!r}")
+    return mapping[key]
+
+
+def _log_compatibility(code: str, path: str) -> None:
+    logger.warning(
+        "Scene v3 compatibility normalization code=%s path=%s",
+        code,
+        path,
+        extra={"compatibility_code": code, "path": path},
+    )
+
+
+def _normalize_relation_contract(relation: dict[str, Any], index: int) -> None:
+    path = f"relations.{index}"
+    source = relation.get("source")
+    provenance = relation.get("provenance")
+    normalized_source = (
+        _compat_value(source, _RELATION_SOURCE_ALIASES, path=f"{path}.source")
+        if source is not None
+        else None
+    )
+    normalized_provenance = (
+        _compat_value(provenance, _RELATION_SOURCE_ALIASES, path=f"{path}.provenance")
+        if provenance is not None
+        else None
+    )
+    if normalized_source is not None and normalized_provenance is not None and normalized_source != normalized_provenance:
+        raise ValueError(f"{path}.source mâu thuẫn với {path}.provenance")
+    if normalized_provenance is not None:
+        relation.pop("provenance")
+        _log_compatibility("relation_provenance_alias", f"{path}.provenance")
+    normalized = normalized_source or normalized_provenance
+    if normalized is not None:
+        if source is not None and source != normalized:
+            _log_compatibility("relation_source_alias", f"{path}.source")
+        relation["source"] = normalized
+
+
+def _normalize_annotation_contract(annotation: dict[str, Any], index: int) -> None:
+    path = f"annotations.{index}"
+    provenance = annotation.get("provenance")
+    if provenance is not None:
+        normalized = _compat_value(
+            provenance,
+            _ANNOTATION_PROVENANCE_ALIASES,
+            path=f"{path}.provenance",
+        )
+        if normalized != provenance:
+            annotation["provenance"] = normalized
+            _log_compatibility("annotation_provenance_alias", f"{path}.provenance")
+
+    if "render_only" not in annotation:
+        return
+    render_only = annotation.pop("render_only")
+    if not isinstance(render_only, bool):
+        raise ValueError(f"{path}.render_only phải là boolean")
+    current = annotation.get("provenance")
+    if render_only:
+        if current is not None and current != "render_only":
+            raise ValueError(f"{path}.render_only mâu thuẫn với {path}.provenance")
+        annotation["provenance"] = "render_only"
+    elif current is None:
+        raise ValueError(f"{path}.render_only=false cần provenance tường minh")
+    _log_compatibility("annotation_render_only_alias", f"{path}.render_only")
+
+
+def _normalize_derived_fact_contract(fact: dict[str, Any], index: int) -> None:
+    path = f"derived_facts.{index}"
+    if "object_ids" in fact:
+        object_ids = fact.pop("object_ids")
+        if not isinstance(object_ids, list):
+            raise ValueError(f"{path}.object_ids phải là list")
+        if "source_ids" in fact and fact["source_ids"] != object_ids:
+            raise ValueError(f"{path}.source_ids mâu thuẫn với {path}.object_ids")
+        fact["source_ids"] = object_ids
+        _log_compatibility("derived_fact_object_ids_alias", f"{path}.object_ids")
+
+    text_values = [fact[key] for key in ("statement", "text") if key in fact]
+    if text_values:
+        if any(not isinstance(value, str) or not value.strip() for value in text_values):
+            raise ValueError(f"{path}.statement/text phải là chuỗi không rỗng")
+        if len(set(text_values)) > 1:
+            raise ValueError(f"{path}.statement mâu thuẫn với {path}.text")
+        value = fact.get("value")
+        if value is None:
+            value = {}
+        if not isinstance(value, dict):
+            raise ValueError(f"{path}.value phải là object")
+        if value.get("text") not in (None, text_values[0]):
+            raise ValueError(f"{path}.value.text mâu thuẫn với statement/text")
+        fact["value"] = {**value, "text": text_values[0]}
+        for key in ("statement", "text"):
+            if key in fact:
+                fact.pop(key)
+                _log_compatibility("derived_fact_text_alias", f"{path}.{key}")
+        if "kind" not in fact:
+            fact["kind"] = "annotation"
+            _log_compatibility("derived_fact_kind_default", f"{path}.kind")
+
+    provenance = fact.get("provenance")
+    source = fact.get("source")
+    normalized_provenance = (
+        _compat_value(provenance, _DERIVED_PROVENANCE_ALIASES, path=f"{path}.provenance")
+        if provenance is not None
+        else None
+    )
+    normalized_source = (
+        _compat_value(source, _DERIVED_PROVENANCE_ALIASES, path=f"{path}.source")
+        if source is not None
+        else None
+    )
+    if normalized_provenance is not None and normalized_source is not None and normalized_provenance != normalized_source:
+        raise ValueError(f"{path}.provenance mâu thuẫn với {path}.source")
+    if source is not None:
+        fact.pop("source")
+        _log_compatibility("derived_fact_source_alias", f"{path}.source")
+    normalized = normalized_provenance or normalized_source
+    if normalized is not None:
+        if provenance is not None and provenance != normalized:
+            _log_compatibility("derived_fact_provenance_alias", f"{path}.provenance")
+        fact["provenance"] = normalized
 
 
 def normalize_scene_v3_json(raw: dict[str, Any], *, problem_text: str, grade: int | None) -> dict[str, Any]:
@@ -142,14 +293,19 @@ def normalize_scene_v3_json(raw: dict[str, Any], *, problem_text: str, grade: in
         if isinstance(rel, dict) and not rel.get("id"):
             rel["id"] = f"rel_{index}_{uuid.uuid4().hex[:8]}"
         if isinstance(rel, dict):
+            _normalize_relation_contract(rel, index)
             rel.setdefault("source", "ai_inferred")
             rel.setdefault("args", {})
             rel.setdefault("metadata", {})
+    for index, fact in enumerate(data.get("derived_facts") or []):
+        if isinstance(fact, dict):
+            _normalize_derived_fact_contract(fact, index)
     data = _normalize_metric_goal_relations_v3(data)
     for index, ann in enumerate(data.get("annotations") or []):
         if isinstance(ann, dict) and not ann.get("id"):
             ann["id"] = f"ann_{index}_{uuid.uuid4().hex[:8]}"
         if isinstance(ann, dict):
+            _normalize_annotation_contract(ann, index)
             metadata = ann.get("metadata") if isinstance(ann.get("metadata"), dict) else {}
             metadata.pop(reserved_annotation_metadata_key(), None)
             ann["metadata"] = metadata

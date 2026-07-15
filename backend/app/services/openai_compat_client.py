@@ -19,6 +19,10 @@ _SCENE_MAX_TOKENS = 8192
 _REASONING_MAX_TOKENS = 4096
 
 
+def _parse_error_message(error: json.JSONDecodeError | RuntimeError) -> str:
+    return getattr(error, "msg", str(error)) or error.__class__.__name__
+
+
 class OpenAICompatClient:
     def __init__(self, settings: Settings | None = None, model: str | None = None, *, base_url: str | None = None, api_key: str | None = None) -> None:
         self.settings = settings
@@ -60,8 +64,9 @@ class OpenAICompatClient:
             log_scene_summary("openai_compat", scene_json, model=self.model)
             return scene_json
         except (json.JSONDecodeError, RuntimeError) as error:
-            _log_openai_compat_parse_error("scene", self.model, f"invalid_json: {error.msg}", response_chars=len(content))
-            raise RuntimeError(f"OpenAI-compatible trả về JSON không hợp lệ: {error.msg}") from error
+            message = _parse_error_message(error)
+            _log_openai_compat_parse_error("scene", self.model, f"invalid_json: {message}", response_chars=len(content))
+            raise RuntimeError(f"OpenAI-compatible trả về JSON không hợp lệ: {message}") from error
 
     async def reason_about_problem(self, problem_text: str, grade: int | None = None, system_prompt: str | None = None) -> dict:
         if not self.model:
@@ -81,8 +86,9 @@ class OpenAICompatClient:
         try:
             return parse_llm_json_dict(content, task="reasoning")
         except (json.JSONDecodeError, RuntimeError) as error:
-            _log_openai_compat_parse_error("reasoning", self.model, f"invalid_json: {error.msg}", response_chars=len(content))
-            raise RuntimeError(f"OpenAI-compatible reasoning JSON không hợp lệ: {error.msg}") from error
+            message = _parse_error_message(error)
+            _log_openai_compat_parse_error("reasoning", self.model, f"invalid_json: {message}", response_chars=len(content))
+            raise RuntimeError(f"OpenAI-compatible reasoning JSON không hợp lệ: {message}") from error
 
     async def check_connection(self) -> str:
         if not self.model:

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 from pydantic import BaseModel, Field
 
@@ -124,11 +126,25 @@ def test_apply_intent_gate_enforce_keeps_block():
     assert result.blocked
 
 
-def test_output_gate_rejects_security_prefix_leak():
+def test_output_gate_accepts_reasoning_wrapper_around_json():
     raw = SYSTEM_PROMPT_SECURITY_PREFIX + "\n" + '{"ok": true}'
     gated = gate_llm_json_output(raw)
+    assert gated.ok
+    assert gated.data == {"ok": True}
+
+
+def test_output_gate_rejects_security_prefix_inside_json():
+    raw = json.dumps({"message": SYSTEM_PROMPT_SECURITY_PREFIX})
+    gated = gate_llm_json_output(raw)
     assert not gated.ok
-    assert any(r.startswith("leak:") for r in gated.reasons)
+    assert any(r == "leak:security_prefix_vi" for r in gated.reasons)
+
+
+def test_output_gate_rejects_secret_in_reasoning_wrapper():
+    raw = "Reasoning leaked key sk-abcdefghijklmnopqrstuvwxyz123456\n{\"ok\": true}"
+    gated = gate_llm_json_output(raw)
+    assert not gated.ok
+    assert any(r == "leak:openai_like_key" for r in gated.reasons)
 
 
 def test_output_gate_accepts_valid_json_and_schema():

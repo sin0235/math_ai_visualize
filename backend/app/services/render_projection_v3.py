@@ -85,10 +85,10 @@ def build_render_projection_v3(scene: MathSceneV3) -> RenderProjectionV3:
                 kind="segment" if isinstance(obj, SegmentV3) else "line",
                 point_ids=obj.point_ids,
                 positions=geometry.line_points(obj.id),
-                visible=visible(obj) and not (isinstance(obj, SegmentV3) and obj.hidden),
-                color=obj.color if isinstance(obj, (SegmentV3, Line3DV3)) else None,
-                line_width=obj.line_width if isinstance(obj, SegmentV3) else None,
-                style=obj.style if isinstance(obj, SegmentV3) else None,
+                visible=visible(obj) and not obj.hidden,
+                color=obj.color,
+                line_width=obj.line_width,
+                style=obj.style,
                 extent=infinite_extent if isinstance(obj, (Line2DV3, Line3DV3)) else None,
             ))
         elif isinstance(obj, (Vector2DV3, Vector3DV3)):
@@ -98,8 +98,10 @@ def build_render_projection_v3(scene: MathSceneV3) -> RenderProjectionV3:
                 kind="vector",
                 point_ids=(obj.from_point_id, obj.to_point_id),
                 positions=geometry.line_points(obj.id),
-                visible=visible(obj),
-                color=obj.color if isinstance(obj, Vector3DV3) else None,
+                visible=visible(obj) and not obj.hidden,
+                color=obj.color,
+                line_width=obj.line_width,
+                style=obj.style,
             ))
 
     circles = [
