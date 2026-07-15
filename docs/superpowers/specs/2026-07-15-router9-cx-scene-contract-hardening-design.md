@@ -26,6 +26,7 @@ Các log production còn cho thấy:
 - `annotations[].provenance="construction"` không thuộc enum hiện tại.
 - `annotations[].render_only` là field thừa.
 - `line_2d` thường nhận `hidden`, `color`, `line_width`, `style`, trong khi contract object chưa hỗ trợ dù projection đã có các thuộc tính style tương ứng.
+- Một số model dùng relation `line_through_points` với một linear object và hai point; relation registry trước đây chưa có contract/verifier tương ứng.
 
 HTTP và JSON parsing đều thành công; lỗi nằm tại boundary chuyển JSON LLM sang `MathSceneV3`.
 
@@ -126,6 +127,20 @@ Thứ tự rollout:
 3. Phân loại riêng: request/timeout, invalid JSON, compatibility normalization, schema, reference, geometry/fidelity.
 
 Live test không đưa vào CI vì phụ thuộc quota và mạng. Các payload lỗi tối thiểu thu được sẽ thành regression test deterministic trong CI.
+
+### 5.4. Ma trận provider kiểm chứng sau triển khai
+
+Với cùng một case 2D và một case 3D:
+
+| Provider/model | 2D | 3D | Kết quả |
+|---|---|---|---|
+| 9router `kr/claude-haiku-4.5` | verified | verified | Đạt |
+| Ollama `gpt-oss:120b` | verified | verified | Đạt |
+| NVIDIA `openai/gpt-oss-120b` | security/JSON fail | JSON/security fail | Giữ fail-closed |
+| OpenRouter `openai/gpt-oss-120b` | verified | security leak | Giữ fail-closed |
+| OpenCode `oc/deepseek-v4-flash-free` | verified | gateway 524 | Lỗi hạ tầng, không nuốt |
+
+NVIDIA GPT-OSS được gửi `reasoning_effort=low` mặc định để tránh dùng hết token cho reasoning trước JSON; điều này không tắt security gate và không biến model chưa đạt thành pass.
 
 ## 6. Definition of Done
 

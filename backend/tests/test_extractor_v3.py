@@ -11,6 +11,7 @@ from app.services.extractor_v3 import (
 )
 from app.services.scene_pipeline_v3 import run_scene_pipeline_v3
 from app.services.scene_goal_visualization_v3 import complete_metric_goal_visualizations
+from app.services.render_projection_v3 import build_render_projection_v3
 
 
 def test_mock_extracts_points_and_segment_native():
@@ -77,6 +78,139 @@ def test_parse_wraps_scalar_interpretation_values_without_losing_data():
         {"value": 18},
         {"name": "edge", "value": 3},
     ]
+
+
+def test_parse_normalizes_observed_router9_contract_aliases_without_losing_data():
+    scene = parse_math_scene_v3(
+        {
+            "topic": "coordinate_2d",
+            "renderer": "geogebra_2d",
+            "objects": [
+                {"id": "pt_a", "type": "point_2d", "label": "A", "x": 0, "y": 0},
+                {"id": "pt_b", "type": "point_2d", "label": "B", "x": 2, "y": 0},
+                {
+                    "id": "line_ab",
+                    "type": "line_2d",
+                    "label": "d",
+                    "point_ids": ["pt_a", "pt_b"],
+                    "hidden": True,
+                    "color": "#0f766e",
+                    "line_width": 3,
+                    "style": "dashed",
+                },
+            ],
+            "relations": [{
+                "id": "rel_a_on_d",
+                "type": "point_on_line",
+                "operands": [
+                    {"role": "point", "ref_id": "pt_a", "ref_kind": "point"},
+                    {"role": "line", "ref_id": "line_ab", "ref_kind": "line"},
+                ],
+                "provenance": "given",
+            }],
+            "annotations": [{
+                "id": "ann_d",
+                "type": "label",
+                "target_ids": ["line_ab"],
+                "provenance": "construction",
+                "render_only": True,
+            }, {
+                "id": "ann_inferred",
+                "type": "label",
+                "target_ids": ["pt_a"],
+                "provenance": "inferred",
+            }],
+            "derived_facts": [
+                {
+                    "id": "fact_line",
+                    "statement": "A thuộc đường thẳng d",
+                    "object_ids": ["pt_a", "line_ab"],
+                    "provenance": "inferred",
+                },
+                {
+                    "id": "fact_given",
+                    "text": "A và B đã cho",
+                    "object_ids": ["pt_a", "pt_b"],
+                    "source": "given",
+                },
+            ],
+            "view": {"dimension": "2d"},
+            "audit": {"created_by": "test"},
+        },
+        problem_text="Cho A, B và đường thẳng d qua A, B.",
+        grade=10,
+    )
+
+    assert scene.relations[0].source == "given"
+    assert run_scene_pipeline_v3(scene).status == "verified"
+    assert scene.annotations[0].provenance == "render_only"
+    assert scene.annotations[1].provenance == "render_only"
+    assert scene.derived_facts[0].kind == "annotation"
+    assert scene.derived_facts[0].source_ids == ["pt_a", "line_ab"]
+    assert scene.derived_facts[0].value == {"text": "A thuộc đường thẳng d"}
+    assert scene.derived_facts[0].provenance == "computed"
+    assert scene.derived_facts[1].provenance == "given"
+    line = build_render_projection_v3(scene).linear[0]
+    assert not line.visible
+    assert line.color == "#0f766e"
+    assert line.line_width == 3
+    assert line.style == "dashed"
+
+
+def test_normalize_rejects_conflicting_relation_source_alias():
+    with pytest.raises(ValueError, match="source mâu thuẫn.*provenance"):
+        normalize_scene_v3_json(
+            {
+                "renderer": "geogebra_2d",
+                "relations": [{
+                    "id": "rel_conflict",
+                    "type": "parallel",
+                    "operands": [{"role": "line", "ref_id": "line_a", "ref_kind": "line"}],
+                    "source": "given",
+                    "provenance": "inferred",
+                }],
+            },
+            problem_text="Đề kiểm thử.",
+            grade=10,
+        )
+
+
+def test_normalize_rejects_unknown_compatibility_alias():
+    with pytest.raises(ValueError, match="compatibility không hỗ trợ"):
+        normalize_scene_v3_json(
+            {
+                "renderer": "geogebra_2d",
+                "relations": [{
+                    "id": "rel_unknown",
+                    "type": "parallel",
+                    "operands": [{"role": "line", "ref_id": "line_a", "ref_kind": "line"}],
+                    "provenance": "probably_true",
+                }],
+            },
+            problem_text="Đề kiểm thử.",
+            grade=10,
+        )
+
+
+def test_parse_keeps_derived_fact_reference_validation_strict_after_alias_normalization():
+    with pytest.raises(ValueError, match="Derived fact fact_bad tham chiếu ID không tồn tại"):
+        parse_math_scene_v3(
+            {
+                "topic": "coordinate_2d",
+                "renderer": "geogebra_2d",
+                "objects": [{"id": "pt_a", "type": "point_2d", "label": "A", "x": 0, "y": 0}],
+                "derived_facts": [{
+                    "id": "fact_bad",
+                    "text": "Fact tham chiếu sai",
+                    "object_ids": ["ghost"],
+                    "source": "inferred",
+                }],
+                "view": {"dimension": "2d"},
+                "audit": {"created_by": "test"},
+            },
+            problem_text="Cho điểm A.",
+            grade=10,
+        )
 
 
 def test_parse_soft_repairs_ai_relation_and_render_annotation_references():

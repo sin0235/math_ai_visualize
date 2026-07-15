@@ -14,6 +14,7 @@ from app.schemas.scene import AiModelInfo, OcrRequest, RenderRequest, RuntimeSet
 from app.services.ai_provider_runtime import _provider_order
 from app.services.openai_compat_client import OpenAICompatClient
 from app.services.openrouter_client import OpenRouterClient
+from app.services.nvidia_client import NvidiaClient
 from app.services.provider_logging import format_provider_error, redact_sensitive
 from app.services.provider_ping import check_provider_connection
 from app.services.solver_explainer import _call_explainer
@@ -235,6 +236,59 @@ def test_openrouter_invalid_json_reports_original_parse_error(monkeypatch):
     assert "invalid_json" in captured["message"]
 
 
+def test_nvidia_non_object_json_reports_original_parse_error(monkeypatch):
+    async def fake_stream(*_args, **_kwargs):
+        return "[]", 2, None
+
+    monkeypatch.setattr("app.services.nvidia_client.collect_openai_chat_stream", fake_stream)
+
+    with pytest.raises(RuntimeError, match="NVIDIA trả về JSON không hợp lệ") as captured:
+        asyncio.run(
+            NvidiaClient(
+                Settings(_env_file=None, nvidia_api_key="secret"),
+                model="openai/gpt-oss-120b",
+            ).extract_scene_json("Vẽ điểm A")
+        )
+
+    assert "expected JSON object" in str(captured.value)
+
+
+def test_nvidia_gpt_oss_defaults_to_low_reasoning_effort(monkeypatch):
+    captured = {}
+
+    async def fake_stream(*_args, **kwargs):
+        captured["payload"] = kwargs["payload"]
+        return "{}", 2, None
+
+    monkeypatch.setattr("app.services.nvidia_client.collect_openai_chat_stream", fake_stream)
+
+    asyncio.run(
+        NvidiaClient(
+            Settings(_env_file=None, nvidia_api_key="secret"),
+            model="openai/gpt-oss-120b",
+        ).extract_scene_json("Vẽ điểm A")
+    )
+
+    assert captured["payload"]["chat_template_kwargs"] == {"reasoning_effort": "low"}
+
+
+def test_openai_compat_non_object_json_reports_original_parse_error(monkeypatch):
+    async def fake_post_chat(*_args, **_kwargs):
+        return "[]"
+
+    monkeypatch.setattr(OpenAICompatClient, "_post_chat", fake_post_chat)
+
+    with pytest.raises(RuntimeError, match="OpenAI-compatible trả về JSON không hợp lệ") as captured:
+        asyncio.run(
+            OpenAICompatClient(
+                Settings(_env_file=None, openai_compat_api_key="secret"),
+                model="test-model",
+            ).extract_scene_json("Vẽ điểm A")
+        )
+
+    assert "expected JSON object" in str(captured.value)
+
+
 def test_router9_invalid_json_reports_original_parse_error(monkeypatch):
     captured = {}
 
@@ -258,6 +312,33 @@ def test_router9_invalid_json_reports_original_parse_error(monkeypatch):
     assert captured["provider"] == "9router"
     assert captured["kind"] == "scene"
     assert "invalid_json" in captured["message"]
+
+
+def test_router9_scene_summary_keeps_selected_model(monkeypatch):
+    captured = {}
+
+    async def fake_post_chat(*_args, **_kwargs):
+        return httpx.Response(200, json={"choices": [{"message": {"content": "{}"}}]})
+
+    def fake_log_scene_summary(provider, scene_json, model=None):
+        captured.update(provider=provider, scene_json=scene_json, model=model)
+
+    monkeypatch.setattr(Router9Client, "_post_chat", fake_post_chat)
+    monkeypatch.setattr("app.services.router9_client.log_scene_summary", fake_log_scene_summary)
+
+    result = asyncio.run(
+        Router9Client(
+            Settings(_env_file=None, router9_api_key="secret"),
+            model="cx/gpt-5.6-luna",
+        ).extract_scene_json("Vẽ điểm A")
+    )
+
+    assert result == {}
+    assert captured == {
+        "provider": "9router",
+        "scene_json": {},
+        "model": "cx/gpt-5.6-luna",
+    }
 
 
 def test_openai_compat_recovers_non_json_sse_response(monkeypatch):

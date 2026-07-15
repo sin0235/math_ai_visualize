@@ -77,6 +77,16 @@ def test_scene_v3_prompt_requires_stable_ids_and_typed_operands():
     assert "AB" in text or "shorthand" in text.lower() or "không" in text.lower()
 
 
+@pytest.mark.parametrize("snippet", [
+    "Relation dùng `source`, CẤM field `provenance`",
+    "Annotation dựng để minh họa dùng `render_only`",
+    "CẤM `text`, `statement`, `source`, `object_ids` ở root",
+    "line_2d/line_3d: id, point_ids đúng 2 point IDs, hidden, color, line_width, style",
+])
+def test_scene_v3_prompt_declares_exact_collection_contracts(snippet: str):
+    assert snippet in SCENE_EXTRACTION_V3_SYSTEM_PROMPT
+
+
 def test_scene_v3_prompt_mentions_immutable_problem_text():
     text = SCENE_EXTRACTION_V3_SYSTEM_PROMPT.lower()
     assert "nguyên văn" in text or "không sửa" in text or "immutable" in text

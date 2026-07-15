@@ -200,6 +200,20 @@ def _on_line(relation: RelationV3, geometry: GeometryIndex) -> Residual:
     return Residual(residual, geometry.tolerance, {"point_id": point_ids[0], "line_id": line_ids[0], "distance": residual})
 
 
+def _line_through_points(relation: RelationV3, geometry: GeometryIndex) -> Residual:
+    point_ids = _ids(relation, "point")
+    line_ids = _ids(relation, "line", "segment")
+    if len(point_ids) != 2 or len(line_ids) != 1:
+        raise ValueError(f"Relation {relation.id} cần hai điểm và một đường")
+    start, end = geometry.line_points(line_ids[0])
+    distances = [point_line_distance(geometry.point(point_id), start, end, geometry.tolerance) for point_id in point_ids]
+    return Residual(
+        max(distances),
+        geometry.tolerance,
+        {"point_ids": point_ids, "line_id": line_ids[0], "distances": distances},
+    )
+
+
 def _point_on_segment(relation: RelationV3, geometry: GeometryIndex) -> Residual:
     point_ids = _ids(relation, "point")
     segment_ids = _ids(relation, "segment")
@@ -465,6 +479,7 @@ VERIFIERS: dict[str, Verifier] = {
     "intersection": _intersection,
     "tangent": _tangent,
     "on_line": _on_line,
+    "line_through_points": _line_through_points,
     "point_on_segment": _point_on_segment,
     "collinear": _collinear,
     "coplanar": _coplanar,

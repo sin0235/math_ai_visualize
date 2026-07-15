@@ -81,6 +81,22 @@ def test_distance_tolerance_scales_with_scene_not_fixed_coordinates():
     assert result.status == "verified"
 
 
+def test_kernel_verifies_line_through_two_points():
+    scene = make_scene(
+        [point("a", 0, 0), point("b", 4, 0), segment("ab", "a", "b")],
+        [relation("r", "line_through_points", [
+            operand("line", "ab", "segment"),
+            operand("point1", "a", "point"),
+            operand("point2", "b", "point"),
+        ])],
+    )
+
+    result = verify_constraints(scene)[0]
+
+    assert result.status == "verified"
+    assert result.evidence["point_ids"] == ["a", "b"]
+
+
 def test_kernel_does_not_mutate_scene():
     scene = make_scene(
         [point("a", 0, 0), point("b", 2, 0), point("m", 1, 0), segment("ab", "a", "b")],

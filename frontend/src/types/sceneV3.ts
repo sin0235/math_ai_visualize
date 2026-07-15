@@ -45,14 +45,20 @@ export interface SegmentV3 extends SceneObjectBaseV3 {
 export interface LineV3 extends SceneObjectBaseV3 {
   type: 'line_2d' | 'line_3d';
   point_ids: [string, string];
-  color?: string;
+  hidden: boolean;
+  color?: string | null;
+  line_width?: number | null;
+  style?: 'solid' | 'dashed' | 'dotted' | null;
 }
 
 export interface VectorV3 extends SceneObjectBaseV3 {
   type: 'vector_2d' | 'vector_3d';
   from_point_id: string;
   to_point_id: string;
-  color?: string;
+  hidden: boolean;
+  color?: string | null;
+  line_width?: number | null;
+  style?: 'solid' | 'dashed' | 'dotted' | null;
 }
 
 export interface Circle2DV3 extends SceneObjectBaseV3 {
