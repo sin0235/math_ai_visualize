@@ -20,6 +20,7 @@ SECURED_SYSTEM_PROMPTS: list[tuple[str, str]] = [
     ("app.services.ai_prompt", "SCENE_EXTRACTION_V3_SYSTEM_PROMPT"),
     ("app.services.ai_prompt", "SCENE_REPAIR_V3_SYSTEM_PROMPT"),
     ("app.services.ai_prompt", "REASONING_SYSTEM_PROMPT"),
+    ("app.services.nlp.llm", "LLM_NLP_SYSTEM_PROMPT"),
 ]
 
 # Paths that assemble user messages via envelope_untrusted / build_* helpers.
@@ -27,6 +28,7 @@ USER_ENVELOPE_BUILDERS: list[tuple[str, str]] = [
     ("app.services.ai_prompt", "build_reasoning_prompt"),
     ("app.services.ai_prompt", "build_scene_extraction_prompt"),
     ("app.services.ai_prompt", "build_scene_repair_v3_prompt"),
+    ("app.services.nlp.llm", "_build_user_prompt"),
     ("app.services.problem_variants", "_build_user_prompt"),
     ("app.api.routes_function_analysis", "_build_function_extract_prompt"),
 ]

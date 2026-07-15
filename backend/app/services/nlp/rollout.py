@@ -39,15 +39,17 @@ def evaluate_nlp_rollout(
     *,
     shadow_rules: list[str],
     authoritative_rules: list[str],
+    response: InterpretationResponse | None = None,
+    force_authoritative: bool = False,
     legacy_intent: str | None = None,
     legacy_status: str | None = None,
     legacy_canonical: str | None = None,
 ) -> NlpRolloutDecision | None:
-    if not _target_has_rules(envelope.target, shadow_rules, authoritative_rules):
+    if response is None and not _target_has_rules(envelope.target, shadow_rules, authoritative_rules):
         return None
-    response = interpret_input(envelope)
+    response = response or interpret_input(envelope)
     candidate = _selected_candidate(response)
-    mode = rollout_mode(response, candidate, shadow_rules, authoritative_rules)
+    mode = "authoritative" if force_authoritative else rollout_mode(response, candidate, shadow_rules, authoritative_rules)
     if mode == "off":
         return None
     mismatch = _is_mismatch(response, candidate, legacy_intent, legacy_status, legacy_canonical)

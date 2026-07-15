@@ -767,6 +767,7 @@ export function AdminFeatureFlagsForm({ value, onSave, onToast }: { value: Recor
   const [turnstile, setTurnstile] = useState(value.turnstile_enabled === true);
   const [nlpShadowRules, setNlpShadowRules] = useState(Array.isArray(value.nlp_shadow_rules) ? value.nlp_shadow_rules.join(', ') : '');
   const [nlpAuthoritativeRules, setNlpAuthoritativeRules] = useState(Array.isArray(value.nlp_authoritative_rules) ? value.nlp_authoritative_rules.join(', ') : '');
+  const [nlpLlmFallback, setNlpLlmFallback] = useState(value.nlp_llm_fallback_enabled === true);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -778,13 +779,14 @@ export function AdminFeatureFlagsForm({ value, onSave, onToast }: { value: Recor
     setTurnstile(value.turnstile_enabled === true);
     setNlpShadowRules(Array.isArray(value.nlp_shadow_rules) ? value.nlp_shadow_rules.join(', ') : '');
     setNlpAuthoritativeRules(Array.isArray(value.nlp_authoritative_rules) ? value.nlp_authoritative_rules.join(', ') : '');
+    setNlpLlmFallback(value.nlp_llm_fallback_enabled === true);
   }, [value]);
 
   async function saveFlags() {
     setSaving(true);
     try {
       await onSave({
-        version: 2,
+        version: 3,
         maintenance_mode: maintenanceMode,
         maintenance_message: message,
         google_oauth_enabled: googleOAuth,
@@ -793,6 +795,7 @@ export function AdminFeatureFlagsForm({ value, onSave, onToast }: { value: Recor
         turnstile_enabled: turnstile,
         nlp_shadow_rules: splitRolloutRules(nlpShadowRules),
         nlp_authoritative_rules: splitRolloutRules(nlpAuthoritativeRules),
+        nlp_llm_fallback_enabled: nlpLlmFallback,
       });
     } catch (error) {
       onToast?.('Cờ tính năng', getErrorMessage(error, 'Không thể lưu cờ tính năng.'), 'error');
@@ -811,6 +814,8 @@ export function AdminFeatureFlagsForm({ value, onSave, onToast }: { value: Recor
     </div>
     <label className="field-label">NLP shadow rules<input value={nlpShadowRules} onChange={(event) => setNlpShadowRules(event.target.value)} placeholder="algebra, render:solid_geometry" disabled={saving} /><span className="field-hint">Target hoặc target:intent, phân cách bằng dấu phẩy. Chỉ ghi mismatch, không đổi kết quả.</span></label>
     <label className="field-label">NLP authoritative rules<input value={nlpAuthoritativeRules} onChange={(event) => setNlpAuthoritativeRules(event.target.value)} placeholder="algebra:equation" disabled={saving} /><span className="field-hint">Chỉ bật slice đã đạt quality gate. Rule authoritative ưu tiên shadow.</span></label>
+    <label className="checkbox-label"><input type="checkbox" checked={nlpLlmFallback} onChange={(event) => setNlpLlmFallback(event.target.checked)} disabled={saving} /> Cho phép LLM hỗ trợ NLP khi rule-based yếu</label>
+    <span className="field-hint">Chỉ user đã đăng nhập mới dùng được. LLM chỉ gọi khi input thiếu, mơ hồ hoặc confidence thấp; input rõ ràng vẫn chạy rule-based.</span>
     <label className="field-label">Thông báo bảo trì<textarea rows={3} value={message} onChange={(event) => setMessage(event.target.value)} disabled={saving} /></label><button type="button" className="secondary-button" onClick={() => void saveFlags()} disabled={saving} aria-busy={saving}>{saving ? 'Đang lưu...' : 'Lưu cờ tính năng'}</button></section>
   );
 }

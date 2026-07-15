@@ -33,6 +33,7 @@ from app.services.algebra.pdf_export import build_algebra_pdf
 from app.services.api_errors import api_error
 from app.services.math_solution_projectors import project_algebra_solution
 from app.services.nlp_rollout import evaluate_configured_nlp_rollout, log_nlp_taxonomy
+from app.services.nlp.llm import is_language_model_candidate
 from app.services.user_ai_settings import UserAiSettingsError
 
 router = APIRouter(prefix="/api/algebra", tags=["algebra"])
@@ -77,7 +78,17 @@ async def solve_algebra_endpoint(
     # Rule-based NLP rollout must NOT rewrite natural-language algebra input into a
     # weak/wrong canonical before mathcore. LLM NLP (when enabled) owns natural language;
     # structured/symbolic inputs already pass through without rewrite.
-    if (
+    llm_nlp_used = bool(rollout and rollout.can_apply and is_language_model_candidate(rollout.candidate))
+    if rollout and rollout.can_apply and rollout.candidate and llm_nlp_used:
+        request = _apply_algebra_canonical(request, rollout.candidate.canonical_payload)
+        # Candidate đã được validate ở NLP hybrid; tránh gọi extractor Đại số lần hai.
+        if request.options.use_ai_extraction:
+            request = request.model_copy(
+                update={
+                    "options": request.options.model_copy(update={"use_ai_extraction": False}),
+                }
+            )
+    elif (
         rollout
         and rollout.can_apply
         and rollout.candidate
@@ -94,7 +105,7 @@ async def solve_algebra_endpoint(
             "ALGEBRA_COST_LIMIT",
         )
 
-    uses_ai = request.options.use_ai_extraction or request.options.ai_explanation
+    uses_ai = llm_nlp_used or request.options.use_ai_extraction or request.options.ai_explanation
     await enforce_rate_limit(db, http_request, user, "algebra_solve", 60 if user else 20, 60, settings)
     daily = max(1, int(settings.algebra_daily_limit or 200))
     await enforce_rate_limit(db, http_request, user, "algebra_solve_daily", daily, _DAY, settings)

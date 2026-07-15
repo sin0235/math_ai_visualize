@@ -388,7 +388,7 @@ class SystemPlanSettings(BaseModel):
 class SystemFeatureFlags(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    version: int = 2
+    version: int = 3
     maintenance_mode: bool = False
     maintenance_message: str = Field(default="Hệ thống đang bảo trì. Vui lòng thử lại sau.", max_length=500)
     google_oauth_enabled: bool = True
@@ -397,6 +397,9 @@ class SystemFeatureFlags(BaseModel):
     turnstile_enabled: bool = False
     nlp_shadow_rules: list[str] = Field(default_factory=list, max_length=64)
     nlp_authoritative_rules: list[str] = Field(default_factory=list, max_length=64)
+    # Chỉ cho phép LLM hỗ trợ các input NLP mà rule-based chưa hiểu đủ.
+    # Mặc định tắt để không phát sinh chi phí ngoài ý muốn sau khi deploy.
+    nlp_llm_fallback_enabled: bool = False
 
     @field_validator("nlp_shadow_rules", "nlp_authoritative_rules")
     @classmethod
