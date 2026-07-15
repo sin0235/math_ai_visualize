@@ -6,7 +6,7 @@ from app.db.session import DatabaseClient, get_database
 from app.schemas.auth import SystemFeatureFlags
 from app.schemas.nlp import InputEnvelope, InterpretationResponse
 from app.services.nlp import interpret_input
-from app.services.nlp.llm import interpret_input_with_llm_fallback
+from app.services.nlp.llm import interpret_input_with_llm_fallback, should_use_llm
 from app.services.system_settings import load_feature_flags
 
 router = APIRouter(prefix="/api/nlp", tags=["nlp"])
@@ -30,7 +30,10 @@ async def interpret_math_input(
         # NLP preflight phải giữ fast path deterministic nếu settings backend tạm lỗi.
         flags = SystemFeatureFlags()
     if flags.nlp_llm_fallback_enabled and user is not None:
-        await enforce_rate_limit(db, request, user, "nlp_llm_fallback", 12, 60)
+        # Chỉ tính quota LLM khi baseline thực sự yếu; input rõ ràng vẫn giữ fast path.
+        baseline = interpret_input(envelope)
+        if should_use_llm(baseline):
+            await enforce_rate_limit(db, request, user, "nlp_llm_fallback", 12, 60)
         return await interpret_input_with_llm_fallback(
             envelope,
             db,

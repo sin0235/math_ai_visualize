@@ -138,8 +138,10 @@ async def test_llm_fallback_keeps_rule_fast_path_and_requires_authenticated_user
         return InterpretationCandidate(
             candidate_id="llm-algebra",
             intent=MathIntent(domain="algebra", topic="equation", task="solve"),
-            canonical_text="x+1=0",
+            canonical_text="x+1",
             confidence=0.88,
+            missing_fields=["relation_or_target"],
+            clarification_question="Bạn muốn giải quan hệ nào?",
             provenance=[Provenance(source="language_model", adapter="test", version="test")],
         )
 
@@ -159,6 +161,119 @@ async def test_llm_fallback_keeps_rule_fast_path_and_requires_authenticated_user
     assert calls == 1
     assert hybrid.adapter_version == "nlp-hybrid-v1"
     assert hybrid.selected_candidate_id == "llm-algebra"
+
+
+def test_llm_payload_requires_evidence_before_acceptance():
+    from app.services.nlp.llm import LlmInterpretationPayload, _candidate_from_payload
+    from app.services.nlp.pipeline import interpret_input
+
+    envelope = InputEnvelope(text="Giải x + 1", target="algebra")
+    baseline = interpret_input(envelope)
+    payload = LlmInterpretationPayload(
+        target="algebra",
+        intent=MathIntent(domain="algebra", topic="equation", task="solve"),
+        canonical_text="x+1=0",
+        confidence=0.99,
+    )
+
+    with pytest.raises(ValueError, match="evidence"):
+        _candidate_from_payload(payload.model_dump(mode="json"), envelope, baseline, "test", "model")
+
+
+def test_llm_payload_cannot_add_algebra_relation_not_in_input():
+    from app.services.nlp.llm import LlmEvidence, LlmInterpretationPayload, _candidate_from_payload
+    from app.services.nlp.pipeline import interpret_input
+
+    envelope = InputEnvelope(text="Giải x + 1", target="algebra")
+    baseline = interpret_input(envelope)
+    payload = LlmInterpretationPayload(
+        target="algebra",
+        intent=MathIntent(domain="algebra", topic="equation", task="solve"),
+        canonical_text="x+1=0",
+        confidence=0.99,
+        evidence=[LlmEvidence(text="x + 1")],
+    )
+
+    with pytest.raises(ValueError, match="quan hệ"):
+        _candidate_from_payload(payload.model_dump(mode="json"), envelope, baseline, "test", "model")
+
+
+def test_llm_analyzer_payload_cannot_hide_ungrounded_expression_in_canonical_payload():
+    from app.services.nlp.llm import LlmEvidence, LlmInterpretationPayload, _candidate_from_payload
+    from app.services.nlp.pipeline import interpret_input
+
+    envelope = InputEnvelope(text="Tìm cực trị của f(x)", target="analyzer")
+    baseline = interpret_input(envelope)
+    payload = LlmInterpretationPayload(
+        target="analyzer",
+        intent=MathIntent(domain="function", topic="function_analysis", task="extrema"),
+        canonical_text="x",
+        canonical_payload={"expression": "x+999"},
+        confidence=0.99,
+        evidence=[LlmEvidence(text="f(x)")],
+    )
+
+    with pytest.raises(ValueError, match="canonical"):
+        _candidate_from_payload(payload.model_dump(mode="json"), envelope, baseline, "test", "model")
+
+
+def test_llm_ocr_candidate_keeps_source_confidence_cap():
+    from app.services.nlp.llm import LlmEvidence, LlmInterpretationPayload, _candidate_from_payload
+    from app.services.nlp.pipeline import interpret_input
+
+    envelope = InputEnvelope(
+        text="Giải phương trình x^2 - 1 = 0",
+        target="ocr",
+        context={"lines": [{"text": "x^2 - 1 = 0", "confidence": 0.2}]},
+    )
+    baseline = interpret_input(envelope)
+    payload = LlmInterpretationPayload(
+        target="ocr",
+        intent=MathIntent(domain="algebra", topic="equation", task="solve"),
+        canonical_text="x^2 - 1 = 0",
+        confidence=0.99,
+        evidence=[LlmEvidence(text="x^2 - 1 = 0")],
+    )
+
+    candidate = _candidate_from_payload(payload.model_dump(mode="json"), envelope, baseline, "test", "model")
+
+    assert candidate is not None
+    assert candidate.confidence == 0.2
+    assert any(item.code == "LOW_OCR_CONFIDENCE" for item in candidate.ambiguities)
+
+
+def test_llm_geometry_candidate_resolves_scene_catalog_before_goal_creation():
+    from app.services.nlp.llm import LlmEntity, LlmEvidence, LlmInterpretationPayload, _candidate_from_payload
+    from app.services.nlp.pipeline import interpret_input
+
+    envelope = InputEnvelope(
+        text="Tính khoảng cách từ A đến mặt phẳng (BCD)",
+        target="geometry_solve",
+        context={
+            "scene_objects": [
+                {"id": "point-a", "type": "point_3d", "label": "A"},
+                {"id": "plane-bcd", "type": "plane", "label": "BCD"},
+            ]
+        },
+    )
+    baseline = interpret_input(envelope)
+    payload = LlmInterpretationPayload(
+        target="geometry_solve",
+        intent=MathIntent(domain="geometry", topic="distance", task="distance", subtype="point_plane"),
+        canonical_text="d(A,(BCD))",
+        confidence=0.99,
+        entities=[
+            LlmEntity(kind="point", name="A", confidence=0.99, evidence=[LlmEvidence(text="A")]),
+            LlmEntity(kind="plane", name="BCD", confidence=0.99, evidence=[LlmEvidence(text="BCD")]),
+        ],
+        evidence=[LlmEvidence(text="A"), LlmEvidence(text="BCD")],
+    )
+
+    candidate = _candidate_from_payload(payload.model_dump(mode="json"), envelope, baseline, "test", "model")
+
+    assert candidate is not None
+    assert candidate.canonical_payload["target_object_ids"] == ["point-a", "plane-bcd"]
+    assert candidate.canonical_payload["geometry_goal"]["task"] == "distance"
 
 
 @pytest.mark.anyio

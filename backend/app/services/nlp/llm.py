@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from typing import Any, Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -16,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from app.core.config import Settings
 from app.db.session import DatabaseClient
 from app.schemas.algebra import AlgebraSolveRequest, AlgebraTopic
+from app.schemas.geometry_reasoning import GeometryGoal
 from app.schemas.nlp import (
     Ambiguity,
     Constraint,
@@ -31,6 +33,7 @@ from app.schemas.nlp import (
 from app.services.ai_provider_runtime import _extract_with_provider
 from app.services.model_provider import canonical_provider_id, parse_provider_model_ref
 from app.services.model_registry import load_model_registry, resolve_effective_settings, resolve_task_profile
+from app.services.nlp.adapters import _geometry_goal_task, _minimum_ocr_confidence, _resolve_geometry_entities
 from app.services.nlp.normalization import normalize_input
 from app.services.nlp.pipeline import decide_interpretation, interpret_input
 from app.services.prompt_security import envelope_untrusted, gate_llm_json_output, secure_system_prompt
@@ -40,6 +43,9 @@ logger = logging.getLogger(__name__)
 LLM_NLP_ADAPTER_VERSION = "nlp-hybrid-v1"
 LLM_NLP_TIMEOUT_SECONDS = 20.0
 LLM_NLP_MAX_ATTEMPTS = 2
+_RELATION_RE = re.compile(r"(?:<=|>=|!=|=|<|>)")
+_TOKEN_RE = re.compile(r"[A-Za-zÀ-ỹ_][\wÀ-ỹ']*|\d+(?:[.,]\d+)?")
+_CANONICAL_META_TOKENS = {"limit", "expr", "var", "to", "d", "s", "p", "v"}
 
 
 class LlmEvidence(BaseModel):
@@ -283,13 +289,33 @@ def _candidate_from_payload(
     payload = LlmInterpretationPayload.model_validate(gated.data)
     if envelope.target != "auto" and payload.target != envelope.target:
         raise ValueError("LLM đổi target ngoài yêu cầu")
-    normalized = normalize_input(envelope.text).text.casefold().replace(" ", "")
+    normalized_text = normalize_input(envelope.text).text
+    normalized = normalized_text.casefold().replace(" ", "")
     evidence = [item.text for item in payload.evidence]
-    evidence.extend(item.evidence.text for entity in payload.entities for item in entity.evidence)
-    evidence.extend(item.evidence.text for constraint in payload.constraints for item in constraint.evidence)
-    if evidence and any(item.casefold().replace(" ", "") not in normalized for item in evidence):
+    evidence.extend(item.text for entity in payload.entities for item in entity.evidence)
+    evidence.extend(item.text for constraint in payload.constraints for item in constraint.evidence)
+    if not evidence:
+        raise ValueError("LLM thiếu evidence cho dữ kiện trích xuất")
+    if any(item.casefold().replace(" ", "") not in normalized for item in evidence):
         raise ValueError("LLM evidence không nằm trong input")
+    canonical_text = payload.canonical_text or normalized_text
+    baseline_candidate = next(
+        (candidate for candidate in baseline.candidates if candidate.candidate_id == baseline.selected_candidate_id),
+        baseline.candidates[0] if baseline.candidates else None,
+    )
+    if (
+        payload.target == "algebra"
+        and baseline_candidate is not None
+        and not _RELATION_RE.search(normalized_text)
+        and _RELATION_RE.search(canonical_text)
+    ):
+        raise ValueError("LLM tự thêm quan hệ đại số không có trong input")
     canonical_payload = _safe_canonical_payload(payload, envelope)
+    grounded_canonical_text = canonical_text
+    if payload.target == "analyzer" and isinstance(canonical_payload, dict):
+        grounded_canonical_text = str(canonical_payload.get("expression") or canonical_text)
+    if payload.target in {"algebra", "analyzer", "geometry_solve"} and _canonical_has_unseen_tokens(grounded_canonical_text, normalized_text):
+        raise ValueError("LLM canonical chứa token không có trong input")
     provenance = Provenance(source="language_model", adapter="nlp-llm", version=LLM_NLP_ADAPTER_VERSION, provider=provider, model=model)
     entities = [
         Entity(
@@ -314,7 +340,21 @@ def _candidate_from_payload(
     ]
     ambiguities = [Ambiguity(**item.model_dump(), provenance=[provenance]) for item in payload.ambiguities]
     field_confidences = [item.model_copy(update={"calibrated": False}) for item in payload.field_confidences]
-    canonical_text = payload.canonical_text or baseline.normalized_text
+    confidence = min(0.89, payload.confidence)
+    if payload.target == "ocr":
+        minimum_ocr_confidence = _minimum_ocr_confidence(envelope)
+        if minimum_ocr_confidence is not None:
+            confidence = min(confidence, minimum_ocr_confidence)
+            field_confidences.append(FieldConfidence(field="ocr", confidence=minimum_ocr_confidence))
+            if minimum_ocr_confidence < 0.95 and not any(item.code == "LOW_OCR_CONFIDENCE" for item in ambiguities):
+                ambiguities.append(
+                    Ambiguity(
+                        code="LOW_OCR_CONFIDENCE",
+                        field="text",
+                        message="OCR có vùng nhận dạng chưa đủ chắc chắn.",
+                        provenance=[provenance],
+                    )
+                )
     return InterpretationCandidate(
         candidate_id=f"llm-{payload.target}",
         intent=payload.intent,
@@ -324,7 +364,7 @@ def _candidate_from_payload(
         constraints=constraints,
         ambiguities=ambiguities,
         field_confidences=field_confidences,
-        confidence=min(0.89, payload.confidence),
+        confidence=confidence,
         assumptions=payload.assumptions,
         missing_fields=payload.missing_fields,
         clarification_question=payload.clarification_question,
@@ -362,10 +402,48 @@ def _safe_canonical_payload(payload: LlmInterpretationPayload, envelope: InputEn
         method = str(envelope.context.get("method") or envelope.context.get("geometry_method") or "classical")
         if method not in {"classical", "oxyz"}:
             method = "classical"
-        return {"question": payload.canonical_text or envelope.text, "input_mode": envelope.input_mode, "method": method}
+        canonical_payload: dict[str, Any] = {
+            "question": payload.canonical_text or envelope.text,
+            "input_mode": envelope.input_mode,
+            "method": method,
+        }
+        if isinstance(envelope.context.get("scene_objects"), list):
+            entities = [
+                Entity(kind=item.kind, name=item.name, value=item.value, unit=item.unit, confidence=item.confidence)
+                for item in payload.entities
+            ]
+            target_object_ids, ambiguities = _resolve_geometry_entities(entities, envelope.context)
+            if ambiguities or not target_object_ids:
+                raise ValueError("LLM geometry không resolve duy nhất object theo scene catalog")
+            task = _geometry_goal_task(payload.intent.task)
+            if task is None:
+                raise ValueError("LLM geometry task không được hỗ trợ")
+            geometry_goal = GeometryGoal(
+                task=task,
+                subtype=payload.intent.subtype or "general",
+                target_object_ids=target_object_ids,
+                method=method,
+            )
+            canonical_payload.update({
+                "target_object_ids": target_object_ids,
+                "geometry_goal": geometry_goal.model_dump(mode="json"),
+            })
+        return canonical_payload
     if target in {"render", "ocr"}:
         return {"input_mode": envelope.input_mode, "input_format": envelope.input_format}
     return None
+
+
+def _canonical_has_unseen_tokens(canonical_text: str, input_text: str) -> bool:
+    source_tokens = {token.casefold() for token in _TOKEN_RE.findall(input_text)}
+    for token in _TOKEN_RE.findall(canonical_text):
+        folded = token.casefold()
+        if folded in source_tokens or folded in _CANONICAL_META_TOKENS:
+            continue
+        # Cho phép tên hàm chuẩn hóa như sqrt/sin; chặn biến, số và label mới.
+        if token[0].isupper() or len(folded) == 1 or re.fullmatch(r"\d+(?:[.,]\d+)?", token):
+            return True
+    return False
 
 
 def _target_from_candidate(candidate: InterpretationCandidate) -> Literal["render", "geometry_solve", "algebra", "analyzer", "ocr"]:
