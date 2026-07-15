@@ -1,7 +1,7 @@
 --extra-index-url https://download.pytorch.org/whl/cpu
 
 Pillow>=10,<12
-opencv-python-headless>=4.10,<5
+opencv-python-headless>=5.0.0.93,<6
 paddlepaddle>=3.0,<4
 paddleocr>=3.0,<4
 torch==2.2.2+cpu
