@@ -4,6 +4,13 @@ from app.services.prompt_security import (
     envelope_untrusted,
     secure_system_prompt as _secure_system_prompt_impl,
 )
+from app.services.prompts import (
+    NLP_CONTRACT_VERSION,
+    NLP_CRITIC_PROMPT_VERSION,
+    NLP_CRITIC_SYSTEM_PROMPT,
+    NLP_INTERPRETATION_PROMPT_VERSION,
+    NLP_INTERPRETATION_SYSTEM_PROMPT,
+)
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:

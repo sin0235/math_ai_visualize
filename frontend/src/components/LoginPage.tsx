@@ -10,7 +10,7 @@ interface LoginPageProps {
   authLoading: boolean;
   onOpenWorkspace: () => void;
   onToast: (title: string, message: string, kind?: ToastKind) => void;
-  onLogin: (email: string, password: string, turnstileToken?: string) => Promise<void>;
+  onLogin: (email: string, password: string, rememberMe: boolean, turnstileToken?: string) => Promise<void>;
   onGoogleLogin: () => Promise<void>;
   onRegister: (email: string, password: string, displayName: string | undefined, acceptPrivacyPolicy: boolean, acceptTerms: boolean, turnstileToken?: string) => Promise<void>;
   onForgotPassword: (email: string, turnstileToken?: string) => Promise<string>;
@@ -32,6 +32,7 @@ export function LoginPage({ logoUrl, user, authLoading, onOpenWorkspace, onToast
   const [mode, setMode] = useState<AuthMode>('login');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
   const [acceptPrivacyPolicy, setAcceptPrivacyPolicy] = useState(false);
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [turnstileToken, setTurnstileToken] = useState('');
@@ -51,6 +52,7 @@ export function LoginPage({ logoUrl, user, authLoading, onOpenWorkspace, onToast
     setConfirmPassword('');
     setShowPassword(false);
     setShowConfirmPassword(false);
+    if (nextMode !== 'login') setRememberMe(false);
     if (showTurnstile) resetTurnstile();
     if (nextMode !== 'register') {
       setDisplayName('');
@@ -81,7 +83,7 @@ export function LoginPage({ logoUrl, user, authLoading, onOpenWorkspace, onToast
         return;
       }
       if (mode === 'login') {
-        await onLogin(cleanEmail, password, turnstileToken || undefined);
+        await onLogin(cleanEmail, password, rememberMe, turnstileToken || undefined);
         onToast('Đăng nhập', 'Đăng nhập thành công. Lịch sử dựng hình đã được bật.', 'info');
         return;
       }
@@ -182,7 +184,11 @@ export function LoginPage({ logoUrl, user, authLoading, onOpenWorkspace, onToast
                 </label>
               )}
               {mode === 'login' && (
-                <div className="login-forgot-password-row">
+                <div className="login-remember-row">
+                  <label className="legal-consent-row">
+                    <input type="checkbox" checked={rememberMe} onChange={(event) => setRememberMe(event.target.checked)} />
+                    <span>Ghi nhớ đăng nhập trong 7 ngày</span>
+                  </label>
                   <button type="button" className="login-forgot-password-link" onClick={() => switchMode('forgot')}>Quên mật khẩu?</button>
                 </div>
               )}

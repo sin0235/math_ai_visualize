@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Callable, Mapping
+from typing import Any, Callable, Mapping
 
 from app.schemas.nlp import ExcludeAutoTarget, InputEnvelope, InterpretationCandidate
 from app.services.nlp.normalization import NormalizedInput
@@ -28,12 +28,18 @@ class AdapterRegistry:
             raise ValueError(f"Chưa có NLP adapter cho target {target}") from error
 
 
-def infer_target(text: str) -> ExcludeAutoTarget:
-    lowered = text.lower()
-    if any(token in lowered for token in ("khảo sát hàm", "khao sat ham", "cực trị", "cuc tri", "tiệm cận", "tiem can", "f(x)=", "y=")):
-        return "analyzer"
-    if any(token in lowered for token in ("vẽ ", "ve ", "dựng ", "dung ")):
-        return "render"
-    if any(token in lowered for token in ("khoảng cách", "khoang cach", "thể tích", "the tich", "chứng minh", "chung minh", "mặt phẳng", "mat phang")):
-        return "geometry_solve"
-    return "algebra"
+_TARGET_RULES: tuple[tuple[ExcludeAutoTarget, tuple[str, ...]], ...] = (
+    ("analyzer", ("khảo sát hàm", "khao sat ham", "cực trị", "cuc tri", "tiệm cận", "tiem can", "f(x)=", "y=")),
+    ("render", ("vẽ ", "ve ", "dựng ", "dung ")),
+    ("geometry_solve", ("khoảng cách", "khoang cach", "thể tích", "the tich", "chứng minh", "chung minh", "mặt phẳng", "mat phang")),
+)
+
+
+def infer_target(text: str, context: Mapping[str, Any] | None = None) -> ExcludeAutoTarget:
+    lowered = text.casefold()
+    if context and (context.get("ocr") is True or context.get("source") == "ocr"):
+        return "ocr"
+    return next(
+        (target for target, tokens in _TARGET_RULES if any(token in lowered for token in tokens)),
+        "algebra",
+    )

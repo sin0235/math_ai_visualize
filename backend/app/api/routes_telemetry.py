@@ -22,6 +22,7 @@ from app.services.analytics_taxonomy import (
     NLP_STATUSES,
     NLP_TARGETS,
     NLP_TAXONOMY_CODES,
+    NLP_VALIDATION_CODES,
     PAGE_VIEW,
 )
 from app.services.provider_logging import redact_sensitive
@@ -43,6 +44,8 @@ _ALLOWED_METADATA_KEYS = frozenset({
     "candidate_count",
     "status",
     "adapter_version",
+    "validation_state",
+    "validation_codes",
     "request_id",
 })
 
@@ -169,6 +172,15 @@ def _sanitize_nlp_metadata(metadata: dict[str, object]) -> dict[str, object] | N
     candidate_count = metadata.get("candidate_count")
     if isinstance(candidate_count, int) and not isinstance(candidate_count, bool):
         safe["candidate_count"] = min(max(candidate_count, 0), 8)
+    validation_state = metadata.get("validation_state")
+    if validation_state in {"unchecked", "validated", "rejected", "needs_review"}:
+        safe["validation_state"] = validation_state
+    validation_codes = metadata.get("validation_codes")
+    if isinstance(validation_codes, list):
+        safe["validation_codes"] = [
+            code for code in validation_codes[:8]
+            if isinstance(code, str) and code in NLP_VALIDATION_CODES
+        ]
     for key, limit in (("adapter_version", 80), ("request_id", 80)):
         value = metadata.get(key)
         if isinstance(value, str) and value:

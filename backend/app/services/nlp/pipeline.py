@@ -8,6 +8,7 @@ from app.schemas.nlp import (
     InterpretationStatus,
 )
 from app.services.nlp.adapters import ADAPTER_VERSION, default_registry
+from app.services.nlp.contract import finalize_candidate_contract
 from app.services.nlp.normalization import normalize_input
 from app.services.nlp.router import AdapterRegistry, infer_target
 
@@ -20,11 +21,11 @@ def interpret_input(
     registry: AdapterRegistry | None = None,
 ) -> InterpretationResponse:
     normalized = normalize_input(envelope.text)
-    target: ExcludeAutoTarget = infer_target(normalized.text) if envelope.target == "auto" else envelope.target
+    target: ExcludeAutoTarget = infer_target(normalized.text, envelope.context) if envelope.target == "auto" else envelope.target
     active_registry = registry or default_registry()
     candidates = sorted(
         (
-            _with_input_provenance(candidate, envelope)
+            finalize_candidate_contract(_with_input_provenance(candidate, envelope))
             for candidate in active_registry.resolve(target)(envelope, normalized)
         ),
         key=lambda candidate: (-candidate.confidence, candidate.candidate_id),

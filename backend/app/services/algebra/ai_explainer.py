@@ -12,7 +12,7 @@ from app.services.ai_fallback import Attempt, format_attempts, provider_configur
 from app.services.chat_response import extract_chat_message_content
 from app.services.openai_compat_client import OpenAICompatClient
 from app.services.openrouter_client import _build_chat_payload as _build_openrouter_chat_payload, _build_headers as _build_openrouter_headers, _extract_message as _extract_openrouter_message, openrouter_api_base_url
-from app.services.nlp.grounding import LanguageRewrite, build_algebra_explanation_plan, validate_language_rewrites
+from app.services.nlp.grounding import LanguageRewrite, assert_plan_anchors_unchanged, build_algebra_explanation_plan, validate_language_rewrites
 from app.services.prompt_security import envelope_untrusted, gate_llm_json_output, secure_system_prompt
 from app.services.router9_client import Router9Client, _extract_message_content as _extract_router9_message_content
 
@@ -171,6 +171,7 @@ async def explain_algebra_response_with_ai(response: AlgebraSolveResponse, setti
             response.realization_fallback_reason = "Model không trả field ngôn ngữ hợp lệ."
             return response
         response.steps = merge_ai_explanation_steps(original_steps, payload.steps, rewrites_by_claim)
+        assert_plan_anchors_unchanged(plan, build_algebra_explanation_plan(response))
         response.realization_status = "ai_validated"
         response.realization_fallback_reason = None
     except Exception as error:

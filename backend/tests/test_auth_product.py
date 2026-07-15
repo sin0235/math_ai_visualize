@@ -1,4 +1,5 @@
 import asyncio
+from datetime import UTC, datetime
 
 import pytest
 from fastapi import Request
@@ -9,7 +10,7 @@ from app.core.config import Settings, get_settings
 from app.db.migrations import apply_sqlite_migrations
 from app.db.session import SQLiteClient, get_database
 from app.main import app
-from app.repositories.auth import AuthTokenRepository, OAUTH_PASSWORD_SENTINEL, OAUTH_PROVIDER_GOOGLE, OAuthIdentityRepository, OAuthStateRepository, RateLimitRepository, TOKEN_PURPOSE_EMAIL_VERIFICATION, TOKEN_PURPOSE_PASSWORD_RESET, UserRepository, pwd_context
+from app.repositories.auth import AuthTokenRepository, OAUTH_PASSWORD_SENTINEL, OAUTH_PROVIDER_GOOGLE, OAuthIdentityRepository, OAuthStateRepository, RateLimitRepository, TOKEN_PURPOSE_EMAIL_VERIFICATION, TOKEN_PURPOSE_PASSWORD_RESET, UserRepository, hash_token, parse_datetime, pwd_context
 from app.services.google_oauth import GoogleUserInfo
 
 
@@ -131,6 +132,29 @@ def test_register_login_me_logout(client):
     login = client.post("/api/auth/login", json={"email": "user@example.com", "password": "StrongPass123"})
     assert login.status_code == 200
     assert login.cookies.get("hinh_session")
+
+
+def test_password_login_remember_me_controls_session_duration(client):
+    client.post("/api/auth/register", json=register_payload("remember@example.com"))
+    client.post("/api/auth/logout")
+
+    short_login = client.post("/api/auth/login", json={"email": "remember@example.com", "password": "StrongPass123"})
+    short_token = short_login.cookies.get("hinh_session")
+    assert short_login.headers["set-cookie"].startswith("hinh_session=")
+    assert "Max-Age=86400" in short_login.headers["set-cookie"]
+
+    async def session_days(token: str) -> float:
+        row = await client.db.fetch_one("SELECT expires_at FROM sessions WHERE token_hash = ?", [hash_token(token)])
+        assert row is not None
+        return (parse_datetime(str(row["expires_at"])) - datetime.now(UTC)).total_seconds() / 86400
+
+    assert 0.9 < asyncio.run(session_days(short_token)) < 1.1
+
+    client.post("/api/auth/logout")
+    remembered_login = client.post("/api/auth/login", json={"email": "remember@example.com", "password": "StrongPass123", "remember_me": True})
+    remembered_token = remembered_login.cookies.get("hinh_session")
+    assert "Max-Age=604800" in remembered_login.headers["set-cookie"]
+    assert 6.9 < asyncio.run(session_days(remembered_token)) < 7.1
 
 
 def test_forgot_password_response_is_generic_and_reset_consumes_token(client):
@@ -323,6 +347,7 @@ def test_google_callback_creates_verified_user_session(client, monkeypatch):
     assert response.status_code == 302
     assert response.headers["location"] == "https://math-renderer.sin235.live?auth=google-success"
     assert response.cookies.get("hinh_session")
+    assert "Max-Age=604800" in response.headers["set-cookie"]
     assert client.get("/api/auth/me").json()["user"]["email"] == "oauth@example.com"
 
     async def identity():

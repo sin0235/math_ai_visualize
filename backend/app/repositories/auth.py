@@ -12,7 +12,8 @@ from app.db.session import DatabaseClient
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 SESSION_COOKIE_NAME = "hinh_session"
-SESSION_DAYS = 30
+DEFAULT_SESSION_DAYS = 1
+REMEMBERED_SESSION_DAYS = 7
 TOKEN_PURPOSE_EMAIL_VERIFICATION = "email_verification"
 TOKEN_PURPOSE_PASSWORD_RESET = "password_reset"
 LEGAL_DOCUMENT_PRIVACY_POLICY = "privacy_policy"
@@ -136,11 +137,17 @@ class SessionRepository:
     def __init__(self, db: DatabaseClient) -> None:
         self.db = db
 
-    async def create(self, user_id: str, ip_address: str | None = None, user_agent: str | None = None) -> tuple[SessionRecord, str]:
+    async def create(
+        self,
+        user_id: str,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
+        session_days: int = DEFAULT_SESSION_DAYS,
+    ) -> tuple[SessionRecord, str]:
         session_id = str(uuid4())
         token = token_urlsafe(32)
         token_hash = hash_token(token)
-        expires_at = (datetime.now(UTC) + timedelta(days=SESSION_DAYS)).isoformat()
+        expires_at = (datetime.now(UTC) + timedelta(days=session_days)).isoformat()
         await self.db.execute(
             "INSERT INTO sessions (id, user_id, token_hash, expires_at, last_seen_at, ip_address, user_agent) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?)",
             [session_id, user_id, token_hash, expires_at, ip_address, clean_user_agent(user_agent)],

@@ -99,6 +99,23 @@ class Constraint(StrictModel):
     provenance: list[Provenance] = Field(default_factory=list, max_length=8)
 
 
+class NlpFact(StrictModel):
+    kind: str = Field(min_length=1, max_length=64)
+    name: str | None = Field(default=None, max_length=128)
+    arguments: list[str] = Field(default_factory=list, max_length=16)
+    value: str | float | int | bool | None = None
+    confidence: float = Field(ge=0.0, le=1.0)
+    evidence: list[TextSpan] = Field(default_factory=list, max_length=8)
+    provenance: list[Provenance] = Field(default_factory=list, max_length=8)
+
+
+class InterpretationValidation(StrictModel):
+    state: Literal["unchecked", "validated", "rejected", "needs_review"] = "unchecked"
+    codes: list[str] = Field(default_factory=list, max_length=16)
+    prompt_version: str | None = Field(default=None, max_length=64)
+    contract_version: str = "nlp-ir-v2"
+
+
 class Ambiguity(StrictModel):
     code: str = Field(min_length=1, max_length=80)
     message: str = Field(min_length=1, max_length=500)
@@ -120,7 +137,11 @@ class InterpretationCandidate(StrictModel):
     canonical_payload: dict[str, Any] | None = None
     entities: list[Entity] = Field(default_factory=list, max_length=64)
     constraints: list[Constraint] = Field(default_factory=list, max_length=64)
+    givens: list[NlpFact] = Field(default_factory=list, max_length=64)
+    goals: list[NlpFact] = Field(default_factory=list, max_length=16)
+    unknowns: list[str] = Field(default_factory=list, max_length=16)
     ambiguities: list[Ambiguity] = Field(default_factory=list, max_length=16)
+    clarification_options: list[str] = Field(default_factory=list, max_length=8)
     field_confidences: list[FieldConfidence] = Field(default_factory=list, max_length=32)
     confidence: float = Field(ge=0.0, le=1.0)
     assumptions: list[str] = Field(default_factory=list, max_length=16)
@@ -128,6 +149,7 @@ class InterpretationCandidate(StrictModel):
     unsupported_reason: str | None = Field(default=None, max_length=500)
     clarification_question: str | None = Field(default=None, max_length=500)
     provenance: list[Provenance] = Field(default_factory=list, max_length=16)
+    validation: InterpretationValidation = Field(default_factory=InterpretationValidation)
 
 
 ExcludeAutoTarget = Literal["render", "geometry_solve", "algebra", "analyzer", "ocr"]

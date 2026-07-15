@@ -21,6 +21,7 @@ SECURED_SYSTEM_PROMPTS: list[tuple[str, str]] = [
     ("app.services.ai_prompt", "SCENE_REPAIR_V3_SYSTEM_PROMPT"),
     ("app.services.ai_prompt", "REASONING_SYSTEM_PROMPT"),
     ("app.services.nlp.llm", "LLM_NLP_SYSTEM_PROMPT"),
+    ("app.services.nlp.llm", "LLM_NLP_CRITIC_SYSTEM_PROMPT"),
 ]
 
 # Paths that assemble user messages via envelope_untrusted / build_* helpers.

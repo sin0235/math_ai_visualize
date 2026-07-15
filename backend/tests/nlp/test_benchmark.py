@@ -41,6 +41,18 @@ def test_corpus_schema_and_slice_coverage():
     }
 
 
+def test_quality_metrics_cover_contract_and_abstention():
+    report = evaluate(load_cases(CORPUS_PATH, expand_paraphrases=False)[:20], predictor=pipeline_predict)
+
+    assert {
+        "abstention_recall",
+        "unknown_intent_rate",
+        "validation_acceptance_rate",
+        "goal_extraction_rate",
+        "canonical_validity_rate",
+    } <= set(report["overall"])
+
+
 def test_geometry_metrics_are_reported_per_subtype():
     report = evaluate(load_cases(CORPUS_PATH), predictor=pipeline_predict)
 

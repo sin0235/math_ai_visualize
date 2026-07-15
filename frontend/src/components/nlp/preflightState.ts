@@ -48,6 +48,7 @@ export function candidateCanonicalText(candidate: InterpretationCandidate, respo
 
 export function candidateCanRun(candidate: InterpretationCandidate, response: InterpretationResponse): boolean {
   return !candidate.unsupported_reason
+    && candidate.validation?.state !== 'rejected'
     && candidate.missing_fields.length === 0
     && candidateCanonicalText(candidate, response).length > 0;
 }

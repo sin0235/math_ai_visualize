@@ -52,9 +52,23 @@ NLP_TAXONOMY_CODES = frozenset({
     NLP_EXPLAINER_FALLBACK,
     NLP_SHADOW_MISMATCH,
 })
-NLP_TARGETS = frozenset({"render", "geometry_solve", "algebra", "analyzer", "ocr"})
+NLP_VALIDATION_CODES = frozenset({
+    "unsupported",
+    "unknown_intent",
+    "missing_fields",
+    "missing_goal",
+    "ambiguities",
+    "missing_canonical_text",
+    "critic_review",
+    "candidate_disagreement",
+    "single_candidate",
+    "invalid_evidence",
+    "invalid_canonical",
+})
+
 NLP_STATUSES = frozenset({"accepted", "needs_confirmation", "abstained", "unsupported"})
 NLP_CONFIDENCE_BUCKETS = frozenset({"very_low", "low", "medium", "high", "very_high"})
+NLP_TARGETS = frozenset({"render", "geometry_solve", "algebra", "analyzer", "ocr"})
 
 FEATURE_KEYS = frozenset({
     "home",

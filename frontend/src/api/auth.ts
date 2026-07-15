@@ -90,12 +90,12 @@ export async function getCurrentUser(): Promise<AuthResponse> {
   return requestJson('/api/auth/me', { credentials: 'include' }, 'Không thể đọc phiên đăng nhập.');
 }
 
-export async function login(email: string, password: string, turnstileToken?: string): Promise<AuthResponse> {
+export async function login(email: string, password: string, rememberMe = false, turnstileToken?: string): Promise<AuthResponse> {
   return requestJson('/api/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ email, password, turnstile_token: turnstileToken }),
+    body: JSON.stringify({ email, password, remember_me: rememberMe, turnstile_token: turnstileToken }),
   }, 'Không thể đăng nhập.');
 }
 

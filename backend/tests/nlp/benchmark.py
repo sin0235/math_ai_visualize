@@ -33,6 +33,9 @@ class Prediction:
     constraints: tuple[str, ...]
     status: str
     confidence: float
+    validation_state: str = "unchecked"
+    goal_count: int = 0
+    unknown_count: int = 0
 
     @property
     def intent(self) -> str:
@@ -176,6 +179,9 @@ def pipeline_predict(case: dict[str, Any]) -> Prediction:
         ),
         status=response.status.value,
         confidence=candidate.confidence,
+        validation_state=candidate.validation.state,
+        goal_count=len(candidate.goals),
+        unknown_count=len(candidate.unknowns),
     )
 
 
@@ -240,6 +246,30 @@ def _metrics(rows: list[tuple[dict[str, Any], Prediction, str]]) -> dict[str, fl
             if predicted_abstentions else 1.0,
             6,
         ),
+        "abstention_recall": round(
+            sum(row[1].status in ABSTENTION_STATUSES for row in rows if row[0]["expected"]["status"] in ABSTENTION_STATUSES)
+            / sum(row[0]["expected"]["status"] in ABSTENTION_STATUSES for row in rows)
+            if any(row[0]["expected"]["status"] in ABSTENTION_STATUSES for row in rows) else 1.0,
+            6,
+        ),
+        "unknown_intent_rate": round(
+            sum(prediction.domain == "unknown" or prediction.task == "unknown" for _case, prediction, _gold in rows) / len(rows),
+            6,
+        ),
+        "validation_acceptance_rate": round(
+            sum(prediction.validation_state == "validated" for _case, prediction, _gold in rows) / len(rows),
+            6,
+        ),
+        "goal_extraction_rate": round(
+            sum(prediction.goal_count > 0 for _case, prediction, _gold in rows) / len(rows),
+            6,
+        ),
+        "canonical_validity_rate": round(
+            sum(_canonical_is_valid(case["target"], prediction.canonical) for case, prediction, _gold in canonical_rows)
+            / len(canonical_rows)
+            if canonical_rows else 1.0,
+            6,
+        ),
         "brier_score": round(sum((confidence - correct) ** 2 for confidence, correct in zip(confidences, intent_correctness)) / len(rows), 6),
         "ece_10": round(_ece(confidences, intent_correctness), 6),
     }
@@ -278,6 +308,19 @@ def _canonical_score(rows: list[tuple[dict[str, Any], Prediction, str]], *, sema
         return 1.0
     normalize = _semantic_canonical if semantic else lambda value: value
     return sum(normalize(row[1].canonical) == normalize(row[0]["expected"]["canonical"]) for row in rows) / len(rows)
+
+
+def _canonical_is_valid(target: str, value: str | None) -> bool:
+    if value is None:
+        return False
+    text = value.strip()
+    if not text or len(text) > 2_000 or any(token in text for token in ("```", "<script", "system prompt")):
+        return False
+    if text.count("(") != text.count(")") or text.count("[") != text.count("]"):
+        return False
+    if target in {"algebra", "analyzer"}:
+        return bool(re.fullmatch(r"[A-Za-zÀ-ỹ0-9_+\-*/^().,=<>!≤≥≠→\\{}\s]+", text))
+    return True
 
 
 def _semantic_canonical(value: str | None) -> str | None:

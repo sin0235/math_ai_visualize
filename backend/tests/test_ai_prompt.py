@@ -21,6 +21,23 @@ from app.services.ai_prompt import (
     build_scene_extraction_prompt,
 )
 from app.services.prompt_security import SYSTEM_PROMPT_SECURITY_SUFFIX
+from app.services.prompts import (
+    NLP_CONTRACT_VERSION,
+    NLP_CRITIC_SYSTEM_PROMPT,
+    NLP_INTERPRETATION_PROMPT_VERSION,
+    NLP_INTERPRETATION_SYSTEM_PROMPT,
+)
+
+
+def test_nlp_prompts_are_versioned_and_separate_extraction_from_critique():
+    assert NLP_INTERPRETATION_PROMPT_VERSION == "nlp-interpretation-v2"
+    assert NLP_CONTRACT_VERSION == "nlp-ir-v2"
+    assert "EXPLICIT_GIVENS" in NLP_INTERPRETATION_SYSTEM_PROMPT
+    assert "GOAL không phải GIVEN" in NLP_INTERPRETATION_SYSTEM_PROMPT
+    assert "không giải toán" in NLP_CRITIC_SYSTEM_PROMPT.lower()
+    assert "decision: accept|review|reject" in NLP_CRITIC_SYSTEM_PROMPT
+    assert NLP_INTERPRETATION_SYSTEM_PROMPT.startswith(SYSTEM_PROMPT_SECURITY_PREFIX)
+    assert NLP_CRITIC_SYSTEM_PROMPT.endswith(SYSTEM_PROMPT_SECURITY_SUFFIX)
 
 
 # ---------------------------------------------------------------------------

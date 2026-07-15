@@ -531,10 +531,10 @@ export default function App() {
     void loadRemoteWorkspace(nextUser);
   }
 
-  async function handleLogin(email: string, password: string, turnstileToken?: string) {
+  async function handleLogin(email: string, password: string, rememberMe: boolean, turnstileToken?: string) {
     setAuthLoading(true);
     try {
-      const response = await login(email, password, turnstileToken);
+      const response = await login(email, password, rememberMe, turnstileToken);
       applyAuthenticatedUserInBackground(response.user);
       setPendingVerificationEmail('');
       navigateTo(response.user.role === 'admin' ? 'admin' : 'render');
