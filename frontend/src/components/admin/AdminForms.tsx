@@ -600,15 +600,15 @@ export function AdminAiSettingsForm({ value, defaults, saving, onSave, onToast }
                 <div className={`admin-field-grid ${provider === 'router9' ? 'admin-field-grid-router9' : ''}`}>
                   <label className="field-label">Base URL<input type="url" value={providerValue.base_url} onChange={(event) => updateProvider(provider, { base_url: event.target.value })} placeholder="https://..." /></label>
                   <label className="field-label">API key<input type="password" value={(providerValue as any).api_key ?? ''} onChange={(event) => updateProvider(provider, { ...( { api_key: event.target.value } as any) })} placeholder={defaults?.[provider]?.api_key_configured ? 'Đã cấu hình, nhập để thay' : 'Nhập API key'} /></label>
+                  {provider === 'router9' && (
+                    <div className="admin-row-actions" style={{ borderTop: 'none', paddingTop: 0, alignSelf: 'flex-end', paddingBottom: '2px' }}>
+                      <button type="button" className="secondary-button" onClick={() => void checkProvider(provider)} disabled={saving || checking === provider}>{checking === provider ? 'Đang kiểm tra...' : 'Kiểm tra'}</button>
+                      <button type="button" className="secondary-button" onClick={() => void scanProvider(provider)} disabled={saving || scanning === provider}>{scanning === provider ? 'Đang quét...' : 'Quét model'}</button>
+                      <button type="button" className="secondary-button" onClick={() => void saveProvider(provider)} disabled={saving}>{saving ? 'Đang lưu...' : 'Lưu provider'}</button>
+                    </div>
+                  )}
                 </div>
                 {result && <div className={`admin-status-box ${result.status}`}><strong>{result.status === 'ok' ? 'Thành công' : 'Lỗi'}</strong><p>{result.message}</p></div>}
-                {provider === 'router9' && (
-                  <div className="admin-row-actions">
-                    <button type="button" className="secondary-button" onClick={() => void checkProvider(provider)} disabled={saving || checking === provider}>{checking === provider ? 'Đang kiểm tra...' : 'Kiểm tra'}</button>
-                    <button type="button" className="secondary-button" onClick={() => void scanProvider(provider)} disabled={saving || scanning === provider}>{scanning === provider ? 'Đang quét...' : 'Quét model'}</button>
-                    <button type="button" className="secondary-button" onClick={() => void saveProvider(provider)} disabled={saving}>{saving ? 'Đang lưu...' : 'Lưu provider'}</button>
-                  </div>
-                )}
                 </div>
                 <div className="admin-provider-models">
                   <div className="admin-provider-models-head">
