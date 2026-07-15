@@ -101,6 +101,14 @@ _LEAK_PATTERNS: list[tuple[str, str]] = [
     (r"BEGIN (?:RSA |OPENSSH )?PRIVATE KEY", "private_key"),
 ]
 
+_HARD_OUTPUT_LEAK_CODES = frozenset({
+    "env_openrouter",
+    "env_nvidia",
+    "openai_like_key",
+    "api_key_assignment",
+    "private_key",
+})
+
 # Hard jailbreak codes: never allow math-dampening to pull score below block floor.
 _HARD_INJECTION_REASONS = frozenset({
     "ignore_previous",
@@ -294,10 +302,8 @@ def gate_llm_json_output(
     task: str = "json",
 ) -> OutputGateResult:
     """Parse JSON LLM output and reject leakage / non-JSON payloads."""
-    cleaned = strip_code_fences(raw)
-    leaks = scan_output_leaks(cleaned)
-    if leaks:
-        return OutputGateResult(ok=False, reasons=[f"leak:{code}" for code in leaks], cleaned_text=None)
+    raw_text = strip_code_fences(raw)
+    cleaned = raw_text
 
     try:
         data = json.loads(cleaned)
@@ -305,6 +311,9 @@ def gate_llm_json_output(
         # Try extract first JSON object/array.
         extracted = _extract_json_blob(cleaned)
         if extracted is None:
+            hard_leaks = [code for code in scan_output_leaks(raw_text) if code in _HARD_OUTPUT_LEAK_CODES]
+            if hard_leaks:
+                return OutputGateResult(ok=False, reasons=[f"leak:{code}" for code in hard_leaks], cleaned_text=None)
             return OutputGateResult(
                 ok=False,
                 reasons=[f"invalid_json:{error.msg}"],
@@ -316,7 +325,15 @@ def gate_llm_json_output(
         except json.JSONDecodeError as inner:
             return OutputGateResult(ok=False, reasons=[f"invalid_json:{inner.msg}"], cleaned_text=cleaned)
 
-    # Second leak scan on stringified content fields only if dict of strings.
+    # Providers may prepend reasoning or a short explanation. Keep blocking
+    # secrets in that wrapper, but inspect prompt-boundary phrases only after
+    # extracting the JSON that will actually enter the application.
+    raw_leaks = scan_output_leaks(raw_text)
+    hard_leaks = [code for code in raw_leaks if code in _HARD_OUTPUT_LEAK_CODES]
+    if hard_leaks:
+        return OutputGateResult(ok=False, reasons=[f"leak:{code}" for code in hard_leaks], cleaned_text=None)
+
+    # Scan the structured payload, not discarded reasoning around it.
     serialized = json.dumps(data, ensure_ascii=False) if not isinstance(data, str) else data
     leaks = scan_output_leaks(serialized)
     if leaks:
