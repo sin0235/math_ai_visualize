@@ -457,6 +457,29 @@ VI. Renderer theo nội dung:
 - Hình trụ/nón: xấp xỉ đáy bằng 12-16 đỉnh, tạo segment biên và cạnh sinh cần thiết, face cho đáy; không trả riêng các point vòng tròn.
 - Bài mặt cắt phải có đủ khối chính, plane cắt, face thiết diện, toàn bộ segment viền và đường phụ được đề nhắc.
 
+VI.a. Quy trình suy luận bắt buộc (thực hiện nội bộ, không xuất ra response):
+1. Giữ nguyên `problem_text`, phân loại domain, dimension và renderer.
+2. Lập bốn inventory: `EXPLICIT_GIVENS` (ghi trực tiếp), `DERIVED_GIVENS` (suy ra chắc chắn), `GOALS` (đại lượng sau từ tính/tìm/chứng minh) và `UNKNOWNS` (thiếu hoặc chưa xác định).
+3. Chọn hệ tọa độ canonical; kiểm tra từng tọa độ với dữ kiện trước khi tạo object.
+4. Tạo toàn bộ point và stable object id trước, sau đó tạo segment/line/vector/face/plane, cuối cùng mới tạo relation/annotation.
+5. Hoàn thiện topology khối trước khi thêm construction cho goal; không coi danh sách point là hình hoàn chỉnh.
+6. Gắn provenance cho từng dữ kiện và tách rõ `given`, `inferred`, `construction`, `render_only`.
+7. Chạy self-check về reference, topology, tọa độ, exact expression, renderer và tính đầy đủ thị giác; nếu không đủ dữ kiện thì ghi assumption thay vì đoán.
+
+VI.b. Bất biến chống scene hợp schema nhưng sai hình học:
+- JSON hợp lệ chưa đủ: tọa độ phải đồng thời thỏa các quan hệ hình học quan trọng và topology của hình đặc biệt.
+- Không dùng số thập phân gần đúng thay cho căn/phân số khi có thể dùng `*_expr`.
+- Không chọn embedding minh họa làm thay đổi dữ kiện tọa độ, độ dài hoặc góc đã cho.
+- Không biến giá trị mặc định của parameter thành given, không tạo nhãn số cho goal chưa biết.
+- Mọi điểm phụ phải có mục đích trực quan gắn với given/goal; nếu không giải được duy nhất, ghi assumption và dùng construction/render_only.
+- Khi có mâu thuẫn giữa `nlp_hints` và nguyên văn đề, bỏ hint và giữ nguyên đề; không sửa `problem_text`.
+
+VI.c. Các mẫu ngắn cần bảo vệ failure mode:
+- Khoảng cách điểm–mặt: tạo face/plane thật, chân chiếu H, segment MH nét đứt, right angle và measurement; không tạo relation distance thiếu giá trị.
+- Trung điểm/trung tuyến: tạo M đúng trung điểm theo tọa độ, tạo các nửa segment và equal marks; không chỉ gắn metadata midpoint.
+- Đồ thị hàm có tham số: dùng geogebra_2d, giữ expression exact, tạo parameter và default riêng; không tạo object 3D.
+- Anti-example: scene chỉ có point hoặc relation dùng shorthand `AB` là chưa hoàn chỉnh dù có thể parse JSON; phải bổ sung object typed và reference tồn tại.
+
 VII. Self-check nội bộ trước khi xuất JSON, KHÔNG xuất phần kiểm tra:
 1. Mọi ref_id tồn tại và ref_kind đúng type object.
 2. Mọi segment/line có đúng 2 point_ids; mọi face/plane có ít nhất 3 point_ids.
@@ -469,6 +492,7 @@ VII. Self-check nội bộ trước khi xuất JSON, KHÔNG xuất phần kiểm
 9. Nếu đề hỏi góc: có đủ hai thành phần được hỏi, construction đưa về hai arm chung đỉnh và angle annotation hợp lệ; không có relation angle thiếu args.degrees.
 10. Đối chiếu GIVEN/GOAL nội bộ: mọi dữ kiện trực quan quan trọng và đại lượng được hỏi đều có object/relation/annotation/derived_fact tương ứng.
 11. Relation/annotation chỉ dùng object đã khai báo; tuyệt đối không tham chiếu ID dự định tạo nhưng chưa có.
+12. Đối chiếu lại bốn inventory: mọi `EXPLICIT_GIVENS` quan trọng đều có biểu diễn, `GOALS` có construction/annotation phù hợp, `UNKNOWNS` không bị biến thành kết luận số.
 
 Ví dụ đầy đủ — hình hộp chữ nhật ABCD.A'B'C'D':
 {"scene_id":"scene_box","schema_version":"3.0","revision":1,"problem_text":"Cho hình hộp chữ nhật ABCD.A'B'C'D'.","grade":11,"topic":"solid_geometry","renderer":"threejs_3d","objects":[{"id":"pt_a","type":"point_3d","label":"A","x":0,"y":0,"z":0},{"id":"pt_b","type":"point_3d","label":"B","x":4,"y":0,"z":0},{"id":"pt_c","type":"point_3d","label":"C","x":4,"y":0,"z":3},{"id":"pt_d","type":"point_3d","label":"D","x":0,"y":0,"z":3},{"id":"pt_a_prime","type":"point_3d","label":"A'","x":0,"y":2,"z":0},{"id":"pt_b_prime","type":"point_3d","label":"B'","x":4,"y":2,"z":0},{"id":"pt_c_prime","type":"point_3d","label":"C'","x":4,"y":2,"z":3},{"id":"pt_d_prime","type":"point_3d","label":"D'","x":0,"y":2,"z":3},{"id":"seg_ab","type":"segment","label":"AB","point_ids":["pt_a","pt_b"],"hidden":false,"color":"#1d3557","line_width":2,"style":"solid"},{"id":"seg_bc","type":"segment","label":"BC","point_ids":["pt_b","pt_c"],"hidden":false,"color":"#1d3557","line_width":2,"style":"solid"},{"id":"seg_cd","type":"segment","label":"CD","point_ids":["pt_c","pt_d"],"hidden":false,"color":"#1d3557","line_width":2,"style":"solid"},{"id":"seg_da","type":"segment","label":"DA","point_ids":["pt_d","pt_a"],"hidden":false,"color":"#1d3557","line_width":2,"style":"solid"},{"id":"seg_a_primeb_prime","type":"segment","label":"A'B'","point_ids":["pt_a_prime","pt_b_prime"],"hidden":false,"color":"#1d3557","line_width":2,"style":"solid"},{"id":"seg_b_primec_prime","type":"segment","label":"B'C'","point_ids":["pt_b_prime","pt_c_prime"],"hidden":false,"color":"#1d3557","line_width":2,"style":"solid"},{"id":"seg_c_primed_prime","type":"segment","label":"C'D'","point_ids":["pt_c_prime","pt_d_prime"],"hidden":false,"color":"#1d3557","line_width":2,"style":"solid"},{"id":"seg_d_primea_prime","type":"segment","label":"D'A'","point_ids":["pt_d_prime","pt_a_prime"],"hidden":false,"color":"#1d3557","line_width":2,"style":"solid"},{"id":"seg_aa_prime","type":"segment","label":"AA'","point_ids":["pt_a","pt_a_prime"],"hidden":false,"color":"#1d3557","line_width":2,"style":"solid"},{"id":"seg_bb_prime","type":"segment","label":"BB'","point_ids":["pt_b","pt_b_prime"],"hidden":false,"color":"#1d3557","line_width":2,"style":"solid"},{"id":"seg_cc_prime","type":"segment","label":"CC'","point_ids":["pt_c","pt_c_prime"],"hidden":false,"color":"#1d3557","line_width":2,"style":"solid"},{"id":"seg_dd_prime","type":"segment","label":"DD'","point_ids":["pt_d","pt_d_prime"],"hidden":false,"color":"#1d3557","line_width":2,"style":"solid"},{"id":"face_abcd","type":"face","label":"ABCD","point_ids":["pt_a","pt_b","pt_c","pt_d"],"color":"#5da9ff","opacity":0.16},{"id":"face_top","type":"face","label":"A'B'C'D'","point_ids":["pt_a_prime","pt_b_prime","pt_c_prime","pt_d_prime"],"color":"#ffb86b","opacity":0.16},{"id":"face_front","type":"face","label":"ABB'A'","point_ids":["pt_a","pt_b","pt_b_prime","pt_a_prime"],"color":"#ffd166","opacity":0.16},{"id":"face_right","type":"face","label":"BCC'B'","point_ids":["pt_b","pt_c","pt_c_prime","pt_b_prime"],"color":"#c9a0dc","opacity":0.16},{"id":"face_back","type":"face","label":"CDD'C'","point_ids":["pt_c","pt_d","pt_d_prime","pt_c_prime"],"color":"#7fcdbb","opacity":0.16},{"id":"face_left","type":"face","label":"DAA'D'","point_ids":["pt_d","pt_a","pt_a_prime","pt_d_prime"],"color":"#a8edea","opacity":0.16}],"relations":[],"annotations":[],"parameters":[],"view":{"dimension":"3d","show_axes":false,"show_grid":false,"show_coordinates":false},"interpretation":{"object_ids":[],"relation_ids":[],"values":[],"missing_data":[],"assumptions":[]},"construction_steps":[],"audit":{"created_by":"ai"}}
@@ -646,6 +670,9 @@ Quy tắc phân tích:
 10. Nếu đề có biến tổng quát chưa cho giá trị (a, h, alpha, m, k...), liệt kê vào parameters với min/max/default/step hợp lý; ghi chú trong expr_for_points các toạ độ phụ thuộc tham số (ví dụ "B.x":"a", "S.y":"h"). Toạ độ trong points vẫn ghi giá trị eval với defaults (mặc định a=3, h=3, alpha=60). Nếu đề có giá trị cụ thể (cạnh = 4) thì để parameters = [], hình tĩnh.
 11. Thêm warnings nếu phát hiện mâu thuẫn hoặc thiếu dữ kiện.
 
+12. Quy trình kế hoạch phải tách rõ EXPLICIT_GIVENS, DERIVED_GIVENS, GOALS và UNKNOWNS trước khi chọn tọa độ. Không tính đáp án của GOALS trong reasoning plan; chỉ lập mô hình và construction cần thiết để downstream tính/kiểm chứng.
+13. Mọi assumption do tự chọn hệ trục hoặc embedding phải ghi trong warnings/assumptions, không gắn source="given".
+
 Self-check kế hoạch (BẮT BUỘC tự kiểm trong nội bộ trước khi xuất):
 - Mọi tên điểm trong edges_and_faces/relations/annotations_needed phải có entry trong points.
 - Đối chiếu từng phần tử `edges_and_faces[*].points` với `points[*].name`; nếu chưa khai báo thì thêm point trước, không được xuất kế hoạch có reference treo.
@@ -655,6 +682,7 @@ Self-check kế hoạch (BẮT BUỘC tự kiểm trong nội bộ trước khi 
 - renderer phù hợp với dimension: geogebra_2d ↔ "2d", threejs_3d ↔ "3d".
 - Nếu là khối chuẩn, đếm lại đủ point/segment/face theo công thức ở quy tắc 5; không được chỉ liệt kê các đỉnh.
 - Nếu bài có mặt cắt/thiết diện: liệt kê đủ 5 thành phần (khối chính, plane mặt phẳng cắt, face thiết diện, viền segments, tam giác phụ minh họa) trong edges_and_faces; ghi color_hint khác nhau cho từng thành phần; mặt phẳng cắt nên dùng type "plane" (auto-expand); tam giác phụ gồm segments nối tâm→chân vuông góc→điểm trên thiết diện + right_angle.
+- Không được xuất kế hoạch chỉ có points mà thiếu edges_and_faces cho một khối chuẩn; nếu dữ kiện không đủ để kiểm tra topology, ghi warning và chọn topology tối thiểu có căn cứ.
 """.strip()
 
 
