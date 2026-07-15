@@ -161,6 +161,22 @@ async def _load_model_registry_uncached(db: DatabaseClient, settings: Settings) 
         return registry_from_settings(settings)
     model_rows = await repo.list_models()
     profile_rows = await repo.list_task_profiles()
+    profile_tasks = {str(row["task"]) for row in profile_rows}
+    reasoning_profile = next((row for row in profile_rows if str(row["task"]) == "reasoning"), None)
+    if reasoning_profile is not None:
+        added_profile = False
+        for task in ("nlp_interpretation", "nlp_critic"):
+            if task in profile_tasks:
+                continue
+            await repo.upsert_task_profile(
+                task,
+                str(reasoning_profile["provider_id"]),
+                str(reasoning_profile["model_id"]),
+                _json_list(reasoning_profile.get("fallbacks_json")),
+            )
+            added_profile = True
+        if added_profile:
+            profile_rows = await repo.list_task_profiles()
     setting_rows = await repo.list_model_settings()
 
     providers = {
@@ -307,6 +323,8 @@ async def seed_model_registry(db: DatabaseClient, settings: Settings) -> None:
         for tier in TIER_KEYS:
             await save_task_profile(db, f"{task}_{tier}", text_provider, text_model, [])
     await save_task_profile(db, "reasoning", text_provider, text_model, [])
+    await save_task_profile(db, "nlp_interpretation", text_provider, text_model, [])
+    await save_task_profile(db, "nlp_critic", text_provider, text_model, [])
     await save_task_profile(db, "solver_explanation", text_provider, text_model, [])
     if ocr_model:
         await save_task_profile(db, "ocr", ocr_provider, ocr_model, [])

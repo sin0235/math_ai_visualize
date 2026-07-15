@@ -10,6 +10,7 @@ from app.schemas.nlp import InputEnvelope, InterpretationStatus, Provenance
 from app.services.nlp.adapters import default_registry
 from app.services.nlp.normalization import normalize_input
 from app.services.nlp.pipeline import interpret_input
+from app.services.nlp.router import infer_target
 
 
 def _iter_api_routes(routes):
@@ -46,6 +47,21 @@ def test_registry_extension_returns_new_registry():
 
     assert extended.resolve("algebra") is empty_adapter
     assert original.resolve("algebra") is not empty_adapter
+
+
+def test_auto_router_preserves_render_for_graph_request():
+    assert infer_target("Vẽ đồ thị hàm số y = x^2 - 1") == "render"
+
+
+def test_candidate_contract_projects_givens_goals_and_unknowns():
+    result = interpret_input(InputEnvelope(text="Giải phương trình x^2 - 5x + 6 = 0", target="algebra"))
+
+    candidate = result.candidates[0]
+    assert candidate.validation.contract_version == "nlp-ir-v2"
+    assert candidate.validation.state == "validated"
+    assert candidate.goals[0].name == "solve"
+    assert any(fact.name == "x" for fact in candidate.givens)
+    assert candidate.unknowns == []
 
 
 def test_algebra_interpretation_accepts_complete_relation():

@@ -6188,10 +6188,17 @@ button:disabled {
   background: var(--surface-raised);
 }
 
-.login-forgot-password-row {
+.login-remember-row {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
   margin-top: -4px;
+}
+
+.login-remember-row .legal-consent-row {
+  font-size: var(--font-size-caption);
+  font-weight: 500;
 }
 
 .login-forgot-password-link {

@@ -89,6 +89,8 @@ def test_shadow_metadata_contains_no_input_or_canonical_values():
         "confidence_bucket",
         "candidate_count",
         "adapter_version",
+        "validation_state",
+        "validation_codes",
         "mode",
         "mismatch",
     }
@@ -103,6 +105,8 @@ def test_nlp_client_metadata_uses_strict_taxonomy_whitelist():
         "confidence_bucket": "medium",
         "candidate_count": 99,
         "adapter_version": "v1",
+        "validation_state": "needs_review",
+        "validation_codes": ["missing_fields", "invented_code"],
         "raw_text": "secret equation",
         "canonical_payload": {"input": "secret"},
     })
@@ -114,6 +118,8 @@ def test_nlp_client_metadata_uses_strict_taxonomy_whitelist():
         "confidence_bucket": "medium",
         "candidate_count": 8,
         "adapter_version": "v1",
+        "validation_state": "needs_review",
+        "validation_codes": ["missing_fields"],
     }
     assert _sanitize_nlp_metadata({"taxonomy_code": "invented", "target": "algebra"}) is None
 
@@ -161,6 +167,53 @@ async def test_llm_fallback_keeps_rule_fast_path_and_requires_authenticated_user
     assert calls == 1
     assert hybrid.adapter_version == "nlp-hybrid-v1"
     assert hybrid.selected_candidate_id == "llm-algebra"
+
+
+@pytest.mark.anyio
+async def test_nlp_critic_marks_review_without_repairing_candidate(monkeypatch):
+    async def fake_extract(*_args, **_kwargs):
+        return {
+            "decision": "review",
+            "codes": ["missing_goal_evidence"],
+            "field_errors": {"goals": "Thiếu bằng chứng cho mục tiêu."},
+            "repair_fields": {},
+        }
+
+    monkeypatch.setattr(llm_nlp, "_extract_with_provider", fake_extract)
+    candidate = InterpretationCandidate(
+        candidate_id="llm-algebra",
+        intent=MathIntent(domain="algebra", topic="equation", task="solve"),
+        canonical_text="x=1",
+        confidence=0.88,
+        provenance=[Provenance(source="language_model", adapter="test", version="test")],
+    )
+
+    reviewed = await llm_nlp._critic_candidate(candidate, InputEnvelope(text="Giải x=1", target="algebra"), "test", "model", object(), object())
+
+    assert reviewed is not None
+    assert reviewed.confidence == 0.64
+    assert reviewed.validation.state == "needs_review"
+    assert "missing_goal_evidence" in reviewed.validation.codes
+    assert "goals" in reviewed.missing_fields
+    assert reviewed.canonical_text == "x=1"
+
+
+def test_llm_consensus_requires_matching_structured_candidate():
+    base = InterpretationCandidate(
+        candidate_id="llm-algebra",
+        intent=MathIntent(domain="algebra", topic="equation", task="solve"),
+        canonical_text="x=1",
+        confidence=0.88,
+        provenance=[Provenance(source="language_model")],
+    )
+    different = base.model_copy(update={"canonical_text": "x=2"})
+
+    consensus = llm_nlp._merge_consensus_candidates([base, different])
+
+    assert consensus.confidence == 0.64
+    assert consensus.validation.state == "needs_review"
+    assert "candidate_disagreement" in consensus.validation.codes
+    assert "candidate_consensus" in consensus.missing_fields
 
 
 def test_llm_payload_requires_evidence_before_acceptance():

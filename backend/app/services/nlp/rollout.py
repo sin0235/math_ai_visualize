@@ -29,6 +29,8 @@ class NlpRolloutDecision:
             "confidence_bucket": confidence_bucket(self.candidate.confidence if self.candidate else None),
             "candidate_count": len(self.response.candidates),
             "adapter_version": self.response.adapter_version,
+            "validation_state": self.candidate.validation.state if self.candidate else None,
+            "validation_codes": self.candidate.validation.codes if self.candidate else [],
             "mode": self.mode,
             "mismatch": self.mismatch,
         }

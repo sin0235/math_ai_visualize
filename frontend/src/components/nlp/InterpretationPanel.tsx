@@ -6,6 +6,7 @@ import {
   type InterpretationCandidate,
   type InterpretationResponse,
   type InterpretInput,
+  type NlpFact,
   type NlpTarget,
 } from '../../api/nlp';
 import {
@@ -269,12 +270,21 @@ export function InterpretationPanel({
 }
 
 function InterpretationDetails({ candidate }: { candidate: InterpretationCandidate }) {
+  const givens = candidate.givens ?? [];
+  const goals = candidate.goals ?? [];
+  const unknowns = candidate.unknowns ?? [];
+  const clarificationOptions = candidate.clarification_options ?? [];
   const details = [
-    candidate.entities.length ? ['Đối tượng', candidate.entities.map((item) => `${item.name}${item.value === null || item.value === undefined || item.value === item.name ? '' : ` = ${String(item.value)}`}`).join(', ')] : null,
-    candidate.constraints.length ? ['Ràng buộc', candidate.constraints.map((item) => `${item.kind}(${item.arguments.join(', ')})${item.value === null || item.value === undefined ? '' : ` = ${String(item.value)}`}`).join('; ')] : null,
+    givens.length ? ['Dữ kiện đã hiểu', givens.map(factLabel).join('; ')] : null,
+    goals.length ? ['Mục tiêu', goals.map(factLabel).join('; ')] : null,
+    unknowns.length ? ['Chưa xác định', unknowns.join(', ')] : null,
+    !givens.length && candidate.entities.length ? ['Đối tượng', candidate.entities.map((item) => `${item.name}${item.value === null || item.value === undefined || item.value === item.name ? '' : ` = ${String(item.value)}`}`).join(', ')] : null,
+    !givens.length && candidate.constraints.length ? ['Ràng buộc', candidate.constraints.map((item) => `${item.kind}(${item.arguments.join(', ')})${item.value === null || item.value === undefined ? '' : ` = ${String(item.value)}`}`).join('; ')] : null,
     candidate.assumptions.length ? ['Giả định', candidate.assumptions.join('; ')] : null,
     candidate.missing_fields.length ? ['Còn thiếu', candidate.missing_fields.join(', ')] : null,
-    candidate.ambiguities.length ? ['Điểm chưa rõ', candidate.ambiguities.map((item) => item.message).join('; ')] : null,
+    candidate.ambiguities.length ? ['Điểm chưa rõ', candidate.ambiguities.map((item) => `${item.message}${item.alternatives.length ? ` Chọn: ${item.alternatives.join(' / ')}` : ''}`).join('; ')] : null,
+    clarificationOptions.length ? ['Lựa chọn xác nhận', clarificationOptions.join(' / ')] : null,
+    candidate.field_confidences.length ? ['Độ tin cậy từng phần', candidate.field_confidences.map((item) => `${item.field}: ${formatConfidence(item.confidence)}`).join('; ')] : null,
   ].filter((item): item is string[] => item !== null);
   if (!details.length) return null;
   return (
@@ -283,6 +293,12 @@ function InterpretationDetails({ candidate }: { candidate: InterpretationCandida
     </dl>
   );
 }
+
+function factLabel(fact: NlpFact) {
+  const subject = fact.name || (fact.arguments.length ? `${fact.kind}(${fact.arguments.join(', ')})` : fact.kind);
+  return fact.value === null || fact.value === undefined ? subject : `${subject} = ${String(fact.value)}`;
+}
+
 
 function mathPreview(candidate: InterpretationCandidate, value: string) {
   const text = value.trim();

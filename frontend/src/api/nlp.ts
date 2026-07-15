@@ -31,6 +31,23 @@ export interface InterpretationConstraint {
   provenance: NlpProvenance[];
 }
 
+export interface NlpFact {
+  kind: string;
+  name?: string | null;
+  arguments: string[];
+  value?: string | number | boolean | null;
+  confidence: number;
+  evidence: Array<{ start: number; end: number }>;
+  provenance: NlpProvenance[];
+}
+
+export interface InterpretationValidation {
+  state: 'unchecked' | 'validated' | 'rejected' | 'needs_review';
+  codes: string[];
+  prompt_version?: string | null;
+  contract_version: string;
+}
+
 export interface InterpretationAmbiguity {
   code: string;
   message: string;
@@ -46,7 +63,11 @@ export interface InterpretationCandidate {
   canonical_payload?: Record<string, unknown> | null;
   entities: InterpretationEntity[];
   constraints: InterpretationConstraint[];
+  givens?: NlpFact[];
+  goals?: NlpFact[];
+  unknowns?: string[];
   ambiguities: InterpretationAmbiguity[];
+  clarification_options?: string[];
   field_confidences: Array<{ field: string; confidence: number; calibrated: boolean }>;
   confidence: number;
   assumptions: string[];
@@ -54,6 +75,7 @@ export interface InterpretationCandidate {
   unsupported_reason?: string | null;
   clarification_question?: string | null;
   provenance: NlpProvenance[];
+  validation?: InterpretationValidation;
 }
 
 export interface InterpretationResponse {

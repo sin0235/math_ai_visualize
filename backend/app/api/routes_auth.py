@@ -12,6 +12,8 @@ from app.db.models import SessionRecord, UserRecord
 from app.db.session import DatabaseClient, get_database
 from app.repositories.admin import AdminRepository
 from app.repositories.auth import (
+    DEFAULT_SESSION_DAYS,
+    REMEMBERED_SESSION_DAYS,
     SESSION_COOKIE_NAME,
     TOKEN_PURPOSE_EMAIL_VERIFICATION,
     TOKEN_PURPOSE_PASSWORD_RESET,
@@ -179,9 +181,9 @@ async def google_callback(
 
     await users.mark_login(user.id)
     user = await users.find_by_id(user.id) or user
-    _, session_token = await SessionRepository(db).create(user.id, client_ip(raw_request), raw_request.headers.get("user-agent"))
+    _, session_token = await SessionRepository(db).create(user.id, client_ip(raw_request), raw_request.headers.get("user-agent"), REMEMBERED_SESSION_DAYS)
     response = frontend_redirect(settings, "auth=google-success")
-    set_session_cookie(response, session_token, settings)
+    set_session_cookie(response, session_token, settings, REMEMBERED_SESSION_DAYS)
     await audit(db, user.id, "auth.google_login_success", "user", user.id, raw_request)
     return response
 
@@ -223,8 +225,9 @@ async def login(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Bạn cần xác minh email trước khi đăng nhập.")
     await users.mark_login(user.id)
     user = await users.find_by_id(user.id) or user
-    _, token = await SessionRepository(db).create(user.id, client_ip(raw_request), raw_request.headers.get("user-agent"))
-    set_session_cookie(response, token, settings)
+    session_days = REMEMBERED_SESSION_DAYS if request.remember_me else DEFAULT_SESSION_DAYS
+    _, token = await SessionRepository(db).create(user.id, client_ip(raw_request), raw_request.headers.get("user-agent"), session_days)
+    set_session_cookie(response, token, settings, session_days)
     await audit(db, user.id, "auth.login_success", "user", user.id, raw_request)
     from app.repositories.activity import try_log_user_activity
     from app.services.analytics_taxonomy import AUTH_LOGIN
@@ -407,11 +410,11 @@ async def revoke_other_sessions(
     return MessageResponse(message="Các phiên đăng nhập khác đã được thu hồi.")
 
 
-def set_session_cookie(response: Response, token: str, settings: Settings) -> None:
+def set_session_cookie(response: Response, token: str, settings: Settings, session_days: int = DEFAULT_SESSION_DAYS) -> None:
     response.set_cookie(
         SESSION_COOKIE_NAME,
         token,
-        max_age=60 * 60 * 24 * 30,
+        max_age=60 * 60 * 24 * session_days,
         **cookie_options(settings, include_httponly=True),
     )
 
