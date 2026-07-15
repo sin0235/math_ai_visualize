@@ -251,7 +251,7 @@ function Scene({ hideHelpers = false }: { hideHelpers?: boolean }) {
 
 export function HomeTetrahedronShowcase({ hideHelpers = false }: { hideHelpers?: boolean }) {
   return (
-    <div className="home-tetrahedron-wrap" style={{ cursor: 'grab', width: '100%', height: '100%' }}>
+    <div className="home-tetrahedron-wrap" style={{ cursor: 'grab' }}>
       <Canvas
         className="home-tetrahedron-canvas"
         dpr={[1, 2]}
