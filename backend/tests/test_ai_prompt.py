@@ -135,6 +135,8 @@ def test_scene_v3_prompt_restores_point_plane_distance_construction_from_v2():
     assert 'segment MH color #0f766e line_width 3 style="dashed"' in text
     assert "right_angle target_ids=[id_M,id_H,id_A]" in text
     assert "d(M,(ABC))" in text
+    assert "đủ segment viền nối tuần tự và khép kín" in text
+    assert "Không dựa vào renderer tự nối điểm" in text
 
 
 @pytest.mark.parametrize("snippet", [

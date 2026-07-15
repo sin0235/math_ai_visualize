@@ -324,6 +324,17 @@ def test_parse_converts_unknown_distance_goal_to_render_only_measurement():
     assert connector.style == "dashed"
     assert connector.color == "#0f766e"
     assert connector.line_width == 3
+    boundary = [
+        obj
+        for obj in scene.objects
+        if isinstance(obj, SegmentV3) and obj.metadata.get("visualization_role") == "distance_goal_plane_boundary"
+    ]
+    assert {frozenset(obj.point_ids) for obj in boundary} == {
+        frozenset(("pt_p", "pt_f")),
+        frozenset(("pt_f", "pt_b")),
+        frozenset(("pt_b", "pt_p")),
+    }
+    assert all(obj.style == "solid" and obj.color == "#f59e0b" and obj.line_width == 3 for obj in boundary)
     goal_annotations = [
         annotation
         for annotation in scene.annotations
@@ -335,6 +346,7 @@ def test_parse_converts_unknown_distance_goal_to_render_only_measurement():
     assert result.status == "verified"
     assert result.can_project
     assert result.projection is not None
+    assert {obj.id for obj in boundary}.issubset({item.object_id for item in result.projection.linear})
     assert {annotation.type for annotation in result.projection.annotations} == {"measurement", "right_angle"}
 
     completed_again = complete_metric_goal_visualizations(scene)

@@ -19,6 +19,7 @@ from app.services.geometry.parser import parse_point_plane_distance_goal
 
 _GOAL_COLOR = "#0f766e"
 _GOAL_PLANE_COLOR = "#f59e0b"
+_GOAL_PLANE_BOUNDARY_ROLE = "distance_goal_plane_boundary"
 _RESERVED_METADATA_KEY = "_backend_render_safe"
 
 
@@ -77,6 +78,8 @@ def _ensure_problem_point_plane_distance_goal(scene: MathSceneV3) -> MathSceneV3
         objects = [styled if obj.id == planar.id else obj for obj in objects]
         planar = styled
 
+    objects = _ensure_planar_boundary(objects, planar, plane_label, used_ids)
+
     facts = list(scene.derived_facts)
     existing = next(
         (
@@ -130,6 +133,11 @@ def _complete_point_plane_distance(scene: MathSceneV3, fact: DerivedFactV3) -> M
     if not isinstance(point, (Point2DV3, Point3DV3)) or not isinstance(planar, (PlaneV3, FaceV3)):
         return scene
 
+    objects = list(scene.objects)
+    used_ids = _scene_ids(scene)
+    objects = _ensure_planar_boundary(objects, planar, planar.label or planar.id, used_ids)
+    scene = scene.model_copy(update={"objects": objects})
+
     geometry = build_geometry_index(scene)
     try:
         projected = project_point_to_plane(
@@ -142,8 +150,6 @@ def _complete_point_plane_distance(scene: MathSceneV3, fact: DerivedFactV3) -> M
     if distance(geometry.point(point.id), projected) <= geometry.tolerance:
         return scene
 
-    objects = list(scene.objects)
-    used_ids = {obj.id for obj in objects} | {annotation.id for annotation in scene.annotations}
     foot = _find_point_at(scene, projected, geometry.tolerance * 10)
     if foot is None:
         foot_id = _unique_id(f"goal_{_slug(fact.id)}_foot", used_ids)
@@ -255,6 +261,37 @@ def _unique_foot_label(scene: MathSceneV3) -> str:
     while f"H{index}" in labels:
         index += 1
     return f"H{index}"
+
+
+def _ensure_planar_boundary(
+    objects: list,
+    planar: PlaneV3 | FaceV3,
+    plane_label: str,
+    used_ids: set[str],
+) -> list:
+    existing_edges = {
+        frozenset(obj.point_ids)
+        for obj in objects
+        if isinstance(obj, SegmentV3)
+    }
+    point_ids = list(planar.point_ids)
+    for index, start_id in enumerate(point_ids):
+        end_id = point_ids[(index + 1) % len(point_ids)]
+        edge = frozenset((start_id, end_id))
+        if edge in existing_edges:
+            continue
+        objects.append(SegmentV3(
+            id=_unique_id(f"goal_plane_{_slug(plane_label)}_boundary_{index + 1}", used_ids),
+            point_ids=(start_id, end_id),
+            hidden=False,
+            color=_GOAL_PLANE_COLOR,
+            line_width=3,
+            style="solid",
+            source="construction",
+            metadata={"visualization_role": _GOAL_PLANE_BOUNDARY_ROLE, "planar_id": planar.id},
+        ))
+        existing_edges.add(edge)
+    return objects
 
 
 def _plane_arm_point(planar: PlaneV3 | FaceV3, foot_id: str) -> str | None:

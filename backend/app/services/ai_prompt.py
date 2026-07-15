@@ -455,6 +455,7 @@ V. Quan hệ và annotation:
 - Trước khi tạo JSON, lập hai inventory nội bộ và KHÔNG xuất inventory: (a) GIVEN gồm mọi điểm/cạnh/mặt/quan hệ/giá trị đề mô tả; (b) GOAL gồm đúng đại lượng sau các từ hỏi, tính, tìm, chứng minh. Scene phải biểu diễn được cả GIVEN và GOAL, không chỉ dựng khối nền.
 - `distance`, `angle`, `ratio` là constraint định lượng để kiểm chứng dữ kiện đã biết, không phải goal. Không tạo các relation này khi giá trị đang là câu hỏi cần giải.
 - Nếu đề hỏi khoảng cách từ điểm M đến plane/face (ABC): bắt buộc tạo riêng face/plane có chính các point IDs A,B,C; tính hình chiếu vuông góc H của M lên mặt phẳng từ tọa độ đã chọn; tạo point H trước, segment MH color #0f766e line_width 3 style="dashed", rồi right_angle target_ids=[id_M,id_H,id_A] với A là một điểm của mặt phẳng khác H. Thêm measurement cho segment MH với label ngắn `d(M,(ABC))`; tất cả là construction/render_only, không tạo distance relation thiếu args.value và không ghi đáp số tự suy ra.
+- Mọi plane/face mục tiêu được xác định bởi các điểm như (ABC), (PFB) phải có đủ segment viền nối tuần tự và khép kín: A-B, B-C, C-A. Không dựa vào renderer tự nối điểm và không coi mặt phẳng tô màu là thay thế cho đường biên.
 - Nếu model chưa dựng đủ chân chiếu, backend sẽ hoàn thiện minh họa từ point và plane/face của goal; vì vậy phải giữ đúng hai object ID này trong intent/derived goal và không thay bằng chuỗi shorthand.
 - Nếu đề hỏi góc ABC: bảo đảm hai arm BA, BC tồn tại và thêm angle target_ids=[id_A,id_B,id_C].
 - Nếu hỏi góc hai đường: hai đường phải có object/segment riêng. Nếu không giao nhau tại điểm đã có, dựng một tia song song tịnh tiến để hai arm chung đỉnh rồi mới thêm angle.
@@ -550,6 +551,7 @@ Nhiệm vụ: sửa scene để hết lỗi, giữ nguyên problem_text và inte
 - Các face kề nhau dùng màu khác nhau trong palette của extraction prompt, opacity 0.12-0.22.
 - Giữ phân cấp semantic: mặt khối slate-blue; mặt cắt cam/viền đỏ; mặt goal hổ phách; construction khoảng cách teal; không đổi tất cả về một palette.
 - Khôi phục construction và annotation cho goal khoảng cách/góc nếu object IDs resolve được; không xóa goal chỉ để scene hợp lệ.
+- Với plane/face goal xác định bởi các điểm như (ABC), (PFB), khôi phục đủ segment viền theo thứ tự point_ids và đóng cạnh cuối-về-đầu; không dựa vào renderer tự nối điểm.
 - Tự đếm lại topology: hộp 8/12/6; lăng trụ đáy n cạnh 2n/3n/(n+2); chóp n cạnh (n+1)/2n/(n+1); tứ diện 4/6/4.
 - Mọi ref_id phải tồn tại trong chính scene JSON được trả về.
 - Không quay về schema v2 (name/object_1/object_2).
