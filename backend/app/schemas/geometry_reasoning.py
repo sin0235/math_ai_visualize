@@ -95,7 +95,7 @@ class GeometryProofStep(GeometryReasoningModel):
     title: str = Field(min_length=1, max_length=300)
     explanation: str = Field(min_length=1, max_length=4_000)
     claim: ProofClaim
-    highlight_object_ids: list[str] = Field(default_factory=list, max_length=32)
+    highlight_object_ids: list[str] = Field(default_factory=list, max_length=64)
     relation_ids: list[str] = Field(default_factory=list, max_length=32)
     construction_actions: list[ConstructionAction] = Field(default_factory=list, max_length=16)
 

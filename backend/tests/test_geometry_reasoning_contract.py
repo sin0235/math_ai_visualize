@@ -67,6 +67,15 @@ def test_geometry_proof_contract_accepts_grounded_ordered_plan():
     assert plan.steps[1].claim.depends_on == ["claim-distance-is-sa"]
 
 
+def test_geometry_proof_contract_accepts_33_highlight_object_ids():
+    payload = _plan_payload()
+    payload["steps"][0]["highlight_object_ids"] = [f"object-{index}" for index in range(33)]
+
+    plan = GeometryProofPlan.model_validate(payload)
+
+    assert len(plan.steps[0].highlight_object_ids) == 33
+
+
 def test_geometry_proof_contract_rejects_unknown_fact_reference():
     payload = _plan_payload()
     payload["steps"][0]["claim"]["fact_ids"] = ["missing"]

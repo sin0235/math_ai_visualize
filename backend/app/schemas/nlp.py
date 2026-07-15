@@ -163,7 +163,7 @@ class GroundedClaim(StrictModel):
     theorem: str | None = Field(default=None, max_length=256)
     theorem_id: str | None = Field(default=None, max_length=128)
     depends_on: list[str] = Field(default_factory=list, max_length=32)
-    highlight_object_ids: list[str] = Field(default_factory=list, max_length=32)
+    highlight_object_ids: list[str] = Field(default_factory=list, max_length=64)
     relation_ids: list[str] = Field(default_factory=list, max_length=32)
     construction_actions: list[dict[str, Any]] = Field(default_factory=list, max_length=16)
     confidence: str = Field(min_length=1, max_length=32)

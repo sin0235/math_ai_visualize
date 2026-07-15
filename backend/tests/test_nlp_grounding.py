@@ -158,6 +158,15 @@ def _geometry_result() -> SolverResult:
     )
 
 
+def test_geometry_grounding_accepts_33_highlight_object_ids():
+    result = _geometry_result()
+    result.steps[0].highlight_object_ids = [f"object-{index}" for index in range(33)]
+
+    plan = build_geometry_explanation_plan(result)
+
+    assert plan.claims[0].highlight_object_ids == result.steps[0].highlight_object_ids
+
+
 @pytest.mark.anyio
 async def test_geometry_ai_cannot_add_substeps_or_change_anchors(monkeypatch):
     result = _geometry_result()
