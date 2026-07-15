@@ -63,6 +63,8 @@ docs/
 
 # Local SQLite dumps and one-off scratch scripts (do not ship)
 *.db
+*.db-shm
+*.db-wal
 backend/check_db.py
 backend/check_d1.py
 backend/check_profiles.py
