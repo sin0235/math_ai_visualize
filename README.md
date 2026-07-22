@@ -1,4 +1,14 @@
-# AI Math Renderer
+<div align="center">
+  <img src="https://capsule-render.vercel.app/api?type=waving&color=gradient&customColorList=6,12,20&height=180&section=header&text=AI%20Math%20Visualizer&fontSize=42&fontColor=fff&animation=twinkling&fontAlignY=35&desc=AI%20%E2%80%A2%20OCR%20%E2%80%A2%20Interactive%202D%2F3D%20Mathematics&descAlignY=56&descSize=17" width="100%"/>
+  <p>
+    <img src="https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python"/>
+    <img src="https://img.shields.io/badge/FastAPI-Backend-009688?style=for-the-badge&logo=fastapi&logoColor=white" alt="FastAPI"/>
+    <img src="https://img.shields.io/badge/React-Frontend-61DAFB?style=for-the-badge&logo=react&logoColor=black" alt="React"/>
+    <img src="https://img.shields.io/badge/Docker-Deployment-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker"/>
+  </p>
+</div>
+
+# AI Math Visualizer
 
 **AI Math Renderer** là nền tảng web ứng dụng trí tuệ nhân tạo nhằm hỗ trợ việc học, dạy và biên soạn tài liệu Toán học. Người dùng có thể nhập đề bài bằng tiếng Việt hoặc tải ảnh đề bài; hệ thống tự động nhận diện nội dung, trích xuất dữ liệu toán học bằng AI, kiểm tra theo cấu trúc an toàn và dựng mô hình trực quan 2D hoặc 3D tương tác.
 
@@ -736,3 +746,10 @@ Checklist production:
 - Khi thêm API mutation, kiểm tra `require_trusted_origin`.
 - Khi thêm upload hoặc dữ liệu người dùng, kiểm tra ownership, storage provider và cleanup path.
 - Khi sửa render/OCR, kiểm tra cả schema Pydantic, frontend type và test route liên quan.
+
+---
+
+<div align="center">
+  <img src="https://capsule-render.vercel.app/api?type=waving&color=gradient&customColorList=6,11,20&height=120&section=footer" width="100%"/>
+  <em>AI-assisted mathematics for learning and teaching.</em>
+</div>
