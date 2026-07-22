@@ -439,7 +439,7 @@ function MineruColabGuide({ onClose }: { onClose: () => void }) {
         <ol className="pdf-word-guide-steps">
           <li className="pdf-word-guide-inline-step">
             <strong>Mở notebook Colab.</strong>
-            <a href="https://colab.research.google.com/github/sin0235/MinerU/blob/main/colab_pdf_to_word_cloudflare.ipynb" target="_blank" rel="noreferrer noopener">Mở MinerU Colab</a>
+          <a href="https://colab.research.google.com/github/sin0235/pdf-to-word-mineru/blob/main/colab_pdf_to_word_cloudflare.ipynb" target="_blank" rel="noreferrer noopener">Mở MinerU Colab</a>
           </li>
           <li><strong>Bật GPU đúng cách.</strong> Vào <span>Runtime → Change runtime type</span>, chọn <span>T4 GPU</span>, rồi bấm <span>Save</span>.</li>
           <li><strong>Chạy cell từ trên xuống.</strong> Đợi server khởi động xong. Không đóng tab trong lúc xử lý.</li>

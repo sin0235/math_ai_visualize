@@ -7,7 +7,7 @@
 | CI | **GitHub Actions** (`.github/workflows/ci.yml`) | Test backend + build frontend (+ Docker smoke trên PR/`product`) |
 | CD | **DigitalOcean App Platform** | `deploy_on_push: true` từ branch `product` → build Dockerfile → live |
 | DB backup | DO Managed Postgres | Backup hàng ngày (xem DO control panel) |
-| Source | GitHub | Repo `sin0235/math_ai_visualize` |
+| Source | GitHub | Repo `sin0235/ai-math-visualizer` |
 
 Luồng khuyến nghị:
 
