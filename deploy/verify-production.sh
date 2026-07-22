@@ -3,7 +3,7 @@ set -euo pipefail
 
 APP_ID="${APP_ID:-f94827d0-9d28-4047-9a06-68129dc99199}"
 DB_CLUSTER_ID="${DB_CLUSTER_ID:-d1e9bd7a-b85f-4f29-ad5c-234a58740585}"
-GITHUB_REPO="${GITHUB_REPO:-sin0235/math_ai_visualize}"
+GITHUB_REPO="${GITHUB_REPO:-sin0235/ai-math-visualizer}"
 PRODUCT_RULESET_ID="${PRODUCT_RULESET_ID:-18782037}"
 BASE_URL="${BASE_URL:-https://starfish-app-e3i2c.ondigitalocean.app}"
 MAX_BACKUP_AGE_HOURS="${MAX_BACKUP_AGE_HOURS:-36}"
